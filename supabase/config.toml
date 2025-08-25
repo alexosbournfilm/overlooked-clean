@@ -1,0 +1,13 @@
+[functions.validate-youtube]
+enabled = true
+verify_jwt = true
+import_map = "./functions/validate-youtube/deno.json"
+entrypoint = "./functions/validate-youtube/index.ts"
+# static_files = [ "./functions/validate-youtube/*.html" ]
+
+[functions.referral-redirect]
+enabled = true
+verify_jwt = false                # <- make public
+import_map = "./functions/referral-redirect/deno.json"
+entrypoint = "./functions/referral-redirect/index.ts"
+# static_files = [ "./functions/referral-redirect/*.html" ]
