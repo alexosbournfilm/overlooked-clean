@@ -1,4 +1,9 @@
-import React, { useState } from 'react';
+// app/screens/SignInScreen.tsx
+// ------------------------------------------------------------
+// FULL PAYWALL-FREE VERSION
+// ------------------------------------------------------------
+
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,20 +14,337 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Animated,
+  Easing,
+  useWindowDimensions,
+  Modal,
+  ScrollView,
+  Pressable,
+  Image,
+  UIManager,
+  ImageBackground,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
-import COLORS from '../theme/colors';
+import { resetToMain } from '../navigation/navigationRef';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+/*
+ ────────────────────────────────────────────────────────────
+   ALL THEME + UI CODE IS UNCHANGED
+ ────────────────────────────────────────────────────────────
+   Only the sign-in logic (handleSignIn) is updated.
+ ────────────────────────────────────────────────────────────
+*/
+
+// --- THEME --------------------------------------------------
+const DARK_BG = '#0D0D0D';
+const DARK_ELEVATED = '#171717';
+const TEXT_IVORY = '#EDEBE6';
+const TEXT_MUTED = '#A7A6A2';
+const DIVIDER = '#2A2A2A';
+const GOLD = '#C6A664';
+
+const SYSTEM_SANS =
+  Platform.select({ ios: 'System', android: 'Roboto', web: undefined }) || undefined;
+
+const T = {
+  bg: DARK_BG,
+  card: DARK_ELEVATED,
+  card2: '#111111',
+  text: TEXT_IVORY,
+  sub: '#D0CEC8',
+  mute: TEXT_MUTED,
+  accent: GOLD,
+  olive: GOLD,
+  border: '#2E2E2E',
+};
+
+const GRAIN_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAIElEQVQYV2P8//8/AzGAiYGB4T8mGJgYhBmMCEwMDAwA1wQq1i3gN8QAAAAASUVORK5CYII=';
+
+// --- REMOVE GRAIN COMPLETELY (safe for all platforms) ---
+const Grain = () => null;
+// --- Typing animation text ---------------------------------
+const MANIFESTO_LINES = [
+  'Meet your crew this month. Make a film together.',
+  'No gatekeepers. Just collaborators, jobs, and a deadline.',
+  'Post a job. Apply to one. Start filming.',
+  'Submit your film to the monthly challenge.',
+  'Get seen by the community — and maybe win cash.',
+  'The industry makes you wait. We say don’t.',
+];
+
+const FILM_HERO_URL =
+  'https://images.unsplash.com/photo-1524255684952-d7185b509571?q=80&w=1600&auto=format&fit=crop';
+
+const TYPE_MIN_MS = 25;
+const TYPE_MAX_MS = 90;
+const DELETE_MIN_MS = 20;
+const DELETE_MAX_MS = 60;
+const WORD_PAUSE_MS = 140;
+const PUNCT_PAUSE_MS = 220;
+const RANDOM_PAUSE_CHANCE = 0.14;
+const RANDOM_PAUSE_MIN = 100;
+const RANDOM_PAUSE_MAX = 320;
+const HOLD_FULL_MS = 5500;
+const HOLD_EMPTY_MS = 280;
+const CARET_BLINK_MS = 530;
+const TITLE_FADE_MS = 700;
+
+// --- Feature cards -----------------------------------------
+type FeatureKey = 'profile' | 'location' | 'jobs' | 'festival';
+
+type Feature = {
+  key: FeatureKey;
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  detail: string;
+  cta: string;
+  route: string;
+};
+
+const FEATURES: Feature[] = [
+  {
+    key: 'profile',
+    title: 'Create Your Profile',
+    subtitle: 'Choose role & city',
+    icon: 'person',
+    detail:
+      'Pick your main role, add side roles, set your city, and link a portfolio.',
+    cta: 'Set up my profile',
+    route: 'CreateProfile',
+  },
+  {
+    key: 'location',
+    title: 'Meet Creatives Near You',
+    subtitle: 'City groups & chat',
+    icon: 'location',
+    detail:
+      'Find collaborators in your city. Join the city chat and build a crew.',
+    cta: 'Explore my city',
+    route: 'Location',
+  },
+  {
+    key: 'jobs',
+    title: 'Post & Apply to Jobs',
+    subtitle: 'Paid and free gigs',
+    icon: 'briefcase',
+    detail:
+      'Browse or post gigs. Your profile is automatically attached to applications.',
+    cta: 'Open the job board',
+    route: 'Jobs',
+  },
+  {
+    key: 'festival',
+    title: 'Monthly Film Challenge',
+    subtitle: 'Submit & get seen',
+    icon: 'trophy',
+    detail:
+      'Submit a YouTube film each month. Get voted, get featured, get seen.',
+    cta: 'See this month',
+    route: 'Featured',
+  },
+];
+
+// --- FAQ data ----------------------------------------------
+const EXTRA_FAQS = [
+  {
+    title: 'How do I join my city chat?',
+    body: 'Go to the Location page. Search your city and tap “Join City Chat”.',
+  },
+  {
+    title: 'What counts as a valid submission?',
+    body: 'A 1–15 min YouTube film made for this month. No copyrighted music.',
+  },
+  {
+    title: 'How do jobs work?',
+    body: 'Apply to a job and your profile is sent automatically to the poster.',
+  },
+  {
+    title: 'Can I vote more than once?',
+    body: 'You can vote once per film, but not on your own submissions.',
+  },
+];
+
+// --- Hover/press animation ----------------------------------
+function useHoverScale() {
+  const scale = useRef(new Animated.Value(1)).current;
+  const [hovered, setHovered] = useState(false);
+
+  const to = (v: number, d = 120) =>
+    Animated.timing(scale, {
+      toValue: v,
+      duration: d,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+
+  const onHoverIn = () => {
+    setHovered(true);
+    if (Platform.OS === 'web') to(1.01, 140).start();
+  };
+
+  const onHoverOut = () => {
+    setHovered(false);
+    if (Platform.OS === 'web') to(1, 120).start();
+  };
+
+  const onPressIn = () =>
+    Animated.spring(scale, {
+      toValue: 0.995,
+      useNativeDriver: true,
+      speed: 40,
+      bounciness: 0,
+    }).start();
+
+  const onPressOut = () =>
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 20,
+      bounciness: 6,
+    }).start();
+
+  return { scale, hovered, onHoverIn, onHoverOut, onPressIn, onPressOut };
+}
 
 export default function SignInScreen() {
   const navigation = useNavigation<any>();
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  const isWide = width >= 980;
+  const isPhone = width < 420;
+  const NAV_HEIGHT = isWide ? 56 : 48;
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showSignIn, setShowSignIn] = useState(false);
+  const [activeFeature, setActiveFeature] = useState<FeatureKey | null>(null);
 
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [whyOpen, setWhyOpen] = useState(false);
+  const [openFaqs, setOpenFaqs] = useState<number[]>([]);
+
+  const [featuresHeight, setFeaturesHeight] = useState<number>(0);
+  const useSyncedHeights = isWide && featuresHeight > 0;
+  const heroSyncedHeight = useSyncedHeights ? Math.max(0, featuresHeight) : undefined;
+
+  const titleOpacity = useRef(new Animated.Value(0)).current;
+  const titleTranslate = useRef(new Animated.Value(8)).current;
+
+  const [lineIndex, setLineIndex] = useState(
+    () => Math.floor(Math.random() * MANIFESTO_LINES.length)
+  );
+  const fullLine = useMemo(() => MANIFESTO_LINES[lineIndex], [lineIndex]);
+
+  const [displayText, setDisplayText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [caretVisible, setCaretVisible] = useState(true);
+  const [focus, setFocus] = useState<'email' | 'password' | null>(null);
+
+  // caret blink
+  useEffect(() => {
+    const id = setInterval(() => setCaretVisible((v) => !v), CARET_BLINK_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  // tagline fade
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(titleOpacity, {
+        toValue: 1,
+        duration: TITLE_FADE_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(titleTranslate, {
+        toValue: 0,
+        duration: TITLE_FADE_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
+  // typing effect
+  useEffect(() => {
+    let mounted = true;
+    let timer: any;
+
+    const rand = (a: number, b: number) => Math.floor(Math.random() * (b - a + 1)) + a;
+
+    const nextTypeDelay = (typed: string) => {
+      let d = rand(TYPE_MIN_MS, TYPE_MAX_MS);
+      const last = typed.slice(-1);
+      if (last === ' ') d += WORD_PAUSE_MS;
+      if (['.', ',', '!', '?', ';', ':'].includes(last)) d += PUNCT_PAUSE_MS;
+      if (Math.random() < RANDOM_PAUSE_CHANCE) d += rand(RANDOM_PAUSE_MIN, RANDOM_PAUSE_MAX);
+      return d;
+    };
+
+    const nextDeleteDelay = () => rand(DELETE_MIN_MS, DELETE_MAX_MS);
+
+    const pickNext = (prev: number) => {
+      let n = prev;
+      while (n === prev) n = Math.floor(Math.random() * MANIFESTO_LINES.length);
+      return n;
+    };
+
+    const tick = () => {
+      if (!mounted) return;
+      const current = displayText;
+      const target = fullLine;
+
+      if (!isDeleting) {
+        if (current.length < target.length) {
+          const next = target.slice(0, current.length + 1);
+          setDisplayText(next);
+          timer = setTimeout(tick, nextTypeDelay(next));
+        } else {
+          timer = setTimeout(() => {
+            if (!mounted) return;
+            setIsDeleting(true);
+            timer = setTimeout(tick, nextDeleteDelay());
+          }, HOLD_FULL_MS);
+        }
+      } else {
+        if (current.length > 0) {
+          const next = target.slice(0, current.length - 1);
+          setDisplayText(next);
+          timer = setTimeout(tick, nextDeleteDelay());
+        } else {
+          timer = setTimeout(() => {
+            if (!mounted) return;
+            setIsDeleting(false);
+            setLineIndex((prev) => pickNext(prev));
+          }, HOLD_EMPTY_MS);
+        }
+      }
+    };
+
+    timer = setTimeout(tick, TYPE_MIN_MS);
+
+    return () => {
+      mounted = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [displayText, isDeleting, fullLine]);
+
+  // ============================================================
+  //      🚀 SIGN IN — PAYWALL REMOVED COMPLETELY
+  // ============================================================
   const handleSignIn = async () => {
     if (!email || !password) {
-      Alert.alert('Missing Fields', 'Please enter both email and password.');
+      Alert.alert('Sign in to continue', 'Enter your email and password.');
       return;
     }
 
@@ -46,107 +368,969 @@ export default function SignInScreen() {
       return;
     }
 
-    // Check if user profile exists
-    const { data: profile, error: profileError } = await supabase
+    // Fetch user profile
+    const { data: profile } = await supabase
       .from('users')
       .select('id')
       .eq('id', userId)
       .maybeSingle();
 
     setLoading(false);
+    setShowSignIn(false);
 
-    if (profileError) {
-      Alert.alert('Error', 'Unable to verify user profile.');
-      return;
-    }
-
-    if (profile) {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Main' }], // ✅ Navigate to first tab
-      });
-    } else {
-      navigation.reset({
+    if (!profile) {
+      (navigation as any).reset({
         index: 0,
         routes: [{ name: 'CreateProfile' }],
       });
+      return;
     }
+
+    // 🎉 NO PAYWALL. Go straight to the app.
+    resetToMain();
   };
 
+  // ============================================================
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1, backgroundColor: COLORS.background }}
-    >
-      <View style={styles.container}>
-        <Text style={styles.title}>Sign In</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        {/* BG */}
+        <View style={styles.bgSolid} />
+        <View style={styles.radialGlowTop} pointerEvents="none" />
+        <View style={styles.radialGlowBottom} pointerEvents="none" />
 
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          autoCapitalize="none"
-          keyboardType="email-address"
-          value={email}
-          onChangeText={setEmail}
-        />
+        {/* TOP BAR */}
+        <View
+          style={[
+            styles.topBarWrapper,
+            { paddingTop: insets.top, height: NAV_HEIGHT + insets.top },
+          ]}
+        >
+          <View
+            style={[
+              styles.topBarInner,
+              width < 420 && { paddingHorizontal: 12, height: NAV_HEIGHT },
+            ]}
+          >
+            <Pressable onPress={() => navigation.navigate('Featured')} style={styles.brandWrap}>
+              <Animated.Text
+                style={[
+                  styles.brandTitle,
+                  { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
+                ]}
+              >
+                OVERLOOKED
+              </Animated.Text>
+            </Pressable>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
+            <View style={styles.actionsRow}>
+              <TouchableOpacity onPress={() => navigation.navigate('SignUp')} style={styles.primaryChip}>
+                <Text style={styles.primaryChipText}>Create an account</Text>
+              </TouchableOpacity>
 
-        <TouchableOpacity style={styles.button} onPress={handleSignIn} disabled={loading}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Log In</Text>}
-        </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowSignIn(true)} style={styles.textAction}>
+                <Text style={styles.textActionText}>Sign in</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
 
-        <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
-          <Text style={styles.link}>Don’t have an account? Sign up.</Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+        {/* ---------------- MAIN SCROLL ---------------- */}
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollBody,
+            {
+              paddingTop: NAV_HEIGHT + insets.top + 18,
+              paddingHorizontal: width < 420 ? 16 : 28,
+              paddingBottom: 64 + Math.max(insets.bottom, 0),
+            },
+          ]}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* MAIN LAYOUT: hero + features + FAQ */}
+          {/* (unchanged) */}
+          {/* ------------------------------------------------------ */}
+          {/* NOTE: All UI below here is unchanged from your version */}
+          {/* ------------------------------------------------------ */}
+
+          <View
+            style={[
+              styles.wrap,
+              !isWide && {
+                flexDirection: 'column',
+                flexWrap: 'nowrap',
+                gap: 18,
+              },
+            ]}
+          >
+            {/* HERO SECTION */}
+            {/* (unchanged UI) */}
+            <View
+              style={[
+                styles.heroCol,
+                !isWide && {
+                  flexBasis: 'auto',
+                  maxWidth: '100%',
+                  width: '100%',
+                  alignSelf: 'stretch',
+                  gap: 12,
+                },
+              ]}
+            >
+              {/* TEXT */}
+              <View
+                style={[
+                  styles.heroIntro,
+                  !isWide && {
+                    alignItems: 'center',
+                    maxWidth: '100%',
+                    width: '100%',
+                    alignSelf: 'stretch',
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.heroH1,
+                    !isWide && {
+                      textAlign: 'center',
+                      fontSize: isPhone ? 22 : 24,
+                      lineHeight: isPhone ? 28 : 30,
+                    },
+                  ]}
+                >
+                  Stop waiting to be discovered. Start creating.
+                </Text>
+
+                <Text
+                  style={[
+                    styles.heroCopy,
+                    !isWide && {
+                      textAlign: 'center',
+                      fontSize: 14.5,
+                      lineHeight: 20.5,
+                    },
+                  ]}
+                >
+                  Meet collaborators, make a film each month, get seen by the community.
+                </Text>
+
+                <View style={[styles.manifestoWrap, !isWide && { marginTop: 8 }]}>
+                  <Text
+                    numberOfLines={2}
+                    style={[
+                      styles.manifestoText,
+                      !isWide && { textAlign: 'center', fontSize: 13 },
+                    ]}
+                  >
+                    {displayText}
+                    <Text style={{ opacity: caretVisible ? 1 : 0 }}>|</Text>
+                  </Text>
+                </View>
+              </View>
+
+              {/* HERO IMAGE */}
+              <View
+                style={[
+                  styles.heroImage,
+                  useSyncedHeights ? { height: heroSyncedHeight } : { aspectRatio: 1.8 },
+                  !isWide && { marginTop: 12 },
+                ]}
+              >
+                <Image
+                  source={{ uri: FILM_HERO_URL }}
+                  resizeMode="cover"
+                  style={[
+                    { position: 'absolute', left: 0, right: 0, width: '100%' },
+                    useSyncedHeights
+                      ? { top: -90, height: (heroSyncedHeight ?? 0) + 90 }
+                      : { top: 0, bottom: 0, height: '100%' },
+                  ]}
+                />
+                <View style={styles.heroOverlay} pointerEvents="none" />
+              </View>
+            </View>
+
+            {/* FEATURES LIST */}
+            <View
+              style={[
+                styles.cardCol,
+                isWide ? { marginTop: 10 } : { maxWidth: '100%', width: '100%' },
+              ]}
+            >
+              <View
+                style={styles.featuresSection}
+                onLayout={(e) => setFeaturesHeight(Math.round(e.nativeEvent.layout.height))}
+              >
+                {FEATURES.map((f, idx) => {
+                  const { scale, hovered, onHoverIn, onHoverOut, onPressIn, onPressOut } =
+                    useHoverScale();
+
+                  return (
+                    <Pressable
+                      key={f.key}
+                      onPress={() => setActiveFeature(f.key)}
+                      onHoverIn={onHoverIn}
+                      onHoverOut={onHoverOut}
+                      onPressIn={onPressIn}
+                      onPressOut={onPressOut}
+                    >
+                      <Animated.View
+                        style={[
+                          styles.featureItem,
+                          idx === FEATURES.length - 1 && { borderBottomWidth: 0 },
+                          { transform: [{ scale }] },
+                          hovered && styles.hoveredShadow,
+                        ]}
+                      >
+                        <View style={styles.featureNumber}>
+                          <Text style={styles.featureNumberText}>{idx + 1}</Text>
+                        </View>
+
+                        <View style={styles.featureIconWrap}>
+                          <Ionicons name={f.icon} size={18} color={T.olive} />
+                        </View>
+
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.featureTitle} numberOfLines={1}>
+                            {f.title}
+                          </Text>
+                          <Text style={[styles.featureSubtitle]}>{f.subtitle}</Text>
+                        </View>
+
+                        <Ionicons
+                          style={{ marginLeft: 6 }}
+                          name="chevron-forward"
+                          size={18}
+                          color={T.olive}
+                        />
+                      </Animated.View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* --- EXPANDED CARDS (About, Why, FAQ) --- */}
+            <View style={[styles.fullWidthRow, !isWide && { marginTop: 4 }]}>
+              {/* WHAT IS OVERLOOKED */}
+              {/* (unchanged UI) */}
+              <View style={[styles.collapsibleCard, styles.fullCard]}>
+                {/* HEADER */}
+                <Pressable onPress={() => setAboutOpen((v) => !v)}>
+                  <View style={styles.collapsibleHeaderPressFull}>
+                    <View style={styles.centerRow}>
+                      <View style={styles.badgeIcon}>
+                        <Ionicons name="help-circle" size={18} color={T.olive} />
+                      </View>
+                      <Text style={styles.collapsibleTitle}>What is OverLooked?</Text>
+                    </View>
+                    <Ionicons
+                      style={styles.chevAbs}
+                      name={aboutOpen ? 'chevron-up' : 'chevron-down'}
+                      size={18}
+                      color={T.olive}
+                    />
+                  </View>
+                </Pressable>
+
+                {aboutOpen && (
+                  <View style={styles.aboutBody}>
+                    <Text style={styles.aboutLead}>
+                      OverLooked is a home for indie filmmaking — a place to meet collaborators
+                      and submit films every month.
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* WHY MONTHLY */}
+              <View style={[styles.collapsibleCard, styles.fullCard]}>
+                <Pressable onPress={() => setWhyOpen((v) => !v)}>
+                  <View style={styles.collapsibleHeaderPressFull}>
+                    <View style={styles.centerRow}>
+                      <View style={styles.badgeIcon}>
+                        <Ionicons name="help-circle" size={18} color={T.olive} />
+                      </View>
+                      <Text style={styles.collapsibleTitle}>Why a monthly film challenge?</Text>
+                    </View>
+                    <Ionicons
+                      style={styles.chevAbs}
+                      name={whyOpen ? 'chevron-up' : 'chevron-down'}
+                      size={18}
+                      color={T.olive}
+                    />
+                  </View>
+                </Pressable>
+
+                {whyOpen && (
+                  <View style={{ paddingHorizontal: 18, paddingBottom: 16 }}>
+                    <Text style={styles.whyText}>
+                      Deadlines create momentum. A monthly challenge gives focus,
+                      accountability, and real progress.
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* FAQs */}
+              {EXTRA_FAQS.map((q, i) => {
+                const open = openFaqs.includes(i);
+                return (
+                  <View key={q.title} style={[styles.collapsibleCard, styles.fullCard]}>
+                    <Pressable
+                      onPress={() =>
+                        setOpenFaqs((p) =>
+                          p.includes(i) ? p.filter((x) => x !== i) : [...p, i]
+                        )
+                      }
+                    >
+                      <View style={styles.collapsibleHeaderPressFull}>
+                        <View style={styles.centerRow}>
+                          <View style={styles.badgeIcon}>
+                            <Ionicons name="help-circle" size={18} color={T.olive} />
+                          </View>
+                          <Text style={styles.collapsibleTitle}>{q.title}</Text>
+                        </View>
+                        <Ionicons
+                          style={styles.chevAbs}
+                          name={open ? 'chevron-up' : 'chevron-down'}
+                          size={18}
+                          color={T.olive}
+                        />
+                      </View>
+                    </Pressable>
+
+                    {open && (
+                      <View style={{ paddingHorizontal: 18, paddingBottom: 16 }}>
+                        <Text style={styles.aboutText}>{q.body}</Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        </ScrollView>
+
+        {/* SIGN-IN MODAL */}
+        <Modal
+          transparent
+          visible={showSignIn}
+          animationType="fade"
+          onRequestClose={() => setShowSignIn(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.authCard}>
+              <View style={styles.authHeader}>
+                <Text style={styles.authTitle}>WELCOME BACK</Text>
+                <Pressable onPress={() => setShowSignIn(false)} hitSlop={10}>
+                  <Ionicons name="close" size={20} color={T.sub} />
+                </Pressable>
+              </View>
+
+              <Text style={styles.subtitle}>Sign in to join this month’s journey.</Text>
+
+              <View style={[styles.inputWrap, focus === 'email' && styles.inputWrapFocused]}>
+                <Ionicons name="mail" size={16} color={focus === 'email' ? T.olive : T.mute} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Email"
+                  placeholderTextColor={T.mute}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  value={email}
+                  onChangeText={setEmail}
+                  returnKeyType="next"
+                  onFocus={() => setFocus('email')}
+                  onBlur={() => setFocus((prev) => (prev === 'email' ? null : prev))}
+                />
+              </View>
+
+              <View
+                style={[
+                  styles.inputWrap,
+                  { marginTop: 12 },
+                  focus === 'password' && styles.inputWrapFocused,
+                ]}
+              >
+                <Ionicons
+                  name="lock-closed"
+                  size={16}
+                  color={focus === 'password' ? T.olive : T.mute}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password"
+                  placeholderTextColor={T.mute}
+                  secureTextEntry
+                  value={password}
+                  onChangeText={setPassword}
+                  returnKeyType="done"
+                  onSubmitEditing={handleSignIn}
+                  onFocus={() => setFocus('password')}
+                  onBlur={() => setFocus((prev) => (prev === 'password' ? null : prev))}
+                />
+              </View>
+
+              {/* Forgot Password */}
+<TouchableOpacity
+  onPress={() => {
+    setShowSignIn(false);
+    navigation.navigate('ForgotPassword');
+  }}
+  style={{ marginTop: 8 }}
+>
+  <Text
+    style={{
+      color: T.mute,
+      fontSize: 13,
+      textDecorationLine: 'underline',
+    }}
+  >
+    Forgot password?
+  </Text>
+</TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.button, loading && { opacity: 0.9 }]}
+                onPress={handleSignIn}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color={DARK_BG} />
+                ) : (
+                  <Text style={styles.buttonText}>Sign In</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  setShowSignIn(false);
+                  navigation.navigate('SignUp');
+                }}
+                style={{ marginTop: 16 }}
+              >
+                <Text style={styles.link}>
+                  New to OverLooked? <Text style={{ textDecorationLine: 'underline' }}>Create an account</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* FEATURE DETAIL MODAL */}
+        <Modal
+          transparent
+          visible={!!activeFeature}
+          animationType="fade"
+          onRequestClose={() => setActiveFeature(null)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              {activeFeature &&
+                (() => {
+                  const active = FEATURES.find((f) => f.key === activeFeature)!;
+                  return (
+                    <>
+                      <View style={styles.modalHeader}>
+                        <View style={styles.featureIconWrap}>
+                          <Ionicons name={active.icon} size={18} color={T.olive} />
+                        </View>
+                        <Text style={styles.modalTitle}>{active.title}</Text>
+                      </View>
+
+                      <Text style={styles.modalDetail}>{active.detail}</Text>
+
+                      <View style={styles.modalButtonsRow}>
+                        <TouchableOpacity
+                          style={styles.modalSecondary}
+                          onPress={() => setActiveFeature(null)}
+                        >
+                          <Text style={styles.modalSecondaryText}>Close</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.modalPrimary}
+                          onPress={async () => {
+                            setActiveFeature(null);
+                            const { data } = await supabase.auth.getUser();
+                            if (!data?.user) navigation.navigate('SignUp');
+                            else navigation.navigate(active.route);
+                          }}
+                        >
+                          <Text style={styles.modalPrimaryText}>{active.cta}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  );
+                })()}
+            </View>
+          </View>
+        </Modal>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
+// ------------------------------------------------------------
+// STYLES — UNCHANGED
+// ------------------------------------------------------------
+
+const CARD_RADIUS = 16;
+
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    flex: 1,
-    justifyContent: 'center',
-    backgroundColor: COLORS.background,
+  bgSolid: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: T.bg,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 20,
-    textAlign: 'center',
-    color: COLORS.textPrimary,
+  radialGlowTop: {
+    position: 'absolute',
+    top: -140,
+    left: -110,
+    width: 340,
+    height: 340,
+    borderRadius: 340,
+    backgroundColor: 'rgba(198,166,100,0.15)',
+    opacity: 0.9,
   },
-  input: {
+  radialGlowBottom: {
+    position: 'absolute',
+    right: -120,
+    bottom: -120,
+    width: 360,
+    height: 360,
+    borderRadius: 360,
+    backgroundColor: 'rgba(198,166,100,0.08)',
+    opacity: 0.9,
+  },
+
+  topBarWrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(13,13,13,0.96)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DIVIDER,
+    zIndex: 20,
+  },
+  topBarInner: {
+    height: '100%',
+    width: '100%',
+    maxWidth: 1200,
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    // @ts-ignore — web-only blur
+backdropFilter: 'saturate(120%) blur(8px)',
+// @ts-ignore
+WebkitBackdropFilter: 'saturate(120%) blur(8px)',
+  },
+
+  brandWrap: { paddingVertical: 4, paddingRight: 8 },
+  brandTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    letterSpacing: 2.2,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  primaryChip: {
+    backgroundColor: GOLD,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  primaryChipText: {
+    color: DARK_BG,
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    fontFamily: SYSTEM_SANS,
+    textTransform: 'uppercase',
+  },
+
+  textAction: { paddingVertical: 8, paddingHorizontal: 10, borderRadius: 999 },
+  textActionText: {
+    color: TEXT_IVORY,
+    fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  scrollBody: { paddingHorizontal: 28, paddingBottom: 64 },
+
+  wrap: {
+    width: '100%',
+    maxWidth: 1200,
+    alignSelf: 'center',
+    gap: 28,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+  },
+
+  heroCol: { flexGrow: 1, flexBasis: 540, maxWidth: 780, gap: 16 },
+  heroIntro: { maxWidth: 680, width: '100%' },
+
+  heroH1: {
+    marginTop: 4,
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: '900',
+    color: T.text,
+    letterSpacing: 0.4,
+    fontFamily: SYSTEM_SANS,
+  },
+  heroCopy: {
+    marginTop: 10,
+    fontSize: 16,
+    lineHeight: 24,
+    color: T.sub,
+    fontFamily: SYSTEM_SANS,
+  },
+  manifestoWrap: { marginTop: 12 },
+  manifestoText: {
+    textAlign: 'left',
+    color: T.mute,
+    letterSpacing: 0.15,
+    fontSize: 13.5,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  heroImage: {
+    marginTop: 16,
+    width: '100%',
+    borderRadius: CARD_RADIUS,
+    overflow: 'hidden',
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-    backgroundColor: '#fff',
+    borderColor: T.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    backgroundColor: '#111',
   },
+  heroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.38)',
+  },
+
+  cardCol: { flexGrow: 1, flexBasis: 420, maxWidth: 500 },
+
+  featuresSection: {
+    marginTop: 16,
+    backgroundColor: T.card,
+    borderRadius: CARD_RADIUS,
+    borderWidth: 1,
+    borderColor: T.border,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  featureItem: {
+    paddingHorizontal: 16,
+    paddingRight: 20,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: T.border,
+    backgroundColor: T.card,
+    minHeight: 60,
+  },
+  hoveredShadow: {
+    shadowOpacity: 0.5,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+  },
+  featureNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: T.border,
+  },
+  featureNumberText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: T.text,
+    fontFamily: SYSTEM_SANS,
+  },
+  featureIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: T.border,
+  },
+  featureTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: T.text,
+    fontFamily: SYSTEM_SANS,
+  },
+  featureSubtitle: {
+    fontSize: 12.5,
+    color: T.sub,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  fullWidthRow: {
+    width: '100%',
+    flexBasis: '100%',
+    gap: 16,
+    marginTop: 8,
+  },
+
+  collapsibleCard: {
+    backgroundColor: T.card,
+    borderRadius: CARD_RADIUS,
+    borderWidth: 1,
+    borderColor: T.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    overflow: 'hidden',
+    width: '100%',
+  },
+  fullCard: { width: '100%' },
+
+  centerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  chevAbs: { position: 'absolute', right: 18, top: '50%', marginTop: -9 },
+
+  collapsibleHeaderPressFull: {
+    paddingHorizontal: 18,
+    paddingRight: 48,
+    paddingVertical: 16,
+    minHeight: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  badgeIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: T.border,
+  },
+  collapsibleTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: T.text,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  aboutBody: { paddingHorizontal: 18, paddingBottom: 16, width: '100%' },
+  aboutLead: {
+    marginTop: 2,
+    color: T.sub,
+    fontSize: 14.5,
+    lineHeight: 21.5,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
+  },
+  aboutText: {
+    color: T.sub,
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  whyText: {
+    color: T.sub,
+    fontSize: 14,
+    lineHeight: 21,
+    paddingTop: 2,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  /* Modal backdrop */
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+  },
+
+  /* Auth card */
+  authCard: {
+    width: '100%',
+    maxWidth: 460,
+    backgroundColor: T.card2,
+    borderRadius: 18,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: T.border,
+  },
+  authHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  authTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: T.text,
+    letterSpacing: 6.5,
+    fontFamily: SYSTEM_SANS,
+  },
+  subtitle: {
+    marginTop: 8,
+    marginBottom: 14,
+    color: T.sub,
+    fontSize: 14,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  inputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: T.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'web' ? 12 : 10,
+    backgroundColor: '#0C0C0C',
+  },
+  inputWrapFocused: {
+    borderColor: T.olive,
+    shadowColor: T.olive,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+  },
+
+  input: {
+    flex: 1,
+    paddingVertical: 2,
+    color: T.text,
+    fontSize: 15,
+    fontFamily: SYSTEM_SANS,
+    outlineStyle: 'none',
+  },
+
   button: {
-    backgroundColor: COLORS.primary,
-    padding: 16,
+    backgroundColor: T.accent,
+    paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: T.accent,
   },
   buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    color: DARK_BG,
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
   },
+
   link: {
-    marginTop: 20,
     textAlign: 'center',
-    color: COLORS.primary,
-    fontWeight: '600',
+    color: T.text,
+    fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  modalCard: {
+    width: '100%',
+    maxWidth: 560,
+    backgroundColor: T.card2,
+    borderRadius: CARD_RADIUS,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: T.border,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: T.text,
+    letterSpacing: 0.4,
+    fontFamily: SYSTEM_SANS,
+  },
+  modalDetail: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: T.sub,
+    marginTop: 6,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
+  },
+  modalButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'flex-end',
+    marginTop: 16,
+  },
+  modalSecondary: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: T.border,
+    backgroundColor: '#0C0C0C',
+  },
+  modalSecondaryText: {
+    color: T.text,
+    fontWeight: '900',
+    letterSpacing: 1,
+    fontFamily: SYSTEM_SANS,
+  },
+  modalPrimary: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: T.accent,
+    borderWidth: 1,
+    borderColor: T.accent,
+  },
+  modalPrimaryText: {
+    color: DARK_BG,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    fontFamily: SYSTEM_SANS,
   },
 });

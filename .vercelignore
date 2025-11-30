@@ -1,0 +1,31 @@
+# Ignore dependency folders
+node_modules
+app/node_modules
+
+# Ignore Expo build/cache
+.expo
+.expo-shared
+
+# Ignore version control
+.git
+.gitignore
+
+# Ignore IDE/editor files
+.vscode
+.idea
+
+# Ignore TypeScript and Metro cache
+**/*.map
+.cache
+.metro-cache
+
+# Ignore various build configs not needed for deployment
+webpack.config.js
+metro.config.js
+tsconfig.json
+tsconfig.paths.json
+
+# Ignore other misc project files
+yarn.lock
+package-lock.json
+screenshots

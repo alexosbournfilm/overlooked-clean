@@ -1,3 +1,4 @@
+// screens/SignUpScreen.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -18,39 +19,41 @@ import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import COLORS from '../theme/colors';
 
+// DARK THEME PALETTE (aligned with MainTabs)
+const DARK_BG = '#0D0D0D';
+const DARK_CARD = '#171717';
+const DARK_INPUT = '#111111';
+const TEXT_IVORY = '#EDEBE6';
+const TEXT_MUTED = '#A7A6A2';
+const GOLD = '#C6A664';
+const BORDER = '#2A2A2A';
+
 export default function SignUpScreen() {
   const navigation = useNavigation<any>();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [agreed, setAgreed] = useState(false); // must accept TOS+Privacy
-  const [agreedPrograms, setAgreedPrograms] = useState(false); // must accept Rewards & Referral terms
-  const [isSixteen, setIsSixteen] = useState(false); // must confirm 16+
+  const [agreed, setAgreed] = useState(false);
+  const [agreedPrograms, setAgreedPrograms] = useState(false);
+  const [isEighteen, setIsEighteen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const [showTos, setShowTos] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showRewards, setShowRewards] = useState(false);
-  const [showReferral, setShowReferral] = useState(false);
 
-  // NEW: inline confirmation banner
   const [emailConfirmed, setEmailConfirmed] = useState(false);
   const [checkingLink, setCheckingLink] = useState(true);
 
-  // (1) Build a redirect URL for Supabase email confirmation
+  // Redirect for email confirmation
   const emailRedirectTo = useMemo(() => {
-    // On native, use the app scheme. Ensure it’s configured in app.json/app.config (e.g., "scheme": "overlooked")
-    if (Platform.OS !== 'web') {
-      // This path can be anything – we’ll listen for it.
-      return Linking.createURL('/auth-callback');
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      return window.location.href.split('#')[0];
     }
-    // On web, send users back to same origin. You can change the path if you prefer.
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    return `${origin}/auth-callback`;
+    return Linking.createURL('/auth-callback');
   }, []);
 
-  // Helper: read user and set confirmed state
   const refreshConfirmedFromUser = async () => {
     const { data } = await supabase.auth.getUser();
     const confirmed =
@@ -60,95 +63,103 @@ export default function SignUpScreen() {
     return confirmed;
   };
 
-  // Parse tokens from a deep link / URL (works for hash or query)
   const parseTokensFromUrl = (url: string) => {
-    // Supabase can place tokens in the fragment (#) on web, or query (?) on native
     const parsed = Linking.parse(url);
-    // Try hash params first if present
     let params: Record<string, any> = {};
+
     if (typeof window !== 'undefined' && Platform.OS === 'web') {
-      // On web, tokens usually come in the hash
       const hash = window.location.hash?.replace(/^#/, '') ?? '';
       const searchParams = new URLSearchParams(hash);
       searchParams.forEach((v, k) => (params[k] = v));
     }
-    // Merge parsed query params (native often uses query)
-    if (parsed?.queryParams) {
-      params = { ...params, ...parsed.queryParams };
-    }
+
+    if (parsed?.queryParams) params = { ...params, ...parsed.queryParams };
+
     return {
-      access_token: params['access_token'] as string | undefined,
-      refresh_token: params['refresh_token'] as string | undefined,
-      token_type: params['token_type'] as string | undefined,
-      type: params['type'] as string | undefined, // e.g., 'signup'
-      error_description: params['error_description'] as string | undefined,
+      access_token: params['access_token'],
+      refresh_token: params['refresh_token'],
+      token_type: params['token_type'],
+      type: params['type'],
+      error_description: params['error_description'],
     };
   };
 
-  // Try to hydrate a session from tokens in URL
   const maybeHandleAuthDeepLink = async (url?: string | null) => {
     if (!url) return false;
-    const { access_token, refresh_token, type, error_description } =
-      parseTokensFromUrl(url);
 
-    if (error_description) {
-      // If Supabase sends back an error (e.g. link expired)
-      Alert.alert('Email Confirmation', decodeURIComponent(error_description));
-      return false;
-    }
-
-    if (access_token && refresh_token) {
-      try {
-        const { data, error } = await supabase.auth.setSession({
-          access_token,
-          refresh_token,
-        });
+    try {
+      // PKCE
+      if (url.includes('code=')) {
+        const { error } = await supabase.auth.exchangeCodeForSession(url);
         if (error) {
-          // Not fatal; user can still sign in manually
+          Alert.alert('Email Confirmation', 'Could not finish sign-in. Try again.');
           return false;
         }
-        // If this was a signup confirmation, mark confirmed
-        if (type === 'signup' || data?.session?.user?.email_confirmed_at) {
-          setEmailConfirmed(true);
-        } else {
-          // Fallback check
-          await refreshConfirmedFromUser();
-        }
-        // Clean up the URL on web so tokens aren’t visible after handling
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+
+        setEmailConfirmed(true);
+
+        if (Platform.OS === 'web') {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
         }
         return true;
-      } catch {
+      }
+
+      const { access_token, refresh_token, type, error_description } =
+        parseTokensFromUrl(url);
+
+      if (error_description) {
+        Alert.alert('Email Confirmation', decodeURIComponent(error_description));
         return false;
       }
+
+      if (access_token && refresh_token) {
+        const { data, error } = await supabase.auth.setSession({
+          access_token,
+          refresh_token,
+        });
+
+        if (error) return false;
+
+        if (type === 'signup' || data?.session?.user?.email_confirmed_at) {
+          setEmailConfirmed(true);
+        } else {
+          await refreshConfirmedFromUser();
+        }
+
+        if (Platform.OS === 'web') {
+          const clean = window.location.origin + window.location.pathname;
+          window.history.replaceState({}, document.title, clean);
+        }
+
+        return true;
+      }
+    } catch (err) {
+      console.error('Deep link error:', err);
     }
+
     return false;
   };
 
-  // (2) Handle app launch via link (native) and current URL (web)
+  // Init deep link listener
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
 
     const init = async () => {
       try {
-        // First pass: handle initial URL (native) or current hash (web)
         if (Platform.OS !== 'web') {
           const initial = await Linking.getInitialURL();
           await maybeHandleAuthDeepLink(initial);
         } else if (typeof window !== 'undefined') {
-          // On web, just try the current URL (which may have a hash)
           await maybeHandleAuthDeepLink(window.location.href);
         }
 
-        // Subscribe to future links while this screen is open
         const sub = Linking.addEventListener('url', async (event) => {
           await maybeHandleAuthDeepLink(event.url);
         });
+
         unsubscribe = () => sub.remove();
 
-        // Fallback: if we already have a session and confirmed email, show banner
         await refreshConfirmedFromUser();
       } finally {
         setCheckingLink(false);
@@ -160,10 +171,8 @@ export default function SignUpScreen() {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // (3) Also listen to Supabase auth events that may fire after link handling
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -171,15 +180,16 @@ export default function SignUpScreen() {
           const confirmed =
             !!session?.user?.email_confirmed_at ||
             session?.user?.user_metadata?.email_confirmed === true;
+
           if (confirmed) setEmailConfirmed(true);
           else await refreshConfirmedFromUser();
         }
       }
     );
+
     return () => {
       listener.subscription.unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSignUp = async () => {
@@ -201,38 +211,25 @@ export default function SignUpScreen() {
       Alert.alert('Password Mismatch', 'Passwords do not match.');
       return;
     }
-    if (!isSixteen) {
-      Alert.alert(
-        'Age Confirmation',
-        'You must confirm that you are at least 16 years old.'
-      );
+    if (!isEighteen) {
+      Alert.alert('Age Confirmation', 'You must be at least 18.');
       return;
     }
     if (!agreed) {
-      Alert.alert(
-        'Agreement Required',
-        'Please agree to the Terms of Service and Privacy Policy.'
-      );
+      Alert.alert('Agreement Required', 'You must agree to the Terms & Privacy Policy.');
       return;
     }
     if (!agreedPrograms) {
-      Alert.alert(
-        'Agreement Required',
-        'Please agree to the Rewards & Referral Program terms.'
-      );
+      Alert.alert('Agreement Required', 'You must agree to the Rewards Policy.');
       return;
     }
 
     setLoading(true);
 
-    // IMPORTANT: pass emailRedirectTo so the confirm link returns to this app.
-    // On mobile: your app should have a matching scheme set up in app.json/app.config (e.g., "scheme": "overlooked").
     const { data, error } = await supabase.auth.signUp({
       email: trimmedEmail,
       password,
-      options: {
-        emailRedirectTo,
-      },
+      options: { emailRedirectTo },
     });
 
     setLoading(false);
@@ -243,7 +240,6 @@ export default function SignUpScreen() {
     }
 
     try {
-      // Save quick flags on users (note: session may not exist until email is confirmed)
       if (data?.user) {
         await supabase
           .from('users')
@@ -253,11 +249,8 @@ export default function SignUpScreen() {
           })
           .eq('id', data.user.id);
       }
-    } catch {
-      // non-fatal; continue
-    }
+    } catch {}
 
-    // Go to your existing email verification screen
     navigation.navigate('CheckEmail', { email: trimmedEmail });
   };
 
@@ -267,13 +260,13 @@ export default function SignUpScreen() {
     !!confirm &&
     password.length >= 6 &&
     password === confirm &&
-    isSixteen &&
+    isEighteen &&
     agreed &&
     agreedPrograms &&
     !loading;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
@@ -281,7 +274,6 @@ export default function SignUpScreen() {
         <View style={styles.container}>
           <Text style={styles.title}>Create Account</Text>
 
-          {/* Email confirmed banner */}
           {(checkingLink || emailConfirmed) && (
             <View
               style={[
@@ -292,10 +284,9 @@ export default function SignUpScreen() {
               <Text style={styles.bannerText}>
                 {checkingLink
                   ? 'Checking confirmation link...'
-                  : 'Email confirmed ✅ You can now sign in.'}
+                  : 'Email confirmed. You may now sign in.'}
               </Text>
 
-              {/* Helpful action to jump to Sign In once confirmed */}
               {emailConfirmed && (
                 <TouchableOpacity
                   onPress={() => navigation.navigate('SignIn')}
@@ -307,78 +298,85 @@ export default function SignUpScreen() {
             </View>
           )}
 
+          {/* Inputs */}
           <TextInput
             style={styles.input}
             placeholder="Email"
-            placeholderTextColor="#999"
+            placeholderTextColor={TEXT_MUTED}
             keyboardType="email-address"
             autoCapitalize="none"
             value={email}
             onChangeText={setEmail}
           />
-
           <TextInput
             style={styles.input}
             placeholder="Password"
-            placeholderTextColor="#999"
+            placeholderTextColor={TEXT_MUTED}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
           />
-
           <TextInput
             style={styles.input}
             placeholder="Confirm Password"
-            placeholderTextColor="#999"
+            placeholderTextColor={TEXT_MUTED}
             secureTextEntry
             value={confirm}
             onChangeText={setConfirm}
           />
 
-          {/* Age confirmation checkbox */}
+          {/* Checkboxes */}
           <TouchableOpacity
             style={styles.checkboxRow}
-            onPress={() => setIsSixteen(!isSixteen)}
-            activeOpacity={0.8}
+            onPress={() => setIsEighteen(!isEighteen)}
           >
-            <View style={[styles.checkbox, isSixteen && styles.checkboxChecked]} />
+            <View
+              style={[styles.checkbox, isEighteen && styles.checkboxChecked]}
+            />
             <Text style={styles.checkboxText}>
-              I confirm that I am at least 16 years old.
+              I confirm that I am at least 18 years old.
             </Text>
           </TouchableOpacity>
 
-          {/* Legal: required checkbox with inline links to modals */}
           <TouchableOpacity
             style={styles.checkboxRow}
             onPress={() => setAgreed(!agreed)}
-            activeOpacity={0.8}
           >
             <View style={[styles.checkbox, agreed && styles.checkboxChecked]} />
             <Text style={styles.checkboxText}>
               I agree to the{' '}
-              <Text style={styles.link} onPress={() => setShowTos(true)}>Terms of Service</Text>
-              {' '}and{' '}
-              <Text style={styles.link} onPress={() => setShowPrivacy(true)}>Privacy Policy</Text>.
+              <Text style={styles.link} onPress={() => setShowTos(true)}>
+                Terms of Service
+              </Text>{' '}
+              and{' '}
+              <Text style={styles.link} onPress={() => setShowPrivacy(true)}>
+                Privacy Policy
+              </Text>
+              .
             </Text>
           </TouchableOpacity>
 
-          {/* Rewards & Referral: required checkbox with links to modals */}
           <TouchableOpacity
             style={styles.checkboxRow}
             onPress={() => setAgreedPrograms(!agreedPrograms)}
-            activeOpacity={0.8}
           >
-            <View style={[styles.checkbox, agreedPrograms && styles.checkboxChecked]} />
+            <View
+              style={[
+                styles.checkbox,
+                agreedPrograms && styles.checkboxChecked,
+              ]}
+            />
             <Text style={styles.checkboxText}>
               I agree to the{' '}
-              <Text style={styles.link} onPress={() => setShowRewards(true)}>Rewards Policy</Text>
-              {' '}and the{' '}
-              <Text style={styles.link} onPress={() => setShowReferral(true)}>Referral Program (20%)</Text>.
+              <Text style={styles.link} onPress={() => setShowRewards(true)}>
+                Rewards Policy
+              </Text>
+              .
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.button, !canSubmit && { backgroundColor: '#C9C9C9' }]}
+            style={[styles.button, !canSubmit && { opacity: 0.5 }]}
             onPress={handleSignUp}
             disabled={!canSubmit}
           >
@@ -392,183 +390,220 @@ export default function SignUpScreen() {
           <TouchableOpacity onPress={() => navigation.navigate('SignIn')}>
             <Text style={styles.signInLink}>
               Already have an account?{' '}
-              <Text style={{ color: COLORS.primary, fontWeight: '600' }}>Sign In</Text>
+              <Text style={{ color: GOLD, fontWeight: '700' }}>Sign In</Text>
             </Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
 
-      {/* TERMS OF SERVICE MODAL */}
-      <Modal visible={showTos} animationType="slide" transparent onRequestClose={() => setShowTos(false)}>
+      {/* ---------- LEGAL MODALS (unchanged structure) ---------- */}
+
+      {/* Terms of Service (UK Law) */}
+      <Modal
+        visible={showTos}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowTos(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <ScrollView>
               <Text style={styles.modalTitle}>Terms of Service (Overlooked)</Text>
-              <Text style={styles.modalText}>
+              <Text
+                style={[
+                  styles.modalText,
+                  Platform.OS === 'web'
+                    ? ({ whiteSpace: 'pre-wrap' } as any)
+                    : null,
+                ]}
+              >
 {`Last updated: ${new Date().toISOString().slice(0,10)}
 
-1) Eligibility & Accounts
-• You must be at least 16 years old (or have verifiable parental consent where required).
-• You are responsible for keeping your login credentials secure and for all activity on your account.
+These Terms of Service (“Terms”) constitute a legally binding agreement between you and Overlooked LTD (“Overlooked”, “we”, “our”, “us”). By creating an account or using Overlooked, you agree to abide by these Terms and all applicable laws of England and Wales.
 
-2) Acceptable Use & Safety
-• Do not post or organize illegal activity, harassment, hate, exploitation, or non-consensual content.
-• No doxxing, impersonation, spam, scams, malware, scraping abuse, or attempts to circumvent security.
-• Be cautious meeting people offline; arrange public spaces and share plans with a trusted contact.
+1. ELIGIBILITY
+- You must be at least 18 years old.
 
-3) User Content & License
-• You retain ownership of content you create and upload (videos, images, text, audio, etc.).
-• By submitting content to Overlooked, you grant us a worldwide, non-exclusive, royalty-free license to host, cache, display, and transmit your content within our products/services solely to operate and promote Overlooked (including app store listings and social posts that showcase the platform). You can delete your content at any time; residual server caches may persist for a short period.
+2. USER ACCOUNT
+- You are responsible for maintaining the confidentiality of your login details.
+- You must not impersonate others or provide false information.
+- Notify us immediately of any unauthorised activity.
 
-4) Intellectual Property & Takedowns
-• Respect third-party copyrights and trademarks. Only upload content you own or have rights to use.
-• We respond to proper takedown notices and may remove content or suspend accounts for repeat infringement.
+3. USER CONTENT
+- You retain ownership of all videos, images, audio, film submissions, job listings, text, and other content you upload (“User Content”).
+- You grant Overlooked a worldwide, royalty-free, sublicensable licence to host, store, reproduce, display, transmit, and promote your content solely for operating and improving the platform, including challenge features.
 
-5) Jobs, Collaborations & Payments
-• Overlooked is a platform; we are not a party to user-to-user contracts. We do not employ, pay, or insure users.
-• Users are solely responsible for verifying counterparties, negotiating terms, handling taxes, and using secure payment methods.
-• We are not liable for disputes, unpaid work, or losses from user interactions (online or offline).
+4. PROHIBITED CONTENT
+You must not upload or share:
+- Copyright-infringing, unlawful, hateful, extremist, pornographic, or exploitative content.
+- Content involving minors.
+- Doxxing, harassment, threats, spam, scams, or impersonation.
 
-6) Referral Program (20%)
-• We may offer a referral program that pays the referrer **20%** of the referred user's qualifying Overlooked subscription payments, net of taxes, refunds, chargebacks, and store fees, for a limited reward term (e.g., 12 months) per referred user.
-• No self-referrals or circular/refund gaming; fraud, trademark bidding, spam, or misleading promotions are prohibited.
-• We may review, audit, adjust, or terminate referral rewards for abuse or policy violations at our discretion.
-• Payouts are made via the methods we support (e.g., Stripe Connect) subject to minimums, verification, KYC/AML checks, and local law.
-• Program details can change or end with reasonable notice; unpaid, valid earnings accrued prior to the change will be honored.
+5. JOBS & COLLABORATIONS
+- Overlooked is not a party to any agreements, contracts, or payments between users.
+- You are responsible for verifying other users and complying with employment, tax, and union laws.
 
-7) Subscriptions, Fees & Refunds
-• Prices, features, and billing intervals may change; we’ll provide notice where required by law.
-• Refunds are governed by our refund policy and applicable consumer laws. Chargebacks may result in suspension.
+6. VOTING & CHALLENGES
+- Overlooked may remove fraudulent votes and disqualify entries violating these Terms.
+- Winners may be featured on the platform and Overlooked’s social channels.
 
-8) Third-Party Services
-• We may link to or integrate third-party services (e.g., payment processors, video hosting). Those services are governed by their own terms and privacy practices.
+7. ENFORCEMENT
+- We may remove content, suspend users, or restrict functionality for safety or legal reasons.
 
-9) Disclaimers & Limitation of Liability
-• OVERLOOKED IS PROVIDED “AS IS” WITHOUT WARRANTIES. TO THE MAXIMUM EXTENT PERMITTED BY LAW, WE ARE NOT LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR EXEMPLARY DAMAGES, OR ANY LOSS OF PROFITS, DATA, GOODWILL, OR REPUTATION, ARISING FROM YOUR USE OF THE SERVICE OR USER INTERACTIONS.
-• Some jurisdictions do not allow certain limitations; if so, those limits apply to the maximum extent permitted.
+8. COPYRIGHT (DMCA)
+- If you believe your copyright is infringed, contact us with a valid notice.
 
-10) Termination & Moderation
-• We may remove content or suspend/terminate accounts that violate these Terms or applicable laws, to keep the community safe.
+9. DISCLAIMERS
+- The service is provided “AS IS”.
+- We make no warranty regarding uptime, accuracy, or availability.
+- You use Overlooked at your own risk.
 
-11) Changes to These Terms
-• We may update these Terms from time to time. If you continue using Overlooked after changes take effect, you accept the updated Terms.
+10. LIMITATION OF LIABILITY
+- To the fullest extent permitted under UK law, Overlooked is not liable for indirect or consequential damages.
+- Maximum liability is the greater of £50 or the amount paid for services in the past 12 months.
 
-12) Contact
-• For questions or notices (including IP complaints), contact us via the details listed in the app or website.`}
+11. GOVERNING LAW
+- These Terms are governed by the laws of England & Wales.
+- Courts of England have exclusive jurisdiction.
+
+12. MODIFICATIONS
+- We may modify these Terms. We will notify users of material changes.`}
               </Text>
             </ScrollView>
 
-            <TouchableOpacity style={styles.closeButton} onPress={() => setShowTos(false)}>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowTos(false)}
+            >
               <Text style={styles.closeButtonText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* PRIVACY POLICY MODAL */}
-      <Modal visible={showPrivacy} animationType="slide" transparent onRequestClose={() => setShowPrivacy(false)}>
+      {/* Privacy Policy */}
+      <Modal
+        visible={showPrivacy}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowPrivacy(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <ScrollView>
               <Text style={styles.modalTitle}>Privacy Policy (Overlooked)</Text>
-              <Text style={styles.modalText}>
+              <Text
+                style={[
+                  styles.modalText,
+                  Platform.OS === 'web'
+                    ? ({ whiteSpace: 'pre-wrap' } as any)
+                    : null,
+                ]}
+              >
 {`Last updated: ${new Date().toISOString().slice(0,10)}
 
-1) What We Collect
-• Account data (email, name if provided), profile details (roles, city/country), messages, submissions, votes, job posts, and usage logs.
-• Device/technical data (app version, device type, OS), and approximate location if you choose a city.
-• Files you upload (avatars, media) and links you share (e.g., YouTube URLs).
-• Cookies/SDKs for essential functions, performance, and analytics.
+This Privacy Policy explains how Overlooked LTD (“Overlooked”, “we”, “our”) collects and processes your personal data in accordance with UK GDPR.
 
-2) Why We Use It
-• To create and secure your account; provide chat, jobs, submissions, and community features.
-• To operate, maintain, analyze, and improve Overlooked; prevent abuse; enforce policies.
-• To send transactional emails (e.g., verify email, security alerts). Marketing emails only if you opt-in.
+1. DATA WE COLLECT
+- Account data: email, name, creative roles, city, country, profile image.
+- Content data: videos, portfolio URLs, messages, votes, comments.
+- Device data: IP address, browser/device type.
+- Usage data: interactions, pages viewed, preferences.
 
-3) Legal Bases (where applicable, e.g., EU/UK)
-• Performance of a contract (providing the service), legitimate interests (security, improvement), consent (marketing), and legal obligations (tax/audit).
+2. HOW WE USE DATA
+- Provide and maintain the service.
+- Personalise content and user discovery.
+- Secure the platform and prevent fraud.
+- Communicate with you regarding account actions.
+- Comply with legal obligations.
 
-4) Sharing
-• Service providers/processors (e.g., hosting, analytics, payments, email). They only process data under our instructions.
-• Other users, when you deliberately share content or messages (e.g., sending a message, posting a job).
-• Law enforcement or legal requests when required by applicable law.
+3. SHARING
+- Public profile information is visible to other users.
+- We share limited data with third-party processors (Supabase, analytics, email delivery).
+- We may share information when legally required.
 
-5) International Transfers
-• We may process/store data in other countries. We use appropriate safeguards (e.g., SCCs) where required.
+4. RETENTION
+- Data is retained as long as your account remains active, or longer where legally appropriate.
 
-6) Retention
-• We keep data for as long as necessary to provide the service and for legitimate business/legal purposes. You may request deletion of your account; some logs or backups may persist for a limited time.
+5. YOUR RIGHTS (UK GDPR)
+- Right of access, rectification, erasure, portability, restriction, and objection.
+- Right to lodge a complaint with the ICO (Information Commissioner’s Office).
 
-7) Your Rights
-• Where applicable: access, rectification, deletion, portability, restriction, objection, and withdrawal of consent (for marketing) without affecting prior processing.
-• You can update most profile data in the app. For other requests, contact us via the details in the app/website.
+6. CHILDREN
+- Not for users under 18 years old.
 
-8) Children
-• Overlooked is not directed to children under 16. If you believe a child has used the service without appropriate consent, contact us to remove the account.
+7. SECURITY
+- We use industry-standard security practices but cannot guarantee absolute protection.
 
-9) Security
-• We use administrative, technical, and organizational measures appropriate to the risk; however, no system is 100% secure.
+8. INTERNATIONAL TRANSFERS
+- Data may be transferred outside the UK using appropriate safeguards.
 
-10) Third-Party Links
-• External links and embedded content (e.g., YouTube) are governed by third-party privacy practices.
-
-11) Cookies/SDKs
-• We use necessary cookies/SDKs for login and core functionality, and analytics to improve the service. See the in-app settings or documentation for choices.
-
-12) Changes
-• We may update this Policy. Continued use after changes means you acknowledge the updated Policy.`}
+9. CHANGES
+- We may update this Privacy Policy; material updates will be communicated.`}
               </Text>
             </ScrollView>
 
-            <TouchableOpacity style={styles.closeButton} onPress={() => setShowPrivacy(false)}>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowPrivacy(false)}
+            >
               <Text style={styles.closeButtonText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* REWARDS POLICY MODAL */}
-      <Modal visible={showRewards} animationType="slide" transparent onRequestClose={() => setShowRewards(false)}>
+      {/* Rewards Policy */}
+      <Modal
+        visible={showRewards}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowRewards(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <ScrollView>
               <Text style={styles.modalTitle}>Rewards Policy</Text>
-              <Text style={styles.modalText}>
+              <Text
+                style={[
+                  styles.modalText,
+                  Platform.OS === 'web'
+                    ? ({ whiteSpace: 'pre-wrap' } as any)
+                    : null,
+                ]}
+              >
 {`Last updated: ${new Date().toISOString().slice(0,10)}
 
-• Challenge winners may receive monetary or non-monetary rewards. Rewards are not guaranteed and may vary by campaign.
-• Eligibility, judging criteria, timelines, and payout methods are defined per challenge and may change with notice.
-• We may require identity and tax verification (e.g., KYC/AML) before payout. Payment method availability varies by region.
-• Users are responsible for any taxes or reporting associated with rewards.
-• Rewards may be void where prohibited by law or if we detect manipulation, fraud, or policy violations.
-• Our determinations regarding eligibility and rewards are final.`}
+1. OVERVIEW
+Overlooked awards cash prizes and rewards to encourage creativity.
+
+2. ELIGIBILITY
+- Must be a paying user where applicable.
+- Must comply with Terms & challenge rules.
+
+3. TYPES OF REWARDS
+- Cash challenge prizes.
+- Bonus awards.
+- Sponsored rewards when available.
+
+4. WINNER SELECTION
+- Winners determined by voting, review panels, or both.
+- Fraudulent voting may result in disqualification.
+
+5. PAYMENT
+- Cash prizes are sent electronically.
+- Processing times depend on payment provider.
+- Rewards are non-transferable.
+
+6. TAXES
+- You are responsible for reporting and paying any taxes owed in your jurisdiction.`}
               </Text>
             </ScrollView>
-            <TouchableOpacity style={styles.closeButton} onPress={() => setShowRewards(false)}>
-              <Text style={styles.closeButtonText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
 
-      {/* REFERRAL PROGRAM MODAL */}
-      <Modal visible={showReferral} animationType="slide" transparent onRequestClose={() => setShowReferral(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <ScrollView>
-              <Text style={styles.modalTitle}>Referral Program (20%)</Text>
-              <Text style={styles.modalText}>
-{`Last updated: ${new Date().toISOString().slice(0,10)}
-
-• Earn 20% of qualifying subscription payments made by users you directly refer, net of taxes, refunds, chargebacks, and store/processor fees.
-• Reward duration per referred user may be limited (e.g., first 12 months). Program specifics can change with notice.
-• Strictly prohibited: self-referrals, fake accounts, coupon/brand bidding, spam, misleading claims, or any fraud.
-• Payouts require reaching minimum thresholds and may require identity/tax verification; availability depends on region.
-• We may audit, pause, adjust, or terminate rewards for suspicious activity or policy violations. Our decisions are final.
-• Program may be modified or ended at any time; valid, earned amounts prior to change will be honored.`}
-              </Text>
-            </ScrollView>
-            <TouchableOpacity style={styles.closeButton} onPress={() => setShowReferral(false)}>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowRewards(false)}
+            >
               <Text style={styles.closeButtonText}>Close</Text>
             </TouchableOpacity>
           </View>
@@ -578,30 +613,43 @@ export default function SignUpScreen() {
   );
 }
 
+//
+// --------------------- STYLES ---------------------
+//
 const styles = StyleSheet.create({
   container: {
     padding: 24,
     flexGrow: 1,
     justifyContent: 'center',
-    backgroundColor: COLORS.background,
+    backgroundColor: DARK_BG,
   },
   title: {
-    fontSize: 26,
-    fontWeight: '700',
-    marginBottom: 30,
+    fontSize: 28,
+    fontWeight: '900',
     textAlign: 'center',
-    color: COLORS.textPrimary,
+    color: TEXT_IVORY,
+    marginBottom: 32,
+    letterSpacing: 1.2,
   },
+
+  // DARK INPUTS
   input: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-    fontSize: 16,
-    backgroundColor: '#fff',
-    color: COLORS.textPrimary,
-  },
+  width: '100%',
+  backgroundColor: DARK_INPUT,
+  borderRadius: 12,
+  padding: 16,
+  marginBottom: 16,
+  color: TEXT_IVORY,
+  borderWidth: 1,
+  borderColor: BORDER,
+
+  // Web: remove the annoying blue outline
+  ...(Platform.OS === 'web' ? {
+    outline: 'none',
+    boxShadow: 'none',
+  } : {}),
+},
+
   checkboxRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -612,114 +660,116 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderWidth: 1,
-    borderColor: '#999',
+    borderColor: TEXT_MUTED,
     borderRadius: 6,
-    backgroundColor: '#fff',
+    backgroundColor: DARK_INPUT,
     marginTop: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   checkboxChecked: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    backgroundColor: GOLD,
+    borderColor: GOLD,
   },
   checkboxText: {
     flex: 1,
-    color: COLORS.textPrimary,
+    color: TEXT_IVORY,
     fontSize: 14,
     lineHeight: 20,
   },
+
   link: {
-    color: COLORS.primary,
+    color: GOLD,
+    fontWeight: '700',
     textDecorationLine: 'underline',
-    fontWeight: '600',
   },
+
   button: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: GOLD,
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 16,
+    marginTop: 12,
+    marginBottom: 20,
   },
   buttonText: {
-    color: '#fff',
-    fontWeight: '600',
+    color: '#000',
+    fontWeight: '900',
     fontSize: 16,
   },
   signInLink: {
     textAlign: 'center',
     fontSize: 14,
-    color: COLORS.textPrimary,
+    color: TEXT_IVORY,
   },
 
-  // NEW: confirmation banner
+  // Banner
   banner: {
     borderRadius: 12,
     padding: 12,
     marginBottom: 16,
   },
   bannerInfo: {
-    backgroundColor: '#EFEFEF',
+    backgroundColor: '#202020',
     borderWidth: 1,
-    borderColor: '#D8D8D8',
+    borderColor: BORDER,
   },
   bannerSuccess: {
-    backgroundColor: '#E9F9EF',
+    backgroundColor: '#112515',
     borderWidth: 1,
-    borderColor: '#BEE7C8',
+    borderColor: '#1d3f22',
   },
   bannerText: {
-    color: COLORS.textPrimary,
+    color: TEXT_IVORY,
     fontSize: 14,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   bannerAction: {
     alignSelf: 'flex-start',
+    backgroundColor: GOLD,
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
-    backgroundColor: COLORS.primary,
   },
   bannerActionText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 14,
+    color: '#000',
+    fontWeight: '900',
   },
 
+  // Modals
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.85)',
     justifyContent: 'center',
     padding: 20,
   },
   modalContent: {
-    backgroundColor: COLORS.background,
+    backgroundColor: DARK_CARD,
     borderRadius: 12,
-    maxHeight: '80%',
     padding: 20,
+    maxHeight: '80%',
+    borderWidth: 1,
+    borderColor: BORDER,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 22,
+    fontWeight: '900',
+    color: TEXT_IVORY,
     marginBottom: 12,
-    color: COLORS.textPrimary,
   },
   modalText: {
     fontSize: 14,
     lineHeight: 20,
-    color: COLORS.textPrimary,
+    color: TEXT_MUTED,
   },
   closeButton: {
-    backgroundColor: COLORS.primary,
+    marginTop: 20,
+    backgroundColor: GOLD,
     padding: 12,
     borderRadius: 10,
-    marginTop: 14,
     alignItems: 'center',
   },
   closeButtonText: {
-    color: '#fff',
-    fontWeight: '700',
+    color: '#000',
+    fontWeight: '900',
     fontSize: 16,
   },
 });

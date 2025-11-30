@@ -1,3 +1,4 @@
+// screens/CreateProfileScreen.tsx
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -15,14 +16,29 @@ import {
   Modal,
   FlatList,
 } from 'react-native';
-// Removed DropDownPicker (replaced with searchable modal)
-// import DropDownPicker from 'react-native-dropdown-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '../lib/supabase';
-import COLORS from '../theme/colors';
 import { navigationRef } from '../navigation/navigationRef';
 import { CommonActions } from '@react-navigation/native';
+import { useAuth } from '../context/AuthProvider';
+import { useGamification } from '../context/GamificationContext';
+import COLORS from '../theme/colors';
+
+// ---------------- THEME (matching MainTabs) ----------------
+const DARK_BG = '#0D0D0D';
+const ELEVATED = '#171717';
+const TEXT_IVORY = '#EDEBE6';
+const TEXT_MUTED = '#A7A6A2';
+const BORDER = '#2A2A2A';
+const GOLD = '#C6A664';
+
+const SYSTEM_SANS = Platform.select({
+  ios: 'System',
+  android: 'Roboto',
+  web: undefined,
+  default: undefined,
+});
 
 type DropdownOption = {
   label: string;
@@ -31,24 +47,24 @@ type DropdownOption = {
 };
 
 export default function CreateProfileScreen() {
-  // Form fields
+  const { profileComplete, refreshProfile } = useAuth();
+  const { refresh: refreshGamification } = useGamification();
+
+  // ---------------- FORM STATE ----------------
   const [fullName, setFullName] = useState('');
   const [portfolioUrl, setPortfolioUrl] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
-  // Role picker (updated to searchable modal)
   const [mainRole, setMainRole] = useState<number | null>(null);
   const [mainRoleLabel, setMainRoleLabel] = useState<string | null>(null);
 
-  // Role search modal state (like Jobs role filter)
   const [roleSearchModalVisible, setRoleSearchModalVisible] = useState(false);
   const [roleSearchTerm, setRoleSearchTerm] = useState('');
-  const [roleItems, setRoleItems] = useState<DropdownOption[]>([]); // initial full list (optional)
+  const [roleItems, setRoleItems] = useState<DropdownOption[]>([]);
   const [roleSearchItems, setRoleSearchItems] = useState<DropdownOption[]>([]);
   const [isSearchingRoles, setIsSearchingRoles] = useState(false);
 
-  // City state (custom modal like LocationScreen)
   const [cityId, setCityId] = useState<number | null>(null);
   const [cityLabel, setCityLabel] = useState<string | null>(null);
   const [cityItems, setCityItems] = useState<DropdownOption[]>([]);
@@ -56,12 +72,14 @@ export default function CreateProfileScreen() {
   const [citySearchTerm, setCitySearchTerm] = useState('');
   const [isSearchingCities, setIsSearchingCities] = useState(false);
 
-  // Loading flags
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [uploadingForm, setUploadingForm] = useState(false);
+  const [saving, setSaving] = useState(false);
 
+  // ---------------------------------------------------------
+  // FETCH CREATIVE ROLES
+  // ---------------------------------------------------------
   useEffect(() => {
-    fetchCreativeRoles(); // optional initial list to show something before searching
+    fetchCreativeRoles();
   }, []);
 
   const fetchCreativeRoles = async () => {
@@ -69,16 +87,19 @@ export default function CreateProfileScreen() {
       .from('creative_roles')
       .select('id, name')
       .order('name');
-    if (error) console.error('Error fetching roles:', error.message);
+
+    if (error) return console.error('Error fetching roles:', error.message);
+
     if (data) {
-      const items = data.map((role) => ({ label: role.name, value: role.id }));
-      setRoleItems(items);
+      setRoleItems(data.map((r) => ({ label: r.name, value: r.id })));
     }
   };
 
-  // On-demand role search (mirrors Jobs filter)
+  // ---------------------------------------------------------
+  // ROLE SEARCH
+  // ---------------------------------------------------------
   const fetchSearchRoles = useCallback(async (text: string) => {
-    if (!text || text.trim().length < 1) {
+    if (!text.trim()) {
       setRoleSearchItems([]);
       return;
     }
@@ -95,34 +116,38 @@ export default function CreateProfileScreen() {
 
     if (error) {
       console.error('Role fetch error:', error.message);
-      setRoleSearchItems([]);
-      return;
+      return setRoleSearchItems([]);
     }
 
     setRoleSearchItems(
-      (data || []).map((r) => ({
-        label: r.name,
-        value: r.id,
-      }))
+      (data || []).map((r) => ({ label: r.name, value: r.id }))
     );
   }, []);
 
+  // ---------------------------------------------------------
+  // FLAG UTILS
+  // ---------------------------------------------------------
   const getFlag = (countryCode: string) => {
-    // Same emoji flag trick as LocationScreen
     return countryCode
       .toUpperCase()
       .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
   };
 
+  // ---------------------------------------------------------
+  // CITY SEARCH with PERFECT ORDERING
+  // ---------------------------------------------------------
   const fetchCities = useCallback(async (text: string) => {
-    if (!text || text.trim().length < 2) return;
+    if (!text || text.trim().length < 1) return;
+
     setIsSearchingCities(true);
+
+    const query = text.trim();
 
     const { data, error } = await supabase
       .from('cities')
       .select('id, name, country_code')
-      .ilike('name', `%${text.trim()}%`)
-      .limit(30);
+      .ilike('name', `%${query}%`)
+      .limit(80);
 
     setIsSearchingCities(false);
 
@@ -131,16 +156,38 @@ export default function CreateProfileScreen() {
       return;
     }
 
-    if (data) {
-      const formatted = data.map((c) => ({
+    if (!data) return;
+
+    // --- SMART SORT: exact → prefix → contains ---
+    const exactMatches = data.filter((c) =>
+      c.name.toLowerCase() === query.toLowerCase()
+    );
+    const prefixMatches = data.filter(
+      (c) =>
+        c.name.toLowerCase().startsWith(query.toLowerCase()) &&
+        c.name.toLowerCase() !== query.toLowerCase()
+    );
+    const containsMatches = data.filter(
+      (c) =>
+        c.name.toLowerCase().includes(query.toLowerCase()) &&
+        !c.name.toLowerCase().startsWith(query.toLowerCase()) &&
+        c.name.toLowerCase() !== query.toLowerCase()
+    );
+
+    const ordered = [...exactMatches, ...prefixMatches, ...containsMatches];
+
+    setCityItems(
+      ordered.map((c) => ({
         label: `${getFlag(c.country_code)} ${c.name}, ${c.country_code}`,
         value: c.id,
         country: c.country_code,
-      }));
-      setCityItems(formatted);
-    }
+      }))
+    );
   }, []);
 
+  // ---------------------------------------------------------
+  // IMAGE UPLOAD
+  // ---------------------------------------------------------
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -156,29 +203,26 @@ export default function CreateProfileScreen() {
 
       setUploadingImage(true);
 
-      let fileExt = uri.split('.').pop();
-      if (!fileExt || fileExt.length > 5) fileExt = 'jpg';
+      let ext = uri.split('.').pop();
+      if (!ext || ext.length > 5) ext = 'jpg';
 
-      const fileName = `${Date.now()}.${fileExt}`;
+      const fileName = `${Date.now()}.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(fileName, decode(base64), {
-          contentType: 'image/*',
-        });
+        .upload(fileName, decode(base64), { contentType: 'image/*' });
 
       if (uploadError) {
-        Alert.alert('Upload Error', uploadError.message);
         setUploadingImage(false);
-        return;
+        return Alert.alert('Upload Error', uploadError.message);
       }
 
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      const { data: urlData } =
+        supabase.storage.from('avatars').getPublicUrl(fileName);
 
       if (!urlData?.publicUrl) {
-        Alert.alert('Upload Error', 'Failed to retrieve uploaded image URL.');
         setUploadingImage(false);
-        return;
+        return Alert.alert('Upload Error', 'Could not get URL');
       }
 
       setImage(uri);
@@ -187,67 +231,113 @@ export default function CreateProfileScreen() {
     }
   };
 
-  const showToast = (message: string) => {
-    if (Platform.OS === 'android') {
-      ToastAndroid.show(message, ToastAndroid.SHORT);
-    } else {
-      Alert.alert(message);
-    }
+  const showToast = (msg: string) => {
+    if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.SHORT);
+    else Alert.alert(msg);
   };
 
+  // ---------------------------------------------------------
+  // SUBMIT PROFILE (LOGIC UNTOUCHED)
+  // ---------------------------------------------------------
   const handleSubmit = async () => {
     if (!fullName || !mainRole || !cityId) {
       Alert.alert('Missing Info', 'Please fill in all required fields.');
       return;
     }
 
-    setUploadingForm(true);
+    setSaving(true);
 
-    const { data: sessionData } = await supabase.auth.getUser();
-    const userId = sessionData.user?.id;
-
-    if (!userId) {
-      Alert.alert('Error', 'User not authenticated.');
-      setUploadingForm(false);
-      return;
+    const { data: sessionData, error: userErr } = await supabase.auth.getUser();
+    if (userErr) {
+      setSaving(false);
+      return Alert.alert('Error', userErr.message);
     }
 
-    const { error } = await supabase.from('users').upsert({
-      id: userId,
-      full_name: fullName,
-      main_role_id: mainRole,
-      city_id: cityId,
-      avatar_url: imageUrl,
-      portfolio_url: portfolioUrl || null,
-    });
+    const userId = sessionData.user?.id;
+    if (!userId) {
+      setSaving(false);
+      return Alert.alert('Error', 'User not authenticated');
+    }
 
-    setUploadingForm(false);
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id, full_name, main_role_id, city_id')
+      .eq('id', userId)
+      .maybeSingle();
+
+    const beforeComplete = !!(
+      existingUser?.full_name &&
+      existingUser?.main_role_id &&
+      existingUser?.city_id
+    );
+
+    const { data: upserted, error } = await supabase
+      .from('users')
+      .upsert(
+        {
+          id: userId,
+          full_name: fullName,
+          main_role_id: mainRole,
+          city_id: cityId,
+          avatar_url: imageUrl,
+          portfolio_url: portfolioUrl || null,
+        },
+        { onConflict: 'id' }
+      )
+      .select('id, full_name, main_role_id, city_id')
+      .maybeSingle();
 
     if (error) {
-      Alert.alert('Error', error.message);
+      setSaving(false);
+      return Alert.alert('Error', error.message);
+    }
+
+    const afterComplete = !!(
+      upserted?.full_name &&
+      upserted?.main_role_id &&
+      upserted?.city_id
+    );
+
+    if (!beforeComplete && afterComplete) {
+      await refreshProfile();
+      await refreshGamification();
     } else {
-      showToast('Welcome to Overlooked!');
-      if (navigationRef.isReady()) {
-        navigationRef.dispatch(
-          CommonActions.reset({
-            index: 0,
-            routes: [
-              {
-                name: 'Main',
-                state: {
-                  index: 0,
-                  routes: [{ name: 'Featured' }],
-                },
-              },
-            ],
-          })
-        );
-      }
+      await refreshProfile();
+      await refreshGamification();
+    }
+
+    // Polling fallback
+    const start = Date.now();
+    let gate =
+      profileComplete ||
+      Boolean(upserted?.full_name && upserted?.main_role_id && upserted?.city_id);
+
+    while (!gate && Date.now() - start < 2500) {
+      await new Promise((r) => setTimeout(r, 150));
+      await refreshProfile();
+      gate =
+        profileComplete ||
+        Boolean(upserted?.full_name && upserted?.main_role_id && upserted?.city_id);
+    }
+
+    setSaving(false);
+    showToast('Welcome to Overlooked!');
+
+    if (gate && navigationRef.isReady()) {
+      navigationRef.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            { name: 'MainTabs', state: { index: 0, routes: [{ name: 'Featured' }] } },
+          ],
+        })
+      );
     }
   };
 
-  // ——— UI ———
-
+  // ---------------------------------------------------------
+  // UI
+  // ---------------------------------------------------------
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -256,53 +346,62 @@ export default function CreateProfileScreen() {
       <ScrollView
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
-        nestedScrollEnabled
       >
-        <Text style={styles.title}>Create Your Profile</Text>
+        <Text style={styles.title}>CREATE YOUR PROFILE</Text>
 
+        {/* FULL NAME */}
         <TextInput
           placeholder="Full Name"
           value={fullName}
           onChangeText={setFullName}
           style={styles.input}
-          placeholderTextColor="#999"
+          placeholderTextColor={TEXT_MUTED}
         />
 
-        {/* Main Role — searchable modal trigger (like Jobs role filter) */}
+        {/* ROLE SELECT */}
         <TouchableOpacity
-          style={styles.roleSelectButton}
+          style={styles.selectButton}
           onPress={() => {
             setRoleSearchModalVisible(true);
             setRoleSearchTerm('');
-            setRoleSearchItems([]); // clear previous search
+            setRoleSearchItems([]);
           }}
           activeOpacity={0.9}
         >
-          <Text style={styles.roleSelectButtonText}>
-            {mainRoleLabel ? mainRoleLabel : 'Search your main creative role'}
+          <Text style={styles.selectButtonText}>
+            {mainRoleLabel ?? 'Search your main creative role'}
           </Text>
         </TouchableOpacity>
 
-        {/* City selector — matches LocationScreen look & behavior */}
+        {/* CITY SELECT */}
         <TouchableOpacity
-          style={styles.citySelectButton}
+          style={styles.selectButton}
           onPress={() => setSearchModalVisible(true)}
           activeOpacity={0.9}
         >
-          <Text style={styles.citySelectButtonText}>
-            {cityLabel ? cityLabel : 'Spell your city correctly, e.g. Skyros / Skýros'}
+          <Text style={styles.selectButtonText}>
+            {cityLabel ??
+              'Spell your city correctly (e.g., Skyros / Skýros)'}
           </Text>
         </TouchableOpacity>
 
+        {/* PORTFOLIO */}
         <TextInput
           placeholder="YouTube Portfolio URL (optional)"
           value={portfolioUrl}
           onChangeText={setPortfolioUrl}
           style={styles.input}
-          placeholderTextColor="#999"
+          placeholderTextColor={TEXT_MUTED}
+          autoCapitalize="none"
+          autoCorrect={false}
         />
 
-        <TouchableOpacity onPress={pickImage} style={styles.imageButton} activeOpacity={0.9}>
+        {/* IMAGE UPLOAD */}
+        <TouchableOpacity
+          onPress={pickImage}
+          style={styles.imageButton}
+          activeOpacity={0.9}
+        >
           <Text style={styles.imageButtonText}>
             {uploadingImage
               ? 'Uploading...'
@@ -314,42 +413,46 @@ export default function CreateProfileScreen() {
 
         {image && <Image source={{ uri: image }} style={styles.avatar} />}
 
+        {/* SUBMIT */}
         <TouchableOpacity
           onPress={handleSubmit}
-          style={styles.submitButton}
-          disabled={uploadingForm || uploadingImage}
+          style={[styles.submitButton, (saving || uploadingImage) && { opacity: 0.6 }]}
+          disabled={saving || uploadingImage}
           activeOpacity={0.9}
         >
-          {uploadingForm ? (
-            <ActivityIndicator color="#fff" />
+          {saving ? (
+            <ActivityIndicator color={TEXT_IVORY} />
           ) : (
             <Text style={styles.submitText}>Finish</Text>
           )}
         </TouchableOpacity>
       </ScrollView>
 
-      {/* City Search Modal — cloned style from LocationScreen */}
+      {/* ---------------- CITY SEARCH MODAL ---------------- */}
       <Modal
         visible={searchModalVisible}
         animationType="slide"
         onRequestClose={() => setSearchModalVisible(false)}
       >
         <View style={styles.modalContainer}>
-          <Text style={styles.modalTitle}>Search for your city</Text>
+          <Text style={styles.modalTitle}>SEARCH FOR YOUR CITY</Text>
 
           <TextInput
             placeholder="Start typing..."
-            placeholderTextColor="#aaa"
+            placeholderTextColor={TEXT_MUTED}
             value={citySearchTerm}
             onChangeText={(text) => {
               setCitySearchTerm(text);
               fetchCities(text);
             }}
             style={styles.searchInput}
+            autoFocus
+            autoCorrect={false}
+            autoCapitalize="none"
           />
 
           {isSearchingCities ? (
-            <ActivityIndicator style={{ marginTop: 20 }} />
+            <ActivityIndicator style={{ marginTop: 20 }} color={GOLD} />
           ) : (
             <FlatList
               data={cityItems}
@@ -362,37 +465,36 @@ export default function CreateProfileScreen() {
                     setCityLabel(item.label);
                     setSearchModalVisible(false);
                   }}
-                  activeOpacity={0.85}
+                  activeOpacity={0.8}
                 >
                   <Text style={styles.cityItemText}>{item.label}</Text>
                 </TouchableOpacity>
               )}
-              keyboardShouldPersistTaps="handled"
             />
           )}
 
           <TouchableOpacity
             onPress={() => setSearchModalVisible(false)}
             style={styles.closeModalButton}
-            activeOpacity={0.9}
+            activeOpacity={0.8}
           >
             <Text style={styles.closeModalText}>Cancel</Text>
           </TouchableOpacity>
         </View>
       </Modal>
 
-      {/* Role Search Modal — same UX as Jobs filter */}
+      {/* ---------------- ROLE SEARCH MODAL ---------------- */}
       <Modal
         visible={roleSearchModalVisible}
         animationType="slide"
         onRequestClose={() => setRoleSearchModalVisible(false)}
       >
         <View style={styles.modalContainer}>
-          <Text style={styles.modalTitle}>Search your main role</Text>
+          <Text style={styles.modalTitle}>SEARCH YOUR MAIN ROLE</Text>
 
           <TextInput
-            placeholder="Start typing a role…"
-            placeholderTextColor="#aaa"
+            placeholder="Start typing a role..."
+            placeholderTextColor={TEXT_MUTED}
             value={roleSearchTerm}
             onChangeText={(text) => {
               setRoleSearchTerm(text);
@@ -400,13 +502,15 @@ export default function CreateProfileScreen() {
             }}
             style={styles.searchInput}
             autoFocus
+            autoCorrect={false}
+            autoCapitalize="none"
           />
 
           {isSearchingRoles ? (
-            <ActivityIndicator style={{ marginTop: 20 }} />
+            <ActivityIndicator style={{ marginTop: 20 }} color={GOLD} />
           ) : (
             <FlatList
-              data={roleSearchItems.length > 0 ? roleSearchItems : roleItems /* fallback to initial list */}
+              data={roleSearchItems.length > 0 ? roleSearchItems : roleItems}
               keyExtractor={(item) => item.value.toString()}
               renderItem={({ item }) => (
                 <TouchableOpacity
@@ -416,19 +520,18 @@ export default function CreateProfileScreen() {
                     setMainRoleLabel(item.label);
                     setRoleSearchModalVisible(false);
                   }}
-                  activeOpacity={0.85}
+                  activeOpacity={0.8}
                 >
                   <Text style={styles.cityItemText}>{item.label}</Text>
                 </TouchableOpacity>
               )}
-              keyboardShouldPersistTaps="handled"
             />
           )}
 
           <TouchableOpacity
             onPress={() => setRoleSearchModalVisible(false)}
             style={styles.closeModalButton}
-            activeOpacity={0.9}
+            activeOpacity={0.8}
           >
             <Text style={styles.closeModalText}>Cancel</Text>
           </TouchableOpacity>
@@ -438,131 +541,157 @@ export default function CreateProfileScreen() {
   );
 }
 
+// ---------------------------------------------------------
+// STYLES (MATCHING MAINTABS AESTHETIC)
+// ---------------------------------------------------------
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
-    backgroundColor: COLORS.background,
     flexGrow: 1,
+    padding: 24,
+    backgroundColor: DARK_BG,
+    alignItems: 'center',
   },
+
   title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    marginBottom: 20,
-    textAlign: 'center',
+    fontSize: 22,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    marginBottom: 24,
+    letterSpacing: 1.3,
+    fontFamily: SYSTEM_SANS,
+    textTransform: 'uppercase',
   },
+
   input: {
-    backgroundColor: COLORS.card,
+    width: '100%',
+    backgroundColor: ELEVATED,
     borderRadius: 12,
     padding: 14,
-    marginBottom: 12,
-    color: COLORS.textPrimary,
+    marginBottom: 14,
+    color: TEXT_IVORY,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: BORDER,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
   },
 
-  // Role select button (replaces dropdown)
-  roleSelectButton: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
+  selectButton: {
+    width: '100%',
     padding: 14,
-    backgroundColor: COLORS.card,
-    marginBottom: 12,
-  },
-  roleSelectButtonText: {
-    color: COLORS.textPrimary,
-    fontSize: 16,
-    textAlign: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: ELEVATED,
+    marginBottom: 14,
+    alignItems: 'center',
   },
 
-  // City select button — matches LocationScreen
-  citySelectButton: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    padding: 14,
-    backgroundColor: COLORS.card,
-    marginBottom: 12,
-  },
-  citySelectButtonText: {
-    color: COLORS.textPrimary,
-    fontSize: 16,
-    textAlign: 'center',
+  selectButtonText: {
+    color: TEXT_IVORY,
+    fontSize: 15,
+    fontFamily: SYSTEM_SANS,
   },
 
   imageButton: {
-    backgroundColor: COLORS.mutedCard,
+    width: '100%',
     padding: 14,
     borderRadius: 12,
+    backgroundColor: '#222',
+    borderWidth: 1,
+    borderColor: BORDER,
     alignItems: 'center',
     marginBottom: 16,
   },
+
   imageButtonText: {
-    color: COLORS.textPrimary,
+    color: TEXT_IVORY,
     fontWeight: '600',
+    fontFamily: SYSTEM_SANS,
   },
+
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    alignSelf: 'center',
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    borderWidth: 2,
+    borderColor: GOLD,
     marginBottom: 20,
   },
+
   submitButton: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: GOLD,
+    width: '100%',
     padding: 14,
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 10,
   },
+
   submitText: {
-    color: COLORS.textOnPrimary,
-    fontWeight: '600',
+    color: DARK_BG,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '800',
+    fontSize: 16,
   },
 
-  // Modal styles (from LocationScreen)
   modalContainer: {
     flex: 1,
-    backgroundColor: COLORS.background,
-    padding: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    backgroundColor: DARK_BG,
+    padding: 22,
+    paddingTop: Platform.OS === 'ios' ? 70 : 40,
   },
+
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    marginBottom: 16,
+    fontSize: 18,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    marginBottom: 18,
     textAlign: 'center',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
   },
+
   searchInput: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    backgroundColor: ELEVATED,
     borderRadius: 12,
     padding: 14,
-    fontSize: 16,
-    color: COLORS.textPrimary,
-    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: BORDER,
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 10,
   },
+
   cityItem: {
-    padding: 14,
-    borderBottomColor: COLORS.border,
+    paddingVertical: 14,
     borderBottomWidth: 1,
+    borderColor: BORDER,
   },
+
   cityItemText: {
-    fontSize: 16,
-    color: COLORS.textPrimary,
+    fontSize: 15,
+    color: TEXT_IVORY,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
   },
+
   closeModalButton: {
-    marginTop: 20,
+    marginTop: 24,
     padding: 12,
-    borderRadius: 10,
+    borderRadius: 12,
+    backgroundColor: ELEVATED,
+    borderWidth: 1,
+    borderColor: BORDER,
     alignItems: 'center',
-    backgroundColor: COLORS.mutedCard,
   },
+
   closeModalText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
+    fontSize: 15,
+    color: TEXT_MUTED,
+    fontWeight: '700',
+    fontFamily: SYSTEM_SANS,
   },
 });

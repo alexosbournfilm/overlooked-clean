@@ -1,6 +1,15 @@
 {
-  "deno.enable": true,
+  // Disable Deno by default
+  "deno.enable": false,
+
+  // Enable Deno only inside Supabase functions
   "deno.enablePaths": ["supabase/functions"],
+
+  // Keep linting & import map scoped to functions
   "deno.lint": true,
-  "deno.unstable": true
+  "deno.importMap": "./supabase/functions/import_map.json",
+
+  // Use local TypeScript for the app (Expo/React Native)
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true
 }

@@ -1,7 +1,16 @@
 {
-  "buildCommand": "npx expo export --platform web",
-  "outputDirectory": "dist",
+  "cleanUrls": false,
   "rewrites": [
+    { "source": "/auth/v1/(.*)", "destination": "/index.html" },
+    { "source": "/auth/(.*)", "destination": "/index.html" },
+    { "source": "/callback", "destination": "/index.html" },
+    { "source": "/auth-callback", "destination": "/index.html" },
+    { "source": "/signin", "destination": "/index.html" },
+    { "source": "/signup", "destination": "/index.html" },
+    { "source": "/verify", "destination": "/index.html" },
+    { "source": "/reset-password", "destination": "/index.html" },
+    { "source": "/forgot-password", "destination": "/index.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
+

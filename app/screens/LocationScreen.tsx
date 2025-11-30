@@ -1,6 +1,5 @@
-// LocationScreen.tsx
-
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+// app/screens/LocationScreen.tsx
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -16,26 +15,57 @@ import {
 } from 'react-native';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
-import COLORS from '../theme/colors';
+import { COLORS as THEME_COLORS } from '../theme/colors';
+import { Ionicons } from '@expo/vector-icons';
 
-/**
- * NOTE:
- * - Preserves your original layout/logic and only ADDS:
- *   • Creatives/Jobs tabs after searching (only one list visible at a time)
- *   • Small count badges in tab labels
- *   • Everything else (profile nav, job modal/apply, city chat button position) unchanged
- * - UPDATED to hide/guard closed jobs:
- *   • Search query now filters jobs with .eq('is_closed', false)
- *   • JobDetail includes is_closed; Apply disabled and safety re-check before insert
- */
+/* ────────────────────────────────────────────────────────────
+   Cinematic noir base (gold accents, flatter like Jobs page)
+   ──────────────────────────────────────────────────────────── */
+const GOLD = '#C6A664';
 
+const T = {
+  bg: '#0B0B0B',
+  surface: '#111111',
+  text: '#FFFFFF',
+  sub: '#C9C9C9',
+  mute: '#9A9A9A',
+  accent: '#FFFFFF',
+  line: '#1A1A1A',
+  border: '#1E1E1E',
+  borderSoft: '#1A1A1A',
+};
+
+/** Reduced, consistent top offset (good on web & mobile) */
+const TOP_BAR_OFFSET = Platform.OS === 'web' ? 24 : 12;
+
+/** Headline & category font families */
+const FONT_CINEMATIC =
+  Platform.select({ ios: 'Cinzel', android: 'Cinzel', default: 'Cinzel' }) || 'Cinzel';
+const FONT_CATEGORY =
+  Platform.select({ ios: 'Avenir Next', android: 'sans-serif-light', default: 'Avenir Next' }) ||
+  'Avenir Next';
+
+const COLORS = {
+  ...THEME_COLORS,
+  background: T.bg,
+  card: T.surface,
+  textPrimary: T.text,
+  textSecondary: T.sub,
+  primary: T.accent,
+  textOnPrimary: '#000000',
+  border: T.border,
+  borderSoft: T.borderSoft,
+};
+
+/* -------------------------------------------
+   Types
+-------------------------------------------- */
 interface DropdownOption {
   label: string;
   value: number;
   country?: string;
 }
 
-// Optional TS type for convenience; fine to keep in JS too.
 type Conversation = {
   id: string;
   name?: string | null;
@@ -66,11 +96,10 @@ type JoinedRole =
   | null
   | undefined;
 
-/** UPDATED: include role join so we can show "Actor, Open" in the list */
 type LocatedJobLite = {
   id: string;
   title?: string | null;
-  is_closed?: boolean | null; // <— added for clarity (though we filter out closed ones)
+  is_closed?: boolean | null;
   creative_roles?: JoinedRole; // creative_roles(name)
 };
 
@@ -83,19 +112,53 @@ type JobDetail = {
   rate: string | null;
   time: string | null;
   created_at: string;
-  is_closed?: boolean | null; // <— added so we can render/guard in modal
+  is_closed?: boolean | null;
   creative_roles?: JoinedRole; // creative_roles(name)
   cities?: JoinedCity; // cities(name, country_code)
   users?: JoinedUser; // users(id, full_name)
 };
 
-// Helpers to read possibly-array joins safely
+/* -------------------------------------------
+   Helpers
+-------------------------------------------- */
 const getFirst = <T,>(v: T | T[] | null | undefined): T | undefined =>
   Array.isArray(v) ? v[0] : v ?? undefined;
 
 const getUserFromJoin = (u: JoinedUser) => getFirst(u);
 const getCityFromJoin = (c: JoinedCity) => getFirst(c);
 const getRoleFromJoin = (r: JoinedRole) => getFirst(r);
+
+const getFlag = (countryCode: string) =>
+  countryCode
+    .toUpperCase()
+    .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
+
+/** Prioritize exact match first, then starts-with, then others */
+const prioritizeCityMatches = (
+  list: { id: number; name: string; country_code: string }[],
+  term: string
+) => {
+  const q = term.trim().toLowerCase();
+  return list.sort((a, b) => {
+    const A = a.name.toLowerCase();
+    const B = b.name.toLowerCase();
+    const score = (s: string) => (s === q ? 0 : s.startsWith(q) ? 1 : 2);
+    const cmp = score(A) - score(B);
+    return cmp !== 0 ? cmp : A.localeCompare(B);
+  });
+};
+
+/* Small icon + text helper (neutral) */
+const IconText: React.FC<{
+  name: keyof typeof Ionicons.glyphMap;
+  text: string;
+  bold?: boolean;
+}> = ({ name, text, bold }) => (
+  <View style={styles.iconTextRow}>
+    <Ionicons name={name} size={16} color={T.sub} style={{ marginRight: 8 }} />
+    <Text style={[styles.jobMeta, bold && styles.jobMetaStrong]}>{text}</Text>
+  </View>
+);
 
 export default function LocationScreen() {
   const [city, setCity] = useState<DropdownOption | null>(null);
@@ -110,7 +173,7 @@ export default function LocationScreen() {
   const [searched, setSearched] = useState(false);
   const [joining, setJoining] = useState(false);
 
-  // NEW — tab state
+  // Category tabs
   const [activeTab, setActiveTab] = useState<'creatives' | 'jobs'>('creatives');
 
   // Job modal / apply state
@@ -118,20 +181,23 @@ export default function LocationScreen() {
   const [selectedJob, setSelectedJob] = useState<JobDetail | null>(null);
   const [loadingSelectedJob, setLoadingSelectedJob] = useState(false);
   const [applyLoading, setApplyLoading] = useState(false);
-  // REMOVED: const [applyMessage, setApplyMessage] = useState('');
 
   const navigation = useNavigation<any>();
 
   const fetchCities = useCallback(async (search: string) => {
-    if (!search || search.trim().length < 2) return;
+    const q = search?.trim() || '';
+    if (q.length < 2) {
+      setCityItems([]);
+      return;
+    }
 
     setIsSearchingCities(true);
 
     const { data, error } = await supabase
       .from('cities')
       .select('id, name, country_code')
-      .ilike('name', `%${search.trim()}%`)
-      .limit(30);
+      .ilike('name', `%${q}%`)
+      .limit(50);
 
     setIsSearchingCities(false);
 
@@ -141,20 +207,16 @@ export default function LocationScreen() {
     }
 
     if (data) {
-      const formatted = data.map((item) => ({
-        label: `${getFlag(item.country_code)} ${item.name}, ${item.country_code}`,
-        value: item.id,
-        country: item.country_code,
-      }));
-      setCityItems(formatted);
+      const prioritized = prioritizeCityMatches(data, q);
+      setCityItems(
+        prioritized.map((item) => ({
+          label: `${getFlag(item.country_code)} ${item.name}, ${item.country_code}`,
+          value: item.id,
+          country: item.country_code,
+        }))
+      );
     }
   }, []);
-
-  const getFlag = (countryCode: string) => {
-    return countryCode
-      .toUpperCase()
-      .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
-  };
 
   const handleSearch = async () => {
     if (!city) return;
@@ -162,14 +224,13 @@ export default function LocationScreen() {
     setSearching(true);
     setSearched(false);
 
-    /** UPDATED: include role join so we can show the role name in the list */
     const [usersRes, jobsRes] = await Promise.all([
       supabase.from('users').select('id, full_name').eq('city_id', city.value),
       supabase
         .from('jobs')
         .select('id, title, is_closed, creative_roles:role_id (name)')
         .eq('city_id', city.value)
-        .eq('is_closed', false), // <— HIDE CLOSED JOBS HERE
+        .eq('is_closed', false), // hide closed
     ]);
 
     if (usersRes.error) console.error(usersRes.error.message);
@@ -179,8 +240,6 @@ export default function LocationScreen() {
     setJobs((jobsRes.data as LocatedJobLite[]) || []);
     setSearching(false);
     setSearched(true);
-
-    // Reset to Creatives tab each new search (mirrors Jobs screen behavior)
     setActiveTab('creatives');
   };
 
@@ -334,7 +393,7 @@ export default function LocationScreen() {
     const me = auth?.user;
     if (!me) return Alert.alert('Please log in to apply.');
 
-    // Safety re-check: make sure job is still open right now
+    // Safety re-check
     const { data: latest, error: latestErr } = await supabase
       .from('jobs')
       .select('is_closed')
@@ -373,7 +432,7 @@ export default function LocationScreen() {
       job_id: selectedJob.id,
       applicant_id: me.id,
       audition_url: null,
-      message: null, // changed from applyMessage || null
+      message: null,
       applied_at: new Date().toISOString(),
       status: 'pending',
     });
@@ -387,58 +446,68 @@ export default function LocationScreen() {
       Alert.alert('Success', 'Application sent.');
       setJobDetailModalOpen(false);
       setSelectedJob(null);
-      // REMOVED: setApplyMessage('');
     }
   }, [selectedJob]);
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      contentContainerStyle={[styles.container, { paddingTop: TOP_BAR_OFFSET }]}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Headline (now matches category font/weight/letter-spacing) */}
       <Text style={styles.title}>Find jobs and creatives in your city</Text>
 
+      {/* City select — turns GOLD + Cinzel when a city is selected */}
       <TouchableOpacity
         style={styles.citySelectButton}
         onPress={() => setSearchModalVisible(true)}
+        activeOpacity={0.92}
       >
-        <Text style={styles.citySelectButtonText}>
-          {city ? city.label : 'Spell your city correctly, e.g. Skyros / Skýros'}
-        </Text>
+        <View style={styles.citySelectInner}>
+          <Ionicons name="location-outline" size={18} color={city ? GOLD : T.sub} />
+          <Text
+            style={[
+              styles.citySelectButtonText,
+              city && styles.citySelectButtonTextSelected,
+            ]}
+          >
+            {city ? city.label : 'Spell your city correctly, e.g. Skyros / Skýros'}
+          </Text>
+        </View>
       </TouchableOpacity>
 
+      {/* Softer Search button (calm fill, no harsh contrast) */}
       {city && (
-        <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
-          {searching ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.searchButtonText}>Search</Text>
-          )}
+        <TouchableOpacity style={styles.searchButton} onPress={handleSearch} activeOpacity={0.92}>
+          {searching ? <ActivityIndicator color={T.text} /> : <Text style={styles.searchButtonText}>Search</Text>}
         </TouchableOpacity>
       )}
 
       {searched && (
         <View style={styles.resultsSection}>
-          {/* NEW — Tab Toggle */}
-          <View style={styles.tabRow}>
-            <TouchableOpacity
-              style={[styles.tabBtn, activeTab === 'creatives' && styles.tabBtnActive]}
-              onPress={() => setActiveTab('creatives')}
-              activeOpacity={0.9}
-            >
-              <Text style={[styles.tabText, activeTab === 'creatives' && styles.tabTextActive]}>
-                Creatives{users.length ? ` (${users.length})` : ''}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabBtn, activeTab === 'jobs' && styles.tabBtnActive]}
-              onPress={() => setActiveTab('jobs')}
-              activeOpacity={0.9}
-            >
-              <Text style={[styles.tabText, activeTab === 'jobs' && styles.tabTextActive]}>
-                Jobs{jobs.length ? ` (${jobs.length})` : ''}
-              </Text>
-            </TouchableOpacity>
+          {/* Category-style tabs (CREATIVES / JOBS) */}
+          <View style={styles.categoryTabsRow}>
+            {(['creatives', 'jobs'] as const).map((tab) => {
+              const active = activeTab === tab;
+              const count = tab === 'creatives' ? users.length : jobs.length;
+              const label = `${tab.toUpperCase()}${count ? ` (${count})` : ''}`;
+              return (
+                <TouchableOpacity
+                  key={tab}
+                  style={styles.categoryTap}
+                  onPress={() => setActiveTab(tab)}
+                  activeOpacity={0.92}
+                >
+                  <Text style={[styles.categoryText, active && styles.categoryTextActive]}>{label}</Text>
+                  {active ? <View style={styles.categoryUnderline} /> : <View style={{ height: 3 }} />}
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          {/* Only render the active tab’s content */}
+          {/* Tab content */}
           {activeTab === 'creatives' ? (
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>Creatives in {city?.label}</Text>
@@ -452,7 +521,8 @@ export default function LocationScreen() {
                     activeOpacity={0.85}
                     style={styles.resultRow}
                   >
-                    <Text style={styles.resultItem}>• {user.full_name}</Text>
+                    {/* User name in gold Cinzel */}
+                    <Text style={styles.resultUserGold}>• {user.full_name}</Text>
                     <Text style={styles.viewLink}>View</Text>
                   </TouchableOpacity>
                 ))
@@ -473,8 +543,8 @@ export default function LocationScreen() {
                       activeOpacity={0.85}
                       style={styles.resultRow}
                     >
-                      {/* UPDATED: show role name first; fall back to title or "Job" */}
-                      <Text style={styles.resultItem}>• {roleName || job.title || 'Job'}</Text>
+                      {/* Job role name in gold + category font */}
+                      <Text style={styles.resultJobGold}>• {roleName || job.title || 'Job'}</Text>
                       <Text style={styles.viewLink}>Open</Text>
                     </TouchableOpacity>
                   );
@@ -483,11 +553,12 @@ export default function LocationScreen() {
             </View>
           )}
 
-          {/* Stays at the bottom exactly as before */}
+          {/* Bottom CTA */}
           <TouchableOpacity
             style={styles.joinButton}
             onPress={joinCityChat}
             disabled={joining}
+            activeOpacity={0.92}
           >
             {joining ? (
               <ActivityIndicator />
@@ -505,43 +576,53 @@ export default function LocationScreen() {
       {/* City Search Modal */}
       <Modal
         visible={searchModalVisible}
-        animationType="slide"
+        animationType={Platform.OS === 'web' ? 'none' : 'slide'}
         onRequestClose={() => setSearchModalVisible(false)}
       >
         <View style={styles.modalContainer}>
           <Text style={styles.modalTitle}>Search for your city</Text>
           <TextInput
             placeholder="Start typing..."
-            placeholderTextColor="#aaa"
+            placeholderTextColor={T.mute}
             value={citySearchTerm}
             onChangeText={(text) => {
               setCitySearchTerm(text);
-              fetchCities(text);
+              void fetchCities(text);
             }}
             style={styles.searchInput}
+            autoFocus
           />
-          {isSearchingCities ? (
-            <ActivityIndicator style={{ marginTop: 20 }} />
+        {isSearchingCities ? (
+            <ActivityIndicator style={{ marginTop: 20 }} color={T.accent} />
           ) : (
             <FlatList
               data={cityItems}
               keyExtractor={(item) => item.value.toString()}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.cityItem}
-                  onPress={() => {
-                    setCity(item);
-                    setSearchModalVisible(false);
-                  }}
-                >
-                  <Text style={styles.cityItemText}>{item.label}</Text>
-                </TouchableOpacity>
-              )}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => {
+                const selected = city?.value === item.value;
+                return (
+                  <TouchableOpacity
+                    style={[styles.cityItem, selected && styles.cityItemSelected]}
+                    onPress={() => {
+                      setCity(item);
+                      setSearchModalVisible(false);
+                    }}
+                    activeOpacity={0.9}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                      {selected ? <Ionicons name="checkmark-outline" size={16} color={GOLD} /> : null}
+                      <Text style={[styles.cityItemText, selected && { color: GOLD }]}>{item.label}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
             />
           )}
           <TouchableOpacity
             onPress={() => setSearchModalVisible(false)}
             style={styles.closeModalButton}
+            activeOpacity={0.92}
           >
             <Text style={styles.closeModalText}>Cancel</Text>
           </TouchableOpacity>
@@ -551,19 +632,18 @@ export default function LocationScreen() {
       {/* Job Details / Apply Modal */}
       <Modal
         visible={jobDetailModalOpen}
-        animationType="slide"
+        animationType={Platform.OS === 'web' ? 'none' : 'slide'}
         transparent
         onRequestClose={() => {
           setJobDetailModalOpen(false);
           setSelectedJob(null);
-          // REMOVED: setApplyMessage('');
         }}
       >
         <View style={styles.dimOverlay}>
           <View style={styles.jobModalCard}>
             {loadingSelectedJob ? (
               <View style={{ paddingVertical: 20 }}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
+                <ActivityIndicator size="large" color={T.accent} />
               </View>
             ) : selectedJob ? (
               <>
@@ -571,65 +651,78 @@ export default function LocationScreen() {
                   {getRoleFromJoin(selectedJob.creative_roles)?.name ?? 'Job'}
                 </Text>
 
+                {/* Closed notice */}
                 {selectedJob.is_closed ? (
-                  <Text style={[styles.jobMetaStrong, { marginTop: 6 }]}>
-                    🚫 This job is closed.
-                  </Text>
+                  <View style={{ marginTop: 6 }}>
+                    <IconText name="alert-circle-outline" text="This job is closed." bold />
+                  </View>
                 ) : null}
 
                 {selectedJob.description ? (
                   <Text style={styles.jobBody}>{selectedJob.description}</Text>
                 ) : null}
 
+                {/* Meta */}
                 <View style={{ marginTop: 8 }}>
-                  <Text style={styles.jobMeta}>
-                    📍 {getCityFromJoin(selectedJob.cities)?.name ?? 'Unknown'}
-                    {getCityFromJoin(selectedJob.cities)?.country_code
-                      ? `, ${getCityFromJoin(selectedJob.cities)?.country_code}`
-                      : ''}
-                  </Text>
-                  <Text style={styles.jobMeta}>
-                    👤{' '}
-                    <Text
-                      style={styles.link}
+                  <IconText
+                    name="location-outline"
+                    text={`${getCityFromJoin(selectedJob.cities)?.name ?? 'Unknown'}${
+                      getCityFromJoin(selectedJob.cities)?.country_code
+                        ? `, ${getCityFromJoin(selectedJob.cities)?.country_code}`
+                        : ''
+                    }`}
+                  />
+
+                  {/* Person + clickable name */}
+                  <View style={styles.iconTextRow}>
+                    <Ionicons name="person-outline" size={16} color={T.sub} style={{ marginRight: 8 }} />
+                    <TouchableOpacity
                       onPress={() => {
                         const poster = getUserFromJoin(selectedJob.users);
                         if (poster?.id) {
-                          goToProfile({ id: poster.id, full_name: poster.full_name || 'Profile' });
+                          // Navigate to profile
+                          // @ts-ignore
+                          navigation.navigate('Profile', { user: { id: poster.id, full_name: poster.full_name || 'Profile' } });
                         }
                       }}
+                      activeOpacity={0.8}
                     >
-                      {getUserFromJoin(selectedJob.users)?.full_name || 'View Profile'}
-                    </Text>
-                  </Text>
+                      <Text style={styles.link}>{getUserFromJoin(selectedJob.users)?.full_name || 'View Profile'}</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
                 <View style={{ marginTop: 6 }}>
-                  <Text style={styles.jobMetaStrong}>
-                    {selectedJob.type === 'Paid'
-                      ? `💰 ${selectedJob.currency ?? ''}${selectedJob.amount ?? ''}${
-                          selectedJob.rate ? ` / ${selectedJob.rate}` : ''
-                        }`
-                      : 'Free / Collab'}
-                  </Text>
+                  {selectedJob.type === 'Paid' ? (
+                    <IconText
+                      name="cash-outline"
+                      bold
+                      text={`${selectedJob.currency ?? ''}${selectedJob.amount ?? ''}${
+                        selectedJob.rate ? ` / ${selectedJob.rate}` : ''
+                      }`}
+                    />
+                  ) : (
+                    <IconText name="people-outline" bold text="Free / Collab" />
+                  )}
+
                   {selectedJob.time ? (
-                    <Text style={styles.jobMeta}>🕒 {selectedJob.time}</Text>
+                    <IconText name="time-outline" text={selectedJob.time} />
                   ) : null}
                 </View>
 
-                {/* Removed message/introduce-yourself UI; keep Apply button */}
+                {/* Apply */}
                 <View style={styles.applyBox}>
                   <TouchableOpacity
                     style={[
                       styles.primaryBtn,
-                      (applyLoading || selectedJob.is_closed) && { opacity: 0.5 },
+                      (applyLoading || selectedJob.is_closed) && { opacity: 0.6 },
                     ]}
                     onPress={applyToSelectedJob}
                     disabled={applyLoading || !!selectedJob.is_closed}
                     activeOpacity={0.9}
                   >
                     {applyLoading ? (
-                      <ActivityIndicator color="#fff" />
+                      <ActivityIndicator color={T.text} />
                     ) : (
                       <Text style={styles.primaryBtnText}>
                         {selectedJob.is_closed ? 'Closed' : 'Apply'}
@@ -642,7 +735,6 @@ export default function LocationScreen() {
                   onPress={() => {
                     setJobDetailModalOpen(false);
                     setSelectedJob(null);
-                    // REMOVED: setApplyMessage('');
                   }}
                   style={styles.ghostBtn}
                   activeOpacity={0.9}
@@ -663,124 +755,161 @@ export default function LocationScreen() {
 const styles = StyleSheet.create({
   container: {
     backgroundColor: COLORS.background,
-    padding: 20,
+    padding: 16,
+    paddingBottom: 28,
     flexGrow: 1,
   },
+
+  /** Title now matches category font (OBLIVION-style) */
   title: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 20,
+    letterSpacing: 6.5,
     color: COLORS.textPrimary,
-    marginBottom: 20,
+    marginBottom: 14,
     textAlign: 'center',
+    textTransform: 'uppercase',
+    fontFamily: FONT_CATEGORY,
+    fontWeight: Platform.OS === 'android' ? ('300' as any) : '400',
   },
+
+  /* City select */
   citySelectButton: {
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 12,
-    padding: 14,
-    backgroundColor: COLORS.card,
-    marginBottom: 20,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: '#121212',
+    marginBottom: 12,
+  },
+  citySelectInner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
   },
   citySelectButtonText: {
-    color: COLORS.textPrimary,
-    fontSize: 16,
+    color: COLORS.textSecondary,
+    fontSize: 15,
     textAlign: 'center',
+    fontFamily: FONT_CATEGORY,
+    letterSpacing: 1.8,
   },
+  citySelectButtonTextSelected: {
+    color: GOLD,
+    fontFamily: FONT_CINEMATIC,
+    letterSpacing: 2.5,
+    fontWeight: Platform.OS === 'web' ? ('700' as any) : '700',
+  },
+
+  /* Softer search button */
   searchButton: {
-    backgroundColor: COLORS.primary,
-    padding: 14,
-    borderRadius: 12,
+    backgroundColor: '#151515',
+    paddingVertical: 12,
+    borderRadius: 10,
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   searchButtonText: {
-    color: COLORS.textOnPrimary,
-    fontWeight: '600',
-    fontSize: 16,
+    color: COLORS.textPrimary,
+    fontWeight: '800',
+    letterSpacing: 0.6,
   },
 
   resultsSection: {
-    marginTop: 10,
+    marginTop: 4,
   },
 
-  // NEW — Tabs
-  tabRow: {
+  /* Category tabs (like Challenge categories) */
+  categoryTabsRow: {
     flexDirection: 'row',
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 4,
-    marginBottom: 12,
+    alignSelf: 'center',
+    gap: 22,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginBottom: 10,
   },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
+  categoryTap: { alignItems: 'center' },
+  categoryText: {
+    color: '#CFCFCF',
+    fontFamily: FONT_CATEGORY,
+    letterSpacing: 6.0,
+    textTransform: 'uppercase',
+    fontSize: 12.5,
+    fontWeight: Platform.OS === 'android' ? ('300' as any) : '400',
   },
-  tabBtnActive: {
-    backgroundColor: COLORS.primary,
-  },
-  tabText: {
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  tabTextActive: {
-    color: COLORS.textOnPrimary,
-  },
+  categoryTextActive: { color: GOLD },
+  categoryUnderline: { marginTop: 6, height: 3, width: 42, backgroundColor: GOLD, borderRadius: 2 },
 
+  /* Cards */
   card: {
     backgroundColor: COLORS.card,
     borderRadius: 12,
-    padding: 16,
+    padding: 14,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '900',
     color: COLORS.textPrimary,
-    marginBottom: 10,
+    marginBottom: 8,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
   emptyText: {
-    color: COLORS.textPrimary,
+    color: COLORS.textSecondary,
     fontStyle: 'italic',
-    marginBottom: 8,
+    marginBottom: 6,
   },
+
+  /* Rows */
   resultRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 6,
+    paddingVertical: 8,
   },
-  resultItem: {
-    color: COLORS.textPrimary,
-    marginBottom: 6,
-    marginLeft: 6,
+  // Users: gold Cinzel
+  resultUserGold: {
+    color: GOLD,
+    fontFamily: FONT_CINEMATIC,
+    letterSpacing: 1.2,
     fontSize: 15,
+  },
+  // Jobs: gold category font
+  resultJobGold: {
+    color: GOLD,
+    fontFamily: FONT_CATEGORY,
+    letterSpacing: 2.5,
+    textTransform: 'uppercase',
+    fontSize: 13.5,
+    fontWeight: Platform.OS === 'android' ? ('300' as any) : '400',
   },
   viewLink: {
     color: COLORS.primary,
     fontWeight: '700',
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
+    letterSpacing: 0.2,
   },
+
+  /* Join CTA */
   joinButton: {
-    backgroundColor: COLORS.mutedCard,
-    padding: 16,
-    borderRadius: 12,
+    backgroundColor: '#121212',
+    padding: 14,
+    borderRadius: 10,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   joinButtonText: {
     color: COLORS.textPrimary,
-    fontWeight: '600',
-    fontSize: 16,
+    fontWeight: '800',
+    fontSize: 15,
+    letterSpacing: 0.6,
   },
 
+  /* Modal */
   modalContainer: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -788,43 +917,54 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: Platform.OS === 'web' ? ('700' as any) : '700',
     color: COLORS.textPrimary,
-    marginBottom: 16,
+    marginBottom: 12,
     textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 2.0,
+    fontFamily: FONT_CINEMATIC,
   },
   searchInput: {
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 15,
     color: COLORS.textPrimary,
-    backgroundColor: COLORS.card,
+    backgroundColor: '#121212',
   },
   cityItem: {
-    padding: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     borderBottomColor: COLORS.border,
     borderBottomWidth: 1,
   },
+  cityItemSelected: {
+    backgroundColor: '#131313',
+  },
   cityItemText: {
-    fontSize: 16,
+    fontSize: 15,
     color: COLORS.textPrimary,
   },
   closeModalButton: {
-    marginTop: 20,
+    marginTop: 16,
     padding: 12,
     borderRadius: 10,
     alignItems: 'center',
-    backgroundColor: COLORS.mutedCard,
+    backgroundColor: '#121212',
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   closeModalText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '800',
     color: COLORS.textPrimary,
+    letterSpacing: 0.4,
   },
 
+  /* Job modal */
   dimOverlay: {
     flex: 1,
     backgroundColor: '#00000066',
@@ -841,6 +981,8 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: -4 },
     elevation: 8,
+    borderTopWidth: 1,
+    borderColor: COLORS.border,
   },
   jobTitleBig: {
     fontSize: 18,
@@ -855,19 +997,24 @@ const styles = StyleSheet.create({
   },
   jobMeta: {
     fontSize: 13,
-    color: COLORS.textPrimary,
+    color: COLORS.textSecondary,
     marginTop: 4,
   },
   jobMetaStrong: {
     fontSize: 14,
     color: COLORS.textPrimary,
     fontWeight: '800',
-    marginTop: 8,
+    marginTop: 4,
   },
   link: {
     color: COLORS.primary,
     fontWeight: '700',
     textDecorationLine: 'underline',
+  },
+  iconTextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
   },
   applyBox: {
     marginTop: 14,
@@ -875,41 +1022,26 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
-  applyLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    marginBottom: 6,
-    marginLeft: 4,
-  },
-  applyInput: {
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
+  primaryBtn: {
+    backgroundColor: '#151515',
+    padding: 14,
+    borderRadius: 10,
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: 12,
-    color: COLORS.textPrimary,
-    minHeight: 80,
-    textAlignVertical: 'top',
-    marginBottom: 10,
-  },
-  primaryBtn: {
-    backgroundColor: COLORS.primary,
-    padding: 14,
-    borderRadius: 12,
-    alignItems: 'center',
   },
   primaryBtnText: {
-    color: COLORS.textOnPrimary || '#fff',
+    color: COLORS.textPrimary,
     fontWeight: '800',
     fontSize: 16,
+    letterSpacing: 0.6,
   },
   ghostBtn: {
-    backgroundColor: COLORS.card,
+    backgroundColor: '#121212',
     borderWidth: 1,
     borderColor: COLORS.border,
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 10,
     alignItems: 'center',
     marginTop: 12,
   },

@@ -1,13 +1,33 @@
-import React, { useEffect, useState } from 'react';
+import './app/polyfills'; // must stay first
+import React, { useEffect, useState, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Linking } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
+import * as SecureStore from 'expo-secure-store';
 import { Provider as PaperProvider } from 'react-native-paper';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
 import AppNavigator from './app/navigation/AppNavigator';
 import { supabase } from './app/lib/supabase';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
+import { AuthProvider } from './app/context/AuthProvider';
+import { GamificationProvider } from './app/context/GamificationContext';
+import { navigate } from './app/navigation/navigationRef';
+
+// Fonts
+import {
+  useFonts as useCourierFonts,
+  CourierPrime_400Regular,
+  CourierPrime_700Bold,
+} from '@expo-google-fonts/courier-prime';
+
+import {
+  useFonts as useCinzelFonts,
+  Cinzel_400Regular,
+  Cinzel_700Bold,
+  Cinzel_900Black,
+} from '@expo-google-fonts/cinzel';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -16,63 +36,87 @@ export default function App() {
   const [initialAuthRouteName, setInitialAuthRouteName] =
     useState<'SignIn' | 'CreateProfile'>('SignIn');
 
+  const [courierLoaded] = useCourierFonts({
+    CourierPrime_400Regular,
+    CourierPrime_700Bold,
+  });
+
+  const [cinzelLoaded] = useCinzelFonts({
+    Cinzel_400Regular,
+    Cinzel_700Bold,
+    Cinzel_900Black,
+  });
+
+  const fontsLoaded = courierLoaded && cinzelLoaded;
+
+  const handleDeepLink = useCallback(async (url: string) => {
+    if (!url) return;
+
+    const isSupabaseLink =
+      url.includes('access_token=') ||
+      url.includes('refresh_token=') ||
+      url.includes('type=recovery') ||
+      url.includes('code=');
+
+    if (!isSupabaseLink) return;
+
+    const { error } = await supabase.auth.exchangeCodeForSession(url);
+    if (error) {
+      console.error('exchangeCodeForSession error:', error.message);
+      return;
+    }
+
+    console.log('Session restored via deep link');
+    setInitialAuthRouteName('CreateProfile');
+  }, []);
+
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        console.log('PASSWORD_RECOVERY → navigating to NewPassword');
+        navigate('NewPassword');
+      }
+    });
+
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
   useEffect(() => {
     let mounted = true;
 
     const init = async () => {
       try {
-        // 1) Restore session
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) console.error('Session error:', sessionError.message);
-
+        const { data: sessionData } = await supabase.auth.getSession();
         const session = sessionData?.session ?? null;
 
         if (session) {
-          // Persist for native; supabase-js already handles web via localStorage
-          try {
-            await SecureStore.setItemAsync('supabaseSession', JSON.stringify(session));
-          } catch {}
+          await SecureStore.setItemAsync(
+            'supabaseSession',
+            JSON.stringify(session)
+          );
 
-          // 2) Check profile completeness
-          const { data: userData, error: userError } = await supabase
+          const { data: profile } = await supabase
             .from('users')
             .select('id, full_name, main_role_id, city_id')
             .eq('id', session.user.id)
             .single();
 
-          if (
-            userError ||
-            !userData ||
-            !userData.full_name ||
-            !userData.main_role_id ||
-            !userData.city_id
-          ) {
-            setInitialAuthRouteName('CreateProfile');
-          } else {
-            setInitialAuthRouteName('SignIn');
-          }
+          setInitialAuthRouteName('CreateProfile');
         }
 
-        // 3) Handle initial deep link
         const initialUrl = await Linking.getInitialURL();
-        if (initialUrl) await handleDeepLink({ url: initialUrl });
+        if (initialUrl) await handleDeepLink(initialUrl);
 
-        // 4) Subscribe to future deep links
-        const sub = Linking.addEventListener('url', handleDeepLink);
+        const sub = Linking.addEventListener('url', (e) =>
+          handleDeepLink(e.url)
+        );
 
-        if (mounted) {
-          setAppIsReady(true);
-          SplashScreen.hideAsync().catch(() => {});
-        }
+        if (mounted) setAppIsReady(true);
 
-        // Cleanup listener
-        return () => {
-          sub.remove();
-        };
+        return () => sub.remove();
       } catch (e) {
         console.error('App init error:', e);
         if (mounted) setAppIsReady(true);
-        SplashScreen.hideAsync().catch(() => {});
       }
     };
 
@@ -81,34 +125,28 @@ export default function App() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [handleDeepLink]);
 
-  const handleDeepLink = async ({ url }: { url: string }) => {
-    try {
-      const isConfirmationLink = url.includes('code=') || url.includes('access_token=');
-      if (!isConfirmationLink) return;
-
-      const { error } = await supabase.auth.exchangeCodeForSession(url);
-      if (error) {
-        console.error('Exchange error:', error.message);
-        return;
-      }
-
-      // After confirming via email, ensure user completes profile
-      setInitialAuthRouteName('CreateProfile');
-    } catch (err) {
-      console.error('Deep link handling failed:', err);
+  useEffect(() => {
+    if (appIsReady && fontsLoaded) {
+      SplashScreen.hideAsync().catch(() => {});
     }
-  };
+  }, [appIsReady, fontsLoaded]);
 
-  if (!appIsReady) return null;
+  if (!appIsReady || !fontsLoaded) return null;
 
   return (
     <AppErrorBoundary>
       <PaperProvider>
         <SafeAreaProvider>
-          <StatusBar style="dark" />
-          <AppNavigator initialAuthRouteName={initialAuthRouteName} />
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <StatusBar style="dark" />
+            <AuthProvider>
+              <GamificationProvider>
+                <AppNavigator initialAuthRouteName={initialAuthRouteName} />
+              </GamificationProvider>
+            </AuthProvider>
+          </GestureHandlerRootView>
         </SafeAreaProvider>
       </PaperProvider>
     </AppErrorBoundary>

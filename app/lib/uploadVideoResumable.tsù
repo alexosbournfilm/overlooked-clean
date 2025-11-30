@@ -1,0 +1,78 @@
+// app/lib/uploadVideoResumable.ts
+import { supabase } from './supabase';
+// @ts-ignore
+import { Upload } from 'tus-js-client';
+
+const BUCKET = 'films'; // make sure this is your bucket name
+
+function getProjectRefFromUrl(url: string) {
+  // https://<project-ref>.supabase.co
+  const m = url?.match(/^https:\/\/([^.]+)\.supabase\.co/i);
+  if (!m) throw new Error('Could not parse project ref from Supabase URL');
+  return m[1];
+}
+
+/**
+ * Resumable (chunked) upload to Supabase Storage with live progress.
+ * @returns { path } storage object path you can save to submissions.video_path
+ */
+export async function uploadVideoResumableFromUri(opts: {
+  userId: string;
+  localUri: string;          // file://... or blob://... or web URL from picker
+  objectName?: string;       // optional fixed path
+  onProgress?: (pct: number, sent: number, total: number) => void;
+}) {
+  const { userId, localUri, objectName, onProgress } = opts;
+
+  // 1) Turn the local URI into a Blob
+  const resp = await fetch(localUri);
+  const file = await resp.blob();
+  const contentType = file.type || 'video/mp4';
+
+  // 2) Auth + endpoint
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not signed in');
+  const projectRef = getProjectRefFromUrl((supabase as any).url as string);
+  const endpoint = `https://${projectRef}.storage.supabase.co/storage/v1/upload/resumable`;
+
+  // 3) Choose an object path
+  const name = objectName ?? `videos/${userId}/${Date.now()}.mp4`;
+
+  // 4) Upload with TUS
+  await new Promise<void>((resolve, reject) => {
+    const upload = new Upload(file, {
+      endpoint,
+      uploadDataDuringCreation: true,
+      retryDelays: [0, 3000, 5000, 10000, 20000],
+      chunkSize: 6 * 1024 * 1024, // Supabase requires 6MB chunk size
+      headers: {
+        authorization: `Bearer ${session.access_token}`,
+        'x-upsert': 'true',
+      },
+      metadata: {
+        bucketName: BUCKET,
+        objectName: name,
+        contentType,
+        cacheControl: '3600',
+      },
+      onError: (err: any) => reject(err),
+      onProgress: (bytesSent: number, bytesTotal: number) => {
+        if (bytesTotal > 0) {
+          const pct = Math.max(0, Math.min(100, Math.round((bytesSent / bytesTotal) * 100)));
+          onProgress?.(pct, bytesSent, bytesTotal);
+        } else {
+          onProgress?.(0, bytesSent, bytesTotal);
+        }
+      },
+      onSuccess: () => resolve(),
+      removeFingerprintOnSuccess: true,
+    });
+
+    upload.findPreviousUploads().then((prev) => {
+      if (prev?.length) upload.resumeFromPreviousUpload(prev[0]);
+      upload.start();
+    });
+  });
+
+  return { path: name };
+}

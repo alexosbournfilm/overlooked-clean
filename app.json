@@ -1,67 +1,106 @@
 {
   "expo": {
-    "name": "overlooked-clean",
-    "slug": "overlooked-clean",
+    "name": "Overlooked",
+    "slug": "overlooked",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./app/assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
+
     "scheme": "overlooked",
+
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./app/assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.yourname.overlooked",
+
       "infoPlist": {
         "CFBundleURLTypes": [
           {
-            "CFBundleURLSchemes": [
-              "overlooked"
-            ]
+            "CFBundleURLSchemes": ["overlooked"]
           }
         ],
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library for profile uploads."
-      }
+      },
+
+      "associatedDomains": [
+        "applinks:overlooked.cloud",
+        "applinks:www.overlooked.cloud"
+      ]
     },
+
     "android": {
+      "package": "com.yourname.overlooked",
+      "edgeToEdgeEnabled": true,
+
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./app/assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+
       "intentFilters": [
         {
           "action": "VIEW",
+          "category": ["BROWSABLE", "DEFAULT"],
           "data": [
             {
+              "scheme": "overlooked",
+              "host": "callback"
+            },
+            {
+              "scheme": "overlooked",
+              "host": "reset-password"
+            },
+            {
+              "scheme": "overlooked"
+            },
+            {
               "scheme": "https",
-              "host": "your-custom-url.com",
+              "host": "overlooked.cloud",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.overlooked.cloud",
               "pathPrefix": "/"
             }
-          ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
           ]
         }
-      ],
-      "package": "com.yourname.overlooked",
-      "edgeToEdgeEnabled": true
+      ]
     },
+
     "web": {
-      "favicon": "./assets/favicon.png"
+      "bundler": "metro",
+      "name": "Overlooked",
+      "shortName": "Overlooked",
+      "favicon": "./favicon-48x48.png",
+      "display": "standalone",
+      "themeColor": "#ffffff",
+      "backgroundColor": "#ffffff",
+      "startUrl": "/index.html",
+      "scope": "/",
+      "lang": "en"
     },
+
     "extra": {
       "supabaseRedirectUrl": "overlooked://callback",
       "eas": {
-        "projectId": "your-project-id-here"
+        "projectId": "REPLACE_WITH_YOUR_EAS_PROJECT_ID"
       }
     },
+
     "plugins": [
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      "expo-font"
+    ],
+
+    "platforms": ["ios", "android", "web"],
+    "assetBundlePatterns": ["**/*"]
   }
 }
