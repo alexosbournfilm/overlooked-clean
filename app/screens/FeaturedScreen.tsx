@@ -3105,6 +3105,7 @@ const styles = StyleSheet.create({
   audioWrap: {
     width: '100%',
     borderRadius: 10,
+    
     borderWidth: 1,
     borderColor: '#ffffff14',
     backgroundColor: T.card2,

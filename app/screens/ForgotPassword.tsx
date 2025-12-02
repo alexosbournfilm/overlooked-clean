@@ -54,7 +54,11 @@ export default function ForgotPassword() {
     setMessage('');
 
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: 'overlooked://reset-password',
+      // ⭐ UPDATED FOR WEB + MOBILE (Step 5)
+      redirectTo: Platform.select({
+        web: 'https://overlooked.cloud/reset-password',
+        default: 'overlooked://reset-password',
+      }),
     });
 
     setSending(false);
@@ -122,9 +126,7 @@ export default function ForgotPassword() {
             </TouchableOpacity>
 
             {/* MESSAGE */}
-            {message ? (
-              <Text style={styles.message}>{message}</Text>
-            ) : null}
+            {message ? <Text style={styles.message}>{message}</Text> : null}
           </View>
         </View>
       </KeyboardAvoidingView>

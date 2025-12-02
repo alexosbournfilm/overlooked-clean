@@ -49,6 +49,9 @@ export default function App() {
 
   const fontsLoaded = courierLoaded && cinzelLoaded;
 
+  // -------------------------------------------------------------
+  // DEEP LINK HANDLER FIXED — does NOT force CreateProfile
+  // -------------------------------------------------------------
   const handleDeepLink = useCallback(async (url: string) => {
     if (!url) return;
 
@@ -67,9 +70,14 @@ export default function App() {
     }
 
     console.log('Session restored via deep link');
-    setInitialAuthRouteName('CreateProfile');
+
+    // ❌ Before: setInitialAuthRouteName('CreateProfile')
+    // This forced CreateProfile incorrectly after logout
+    // ✅ Now: Let auth flow determine destination
+    setInitialAuthRouteName('SignIn');
   }, []);
 
+  // Password recovery navigation remains unchanged
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
@@ -81,6 +89,10 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  // -------------------------------------------------------------
+  // MAIN APP INIT — FIXED
+  // No longer assumes user needs CreateProfile
+  // -------------------------------------------------------------
   useEffect(() => {
     let mounted = true;
 
@@ -89,6 +101,9 @@ export default function App() {
         const { data: sessionData } = await supabase.auth.getSession();
         const session = sessionData?.session ?? null;
 
+        // -------------------------------
+        // FIX: Only set CreateProfile if profile is incomplete
+        // -------------------------------
         if (session) {
           await SecureStore.setItemAsync(
             'supabaseSession',
@@ -97,13 +112,23 @@ export default function App() {
 
           const { data: profile } = await supabase
             .from('users')
-            .select('id, full_name, main_role_id, city_id')
+            .select('full_name, main_role_id, city_id')
             .eq('id', session.user.id)
-            .single();
+            .maybeSingle();
 
-          setInitialAuthRouteName('CreateProfile');
+          const needsProfile =
+            !profile ||
+            !profile.full_name ||
+            !profile.main_role_id ||
+            !profile.city_id;
+
+          setInitialAuthRouteName(needsProfile ? 'CreateProfile' : 'SignIn');
+        } else {
+          // When logged out, ALWAYS default to SignIn
+          setInitialAuthRouteName('SignIn');
         }
 
+        // Handle deep links
         const initialUrl = await Linking.getInitialURL();
         if (initialUrl) await handleDeepLink(initialUrl);
 

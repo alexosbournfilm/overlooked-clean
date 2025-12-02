@@ -38,7 +38,6 @@
     "android": {
       "package": "com.yourname.overlooked",
       "edgeToEdgeEnabled": true,
-
       "adaptiveIcon": {
         "foregroundImage": "./app/assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -49,27 +48,11 @@
           "action": "VIEW",
           "category": ["BROWSABLE", "DEFAULT"],
           "data": [
-            {
-              "scheme": "overlooked",
-              "host": "callback"
-            },
-            {
-              "scheme": "overlooked",
-              "host": "reset-password"
-            },
-            {
-              "scheme": "overlooked"
-            },
-            {
-              "scheme": "https",
-              "host": "overlooked.cloud",
-              "pathPrefix": "/"
-            },
-            {
-              "scheme": "https",
-              "host": "www.overlooked.cloud",
-              "pathPrefix": "/"
-            }
+            { "scheme": "overlooked", "host": "callback" },
+            { "scheme": "overlooked", "host": "reset-password" },
+
+            { "scheme": "https", "host": "overlooked.cloud", "pathPrefix": "/" },
+            { "scheme": "https", "host": "www.overlooked.cloud", "pathPrefix": "/" }
           ]
         }
       ]
@@ -79,11 +62,11 @@
       "bundler": "metro",
       "name": "Overlooked",
       "shortName": "Overlooked",
-      "favicon": "./favicon-48x48.png",
+      "favicon": "./favicon.png",
       "display": "standalone",
       "themeColor": "#ffffff",
       "backgroundColor": "#ffffff",
-      "startUrl": "/index.html",
+      "startUrl": "/",
       "scope": "/",
       "lang": "en"
     },
@@ -95,11 +78,7 @@
       }
     },
 
-    "plugins": [
-      "expo-secure-store",
-      "expo-font"
-    ],
-
+    "plugins": ["expo-secure-store", "expo-font"],
     "platforms": ["ios", "android", "web"],
     "assetBundlePatterns": ["**/*"]
   }

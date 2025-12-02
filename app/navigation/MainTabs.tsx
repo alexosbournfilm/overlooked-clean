@@ -1044,7 +1044,7 @@ function withTopBar(Component: React.ComponentType<any>) {
       </View>
     );
   };
-  return memo(Wrapped);
+  return Wrapped;
 }
 
 const FeaturedWrapped = withTopBar(FeaturedScreen);
