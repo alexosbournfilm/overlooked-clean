@@ -1,5 +1,3 @@
-// app/navigation/AuthStack.tsx
-
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
@@ -7,7 +5,7 @@ import SignInScreen from '../screens/SignInScreen';
 import SignUpScreen from '../screens/SignUpScreen';
 import ForgotPasswordScreen from '../screens/ForgotPassword';
 import CreateProfileScreen from '../screens/CreateProfileScreen';
-import NewPasswordScreen from '../screens/NewPassword';   // ✅ ADD THIS
+import NewPasswordScreen from '../screens/NewPassword';
 
 const Stack = createNativeStackNavigator();
 
@@ -21,17 +19,13 @@ export default function AuthStack({ initialRouteName }: AuthStackProps) {
       initialRouteName={initialRouteName}
       screenOptions={{ headerShown: false }}
     >
-      {/* AUTH ENTRY */}
       <Stack.Screen name="SignIn" component={SignInScreen} />
       <Stack.Screen name="SignUp" component={SignUpScreen} />
-
-      {/* PASSWORD RESET REQUEST */}
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
 
-      {/* ⭐ PASSWORD RESET HANDLING SCREEN */}
+      {/* ⭐ MUST BE HERE so reset → SignIn always works */}
       <Stack.Screen name="NewPassword" component={NewPasswordScreen} />
 
-      {/* PROFILE CREATION */}
       <Stack.Screen name="CreateProfile" component={CreateProfileScreen} />
     </Stack.Navigator>
   );

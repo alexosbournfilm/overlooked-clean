@@ -39,9 +39,6 @@ export default function NewPassword() {
   const [hasSession, setHasSession] = useState(false);
   const [message, setMessage] = useState("");
 
-  //--------------------------------------------------------------------
-  // FIX: Process Supabase URL → session
-  //--------------------------------------------------------------------
   async function processRecoveryUrl(url: string) {
     try {
       const parsed = new URL(url);
@@ -49,14 +46,13 @@ export default function NewPassword() {
       const type = parsed.searchParams.get("type");
 
       if (code && type === "recovery") {
-        const { error } = await supabase.auth.exchangeCodeForSession(url);
-        if (error) console.log("exchangeCodeForSession:", error);
+        await supabase.auth.exchangeCodeForSession(url);
       }
 
-      // Old format
       if (url.includes("#")) {
         const hash = url.split("#")[1];
         const params = new URLSearchParams(hash);
+
         const access = params.get("access_token");
         const refresh = params.get("refresh_token");
         const t = params.get("type");
@@ -73,17 +69,13 @@ export default function NewPassword() {
     }
   }
 
-  //--------------------------------------------------------------------
-  // Load + validate recovery session
-  //--------------------------------------------------------------------
   useEffect(() => {
     let active = true;
 
-    async function load() {
+    async function init() {
       const initial = await Linking.getInitialURL();
       if (initial) await processRecoveryUrl(initial);
 
-      // Check for session AFTER processing
       const { data } = await supabase.auth.getSession();
       if (active) {
         setHasSession(!!data.session);
@@ -91,7 +83,7 @@ export default function NewPassword() {
       }
     }
 
-    load();
+    init();
 
     const sub = Linking.addEventListener("url", async (e) => {
       await processRecoveryUrl(e.url);
@@ -105,9 +97,6 @@ export default function NewPassword() {
     };
   }, []);
 
-  //--------------------------------------------------------------------
-  // ALWAYS navigate back to sign-in safely
-  //--------------------------------------------------------------------
   const handleBack = () => {
     navigation.reset({
       index: 0,
@@ -115,9 +104,6 @@ export default function NewPassword() {
     });
   };
 
-  //--------------------------------------------------------------------
-  // UPDATE PASSWORD
-  //--------------------------------------------------------------------
   const handleUpdate = async () => {
     if (password.length < 6) {
       setMessage("Password must be at least 6 characters.");
@@ -143,11 +129,7 @@ export default function NewPassword() {
     }, 1200);
   };
 
-  //--------------------------------------------------------------------
-  // UI STATES
-  //--------------------------------------------------------------------
-
-  // 1) STILL restoring URL/session
+  // 1. LOADING
   if (restoring) {
     return (
       <SafeAreaView
@@ -164,7 +146,7 @@ export default function NewPassword() {
     );
   }
 
-  // 2) No valid recovery session found
+  // 2. INVALID OR EXPIRED LINK
   if (!hasSession) {
     return (
       <SafeAreaView
@@ -173,7 +155,6 @@ export default function NewPassword() {
           justifyContent: "center",
           alignItems: "center",
           backgroundColor: T.bg,
-          padding: 30,
         }}
       >
         <Text style={{ color: T.text, fontSize: 18, textAlign: "center" }}>
@@ -181,10 +162,7 @@ export default function NewPassword() {
         </Text>
 
         <TouchableOpacity
-          style={[
-            styles.button,
-            { marginTop: 22, width: 200, alignSelf: "center" },
-          ]}
+          style={[styles.button, { marginTop: 20, width: 200 }]}
           onPress={handleBack}
         >
           <Text style={styles.buttonText}>Back to Sign In</Text>
@@ -193,7 +171,7 @@ export default function NewPassword() {
     );
   }
 
-  // 3) Normal UI
+  // 3. MAIN UI
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
       <KeyboardAvoidingView
@@ -213,9 +191,7 @@ export default function NewPassword() {
 
           <View style={styles.card}>
             <Text style={styles.title}>Set a New Password</Text>
-            <Text style={styles.subtitle}>
-              Enter your new password and confirm.
-            </Text>
+            <Text style={styles.subtitle}>Enter your new password.</Text>
 
             <View style={styles.inputWrap}>
               <Ionicons name="lock-closed" size={16} color={T.mute} />

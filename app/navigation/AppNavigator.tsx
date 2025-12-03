@@ -77,10 +77,18 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
 
         const lower = url.toLowerCase();
 
+        // Payment redirect
         if (lower.includes('create-profile')) {
           await AsyncStorage.setItem(STRIPE_OK_KEY, '1');
           if (mounted) setAllowCreateOnce(true);
           await markLocalPaid();
+        }
+
+        // ⭐ New: detect password-reset route
+        if (lower.includes('reset-password')) {
+          setInitialState({
+            routes: [{ name: 'NewPassword' }],
+          });
         }
       } catch {}
     };
@@ -140,6 +148,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     const restore = async () => {
       if (!ready) return;
 
+      // If user not logged in or profile incomplete → do NOT restore
       if (!userId || !profileComplete) {
         setInitialState(undefined);
         setNavStateReady(true);
@@ -148,6 +157,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
 
       try {
         const initialUrl = await RNLinking.getInitialURL();
+
         let isDeepLink = false;
 
         if (initialUrl) {
@@ -157,7 +167,10 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
           } catch {}
         }
 
-        if (!isDeepLink) {
+        // If deep link → do NOT restore old nav state
+        if (isDeepLink) {
+          setInitialState(undefined);
+        } else {
           const saved = await AsyncStorage.getItem(navKeyFor(userId));
           if (saved && mounted) {
             try {
@@ -308,7 +321,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
       }}
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {/* ⭐ ALWAYS REGISTER NEWPASSWORD SCREEN */}
+        {/* ALWAYS REGISTER NEWPASSWORD SCREEN */}
         <Stack.Screen name="NewPassword" component={NewPassword} />
 
         {/* NOT LOGGED IN */}
