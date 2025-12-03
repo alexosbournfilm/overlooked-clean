@@ -68,7 +68,11 @@
       "backgroundColor": "#ffffff",
       "startUrl": "/",
       "scope": "/",
-      "lang": "en"
+      "lang": "en",
+
+      "static": {
+        "copy": ["vercel.json"]
+      }
     },
 
     "extra": {
