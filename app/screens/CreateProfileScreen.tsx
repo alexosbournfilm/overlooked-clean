@@ -11,11 +11,14 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  ToastAndroid,
   ScrollView,
   Modal,
   FlatList,
 } from 'react-native';
+
+// 👉 ONLY import ToastAndroid conditionally (Android only)
+const Toast = Platform.OS === 'android' ? require('react-native').ToastAndroid : null;
+
 import * as ImagePicker from 'expo-image-picker';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from '../lib/supabase';
@@ -25,7 +28,7 @@ import { useAuth } from '../context/AuthProvider';
 import { useGamification } from '../context/GamificationContext';
 import COLORS from '../theme/colors';
 
-// ---------------- THEME (matching MainTabs) ----------------
+// ---------------- THEME ----------------
 const DARK_BG = '#0D0D0D';
 const ELEVATED = '#171717';
 const TEXT_IVORY = '#EDEBE6';
@@ -134,7 +137,7 @@ export default function CreateProfileScreen() {
   };
 
   // ---------------------------------------------------------
-  // CITY SEARCH with PERFECT ORDERING
+  // CITY SEARCH
   // ---------------------------------------------------------
   const fetchCities = useCallback(async (text: string) => {
     if (!text || text.trim().length < 1) return;
@@ -158,7 +161,6 @@ export default function CreateProfileScreen() {
 
     if (!data) return;
 
-    // --- SMART SORT: exact → prefix → contains ---
     const exactMatches = data.filter((c) =>
       c.name.toLowerCase() === query.toLowerCase()
     );
@@ -231,13 +233,19 @@ export default function CreateProfileScreen() {
     }
   };
 
+  // ---------------------------------------------------------
+  // REPLACE ToastAndroid WITH SAFE CROSS-PLATFORM TOAST
+  // ---------------------------------------------------------
   const showToast = (msg: string) => {
-    if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.SHORT);
-    else Alert.alert(msg);
+    if (Platform.OS === 'android' && Toast) {
+      Toast.show(msg, Toast.SHORT);
+    } else {
+      Alert.alert(msg);
+    }
   };
 
   // ---------------------------------------------------------
-  // SUBMIT PROFILE (LOGIC UNTOUCHED)
+  // SUBMIT PROFILE
   // ---------------------------------------------------------
   const handleSubmit = async () => {
     if (!fullName || !mainRole || !cityId) {
@@ -298,15 +306,9 @@ export default function CreateProfileScreen() {
       upserted?.city_id
     );
 
-    if (!beforeComplete && afterComplete) {
-      await refreshProfile();
-      await refreshGamification();
-    } else {
-      await refreshProfile();
-      await refreshGamification();
-    }
+    await refreshProfile();
+    await refreshGamification();
 
-    // Polling fallback
     const start = Date.now();
     let gate =
       profileComplete ||
@@ -428,7 +430,7 @@ export default function CreateProfileScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* ---------------- CITY SEARCH MODAL ---------------- */}
+      {/* ---------------- CITY MODAL ---------------- */}
       <Modal
         visible={searchModalVisible}
         animationType="slide"
@@ -483,7 +485,7 @@ export default function CreateProfileScreen() {
         </View>
       </Modal>
 
-      {/* ---------------- ROLE SEARCH MODAL ---------------- */}
+      {/* ---------------- ROLE MODAL ---------------- */}
       <Modal
         visible={roleSearchModalVisible}
         animationType="slide"
@@ -542,7 +544,7 @@ export default function CreateProfileScreen() {
 }
 
 // ---------------------------------------------------------
-// STYLES (MATCHING MAINTABS AESTHETIC)
+// STYLES
 // ---------------------------------------------------------
 const styles = StyleSheet.create({
   container: {

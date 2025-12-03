@@ -25,25 +25,17 @@ module.exports = async (env, argv) => {
     }),
   ];
 
-  // Allow importing .html from node_modules (react-native-web-webview)
+  // Allow importing .html (react-native-web-webview)
   config.module.rules.push({
     test: /\.html$/i,
     use: 'raw-loader',
   });
 
-  // ✅ Web-only shims (NO alias for plain 'react-native-web')
+  // Vercel cannot process custom rewrites for react-native-web.
+
   config.resolve.alias = {
     ...(config.resolve.alias || {}),
-    // ToastAndroid shims for web
-    'react-native-web/dist/exports/ToastAndroid': path.resolve(
-      __dirname,
-      'web-shims/ToastAndroid.web.js'
-    ),
-    'react-native-web/dist/index': path.resolve(
-      __dirname,
-      'web-shims/react-native-web-extended.js'
-    ),
-    // Quiet react-native-paper’s first-try icon import
+    // Keep only this react-native-vector-icons override:
     '@react-native-vector-icons/material-design-icons':
       '@expo/vector-icons/MaterialCommunityIcons',
   };
