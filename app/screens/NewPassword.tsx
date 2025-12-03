@@ -1,4 +1,3 @@
-// app/screens/NewPassword.tsx
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -45,7 +44,6 @@ export default function NewPassword() {
   // --------------------------------------------------------------------
   async function handleFullUrlLogin(fullUrl: string) {
     try {
-      // Use the full URL, NOT just ?code=
       const { data, error } = await supabase.auth.exchangeCodeForSession(
         fullUrl
       );
@@ -70,9 +68,6 @@ export default function NewPassword() {
       try {
         const url = new URL(rawUrl);
 
-        // ----------------------------------------
-        // NEW WEB FORMAT: ?code=...&type=recovery
-        // ----------------------------------------
         const code = url.searchParams.get("code");
         const type = url.searchParams.get("type");
 
@@ -82,9 +77,7 @@ export default function NewPassword() {
           return;
         }
 
-        // ----------------------------------------
-        // OLD HASH FORMAT: #access_token=...
-        // ----------------------------------------
+        // OLD HASH FORMAT
         if (rawUrl.includes("#")) {
           const hash = rawUrl.split("#")[1];
           const params = new URLSearchParams(hash);
@@ -107,10 +100,7 @@ export default function NewPassword() {
       mounted && setRestoring(false);
     };
 
-    // 1. Initial load
     Linking.getInitialURL().then((u) => processUrl(u));
-
-    // 2. App already open
     const sub = Linking.addEventListener("url", (e) => processUrl(e.url));
 
     return () => {
@@ -153,6 +143,20 @@ export default function NewPassword() {
   };
 
   // --------------------------------------------------------------------
+  // ⭐ BACK BUTTON FIX: ALWAYS GO TO SIGNIN
+  // --------------------------------------------------------------------
+  const handleBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "SignIn" }],
+      });
+    }
+  };
+
+  // --------------------------------------------------------------------
   // LOADING UI DURING SESSION RESTORATION
   // --------------------------------------------------------------------
   if (restoring) {
@@ -186,10 +190,8 @@ export default function NewPassword() {
             { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 32 },
           ]}
         >
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-          >
+          {/* ⭐ FIX APPLIED HERE */}
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <Ionicons name="chevron-back" size={20} color={T.sub} />
             <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
