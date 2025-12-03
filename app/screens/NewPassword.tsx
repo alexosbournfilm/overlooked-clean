@@ -15,16 +15,13 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 
-const DARK_BG = "#0D0D0D";
-const T = {
-  bg: DARK_BG,
-  card: "#111111",
-  text: "#EDEBE6",
-  sub: "#D0CEC8",
-  mute: "#A7A6A2",
-  accent: "#C6A664",
-  border: "#2E2E2E",
-};
+const DARK_BG = "#000000";
+const CARD_BG = "#0B0B0B";
+const GOLD = "#C6A664";
+const TEXT = "#F5F3EF";
+const SUB = "#A9A7A3";
+const BORDER = "#262626";
+
 const SYSTEM_SANS =
   Platform.select({ ios: "System", android: "Roboto", web: undefined }) ||
   undefined;
@@ -34,6 +31,7 @@ export default function NewPassword() {
   const insets = useSafeAreaInsets();
 
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [restoring, setRestoring] = useState(true);
   const [hasSession, setHasSession] = useState(false);
@@ -42,10 +40,9 @@ export default function NewPassword() {
   async function processRecoveryUrl(url: string) {
     try {
       const parsed = new URL(url);
-      const code = parsed.searchParams.get("code");
       const type = parsed.searchParams.get("type");
 
-      if (code && type === "recovery") {
+      if (type === "recovery") {
         await supabase.auth.exchangeCodeForSession(url);
       }
 
@@ -55,9 +52,8 @@ export default function NewPassword() {
 
         const access = params.get("access_token");
         const refresh = params.get("refresh_token");
-        const t = params.get("type");
 
-        if (t === "recovery" && access && refresh) {
+        if (access && refresh && params.get("type") === "recovery") {
           await supabase.auth.setSession({
             access_token: access,
             refresh_token: refresh,
@@ -73,8 +69,8 @@ export default function NewPassword() {
     let active = true;
 
     async function init() {
-      const initial = await Linking.getInitialURL();
-      if (initial) await processRecoveryUrl(initial);
+      const url = await Linking.getInitialURL();
+      if (url) await processRecoveryUrl(url);
 
       const { data } = await supabase.auth.getSession();
       if (active) {
@@ -105,75 +101,69 @@ export default function NewPassword() {
   };
 
   const handleUpdate = async () => {
+    setMessage("");
+
     if (password.length < 6) {
       setMessage("Password must be at least 6 characters.");
       return;
     }
 
+    if (password !== confirmPassword) {
+      setMessage("Passwords do not match.");
+      return;
+    }
+
+    setLoading(true);
+
     const { error } = await supabase.auth.updateUser({
       password: password.trim(),
     });
+
+    setLoading(false);
 
     if (error) {
       setMessage(error.message);
       return;
     }
 
-    setMessage("Password updated! Redirecting…");
+    setMessage("Password updated successfully.");
 
     setTimeout(() => {
       navigation.reset({
         index: 0,
         routes: [{ name: "SignIn" }],
       });
-    }, 1200);
+    }, 1000);
   };
 
-  // 1. LOADING
+  // ------------------------------- LOADING -------------------------------
   if (restoring) {
     return (
-      <SafeAreaView
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: T.bg,
-        }}
-      >
-        <ActivityIndicator size="large" color={T.accent} />
-        <Text style={{ color: T.sub, marginTop: 12 }}>Preparing reset…</Text>
+      <SafeAreaView style={styles.fullCenter}>
+        <ActivityIndicator size="large" color={GOLD} />
+        <Text style={styles.loadingText}>Preparing reset…</Text>
       </SafeAreaView>
     );
   }
 
-  // 2. INVALID OR EXPIRED LINK
+  // --------------------------- INVALID OR EXPIRED ------------------------
   if (!hasSession) {
     return (
-      <SafeAreaView
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: T.bg,
-        }}
-      >
-        <Text style={{ color: T.text, fontSize: 18, textAlign: "center" }}>
+      <SafeAreaView style={styles.fullCenter}>
+        <Text style={styles.invalidText}>
           Your password reset link is invalid or expired.
         </Text>
 
-        <TouchableOpacity
-          style={[styles.button, { marginTop: 20, width: 200 }]}
-          onPress={handleBack}
-        >
-          <Text style={styles.buttonText}>Back to Sign In</Text>
+        <TouchableOpacity onPress={handleBack} style={styles.button}>
+          <Text style={styles.buttonText}>BACK TO SIGN IN</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
   }
 
-  // 3. MAIN UI
+  // ------------------------------- MAIN UI -------------------------------
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -181,39 +171,54 @@ export default function NewPassword() {
         <View
           style={[
             styles.container,
-            { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 32 },
+            {
+              paddingTop: insets.top + 20,
+              paddingBottom: insets.bottom + 20,
+            },
           ]}
         >
           <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={20} color={T.sub} />
-            <Text style={styles.backText}>Back</Text>
+            <Ionicons name="chevron-back" size={18} color={SUB} />
+            <Text style={styles.backLabel}>Back</Text>
           </TouchableOpacity>
 
           <View style={styles.card}>
             <Text style={styles.title}>Set a New Password</Text>
-            <Text style={styles.subtitle}>Enter your new password.</Text>
+            <Text style={styles.subtitle}>Enter and confirm your password.</Text>
 
             <View style={styles.inputWrap}>
-              <Ionicons name="lock-closed" size={16} color={T.mute} />
+              <Ionicons name="lock-closed" size={16} color={SUB} />
               <TextInput
                 style={styles.input}
                 placeholder="New password"
-                placeholderTextColor={T.mute}
+                placeholderTextColor={SUB}
                 secureTextEntry
                 value={password}
                 onChangeText={setPassword}
               />
             </View>
 
+            <View style={styles.inputWrap}>
+              <Ionicons name="shield-checkmark" size={16} color={SUB} />
+              <TextInput
+                style={styles.input}
+                placeholder="Confirm password"
+                placeholderTextColor={SUB}
+                secureTextEntry
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+              />
+            </View>
+
             <TouchableOpacity
               onPress={handleUpdate}
               disabled={loading}
-              style={[styles.button, loading && { opacity: 0.7 }]}
+              style={[styles.button, loading && { opacity: 0.6 }]}
             >
               {loading ? (
                 <ActivityIndicator color={DARK_BG} />
               ) : (
-                <Text style={styles.buttonText}>Update Password</Text>
+                <Text style={styles.buttonText}>UPDATE PASSWORD</Text>
               )}
             </TouchableOpacity>
 
@@ -226,84 +231,104 @@ export default function NewPassword() {
 }
 
 const styles = StyleSheet.create({
+  fullCenter: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: DARK_BG,
+  },
+  loadingText: {
+    color: SUB,
+    marginTop: 12,
+    fontFamily: SYSTEM_SANS,
+  },
+  invalidText: {
+    color: TEXT,
+    fontSize: 18,
+    textAlign: "center",
+    marginBottom: 20,
+    paddingHorizontal: 30,
+    fontFamily: SYSTEM_SANS,
+  },
   container: {
     flex: 1,
-    paddingHorizontal: 22,
-    alignItems: "center",
-    backgroundColor: T.bg,
+    paddingHorizontal: 24,
   },
   backButton: {
-    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 20,
   },
-  backText: {
-    color: T.sub,
+  backLabel: {
+    color: SUB,
     fontFamily: SYSTEM_SANS,
-    fontWeight: "600",
-    marginLeft: 4,
+    marginLeft: 6,
+    fontSize: 15,
   },
   card: {
-    width: "100%",
-    maxWidth: 420,
-    backgroundColor: T.card,
+    backgroundColor: CARD_BG,
+    padding: 26,
     borderRadius: 18,
-    padding: 22,
+    borderColor: BORDER,
     borderWidth: 1,
-    borderColor: T.border,
+    width: "100%",
+    alignSelf: "center",
+    maxWidth: 420,
+    shadowColor: "#000",
+    shadowOpacity: 0.4,
+    shadowRadius: 30,
   },
   title: {
-    fontSize: 20,
-    color: T.text,
-    fontWeight: "900",
-    textAlign: "center",
+    color: TEXT,
+    fontSize: 22,
+    fontWeight: "800",
     marginBottom: 6,
+    textAlign: "center",
     fontFamily: SYSTEM_SANS,
   },
   subtitle: {
-    color: T.sub,
-    fontSize: 14,
+    color: SUB,
     textAlign: "center",
-    marginBottom: 18,
+    marginBottom: 20,
+    fontSize: 14,
     fontFamily: SYSTEM_SANS,
   },
   inputWrap: {
     flexDirection: "row",
-    gap: 10,
+    alignItems: "center",
+    borderColor: BORDER,
     borderWidth: 1,
-    borderColor: T.border,
+    backgroundColor: "#0A0A0A",
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: "#0C0C0C",
-    marginBottom: 16,
+    paddingVertical: 12,
+    marginBottom: 14,
   },
   input: {
     flex: 1,
-    color: T.text,
+    color: TEXT,
+    marginLeft: 10,
     fontSize: 15,
     fontFamily: SYSTEM_SANS,
   },
   button: {
-    backgroundColor: T.accent,
+    backgroundColor: GOLD,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
-    marginTop: 4,
+    marginTop: 6,
   },
   buttonText: {
     color: DARK_BG,
-    fontSize: 15,
     fontWeight: "900",
+    fontSize: 15,
     fontFamily: SYSTEM_SANS,
-    textTransform: "uppercase",
   },
   message: {
-    marginTop: 16,
-    color: T.sub,
+    marginTop: 14,
     textAlign: "center",
+    color: SUB,
+    fontSize: 14,
     fontFamily: SYSTEM_SANS,
-    fontSize: 13.5,
   },
 });

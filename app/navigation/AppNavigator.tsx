@@ -31,58 +31,56 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   const [initialState, setInitialState] = useState<InitialState | undefined>();
   const [navStateReady, setNavStateReady] = useState(false);
 
+  // ⭐ The ONLY flag that tells us if user is in password reset mode
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
-  // -----------------------------
-  // 1. ABSOLUTELY CRITICAL:
-  // Detect Supabase recovery links BEFORE anything else runs
-  // -----------------------------
-  useEffect(() => {
-    const handleUrl = async (url?: string | null) => {
-      try {
-        const u = url ?? (await RNLinking.getInitialURL());
-        if (!u) return;
-
-        const lower = u.toLowerCase();
-
-        // ✨ REAL Supabase reset patterns
-        const isSupabaseRecovery =
-          lower.includes('type=recovery') ||
-          lower.includes('/auth/v1/verify') ||
-          lower.includes('access_token') && lower.includes('recovery') ||
-          lower.includes('reset-password');
-
-        if (isSupabaseRecovery) {
-          // Force navigation to the NewPassword screen
-          setIsPasswordRecovery(true);
-          setInitialState({
-            routes: [{ name: 'NewPassword' }],
-          });
-        }
-      } catch (e) {
-        console.log('Recovery parse error:', e);
-      }
-    };
-
-    handleUrl(null);
-
-    const sub = RNLinking.addEventListener('url', (event) => {
-      handleUrl(event.url);
-    });
-
-    return () => sub.remove();
-  }, []);
-
-  // -----------------------------
-  // 2. Restore nav state ONLY if not password recovery
-  // -----------------------------
+  /* -----------------------------------------------------------------------
+     1. DETECT SUPABASE PASSWORD-RESET LINKS BEFORE NAVIGATION LOADS
+     ----------------------------------------------------------------------- */
   useEffect(() => {
     let mounted = true;
 
-    const restore = async () => {
+    const detectRecovery = async (incoming?: string | null) => {
+      const url = incoming ?? (await RNLinking.getInitialURL());
+      if (!url || !mounted) return;
+
+      const lower = url.toLowerCase();
+
+      const isRecovery =
+        lower.includes("type=recovery") ||
+        lower.includes("/auth/v1/verify") ||
+        (lower.includes("access_token") && lower.includes("recovery")) ||
+        lower.includes("reset-password");
+
+      if (isRecovery) {
+        setIsPasswordRecovery(true);
+        setInitialState({
+          routes: [{ name: "NewPassword" }],
+        });
+      }
+    };
+
+    detectRecovery(null);
+
+    const sub = RNLinking.addEventListener("url", (e) => {
+      detectRecovery(e.url);
+    });
+
+    return () => {
+      mounted = false;
+      sub.remove();
+    };
+  }, []);
+
+  /* -----------------------------------------------------------------------
+     2. RESTORE NAVIGATION STATE ONLY WHEN NOT IN RECOVERY FLOW
+     ----------------------------------------------------------------------- */
+  useEffect(() => {
+    let active = true;
+
+    const restoreState = async () => {
       if (!ready) return;
 
-      // If recovery link → DO NOT restore past navigation
       if (isPasswordRecovery) {
         setNavStateReady(true);
         return;
@@ -96,25 +94,25 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
 
       try {
         const saved = await AsyncStorage.getItem(`NAVIGATION_STATE_v2:${userId}`);
-        if (saved && mounted) {
+        if (saved && active) {
           try {
             setInitialState(JSON.parse(saved));
           } catch {}
         }
       } finally {
-        if (mounted) setNavStateReady(true);
+        if (active) setNavStateReady(true);
       }
     };
 
-    restore();
+    restoreState();
     return () => {
-      mounted = false;
+      active = false;
     };
   }, [ready, userId, profileComplete, isPasswordRecovery]);
 
-  // -----------------------------
-  // 3. Subscription status watcher (unchanged)
-  // -----------------------------
+  /* -----------------------------------------------------------------------
+     3. SUBSCRIPTION STATUS CHECK
+     ----------------------------------------------------------------------- */
   const [isPaid, setIsPaid] = useState<boolean | null>(null);
   const [expired, setExpired] = useState<boolean>(false);
 
@@ -129,9 +127,9 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
 
     (async () => {
       const { data } = await supabase
-        .from('users')
-        .select('subscription_status, grandfathered, premium_access_expires_at')
-        .eq('id', userId)
+        .from("users")
+        .select("subscription_status, grandfathered, premium_access_expires_at")
+        .eq("id", userId)
         .single();
 
       if (!mounted) return;
@@ -142,13 +140,13 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
         : null;
 
       const isExpired = exp ? exp <= now : false;
-      const status = (data?.subscription_status || '').toLowerCase();
+      const status = (data?.subscription_status || "").toLowerCase();
 
       const paid =
         !isExpired &&
-        (status === 'active' ||
-          status === 'trialing' ||
-          status === 'past_due' ||
+        (status === "active" ||
+          status === "trialing" ||
+          status === "past_due" ||
           data?.grandfathered);
 
       setExpired(isExpired);
@@ -160,19 +158,38 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     };
   }, [userId]);
 
-  // Auto signout on expiration
+  /* -----------------------------------------------------------------------
+     4. AUTO SIGN OUT IF SUBSCRIPTION EXPIRED
+     ----------------------------------------------------------------------- */
   useEffect(() => {
     if (userId && expired) {
       supabase.auth.signOut().catch(() => {});
     }
   }, [userId, expired]);
 
-  // -----------------------------
-  // 4. Loading screen
-  // -----------------------------
+  /* -----------------------------------------------------------------------
+     5. FIX SIGN-OUT RESETTING TO INVALID RESET STATE
+     ----------------------------------------------------------------------- */
+  useEffect(() => {
+    if (!userId) {
+      setIsPasswordRecovery(false);
+      setInitialState(undefined);
+    }
+  }, [userId]);
+
+  /* -----------------------------------------------------------------------
+     6. GLOBAL LOADING SCREEN
+     ----------------------------------------------------------------------- */
   if (!ready || !navStateReady || (userId && isPaid === null)) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: COLORS.background,
+        }}
+      >
         <ActivityIndicator size="large" color={COLORS.primary} />
       </View>
     );
@@ -180,10 +197,9 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
 
   const mustShowPaywall = false;
 
-  // -----------------------------
-  // 5. MAIN NAVIGATION
-  // Password recovery overrides ALL navigation branches
-  // -----------------------------
+  /* -----------------------------------------------------------------------
+     7. MAIN NAVIGATION
+     ----------------------------------------------------------------------- */
   return (
     <NavigationContainer
       ref={(nav) => {
@@ -196,12 +212,10 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
 
-        {/* ALWAYS REGISTER RESET SCREEN */}
+        {/* ALWAYS available */}
         <Stack.Screen name="NewPassword" component={NewPassword} />
 
-        {/* PRIORITY RULE:
-            If password recovery → DO NOT SHOW ANY OTHER SCREENS
-        */}
+        {/* ⭐ ABSOLUTE PRIORITY: if recovery → block everything else */}
         {isPasswordRecovery ? null : !userId ? (
           <>
             <Stack.Screen name="Auth">
