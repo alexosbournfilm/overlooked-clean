@@ -15,6 +15,8 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 
+/* --------------------------- THEME --------------------------- */
+
 const DARK_BG = "#000000";
 const CARD_BG = "#0B0B0B";
 const GOLD = "#C6A664";
@@ -25,6 +27,8 @@ const BORDER = "#262626";
 const SYSTEM_SANS =
   Platform.select({ ios: "System", android: "Roboto", web: undefined }) ||
   undefined;
+
+/* --------------------------- COMPONENT --------------------------- */
 
 export default function NewPassword() {
   const navigation = useNavigation<any>();
@@ -37,15 +41,20 @@ export default function NewPassword() {
   const [hasSession, setHasSession] = useState(false);
   const [message, setMessage] = useState("");
 
+  /* --------------------------------------------------------
+        PARSE AND EXTRACT RECOVERY TOKENS FROM URL
+     -------------------------------------------------------- */
   async function processRecoveryUrl(url: string) {
     try {
       const parsed = new URL(url);
       const type = parsed.searchParams.get("type");
 
+      // Format 1 — query params (?type=recovery&code=...)
       if (type === "recovery") {
         await supabase.auth.exchangeCodeForSession(url);
       }
 
+      // Format 2 — hash fragments (#access_token=...)
       if (url.includes("#")) {
         const hash = url.split("#")[1];
         const params = new URLSearchParams(hash);
@@ -65,12 +74,18 @@ export default function NewPassword() {
     }
   }
 
+  /* --------------------------------------------------------
+        INITIAL LOAD — HANDLE RECOVERY LINK
+     -------------------------------------------------------- */
   useEffect(() => {
     let active = true;
 
     async function init() {
       const url = await Linking.getInitialURL();
       if (url) await processRecoveryUrl(url);
+
+      // 💡 wait for Supabase to hydrate session
+      await new Promise((res) => setTimeout(res, 150));
 
       const { data } = await supabase.auth.getSession();
       if (active) {
@@ -81,8 +96,10 @@ export default function NewPassword() {
 
     init();
 
+    // Handle URL events (mobile/web)
     const sub = Linking.addEventListener("url", async (e) => {
       await processRecoveryUrl(e.url);
+
       const { data } = await supabase.auth.getSession();
       if (active) setHasSession(!!data.session);
     });
@@ -93,15 +110,24 @@ export default function NewPassword() {
     };
   }, []);
 
+  /* --------------------------------------------------------
+        BUTTON HANDLERS
+     -------------------------------------------------------- */
+
   const handleBack = () => {
     navigation.reset({
       index: 0,
-      routes: [{ name: "SignIn" }],
+      routes: [{ name: "Auth" }],
     });
   };
 
   const handleUpdate = async () => {
     setMessage("");
+
+    if (!password || !confirmPassword) {
+      setMessage("Please fill out both fields.");
+      return;
+    }
 
     if (password.length < 6) {
       setMessage("Password must be at least 6 characters.");
@@ -115,28 +141,36 @@ export default function NewPassword() {
 
     setLoading(true);
 
-    const { error } = await supabase.auth.updateUser({
-      password: password.trim(),
-    });
-
-    setLoading(false);
-
-    if (error) {
-      setMessage(error.message);
-      return;
-    }
-
-    setMessage("Password updated successfully.");
-
-    setTimeout(() => {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "SignIn" }],
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: password.trim(),
       });
-    }, 1000);
+
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+
+      setMessage("Password updated! Redirecting…");
+
+      setTimeout(() => {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: "Auth" }],
+        });
+      }, 900);
+    } catch (err: any) {
+      setMessage(err.message || "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // ------------------------------- LOADING -------------------------------
+  /* --------------------------------------------------------
+        UI STATES
+     -------------------------------------------------------- */
+
+  // Loading screen
   if (restoring) {
     return (
       <SafeAreaView style={styles.fullCenter}>
@@ -146,8 +180,8 @@ export default function NewPassword() {
     );
   }
 
-  // --------------------------- INVALID OR EXPIRED ------------------------
-  if (!hasSession) {
+  // Invalid or expired link
+  if (!restoring && !hasSession) {
     return (
       <SafeAreaView style={styles.fullCenter}>
         <Text style={styles.invalidText}>
@@ -161,7 +195,10 @@ export default function NewPassword() {
     );
   }
 
-  // ------------------------------- MAIN UI -------------------------------
+  /* --------------------------------------------------------
+        MAIN UI
+     -------------------------------------------------------- */
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
       <KeyboardAvoidingView
@@ -229,6 +266,8 @@ export default function NewPassword() {
     </SafeAreaView>
   );
 }
+
+/* --------------------------- STYLES --------------------------- */
 
 const styles = StyleSheet.create({
   fullCenter: {

@@ -1,28 +1,30 @@
-import React, { useEffect, useState } from 'react';
+// app/navigation/AppNavigator.tsx
+
+import React, { useEffect, useState } from "react";
 import {
   NavigationContainer,
   type InitialState,
-} from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { View, ActivityIndicator, Linking as RNLinking } from 'react-native';
+} from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { View, ActivityIndicator, Linking as RNLinking } from "react-native";
 
-import AuthStack from './AuthStack';
-import MainTabs from './MainTabs';
-import { navigationRef, setNavigatorReady } from './navigationRef';
-import { linking } from './linking';
-import { useAuth } from '../context/AuthProvider';
-import { supabase } from '../lib/supabase';
-import COLORS from '../theme/colors';
+import AuthStack from "./AuthStack";
+import MainTabs from "./MainTabs";
+import { navigationRef, setNavigatorReady } from "./navigationRef";
+import { linking } from "./linking";
+import { useAuth } from "../context/AuthProvider";
+import { supabase } from "../lib/supabase";
+import COLORS from "../theme/colors";
 
-import PaywallScreen from '../screens/PaywallScreen';
-import PaySuccessScreen from '../screens/PaySuccessScreen';
-import NewPassword from '../screens/NewPassword';
+import PaywallScreen from "../screens/PaywallScreen";
+import PaySuccessScreen from "../screens/PaySuccessScreen";
+import NewPassword from "../screens/NewPassword";
 
 const Stack = createNativeStackNavigator();
 
 type Props = {
-  initialAuthRouteName: 'SignIn' | 'CreateProfile';
+  initialAuthRouteName: "SignIn" | "CreateProfile";
 };
 
 export default function AppNavigator({ initialAuthRouteName }: Props) {
@@ -31,11 +33,11 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   const [initialState, setInitialState] = useState<InitialState | undefined>();
   const [navStateReady, setNavStateReady] = useState(false);
 
-  // ⭐ The ONLY flag that tells us if user is in password reset mode
+  // Global lock for password recovery mode
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   /* -----------------------------------------------------------------------
-     1. DETECT SUPABASE PASSWORD-RESET LINKS BEFORE NAVIGATION LOADS
+     1. DETECT RECOVERY LINKS BEFORE NAVIGATION LOADS
      ----------------------------------------------------------------------- */
   useEffect(() => {
     let mounted = true;
@@ -48,15 +50,19 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
 
       const isRecovery =
         lower.includes("type=recovery") ||
+        lower.includes("reset-password") ||
         lower.includes("/auth/v1/verify") ||
-        (lower.includes("access_token") && lower.includes("recovery")) ||
-        lower.includes("reset-password");
+        (lower.includes("access_token") && lower.includes("recovery"));
 
       if (isRecovery) {
         setIsPasswordRecovery(true);
-        setInitialState({
+
+        // SAFE & valid minimal NavigationState
+        const state: InitialState = {
           routes: [{ name: "NewPassword" }],
-        });
+        };
+
+        setInitialState(state);
       }
     };
 
@@ -73,12 +79,12 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   }, []);
 
   /* -----------------------------------------------------------------------
-     2. RESTORE NAVIGATION STATE ONLY WHEN NOT IN RECOVERY FLOW
+     2. RESTORE NAVIGATION STATE (ONLY IF NOT RECOVERY)
      ----------------------------------------------------------------------- */
   useEffect(() => {
     let active = true;
 
-    const restoreState = async () => {
+    const restore = async () => {
       if (!ready) return;
 
       if (isPasswordRecovery) {
@@ -93,28 +99,28 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
       }
 
       try {
-        const saved = await AsyncStorage.getItem(`NAVIGATION_STATE_v2:${userId}`);
+        const saved = await AsyncStorage.getItem(
+          `NAVIGATION_STATE_v2:${userId}`
+        );
         if (saved && active) {
-          try {
-            setInitialState(JSON.parse(saved));
-          } catch {}
+          setInitialState(JSON.parse(saved));
         }
       } finally {
         if (active) setNavStateReady(true);
       }
     };
 
-    restoreState();
+    restore();
     return () => {
       active = false;
     };
   }, [ready, userId, profileComplete, isPasswordRecovery]);
 
   /* -----------------------------------------------------------------------
-     3. SUBSCRIPTION STATUS CHECK
+     3. SUBSCRIPTION WATCHER
      ----------------------------------------------------------------------- */
   const [isPaid, setIsPaid] = useState<boolean | null>(null);
-  const [expired, setExpired] = useState<boolean>(false);
+  const [expired, setExpired] = useState(false);
 
   useEffect(() => {
     if (!userId) {
@@ -128,7 +134,9 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     (async () => {
       const { data } = await supabase
         .from("users")
-        .select("subscription_status, grandfathered, premium_access_expires_at")
+        .select(
+          "subscription_status, grandfathered, premium_access_expires_at"
+        )
         .eq("id", userId)
         .single();
 
@@ -139,17 +147,17 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
         ? new Date(data.premium_access_expires_at).getTime()
         : null;
 
-      const isExpired = exp ? exp <= now : false;
+      const expiredNow = exp ? exp <= now : false;
       const status = (data?.subscription_status || "").toLowerCase();
 
       const paid =
-        !isExpired &&
+        !expiredNow &&
         (status === "active" ||
           status === "trialing" ||
           status === "past_due" ||
           data?.grandfathered);
 
-      setExpired(isExpired);
+      setExpired(expiredNow);
       setIsPaid(paid);
     })();
 
@@ -159,7 +167,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   }, [userId]);
 
   /* -----------------------------------------------------------------------
-     4. AUTO SIGN OUT IF SUBSCRIPTION EXPIRED
+     4. AUTO SIGN OUT ON EXPIRATION
      ----------------------------------------------------------------------- */
   useEffect(() => {
     if (userId && expired) {
@@ -168,7 +176,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   }, [userId, expired]);
 
   /* -----------------------------------------------------------------------
-     5. FIX SIGN-OUT RESETTING TO INVALID RESET STATE
+     5. SIGN-OUT MUST CLEAR RECOVERY MODE
      ----------------------------------------------------------------------- */
   useEffect(() => {
     if (!userId) {
@@ -198,7 +206,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   const mustShowPaywall = false;
 
   /* -----------------------------------------------------------------------
-     7. MAIN NAVIGATION
+     7. MAIN NAVIGATION TREE
      ----------------------------------------------------------------------- */
   return (
     <NavigationContainer
@@ -211,11 +219,10 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
       onReady={() => setNavigatorReady(true)}
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-
-        {/* ALWAYS available */}
+        {/* Always Registered */}
         <Stack.Screen name="NewPassword" component={NewPassword} />
 
-        {/* ⭐ ABSOLUTE PRIORITY: if recovery → block everything else */}
+        {/* PASSWORD-RESET MODE → NOTHING ELSE RENDERS */}
         {isPasswordRecovery ? null : !userId ? (
           <>
             <Stack.Screen name="Auth">
