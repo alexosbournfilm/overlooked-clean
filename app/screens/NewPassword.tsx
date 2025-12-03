@@ -15,7 +15,6 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 
-// Theme
 const DARK_BG = "#0D0D0D";
 const T = {
   bg: DARK_BG,
@@ -37,95 +36,97 @@ export default function NewPassword() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [restoring, setRestoring] = useState(true);
+  const [hasSession, setHasSession] = useState(false);
   const [message, setMessage] = useState("");
 
-  // --------------------------------------------------------------------
-  // ⭐ FIXED: Supabase password-reset URLs must use the FULL URL
-  // --------------------------------------------------------------------
-  async function handleFullUrlLogin(fullUrl: string) {
+  //--------------------------------------------------------------------
+  // FIX: Process Supabase URL → session
+  //--------------------------------------------------------------------
+  async function processRecoveryUrl(url: string) {
     try {
-      const { data, error } = await supabase.auth.exchangeCodeForSession(
-        fullUrl
-      );
-      if (error) console.log("exchangeCodeForSession error", error);
-    } catch (err) {
-      console.log("Failed to exchange session:", err);
+      const parsed = new URL(url);
+      const code = parsed.searchParams.get("code");
+      const type = parsed.searchParams.get("type");
+
+      if (code && type === "recovery") {
+        const { error } = await supabase.auth.exchangeCodeForSession(url);
+        if (error) console.log("exchangeCodeForSession:", error);
+      }
+
+      // Old format
+      if (url.includes("#")) {
+        const hash = url.split("#")[1];
+        const params = new URLSearchParams(hash);
+        const access = params.get("access_token");
+        const refresh = params.get("refresh_token");
+        const t = params.get("type");
+
+        if (t === "recovery" && access && refresh) {
+          await supabase.auth.setSession({
+            access_token: access,
+            refresh_token: refresh,
+          });
+        }
+      }
+    } catch (e) {
+      console.log("URL parse error:", e);
     }
   }
 
-  // --------------------------------------------------------------------
-  // ⭐ MAIN TOKEN PROCESSING LOGIC (handles ALL Supabase cases)
-  // --------------------------------------------------------------------
+  //--------------------------------------------------------------------
+  // Load + validate recovery session
+  //--------------------------------------------------------------------
   useEffect(() => {
-    let mounted = true;
+    let active = true;
 
-    const processUrl = async (rawUrl: string | null) => {
-      if (!rawUrl) {
-        mounted && setRestoring(false);
-        return;
+    async function load() {
+      const initial = await Linking.getInitialURL();
+      if (initial) await processRecoveryUrl(initial);
+
+      // Check for session AFTER processing
+      const { data } = await supabase.auth.getSession();
+      if (active) {
+        setHasSession(!!data.session);
+        setRestoring(false);
       }
+    }
 
-      try {
-        const url = new URL(rawUrl);
+    load();
 
-        const code = url.searchParams.get("code");
-        const type = url.searchParams.get("type");
-
-        if (code && type === "recovery") {
-          await handleFullUrlLogin(rawUrl);
-          mounted && setRestoring(false);
-          return;
-        }
-
-        // OLD HASH FORMAT
-        if (rawUrl.includes("#")) {
-          const hash = rawUrl.split("#")[1];
-          const params = new URLSearchParams(hash);
-
-          const access_token = params.get("access_token");
-          const refresh_token = params.get("refresh_token");
-          const typeHash = params.get("type");
-
-          if (typeHash === "recovery" && access_token && refresh_token) {
-            await supabase.auth.setSession({
-              access_token,
-              refresh_token,
-            });
-          }
-        }
-      } catch (e) {
-        console.log("URL parse error:", e);
-      }
-
-      mounted && setRestoring(false);
-    };
-
-    Linking.getInitialURL().then((u) => processUrl(u));
-    const sub = Linking.addEventListener("url", (e) => processUrl(e.url));
+    const sub = Linking.addEventListener("url", async (e) => {
+      await processRecoveryUrl(e.url);
+      const { data } = await supabase.auth.getSession();
+      if (active) setHasSession(!!data.session);
+    });
 
     return () => {
-      mounted = false;
+      active = false;
       sub.remove();
     };
   }, []);
 
-  // --------------------------------------------------------------------
-  // ⭐ UPDATE PASSWORD
-  // --------------------------------------------------------------------
+  //--------------------------------------------------------------------
+  // ALWAYS navigate back to sign-in safely
+  //--------------------------------------------------------------------
+  const handleBack = () => {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: "SignIn" }],
+    });
+  };
+
+  //--------------------------------------------------------------------
+  // UPDATE PASSWORD
+  //--------------------------------------------------------------------
   const handleUpdate = async () => {
     if (password.length < 6) {
       setMessage("Password must be at least 6 characters.");
       return;
     }
 
-    setLoading(true);
-    setMessage("");
-
     const { error } = await supabase.auth.updateUser({
       password: password.trim(),
     });
-
-    setLoading(false);
 
     if (error) {
       setMessage(error.message);
@@ -142,23 +143,11 @@ export default function NewPassword() {
     }, 1200);
   };
 
-  // --------------------------------------------------------------------
-  // ⭐ BACK BUTTON FIX: ALWAYS GO TO SIGNIN
-  // --------------------------------------------------------------------
-  const handleBack = () => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-    } else {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "SignIn" }],
-      });
-    }
-  };
+  //--------------------------------------------------------------------
+  // UI STATES
+  //--------------------------------------------------------------------
 
-  // --------------------------------------------------------------------
-  // LOADING UI DURING SESSION RESTORATION
-  // --------------------------------------------------------------------
+  // 1) STILL restoring URL/session
   if (restoring) {
     return (
       <SafeAreaView
@@ -175,9 +164,36 @@ export default function NewPassword() {
     );
   }
 
-  // --------------------------------------------------------------------
-  // UI
-  // --------------------------------------------------------------------
+  // 2) No valid recovery session found
+  if (!hasSession) {
+    return (
+      <SafeAreaView
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: T.bg,
+          padding: 30,
+        }}
+      >
+        <Text style={{ color: T.text, fontSize: 18, textAlign: "center" }}>
+          Your password reset link is invalid or expired.
+        </Text>
+
+        <TouchableOpacity
+          style={[
+            styles.button,
+            { marginTop: 22, width: 200, alignSelf: "center" },
+          ]}
+          onPress={handleBack}
+        >
+          <Text style={styles.buttonText}>Back to Sign In</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  // 3) Normal UI
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
       <KeyboardAvoidingView
@@ -190,7 +206,6 @@ export default function NewPassword() {
             { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 32 },
           ]}
         >
-          {/* ⭐ FIX APPLIED HERE */}
           <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <Ionicons name="chevron-back" size={20} color={T.sub} />
             <Text style={styles.backText}>Back</Text>
