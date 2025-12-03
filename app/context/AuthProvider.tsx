@@ -4,8 +4,9 @@ import React, {
   useEffect,
   useMemo,
   useState,
-} from 'react';
-import { supabase } from '../lib/supabase';
+} from "react";
+import { supabase } from "../lib/supabase";
+import { navigationRef } from "../navigation/navigationRef";
 
 type MinimalProfile = {
   id: string;
@@ -35,15 +36,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<MinimalProfile | null>(null);
 
-  // Fetch from Supabase
+  // -------------------------------------------------------
+  // Fetch Profile
+  // -------------------------------------------------------
   const loadProfile = async (uid: string) => {
     const { data: userRow, error } = await supabase
-      .from('users')
-      .select('id, full_name, main_role_id, city_id')
-      .eq('id', uid)
+      .from("users")
+      .select("id, full_name, main_role_id, city_id")
+      .eq("id", uid)
       .maybeSingle();
 
-    // No row yet → new user → just set empty fields
     if (error || !userRow) {
       setProfile({
         id: uid,
@@ -66,7 +68,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (userId) await loadProfile(userId);
   };
 
-  // Initial session load + auth listener
+  // -------------------------------------------------------
+  // Initial session load
+  // -------------------------------------------------------
   useEffect(() => {
     let mounted = true;
 
@@ -77,6 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
 
       setUserId(uid);
+
       if (uid) await loadProfile(uid);
       else setProfile(null);
 
@@ -85,10 +90,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     init();
 
+    // -------------------------------------------------------
+    // AUTH LISTENER
+    // -------------------------------------------------------
     const { data: subscription } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
+        console.log("Auth event →", event);
+
+        // ⭐ PASSWORD RESET FLOW (VERY IMPORTANT)
+        if (event === "PASSWORD_RECOVERY") {
+          console.log("🔐 Password recovery detected → redirecting");
+
+          if (navigationRef.isReady()) {
+            navigationRef.reset({
+              index: 0,
+              routes: [{ name: "NewPassword" }],
+            });
+          }
+
+          return; // STOP NORMAL LOGIN FLOW
+        }
+
+        // ⭐ NORMAL LOGIN / LOGOUT
         const uid = session?.user?.id ?? null;
         setUserId(uid);
+
         if (uid) await loadProfile(uid);
         else setProfile(null);
       }
@@ -100,15 +126,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Listen for profile row changes
+  // -------------------------------------------------------
+  // Live profile updates via Postgres
+  // -------------------------------------------------------
   useEffect(() => {
     if (!userId) return;
 
     const channel = supabase
       .channel(`users-row-${userId}`)
       .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'users', filter: `id=eq.${userId}` },
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "users",
+          filter: `id=eq.${userId}`,
+        },
         async () => {
           await loadProfile(userId);
         }
@@ -120,14 +153,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [userId]);
 
-  // FIXED: New logic for profile completion
+  // -------------------------------------------------------
+  // Profile completeness
+  // -------------------------------------------------------
   const profileComplete = useMemo(() => {
     if (!profile) return false;
 
     return Boolean(
-      profile.full_name &&
-        profile.main_role_id &&
-        profile.city_id
+      profile.full_name && profile.main_role_id && profile.city_id
     );
   }, [profile]);
 
@@ -142,11 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [ready, userId, profile, profileComplete]
   );
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
