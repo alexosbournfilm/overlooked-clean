@@ -7,6 +7,7 @@ import SignInScreen from '../screens/SignInScreen';
 import SignUpScreen from '../screens/SignUpScreen';
 import ForgotPasswordScreen from '../screens/ForgotPassword';
 import CreateProfileScreen from '../screens/CreateProfileScreen';
+import NewPasswordScreen from '../screens/NewPassword';   // ✅ ADD THIS
 
 const Stack = createNativeStackNavigator();
 
@@ -24,8 +25,11 @@ export default function AuthStack({ initialRouteName }: AuthStackProps) {
       <Stack.Screen name="SignIn" component={SignInScreen} />
       <Stack.Screen name="SignUp" component={SignUpScreen} />
 
-      {/* PASSWORD RESET REQUEST SCREEN */}
+      {/* PASSWORD RESET REQUEST */}
       <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+
+      {/* ⭐ PASSWORD RESET HANDLING SCREEN */}
+      <Stack.Screen name="NewPassword" component={NewPasswordScreen} />
 
       {/* PROFILE CREATION */}
       <Stack.Screen name="CreateProfile" component={CreateProfileScreen} />

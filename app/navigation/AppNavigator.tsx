@@ -2,20 +2,20 @@ import React, { useEffect, useState } from 'react';
 import {
   NavigationContainer,
   getStateFromPath as rnGetStateFromPath,
-  type InitialState
+  type InitialState,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import AuthStack from './AuthStack';
 import MainTabs from './MainTabs';
 import { navigationRef, setNavigatorReady } from './navigationRef';
-import { linking } from './linking';  // ⭐ USE THE SINGLE SOURCE OF TRUTH
+import { linking } from './linking';
 
 import {
   View,
   ActivityIndicator,
   Linking as RNLinking,
-  Platform
+  Platform,
 } from 'react-native';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -50,7 +50,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   const STRIPE_OK_KEY = 'STRIPE_ALLOW_CREATE_PROFILE_ONCE';
   const localPaidKey = (uid: string) => `PAID_LOCAL_OK:${uid}`;
 
-  // Paid bookmark
+  // Load paid state on mount
   useEffect(() => {
     (async () => {
       if (!userId) return setPaidLocalOk(false);
@@ -59,7 +59,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     })();
   }, [userId]);
 
-  // Stripe success URL detection
+  // Stripe webhooks / redirect detection
   useEffect(() => {
     let mounted = true;
 
@@ -76,6 +76,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
         if (!url) return;
 
         const lower = url.toLowerCase();
+
         if (lower.includes('create-profile')) {
           await AsyncStorage.setItem(STRIPE_OK_KEY, '1');
           if (mounted) setAllowCreateOnce(true);
@@ -85,6 +86,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     };
 
     checkUrl(null);
+
     const sub = RNLinking.addEventListener('url', (event) => {
       checkUrl(event.url);
     });
@@ -100,7 +102,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     };
   }, [userId]);
 
-  // Clean bypass
+  // consume allowCreateOnce
   useEffect(() => {
     (async () => {
       if (isPaid && allowCreateOnce) {
@@ -110,7 +112,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     })();
   }, [isPaid, allowCreateOnce]);
 
-  // Mark paid after profile completion
+  // Profile completion auto paid local state
   useEffect(() => {
     (async () => {
       if (userId && profileComplete && (allowCreateOnce || !isPaid) && !paidLocalOk) {
@@ -120,7 +122,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     })();
   }, [userId, profileComplete, allowCreateOnce, isPaid, paidLocalOk]);
 
-  // Logout cleanup
+  // Cleanup on logout
   useEffect(() => {
     (async () => {
       if (!userId) {
@@ -131,7 +133,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     })();
   }, [userId]);
 
-  // Restore navigation state
+  // RESTORE NAVIGATION STATE
   useEffect(() => {
     let mounted = true;
 
@@ -169,7 +171,6 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     };
 
     restore();
-
     return () => {
       mounted = false;
     };
@@ -208,15 +209,16 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
         : null;
 
       const expired = exp ? exp <= now : false;
+
       const status = (data.subscription_status || '').toLowerCase();
-      const isPaid =
+      const paid =
         !expired &&
         (status === 'active' ||
           status === 'trialing' ||
           status === 'past_due' ||
           data.grandfathered);
 
-      setIsPaid(isPaid);
+      setIsPaid(paid);
       setExpired(expired);
       setAccessExpiresAt(data.premium_access_expires_at ?? null);
 
@@ -228,7 +230,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
             event: 'UPDATE',
             schema: 'public',
             table: 'users',
-            filter: `id=eq.${userId}`
+            filter: `id=eq.${userId}`,
           },
           (payload) => {
             const newExp = payload.new.premium_access_expires_at
@@ -236,6 +238,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
               : null;
 
             const newExpired = newExp ? newExp <= Date.now() : false;
+
             const newStatus = (payload.new.subscription_status || '').toLowerCase();
             const newPaid =
               !newExpired &&
@@ -270,12 +273,11 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     })();
   }, [userId, expired]);
 
-  // Mark navigator destroyed
   useEffect(() => {
     return () => setNavigatorReady(false);
   }, []);
 
-  // Loading UI
+  // Loading screen
   if (!ready || !navStateReady || (userId && isPaid === null)) {
     return (
       <View
@@ -283,7 +285,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
           flex: 1,
           justifyContent: 'center',
           alignItems: 'center',
-          backgroundColor: COLORS.background
+          backgroundColor: COLORS.background,
         }}
       >
         <ActivityIndicator size="large" color={COLORS.primary} />
@@ -291,51 +293,48 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     );
   }
 
-  // Paywall off
-  const allowedNow = true;
   const mustShowPaywall = false;
 
-  /**
-   * FINAL NAVIGATION
-   */
   return (
     <NavigationContainer
-  ref={(nav) => {
-    // Typescript complains, but this is exactly how React Navigation expects it
-    // @ts-expect-error overriding ref current safely
-    navigationRef.current = nav;
-  }}
+      ref={(nav) => {
+        // @ts-expect-error required override
+        navigationRef.current = nav;
+      }}
       linking={linking}
       initialState={initialState}
       onReady={() => {
         setNavigatorReady(true);
       }}
     >
-      {/* NOT LOGGED IN */}
-      {!userId ? (
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Auth">
-            {() => <AuthStack initialRouteName={initialAuthRouteName} />}
-          </Stack.Screen>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {/* ⭐ ALWAYS REGISTER NEWPASSWORD SCREEN */}
+        <Stack.Screen name="NewPassword" component={NewPassword} />
 
-          <Stack.Screen name="NewPassword" component={NewPassword} />
-        </Stack.Navigator>
-      ) : mustShowPaywall ? (
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Paywall" component={PaywallScreen} />
-          <Stack.Screen name="PaySuccess" component={PaySuccessScreen} />
-        </Stack.Navigator>
-      ) : !profileComplete ? (
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="Auth">
-            {() => <AuthStack initialRouteName="CreateProfile" />}
-          </Stack.Screen>
-        </Stack.Navigator>
-      ) : (
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="MainTabs" component={MainTabs} />
-        </Stack.Navigator>
-      )}
+        {/* NOT LOGGED IN */}
+        {!userId ? (
+          <>
+            <Stack.Screen name="Auth">
+              {() => <AuthStack initialRouteName={initialAuthRouteName} />}
+            </Stack.Screen>
+          </>
+        ) : mustShowPaywall ? (
+          <>
+            <Stack.Screen name="Paywall" component={PaywallScreen} />
+            <Stack.Screen name="PaySuccess" component={PaySuccessScreen} />
+          </>
+        ) : !profileComplete ? (
+          <>
+            <Stack.Screen name="Auth">
+              {() => <AuthStack initialRouteName="CreateProfile" />}
+            </Stack.Screen>
+          </>
+        ) : (
+          <>
+            <Stack.Screen name="MainTabs" component={MainTabs} />
+          </>
+        )}
+      </Stack.Navigator>
     </NavigationContainer>
   );
 }
