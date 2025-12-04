@@ -16,7 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 
-const DARK_BG = "#000000";
+const DARK_BG = "#000";
 const CARD_BG = "#0B0B0B";
 const GOLD = "#C6A664";
 const TEXT = "#F5F3EF";
@@ -27,9 +27,6 @@ const SYSTEM_SANS =
   Platform.select({ ios: "System", android: "Roboto", web: undefined }) ||
   undefined;
 
-/* ------------------------------------------------------------------
-   READ RESET URL (SAFARI-SAFE)
------------------------------------------------------------------- */
 const getUrl = async () => {
   if (Platform.OS === "web") return window.location.href;
 
@@ -37,7 +34,7 @@ const getUrl = async () => {
   if (initial) return initial;
 
   return new Promise<string | null>((resolve) => {
-    const t = setTimeout(() => resolve(null), 3000);
+    const t = setTimeout(() => resolve(null), 2000);
     const sub = Linking.addEventListener("url", (e) => {
       clearTimeout(t);
       resolve(e.url);
@@ -55,9 +52,6 @@ export default function NewPassword() {
   const [hasSession, setHasSession] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  /* ------------------------------------------------------------------
-      PROCESS THE RESET LINK
-  ------------------------------------------------------------------ */
   const processReset = async (url: string) => {
     try {
       if (!url) return;
@@ -72,7 +66,10 @@ export default function NewPassword() {
         const refresh_token = params.get("refresh_token");
 
         if (access_token && refresh_token) {
-          await supabase.auth.setSession({ access_token, refresh_token });
+          await supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          });
         }
       }
     } catch (e) {
@@ -80,52 +77,54 @@ export default function NewPassword() {
     }
   };
 
-  /* ------------------------------------------------------------------
-      INITIAL LOAD (WORKING VERSION)
-  ------------------------------------------------------------------ */
   useEffect(() => {
-    let mounted = true;
+    let active = true;
 
     (async () => {
       const url = await getUrl();
       if (url) await processReset(url);
 
       const { data } = await supabase.auth.getSession();
-
-      if (mounted) {
+      if (active) {
         setHasSession(!!data.session);
         setRestoring(false);
       }
     })();
 
     return () => {
-      mounted = false;
+      active = false;
     };
   }, []);
 
-  /* ------------------------------------------------------------------
-      REDIRECT INTO THE APP (WORKING)
-  ------------------------------------------------------------------ */
   const goToApp = () => {
     if (Platform.OS === "web") {
-      window.location.replace("/"); // loads logged-in app immediately
-    } else {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "Featured" }], // your main app screen
-      });
+      window.location.replace("/");
+      return;
     }
+
+    navigation.reset({
+      index: 0,
+      routes: [{ name: "Featured" }],
+    });
   };
 
-  /* ------------------------------------------------------------------
-      UPDATE PASSWORD (NO SIGN-OUT — FIXES SAFARI FREEZE)
-  ------------------------------------------------------------------ */
+  const goToSignIn = () => {
+    if (Platform.OS === "web") {
+      window.location.replace("/signin");
+      return;
+    }
+
+    navigation.reset({
+      index: 0,
+      routes: [{ name: "SignIn" }],
+    });
+  };
+
   const handleUpdatePassword = async () => {
     if (loading) return;
-
-    if (!password || !confirm) return alert("Fill both fields");
-    if (password !== confirm) return alert("Passwords do not match");
-    if (password.length < 6) return alert("Password must be at least 6 characters");
+    if (!password || !confirm) return alert("Fill both fields.");
+    if (password !== confirm) return alert("Passwords do not match.");
+    if (password.length < 6) return alert("Password must be at least 6 characters.");
 
     setLoading(true);
 
@@ -140,23 +139,18 @@ export default function NewPassword() {
         return;
       }
 
-      // Remove password fields from DOM to prevent Safari Keychain popup
-      setPassword("");
-      setConfirm("");
-
-      // 🚀 INSTANT REDIRECT INTO APP
+      // Password updated successfully → redirect immediately
       goToApp();
-
     } catch (e) {
       alert("Unexpected error");
+      console.log(e);
     } finally {
+      setPassword("");
+      setConfirm("");
       setLoading(false);
     }
   };
 
-  /* ------------------------------------------------------------------
-      UI (NO INFINITE LOADER NOW)
-  ------------------------------------------------------------------ */
   if (restoring) {
     return (
       <SafeAreaView style={styles.center}>
@@ -170,8 +164,8 @@ export default function NewPassword() {
     return (
       <SafeAreaView style={styles.center}>
         <Text style={styles.invalid}>Invalid or expired reset link.</Text>
-        <TouchableOpacity style={styles.button} onPress={goToApp}>
-          <Text style={styles.buttonText}>BACK TO APP</Text>
+        <TouchableOpacity style={styles.button} onPress={goToSignIn}>
+          <Text style={styles.buttonText}>BACK TO SIGN IN</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -184,7 +178,7 @@ export default function NewPassword() {
         style={{ flex: 1 }}
       >
         <View style={styles.wrapper}>
-          <TouchableOpacity onPress={goToApp} style={styles.back}>
+          <TouchableOpacity onPress={goToSignIn} style={styles.back}>
             <Ionicons name="chevron-back" size={18} color={SUB} />
             <Text style={styles.backLabel}>Back</Text>
           </TouchableOpacity>
@@ -235,9 +229,6 @@ export default function NewPassword() {
   );
 }
 
-/* ------------------------------------------------------------------
-   STYLES
------------------------------------------------------------------- */
 const styles = StyleSheet.create({
   center: {
     flex: 1,
