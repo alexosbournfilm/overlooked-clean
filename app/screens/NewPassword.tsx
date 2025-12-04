@@ -28,21 +28,19 @@ const SYSTEM_SANS =
   undefined;
 
 /* ------------------------------------------------------------------
-   Get reset URL immediately (no waiting)
+   Fast and reliable reset URL extraction
 ------------------------------------------------------------------ */
 const getResetUrl = async () => {
-  // ✔ WEB — always instant, always reliable
   if (Platform.OS === "web") {
     return window.location.href;
   }
 
-  // ✔ MOBILE / EXPO — try immediately
   const initial = await Linking.getInitialURL();
   if (initial) return initial;
 
-  // ✔ fallback to event listener (in case deep link arrives late)
   return new Promise<string | null>((resolve) => {
-    const timeout = setTimeout(() => resolve(null), 4000); // fail-safe
+    const timeout = setTimeout(() => resolve(null), 5000);
+
     const sub = Linking.addEventListener("url", (e) => {
       clearTimeout(timeout);
       resolve(e.url);
@@ -51,9 +49,6 @@ const getResetUrl = async () => {
   });
 };
 
-/* ------------------------------------------------------------------
-   Screen Component
------------------------------------------------------------------- */
 export default function NewPassword() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -66,27 +61,28 @@ export default function NewPassword() {
   const [message, setMessage] = useState("");
 
   /* ------------------------------------------------------------------
-      Process Supabase password reset URL
+      Process Supabase reset URL
   ------------------------------------------------------------------ */
   const processResetUrl = async (url: string) => {
     try {
       if (!url) return;
 
-      // FULL SESSION EXCHANGE (covers both fp + recovery)
+      // main reset session exchange
       if (url.includes("type=fp") || url.includes("type=recovery")) {
         await supabase.auth.exchangeCodeForSession(url);
       }
 
-      // HASH FRAGMENT CASE (Safari)
+      // hash fragments (Safari)
       if (url.includes("#")) {
         const fragment = url.split("#")[1];
         const params = new URLSearchParams(fragment);
+
         const type = params.get("type");
         const access_token = params.get("access_token");
         const refresh_token = params.get("refresh_token");
 
         if (
-          (type === "recovery" || type === "fp") &&
+          (type === "fp" || type === "recovery") &&
           access_token &&
           refresh_token
         ) {
@@ -96,13 +92,13 @@ export default function NewPassword() {
           });
         }
       }
-    } catch (error) {
-      console.warn("Error processing reset URL:", error);
+    } catch (e) {
+      console.warn("processResetUrl error:", e);
     }
   };
 
   /* ------------------------------------------------------------------
-      INITIAL LOAD — ALWAYS GET URL FIRST
+      INITIAL LOAD — ALWAYS get URL first
   ------------------------------------------------------------------ */
   useEffect(() => {
     let active = true;
@@ -111,7 +107,6 @@ export default function NewPassword() {
       const url = await getResetUrl();
       await processResetUrl(url || "");
 
-      // let Supabase finalize session
       await new Promise((r) => setTimeout(r, 120));
 
       const { data } = await supabase.auth.getSession();
@@ -123,28 +118,28 @@ export default function NewPassword() {
     }
 
     init();
-
     return () => {
       active = false;
     };
   }, []);
 
   /* ------------------------------------------------------------------
-      ROUTING
+      Redirect to SignIn
   ------------------------------------------------------------------ */
   const goToSignIn = () => {
     if (Platform.OS === "web") {
       window.location.href = "/signin";
-    } else {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "SignIn" }],
-      });
+      return;
     }
+
+    navigation.reset({
+      index: 0,
+      routes: [{ name: "SignIn" }],
+    });
   };
 
   /* ------------------------------------------------------------------
-      UPDATE PASSWORD
+      UPDATE PASSWORD — final working version
   ------------------------------------------------------------------ */
   const handleUpdatePassword = async () => {
     setMessage("");
@@ -177,8 +172,12 @@ export default function NewPassword() {
 
       setMessage("Password updated! Redirecting…");
 
+      // required by Supabase
       await supabase.auth.signOut();
-      goToSignIn();
+
+      setTimeout(() => {
+        goToSignIn();
+      }, 250);
     } catch (err: any) {
       setMessage(err?.message || "Unexpected error.");
     } finally {
@@ -187,7 +186,7 @@ export default function NewPassword() {
   };
 
   /* ------------------------------------------------------------------
-      UI — Restoring / Invalid / Ready
+      UI states
   ------------------------------------------------------------------ */
   if (restoring) {
     return (
@@ -213,7 +212,7 @@ export default function NewPassword() {
   }
 
   /* ------------------------------------------------------------------
-      UI — MAIN
+      MAIN UI
   ------------------------------------------------------------------ */
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
@@ -237,9 +236,7 @@ export default function NewPassword() {
 
           <View style={styles.card}>
             <Text style={styles.title}>Set a New Password</Text>
-            <Text style={styles.subtitle}>
-              Enter and confirm your password.
-            </Text>
+            <Text style={styles.subtitle}>Enter and confirm your password.</Text>
 
             <View style={styles.inputRow}>
               <Ionicons name="lock-closed" size={16} color={SUB} />
@@ -286,7 +283,7 @@ export default function NewPassword() {
 }
 
 /* ------------------------------------------------------------------
-   STYLES
+   Styles
 ------------------------------------------------------------------ */
 const styles = StyleSheet.create({
   center: {
