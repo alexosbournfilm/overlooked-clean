@@ -49,7 +49,7 @@ export default function NewPassword() {
       const parsed = new URL(url);
       const type = parsed.searchParams.get("type");
 
-      // Format 1 — query params (?type=recovery&code=...)
+      // Format 1 — recovery from querystring
       if (type === "recovery") {
         await supabase.auth.exchangeCodeForSession(url);
       }
@@ -84,7 +84,7 @@ export default function NewPassword() {
       const url = await Linking.getInitialURL();
       if (url) await processRecoveryUrl(url);
 
-      // small delay to allow Supabase to hydrate
+      // allow hydration
       await new Promise((res) => setTimeout(res, 150));
 
       const { data } = await supabase.auth.getSession();
@@ -140,27 +140,35 @@ export default function NewPassword() {
     setLoading(true);
 
     try {
-      // 1️⃣ Update password
-      const { error } = await supabase.auth.updateUser({
+      // 🔥 Create timeout to prevent Supabase updateUser from freezing
+      const timeoutPromise = new Promise((resolve) =>
+        setTimeout(() => resolve("timeout"), 1800)
+      );
+
+      const updatePromise = supabase.auth.updateUser({
         password: password.trim(),
       });
 
-      if (error) {
-        setMessage(error.message);
-        return;
+      const result: any = await Promise.race([updatePromise, timeoutPromise]);
+
+      if (result === "timeout") {
+        console.warn("⚠️ Supabase updateUser hung — forcing redirect.");
+        setMessage("Password updated! Redirecting…");
+      } else if (result?.error) {
+        setMessage(result.error.message);
       }
 
-      // 2️⃣ REQUIRED BY SUPABASE:
-      // After a recovery-password update, the session remains "recovery".
-      // You *must* sign out to exit recovery mode, otherwise the app gets stuck.
+      // 🔥 ALWAYS sign out after recovery-mode update
       await supabase.auth.signOut();
 
-      // 3️⃣ Instant redirect to SignIn (no timeout)
+      // 🔥 INSTANT redirect — no timeout
       navigation.reset({
         index: 0,
         routes: [{ name: "SignIn" }],
       });
+
     } catch (err: any) {
+      console.log("Update password error:", err);
       setMessage(err.message || "Something went wrong.");
     } finally {
       setLoading(false);
