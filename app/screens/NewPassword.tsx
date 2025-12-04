@@ -49,12 +49,10 @@ export default function NewPassword() {
       const parsed = new URL(url);
       const type = parsed.searchParams.get("type");
 
-      // Format 1 — recovery from querystring
       if (type === "recovery") {
         await supabase.auth.exchangeCodeForSession(url);
       }
 
-      // Format 2 — hash fragments (#access_token=...)
       if (url.includes("#")) {
         const hash = url.split("#")[1];
         const params = new URLSearchParams(hash);
@@ -84,7 +82,6 @@ export default function NewPassword() {
       const url = await Linking.getInitialURL();
       if (url) await processRecoveryUrl(url);
 
-      // allow hydration
       await new Promise((res) => setTimeout(res, 150));
 
       const { data } = await supabase.auth.getSession();
@@ -98,6 +95,7 @@ export default function NewPassword() {
 
     const sub = Linking.addEventListener("url", async (e) => {
       await processRecoveryUrl(e.url);
+
       const { data } = await supabase.auth.getSession();
       if (active) setHasSession(!!data.session);
     });
@@ -113,6 +111,11 @@ export default function NewPassword() {
      -------------------------------------------------------- */
 
   const handleBack = () => {
+    if (Platform.OS === "web") {
+      window.location.href = "/signin";
+      return;
+    }
+
     navigation.reset({
       index: 0,
       routes: [{ name: "SignIn" }],
@@ -140,7 +143,7 @@ export default function NewPassword() {
     setLoading(true);
 
     try {
-      // 🔥 Create timeout to prevent Supabase updateUser from freezing
+      // Prevent freezing
       const timeoutPromise = new Promise((resolve) =>
         setTimeout(() => resolve("timeout"), 1800)
       );
@@ -152,16 +155,24 @@ export default function NewPassword() {
       const result: any = await Promise.race([updatePromise, timeoutPromise]);
 
       if (result === "timeout") {
-        console.warn("⚠️ Supabase updateUser hung — forcing redirect.");
+        console.warn("Supabase updateUser hung — forcing redirect.");
         setMessage("Password updated! Redirecting…");
       } else if (result?.error) {
         setMessage(result.error.message);
+      } else {
+        setMessage("Password updated! Redirecting…");
       }
 
-      // 🔥 ALWAYS sign out after recovery-mode update
+      // Must sign out after password change
       await supabase.auth.signOut();
 
-      // 🔥 INSTANT redirect — no timeout
+      // ⭐ WEB: Hard redirect (works in all browsers)
+      if (Platform.OS === "web") {
+        window.location.href = "/signin";
+        return;
+      }
+
+      // ⭐ APP: React Navigation reset
       navigation.reset({
         index: 0,
         routes: [{ name: "SignIn" }],
