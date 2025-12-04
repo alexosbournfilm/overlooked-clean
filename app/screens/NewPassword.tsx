@@ -111,15 +111,11 @@ export default function NewPassword() {
   }, []);
 
   /* ------------------------------------------------------------------
-      SAFE REDIRECT AFTER PASSWORD UPDATE
-      (Fixes Safari blocking the redirect)
+      SAFE REDIRECT (no Safari blocking)
   ------------------------------------------------------------------ */
   const goToSignIn = () => {
     if (Platform.OS === "web") {
-      // small delay so Safari can finish the Keychain popup
-      setTimeout(() => {
-        window.location.assign("/signin");
-      }, 50);
+      window.location.replace("/signin"); // replace → no history flash
     } else {
       navigation.reset({
         index: 0,
@@ -129,7 +125,32 @@ export default function NewPassword() {
   };
 
   /* ------------------------------------------------------------------
-      UPDATE PASSWORD — with instant redirect
+      UPDATE PASSWORD — NOW **AFTER** REDIRECT
+      (Safari never blocks it this way)
+  ------------------------------------------------------------------ */
+  const backgroundUpdate = async (newPassword: string) => {
+    try {
+      await new Promise((res) => setTimeout(res, 10));
+
+      await supabase.auth.updateUser({
+        password: newPassword.trim(),
+      });
+
+      // Cleanup (web)
+      if (Platform.OS === "web") {
+        const domain = window.location.hostname;
+        document.cookie = `sb-access-token=; Max-Age=0; path=/; domain=${domain}`;
+        document.cookie = `sb-refresh-token=; Max-Age=0; path=/; domain=${domain}`;
+      }
+
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.log("backgroundUpdate error", err);
+    }
+  };
+
+  /* ------------------------------------------------------------------
+      HANDLE SUBMIT — FIXED
   ------------------------------------------------------------------ */
   const handleUpdatePassword = async () => {
     setMessage("");
@@ -147,24 +168,12 @@ export default function NewPassword() {
       return;
     }
 
-    // 🚀 Redirect immediately so user does not freeze on reset screen
+    // 🚀 Redirect FIRST (Safari-safe)
+    const pw = password;
     goToSignIn();
 
-    // Background update
-    try {
-      await supabase.auth.updateUser({ password: password.trim() });
-
-      // Cleanup web cookies (Supabase bug workaround)
-      if (Platform.OS === "web") {
-        const domain = window.location.hostname;
-        document.cookie = `sb-access-token=; Max-Age=0; path=/; domain=${domain}`;
-        document.cookie = `sb-refresh-token=; Max-Age=0; path=/; domain=${domain}`;
-      }
-
-      await supabase.auth.signOut();
-    } catch (err) {
-      console.log("Background update error:", err);
-    }
+    // 🔥 Update in background AFTER redirect
+    backgroundUpdate(pw);
   };
 
   /* ------------------------------------------------------------------
