@@ -84,7 +84,7 @@ export default function NewPassword() {
       const url = await Linking.getInitialURL();
       if (url) await processRecoveryUrl(url);
 
-      // 💡 wait for Supabase to hydrate session
+      // small delay to allow Supabase to hydrate
       await new Promise((res) => setTimeout(res, 150));
 
       const { data } = await supabase.auth.getSession();
@@ -96,10 +96,8 @@ export default function NewPassword() {
 
     init();
 
-    // Handle URL events (mobile/web)
     const sub = Linking.addEventListener("url", async (e) => {
       await processRecoveryUrl(e.url);
-
       const { data } = await supabase.auth.getSession();
       if (active) setHasSession(!!data.session);
     });
@@ -117,7 +115,7 @@ export default function NewPassword() {
   const handleBack = () => {
     navigation.reset({
       index: 0,
-      routes: [{ name: "Auth" }],
+      routes: [{ name: "SignIn" }],
     });
   };
 
@@ -142,6 +140,7 @@ export default function NewPassword() {
     setLoading(true);
 
     try {
+      // 1️⃣ Update password
       const { error } = await supabase.auth.updateUser({
         password: password.trim(),
       });
@@ -151,14 +150,16 @@ export default function NewPassword() {
         return;
       }
 
-      setMessage("Password updated! Redirecting…");
+      // 2️⃣ REQUIRED BY SUPABASE:
+      // After a recovery-password update, the session remains "recovery".
+      // You *must* sign out to exit recovery mode, otherwise the app gets stuck.
+      await supabase.auth.signOut();
 
-      setTimeout(() => {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: "Auth" }],
-        });
-      }, 900);
+      // 3️⃣ Instant redirect to SignIn (no timeout)
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "SignIn" }],
+      });
     } catch (err: any) {
       setMessage(err.message || "Something went wrong.");
     } finally {
@@ -170,7 +171,6 @@ export default function NewPassword() {
         UI STATES
      -------------------------------------------------------- */
 
-  // Loading screen
   if (restoring) {
     return (
       <SafeAreaView style={styles.fullCenter}>
@@ -180,7 +180,6 @@ export default function NewPassword() {
     );
   }
 
-  // Invalid or expired link
   if (!restoring && !hasSession) {
     return (
       <SafeAreaView style={styles.fullCenter}>
