@@ -1,3 +1,4 @@
+// app/context/AuthProvider.tsx
 import React, {
   createContext,
   useContext,
@@ -92,18 +93,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     init();
 
     /* ------------------------------------------------------------------
-       AUTH LISTENER (PASSWORD RECOVERY FIX)
+       AUTH LISTENER — REAL FIX FOR RECOVERY + PASSWORD UPDATE
     ------------------------------------------------------------------ */
     const { data: sub } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log("Auth event →", event);
 
         /* --------------------------------------------------------------
-           ⭐ PASSWORD RECOVERY MODE
-           Force navigation to NewPassword immediately
+           ⭐ PASSWORD RECOVERY MODE (coming from deep link)
         -------------------------------------------------------------- */
         if (event === "PASSWORD_RECOVERY") {
-          console.log("🔐 Password recovery detected → redirecting to NewPassword");
+          console.log("🔐 PASSWORD_RECOVERY detected → go to NewPassword");
 
           if (navigationRef.isReady()) {
             navigationRef.dispatch(
@@ -114,11 +114,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             );
           }
 
-          return; // IMPORTANT: stop further auth handling
+          return; // STOP normal login flow
         }
 
         /* --------------------------------------------------------------
-           NORMAL LOGIN / LOGOUT
+           ⭐ USER_UPDATED → AFTER password is successfully changed
+           Supabase emits USER_UPDATED, not PASSWORD_RECOVERY.
+        -------------------------------------------------------------- */
+        if (event === "USER_UPDATED") {
+          console.log("🔐 USER_UPDATED → password changed successfully");
+
+          // Reload session to prevent stale state
+          await supabase.auth.getSession();
+
+          // Now send user into the app
+          if (navigationRef.isReady()) {
+            navigationRef.dispatch(
+              CommonActions.reset({
+                index: 0,
+                routes: [{ name: "MainTabs" }],
+              })
+            );
+          }
+
+          return;
+        }
+
+        /* --------------------------------------------------------------
+           ⭐ NORMAL LOGIN / LOGOUT
         -------------------------------------------------------------- */
         const uid = session?.user?.id ?? null;
         setUserId(uid);
@@ -135,7 +158,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   /* ------------------------------------------------------------------
-     LIVE PROFILE SUBSCRIPTIONS
+     LIVE PROFILE SYNC
   ------------------------------------------------------------------ */
   useEffect(() => {
     if (!userId) return;

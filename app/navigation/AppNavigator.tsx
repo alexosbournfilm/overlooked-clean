@@ -25,6 +25,18 @@ type Props = {
   initialAuthRouteName: "SignIn" | "CreateProfile";
 };
 
+// Helper
+function isRecoveryUrl(url?: string | null): boolean {
+  if (!url) return false;
+  const u = url.toLowerCase();
+  return (
+    u.includes("type=recovery") ||
+    u.includes("/auth/v1/verify") ||
+    u.includes("/auth/confirm") ||
+    u.includes("#access_token")
+  );
+}
+
 export default function AppNavigator({ initialAuthRouteName }: Props) {
   const { ready, userId, profileComplete } = useAuth();
 
@@ -32,7 +44,42 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   const [navReady, setNavReady] = useState(false);
 
   /* ------------------------------------------------------------------
-      1. Attempt to restore previous nav state (ONLY for logged-in users)
+      RECOVERY DETECTION — MUST HAPPEN BEFORE AUTH PROVIDER TRIGGERS
+  ------------------------------------------------------------------ */
+  useEffect(() => {
+    let active = true;
+
+    const detect = async () => {
+      const url = await RNLinking.getInitialURL();
+      if (!url || !active) return;
+
+      if (isRecoveryUrl(url)) {
+        console.log("🔐 Recovery deep link detected:", url);
+
+        if (url.includes("#")) {
+          const params = new URLSearchParams(url.split("#")[1]);
+          const access_token = params.get("access_token");
+          const refresh_token = params.get("refresh_token");
+
+          if (access_token && refresh_token) {
+            console.log("🔐 Setting Supabase session for recovery...");
+            await supabase.auth.setSession({
+              access_token,
+              refresh_token,
+            });
+          }
+        }
+      }
+    };
+
+    detect();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  /* ------------------------------------------------------------------
+      RESTORE STATE FOR LOGGED-IN USERS
   ------------------------------------------------------------------ */
   useEffect(() => {
     let mounted = true;
@@ -40,7 +87,6 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     const restore = async () => {
       if (!ready) return;
 
-      // User not logged in → start fresh
       if (!userId || !profileComplete) {
         setInitialState(undefined);
         if (mounted) setNavReady(true);
@@ -68,7 +114,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   }, [ready, userId, profileComplete]);
 
   /* ------------------------------------------------------------------
-      2. Subscription logic (existing)
+      SUBSCRIPTION LOGIC
   ------------------------------------------------------------------ */
   const [isPaid, setIsPaid] = useState<boolean | null>(null);
   const [expired, setExpired] = useState(false);
@@ -124,7 +170,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   }, [userId, expired]);
 
   /* ------------------------------------------------------------------
-      3. Global loading spinner
+      GLOBAL LOADING
   ------------------------------------------------------------------ */
   if (!ready || !navReady || (userId && isPaid === null)) {
     return (
@@ -144,7 +190,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   const mustShowPaywall = false;
 
   /* ------------------------------------------------------------------
-      4. Navigation Tree (CLEAN — NO MORE forceRecovery)
+      NAVIGATION TREE
   ------------------------------------------------------------------ */
   return (
     <NavigationContainer
@@ -155,26 +201,24 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!userId ? (
-          <>
-            <Stack.Screen name="Auth">
-              {() => <AuthStack initialRouteName={initialAuthRouteName} />}
-            </Stack.Screen>
-          </>
+          <Stack.Screen
+            name="Auth"
+            children={() => (
+              <AuthStack initialRouteName={initialAuthRouteName} />
+            )}
+          />
         ) : mustShowPaywall ? (
           <>
             <Stack.Screen name="Paywall" component={PaywallScreen} />
             <Stack.Screen name="PaySuccess" component={PaySuccessScreen} />
           </>
         ) : !profileComplete ? (
-          <>
-            <Stack.Screen name="Auth">
-              {() => <AuthStack initialRouteName="CreateProfile" />}
-            </Stack.Screen>
-          </>
+          <Stack.Screen
+            name="Auth"
+            children={() => <AuthStack initialRouteName="CreateProfile" />}
+          />
         ) : (
-          <>
-            <Stack.Screen name="MainTabs" component={MainTabs} />
-          </>
+          <Stack.Screen name="MainTabs" component={MainTabs} />
         )}
       </Stack.Navigator>
     </NavigationContainer>
