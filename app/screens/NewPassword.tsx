@@ -37,9 +37,9 @@ const getUrl = async () => {
   if (initial) return initial;
 
   return new Promise<string | null>((resolve) => {
-    const timeout = setTimeout(() => resolve(null), 4000);
+    const t = setTimeout(() => resolve(null), 4000);
     const sub = Linking.addEventListener("url", (e) => {
-      clearTimeout(timeout);
+      clearTimeout(t);
       resolve(e.url);
       sub.remove();
     });
@@ -52,7 +52,6 @@ export default function NewPassword() {
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [loading, setLoading] = useState(false);
   const [restoring, setRestoring] = useState(true);
   const [hasSession, setHasSession] = useState(false);
   const [message, setMessage] = useState("");
@@ -85,7 +84,7 @@ export default function NewPassword() {
         }
       }
     } catch (err) {
-      console.warn("reset err:", err);
+      console.warn("Reset error:", err);
     }
   };
 
@@ -93,30 +92,34 @@ export default function NewPassword() {
       INITIAL LOAD
   ------------------------------------------------------------------ */
   useEffect(() => {
-    let active = true;
+    let mounted = true;
 
     (async () => {
       const url = await getUrl();
-      await processReset(url || "");
+      if (url) await processReset(url);
 
       const { data } = await supabase.auth.getSession();
-      if (active) {
+      if (mounted) {
         setHasSession(!!data.session);
         setRestoring(false);
       }
     })();
 
     return () => {
-      active = false;
+      mounted = false;
     };
   }, []);
 
   /* ------------------------------------------------------------------
-      HARD REDIRECT FUNCTION
+      SAFE REDIRECT AFTER PASSWORD UPDATE
+      (Fixes Safari blocking the redirect)
   ------------------------------------------------------------------ */
-  const instantRedirectToSignIn = () => {
+  const goToSignIn = () => {
     if (Platform.OS === "web") {
-      window.location.assign("/signin");
+      // small delay so Safari can finish the Keychain popup
+      setTimeout(() => {
+        window.location.assign("/signin");
+      }, 50);
     } else {
       navigation.reset({
         index: 0,
@@ -126,7 +129,7 @@ export default function NewPassword() {
   };
 
   /* ------------------------------------------------------------------
-      UPDATE PASSWORD — with instant redirect (Safari fix)
+      UPDATE PASSWORD — with instant redirect
   ------------------------------------------------------------------ */
   const handleUpdatePassword = async () => {
     setMessage("");
@@ -144,18 +147,14 @@ export default function NewPassword() {
       return;
     }
 
-    // ------------------------------------------------------------
-    // 🚀 SAFARI FIX: Redirect immediately BEFORE async operations
-    // ------------------------------------------------------------
-    instantRedirectToSignIn();
+    // 🚀 Redirect immediately so user does not freeze on reset screen
+    goToSignIn();
 
     // Background update
     try {
-      await supabase.auth.updateUser({
-        password: password.trim(),
-      });
+      await supabase.auth.updateUser({ password: password.trim() });
 
-      // Clear web cookies if needed
+      // Cleanup web cookies (Supabase bug workaround)
       if (Platform.OS === "web") {
         const domain = window.location.hostname;
         document.cookie = `sb-access-token=; Max-Age=0; path=/; domain=${domain}`;
@@ -187,7 +186,7 @@ export default function NewPassword() {
           Your password reset link is invalid or expired.
         </Text>
 
-        <TouchableOpacity style={styles.button} onPress={instantRedirectToSignIn}>
+        <TouchableOpacity style={styles.button} onPress={goToSignIn}>
           <Text style={styles.buttonText}>BACK TO SIGN IN</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -206,13 +205,10 @@ export default function NewPassword() {
         <View
           style={[
             styles.wrapper,
-            {
-              paddingTop: insets.top + 20,
-              paddingBottom: insets.bottom + 20,
-            },
+            { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 },
           ]}
         >
-          <TouchableOpacity onPress={instantRedirectToSignIn} style={styles.back}>
+          <TouchableOpacity onPress={goToSignIn} style={styles.back}>
             <Ionicons name="chevron-back" size={18} color={SUB} />
             <Text style={styles.backLabel}>Back</Text>
           </TouchableOpacity>
