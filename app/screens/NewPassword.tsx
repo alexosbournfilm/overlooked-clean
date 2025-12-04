@@ -28,17 +28,32 @@ const SYSTEM_SANS =
   undefined;
 
 /* ------------------------------------------------------------------
-   SAFARI FIX — Wait until URL is available
+   Get reset URL immediately (no waiting)
 ------------------------------------------------------------------ */
-const waitForUrl = async () => {
-  for (let i = 0; i < 60; i++) {
-    const url = await Linking.getInitialURL();
-    if (url) return url;
-    await new Promise((res) => setTimeout(res, 120));
+const getResetUrl = async () => {
+  // ✔ WEB — always instant, always reliable
+  if (Platform.OS === "web") {
+    return window.location.href;
   }
-  return null;
+
+  // ✔ MOBILE / EXPO — try immediately
+  const initial = await Linking.getInitialURL();
+  if (initial) return initial;
+
+  // ✔ fallback to event listener (in case deep link arrives late)
+  return new Promise<string | null>((resolve) => {
+    const timeout = setTimeout(() => resolve(null), 4000); // fail-safe
+    const sub = Linking.addEventListener("url", (e) => {
+      clearTimeout(timeout);
+      resolve(e.url);
+      sub.remove();
+    });
+  });
 };
 
+/* ------------------------------------------------------------------
+   Screen Component
+------------------------------------------------------------------ */
 export default function NewPassword() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -51,20 +66,21 @@ export default function NewPassword() {
   const [message, setMessage] = useState("");
 
   /* ------------------------------------------------------------------
-      Process Supabase reset (type=fp, type=recovery)
+      Process Supabase password reset URL
   ------------------------------------------------------------------ */
-  async function processUrl(url: string) {
+  const processResetUrl = async (url: string) => {
     try {
-      // FULL SESSION EXCHANGE FOR PASSWORD RESET
+      if (!url) return;
+
+      // FULL SESSION EXCHANGE (covers both fp + recovery)
       if (url.includes("type=fp") || url.includes("type=recovery")) {
         await supabase.auth.exchangeCodeForSession(url);
       }
 
-      // HASH FRAGMENT CASE (iOS / Safari)
+      // HASH FRAGMENT CASE (Safari)
       if (url.includes("#")) {
         const fragment = url.split("#")[1];
         const params = new URLSearchParams(fragment);
-
         const type = params.get("type");
         const access_token = params.get("access_token");
         const refresh_token = params.get("refresh_token");
@@ -80,27 +96,23 @@ export default function NewPassword() {
           });
         }
       }
-    } catch (e) {
-      console.warn("processUrl error:", e);
+    } catch (error) {
+      console.warn("Error processing reset URL:", error);
     }
-  }
+  };
 
   /* ------------------------------------------------------------------
-      INITIAL LOAD
+      INITIAL LOAD — ALWAYS GET URL FIRST
   ------------------------------------------------------------------ */
   useEffect(() => {
     let active = true;
 
     async function init() {
-      // ❗ Never sign out before processing URL — breaks safari resets
+      const url = await getResetUrl();
+      await processResetUrl(url || "");
 
-      const url = await waitForUrl();
-      if (url) {
-        await processUrl(url);
-      }
-
-      // Let Supabase finalize session
-      await new Promise((r) => setTimeout(r, 200));
+      // let Supabase finalize session
+      await new Promise((r) => setTimeout(r, 120));
 
       const { data } = await supabase.auth.getSession();
 
@@ -112,16 +124,8 @@ export default function NewPassword() {
 
     init();
 
-    // Listen for URL changes (Expo Go / iOS)
-    const sub = Linking.addEventListener("url", async (e) => {
-      await processUrl(e.url);
-      const { data } = await supabase.auth.getSession();
-      if (active) setHasSession(!!data.session);
-    });
-
     return () => {
       active = false;
-      sub.remove();
     };
   }, []);
 
@@ -173,9 +177,7 @@ export default function NewPassword() {
 
       setMessage("Password updated! Redirecting…");
 
-      // Required for completing reset flow
       await supabase.auth.signOut();
-
       goToSignIn();
     } catch (err: any) {
       setMessage(err?.message || "Unexpected error.");
@@ -191,7 +193,7 @@ export default function NewPassword() {
     return (
       <SafeAreaView style={styles.center}>
         <ActivityIndicator size="large" color={GOLD} />
-        <Text style={styles.loading}>Preparing reset…</Text>
+        <Text style={styles.loading}>Preparing reset...</Text>
       </SafeAreaView>
     );
   }
@@ -235,7 +237,9 @@ export default function NewPassword() {
 
           <View style={styles.card}>
             <Text style={styles.title}>Set a New Password</Text>
-            <Text style={styles.subtitle}>Enter and confirm your password.</Text>
+            <Text style={styles.subtitle}>
+              Enter and confirm your password.
+            </Text>
 
             <View style={styles.inputRow}>
               <Ionicons name="lock-closed" size={16} color={SUB} />
