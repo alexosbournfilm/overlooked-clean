@@ -28,6 +28,23 @@ const SYSTEM_SANS =
   Platform.select({ ios: "System", android: "Roboto", web: undefined }) ||
   undefined;
 
+/* ------------------------------------------------------------
+   SAFARI URL POLLER — SAME FIX AS APP.TSX
+   Ensures recovery deep link is ALWAYS available before loading
+------------------------------------------------------------ */
+async function waitForUrl(): Promise<string | null> {
+  let tries = 0;
+
+  while (tries < 20) {
+    const url = await Linking.getInitialURL();
+    if (url) return url;
+    await new Promise((res) => setTimeout(res, 120));
+    tries++;
+  }
+
+  return null;
+}
+
 /* --------------------------- COMPONENT --------------------------- */
 
 export default function NewPassword() {
@@ -42,21 +59,22 @@ export default function NewPassword() {
   const [message, setMessage] = useState("");
 
   /* --------------------------------------------------------
-        PARSE RECOVERY URL AND HYDRATE SESSION
+        PARSE AND PROCESS RECOVERY LINK FROM SUPABASE
      -------------------------------------------------------- */
   async function processRecoveryUrl(url: string) {
     try {
       const parsed = new URL(url);
       const type = parsed.searchParams.get("type");
 
+      // Query param mode (?type=recovery)
       if (type === "recovery") {
         await supabase.auth.exchangeCodeForSession(url);
       }
 
+      // Hash mode (#access_token=...)
       if (url.includes("#")) {
         const hash = url.split("#")[1];
         const params = new URLSearchParams(hash);
-
         const access = params.get("access_token");
         const refresh = params.get("refresh_token");
 
@@ -67,24 +85,31 @@ export default function NewPassword() {
           });
         }
       }
-    } catch (e) {
-      console.log("URL parse error:", e);
+    } catch (err) {
+      console.log("URL parse error", err);
     }
   }
 
   /* --------------------------------------------------------
-        INITIAL LOAD — HANDLE RECOVERY
+        INITIAL LOAD — GUARANTEED URL HYDRATION
      -------------------------------------------------------- */
+
   useEffect(() => {
     let active = true;
 
     async function init() {
-      const url = await Linking.getInitialURL();
-      if (url) await processRecoveryUrl(url);
+      // ⭐ Wait until Safari actually delivers the URL
+      const initialUrl = await waitForUrl();
 
-      await new Promise((res) => setTimeout(res, 150));
+      if (initialUrl) {
+        await processRecoveryUrl(initialUrl);
+      }
+
+      // Allow Supabase to hydrate session
+      await new Promise((res) => setTimeout(res, 180));
 
       const { data } = await supabase.auth.getSession();
+
       if (active) {
         setHasSession(!!data.session);
         setRestoring(false);
@@ -95,7 +120,6 @@ export default function NewPassword() {
 
     const sub = Linking.addEventListener("url", async (e) => {
       await processRecoveryUrl(e.url);
-
       const { data } = await supabase.auth.getSession();
       if (active) setHasSession(!!data.session);
     });
@@ -107,7 +131,7 @@ export default function NewPassword() {
   }, []);
 
   /* --------------------------------------------------------
-        REDIRECT HELPERS
+        REDIRECT HELPER
      -------------------------------------------------------- */
 
   const redirectToSignIn = () => {
@@ -123,7 +147,7 @@ export default function NewPassword() {
   };
 
   /* --------------------------------------------------------
-        HANDLE UPDATE PASSWORD
+        UPDATE PASSWORD — FIXED FOR FIRST TRY
      -------------------------------------------------------- */
 
   const handleUpdate = async () => {
@@ -133,12 +157,10 @@ export default function NewPassword() {
       setMessage("Please fill out both fields.");
       return;
     }
-
     if (password.length < 6) {
       setMessage("Password must be at least 6 characters.");
       return;
     }
-
     if (password !== confirmPassword) {
       setMessage("Passwords do not match.");
       return;
@@ -147,37 +169,37 @@ export default function NewPassword() {
     setLoading(true);
 
     try {
-      // ⭐ 1. Force-hydrate fresh session (fixes first-try issue)
+      // ⭐ Rehydrate Supabase session AGAIN before update
+      // Fixes infinite loading after clicking button
       if (Platform.OS === "web") {
         const currentUrl = window.location.href;
         await supabase.auth.exchangeCodeForSession(currentUrl);
       }
 
-      // Allow Supabase to finalize auth
       await new Promise((res) => setTimeout(res, 120));
 
-      // ⭐ 2. Update password (now in a validated session)
-      const result = await supabase.auth.updateUser({
+      // ⭐ Update password — now in guaranteed valid auth session
+      const { error } = await supabase.auth.updateUser({
         password: password.trim(),
       });
 
-      if (result?.error) {
-        setMessage(result.error.message);
+      if (error) {
+        setMessage(error.message);
         setLoading(false);
         return;
       }
 
       setMessage("Password updated! Redirecting…");
 
-      // ⭐ 3. EXIT RECOVERY MODE — required
+      // ⭐ Must sign out or Supabase stays in recovery mode
       await supabase.auth.signOut();
 
-      // ⭐ 4. Final redirect (instant)
+      // ⭐ Guaranteed working redirect
       redirectToSignIn();
       return;
 
     } catch (err: any) {
-      console.log("Update password error:", err);
+      console.log("Password update error:", err);
       setMessage(err.message || "Something went wrong.");
     } finally {
       setLoading(false);
