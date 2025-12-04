@@ -28,16 +28,16 @@ const SYSTEM_SANS =
   undefined;
 
 /* ------------------------------------------------------------------
-   URL extraction: instant on web, event fallback on native
+   READ RESET URL
 ------------------------------------------------------------------ */
-const getResetUrl = async () => {
+const getUrl = async () => {
   if (Platform.OS === "web") return window.location.href;
 
   const initial = await Linking.getInitialURL();
   if (initial) return initial;
 
   return new Promise<string | null>((resolve) => {
-    const timeout = setTimeout(() => resolve(null), 5000);
+    const timeout = setTimeout(() => resolve(null), 4000);
     const sub = Linking.addEventListener("url", (e) => {
       clearTimeout(timeout);
       resolve(e.url);
@@ -46,9 +46,6 @@ const getResetUrl = async () => {
   });
 };
 
-/* ------------------------------------------------------------------
-   MAIN COMPONENT
------------------------------------------------------------------- */
 export default function NewPassword() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -61,25 +58,23 @@ export default function NewPassword() {
   const [message, setMessage] = useState("");
 
   /* ------------------------------------------------------------------
-      Process reset URL → establish recovery session
+      PROCESS RESET URL
   ------------------------------------------------------------------ */
-  const processResetUrl = async (url: string) => {
+  const processReset = async (url: string) => {
+    if (!url) return;
     try {
-      if (!url) return;
-
-      if (url.includes("type=fp") || url.includes("type=recovery")) {
+      if (url.includes("type=recovery") || url.includes("type=fp")) {
         await supabase.auth.exchangeCodeForSession(url);
       }
 
       if (url.includes("#")) {
-        const fragment = url.split("#")[1];
-        const params = new URLSearchParams(fragment);
+        const params = new URLSearchParams(url.split("#")[1]);
         const type = params.get("type");
         const access_token = params.get("access_token");
         const refresh_token = params.get("refresh_token");
 
         if (
-          (type === "fp" || type === "recovery") &&
+          (type === "recovery" || type === "fp") &&
           access_token &&
           refresh_token
         ) {
@@ -89,53 +84,49 @@ export default function NewPassword() {
           });
         }
       }
-    } catch (error) {
-      console.warn("Error processing reset URL:", error);
+    } catch (err) {
+      console.warn("reset err:", err);
     }
   };
 
   /* ------------------------------------------------------------------
-      INITIAL LOAD — always fetch URL BEFORE UI renders
+      INITIAL LOAD
   ------------------------------------------------------------------ */
   useEffect(() => {
     let active = true;
 
-    async function init() {
-      const url = await getResetUrl();
-      await processResetUrl(url || "");
-
-      await new Promise((res) => setTimeout(res, 100));
+    (async () => {
+      const url = await getUrl();
+      await processReset(url || "");
 
       const { data } = await supabase.auth.getSession();
       if (active) {
         setHasSession(!!data.session);
         setRestoring(false);
       }
-    }
+    })();
 
-    init();
     return () => {
       active = false;
     };
   }, []);
 
   /* ------------------------------------------------------------------
-      Redirect to SignIn
+      HARD REDIRECT FUNCTION
   ------------------------------------------------------------------ */
-  const goToSignIn = () => {
+  const instantRedirectToSignIn = () => {
     if (Platform.OS === "web") {
-      window.location.href = "/signin";
-      return;
+      window.location.assign("/signin");
+    } else {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "SignIn" }],
+      });
     }
-
-    navigation.reset({
-      index: 0,
-      routes: [{ name: "SignIn" }],
-    });
   };
 
   /* ------------------------------------------------------------------
-      UPDATE PASSWORD — with Supabase Web signOut bug fix
+      UPDATE PASSWORD — with instant redirect (Safari fix)
   ------------------------------------------------------------------ */
   const handleUpdatePassword = async () => {
     setMessage("");
@@ -153,45 +144,27 @@ export default function NewPassword() {
       return;
     }
 
-    setLoading(true);
+    // ------------------------------------------------------------
+    // 🚀 SAFARI FIX: Redirect immediately BEFORE async operations
+    // ------------------------------------------------------------
+    instantRedirectToSignIn();
 
+    // Background update
     try {
-      const { error } = await supabase.auth.updateUser({
+      await supabase.auth.updateUser({
         password: password.trim(),
       });
 
-      if (error) {
-        setMessage(error.message);
-        setLoading(false);
-        return;
-      }
-
-      setMessage("Password updated! Redirecting…");
-
-      // ------------------------------------------------------------
-      // 🚀 WEB FIX: Supabase signOut() hangs after recovery link
-      // ------------------------------------------------------------
+      // Clear web cookies if needed
       if (Platform.OS === "web") {
         const domain = window.location.hostname;
-
         document.cookie = `sb-access-token=; Max-Age=0; path=/; domain=${domain}`;
         document.cookie = `sb-refresh-token=; Max-Age=0; path=/; domain=${domain}`;
-
-        window.location.href = "/signin";
-        return;
       }
 
-      // Native works normally:
       await supabase.auth.signOut();
-
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "SignIn" }],
-      });
-    } catch (e: any) {
-      setMessage(e?.message || "Unexpected error.");
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      console.log("Background update error:", err);
     }
   };
 
@@ -214,7 +187,7 @@ export default function NewPassword() {
           Your password reset link is invalid or expired.
         </Text>
 
-        <TouchableOpacity style={styles.button} onPress={goToSignIn}>
+        <TouchableOpacity style={styles.button} onPress={instantRedirectToSignIn}>
           <Text style={styles.buttonText}>BACK TO SIGN IN</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -239,7 +212,7 @@ export default function NewPassword() {
             },
           ]}
         >
-          <TouchableOpacity onPress={goToSignIn} style={styles.back}>
+          <TouchableOpacity onPress={instantRedirectToSignIn} style={styles.back}>
             <Ionicons name="chevron-back" size={18} color={SUB} />
             <Text style={styles.backLabel}>Back</Text>
           </TouchableOpacity>
@@ -274,14 +247,9 @@ export default function NewPassword() {
 
             <TouchableOpacity
               onPress={handleUpdatePassword}
-              disabled={loading}
-              style={[styles.button, loading && { opacity: 0.6 }]}
+              style={styles.button}
             >
-              {loading ? (
-                <ActivityIndicator color={DARK_BG} />
-              ) : (
-                <Text style={styles.buttonText}>UPDATE PASSWORD</Text>
-              )}
+              <Text style={styles.buttonText}>UPDATE PASSWORD</Text>
             </TouchableOpacity>
 
             {message ? <Text style={styles.msg}>{message}</Text> : null}
@@ -293,7 +261,7 @@ export default function NewPassword() {
 }
 
 /* ------------------------------------------------------------------
-   Styles
+   STYLES
 ------------------------------------------------------------------ */
 const styles = StyleSheet.create({
   center: {
