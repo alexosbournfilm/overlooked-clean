@@ -1,20 +1,20 @@
 {
-  "routes": [
+  "rewrites": [
     {
-      "src": "/auth/v1/verify",
-      "dest": "/index.html"
+      "source": "/auth/v1/verify",
+      "destination": "/index.html"
     },
     {
-      "src": "/auth/confirm",
-      "dest": "/index.html"
+      "source": "/auth/confirm",
+      "destination": "/index.html"
     },
     {
-      "src": "/reset-password",
-      "dest": "/index.html"
+      "source": "/reset-password",
+      "destination": "/index.html"
     },
     {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
