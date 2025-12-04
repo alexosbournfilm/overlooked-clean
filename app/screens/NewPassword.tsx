@@ -16,20 +16,20 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 
-/* --------------------------- THEME --------------------------- */
 const DARK_BG = "#000000";
 const CARD_BG = "#0B0B0B";
 const GOLD = "#C6A664";
 const TEXT = "#F5F3EF";
 const SUB = "#A9A7A3";
 const BORDER = "#262626";
+
 const SYSTEM_SANS =
   Platform.select({ ios: "System", android: "Roboto", web: undefined }) ||
   undefined;
 
 /* ---------------- Safari deep link fix ---------------- */
 const waitForUrl = async () => {
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 60; i++) {   // 60 attempts × 120ms = 7.2 seconds
     const url = await Linking.getInitialURL();
     if (url) return url;
     await new Promise((res) => setTimeout(res, 120));
@@ -48,15 +48,17 @@ export default function NewPassword() {
   const [hasSession, setHasSession] = useState(false);
   const [message, setMessage] = useState("");
 
-  /* ---------------------------------------------------------------
-      PROCESS RESET URL (query + fragment)
-  ---------------------------------------------------------------- */
+  /* ------------------------------------------------------------------
+      PROCESS RESET URL
+  ------------------------------------------------------------------ */
   async function processUrl(url: string) {
     try {
+      // Query format
       if (url.includes("type=recovery")) {
         await supabase.auth.exchangeCodeForSession(url);
       }
 
+      // Fragment format
       if (url.includes("#")) {
         const fragment = url.split("#")[1];
         const params = new URLSearchParams(fragment);
@@ -72,28 +74,30 @@ export default function NewPassword() {
           });
         }
       }
-    } catch (err) {
-      console.warn("processUrl error:", err);
+    } catch (e) {
+      console.warn("processUrl error:", e);
     }
   }
 
-  /* ---------------------------------------------------------------
-      INITIAL LOAD
-  ---------------------------------------------------------------- */
+  /* ------------------------------------------------------------------
+      INITIAL LOAD — DO NOT DOUBLE-PROCESS URL
+  ------------------------------------------------------------------ */
   useEffect(() => {
     let active = true;
 
     async function init() {
-      // Always sign out first to clear broken sessions
+      // 1. force sign-out first to clear old sessions
       await supabase.auth.signOut();
 
+      // 2. get the reset URL
       const url = await waitForUrl();
       if (url) await processUrl(url);
 
-      // allow hydration
-      await new Promise((res) => setTimeout(res, 200));
+      // 3. allow hydration
+      await new Promise((res) => setTimeout(res, 150));
 
       const { data } = await supabase.auth.getSession();
+
       if (active) {
         setHasSession(!!data.session);
         setRestoring(false);
@@ -102,6 +106,7 @@ export default function NewPassword() {
 
     init();
 
+    // 4. ONLY process link events once, not multiple times
     const sub = Linking.addEventListener("url", async (e) => {
       await processUrl(e.url);
       const { data } = await supabase.auth.getSession();
@@ -114,12 +119,12 @@ export default function NewPassword() {
     };
   }, []);
 
-  /* ---------------------------------------------------------------
-      REDIRECT TO SIGN IN
-  ---------------------------------------------------------------- */
+  /* ------------------------------------------------------------------
+      REDIRECT
+  ------------------------------------------------------------------ */
   const goToSignIn = () => {
     if (Platform.OS === "web") {
-      window.location.assign("/signin");
+      window.location.href = "/signin";
     } else {
       navigation.reset({
         index: 0,
@@ -128,28 +133,28 @@ export default function NewPassword() {
     }
   };
 
-  /* ---------------------------------------------------------------
-      UPDATE PASSWORD — FIXED
-  ---------------------------------------------------------------- */
+  /* ------------------------------------------------------------------
+      UPDATE PASSWORD
+  ------------------------------------------------------------------ */
   const handleUpdatePassword = async () => {
     setMessage("");
 
-    if (!password || !confirm) return setMessage("Please fill out both fields.");
-    if (password.length < 6) return setMessage("Password must be at least 6 characters.");
-    if (password !== confirm) return setMessage("Passwords do not match.");
+    if (!password || !confirm) {
+      setMessage("Please fill out both fields.");
+      return;
+    }
+    if (password.length < 6) {
+      setMessage("Password must be at least 6 characters.");
+      return;
+    }
+    if (password !== confirm) {
+      setMessage("Passwords do not match.");
+      return;
+    }
 
     setLoading(true);
 
     try {
-      /* ---------------------------------------------------
-        ⭐ CRITICAL SAFARI FIX ⭐
-        Exchange code *again* before updateUser()
-      --------------------------------------------------- */
-      if (Platform.OS === "web") {
-        await supabase.auth.exchangeCodeForSession(window.location.href);
-        await new Promise((r) => setTimeout(r, 200));
-      }
-
       const { error } = await supabase.auth.updateUser({
         password: password.trim(),
       });
@@ -162,22 +167,20 @@ export default function NewPassword() {
 
       setMessage("Password updated! Redirecting…");
 
-      // Mandatory sign-out to exit recovery mode
+      // Required to exit recovery mode
       await supabase.auth.signOut();
 
-      // redirect
       goToSignIn();
-      return;
     } catch (err: any) {
-      setMessage(err.message || "Unexpected error.");
+      setMessage(err?.message || "Unexpected error.");
     } finally {
       setLoading(false);
     }
   };
 
-  /* ---------------------------------------------------------------
+  /* ------------------------------------------------------------------
       UI STATES
-  ---------------------------------------------------------------- */
+  ------------------------------------------------------------------ */
   if (restoring) {
     return (
       <SafeAreaView style={styles.center}>
@@ -190,7 +193,9 @@ export default function NewPassword() {
   if (!hasSession) {
     return (
       <SafeAreaView style={styles.center}>
-        <Text style={styles.invalid}>Your password reset link is invalid or expired.</Text>
+        <Text style={styles.invalid}>
+          Your password reset link is invalid or expired.
+        </Text>
 
         <TouchableOpacity style={styles.button} onPress={goToSignIn}>
           <Text style={styles.buttonText}>BACK TO SIGN IN</Text>
@@ -199,9 +204,6 @@ export default function NewPassword() {
     );
   }
 
-  /* ---------------------------------------------------------------
-      MAIN UI
-  ---------------------------------------------------------------- */
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
       <KeyboardAvoidingView
@@ -224,7 +226,9 @@ export default function NewPassword() {
 
           <View style={styles.card}>
             <Text style={styles.title}>Set a New Password</Text>
-            <Text style={styles.subtitle}>Enter and confirm your password.</Text>
+            <Text style={styles.subtitle}>
+              Enter and confirm your password.
+            </Text>
 
             <View style={styles.inputRow}>
               <Ionicons name="lock-closed" size={16} color={SUB} />
