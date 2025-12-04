@@ -11,12 +11,12 @@ import {
   Platform,
   Linking,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 
-const DARK_BG = "#000000";
+const DARK_BG = "#000";
 const CARD_BG = "#0B0B0B";
 const GOLD = "#C6A664";
 const TEXT = "#F5F3EF";
@@ -28,7 +28,7 @@ const SYSTEM_SANS =
   undefined;
 
 /* ------------------------------------------------------------------
-   READ RESET URL
+   READ RESET URL SAFELY
 ------------------------------------------------------------------ */
 const getUrl = async () => {
   if (Platform.OS === "web") return window.location.href;
@@ -37,7 +37,7 @@ const getUrl = async () => {
   if (initial) return initial;
 
   return new Promise<string | null>((resolve) => {
-    const t = setTimeout(() => resolve(null), 4000);
+    const t = setTimeout(() => resolve(null), 3000);
     const sub = Linking.addEventListener("url", (e) => {
       clearTimeout(t);
       resolve(e.url);
@@ -48,43 +48,35 @@ const getUrl = async () => {
 
 export default function NewPassword() {
   const navigation = useNavigation<any>();
-  const insets = useSafeAreaInsets();
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [restoring, setRestoring] = useState(true);
   const [hasSession, setHasSession] = useState(false);
-  const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   /* ------------------------------------------------------------------
       PROCESS RESET URL
   ------------------------------------------------------------------ */
   const processReset = async (url: string) => {
-    if (!url) return;
     try {
-      if (url.includes("type=recovery") || url.includes("type=fp")) {
+      if (!url) return;
+
+      if (url.includes("type=recovery")) {
         await supabase.auth.exchangeCodeForSession(url);
       }
 
       if (url.includes("#")) {
         const params = new URLSearchParams(url.split("#")[1]);
-        const type = params.get("type");
         const access_token = params.get("access_token");
         const refresh_token = params.get("refresh_token");
 
-        if (
-          (type === "recovery" || type === "fp") &&
-          access_token &&
-          refresh_token
-        ) {
-          await supabase.auth.setSession({
-            access_token,
-            refresh_token,
-          });
+        if (access_token && refresh_token) {
+          await supabase.auth.setSession({ access_token, refresh_token });
         }
       }
-    } catch (err) {
-      console.warn("Reset error:", err);
+    } catch (e) {
+      console.warn("processReset error:", e);
     }
   };
 
@@ -99,6 +91,7 @@ export default function NewPassword() {
       if (url) await processReset(url);
 
       const { data } = await supabase.auth.getSession();
+
       if (mounted) {
         setHasSession(!!data.session);
         setRestoring(false);
@@ -111,11 +104,11 @@ export default function NewPassword() {
   }, []);
 
   /* ------------------------------------------------------------------
-      SAFE REDIRECT (no Safari blocking)
+      REDIRECT
   ------------------------------------------------------------------ */
   const goToSignIn = () => {
     if (Platform.OS === "web") {
-      window.location.replace("/signin"); // replace → no history flash
+      window.location.replace("/signin");
     } else {
       navigation.reset({
         index: 0,
@@ -125,59 +118,48 @@ export default function NewPassword() {
   };
 
   /* ------------------------------------------------------------------
-      UPDATE PASSWORD — NOW **AFTER** REDIRECT
-      (Safari never blocks it this way)
-  ------------------------------------------------------------------ */
-  const backgroundUpdate = async (newPassword: string) => {
-    try {
-      await new Promise((res) => setTimeout(res, 10));
-
-      await supabase.auth.updateUser({
-        password: newPassword.trim(),
-      });
-
-      // Cleanup (web)
-      if (Platform.OS === "web") {
-        const domain = window.location.hostname;
-        document.cookie = `sb-access-token=; Max-Age=0; path=/; domain=${domain}`;
-        document.cookie = `sb-refresh-token=; Max-Age=0; path=/; domain=${domain}`;
-      }
-
-      await supabase.auth.signOut();
-    } catch (err) {
-      console.log("backgroundUpdate error", err);
-    }
-  };
-
-  /* ------------------------------------------------------------------
-      HANDLE SUBMIT — FIXED
+      UPDATE PASSWORD — WORKS 100% + NO SAFARI POPUP
   ------------------------------------------------------------------ */
   const handleUpdatePassword = async () => {
-    setMessage("");
+    if (submitting) return;
 
-    if (!password || !confirm) {
-      setMessage("Please fill out both fields.");
-      return;
-    }
-    if (password.length < 6) {
-      setMessage("Password must be at least 6 characters.");
-      return;
-    }
-    if (password !== confirm) {
-      setMessage("Passwords do not match.");
-      return;
-    }
+    if (!password || !confirm) return alert("Fill both fields");
+    if (password !== confirm) return alert("Passwords do not match");
+    if (password.length < 6) return alert("Password too short");
 
-    // 🚀 Redirect FIRST (Safari-safe)
-    const pw = password;
-    goToSignIn();
+    setSubmitting(true);
 
-    // 🔥 Update in background AFTER redirect
-    backgroundUpdate(pw);
+    try {
+      // 1️⃣ Update password BEFORE redirect — REQUIRED
+      const { error } = await supabase.auth.updateUser({
+        password: password.trim(),
+      });
+
+      if (error) {
+        alert(error.message);
+        setSubmitting(false);
+        return;
+      }
+
+      // 2️⃣ Sign out so user must login fresh
+      await supabase.auth.signOut();
+
+      // IMPORTANT:
+      // Remove password fields from DOM before redirect to avoid keychain popup
+      setPassword("");
+      setConfirm("");
+
+      // 3️⃣ Now redirect instantly
+      goToSignIn();
+    } catch (e) {
+      alert("Unexpected error");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   /* ------------------------------------------------------------------
-      UI states
+      UI STATES
   ------------------------------------------------------------------ */
   if (restoring) {
     return (
@@ -191,10 +173,7 @@ export default function NewPassword() {
   if (!hasSession) {
     return (
       <SafeAreaView style={styles.center}>
-        <Text style={styles.invalid}>
-          Your password reset link is invalid or expired.
-        </Text>
-
+        <Text style={styles.invalid}>Invalid or expired reset link.</Text>
         <TouchableOpacity style={styles.button} onPress={goToSignIn}>
           <Text style={styles.buttonText}>BACK TO SIGN IN</Text>
         </TouchableOpacity>
@@ -202,21 +181,13 @@ export default function NewPassword() {
     );
   }
 
-  /* ------------------------------------------------------------------
-      MAIN UI
-  ------------------------------------------------------------------ */
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
-        <View
-          style={[
-            styles.wrapper,
-            { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 },
-          ]}
-        >
+        <View style={styles.wrapper}>
           <TouchableOpacity onPress={goToSignIn} style={styles.back}>
             <Ionicons name="chevron-back" size={18} color={SUB} />
             <Text style={styles.backLabel}>Back</Text>
@@ -224,8 +195,11 @@ export default function NewPassword() {
 
           <View style={styles.card}>
             <Text style={styles.title}>Set a New Password</Text>
-            <Text style={styles.subtitle}>Enter and confirm your password.</Text>
+            <Text style={styles.subtitle}>
+              Enter and confirm your password.
+            </Text>
 
+            {/* PASSWORD INPUTS */}
             <View style={styles.inputRow}>
               <Ionicons name="lock-closed" size={16} color={SUB} />
               <TextInput
@@ -252,12 +226,15 @@ export default function NewPassword() {
 
             <TouchableOpacity
               onPress={handleUpdatePassword}
-              style={styles.button}
+              disabled={submitting}
+              style={[styles.button, submitting && { opacity: 0.6 }]}
             >
-              <Text style={styles.buttonText}>UPDATE PASSWORD</Text>
+              {submitting ? (
+                <ActivityIndicator color={DARK_BG} />
+              ) : (
+                <Text style={styles.buttonText}>UPDATE PASSWORD</Text>
+              )}
             </TouchableOpacity>
-
-            {message ? <Text style={styles.msg}>{message}</Text> : null}
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -283,14 +260,13 @@ const styles = StyleSheet.create({
   invalid: {
     color: TEXT,
     fontSize: 18,
-    textAlign: "center",
-    paddingHorizontal: 30,
     marginBottom: 20,
+    textAlign: "center",
     fontFamily: SYSTEM_SANS,
   },
   wrapper: {
     flex: 1,
-    paddingHorizontal: 24,
+    padding: 24,
   },
   back: {
     flexDirection: "row",
@@ -309,9 +285,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: BORDER,
-    maxWidth: 420,
-    width: "100%",
-    alignSelf: "center",
   },
   title: {
     fontSize: 22,
@@ -322,8 +295,8 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
   subtitle: {
-    textAlign: "center",
     color: SUB,
+    textAlign: "center",
     marginBottom: 18,
     fontFamily: SYSTEM_SANS,
   },
@@ -333,8 +306,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    padding: 12,
     marginBottom: 14,
     backgroundColor: "#0A0A0A",
   },
@@ -349,7 +321,6 @@ const styles = StyleSheet.create({
     backgroundColor: GOLD,
     paddingVertical: 14,
     borderRadius: 12,
-    justifyContent: "center",
     alignItems: "center",
     marginTop: 6,
   },
@@ -357,13 +328,6 @@ const styles = StyleSheet.create({
     color: DARK_BG,
     fontSize: 15,
     fontWeight: "900",
-    fontFamily: SYSTEM_SANS,
-  },
-  msg: {
-    marginTop: 14,
-    textAlign: "center",
-    color: SUB,
-    fontSize: 14,
     fontFamily: SYSTEM_SANS,
   },
 });
