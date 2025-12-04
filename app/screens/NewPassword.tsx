@@ -42,7 +42,7 @@ export default function NewPassword() {
   const [message, setMessage] = useState("");
 
   /* --------------------------------------------------------
-        PARSE AND EXTRACT RECOVERY TOKENS FROM URL
+        PARSE RECOVERY URL AND HYDRATE SESSION
      -------------------------------------------------------- */
   async function processRecoveryUrl(url: string) {
     try {
@@ -73,7 +73,7 @@ export default function NewPassword() {
   }
 
   /* --------------------------------------------------------
-        INITIAL LOAD — HANDLE RECOVERY LINK
+        INITIAL LOAD — HANDLE RECOVERY
      -------------------------------------------------------- */
   useEffect(() => {
     let active = true;
@@ -107,10 +107,10 @@ export default function NewPassword() {
   }, []);
 
   /* --------------------------------------------------------
-        BUTTON HANDLERS
+        REDIRECT HELPERS
      -------------------------------------------------------- */
 
-  const handleBack = () => {
+  const redirectToSignIn = () => {
     if (Platform.OS === "web") {
       window.location.replace("https://overlooked.cloud/signin");
       return;
@@ -121,6 +121,10 @@ export default function NewPassword() {
       routes: [{ name: "SignIn" }],
     });
   };
+
+  /* --------------------------------------------------------
+        HANDLE UPDATE PASSWORD
+     -------------------------------------------------------- */
 
   const handleUpdate = async () => {
     setMessage("");
@@ -143,40 +147,34 @@ export default function NewPassword() {
     setLoading(true);
 
     try {
-      // Prevent freezing
-      const timeoutPromise = new Promise((resolve) =>
-        setTimeout(() => resolve("timeout"), 1800)
-      );
+      // ⭐ 1. Force-hydrate fresh session (fixes first-try issue)
+      if (Platform.OS === "web") {
+        const currentUrl = window.location.href;
+        await supabase.auth.exchangeCodeForSession(currentUrl);
+      }
 
-      const updatePromise = supabase.auth.updateUser({
+      // Allow Supabase to finalize auth
+      await new Promise((res) => setTimeout(res, 120));
+
+      // ⭐ 2. Update password (now in a validated session)
+      const result = await supabase.auth.updateUser({
         password: password.trim(),
       });
 
-      const result: any = await Promise.race([updatePromise, timeoutPromise]);
-
-      if (result === "timeout") {
-        console.warn("Supabase updateUser hung — forcing redirect.");
-        setMessage("Password updated! Redirecting…");
-      } else if (result?.error) {
+      if (result?.error) {
         setMessage(result.error.message);
-      } else {
-        setMessage("Password updated! Redirecting…");
-      }
-
-      // Must sign out after password change
-      await supabase.auth.signOut();
-
-      // ⭐ WEB: hard redirect always works
-      if (Platform.OS === "web") {
-        window.location.replace("https://overlooked.cloud/signin");
+        setLoading(false);
         return;
       }
 
-      // ⭐ APP: navigation reset
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "SignIn" }],
-      });
+      setMessage("Password updated! Redirecting…");
+
+      // ⭐ 3. EXIT RECOVERY MODE — required
+      await supabase.auth.signOut();
+
+      // ⭐ 4. Final redirect (instant)
+      redirectToSignIn();
+      return;
 
     } catch (err: any) {
       console.log("Update password error:", err);
@@ -206,7 +204,7 @@ export default function NewPassword() {
           Your password reset link is invalid or expired.
         </Text>
 
-        <TouchableOpacity onPress={handleBack} style={styles.button}>
+        <TouchableOpacity onPress={redirectToSignIn} style={styles.button}>
           <Text style={styles.buttonText}>BACK TO SIGN IN</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -232,7 +230,7 @@ export default function NewPassword() {
             },
           ]}
         >
-          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+          <TouchableOpacity onPress={redirectToSignIn} style={styles.backButton}>
             <Ionicons name="chevron-back" size={18} color={SUB} />
             <Text style={styles.backLabel}>Back</Text>
           </TouchableOpacity>
