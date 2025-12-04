@@ -25,15 +25,17 @@ type Props = {
   initialAuthRouteName: "SignIn" | "CreateProfile";
 };
 
-// Helper
+/* ------------------------------------------------------------------
+   ✔️ REAL recovery detection — requires actual Supabase tokens
+------------------------------------------------------------------ */
 function isRecoveryUrl(url?: string | null): boolean {
   if (!url) return false;
-  const u = url.toLowerCase();
+  if (!url.includes("#")) return false;
+
+  const hash = url.split("#")[1];
   return (
-    u.includes("type=recovery") ||
-    u.includes("/auth/v1/verify") ||
-    u.includes("/auth/confirm") ||
-    u.includes("#access_token")
+    hash.includes("access_token=") ||
+    hash.includes("refresh_token=")
   );
 }
 
@@ -44,7 +46,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   const [navReady, setNavReady] = useState(false);
 
   /* ------------------------------------------------------------------
-      RECOVERY DETECTION — MUST HAPPEN BEFORE AUTH PROVIDER TRIGGERS
+      1. Recovery Flow — MUST run BEFORE AuthProvider sees session
   ------------------------------------------------------------------ */
   useEffect(() => {
     let active = true;
@@ -54,32 +56,30 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
       if (!url || !active) return;
 
       if (isRecoveryUrl(url)) {
-        console.log("🔐 Recovery deep link detected:", url);
+        console.log("🔐 Recovery URL detected:", url);
 
-        if (url.includes("#")) {
-          const params = new URLSearchParams(url.split("#")[1]);
-          const access_token = params.get("access_token");
-          const refresh_token = params.get("refresh_token");
+        const hash = url.split("#")[1];
+        const params = new URLSearchParams(hash);
 
-          if (access_token && refresh_token) {
-            console.log("🔐 Setting Supabase session for recovery...");
-            await supabase.auth.setSession({
-              access_token,
-              refresh_token,
-            });
-          }
+        const access_token = params.get("access_token");
+        const refresh_token = params.get("refresh_token");
+
+        if (access_token && refresh_token) {
+          console.log("🔐 Setting Supabase session from recovery link...");
+          await supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          });
         }
       }
     };
 
     detect();
-    return () => {
-      active = false;
-    };
+    return () => { active = false };
   }, []);
 
   /* ------------------------------------------------------------------
-      RESTORE STATE FOR LOGGED-IN USERS
+      2. Restore navigation state (ONLY for logged-in users)
   ------------------------------------------------------------------ */
   useEffect(() => {
     let mounted = true;
@@ -87,12 +87,16 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     const restore = async () => {
       if (!ready) return;
 
+      // Not logged in OR profile incomplete → start fresh
       if (!userId || !profileComplete) {
-        setInitialState(undefined);
-        if (mounted) setNavReady(true);
+        if (mounted) {
+          setInitialState(undefined);
+          setNavReady(true);
+        }
         return;
       }
 
+      // Restore last nav state
       try {
         const saved = await AsyncStorage.getItem(
           `NAVIGATION_STATE_v2:${userId}`
@@ -101,20 +105,18 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
           setInitialState(JSON.parse(saved));
         }
       } catch (e) {
-        console.log("Nav restore failed:", e);
+        console.warn("Navigation restore failed:", e);
       } finally {
         if (mounted) setNavReady(true);
       }
     };
 
     restore();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false };
   }, [ready, userId, profileComplete]);
 
   /* ------------------------------------------------------------------
-      SUBSCRIPTION LOGIC
+      3. Subscription / Paywall Logic (unchanged)
   ------------------------------------------------------------------ */
   const [isPaid, setIsPaid] = useState<boolean | null>(null);
   const [expired, setExpired] = useState(false);
@@ -158,9 +160,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
       setIsPaid(paid);
     })();
 
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false };
   }, [userId]);
 
   useEffect(() => {
@@ -170,7 +170,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   }, [userId, expired]);
 
   /* ------------------------------------------------------------------
-      GLOBAL LOADING
+      4. Global Loading Screen
   ------------------------------------------------------------------ */
   if (!ready || !navReady || (userId && isPaid === null)) {
     return (
@@ -190,7 +190,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   const mustShowPaywall = false;
 
   /* ------------------------------------------------------------------
-      NAVIGATION TREE
+      5. Navigation Tree — clean and simple
   ------------------------------------------------------------------ */
   return (
     <NavigationContainer
@@ -200,6 +200,8 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
       onReady={() => setNavigatorReady(true)}
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
+
+        {/* USER NOT LOGGED IN */}
         {!userId ? (
           <Stack.Screen
             name="Auth"
@@ -207,19 +209,26 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
               <AuthStack initialRouteName={initialAuthRouteName} />
             )}
           />
+
+        /* SHOW PAYWALL IF NEEDED */
         ) : mustShowPaywall ? (
           <>
             <Stack.Screen name="Paywall" component={PaywallScreen} />
             <Stack.Screen name="PaySuccess" component={PaySuccessScreen} />
           </>
+
+        /* USER LOGGED IN BUT NO PROFILE */
         ) : !profileComplete ? (
           <Stack.Screen
             name="Auth"
             children={() => <AuthStack initialRouteName="CreateProfile" />}
           />
+
+        /* EVERYTHING COMPLETE → MAIN APP */
         ) : (
           <Stack.Screen name="MainTabs" component={MainTabs} />
         )}
+
       </Stack.Navigator>
     </NavigationContainer>
   );

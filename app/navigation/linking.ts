@@ -6,16 +6,12 @@ export const linking: LinkingOptions<any> = {
     "https://overlooked.cloud",
     "https://www.overlooked.cloud",
 
-    // Supabase reset flows
+    // Supabase recovery links
     "https://overlooked.cloud/auth/v1/verify",
     "https://overlooked.cloud/auth/confirm",
 
-    // Optional clean reset route
-    "https://overlooked.cloud/reset-password",
-
-    // Mobile
+    // Mobile schemes
     "overlooked://",
-    "overlooked://reset-password",
 
     // Dev
     "http://localhost:3000",
@@ -24,19 +20,6 @@ export const linking: LinkingOptions<any> = {
 
   config: {
     screens: {
-      /* -----------------------------------------------------------
-         🔐 Recovery URLs → Recovery screen
-         MUST MATCH AppNavigator route: name="Recovery"
-      ----------------------------------------------------------- */
-      Recovery: {
-        path: "reset-password",
-        parse: {
-          access_token: (v: string) => v,
-          refresh_token: (v: string) => v,
-          type: (v: string) => v,
-        },
-      },
-
       /* AUTH STACK */
       Auth: {
         screens: {
@@ -66,7 +49,6 @@ export const linking: LinkingOptions<any> = {
     },
   },
 
-  // Safe fallback
   getStateFromPath(path, options) {
     try {
       const { getStateFromPath } = require("@react-navigation/native");
