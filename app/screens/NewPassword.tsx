@@ -112,7 +112,7 @@ export default function NewPassword() {
 
   const handleBack = () => {
     if (Platform.OS === "web") {
-      window.location.href = "/signin";
+      window.location.replace("https://overlooked.cloud/signin");
       return;
     }
 
@@ -166,13 +166,13 @@ export default function NewPassword() {
       // Must sign out after password change
       await supabase.auth.signOut();
 
-      // ⭐ WEB: Hard redirect (works in all browsers)
+      // ⭐ WEB: hard redirect always works
       if (Platform.OS === "web") {
-        window.location.href = "/signin";
+        window.location.replace("https://overlooked.cloud/signin");
         return;
       }
 
-      // ⭐ APP: React Navigation reset
+      // ⭐ APP: navigation reset
       navigation.reset({
         index: 0,
         routes: [{ name: "SignIn" }],
