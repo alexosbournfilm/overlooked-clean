@@ -6,60 +6,47 @@ export const linking: LinkingOptions<any> = {
     "https://overlooked.cloud",
     "https://www.overlooked.cloud",
 
-    // Supabase will send recovery links here:
+    // Supabase sends these:
     "https://overlooked.cloud/auth/v1/verify",
     "https://overlooked.cloud/auth/confirm",
 
-    // Mobile schemes
+    // Optional clean route
+    "https://overlooked.cloud/reset-password",
+
+    // Mobile
     "overlooked://",
-    "overlooked://callback",
     "overlooked://reset-password",
 
-    // Dev / Expo
+    // Local dev
     "http://localhost:3000",
-    "exp://localhost:19000",
+    "exp://localhost:19000"
   ],
 
   config: {
     screens: {
       /* -----------------------------------------------------------
-         ⭐ ROUTE ALL RESET URLS → NewPassword
-         ----------------------------------------------------------- 
-         These cover EVERY password reset flow Supabase uses:
-         - /reset-password
-         - /auth/v1/verify?type=recovery
-         - /auth/confirm?type=recovery
-         - /auth/v1/verify#access_token=...
-         - /auth/confirm#access_token=...
-         - overlooked://reset-password
+         ⭐ All recovery URLs → NewPassword screen
       ----------------------------------------------------------- */
-
       NewPassword: {
-        // One wildcard path matching ALL different URL forms
-        path: "*", // We handle filtering inside AppNavigator
+        path: "reset-password",
         parse: {
-          token: (v) => v,
           access_token: (v) => v,
           refresh_token: (v) => v,
-          type: (v) => v,
-        },
+          type: (v) => v
+        }
       },
 
-      /* -----------------------------------------------------------
-         AUTH SCREENS
-      ----------------------------------------------------------- */
+      /* AUTH */
       Auth: {
         screens: {
           SignIn: "signin",
           SignUp: "signup",
           ForgotPassword: "forgot-password",
-          CreateProfile: "create-profile",
-        },
+          CreateProfile: "create-profile"
+        }
       },
 
-      /* -----------------------------------------------------------
-         MAIN APPLICATION TABS
-      ----------------------------------------------------------- */
+      /* MAIN TABS */
       MainTabs: {
         screens: {
           Featured: "featured",
@@ -67,33 +54,26 @@ export const linking: LinkingOptions<any> = {
           Challenge: "challenge",
           Location: "location",
           Chats: "chats",
-          Profile: "profile",
-        },
+          Profile: "profile"
+        }
       },
 
       ChatRoom: "chats/:id",
       UserProfile: "u/:id",
-      PaySuccess: "pay/success",
-    },
+      PaySuccess: "pay/success"
+    }
   },
 
-  /* -----------------------------------------------------------
-     FALLBACK HANDLER (keeps app stable)
-  ----------------------------------------------------------- */
+  /* fallback */
   getStateFromPath(path, options) {
     try {
       const { getStateFromPath } = require("@react-navigation/native");
       return getStateFromPath(path, options);
     } catch (e) {
-      console.warn("[linking] Failed to parse path:", path, e);
+      console.warn("[linking] Failed to parse", path, e);
       return {
-        routes: [
-          {
-            name: "MainTabs",
-            state: { routes: [{ name: "Featured" }] },
-          },
-        ],
+        routes: [{ name: "MainTabs", state: { routes: [{ name: "Featured" }] } }]
       };
     }
-  },
+  }
 };
