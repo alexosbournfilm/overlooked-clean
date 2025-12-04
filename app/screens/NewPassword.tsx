@@ -11,12 +11,12 @@ import {
   Platform,
   Linking,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 
-const DARK_BG = "#000";
+const DARK_BG = "#000000";
 const CARD_BG = "#0B0B0B";
 const GOLD = "#C6A664";
 const TEXT = "#F5F3EF";
@@ -27,134 +27,152 @@ const SYSTEM_SANS =
   Platform.select({ ios: "System", android: "Roboto", web: undefined }) ||
   undefined;
 
-/* ------------------------------------------------------------------
-   READ RESET URL SAFELY
------------------------------------------------------------------- */
-const getUrl = async () => {
-  if (Platform.OS === "web") return window.location.href;
-
-  const initial = await Linking.getInitialURL();
-  if (initial) return initial;
-
-  return new Promise<string | null>((resolve) => {
-    const t = setTimeout(() => resolve(null), 3000);
-    const sub = Linking.addEventListener("url", (e) => {
-      clearTimeout(t);
-      resolve(e.url);
-      sub.remove();
-    });
-  });
+/* ---------------- Safari deep link fix ---------------- */
+const waitForUrl = async () => {
+  for (let i = 0; i < 60; i++) {
+    const url = await Linking.getInitialURL();
+    if (url) return url;
+    await new Promise((res) => setTimeout(res, 120));
+  }
+  return null;
 };
 
 export default function NewPassword() {
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
   const [restoring, setRestoring] = useState(true);
   const [hasSession, setHasSession] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState("");
 
   /* ------------------------------------------------------------------
       PROCESS RESET URL
   ------------------------------------------------------------------ */
-  const processReset = async (url: string) => {
+  async function processUrl(url: string) {
     try {
-      if (!url) return;
-
       if (url.includes("type=recovery")) {
         await supabase.auth.exchangeCodeForSession(url);
       }
 
       if (url.includes("#")) {
-        const params = new URLSearchParams(url.split("#")[1]);
+        const fragment = url.split("#")[1];
+        const params = new URLSearchParams(fragment);
+        const type = params.get("type");
         const access_token = params.get("access_token");
         const refresh_token = params.get("refresh_token");
 
-        if (access_token && refresh_token) {
-          await supabase.auth.setSession({ access_token, refresh_token });
+        if (type === "recovery" && access_token && refresh_token) {
+          await supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          });
         }
       }
     } catch (e) {
-      console.warn("processReset error:", e);
+      console.warn("processUrl error:", e);
     }
-  };
+  }
 
   /* ------------------------------------------------------------------
       INITIAL LOAD
   ------------------------------------------------------------------ */
   useEffect(() => {
-    let mounted = true;
+    let active = true;
 
-    (async () => {
-      const url = await getUrl();
-      if (url) await processReset(url);
+    async function init() {
+      const url = await waitForUrl();
+      if (url) await processUrl(url);
+
+      // slight delay to allow Safari to settle
+      await new Promise((res) => setTimeout(res, 150));
 
       const { data } = await supabase.auth.getSession();
 
-      if (mounted) {
+      if (active) {
         setHasSession(!!data.session);
         setRestoring(false);
       }
-    })();
+    }
+
+    init();
+
+    const sub = Linking.addEventListener("url", async (e) => {
+      await processUrl(e.url);
+      const { data } = await supabase.auth.getSession();
+      if (active) setHasSession(!!data.session);
+    });
 
     return () => {
-      mounted = false;
+      active = false;
+      sub.remove();
     };
   }, []);
 
   /* ------------------------------------------------------------------
-      REDIRECT
+      REDIRECT STRAIGHT TO APP (Option B)
   ------------------------------------------------------------------ */
-  const goToSignIn = () => {
+  const goToApp = () => {
     if (Platform.OS === "web") {
-      window.location.replace("/signin");
+      window.location.replace("/"); // THIS GOES TO YOUR MAIN APP
     } else {
       navigation.reset({
         index: 0,
-        routes: [{ name: "SignIn" }],
+        routes: [{ name: "Featured" }],
       });
     }
   };
 
   /* ------------------------------------------------------------------
-      UPDATE PASSWORD — WORKS 100% + NO SAFARI POPUP
+      UPDATE PASSWORD — FINAL, SAFARI-SAFE
   ------------------------------------------------------------------ */
   const handleUpdatePassword = async () => {
-    if (submitting) return;
+    setMessage("");
 
-    if (!password || !confirm) return alert("Fill both fields");
-    if (password !== confirm) return alert("Passwords do not match");
-    if (password.length < 6) return alert("Password too short");
+    if (!password || !confirm) {
+      setMessage("Please fill out both fields.");
+      return;
+    }
+    if (password.length < 6) {
+      setMessage("Password must be at least 6 characters.");
+      return;
+    }
+    if (password !== confirm) {
+      setMessage("Passwords do not match.");
+      return;
+    }
 
-    setSubmitting(true);
+    setLoading(true);
 
     try {
-      // 1️⃣ Update password BEFORE redirect — REQUIRED
+      // 1️⃣ Update password
       const { error } = await supabase.auth.updateUser({
         password: password.trim(),
       });
 
       if (error) {
-        alert(error.message);
-        setSubmitting(false);
+        setMessage(error.message);
+        setLoading(false);
         return;
       }
 
-      // 2️⃣ Sign out so user must login fresh
-      await supabase.auth.signOut();
-
-      // IMPORTANT:
-      // Remove password fields from DOM before redirect to avoid keychain popup
+      // 2️⃣ Clear inputs to prevent Safari Keychain popup freeze
       setPassword("");
       setConfirm("");
 
-      // 3️⃣ Now redirect instantly
-      goToSignIn();
-    } catch (e) {
-      alert("Unexpected error");
+      // 3️⃣ 🚀 INSTANT redirect BEFORE React re-renders
+      // This avoids Safari freezing and ensures no blank screen.
+      goToApp();
+
+      // 4️⃣ Optional sign-out (in background, Safari-safe)
+      // not needed because user is already logged in
+      supabase.auth.refreshSession().catch(() => {});
+    } catch (err: any) {
+      setMessage(err?.message || "Unexpected error.");
     } finally {
-      setSubmitting(false);
+      // DO NOT stop loading after redirect (page unmounts anyway)
     }
   };
 
@@ -173,9 +191,12 @@ export default function NewPassword() {
   if (!hasSession) {
     return (
       <SafeAreaView style={styles.center}>
-        <Text style={styles.invalid}>Invalid or expired reset link.</Text>
-        <TouchableOpacity style={styles.button} onPress={goToSignIn}>
-          <Text style={styles.buttonText}>BACK TO SIGN IN</Text>
+        <Text style={styles.invalid}>
+          Your password reset link is invalid or expired.
+        </Text>
+
+        <TouchableOpacity style={styles.button} onPress={goToApp}>
+          <Text style={styles.buttonText}>BACK HOME</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -187,19 +208,24 @@ export default function NewPassword() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
-        <View style={styles.wrapper}>
-          <TouchableOpacity onPress={goToSignIn} style={styles.back}>
+        <View
+          style={[
+            styles.wrapper,
+            {
+              paddingTop: insets.top + 20,
+              paddingBottom: insets.bottom + 20,
+            },
+          ]}
+        >
+          <TouchableOpacity onPress={goToApp} style={styles.back}>
             <Ionicons name="chevron-back" size={18} color={SUB} />
             <Text style={styles.backLabel}>Back</Text>
           </TouchableOpacity>
 
           <View style={styles.card}>
             <Text style={styles.title}>Set a New Password</Text>
-            <Text style={styles.subtitle}>
-              Enter and confirm your password.
-            </Text>
+            <Text style={styles.subtitle}>Enter and confirm your password.</Text>
 
-            {/* PASSWORD INPUTS */}
             <View style={styles.inputRow}>
               <Ionicons name="lock-closed" size={16} color={SUB} />
               <TextInput
@@ -226,15 +252,17 @@ export default function NewPassword() {
 
             <TouchableOpacity
               onPress={handleUpdatePassword}
-              disabled={submitting}
-              style={[styles.button, submitting && { opacity: 0.6 }]}
+              disabled={loading}
+              style={[styles.button, loading && { opacity: 0.6 }]}
             >
-              {submitting ? (
+              {loading ? (
                 <ActivityIndicator color={DARK_BG} />
               ) : (
                 <Text style={styles.buttonText}>UPDATE PASSWORD</Text>
               )}
             </TouchableOpacity>
+
+            {message ? <Text style={styles.msg}>{message}</Text> : null}
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -242,9 +270,7 @@ export default function NewPassword() {
   );
 }
 
-/* ------------------------------------------------------------------
-   STYLES
------------------------------------------------------------------- */
+/* --------------------------- STYLES --------------------------- */
 const styles = StyleSheet.create({
   center: {
     flex: 1,
@@ -260,13 +286,14 @@ const styles = StyleSheet.create({
   invalid: {
     color: TEXT,
     fontSize: 18,
-    marginBottom: 20,
     textAlign: "center",
+    paddingHorizontal: 30,
+    marginBottom: 20,
     fontFamily: SYSTEM_SANS,
   },
   wrapper: {
     flex: 1,
-    padding: 24,
+    paddingHorizontal: 24,
   },
   back: {
     flexDirection: "row",
@@ -285,6 +312,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: BORDER,
+    maxWidth: 420,
+    width: "100%",
+    alignSelf: "center",
   },
   title: {
     fontSize: 22,
@@ -295,8 +325,8 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
   subtitle: {
-    color: SUB,
     textAlign: "center",
+    color: SUB,
     marginBottom: 18,
     fontFamily: SYSTEM_SANS,
   },
@@ -306,7 +336,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
     borderRadius: 12,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     marginBottom: 14,
     backgroundColor: "#0A0A0A",
   },
@@ -321,6 +352,7 @@ const styles = StyleSheet.create({
     backgroundColor: GOLD,
     paddingVertical: 14,
     borderRadius: 12,
+    justifyContent: "center",
     alignItems: "center",
     marginTop: 6,
   },
@@ -328,6 +360,13 @@ const styles = StyleSheet.create({
     color: DARK_BG,
     fontSize: 15,
     fontWeight: "900",
+    fontFamily: SYSTEM_SANS,
+  },
+  msg: {
+    marginTop: 14,
+    textAlign: "center",
+    color: SUB,
+    fontSize: 14,
     fontFamily: SYSTEM_SANS,
   },
 });
