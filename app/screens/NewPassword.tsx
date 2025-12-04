@@ -31,7 +31,7 @@ export default function NewPassword() {
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // 🚀 ALWAYS ensure session exists using URL tokens
+  // 🔐 Ensure Supabase session is established from URL tokens
   useEffect(() => {
     const init = async () => {
       try {
@@ -85,7 +85,7 @@ export default function NewPassword() {
     setLoading(true);
 
     try {
-      // MUST call only this — no other logic
+      // 1️⃣ Update password in Supabase
       const { error } = await supabase.auth.updateUser({
         password: password.trim(),
       });
@@ -96,11 +96,15 @@ export default function NewPassword() {
         return;
       }
 
-      // 🚀 SUCCESS → redirect immediately
+      // 2️⃣ Refresh session so the app does not hang
+      await supabase.auth.getSession();
+
+      // 3️⃣ Navigate user inside the app immediately
       goToApp();
     } catch (e) {
       console.log("Unexpected error:", e);
       alert("Unexpected error");
+    } finally {
       setLoading(false);
     }
   };
