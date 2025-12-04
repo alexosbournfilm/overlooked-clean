@@ -27,9 +27,11 @@ const SYSTEM_SANS =
   Platform.select({ ios: "System", android: "Roboto", web: undefined }) ||
   undefined;
 
-/* ---------------- Safari deep link fix ---------------- */
+/* ------------------------------------------------------------------
+   SAFARI FIX — Wait until URL is available
+------------------------------------------------------------------ */
 const waitForUrl = async () => {
-  for (let i = 0; i < 60; i++) {   // 60 attempts × 120ms = 7.2 seconds
+  for (let i = 0; i < 60; i++) {
     const url = await Linking.getInitialURL();
     if (url) return url;
     await new Promise((res) => setTimeout(res, 120));
@@ -49,16 +51,16 @@ export default function NewPassword() {
   const [message, setMessage] = useState("");
 
   /* ------------------------------------------------------------------
-      PROCESS RESET URL
+      Process Supabase reset (type=fp, type=recovery)
   ------------------------------------------------------------------ */
   async function processUrl(url: string) {
     try {
-      // Query format
-      if (url.includes("type=recovery")) {
+      // FULL SESSION EXCHANGE FOR PASSWORD RESET
+      if (url.includes("type=fp") || url.includes("type=recovery")) {
         await supabase.auth.exchangeCodeForSession(url);
       }
 
-      // Fragment format
+      // HASH FRAGMENT CASE (iOS / Safari)
       if (url.includes("#")) {
         const fragment = url.split("#")[1];
         const params = new URLSearchParams(fragment);
@@ -67,7 +69,11 @@ export default function NewPassword() {
         const access_token = params.get("access_token");
         const refresh_token = params.get("refresh_token");
 
-        if (type === "recovery" && access_token && refresh_token) {
+        if (
+          (type === "recovery" || type === "fp") &&
+          access_token &&
+          refresh_token
+        ) {
           await supabase.auth.setSession({
             access_token,
             refresh_token,
@@ -80,21 +86,21 @@ export default function NewPassword() {
   }
 
   /* ------------------------------------------------------------------
-      INITIAL LOAD — DO NOT DOUBLE-PROCESS URL
+      INITIAL LOAD
   ------------------------------------------------------------------ */
   useEffect(() => {
     let active = true;
 
     async function init() {
-      // 1. force sign-out first to clear old sessions
-      await supabase.auth.signOut();
+      // ❗ Never sign out before processing URL — breaks safari resets
 
-      // 2. get the reset URL
       const url = await waitForUrl();
-      if (url) await processUrl(url);
+      if (url) {
+        await processUrl(url);
+      }
 
-      // 3. allow hydration
-      await new Promise((res) => setTimeout(res, 150));
+      // Let Supabase finalize session
+      await new Promise((r) => setTimeout(r, 200));
 
       const { data } = await supabase.auth.getSession();
 
@@ -106,7 +112,7 @@ export default function NewPassword() {
 
     init();
 
-    // 4. ONLY process link events once, not multiple times
+    // Listen for URL changes (Expo Go / iOS)
     const sub = Linking.addEventListener("url", async (e) => {
       await processUrl(e.url);
       const { data } = await supabase.auth.getSession();
@@ -120,7 +126,7 @@ export default function NewPassword() {
   }, []);
 
   /* ------------------------------------------------------------------
-      REDIRECT
+      ROUTING
   ------------------------------------------------------------------ */
   const goToSignIn = () => {
     if (Platform.OS === "web") {
@@ -167,7 +173,7 @@ export default function NewPassword() {
 
       setMessage("Password updated! Redirecting…");
 
-      // Required to exit recovery mode
+      // Required for completing reset flow
       await supabase.auth.signOut();
 
       goToSignIn();
@@ -179,7 +185,7 @@ export default function NewPassword() {
   };
 
   /* ------------------------------------------------------------------
-      UI STATES
+      UI — Restoring / Invalid / Ready
   ------------------------------------------------------------------ */
   if (restoring) {
     return (
@@ -204,6 +210,9 @@ export default function NewPassword() {
     );
   }
 
+  /* ------------------------------------------------------------------
+      UI — MAIN
+  ------------------------------------------------------------------ */
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
       <KeyboardAvoidingView
@@ -226,9 +235,7 @@ export default function NewPassword() {
 
           <View style={styles.card}>
             <Text style={styles.title}>Set a New Password</Text>
-            <Text style={styles.subtitle}>
-              Enter and confirm your password.
-            </Text>
+            <Text style={styles.subtitle}>Enter and confirm your password.</Text>
 
             <View style={styles.inputRow}>
               <Ionicons name="lock-closed" size={16} color={SUB} />
@@ -274,7 +281,9 @@ export default function NewPassword() {
   );
 }
 
-/* --------------------------- STYLES --------------------------- */
+/* ------------------------------------------------------------------
+   STYLES
+------------------------------------------------------------------ */
 const styles = StyleSheet.create({
   center: {
     flex: 1,
