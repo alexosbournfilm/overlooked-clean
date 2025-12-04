@@ -28,7 +28,7 @@ const SYSTEM_SANS =
   Platform.select({ ios: "System", android: "Roboto", web: undefined }) ||
   undefined;
 
-/* --------------------------- WAIT FOR SAFARI to DELIVER URL --------------------------- */
+/* ----------------------- WAIT FOR SAFARI URL ----------------------- */
 const waitForUrl = async () => {
   for (let i = 0; i < 25; i++) {
     const url = await Linking.getInitialURL();
@@ -38,10 +38,6 @@ const waitForUrl = async () => {
   return null;
 };
 
-/* ========================================================================
-    NEW PASSWORD SCREEN — FINAL FIXED VERSION
-======================================================================== */
-
 export default function NewPassword() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -49,54 +45,52 @@ export default function NewPassword() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
+
   const [restoring, setRestoring] = useState(true);
   const [hasSession, setHasSession] = useState(false);
   const [message, setMessage] = useState("");
 
   /* ------------------------------------------------------------------
-      1. PROCESS THE RECOVERY URL (supports hash + query)
+      1. EXTRACT session tokens from URL fragments or query
   ------------------------------------------------------------------ */
   async function processRecoveryUrl(url: string) {
     try {
-      // case 1: standard Supabase ?type=recovery URLs
+      // Case 1: ?type=recovery
       if (url.includes("type=recovery")) {
         await supabase.auth.exchangeCodeForSession(url);
       }
 
-      // case 2: hash-based URLs (#access_token=...)
+      // Case 2: #access_token
       if (url.includes("#")) {
         const fragment = url.split("#")[1];
         const params = new URLSearchParams(fragment);
 
-        if (params.get("type") === "recovery") {
-          const access = params.get("access_token");
-          const refresh = params.get("refresh_token");
+        const type = params.get("type");
+        const access_token = params.get("access_token");
+        const refresh_token = params.get("refresh_token");
 
-          if (access && refresh) {
-            await supabase.auth.setSession({
-              access_token: access,
-              refresh_token: refresh,
-            });
-          }
+        if (type === "recovery" && access_token && refresh_token) {
+          await supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          });
         }
       }
     } catch (err) {
-      console.warn("Error parsing recovery URL:", err);
+      console.warn("Error handling recovery URL:", err);
     }
   }
 
   /* ------------------------------------------------------------------
-      2. INITIAL LOAD — handle full deep-link lifecycle
+      2. INITIAL LOAD + SAFARI FIX
   ------------------------------------------------------------------ */
   useEffect(() => {
     let active = true;
 
     async function init() {
-      // ⭐ wait for Safari to properly give us the URL
       const url = await waitForUrl();
       if (url) await processRecoveryUrl(url);
 
-      // small wait to ensure Supabase hydrates session
       await new Promise((res) => setTimeout(res, 150));
 
       const { data } = await supabase.auth.getSession();
@@ -109,7 +103,7 @@ export default function NewPassword() {
 
     init();
 
-    // Listen for in-app deep link events
+    // Listen for in-app deep link navigation
     const sub = Linking.addEventListener("url", async (e) => {
       await processRecoveryUrl(e.url);
       const { data } = await supabase.auth.getSession();
@@ -123,21 +117,21 @@ export default function NewPassword() {
   }, []);
 
   /* ------------------------------------------------------------------
-      REDIRECT HELPERS
+      REDIRECT
   ------------------------------------------------------------------ */
   const goToSignIn = () => {
     if (Platform.OS === "web") {
       window.location.replace("https://overlooked.cloud/signin");
-      return;
+    } else {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "SignIn" }],
+      });
     }
-    navigation.reset({
-      index: 0,
-      routes: [{ name: "SignIn" }],
-    });
   };
 
   /* ------------------------------------------------------------------
-      3. UPDATE PASSWORD — first try, guaranteed
+      3. PERFORM PASSWORD UPDATE
   ------------------------------------------------------------------ */
   const handleUpdatePassword = async () => {
     setMessage("");
@@ -158,13 +152,6 @@ export default function NewPassword() {
     setLoading(true);
 
     try {
-      // ⭐ Refresh Supabase session one more time before updating
-      if (Platform.OS === "web") {
-        await supabase.auth.exchangeCodeForSession(window.location.href);
-      }
-
-      await new Promise((res) => setTimeout(res, 120));
-
       const { error } = await supabase.auth.updateUser({
         password: password.trim(),
       });
@@ -177,22 +164,18 @@ export default function NewPassword() {
 
       setMessage("Password updated! Redirecting…");
 
-      // ⭐ Must sign out or Supabase remains in recovery-state
+      // Must sign out or Supabase stays in recovery mode
       await supabase.auth.signOut();
-
-      // ⭐ Guaranteed redirect
       goToSignIn();
-      return;
     } catch (err: any) {
-      console.error("Password update error:", err);
-      setMessage(err.message || "Unexpected error.");
+      setMessage(err?.message || "Unexpected error.");
     } finally {
       setLoading(false);
     }
   };
 
   /* ------------------------------------------------------------------
-      UI — Restoring
+      UI — restoring
   ------------------------------------------------------------------ */
   if (restoring) {
     return (
@@ -204,7 +187,7 @@ export default function NewPassword() {
   }
 
   /* ------------------------------------------------------------------
-      UI — Invalid or expired reset link
+      UI — invalid or expired
   ------------------------------------------------------------------ */
   if (!hasSession) {
     return (
@@ -293,10 +276,7 @@ export default function NewPassword() {
   );
 }
 
-/* ========================================================================
-    STYLES
-======================================================================== */
-
+/* --------------------------- STYLES --------------------------- */
 const styles = StyleSheet.create({
   center: {
     flex: 1,
