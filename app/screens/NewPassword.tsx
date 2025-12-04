@@ -27,15 +27,49 @@ const SYSTEM_SANS =
   Platform.select({ ios: "System", android: "Roboto", web: undefined }) ||
   undefined;
 
-/* ---------------- Safari deep link fix ---------------- */
-const waitForUrl = async () => {
-  for (let i = 0; i < 60; i++) {   // 60 attempts × 120ms = 7.2 seconds
-    const url = await Linking.getInitialURL();
-    if (url) return url;
-    await new Promise((res) => setTimeout(res, 120));
+/* ------------------------------------------------------------------
+    USE A SINGLE SOURCE OF TRUTH FOR URL (Fixes Safari)
+------------------------------------------------------------------ */
+function getIncomingUrl() {
+  if (Platform.OS === "web") {
+    return window.location.href; // ALWAYS correct on web
   }
-  return null;
-};
+  return Linking.getInitialURL(); // Native fallback
+}
+
+/* ------------------------------------------------------------------
+    PROCESS RECOVERY URL
+------------------------------------------------------------------ */
+async function processRecoveryUrl(url: string) {
+  try {
+    if (!url) return;
+
+    // Case 1: query params (?type=recovery)
+    if (url.includes("type=recovery")) {
+      await supabase.auth.exchangeCodeForSession(url);
+      return;
+    }
+
+    // Case 2: fragment params (#access_token=...)
+    if (url.includes("#")) {
+      const fragment = url.split("#")[1];
+      const params = new URLSearchParams(fragment);
+
+      const type = params.get("type");
+      const access = params.get("access_token");
+      const refresh = params.get("refresh_token");
+
+      if (type === "recovery" && access && refresh) {
+        await supabase.auth.setSession({
+          access_token: access,
+          refresh_token: refresh,
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("processRecoveryUrl error:", e);
+  }
+}
 
 export default function NewPassword() {
   const navigation = useNavigation<any>();
@@ -44,56 +78,25 @@ export default function NewPassword() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
+
   const [restoring, setRestoring] = useState(true);
   const [hasSession, setHasSession] = useState(false);
   const [message, setMessage] = useState("");
 
   /* ------------------------------------------------------------------
-      PROCESS RESET URL
-  ------------------------------------------------------------------ */
-  async function processUrl(url: string) {
-    try {
-      // Query format
-      if (url.includes("type=recovery")) {
-        await supabase.auth.exchangeCodeForSession(url);
-      }
-
-      // Fragment format
-      if (url.includes("#")) {
-        const fragment = url.split("#")[1];
-        const params = new URLSearchParams(fragment);
-
-        const type = params.get("type");
-        const access_token = params.get("access_token");
-        const refresh_token = params.get("refresh_token");
-
-        if (type === "recovery" && access_token && refresh_token) {
-          await supabase.auth.setSession({
-            access_token,
-            refresh_token,
-          });
-        }
-      }
-    } catch (e) {
-      console.warn("processUrl error:", e);
-    }
-  }
-
-  /* ------------------------------------------------------------------
-      INITIAL LOAD — DO NOT DOUBLE-PROCESS URL
+      INITIAL LOAD
   ------------------------------------------------------------------ */
   useEffect(() => {
     let active = true;
 
-    async function init() {
-      // 1. force sign-out first to clear old sessions
-      await supabase.auth.signOut();
+    async function start() {
+      // 1. DO NOT SIGN OUT FIRST (breaks recovery)
+      const incoming = await getIncomingUrl();
+      if (incoming) {
+        await processRecoveryUrl(incoming);
+      }
 
-      // 2. get the reset URL
-      const url = await waitForUrl();
-      if (url) await processUrl(url);
-
-      // 3. allow hydration
+      // 2. Allow Supabase session hydration
       await new Promise((res) => setTimeout(res, 150));
 
       const { data } = await supabase.auth.getSession();
@@ -104,11 +107,11 @@ export default function NewPassword() {
       }
     }
 
-    init();
+    start();
 
-    // 4. ONLY process link events once, not multiple times
+    // 3. Process ONLY ONE future URL event (no loop)
     const sub = Linking.addEventListener("url", async (e) => {
-      await processUrl(e.url);
+      await processRecoveryUrl(e.url);
       const { data } = await supabase.auth.getSession();
       if (active) setHasSession(!!data.session);
     });
@@ -120,7 +123,7 @@ export default function NewPassword() {
   }, []);
 
   /* ------------------------------------------------------------------
-      REDIRECT
+      REDIRECT BACK TO SIGN IN
   ------------------------------------------------------------------ */
   const goToSignIn = () => {
     if (Platform.OS === "web") {
@@ -204,6 +207,9 @@ export default function NewPassword() {
     );
   }
 
+  /* ------------------------------------------------------------------
+      MAIN UI
+  ------------------------------------------------------------------ */
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
       <KeyboardAvoidingView
