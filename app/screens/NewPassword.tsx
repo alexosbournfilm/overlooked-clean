@@ -16,60 +16,26 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 
+/* --------------------------- THEME --------------------------- */
 const DARK_BG = "#000000";
 const CARD_BG = "#0B0B0B";
 const GOLD = "#C6A664";
 const TEXT = "#F5F3EF";
 const SUB = "#A9A7A3";
 const BORDER = "#262626";
-
 const SYSTEM_SANS =
   Platform.select({ ios: "System", android: "Roboto", web: undefined }) ||
   undefined;
 
-/* ------------------------------------------------------------------
-    USE A SINGLE SOURCE OF TRUTH FOR URL (Fixes Safari)
------------------------------------------------------------------- */
-function getIncomingUrl() {
-  if (Platform.OS === "web") {
-    return window.location.href; // ALWAYS correct on web
+/* ---------------- Safari deep link fix ---------------- */
+const waitForUrl = async () => {
+  for (let i = 0; i < 60; i++) {
+    const url = await Linking.getInitialURL();
+    if (url) return url;
+    await new Promise((res) => setTimeout(res, 120));
   }
-  return Linking.getInitialURL(); // Native fallback
-}
-
-/* ------------------------------------------------------------------
-    PROCESS RECOVERY URL
------------------------------------------------------------------- */
-async function processRecoveryUrl(url: string) {
-  try {
-    if (!url) return;
-
-    // Case 1: query params (?type=recovery)
-    if (url.includes("type=recovery")) {
-      await supabase.auth.exchangeCodeForSession(url);
-      return;
-    }
-
-    // Case 2: fragment params (#access_token=...)
-    if (url.includes("#")) {
-      const fragment = url.split("#")[1];
-      const params = new URLSearchParams(fragment);
-
-      const type = params.get("type");
-      const access = params.get("access_token");
-      const refresh = params.get("refresh_token");
-
-      if (type === "recovery" && access && refresh) {
-        await supabase.auth.setSession({
-          access_token: access,
-          refresh_token: refresh,
-        });
-      }
-    }
-  } catch (e) {
-    console.warn("processRecoveryUrl error:", e);
-  }
-}
+  return null;
+};
 
 export default function NewPassword() {
   const navigation = useNavigation<any>();
@@ -78,40 +44,66 @@ export default function NewPassword() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
-
   const [restoring, setRestoring] = useState(true);
   const [hasSession, setHasSession] = useState(false);
   const [message, setMessage] = useState("");
 
-  /* ------------------------------------------------------------------
+  /* ---------------------------------------------------------------
+      PROCESS RESET URL (query + fragment)
+  ---------------------------------------------------------------- */
+  async function processUrl(url: string) {
+    try {
+      if (url.includes("type=recovery")) {
+        await supabase.auth.exchangeCodeForSession(url);
+      }
+
+      if (url.includes("#")) {
+        const fragment = url.split("#")[1];
+        const params = new URLSearchParams(fragment);
+
+        const type = params.get("type");
+        const access_token = params.get("access_token");
+        const refresh_token = params.get("refresh_token");
+
+        if (type === "recovery" && access_token && refresh_token) {
+          await supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("processUrl error:", err);
+    }
+  }
+
+  /* ---------------------------------------------------------------
       INITIAL LOAD
-  ------------------------------------------------------------------ */
+  ---------------------------------------------------------------- */
   useEffect(() => {
     let active = true;
 
-    async function start() {
-      // 1. DO NOT SIGN OUT FIRST (breaks recovery)
-      const incoming = await getIncomingUrl();
-      if (incoming) {
-        await processRecoveryUrl(incoming);
-      }
+    async function init() {
+      // Always sign out first to clear broken sessions
+      await supabase.auth.signOut();
 
-      // 2. Allow Supabase session hydration
-      await new Promise((res) => setTimeout(res, 150));
+      const url = await waitForUrl();
+      if (url) await processUrl(url);
+
+      // allow hydration
+      await new Promise((res) => setTimeout(res, 200));
 
       const { data } = await supabase.auth.getSession();
-
       if (active) {
         setHasSession(!!data.session);
         setRestoring(false);
       }
     }
 
-    start();
+    init();
 
-    // 3. Process ONLY ONE future URL event (no loop)
     const sub = Linking.addEventListener("url", async (e) => {
-      await processRecoveryUrl(e.url);
+      await processUrl(e.url);
       const { data } = await supabase.auth.getSession();
       if (active) setHasSession(!!data.session);
     });
@@ -122,12 +114,12 @@ export default function NewPassword() {
     };
   }, []);
 
-  /* ------------------------------------------------------------------
-      REDIRECT BACK TO SIGN IN
-  ------------------------------------------------------------------ */
+  /* ---------------------------------------------------------------
+      REDIRECT TO SIGN IN
+  ---------------------------------------------------------------- */
   const goToSignIn = () => {
     if (Platform.OS === "web") {
-      window.location.href = "/signin";
+      window.location.assign("/signin");
     } else {
       navigation.reset({
         index: 0,
@@ -136,28 +128,28 @@ export default function NewPassword() {
     }
   };
 
-  /* ------------------------------------------------------------------
-      UPDATE PASSWORD
-  ------------------------------------------------------------------ */
+  /* ---------------------------------------------------------------
+      UPDATE PASSWORD — FIXED
+  ---------------------------------------------------------------- */
   const handleUpdatePassword = async () => {
     setMessage("");
 
-    if (!password || !confirm) {
-      setMessage("Please fill out both fields.");
-      return;
-    }
-    if (password.length < 6) {
-      setMessage("Password must be at least 6 characters.");
-      return;
-    }
-    if (password !== confirm) {
-      setMessage("Passwords do not match.");
-      return;
-    }
+    if (!password || !confirm) return setMessage("Please fill out both fields.");
+    if (password.length < 6) return setMessage("Password must be at least 6 characters.");
+    if (password !== confirm) return setMessage("Passwords do not match.");
 
     setLoading(true);
 
     try {
+      /* ---------------------------------------------------
+        ⭐ CRITICAL SAFARI FIX ⭐
+        Exchange code *again* before updateUser()
+      --------------------------------------------------- */
+      if (Platform.OS === "web") {
+        await supabase.auth.exchangeCodeForSession(window.location.href);
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
       const { error } = await supabase.auth.updateUser({
         password: password.trim(),
       });
@@ -170,20 +162,22 @@ export default function NewPassword() {
 
       setMessage("Password updated! Redirecting…");
 
-      // Required to exit recovery mode
+      // Mandatory sign-out to exit recovery mode
       await supabase.auth.signOut();
 
+      // redirect
       goToSignIn();
+      return;
     } catch (err: any) {
-      setMessage(err?.message || "Unexpected error.");
+      setMessage(err.message || "Unexpected error.");
     } finally {
       setLoading(false);
     }
   };
 
-  /* ------------------------------------------------------------------
+  /* ---------------------------------------------------------------
       UI STATES
-  ------------------------------------------------------------------ */
+  ---------------------------------------------------------------- */
   if (restoring) {
     return (
       <SafeAreaView style={styles.center}>
@@ -196,9 +190,7 @@ export default function NewPassword() {
   if (!hasSession) {
     return (
       <SafeAreaView style={styles.center}>
-        <Text style={styles.invalid}>
-          Your password reset link is invalid or expired.
-        </Text>
+        <Text style={styles.invalid}>Your password reset link is invalid or expired.</Text>
 
         <TouchableOpacity style={styles.button} onPress={goToSignIn}>
           <Text style={styles.buttonText}>BACK TO SIGN IN</Text>
@@ -207,9 +199,9 @@ export default function NewPassword() {
     );
   }
 
-  /* ------------------------------------------------------------------
+  /* ---------------------------------------------------------------
       MAIN UI
-  ------------------------------------------------------------------ */
+  ---------------------------------------------------------------- */
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
       <KeyboardAvoidingView
@@ -232,9 +224,7 @@ export default function NewPassword() {
 
           <View style={styles.card}>
             <Text style={styles.title}>Set a New Password</Text>
-            <Text style={styles.subtitle}>
-              Enter and confirm your password.
-            </Text>
+            <Text style={styles.subtitle}>Enter and confirm your password.</Text>
 
             <View style={styles.inputRow}>
               <Ionicons name="lock-closed" size={16} color={SUB} />
