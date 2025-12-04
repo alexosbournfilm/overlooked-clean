@@ -31,7 +31,8 @@ export default function NewPassword() {
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // 🔐 Ensure Supabase session is established from URL tokens
+  // 🔥 MAIN FIX FOR INFINITE LOADING:
+  // Linking.getInitialURL() can hang forever → so we add a timeout fallback.
   useEffect(() => {
     const init = async () => {
       try {
@@ -40,9 +41,18 @@ export default function NewPassword() {
         if (Platform.OS === "web") {
           url = window.location.href;
         } else {
-          url = (await Linking.getInitialURL()) || "";
+          // Resolve whichever happens first:
+          // 1) Linking.getInitialURL()
+          // 2) 1.5s timeout → prevents infinite hang
+          const urlPromise = Linking.getInitialURL();
+          const timeout = new Promise<string>((resolve) =>
+            setTimeout(() => resolve(""), 1500)
+          );
+
+          url = (await Promise.race([urlPromise, timeout])) || "";
         }
 
+        // Parse and set recovery tokens if present
         if (url.includes("#")) {
           const params = new URLSearchParams(url.split("#")[1]);
           const access_token = params.get("access_token");
@@ -55,10 +65,11 @@ export default function NewPassword() {
             });
           }
         }
-      } catch (e) {
-        console.log("Init session error:", e);
+      } catch (err) {
+        console.log("Init session error:", err);
       }
 
+      // 🚀 ALWAYS unlock UI even if linking failed
       setReady(true);
     };
 
@@ -85,7 +96,7 @@ export default function NewPassword() {
     setLoading(true);
 
     try {
-      // 1️⃣ Update password in Supabase
+      // 1️⃣ Update password
       const { error } = await supabase.auth.updateUser({
         password: password.trim(),
       });
@@ -96,13 +107,13 @@ export default function NewPassword() {
         return;
       }
 
-      // 2️⃣ Refresh session so the app does not hang
+      // 2️⃣ Ensure session is refreshed so navigation works
       await supabase.auth.getSession();
 
-      // 3️⃣ Navigate user inside the app immediately
+      // 3️⃣ Send user inside app instantly
       goToApp();
-    } catch (e) {
-      console.log("Unexpected error:", e);
+    } catch (err) {
+      console.log("Unexpected error:", err);
       alert("Unexpected error");
     } finally {
       setLoading(false);
