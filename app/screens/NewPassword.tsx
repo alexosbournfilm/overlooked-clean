@@ -28,19 +28,16 @@ const SYSTEM_SANS =
   undefined;
 
 /* ------------------------------------------------------------------
-   Fast and reliable reset URL extraction
+   URL extraction: instant on web, event fallback on native
 ------------------------------------------------------------------ */
 const getResetUrl = async () => {
-  if (Platform.OS === "web") {
-    return window.location.href;
-  }
+  if (Platform.OS === "web") return window.location.href;
 
   const initial = await Linking.getInitialURL();
   if (initial) return initial;
 
   return new Promise<string | null>((resolve) => {
     const timeout = setTimeout(() => resolve(null), 5000);
-
     const sub = Linking.addEventListener("url", (e) => {
       clearTimeout(timeout);
       resolve(e.url);
@@ -49,6 +46,9 @@ const getResetUrl = async () => {
   });
 };
 
+/* ------------------------------------------------------------------
+   MAIN COMPONENT
+------------------------------------------------------------------ */
 export default function NewPassword() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -61,22 +61,19 @@ export default function NewPassword() {
   const [message, setMessage] = useState("");
 
   /* ------------------------------------------------------------------
-      Process Supabase reset URL
+      Process reset URL → establish recovery session
   ------------------------------------------------------------------ */
   const processResetUrl = async (url: string) => {
     try {
       if (!url) return;
 
-      // main reset session exchange
       if (url.includes("type=fp") || url.includes("type=recovery")) {
         await supabase.auth.exchangeCodeForSession(url);
       }
 
-      // hash fragments (Safari)
       if (url.includes("#")) {
         const fragment = url.split("#")[1];
         const params = new URLSearchParams(fragment);
-
         const type = params.get("type");
         const access_token = params.get("access_token");
         const refresh_token = params.get("refresh_token");
@@ -92,13 +89,13 @@ export default function NewPassword() {
           });
         }
       }
-    } catch (e) {
-      console.warn("processResetUrl error:", e);
+    } catch (error) {
+      console.warn("Error processing reset URL:", error);
     }
   };
 
   /* ------------------------------------------------------------------
-      INITIAL LOAD — ALWAYS get URL first
+      INITIAL LOAD — always fetch URL BEFORE UI renders
   ------------------------------------------------------------------ */
   useEffect(() => {
     let active = true;
@@ -107,10 +104,9 @@ export default function NewPassword() {
       const url = await getResetUrl();
       await processResetUrl(url || "");
 
-      await new Promise((r) => setTimeout(r, 120));
+      await new Promise((res) => setTimeout(res, 100));
 
       const { data } = await supabase.auth.getSession();
-
       if (active) {
         setHasSession(!!data.session);
         setRestoring(false);
@@ -139,7 +135,7 @@ export default function NewPassword() {
   };
 
   /* ------------------------------------------------------------------
-      UPDATE PASSWORD — final working version
+      UPDATE PASSWORD — with Supabase Web signOut bug fix
   ------------------------------------------------------------------ */
   const handleUpdatePassword = async () => {
     setMessage("");
@@ -172,14 +168,28 @@ export default function NewPassword() {
 
       setMessage("Password updated! Redirecting…");
 
-      // required by Supabase
+      // ------------------------------------------------------------
+      // 🚀 WEB FIX: Supabase signOut() hangs after recovery link
+      // ------------------------------------------------------------
+      if (Platform.OS === "web") {
+        const domain = window.location.hostname;
+
+        document.cookie = `sb-access-token=; Max-Age=0; path=/; domain=${domain}`;
+        document.cookie = `sb-refresh-token=; Max-Age=0; path=/; domain=${domain}`;
+
+        window.location.href = "/signin";
+        return;
+      }
+
+      // Native works normally:
       await supabase.auth.signOut();
 
-      setTimeout(() => {
-        goToSignIn();
-      }, 250);
-    } catch (err: any) {
-      setMessage(err?.message || "Unexpected error.");
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "SignIn" }],
+      });
+    } catch (e: any) {
+      setMessage(e?.message || "Unexpected error.");
     } finally {
       setLoading(false);
     }
@@ -192,7 +202,7 @@ export default function NewPassword() {
     return (
       <SafeAreaView style={styles.center}>
         <ActivityIndicator size="large" color={GOLD} />
-        <Text style={styles.loading}>Preparing reset...</Text>
+        <Text style={styles.loading}>Preparing reset…</Text>
       </SafeAreaView>
     );
   }
