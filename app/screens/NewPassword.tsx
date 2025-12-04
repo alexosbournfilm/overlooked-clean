@@ -16,7 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 
-const DARK_BG = "#000";
+const DARK_BG = "#000000";
 const CARD_BG = "#0B0B0B";
 const GOLD = "#C6A664";
 const TEXT = "#F5F3EF";
@@ -27,9 +27,9 @@ const SYSTEM_SANS =
   Platform.select({ ios: "System", android: "Roboto", web: undefined }) ||
   undefined;
 
-/* ------------------------------------------
-      FAST URL GETTER
-------------------------------------------- */
+/* ------------------------------------------------------------------
+   READ RESET URL (SAFARI-SAFE)
+------------------------------------------------------------------ */
 const getUrl = async () => {
   if (Platform.OS === "web") return window.location.href;
 
@@ -51,34 +51,17 @@ export default function NewPassword() {
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-
   const [restoring, setRestoring] = useState(true);
   const [hasSession, setHasSession] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const [passwordWasUpdated, setPasswordWasUpdated] = useState(false);
-
-  /* ------------------------------------------
-      REDIRECT USER INTO APP
-------------------------------------------- */
-  const goToApp = () => {
-    if (Platform.OS === "web") {
-      window.location.replace("/");
-    } else {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "Featured" }],
-      });
-    }
-  };
-
-  /* ------------------------------------------
-      DEEP LINK HANDLING — ONLY BEFORE UPDATE
-------------------------------------------- */
+  /* ------------------------------------------------------------------
+      PROCESS THE RESET LINK
+  ------------------------------------------------------------------ */
   const processReset = async (url: string) => {
-    if (!url || passwordWasUpdated) return;
-
     try {
+      if (!url) return;
+
       if (url.includes("type=recovery")) {
         await supabase.auth.exchangeCodeForSession(url);
       }
@@ -93,21 +76,19 @@ export default function NewPassword() {
         }
       }
     } catch (e) {
-      console.warn("Reset process error:", e);
+      console.warn("processReset error:", e);
     }
   };
 
-  /* ------------------------------------------
-      INITIAL MOUNT
-------------------------------------------- */
+  /* ------------------------------------------------------------------
+      INITIAL LOAD (WORKING VERSION)
+  ------------------------------------------------------------------ */
   useEffect(() => {
     let mounted = true;
 
     (async () => {
-      if (!passwordWasUpdated) {
-        const url = await getUrl();
-        if (url) await processReset(url);
-      }
+      const url = await getUrl();
+      if (url) await processReset(url);
 
       const { data } = await supabase.auth.getSession();
 
@@ -120,19 +101,33 @@ export default function NewPassword() {
     return () => {
       mounted = false;
     };
-  }, [passwordWasUpdated]);
+  }, []);
 
-  /* ------------------------------------------
-      UPDATE PASSWORD
-------------------------------------------- */
+  /* ------------------------------------------------------------------
+      REDIRECT INTO THE APP (WORKING)
+  ------------------------------------------------------------------ */
+  const goToApp = () => {
+    if (Platform.OS === "web") {
+      window.location.replace("/"); // loads logged-in app immediately
+    } else {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "Featured" }], // your main app screen
+      });
+    }
+  };
+
+  /* ------------------------------------------------------------------
+      UPDATE PASSWORD (NO SIGN-OUT — FIXES SAFARI FREEZE)
+  ------------------------------------------------------------------ */
   const handleUpdatePassword = async () => {
-    if (submitting) return;
+    if (loading) return;
 
     if (!password || !confirm) return alert("Fill both fields");
     if (password !== confirm) return alert("Passwords do not match");
-    if (password.length < 6) return alert("Password too short");
+    if (password.length < 6) return alert("Password must be at least 6 characters");
 
-    setSubmitting(true);
+    setLoading(true);
 
     try {
       const { error } = await supabase.auth.updateUser({
@@ -141,29 +136,27 @@ export default function NewPassword() {
 
       if (error) {
         alert(error.message);
-        setSubmitting(false);
+        setLoading(false);
         return;
       }
 
-      // 🚀 Key improvement
-      setPasswordWasUpdated(true);
-
-      // Clear secure fields
+      // Remove password fields from DOM to prevent Safari Keychain popup
       setPassword("");
       setConfirm("");
 
-      // Navigate instantly
+      // 🚀 INSTANT REDIRECT INTO APP
       goToApp();
-    } catch {
+
+    } catch (e) {
       alert("Unexpected error");
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
   };
 
-  /* ------------------------------------------
-      LOADING SCREEN
-------------------------------------------- */
+  /* ------------------------------------------------------------------
+      UI (NO INFINITE LOADER NOW)
+  ------------------------------------------------------------------ */
   if (restoring) {
     return (
       <SafeAreaView style={styles.center}>
@@ -173,14 +166,10 @@ export default function NewPassword() {
     );
   }
 
-  /* ------------------------------------------
-      INVALID LINK
-------------------------------------------- */
   if (!hasSession) {
     return (
       <SafeAreaView style={styles.center}>
         <Text style={styles.invalid}>Invalid or expired reset link.</Text>
-
         <TouchableOpacity style={styles.button} onPress={goToApp}>
           <Text style={styles.buttonText}>BACK TO APP</Text>
         </TouchableOpacity>
@@ -188,9 +177,6 @@ export default function NewPassword() {
     );
   }
 
-  /* ------------------------------------------
-      MAIN UI
-------------------------------------------- */
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
       <KeyboardAvoidingView
@@ -198,11 +184,14 @@ export default function NewPassword() {
         style={{ flex: 1 }}
       >
         <View style={styles.wrapper}>
+          <TouchableOpacity onPress={goToApp} style={styles.back}>
+            <Ionicons name="chevron-back" size={18} color={SUB} />
+            <Text style={styles.backLabel}>Back</Text>
+          </TouchableOpacity>
+
           <View style={styles.card}>
             <Text style={styles.title}>Set a New Password</Text>
-            <Text style={styles.subtitle}>
-              Enter and confirm your password.
-            </Text>
+            <Text style={styles.subtitle}>Enter and confirm your password.</Text>
 
             <View style={styles.inputRow}>
               <Ionicons name="lock-closed" size={16} color={SUB} />
@@ -230,10 +219,10 @@ export default function NewPassword() {
 
             <TouchableOpacity
               onPress={handleUpdatePassword}
-              disabled={submitting}
-              style={[styles.button, submitting && { opacity: 0.6 }]}
+              disabled={loading}
+              style={[styles.button, loading && { opacity: 0.6 }]}
             >
-              {submitting ? (
+              {loading ? (
                 <ActivityIndicator color={DARK_BG} />
               ) : (
                 <Text style={styles.buttonText}>UPDATE PASSWORD</Text>
@@ -246,9 +235,9 @@ export default function NewPassword() {
   );
 }
 
-/* ------------------------------------------
-      STYLES
-------------------------------------------- */
+/* ------------------------------------------------------------------
+   STYLES
+------------------------------------------------------------------ */
 const styles = StyleSheet.create({
   center: {
     flex: 1,
@@ -271,6 +260,17 @@ const styles = StyleSheet.create({
   wrapper: {
     flex: 1,
     padding: 24,
+  },
+  back: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 25,
+  },
+  backLabel: {
+    marginLeft: 6,
+    fontSize: 15,
+    color: SUB,
+    fontFamily: SYSTEM_SANS,
   },
   card: {
     backgroundColor: CARD_BG,
