@@ -16,6 +16,9 @@ import { useAuth } from "../context/AuthProvider";
 import { supabase } from "../lib/supabase";
 import COLORS from "../theme/colors";
 
+// REQUIRED — this was missing!
+import NewPassword from "../screens/NewPassword";
+
 import PaywallScreen from "../screens/PaywallScreen";
 import PaySuccessScreen from "../screens/PaySuccessScreen";
 
@@ -26,10 +29,7 @@ type Props = {
 };
 
 /* ------------------------------------------------------------------
-   ✔ REAL RECOVERY DETECTION
-   Works for both:
-   - https://overlooked.cloud/auth/v1/verify#access_token=...
-   - https://overlooked.cloud/reset-password#access_token=...
+   REAL RECOVERY DETECTION
 ------------------------------------------------------------------ */
 function isRecoveryUrl(url?: string | null): boolean {
   if (!url) return false;
@@ -122,7 +122,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   }, [ready, userId, profileComplete]);
 
   /* ------------------------------------------------------------------
-      3. Subscription logic — untouched
+      3. Subscription logic — unchanged
   ------------------------------------------------------------------ */
   const [isPaid, setIsPaid] = useState<boolean | null>(null);
   const [expired, setExpired] = useState(false);
@@ -198,7 +198,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   const mustShowPaywall = false;
 
   /* ------------------------------------------------------------------
-      5. Navigation structure
+      5. Navigation structure (with NewPassword restored)
   ------------------------------------------------------------------ */
   return (
     <NavigationContainer
@@ -208,6 +208,10 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
       onReady={() => setNavigatorReady(true)}
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
+
+        {/* REQUIRED FOR RESET-PASSWORD TO WORK */}
+        <Stack.Screen name="NewPassword" component={NewPassword} />
+
         {!userId ? (
           <Stack.Screen
             name="Auth"
