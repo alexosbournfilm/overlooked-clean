@@ -23,77 +23,46 @@ const TEXT = "#F5F3EF";
 const SUB = "#A9A7A3";
 const BORDER = "#262626";
 
-const SYSTEM_SANS =
-  Platform.select({ ios: "System", android: "Roboto", web: undefined }) ||
-  undefined;
-
-const getUrl = async () => {
-  if (Platform.OS === "web") return window.location.href;
-
-  const initial = await Linking.getInitialURL();
-  if (initial) return initial;
-
-  return new Promise<string | null>((resolve) => {
-    const t = setTimeout(() => resolve(null), 2000);
-    const sub = Linking.addEventListener("url", (e) => {
-      clearTimeout(t);
-      resolve(e.url);
-      sub.remove();
-    });
-  });
-};
-
 export default function NewPassword() {
   const navigation = useNavigation<any>();
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [restoring, setRestoring] = useState(true);
-  const [hasSession, setHasSession] = useState(false);
+  const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const processReset = async (url: string) => {
-    try {
-      if (!url) return;
-
-      if (url.includes("type=recovery")) {
-        await supabase.auth.exchangeCodeForSession(url);
-      }
-
-      if (url.includes("#")) {
-        const params = new URLSearchParams(url.split("#")[1]);
-        const access_token = params.get("access_token");
-        const refresh_token = params.get("refresh_token");
-
-        if (access_token && refresh_token) {
-          await supabase.auth.setSession({
-            access_token,
-            refresh_token,
-          });
-        }
-      }
-    } catch (e) {
-      console.warn("processReset error:", e);
-    }
-  };
-
+  // 🚀 ALWAYS ensure session exists using URL tokens
   useEffect(() => {
-    let active = true;
+    const init = async () => {
+      try {
+        let url = "";
 
-    (async () => {
-      const url = await getUrl();
-      if (url) await processReset(url);
+        if (Platform.OS === "web") {
+          url = window.location.href;
+        } else {
+          url = (await Linking.getInitialURL()) || "";
+        }
 
-      const { data } = await supabase.auth.getSession();
-      if (active) {
-        setHasSession(!!data.session);
-        setRestoring(false);
+        if (url.includes("#")) {
+          const params = new URLSearchParams(url.split("#")[1]);
+          const access_token = params.get("access_token");
+          const refresh_token = params.get("refresh_token");
+
+          if (access_token && refresh_token) {
+            await supabase.auth.setSession({
+              access_token,
+              refresh_token,
+            });
+          }
+        }
+      } catch (e) {
+        console.log("Init session error:", e);
       }
-    })();
 
-    return () => {
-      active = false;
+      setReady(true);
     };
+
+    init();
   }, []);
 
   const goToApp = () => {
@@ -108,27 +77,15 @@ export default function NewPassword() {
     });
   };
 
-  const goToSignIn = () => {
-    if (Platform.OS === "web") {
-      window.location.replace("/signin");
-      return;
-    }
-
-    navigation.reset({
-      index: 0,
-      routes: [{ name: "SignIn" }],
-    });
-  };
-
   const handleUpdatePassword = async () => {
-    if (loading) return;
     if (!password || !confirm) return alert("Fill both fields.");
     if (password !== confirm) return alert("Passwords do not match.");
-    if (password.length < 6) return alert("Password must be at least 6 characters.");
+    if (password.length < 6) return alert("Password too short.");
 
     setLoading(true);
 
     try {
+      // MUST call only this — no other logic
       const { error } = await supabase.auth.updateUser({
         password: password.trim(),
       });
@@ -139,34 +96,20 @@ export default function NewPassword() {
         return;
       }
 
-      // Password updated successfully → redirect immediately
+      // 🚀 SUCCESS → redirect immediately
       goToApp();
     } catch (e) {
+      console.log("Unexpected error:", e);
       alert("Unexpected error");
-      console.log(e);
-    } finally {
-      setPassword("");
-      setConfirm("");
       setLoading(false);
     }
   };
 
-  if (restoring) {
+  if (!ready) {
     return (
       <SafeAreaView style={styles.center}>
         <ActivityIndicator size="large" color={GOLD} />
         <Text style={styles.loading}>Preparing reset…</Text>
-      </SafeAreaView>
-    );
-  }
-
-  if (!hasSession) {
-    return (
-      <SafeAreaView style={styles.center}>
-        <Text style={styles.invalid}>Invalid or expired reset link.</Text>
-        <TouchableOpacity style={styles.button} onPress={goToSignIn}>
-          <Text style={styles.buttonText}>BACK TO SIGN IN</Text>
-        </TouchableOpacity>
       </SafeAreaView>
     );
   }
@@ -178,7 +121,7 @@ export default function NewPassword() {
         style={{ flex: 1 }}
       >
         <View style={styles.wrapper}>
-          <TouchableOpacity onPress={goToSignIn} style={styles.back}>
+          <TouchableOpacity onPress={goToApp} style={styles.back}>
             <Ionicons name="chevron-back" size={18} color={SUB} />
             <Text style={styles.backLabel}>Back</Text>
           </TouchableOpacity>
@@ -239,14 +182,6 @@ const styles = StyleSheet.create({
   loading: {
     marginTop: 10,
     color: SUB,
-    fontFamily: SYSTEM_SANS,
-  },
-  invalid: {
-    color: TEXT,
-    fontSize: 18,
-    marginBottom: 20,
-    textAlign: "center",
-    fontFamily: SYSTEM_SANS,
   },
   wrapper: {
     flex: 1,
@@ -261,7 +196,6 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     fontSize: 15,
     color: SUB,
-    fontFamily: SYSTEM_SANS,
   },
   card: {
     backgroundColor: CARD_BG,
@@ -276,13 +210,11 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "center",
     marginBottom: 4,
-    fontFamily: SYSTEM_SANS,
   },
   subtitle: {
     color: SUB,
     textAlign: "center",
     marginBottom: 18,
-    fontFamily: SYSTEM_SANS,
   },
   inputRow: {
     flexDirection: "row",
@@ -299,7 +231,6 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     fontSize: 15,
     color: TEXT,
-    fontFamily: SYSTEM_SANS,
   },
   button: {
     backgroundColor: GOLD,
@@ -312,6 +243,5 @@ const styles = StyleSheet.create({
     color: DARK_BG,
     fontSize: 15,
     fontWeight: "900",
-    fontFamily: SYSTEM_SANS,
   },
 });
