@@ -6,42 +6,48 @@ export const linking: LinkingOptions<any> = {
     "https://overlooked.cloud",
     "https://www.overlooked.cloud",
 
-    // Supabase reset flow
+    // Supabase will send recovery links here:
     "https://overlooked.cloud/auth/v1/verify",
     "https://overlooked.cloud/auth/confirm",
 
-    // Mobile deep links
+    // Mobile schemes
     "overlooked://",
     "overlooked://callback",
     "overlooked://reset-password",
 
-    // Dev
+    // Dev / Expo
     "http://localhost:3000",
     "exp://localhost:19000",
   ],
 
   config: {
     screens: {
-      /* ----------------------------------------------------
-         EACH RESET PATH GETS ITS OWN ROUTE → SAME SCREEN
-         ---------------------------------------------------- */
+      /* -----------------------------------------------------------
+         ⭐ ROUTE ALL RESET URLS → NewPassword
+         ----------------------------------------------------------- 
+         These cover EVERY password reset flow Supabase uses:
+         - /reset-password
+         - /auth/v1/verify?type=recovery
+         - /auth/confirm?type=recovery
+         - /auth/v1/verify#access_token=...
+         - /auth/confirm#access_token=...
+         - overlooked://reset-password
+      ----------------------------------------------------------- */
 
-      // Normal reset-password route
-      ResetPassword: "reset-password",
+      NewPassword: {
+        // One wildcard path matching ALL different URL forms
+        path: "*", // We handle filtering inside AppNavigator
+        parse: {
+          token: (v) => v,
+          access_token: (v) => v,
+          refresh_token: (v) => v,
+          type: (v) => v,
+        },
+      },
 
-      // Supabase verify route with params
-      VerifyPassword: "auth/v1/verify",
-
-      // Supabase confirm route
-      ConfirmPassword: "auth/confirm",
-
-      /* All map to the SAME screen internally (NewPassword)
-         because AppNavigator registers NewPassword globally
-      */
-
-      /* ----------------------------------------------------
+      /* -----------------------------------------------------------
          AUTH SCREENS
-         ---------------------------------------------------- */
+      ----------------------------------------------------------- */
       Auth: {
         screens: {
           SignIn: "signin",
@@ -51,9 +57,9 @@ export const linking: LinkingOptions<any> = {
         },
       },
 
-      /* ----------------------------------------------------
-         MAIN TABS
-         ---------------------------------------------------- */
+      /* -----------------------------------------------------------
+         MAIN APPLICATION TABS
+      ----------------------------------------------------------- */
       MainTabs: {
         screens: {
           Featured: "featured",
@@ -71,12 +77,15 @@ export const linking: LinkingOptions<any> = {
     },
   },
 
+  /* -----------------------------------------------------------
+     FALLBACK HANDLER (keeps app stable)
+  ----------------------------------------------------------- */
   getStateFromPath(path, options) {
     try {
       const { getStateFromPath } = require("@react-navigation/native");
       return getStateFromPath(path, options);
     } catch (e) {
-      console.warn("[linking] Failed to parse:", path, e);
+      console.warn("[linking] Failed to parse path:", path, e);
       return {
         routes: [
           {
