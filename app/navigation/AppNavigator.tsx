@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import {
   NavigationContainer,
-  type InitialState
+  type InitialState,
 } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -26,6 +26,9 @@ type Props = {
   initialAuthRouteName: "SignIn" | "CreateProfile";
 };
 
+/* ------------------------------------------------------------------
+   Detect recovery URLs
+------------------------------------------------------------------ */
 function isRecoveryUrl(url?: string | null): boolean {
   if (!url) return false;
   const lower = url.toLowerCase();
@@ -45,7 +48,9 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   const [navReady, setNavReady] = useState(false);
   const [forceRecovery, setForceRecovery] = useState(false);
 
-  // Detect deep link BEFORE navigation loads
+  /* ------------------------------------------------------------------
+      1. Detect deep link BEFORE navigator loads
+  ------------------------------------------------------------------ */
   useEffect(() => {
     let active = true;
 
@@ -54,40 +59,48 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
       if (!url || !active) return;
 
       if (isRecoveryUrl(url)) {
-        console.log("🔐 RECOVERY MODE:", url);
+        console.log("🔐 RECOVERY MODE DETECTED:", url);
         setForceRecovery(true);
+
+        // IMPORTANT: Must match the route name inside <Stack.Navigator>
         setInitialState({
-          routes: [{ name: "NewPassword" }]
+          routes: [{ name: "Recovery" }],
         });
       }
     };
 
     detect(null);
-    const sub = RNLinking.addEventListener("url", e => detect(e.url));
+
+    const sub = RNLinking.addEventListener("url", (e) => detect(e.url));
     return () => {
       active = false;
       sub.remove();
     };
   }, []);
 
-  // Restore previous navigation only if NOT in recovery mode
+  /* ------------------------------------------------------------------
+      2. Restore previous state ONLY IF not in recovery mode
+  ------------------------------------------------------------------ */
   useEffect(() => {
     let mounted = true;
 
     const restore = async () => {
       if (!ready) return;
 
+      // In recovery mode → do NOT restore nav state
       if (forceRecovery) {
         if (mounted) setNavReady(true);
         return;
       }
 
+      // Not logged in OR no profile → start fresh
       if (!userId || !profileComplete) {
         setInitialState(undefined);
         if (mounted) setNavReady(true);
         return;
       }
 
+      // Restore saved nav state for normal users
       try {
         const saved = await AsyncStorage.getItem(
           `NAVIGATION_STATE_v2:${userId}`
@@ -106,7 +119,9 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     };
   }, [ready, userId, profileComplete, forceRecovery]);
 
-  // Subscription
+  /* ------------------------------------------------------------------
+      3. Subscription logic
+  ------------------------------------------------------------------ */
   const [isPaid, setIsPaid] = useState<boolean | null>(null);
   const [expired, setExpired] = useState(false);
 
@@ -122,7 +137,9 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     (async () => {
       const { data } = await supabase
         .from("users")
-        .select("subscription_status, grandfathered, premium_access_expires_at")
+        .select(
+          "subscription_status, grandfathered, premium_access_expires_at"
+        )
         .eq("id", userId)
         .single();
 
@@ -132,6 +149,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
       const exp = data?.premium_access_expires_at
         ? new Date(data.premium_access_expires_at).getTime()
         : null;
+
       const expiredNow = exp ? exp <= now : false;
 
       const status = (data?.subscription_status || "").toLowerCase();
@@ -151,14 +169,15 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     };
   }, [userId]);
 
-  // Auto sign out if expired
   useEffect(() => {
     if (userId && expired) {
       supabase.auth.signOut().catch(() => {});
     }
   }, [userId, expired]);
 
-  // Reset recovery mode when logged out
+  /* ------------------------------------------------------------------
+      4. Reset recovery mode when the user logs out
+  ------------------------------------------------------------------ */
   useEffect(() => {
     if (!userId) {
       setForceRecovery(false);
@@ -166,6 +185,9 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
     }
   }, [userId]);
 
+  /* ------------------------------------------------------------------
+      5. Global loading spinner
+  ------------------------------------------------------------------ */
   if (!ready || !navReady || (userId && isPaid === null)) {
     return (
       <View
@@ -173,7 +195,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
           flex: 1,
           justifyContent: "center",
           alignItems: "center",
-          backgroundColor: COLORS.background
+          backgroundColor: COLORS.background,
         }}
       >
         <ActivityIndicator size="large" color={COLORS.primary} />
@@ -183,6 +205,10 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
 
   const mustShowPaywall = false;
 
+  /* ------------------------------------------------------------------
+      6. Navigation Tree
+      FORCE RECOVERY creates a completely separate root navigator
+  ------------------------------------------------------------------ */
   return (
     <NavigationContainer
       ref={navigationRef as any}
@@ -191,17 +217,13 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
       onReady={() => setNavigatorReady(true)}
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-
+        {/* 🔥 COMPLETELY SEPARATE ROOT WHEN RECOVERING */}
         {forceRecovery ? (
-          <>
-            <Stack.Screen name="NewPassword" component={NewPassword} />
-          </>
+          <Stack.Screen name="Recovery" component={NewPassword} />
         ) : !userId ? (
           <>
             <Stack.Screen name="Auth">
-              {() => (
-                <AuthStack initialRouteName={initialAuthRouteName} />
-              )}
+              {() => <AuthStack initialRouteName={initialAuthRouteName} />}
             </Stack.Screen>
           </>
         ) : mustShowPaywall ? (

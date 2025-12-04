@@ -16,7 +16,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 
-/* --------------------------- THEME --------------------------- */
 const DARK_BG = "#000000";
 const CARD_BG = "#0B0B0B";
 const GOLD = "#C6A664";
@@ -28,9 +27,9 @@ const SYSTEM_SANS =
   Platform.select({ ios: "System", android: "Roboto", web: undefined }) ||
   undefined;
 
-/* ----------------------- WAIT FOR SAFARI URL ----------------------- */
+/* ---------------- Safari deep link fix ---------------- */
 const waitForUrl = async () => {
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < 60; i++) {   // 60 attempts × 120ms = 7.2 seconds
     const url = await Linking.getInitialURL();
     if (url) return url;
     await new Promise((res) => setTimeout(res, 120));
@@ -45,22 +44,21 @@ export default function NewPassword() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
-
   const [restoring, setRestoring] = useState(true);
   const [hasSession, setHasSession] = useState(false);
   const [message, setMessage] = useState("");
 
   /* ------------------------------------------------------------------
-      1. EXTRACT session tokens from URL fragments or query
+      PROCESS RESET URL
   ------------------------------------------------------------------ */
-  async function processRecoveryUrl(url: string) {
+  async function processUrl(url: string) {
     try {
-      // Case 1: ?type=recovery
+      // Query format
       if (url.includes("type=recovery")) {
         await supabase.auth.exchangeCodeForSession(url);
       }
 
-      // Case 2: #access_token
+      // Fragment format
       if (url.includes("#")) {
         const fragment = url.split("#")[1];
         const params = new URLSearchParams(fragment);
@@ -76,21 +74,26 @@ export default function NewPassword() {
           });
         }
       }
-    } catch (err) {
-      console.warn("Error handling recovery URL:", err);
+    } catch (e) {
+      console.warn("processUrl error:", e);
     }
   }
 
   /* ------------------------------------------------------------------
-      2. INITIAL LOAD + SAFARI FIX
+      INITIAL LOAD — DO NOT DOUBLE-PROCESS URL
   ------------------------------------------------------------------ */
   useEffect(() => {
     let active = true;
 
     async function init() {
-      const url = await waitForUrl();
-      if (url) await processRecoveryUrl(url);
+      // 1. force sign-out first to clear old sessions
+      await supabase.auth.signOut();
 
+      // 2. get the reset URL
+      const url = await waitForUrl();
+      if (url) await processUrl(url);
+
+      // 3. allow hydration
       await new Promise((res) => setTimeout(res, 150));
 
       const { data } = await supabase.auth.getSession();
@@ -103,9 +106,9 @@ export default function NewPassword() {
 
     init();
 
-    // Listen for in-app deep link navigation
+    // 4. ONLY process link events once, not multiple times
     const sub = Linking.addEventListener("url", async (e) => {
-      await processRecoveryUrl(e.url);
+      await processUrl(e.url);
       const { data } = await supabase.auth.getSession();
       if (active) setHasSession(!!data.session);
     });
@@ -121,7 +124,7 @@ export default function NewPassword() {
   ------------------------------------------------------------------ */
   const goToSignIn = () => {
     if (Platform.OS === "web") {
-      window.location.replace("https://overlooked.cloud/signin");
+      window.location.href = "/signin";
     } else {
       navigation.reset({
         index: 0,
@@ -131,7 +134,7 @@ export default function NewPassword() {
   };
 
   /* ------------------------------------------------------------------
-      3. PERFORM PASSWORD UPDATE
+      UPDATE PASSWORD
   ------------------------------------------------------------------ */
   const handleUpdatePassword = async () => {
     setMessage("");
@@ -164,8 +167,9 @@ export default function NewPassword() {
 
       setMessage("Password updated! Redirecting…");
 
-      // Must sign out or Supabase stays in recovery mode
+      // Required to exit recovery mode
       await supabase.auth.signOut();
+
       goToSignIn();
     } catch (err: any) {
       setMessage(err?.message || "Unexpected error.");
@@ -175,7 +179,7 @@ export default function NewPassword() {
   };
 
   /* ------------------------------------------------------------------
-      UI — restoring
+      UI STATES
   ------------------------------------------------------------------ */
   if (restoring) {
     return (
@@ -186,9 +190,6 @@ export default function NewPassword() {
     );
   }
 
-  /* ------------------------------------------------------------------
-      UI — invalid or expired
-  ------------------------------------------------------------------ */
   if (!hasSession) {
     return (
       <SafeAreaView style={styles.center}>
@@ -203,9 +204,6 @@ export default function NewPassword() {
     );
   }
 
-  /* ------------------------------------------------------------------
-      MAIN UI
-  ------------------------------------------------------------------ */
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
       <KeyboardAvoidingView

@@ -6,44 +6,45 @@ export const linking: LinkingOptions<any> = {
     "https://overlooked.cloud",
     "https://www.overlooked.cloud",
 
-    // Supabase sends these:
+    // Supabase reset flows
     "https://overlooked.cloud/auth/v1/verify",
     "https://overlooked.cloud/auth/confirm",
 
-    // Optional clean route
+    // Optional clean reset route
     "https://overlooked.cloud/reset-password",
 
     // Mobile
     "overlooked://",
     "overlooked://reset-password",
 
-    // Local dev
+    // Dev
     "http://localhost:3000",
-    "exp://localhost:19000"
+    "exp://localhost:19000",
   ],
 
   config: {
     screens: {
       /* -----------------------------------------------------------
-         ⭐ All recovery URLs → NewPassword screen
+         🔐 Recovery URLs → Recovery screen
+         MUST MATCH AppNavigator route: name="Recovery"
       ----------------------------------------------------------- */
-      NewPassword: {
+      Recovery: {
         path: "reset-password",
         parse: {
-          access_token: (v) => v,
-          refresh_token: (v) => v,
-          type: (v) => v
-        }
+          access_token: (v: string) => v,
+          refresh_token: (v: string) => v,
+          type: (v: string) => v,
+        },
       },
 
-      /* AUTH */
+      /* AUTH STACK */
       Auth: {
         screens: {
           SignIn: "signin",
           SignUp: "signup",
           ForgotPassword: "forgot-password",
-          CreateProfile: "create-profile"
-        }
+          CreateProfile: "create-profile",
+        },
       },
 
       /* MAIN TABS */
@@ -54,26 +55,32 @@ export const linking: LinkingOptions<any> = {
           Challenge: "challenge",
           Location: "location",
           Chats: "chats",
-          Profile: "profile"
-        }
+          Profile: "profile",
+        },
       },
 
+      /* OTHER SCREENS */
       ChatRoom: "chats/:id",
       UserProfile: "u/:id",
-      PaySuccess: "pay/success"
-    }
+      PaySuccess: "pay/success",
+    },
   },
 
-  /* fallback */
+  // Safe fallback
   getStateFromPath(path, options) {
     try {
       const { getStateFromPath } = require("@react-navigation/native");
       return getStateFromPath(path, options);
     } catch (e) {
-      console.warn("[linking] Failed to parse", path, e);
+      console.warn("[linking] Failed to parse path:", path, e);
       return {
-        routes: [{ name: "MainTabs", state: { routes: [{ name: "Featured" }] } }]
+        routes: [
+          {
+            name: "MainTabs",
+            state: { routes: [{ name: "Featured" }] },
+          },
+        ],
       };
     }
-  }
+  },
 };
