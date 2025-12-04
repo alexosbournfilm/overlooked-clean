@@ -1,27 +1,47 @@
+// app/navigation/linking.ts
 import { LinkingOptions } from "@react-navigation/native";
 
 export const linking: LinkingOptions<any> = {
   prefixes: [
-    // Web
     "https://overlooked.cloud",
     "https://www.overlooked.cloud",
 
-    // Mobile schemes
+    // Supabase reset flow
+    "https://overlooked.cloud/auth/v1/verify",
+    "https://overlooked.cloud/auth/confirm",
+
+    // Mobile deep links
     "overlooked://",
     "overlooked://callback",
     "overlooked://reset-password",
 
     // Dev
     "http://localhost:3000",
-    "exp://localhost:19000"
+    "exp://localhost:19000",
   ],
 
   config: {
     screens: {
-      // ⭐ DIRECT ROUTE FOR PASSWORD RESET
-      NewPassword: "reset-password",
+      /* ----------------------------------------------------
+         EACH RESET PATH GETS ITS OWN ROUTE → SAME SCREEN
+         ---------------------------------------------------- */
 
-      // ⭐ AUTH STACK MUST BE DECLARED AS A GROUP
+      // Normal reset-password route
+      ResetPassword: "reset-password",
+
+      // Supabase verify route with params
+      VerifyPassword: "auth/v1/verify",
+
+      // Supabase confirm route
+      ConfirmPassword: "auth/confirm",
+
+      /* All map to the SAME screen internally (NewPassword)
+         because AppNavigator registers NewPassword globally
+      */
+
+      /* ----------------------------------------------------
+         AUTH SCREENS
+         ---------------------------------------------------- */
       Auth: {
         screens: {
           SignIn: "signin",
@@ -31,7 +51,9 @@ export const linking: LinkingOptions<any> = {
         },
       },
 
-      // MAIN APP
+      /* ----------------------------------------------------
+         MAIN TABS
+         ---------------------------------------------------- */
       MainTabs: {
         screens: {
           Featured: "featured",
@@ -49,7 +71,6 @@ export const linking: LinkingOptions<any> = {
     },
   },
 
-  // SAFETY FALLBACK
   getStateFromPath(path, options) {
     try {
       const { getStateFromPath } = require("@react-navigation/native");
@@ -60,10 +81,10 @@ export const linking: LinkingOptions<any> = {
         routes: [
           {
             name: "MainTabs",
-            state: { routes: [{ name: "Featured" }] }
-          }
-        ]
+            state: { routes: [{ name: "Featured" }] },
+          },
+        ],
       };
     }
-  }
+  },
 };

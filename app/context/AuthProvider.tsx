@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { supabase } from "../lib/supabase";
 import { navigationRef } from "../navigation/navigationRef";
+import { CommonActions } from "@react-navigation/native";
 
 type MinimalProfile = {
   id: string;
@@ -36,17 +37,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<MinimalProfile | null>(null);
 
-  // -------------------------------------------------------
-  // Fetch Profile
-  // -------------------------------------------------------
+  /* ------------------------------------------------------------------
+     LOAD PROFILE
+  ------------------------------------------------------------------ */
   const loadProfile = async (uid: string) => {
-    const { data: userRow, error } = await supabase
+    const { data, error } = await supabase
       .from("users")
       .select("id, full_name, main_role_id, city_id")
       .eq("id", uid)
       .maybeSingle();
 
-    if (error || !userRow) {
+    if (error || !data) {
       setProfile({
         id: uid,
         full_name: null,
@@ -57,10 +58,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     setProfile({
-      id: userRow.id,
-      full_name: userRow.full_name,
-      main_role_id: userRow.main_role_id,
-      city_id: userRow.city_id,
+      id: data.id,
+      full_name: data.full_name,
+      main_role_id: data.main_role_id,
+      city_id: data.city_id,
     });
   };
 
@@ -68,9 +69,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (userId) await loadProfile(userId);
   };
 
-  // -------------------------------------------------------
-  // Initial session load
-  // -------------------------------------------------------
+  /* ------------------------------------------------------------------
+     INITIAL SESSION LOAD
+  ------------------------------------------------------------------ */
   useEffect(() => {
     let mounted = true;
 
@@ -90,28 +91,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     init();
 
-    // -------------------------------------------------------
-    // AUTH LISTENER
-    // -------------------------------------------------------
-    const { data: subscription } = supabase.auth.onAuthStateChange(
+    /* ------------------------------------------------------------------
+       AUTH LISTENER (PASSWORD RECOVERY FIX)
+    ------------------------------------------------------------------ */
+    const { data: sub } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log("Auth event →", event);
 
-        // ⭐ PASSWORD RESET FLOW (VERY IMPORTANT)
+        /* --------------------------------------------------------------
+           ⭐ PASSWORD RECOVERY MODE
+           Force navigation to NewPassword immediately
+        -------------------------------------------------------------- */
         if (event === "PASSWORD_RECOVERY") {
-          console.log("🔐 Password recovery detected → redirecting");
+          console.log("🔐 Password recovery detected → redirecting to NewPassword");
 
           if (navigationRef.isReady()) {
-            navigationRef.reset({
-              index: 0,
-              routes: [{ name: "NewPassword" }],
-            });
+            navigationRef.dispatch(
+              CommonActions.reset({
+                index: 0,
+                routes: [{ name: "NewPassword" }],
+              })
+            );
           }
 
-          return; // STOP NORMAL LOGIN FLOW
+          return; // IMPORTANT: stop further auth handling
         }
 
-        // ⭐ NORMAL LOGIN / LOGOUT
+        /* --------------------------------------------------------------
+           NORMAL LOGIN / LOGOUT
+        -------------------------------------------------------------- */
         const uid = session?.user?.id ?? null;
         setUserId(uid);
 
@@ -121,14 +129,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 
     return () => {
-      subscription?.subscription?.unsubscribe?.();
+      sub?.subscription?.unsubscribe?.();
       mounted = false;
     };
   }, []);
 
-  // -------------------------------------------------------
-  // Live profile updates via Postgres
-  // -------------------------------------------------------
+  /* ------------------------------------------------------------------
+     LIVE PROFILE SUBSCRIPTIONS
+  ------------------------------------------------------------------ */
   useEffect(() => {
     if (!userId) return;
 
@@ -153,12 +161,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [userId]);
 
-  // -------------------------------------------------------
-  // Profile completeness
-  // -------------------------------------------------------
+  /* ------------------------------------------------------------------
+     PROFILE COMPLETENESS
+  ------------------------------------------------------------------ */
   const profileComplete = useMemo(() => {
     if (!profile) return false;
-
     return Boolean(
       profile.full_name && profile.main_role_id && profile.city_id
     );
