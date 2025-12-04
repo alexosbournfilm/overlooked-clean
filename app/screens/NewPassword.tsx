@@ -1,5 +1,5 @@
 // app/screens/NewPassword.tsx
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -28,66 +27,12 @@ export default function NewPassword() {
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // 🔥 MAIN FIX FOR INFINITE LOADING:
-  // Linking.getInitialURL() can hang forever → so we add a timeout fallback.
-  useEffect(() => {
-    const init = async () => {
-      try {
-        let url = "";
-
-        if (Platform.OS === "web") {
-          url = window.location.href;
-        } else {
-          // Resolve whichever happens first:
-          // 1) Linking.getInitialURL()
-          // 2) 1.5s timeout → prevents infinite hang
-          const urlPromise = Linking.getInitialURL();
-          const timeout = new Promise<string>((resolve) =>
-            setTimeout(() => resolve(""), 1500)
-          );
-
-          url = (await Promise.race([urlPromise, timeout])) || "";
-        }
-
-        // Parse and set recovery tokens if present
-        if (url.includes("#")) {
-          const params = new URLSearchParams(url.split("#")[1]);
-          const access_token = params.get("access_token");
-          const refresh_token = params.get("refresh_token");
-
-          if (access_token && refresh_token) {
-            await supabase.auth.setSession({
-              access_token,
-              refresh_token,
-            });
-          }
-        }
-      } catch (err) {
-        console.log("Init session error:", err);
-      }
-
-      // 🚀 ALWAYS unlock UI even if linking failed
-      setReady(true);
-    };
-
-    init();
-  }, []);
-
-  const goToApp = () => {
-    if (Platform.OS === "web") {
-      window.location.replace("/");
-      return;
-    }
-
-    navigation.reset({
-      index: 0,
-      routes: [{ name: "Featured" }],
-    });
-  };
-
+  /* ------------------------------------------------------------------
+     After password update → AuthProvider (USER_UPDATED) handles redirect.
+     This screen should ONLY update the password. Nothing else.
+  ------------------------------------------------------------------ */
   const handleUpdatePassword = async () => {
     if (!password || !confirm) return alert("Fill both fields.");
     if (password !== confirm) return alert("Passwords do not match.");
@@ -96,7 +41,6 @@ export default function NewPassword() {
     setLoading(true);
 
     try {
-      // 1️⃣ Update password
       const { error } = await supabase.auth.updateUser({
         password: password.trim(),
       });
@@ -107,11 +51,10 @@ export default function NewPassword() {
         return;
       }
 
-      // 2️⃣ Ensure session is refreshed so navigation works
-      await supabase.auth.getSession();
+      // ⚡ DO NOT navigate manually here
+      // AuthProvider listens for USER_UPDATED and handles the redirect.
+      alert("Password updated! Redirecting…");
 
-      // 3️⃣ Send user inside app instantly
-      goToApp();
     } catch (err) {
       console.log("Unexpected error:", err);
       alert("Unexpected error");
@@ -120,14 +63,9 @@ export default function NewPassword() {
     }
   };
 
-  if (!ready) {
-    return (
-      <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color={GOLD} />
-        <Text style={styles.loading}>Preparing reset…</Text>
-      </SafeAreaView>
-    );
-  }
+  const goBack = () => {
+    navigation.goBack();
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
@@ -136,7 +74,7 @@ export default function NewPassword() {
         style={{ flex: 1 }}
       >
         <View style={styles.wrapper}>
-          <TouchableOpacity onPress={goToApp} style={styles.back}>
+          <TouchableOpacity onPress={goBack} style={styles.back}>
             <Ionicons name="chevron-back" size={18} color={SUB} />
             <Text style={styles.backLabel}>Back</Text>
           </TouchableOpacity>
@@ -188,16 +126,6 @@ export default function NewPassword() {
 }
 
 const styles = StyleSheet.create({
-  center: {
-    flex: 1,
-    backgroundColor: DARK_BG,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loading: {
-    marginTop: 10,
-    color: SUB,
-  },
   wrapper: {
     flex: 1,
     padding: 24,

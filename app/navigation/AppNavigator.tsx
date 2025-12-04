@@ -26,7 +26,10 @@ type Props = {
 };
 
 /* ------------------------------------------------------------------
-   ✔️ REAL recovery detection — requires actual Supabase tokens
+   ✔ REAL RECOVERY DETECTION
+   Works for both:
+   - https://overlooked.cloud/auth/v1/verify#access_token=...
+   - https://overlooked.cloud/reset-password#access_token=...
 ------------------------------------------------------------------ */
 function isRecoveryUrl(url?: string | null): boolean {
   if (!url) return false;
@@ -34,6 +37,7 @@ function isRecoveryUrl(url?: string | null): boolean {
 
   const hash = url.split("#")[1];
   return (
+    hash.includes("type=recovery") ||
     hash.includes("access_token=") ||
     hash.includes("refresh_token=")
   );
@@ -46,48 +50,49 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   const [navReady, setNavReady] = useState(false);
 
   /* ------------------------------------------------------------------
-      1. Recovery Flow — MUST run BEFORE AuthProvider sees session
+      1. Handle recovery BEFORE AuthProvider runs
   ------------------------------------------------------------------ */
   useEffect(() => {
     let active = true;
 
-    const detect = async () => {
+    const detectRecovery = async () => {
       const url = await RNLinking.getInitialURL();
       if (!url || !active) return;
 
-      if (isRecoveryUrl(url)) {
-        console.log("🔐 Recovery URL detected:", url);
+      if (!isRecoveryUrl(url)) return;
 
-        const hash = url.split("#")[1];
-        const params = new URLSearchParams(hash);
+      console.log("🔐 Recovery URL detected:", url);
 
-        const access_token = params.get("access_token");
-        const refresh_token = params.get("refresh_token");
+      const hash = url.split("#")[1];
+      const params = new URLSearchParams(hash);
 
-        if (access_token && refresh_token) {
-          console.log("🔐 Setting Supabase session from recovery link...");
-          await supabase.auth.setSession({
-            access_token,
-            refresh_token,
-          });
-        }
+      const access_token = params.get("access_token");
+      const refresh_token = params.get("refresh_token");
+
+      if (access_token && refresh_token) {
+        console.log("🔐 Setting Supabase session from recovery link");
+        await supabase.auth.setSession({
+          access_token,
+          refresh_token,
+        });
       }
     };
 
-    detect();
-    return () => { active = false };
+    detectRecovery();
+    return () => {
+      active = false;
+    };
   }, []);
 
   /* ------------------------------------------------------------------
-      2. Restore navigation state (ONLY for logged-in users)
+      2. Restore navigation (only for logged-in users)
   ------------------------------------------------------------------ */
   useEffect(() => {
     let mounted = true;
 
-    const restore = async () => {
+    const restoreNav = async () => {
       if (!ready) return;
 
-      // Not logged in OR profile incomplete → start fresh
       if (!userId || !profileComplete) {
         if (mounted) {
           setInitialState(undefined);
@@ -96,7 +101,6 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
         return;
       }
 
-      // Restore last nav state
       try {
         const saved = await AsyncStorage.getItem(
           `NAVIGATION_STATE_v2:${userId}`
@@ -111,12 +115,14 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
       }
     };
 
-    restore();
-    return () => { mounted = false };
+    restoreNav();
+    return () => {
+      mounted = false;
+    };
   }, [ready, userId, profileComplete]);
 
   /* ------------------------------------------------------------------
-      3. Subscription / Paywall Logic (unchanged)
+      3. Subscription logic — untouched
   ------------------------------------------------------------------ */
   const [isPaid, setIsPaid] = useState<boolean | null>(null);
   const [expired, setExpired] = useState(false);
@@ -160,7 +166,9 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
       setIsPaid(paid);
     })();
 
-    return () => { mounted = false };
+    return () => {
+      mounted = false;
+    };
   }, [userId]);
 
   useEffect(() => {
@@ -170,7 +178,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   }, [userId, expired]);
 
   /* ------------------------------------------------------------------
-      4. Global Loading Screen
+      4. Global Loading
   ------------------------------------------------------------------ */
   if (!ready || !navReady || (userId && isPaid === null)) {
     return (
@@ -190,7 +198,7 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
   const mustShowPaywall = false;
 
   /* ------------------------------------------------------------------
-      5. Navigation Tree — clean and simple
+      5. Navigation structure
   ------------------------------------------------------------------ */
   return (
     <NavigationContainer
@@ -200,8 +208,6 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
       onReady={() => setNavigatorReady(true)}
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-
-        {/* USER NOT LOGGED IN */}
         {!userId ? (
           <Stack.Screen
             name="Auth"
@@ -209,26 +215,19 @@ export default function AppNavigator({ initialAuthRouteName }: Props) {
               <AuthStack initialRouteName={initialAuthRouteName} />
             )}
           />
-
-        /* SHOW PAYWALL IF NEEDED */
         ) : mustShowPaywall ? (
           <>
             <Stack.Screen name="Paywall" component={PaywallScreen} />
             <Stack.Screen name="PaySuccess" component={PaySuccessScreen} />
           </>
-
-        /* USER LOGGED IN BUT NO PROFILE */
         ) : !profileComplete ? (
           <Stack.Screen
             name="Auth"
             children={() => <AuthStack initialRouteName="CreateProfile" />}
           />
-
-        /* EVERYTHING COMPLETE → MAIN APP */
         ) : (
           <Stack.Screen name="MainTabs" component={MainTabs} />
         )}
-
       </Stack.Navigator>
     </NavigationContainer>
   );

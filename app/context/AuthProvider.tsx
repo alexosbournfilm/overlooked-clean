@@ -42,13 +42,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
      LOAD PROFILE
   ------------------------------------------------------------------ */
   const loadProfile = async (uid: string) => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("users")
       .select("id, full_name, main_role_id, city_id")
       .eq("id", uid)
       .maybeSingle();
 
-    if (error || !data) {
+    if (!data) {
       setProfile({
         id: uid,
         full_name: null,
@@ -93,17 +93,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     init();
 
     /* ------------------------------------------------------------------
-       AUTH LISTENER — REAL FIX FOR RECOVERY + PASSWORD UPDATE
+       AUTH STATE LISTENER — THE FIX
     ------------------------------------------------------------------ */
     const { data: sub } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log("Auth event →", event);
+        console.log("🔥 Auth event:", event);
 
         /* --------------------------------------------------------------
-           ⭐ PASSWORD RECOVERY MODE (coming from deep link)
+           1️⃣ PASSWORD RECOVERY deep link (reset password requested)
         -------------------------------------------------------------- */
         if (event === "PASSWORD_RECOVERY") {
-          console.log("🔐 PASSWORD_RECOVERY detected → go to NewPassword");
+          console.log("🔐 PASSWORD_RECOVERY → Navigating to NewPassword");
 
           if (navigationRef.isReady()) {
             navigationRef.dispatch(
@@ -113,21 +113,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               })
             );
           }
-
-          return; // STOP normal login flow
+          return; // stop normal flow
         }
 
         /* --------------------------------------------------------------
-           ⭐ USER_UPDATED → AFTER password is successfully changed
-           Supabase emits USER_UPDATED, not PASSWORD_RECOVERY.
+           2️⃣ USER_UPDATED (password actually changed)
+           Supabase sends this immediately after updateUser({password})
         -------------------------------------------------------------- */
         if (event === "USER_UPDATED") {
-          console.log("🔐 USER_UPDATED → password changed successfully");
+          console.log("🔐 USER_UPDATED → Password successfully changed");
 
-          // Reload session to prevent stale state
+          // refresh session after password update
           await supabase.auth.getSession();
 
-          // Now send user into the app
+          // immediately send user into the app
           if (navigationRef.isReady()) {
             navigationRef.dispatch(
               CommonActions.reset({
@@ -136,12 +135,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               })
             );
           }
-
           return;
         }
 
         /* --------------------------------------------------------------
-           ⭐ NORMAL LOGIN / LOGOUT
+           3️⃣ NORMAL LOGIN / LOGOUT FLOW
         -------------------------------------------------------------- */
         const uid = session?.user?.id ?? null;
         setUserId(uid);
@@ -164,7 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!userId) return;
 
     const channel = supabase
-      .channel(`users-row-${userId}`)
+      .channel(`users-${userId}`)
       .on(
         "postgres_changes",
         {
@@ -173,9 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           table: "users",
           filter: `id=eq.${userId}`,
         },
-        async () => {
-          await loadProfile(userId);
-        }
+        () => loadProfile(userId)
       )
       .subscribe();
 
@@ -190,7 +186,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const profileComplete = useMemo(() => {
     if (!profile) return false;
     return Boolean(
-      profile.full_name && profile.main_role_id && profile.city_id
+      profile.full_name &&
+        profile.main_role_id &&
+        profile.city_id
     );
   }, [profile]);
 
