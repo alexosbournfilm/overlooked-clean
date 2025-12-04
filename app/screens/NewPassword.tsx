@@ -28,7 +28,7 @@ const SYSTEM_SANS =
   undefined;
 
 /* ------------------------------------------
-      GET RESET URL (Mobile + Web)
+      FAST URL GETTER
 ------------------------------------------- */
 const getUrl = async () => {
   if (Platform.OS === "web") return window.location.href;
@@ -51,17 +51,34 @@ export default function NewPassword() {
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+
   const [restoring, setRestoring] = useState(true);
   const [hasSession, setHasSession] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  const [passwordWasUpdated, setPasswordWasUpdated] = useState(false);
+
   /* ------------------------------------------
-      HANDLE RESET URL
+      REDIRECT USER INTO APP
+------------------------------------------- */
+  const goToApp = () => {
+    if (Platform.OS === "web") {
+      window.location.replace("/");
+    } else {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "Featured" }],
+      });
+    }
+  };
+
+  /* ------------------------------------------
+      DEEP LINK HANDLING — ONLY BEFORE UPDATE
 ------------------------------------------- */
   const processReset = async (url: string) => {
-    try {
-      if (!url) return;
+    if (!url || passwordWasUpdated) return;
 
+    try {
       if (url.includes("type=recovery")) {
         await supabase.auth.exchangeCodeForSession(url);
       }
@@ -76,19 +93,21 @@ export default function NewPassword() {
         }
       }
     } catch (e) {
-      console.warn("processReset error:", e);
+      console.warn("Reset process error:", e);
     }
   };
 
   /* ------------------------------------------
-      INITIAL LOAD (One Time)
+      INITIAL MOUNT
 ------------------------------------------- */
   useEffect(() => {
     let mounted = true;
 
     (async () => {
-      const url = await getUrl();
-      if (url) await processReset(url);
+      if (!passwordWasUpdated) {
+        const url = await getUrl();
+        if (url) await processReset(url);
+      }
 
       const { data } = await supabase.auth.getSession();
 
@@ -101,24 +120,10 @@ export default function NewPassword() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [passwordWasUpdated]);
 
   /* ------------------------------------------
-      REDIRECT INTO APP
-------------------------------------------- */
-  const goToApp = () => {
-    if (Platform.OS === "web") {
-      window.location.replace("/"); // goes straight to logged-in app shell
-    } else {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "Featured" }],
-      });
-    }
-  };
-
-  /* ------------------------------------------
-      UPDATE PASSWORD & ENTER APP
+      UPDATE PASSWORD
 ------------------------------------------- */
   const handleUpdatePassword = async () => {
     if (submitting) return;
@@ -130,7 +135,6 @@ export default function NewPassword() {
     setSubmitting(true);
 
     try {
-      // 1) Update password
       const { error } = await supabase.auth.updateUser({
         password: password.trim(),
       });
@@ -141,13 +145,16 @@ export default function NewPassword() {
         return;
       }
 
-      // 2) Clear fields (prevents Safari popup)
+      // 🚀 Key improvement
+      setPasswordWasUpdated(true);
+
+      // Clear secure fields
       setPassword("");
       setConfirm("");
 
-      // 3) IMMEDIATE navigation into the app
+      // Navigate instantly
       goToApp();
-    } catch (e) {
+    } catch {
       alert("Unexpected error");
     } finally {
       setSubmitting(false);
@@ -155,7 +162,7 @@ export default function NewPassword() {
   };
 
   /* ------------------------------------------
-      UI — RESET LOADING
+      LOADING SCREEN
 ------------------------------------------- */
   if (restoring) {
     return (
@@ -197,7 +204,6 @@ export default function NewPassword() {
               Enter and confirm your password.
             </Text>
 
-            {/* PASSWORD */}
             <View style={styles.inputRow}>
               <Ionicons name="lock-closed" size={16} color={SUB} />
               <TextInput
@@ -210,7 +216,6 @@ export default function NewPassword() {
               />
             </View>
 
-            {/* CONFIRM */}
             <View style={styles.inputRow}>
               <Ionicons name="shield-checkmark" size={16} color={SUB} />
               <TextInput
@@ -223,7 +228,6 @@ export default function NewPassword() {
               />
             </View>
 
-            {/* BUTTON */}
             <TouchableOpacity
               onPress={handleUpdatePassword}
               disabled={submitting}
