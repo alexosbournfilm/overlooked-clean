@@ -1,5 +1,5 @@
 // app/screens/NewPassword.tsx
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -9,12 +9,12 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { CommonActions, useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
+import { navigationRef } from "../navigation/navigationRef";
 
 const DARK_BG = "#000";
 const CARD_BG = "#0B0B0B";
@@ -31,48 +31,24 @@ export default function NewPassword() {
   const [loading, setLoading] = useState(false);
 
   /** -----------------------------------------------------------
-   * 1️⃣ Ensure Supabase session is restored (Safari requirement)
+   * SAME REDIRECT STRATEGY AS CREATE PROFILE SCREEN
    * ----------------------------------------------------------*/
-  useEffect(() => {
-    const restoreSession = async () => {
-      let url = "";
-
-      if (Platform.OS === "web") url = window.location.href;
-      else url = (await Linking.getInitialURL()) || "";
-
-      if (url.includes("#")) {
-        const params = new URLSearchParams(url.split("#")[1]);
-        const access_token = params.get("access_token");
-        const refresh_token = params.get("refresh_token");
-
-        if (access_token && refresh_token) {
-          console.log("🔐 Restoring recovery session...");
-          await supabase.auth.setSession({ access_token, refresh_token });
-        }
-      }
-    };
-
-    restoreSession();
-  }, []);
-
-  /** -----------------------------------------------------------
-   * Redirect user straight to Sign In
-   * ----------------------------------------------------------*/
-  const goToSignIn = () => {
-    if (Platform.OS === "web") {
-      window.location.replace("/signin");
-      return;
+  const goToApp = () => {
+    if (navigationRef.isReady()) {
+      navigationRef.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            {
+              name: "MainTabs",
+              state: { index: 0, routes: [{ name: "Featured" }] },
+            },
+          ],
+        })
+      );
     }
-
-    navigation.reset({
-      index: 0,
-      routes: [{ name: "SignIn" }],
-    });
   };
 
-  /** -----------------------------------------------------------
-   * 2️⃣ Update password → sign out → redirect
-   * ----------------------------------------------------------*/
   const handleUpdatePassword = async () => {
     if (!password || !confirm) return alert("Fill both fields.");
     if (password !== confirm) return alert("Passwords do not match.");
@@ -81,14 +57,23 @@ export default function NewPassword() {
     setLoading(true);
 
     try {
-      // ⭐ Fire-and-forget still needed (Safari fix)
-      supabase.auth.updateUser({ password: password.trim() });
+      const { error } = await supabase.auth.updateUser({
+        password: password.trim(),
+      });
 
-      // ⭐ MUST sign out → invalidates recovery token
-      await supabase.auth.signOut();
+      if (error) {
+        setLoading(false);
+        alert(error.message);
+        return;
+      }
 
-      // ⭐ Redirect immediately
-      goToSignIn();
+      console.log("✅ Password updated successfully.");
+
+      // ⭐ DO NOT SIGN OUT — same as CreateProfile flow
+      // Supabase requires the recovery session to persist briefly.
+
+      // Instantly send user inside the app
+      goToApp();
     } catch (e) {
       console.log("Unexpected error:", e);
       alert("Unexpected error");
@@ -103,9 +88,13 @@ export default function NewPassword() {
         style={{ flex: 1 }}
       >
         <View style={styles.wrapper}>
-          <TouchableOpacity onPress={goToSignIn} style={styles.back}>
+          <TouchableOpacity
+            onPress={goToApp}
+            style={styles.back}
+            disabled={loading}
+          >
             <Ionicons name="chevron-back" size={18} color={SUB} />
-            <Text style={styles.backLabel}>Back to Sign In</Text>
+            <Text style={styles.backLabel}>Back</Text>
           </TouchableOpacity>
 
           <View style={styles.card}>
