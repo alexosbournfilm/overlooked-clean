@@ -1,5 +1,5 @@
 // app/screens/NewPassword.tsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -29,6 +30,34 @@ export default function NewPassword() {
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
 
+  /** -----------------------------------------------------------
+   * 1️⃣ Ensure Supabase session is restored (Safari requirement)
+   * ----------------------------------------------------------*/
+  useEffect(() => {
+    const restoreSession = async () => {
+      let url = "";
+
+      if (Platform.OS === "web") url = window.location.href;
+      else url = (await Linking.getInitialURL()) || "";
+
+      if (url.includes("#")) {
+        const params = new URLSearchParams(url.split("#")[1]);
+        const access_token = params.get("access_token");
+        const refresh_token = params.get("refresh_token");
+
+        if (access_token && refresh_token) {
+          console.log("🔐 Restoring recovery session...");
+          await supabase.auth.setSession({ access_token, refresh_token });
+        }
+      }
+    };
+
+    restoreSession();
+  }, []);
+
+  /** -----------------------------------------------------------
+   * Redirect user straight to Sign In
+   * ----------------------------------------------------------*/
   const goToSignIn = () => {
     if (Platform.OS === "web") {
       window.location.replace("/signin");
@@ -41,6 +70,9 @@ export default function NewPassword() {
     });
   };
 
+  /** -----------------------------------------------------------
+   * 2️⃣ Update password → sign out → redirect
+   * ----------------------------------------------------------*/
   const handleUpdatePassword = async () => {
     if (!password || !confirm) return alert("Fill both fields.");
     if (password !== confirm) return alert("Passwords do not match.");
@@ -49,14 +81,17 @@ export default function NewPassword() {
     setLoading(true);
 
     try {
-      // ⭐ FIRE AND FORGET — DO NOT AWAIT (Safari fix)
+      // ⭐ Fire-and-forget still needed (Safari fix)
       supabase.auth.updateUser({ password: password.trim() });
 
-      // ⭐ Immediately navigate (same behaviour as Back button)
+      // ⭐ MUST sign out → invalidates recovery token
+      await supabase.auth.signOut();
+
+      // ⭐ Redirect immediately
       goToSignIn();
     } catch (e) {
       console.log("Unexpected error:", e);
-      alert("Unexpected error occurred");
+      alert("Unexpected error");
       setLoading(false);
     }
   };
@@ -75,9 +110,7 @@ export default function NewPassword() {
 
           <View style={styles.card}>
             <Text style={styles.title}>Set a New Password</Text>
-            <Text style={styles.subtitle}>
-              Enter and confirm your password.
-            </Text>
+            <Text style={styles.subtitle}>Enter and confirm your password.</Text>
 
             <View style={styles.inputRow}>
               <Ionicons name="lock-closed" size={16} color={SUB} />
