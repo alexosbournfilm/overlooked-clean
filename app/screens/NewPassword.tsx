@@ -1,3 +1,4 @@
+// app/screens/NewPassword.tsx
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -29,35 +30,81 @@ export default function NewPassword() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
-
-  // This gets ?token_hash= from the URL — no recovery session is needed.
+  const [sessionReady, setSessionReady] = useState(false);
   const [tokenHash, setTokenHash] = useState<string | null>(null);
 
-  const readTokenFromUrl = () => {
-    let params: any = {};
+  /** Step 1 — Extract token_hash from URL */
+  const extractToken = (url: string | null): string | null => {
+  const parsed = Linking.parse(url || "");
 
-    if (Platform.OS === "web") {
-      const search = new URLSearchParams(window.location.search);
-      search.forEach((v, k) => (params[k] = v));
-    } else {
-      const parsed = Linking.parse(window.location.href);
-      params = parsed?.queryParams ?? {};
+  let token: any = null;
+
+  // Web: token in the URL search
+  if (Platform.OS === "web") {
+    const params = new URLSearchParams(window.location.search);
+    const val = params.get("token_hash");
+    return val ? val : null;
+  }
+
+  // Mobile: token in queryParams
+  if (parsed?.queryParams?.token_hash) {
+    const raw = parsed.queryParams.token_hash;
+
+    // FIX: force string
+    if (Array.isArray(raw)) return raw[0];
+    return raw;
+  }
+
+  return null; 
+};
+
+  /** Step 2 — Verify token with Supabase */
+  const restoreRecoverySession = async (url: string | null) => {
+    const hash = extractToken(url);
+    setTokenHash(hash);
+
+    if (!hash) {
+      console.log("❌ No token_hash found.");
+      return;
     }
 
-    return params["token_hash"] || null;
+    console.log("🔐 Received token_hash:", hash);
+
+    const { data, error } = await supabase.auth.verifyOtp({
+      type: "recovery",
+      token_hash: hash,
+    });
+
+    if (error) {
+      console.log("❌ verifyOtp failed:", error.message);
+      return;
+    }
+
+    console.log("✔ Recovery session restored.");
+    setSessionReady(true);
   };
 
+  /** Step 3 — Run on mount and on new URLs */
   useEffect(() => {
-    const hash = readTokenFromUrl();
-    if (!hash) {
-      Alert.alert(
-        "Invalid Link",
-        "Your password reset link is missing or expired."
-      );
-    }
-    setTokenHash(hash);
+    const init = async () => {
+      if (Platform.OS === "web") {
+        await restoreRecoverySession(window.location.href);
+      } else {
+        const initial = await Linking.getInitialURL();
+        await restoreRecoverySession(initial);
+      }
+
+      const sub = Linking.addEventListener("url", async (event) => {
+        await restoreRecoverySession(event.url);
+      });
+
+      return () => sub.remove();
+    };
+
+    init();
   }, []);
 
+  /** Step 4 — Redirect helper */
   const goToSignIn = () => {
     if (Platform.OS === "web") {
       window.location.replace("/signin");
@@ -70,62 +117,48 @@ export default function NewPassword() {
     });
   };
 
-  // ⚡ MAIN: Update password WITHOUT depending on recovery session
-  const handleUpdatePassword = async () => {
-    if (!tokenHash) {
-      return Alert.alert(
-        "Invalid Reset Link",
-        "Your reset link does not contain a valid token."
+  /** Step 5 — Update password */
+  const updatePassword = async () => {
+    if (!sessionReady) {
+      Alert.alert(
+        "Missing reset token",
+        "Re-open the link from your email. The reset token was not restored."
       );
+      return;
     }
 
     if (!password || !confirm) {
-      return Alert.alert("Missing Fields", "Enter both fields.");
+      Alert.alert("Missing fields", "Please enter both password fields.");
+      return;
     }
+
     if (password !== confirm) {
-      return Alert.alert("Error", "Passwords do not match.");
-    }
-    if (password.length < 6) {
-      return Alert.alert("Error", "Password must be 6+ characters.");
+      Alert.alert("Error", "Passwords do not match.");
+      return;
     }
 
     setLoading(true);
 
-    try {
-      // 1️⃣ Verify OTP and get a temporary session
-      const { data, error: otpError } = await supabase.auth.verifyOtp({
-        type: "recovery",
-        token_hash: tokenHash,
-      });
+    const { error } = await supabase.auth.updateUser({
+      password: password.trim(),
+    });
 
-      if (otpError) {
-        setLoading(false);
-        return Alert.alert("Error", otpError.message);
-      }
-
-      // 2️⃣ Now update the password
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: password.trim(),
-      });
-
-      if (updateError) {
-        setLoading(false);
-        return Alert.alert("Error", updateError.message);
-      }
-
-      // 3️⃣ Must sign out after password update
-      await supabase.auth.signOut();
-
+    if (error) {
       setLoading(false);
-
-      Alert.alert("Success!", "Your password has been updated.");
-      goToSignIn();
-    } catch (e: any) {
-      setLoading(false);
-      Alert.alert("Unexpected Error", e.message || "Something went wrong.");
+      Alert.alert("Error", error.message);
+      return;
     }
+
+    console.log("✔ Password updated. Signing out…");
+    await supabase.auth.signOut();
+
+    setLoading(false);
+
+    Alert.alert("Success", "Your password has been updated. Please sign in.");
+    goToSignIn();
   };
 
+  /** UI */
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
       <KeyboardAvoidingView
@@ -140,9 +173,7 @@ export default function NewPassword() {
 
           <View style={styles.card}>
             <Text style={styles.title}>Set a New Password</Text>
-            <Text style={styles.subtitle}>
-              Enter your new password below.
-            </Text>
+            <Text style={styles.subtitle}>Enter your new password below.</Text>
 
             <View style={styles.inputRow}>
               <Ionicons name="lock-closed" size={16} color={SUB} />
@@ -169,9 +200,9 @@ export default function NewPassword() {
             </View>
 
             <TouchableOpacity
-              onPress={handleUpdatePassword}
+              onPress={updatePassword}
               disabled={loading}
-              style={[styles.button, loading && { opacity: 0.4 }]}
+              style={[styles.button, loading && { opacity: 0.5 }]}
             >
               {loading ? (
                 <ActivityIndicator color={DARK_BG} />
@@ -180,8 +211,14 @@ export default function NewPassword() {
               )}
             </TouchableOpacity>
 
-            {!tokenHash && (
-              <Text style={{ color: "red", marginTop: 10, textAlign: "center" }}>
+            {!sessionReady && (
+              <Text
+                style={{
+                  color: "red",
+                  marginTop: 12,
+                  textAlign: "center",
+                }}
+              >
                 Missing reset token. Re-open the link from your email.
               </Text>
             )}
