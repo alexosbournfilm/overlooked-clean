@@ -6,7 +6,7 @@ import {
 } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { View, ActivityIndicator, Platform, Linking } from "react-native";
+import { View, ActivityIndicator } from "react-native";
 
 import AuthStack from "./AuthStack";
 import MainTabs from "./MainTabs";
@@ -33,58 +33,13 @@ export default function AppNavigator({
   const [navReady, setNavReady] = useState(false);
 
   // --------------------------------------------------------------
-  // Password recovery detection (web + mobile)
-  // --------------------------------------------------------------
-
-  const [recoveryMode, setRecoveryMode] = useState(false);
-
-  useEffect(() => {
-    async function detectRecovery() {
-      let url = "";
-
-      if (Platform.OS === "web") {
-        url = window.location.href;
-      } else {
-        url = (await Linking.getInitialURL()) || "";
-      }
-
-      if (!url.includes("#")) return;
-
-      const hash = url.split("#")[1];
-      const params = new URLSearchParams(hash);
-
-      const access = params.get("access_token");
-      const refresh = params.get("refresh_token");
-
-      if (access && refresh) {
-        console.log("🔐 Recovery link detected");
-        setRecoveryMode(true);
-
-        await supabase.auth.setSession({
-          access_token: access,
-          refresh_token: refresh,
-        });
-      }
-    }
-
-    detectRecovery();
-  }, []);
-
-  // --------------------------------------------------------------
-  // Restore navigation (NOT used during recovery)
+  // Restore navigation only for logged-in users
   // --------------------------------------------------------------
   useEffect(() => {
     let mounted = true;
 
     const restoreNav = async () => {
       if (!ready) return;
-
-      if (recoveryMode) {
-        console.log("⛔ Skipping state restore (recovery mode)");
-        setInitialState(undefined);
-        setNavReady(true);
-        return;
-      }
 
       if (!userId || !profileComplete) {
         setInitialState(undefined);
@@ -93,11 +48,11 @@ export default function AppNavigator({
       }
 
       try {
-        const saved = await AsyncStorage.getItem(
+        const savedState = await AsyncStorage.getItem(
           `NAVIGATION_STATE_v2:${userId}`
         );
-        if (saved && mounted) {
-          setInitialState(JSON.parse(saved));
+        if (savedState && mounted) {
+          setInitialState(JSON.parse(savedState));
         }
       } catch {}
 
@@ -108,12 +63,11 @@ export default function AppNavigator({
     return () => {
       mounted = false;
     };
-  }, [ready, userId, profileComplete, recoveryMode]);
+  }, [ready, userId, profileComplete]);
 
-  // --------------------------------------------------------------
   // Subscription check
-  // --------------------------------------------------------------
   const [isPaid, setIsPaid] = useState<boolean | null>(null);
+  const [expired, setExpired] = useState(false);
 
   useEffect(() => {
     if (!userId) {
@@ -138,24 +92,27 @@ export default function AppNavigator({
         ? new Date(data.premium_access_expires_at).getTime()
         : null;
 
-      const expired = exp ? Date.now() >= exp : false;
-      const status = (data?.subscription_status || "").toLowerCase();
-
+      const expiredNow = exp ? Date.now() >= exp : false;
+      const stat = (data?.subscription_status || "").toLowerCase();
       const paid =
-        !expired &&
-        (status === "active" ||
-          status === "trialing" ||
-          status === "past_due" ||
+        !expiredNow &&
+        (stat === "active" ||
+          stat === "trialing" ||
+          stat === "past_due" ||
           data?.grandfathered);
 
+      setExpired(expiredNow);
       setIsPaid(paid);
-      if (expired) supabase.auth.signOut();
     })();
 
     return () => {
       mounted = false;
     };
   }, [userId]);
+
+  useEffect(() => {
+    if (userId && expired) supabase.auth.signOut();
+  }, [userId, expired]);
 
   // --------------------------------------------------------------
   // Global loading
@@ -189,10 +146,10 @@ export default function AppNavigator({
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
 
-        {/* ONLY show this if recovery deep-link is active */}
-        {recoveryMode ? (
-          <Stack.Screen name="NewPassword" component={NewPassword} />
-        ) : !userId ? (
+        {/* Always keep NewPassword accessible */}
+        <Stack.Screen name="NewPassword" component={NewPassword} />
+
+        {!userId ? (
           <Stack.Screen
             name="Auth"
             children={() => (
@@ -214,7 +171,6 @@ export default function AppNavigator({
         ) : (
           <Stack.Screen name="MainTabs" component={MainTabs} />
         )}
-
       </Stack.Navigator>
     </NavigationContainer>
   );
