@@ -31,67 +31,82 @@ export default function NewPassword() {
   const [sessionReady, setSessionReady] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Extract params manually on WEB because Linking fails
-  const extractRecoveryParams = (url: string | null) => {
-  try {
-    // WEB — Use URLSearchParams
-    if (Platform.OS === "web") {
-      const search = window.location.search;
-      const query = new URLSearchParams(search);
+  // EXACT SAME TOKEN PARSER USED IN SIGNUP
+  const parseTokensFromUrl = () => {
+    let params: Record<string, any> = {};
 
-      return {
-        token_hash: query.get("token_hash") ?? null,
-        email: query.get("email") ?? null,
-        type: query.get("type") ?? null,
-      };
+    // 1. Read HASH fragment (Safari + Supabase use this)
+    if (Platform.OS === "web") {
+      const hash = window.location.hash?.replace(/^#/, "") ?? "";
+      const hashParams = new URLSearchParams(hash);
+      hashParams.forEach((v, k) => (params[k] = v));
     }
 
-    // MOBILE — Use Linking.parse
-    const parsed = Linking.parse(url ?? "");
-    const qp = parsed?.queryParams ?? {};
+    // 2. Read query params (?token_hash=...)
+    const search = window.location.search;
+    const searchParams = new URLSearchParams(search);
+    searchParams.forEach((v, k) => (params[k] = v));
 
     return {
-      token_hash: (qp["token_hash"] as string) ?? null,
-      email: (qp["email"] as string) ?? null,
-      type: (qp["type"] as string) ?? null,
+      access_token: params["access_token"],
+      refresh_token: params["refresh_token"],
+      token_hash: params["token_hash"],
+      email: params["email"],
+      type: params["type"],
     };
-  } catch (e) {
-    console.log("Param extraction error:", e);
-    return { token_hash: null, email: null, type: null };
-  }
-};
+  };
 
-  useEffect(() => {
-    const handle = async () => {
-      const initial = Platform.OS === "web"
-        ? window.location.href
-        : await Linking.getInitialURL();
+  const establishSession = async () => {
+    const { access_token, refresh_token, token_hash, email } =
+      parseTokensFromUrl();
 
-      const { token_hash, email } = extractRecoveryParams(initial);
+    console.log("Parsed Tokens:", {
+      access_token,
+      refresh_token,
+      token_hash,
+      email,
+    });
 
-      console.log("Extracted params:", { token_hash, email });
+    // CASE 1: Supabase recovery gives you a full session in hash
+    if (access_token && refresh_token) {
+      console.log("✔ Using full access_token session");
+      const { error } = await supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      });
+      if (!error) return true;
+    }
 
-      if (!token_hash || !email) {
-        console.log("❌ Missing token or email from URL");
-        return;
-      }
-
-      // Verify OTP
+    // CASE 2: Recovery uses token_hash (verifyOtp)
+    if (token_hash && email) {
+      console.log("✔ Using token_hash to verify recovery session");
       const { error } = await supabase.auth.verifyOtp({
         type: "recovery",
         token_hash,
         email,
       });
+      if (!error) return true;
+    }
 
-      if (error) {
-        console.log("❌ verifyOtp error:", error.message);
-      } else {
+    console.log("❌ No valid session could be created");
+    return false;
+  };
+
+  useEffect(() => {
+    const run = async () => {
+      const ok = await establishSession();
+      if (ok) {
         console.log("✔ Recovery session established");
         setSessionReady(true);
+
+        // CLEAN URL (remove tokens from browser)
+        if (Platform.OS === "web") {
+          const clean = window.location.origin + window.location.pathname;
+          window.history.replaceState({}, document.title, clean);
+        }
       }
     };
-
-    handle();
+    run();
   }, []);
 
   const goToSignIn = () => {
@@ -102,7 +117,7 @@ export default function NewPassword() {
 
   const updatePassword = async () => {
     if (!sessionReady)
-      return Alert.alert("Invalid Link", "Please open the link from your email.");
+      return Alert.alert("Invalid Link", "Please open the reset link again.");
 
     if (!password || !confirm)
       return Alert.alert("Error", "Fill in both fields.");
@@ -119,11 +134,15 @@ export default function NewPassword() {
 
     setLoading(false);
 
-    if (error) return Alert.alert("Error", error.message);
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
+    }
 
+    // Password updated — now sign out and redirect
     await supabase.auth.signOut();
 
-    Alert.alert("Success", "Password updated!");
+    Alert.alert("Success", "Your password has been updated.");
     goToSignIn();
   };
 
@@ -137,7 +156,9 @@ export default function NewPassword() {
 
         <View style={styles.card}>
           <Text style={styles.title}>Set a New Password</Text>
-          <Text style={styles.subtitle}>Enter your new password below.</Text>
+          <Text style={styles.subtitle}>
+            Enter your new password below.
+          </Text>
 
           <View style={styles.inputRow}>
             <Ionicons name="lock-closed" size={16} color={SUB} />
