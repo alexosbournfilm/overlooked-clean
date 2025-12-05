@@ -1,5 +1,5 @@
 // app/screens/NewPassword.tsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -9,12 +9,13 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Linking,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { CommonActions, useNavigation } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
-import { navigationRef } from "../navigation/navigationRef";
 
 const DARK_BG = "#000";
 const CARD_BG = "#0B0B0B";
@@ -31,52 +32,77 @@ export default function NewPassword() {
   const [loading, setLoading] = useState(false);
 
   /** -----------------------------------------------------------
-   * SAME REDIRECT STRATEGY AS CREATE PROFILE SCREEN
+   * 1️⃣ Ensure Supabase session is restored (Safari requirement)
    * ----------------------------------------------------------*/
-  const goToApp = () => {
-    if (navigationRef.isReady()) {
-      navigationRef.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [
-            {
-              name: "MainTabs",
-              state: { index: 0, routes: [{ name: "Featured" }] },
-            },
-          ],
-        })
-      );
+  useEffect(() => {
+    const restoreSession = async () => {
+      let url = "";
+
+      if (Platform.OS === "web") url = window.location.href;
+      else url = (await Linking.getInitialURL()) || "";
+
+      if (url.includes("#")) {
+        const params = new URLSearchParams(url.split("#")[1]);
+        const access_token = params.get("access_token");
+        const refresh_token = params.get("refresh_token");
+
+        if (access_token && refresh_token) {
+          console.log("🔐 Restoring recovery session...");
+          await supabase.auth.setSession({ access_token, refresh_token });
+        }
+      }
+    };
+
+    restoreSession();
+  }, []);
+
+  /** -----------------------------------------------------------
+   * Redirect user to Sign In (same logic as SignUpScreen)
+   * ----------------------------------------------------------*/
+  const goToSignIn = () => {
+    if (Platform.OS === "web") {
+      window.location.replace("/signin");
+      return;
     }
+
+    navigation.reset({
+      index: 0,
+      routes: [{ name: "SignIn" }],
+    });
   };
 
+  /** -----------------------------------------------------------
+   * 2️⃣ Update password → sign out → redirect
+   * EXACT logic as SignUp / CreateProfile
+   * ----------------------------------------------------------*/
   const handleUpdatePassword = async () => {
-    if (!password || !confirm) return alert("Fill both fields.");
-    if (password !== confirm) return alert("Passwords do not match.");
-    if (password.length < 6) return alert("Password too short.");
+    if (!password || !confirm) return Alert.alert("Missing Fields", "Fill both fields.");
+    if (password !== confirm) return Alert.alert("Error", "Passwords do not match.");
+    if (password.length < 6) return Alert.alert("Error", "Password too short.");
 
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.updateUser({
+      // ⭐ MUST await this (your current code does NOT)
+      const { error: updateError } = await supabase.auth.updateUser({
         password: password.trim(),
       });
 
-      if (error) {
+      if (updateError) {
         setLoading(false);
-        alert(error.message);
-        return;
+        return Alert.alert("Error", updateError.message);
       }
 
-      console.log("✅ Password updated successfully.");
+      // ⭐ REQUIRED: recovery token must be invalidated
+      await supabase.auth.signOut();
 
-      // ⭐ DO NOT SIGN OUT — same as CreateProfile flow
-      // Supabase requires the recovery session to persist briefly.
+      setLoading(false);
 
-      // Instantly send user inside the app
-      goToApp();
-    } catch (e) {
+      // ⭐ Smooth redirect (same pattern as SignUp)
+      goToSignIn();
+    } catch (e: any) {
       console.log("Unexpected error:", e);
-      alert("Unexpected error");
+      Alert.alert("Unexpected error", e.message || "");
       setLoading(false);
     }
   };
@@ -88,13 +114,9 @@ export default function NewPassword() {
         style={{ flex: 1 }}
       >
         <View style={styles.wrapper}>
-          <TouchableOpacity
-            onPress={goToApp}
-            style={styles.back}
-            disabled={loading}
-          >
+          <TouchableOpacity onPress={goToSignIn} style={styles.back}>
             <Ionicons name="chevron-back" size={18} color={SUB} />
-            <Text style={styles.backLabel}>Back</Text>
+            <Text style={styles.backLabel}>Back to Sign In</Text>
           </TouchableOpacity>
 
           <View style={styles.card}>
