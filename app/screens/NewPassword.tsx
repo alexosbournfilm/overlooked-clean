@@ -30,21 +30,20 @@ export default function NewPassword() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
-  const [restored, setRestored] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
 
-  /** --------------------------------------------------------------------
-   * ⭐ Copy/paste of SignUpScreen's deep link + token-parsing logic
-   * This is REQUIRED for Safari/iOS recovery flows.
-   * ------------------------------------------------------------------*/
-  const parseTokensFromUrl = (url: string) => {
+  // 🔍 Parse tokens from URL (works for both Web hash & Mobile query params)
+  const parseTokens = (url: string | null) => {
+    if (!url) return {};
+
     const parsed = Linking.parse(url);
     let params: Record<string, any> = {};
 
-    // Web handles tokens in the hash fragment (#)
-    if (typeof window !== "undefined" && Platform.OS === "web") {
-      const hash = window.location.hash?.replace(/^#/, "") ?? "";
-      const searchParams = new URLSearchParams(hash);
-      searchParams.forEach((v, k) => (params[k] = v));
+    // Web uses the hash (#access_token=...)
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const hash = window.location.hash.replace(/^#/, "");
+      const hashParams = new URLSearchParams(hash);
+      hashParams.forEach((v, k) => (params[k] = v));
     }
 
     // Mobile uses parsed.queryParams
@@ -56,69 +55,50 @@ export default function NewPassword() {
       access_token: params["access_token"],
       refresh_token: params["refresh_token"],
       type: params["type"],
-      error_description: params["error_description"],
     };
   };
 
-  const restoreRecoverySession = async (url: string | null) => {
+  // Restore Supabase recovery session
+  const restoreSession = async (url: string | null) => {
     if (!url) return;
 
-    // PKCE or OAuth-style
-    if (url.includes("code=")) {
-      const { error } = await supabase.auth.exchangeCodeForSession(url);
-      if (error) {
-        Alert.alert("Error", "Could not restore auth session.");
-        return;
-      }
-      setRestored(true);
-      return;
-    }
-
-    // Magic recovery token (?type=recovery)
-    const { access_token, refresh_token } = parseTokensFromUrl(url);
+    const { access_token, refresh_token } = parseTokens(url);
 
     if (access_token && refresh_token) {
-      console.log("🔐 Restoring recovery session…");
-
       const { error } = await supabase.auth.setSession({
         access_token,
         refresh_token,
       });
 
-      if (!error) setRestored(true);
+      if (!error) {
+        console.log("🔐 Recovery session restored.");
+        setSessionReady(true);
+      }
     }
   };
 
+  // Auto-run restoration when screen mounts
   useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-
     const init = async () => {
-      // 1. Handle initial URL
       if (Platform.OS === "web") {
-        await restoreRecoverySession(window.location.href);
+        await restoreSession(window.location.href);
       } else {
         const initial = await Linking.getInitialURL();
-        await restoreRecoverySession(initial ?? null);
+        await restoreSession(initial ?? null);
       }
 
-      // 2. Handle opened app event
+      // Also handle any future URL open events (mobile)
       const sub = Linking.addEventListener("url", async (event) => {
-        await restoreRecoverySession(event.url);
+        await restoreSession(event.url);
       });
 
-      unsubscribe = () => sub.remove();
+      return () => sub.remove();
     };
 
     init();
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
   }, []);
 
-  /** -----------------------------------------------------------
-   * Redirect user to Sign In
-   * ----------------------------------------------------------*/
+  // Redirect helper
   const goToSignIn = () => {
     if (Platform.OS === "web") {
       window.location.replace("/signin");
@@ -131,50 +111,42 @@ export default function NewPassword() {
     });
   };
 
-  /** -----------------------------------------------------------
-   * Update password → sign out → redirect
-   * ----------------------------------------------------------*/
+  // Update password handler
   const handleUpdatePassword = async () => {
-    if (!restored) {
+    if (!sessionReady) {
       return Alert.alert(
-        "Error",
-        "Your recovery session is not active. Please open the link from your email again."
+        "Session Not Ready",
+        "Please open the password reset link from your email again."
       );
     }
 
-    if (!password || !confirm) {
+    if (!password || !confirm)
       return Alert.alert("Missing Fields", "Please fill both fields.");
-    }
-    if (password !== confirm) {
+
+    if (password !== confirm)
       return Alert.alert("Error", "Passwords do not match.");
-    }
-    if (password.length < 6) {
+
+    if (password.length < 6)
       return Alert.alert("Error", "Password must be at least 6 characters.");
-    }
 
     setLoading(true);
 
-    try {
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: password.trim(),
-      });
+    const { error } = await supabase.auth.updateUser({
+      password: password.trim(),
+    });
 
-      if (updateError) {
-        setLoading(false);
-        return Alert.alert("Error", updateError.message);
-      }
-
-      // REQUIRED: must log out to destroy the recovery token
-      await supabase.auth.signOut();
-
+    if (error) {
       setLoading(false);
-
-      goToSignIn();
-    } catch (e: any) {
-      console.log("Unexpected error:", e);
-      Alert.alert("Unexpected error", e.message || "");
-      setLoading(false);
+      return Alert.alert("Error", error.message);
     }
+
+    // REQUIRED by Supabase
+    await supabase.auth.signOut();
+
+    setLoading(false);
+    Alert.alert("Success", "Your password has been updated.");
+
+    goToSignIn();
   };
 
   return (
@@ -192,7 +164,7 @@ export default function NewPassword() {
           <View style={styles.card}>
             <Text style={styles.title}>Set a New Password</Text>
             <Text style={styles.subtitle}>
-              Enter and confirm your password.
+              Enter your new password below.
             </Text>
 
             <View style={styles.inputRow}>
@@ -222,7 +194,7 @@ export default function NewPassword() {
             <TouchableOpacity
               onPress={handleUpdatePassword}
               disabled={loading}
-              style={[styles.button, loading && { opacity: 0.5 }]}
+              style={[styles.button, loading && { opacity: 0.6 }]}
             >
               {loading ? (
                 <ActivityIndicator color={DARK_BG} />
@@ -230,12 +202,6 @@ export default function NewPassword() {
                 <Text style={styles.buttonText}>UPDATE PASSWORD</Text>
               )}
             </TouchableOpacity>
-
-            {!restored && (
-              <Text style={{ color: "red", marginTop: 10, textAlign: "center" }}>
-                Waiting for recovery session...
-              </Text>
-            )}
           </View>
         </View>
       </KeyboardAvoidingView>
