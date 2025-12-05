@@ -36,40 +36,49 @@ export default function NewPassword() {
   const [confirm, setConfirm] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [updated, setUpdated] = useState(false); // <<<<<< SUCCESS UI FLAG
+  const [updated, setUpdated] = useState(false); // show success UI
 
-  // ---- FORCE SAFARI TO RELOAD WITH QUERY PARAMS ----
+  // -------------------------------------------------------
+  // SAFARI FIX: ONE-TIME FORCED RELOAD TO RESTORE QUERY PARAMS
+  // -------------------------------------------------------
   useEffect(() => {
     if (Platform.OS === "web") {
-      const search = window.location.search;
-      const hash = window.location.hash;
+      const hasTokens =
+        window.location.search.includes("token") ||
+        window.location.search.includes("access_token") ||
+        window.location.search.includes("refresh_token") ||
+        window.location.hash.includes("token");
 
-      if (
-        (search.includes("token") || hash.includes("token")) &&
-        !window.__didReloadForReset
-      ) {
+      if (hasTokens && !window.__didReloadForReset) {
         window.__didReloadForReset = true;
-        window.location.reload();
+
+        // ONE-TIME real reload - NO infinite loop
+        const url = window.location.href;
+        setTimeout(() => {
+          window.location.href = url;
+        }, 50);
+
+        return; // stop here on first load
       }
     }
   }, []);
 
-  // ---- TOKEN PARSER ----
+  // -------------------------------------------------------
+  // TOKEN PARSER (WORKS FOR ALL SUPABASE FLOWS)
+  // -------------------------------------------------------
   const parseTokens = () => {
     let params: Record<string, any> = {};
 
-    // Grab parameters from hash (#token=xyz)
+    // Hash tokens (#access_token=)
     if (Platform.OS === "web") {
       const hash = window.location.hash?.replace(/^#/, "") ?? "";
       const hashParams = new URLSearchParams(hash);
       hashParams.forEach((v, k) => (params[k] = v));
     }
 
-    // Grab parameters from ?token_hash=xyz
-    if (typeof window !== "undefined") {
-      const query = new URLSearchParams(window.location.search);
-      query.forEach((v, k) => (params[k] = v));
-    }
+    // Query params (?token_hash=)
+    const query = new URLSearchParams(window.location.search);
+    query.forEach((v, k) => (params[k] = v));
 
     return {
       access_token: params["access_token"] || null,
@@ -80,7 +89,9 @@ export default function NewPassword() {
     };
   };
 
-  // ---- CREATE SESSION ----
+  // -------------------------------------------------------
+  // ESTABLISH RECOVERY SESSION
+  // -------------------------------------------------------
   const establishSession = async () => {
     const { access_token, refresh_token, token_hash, email } = parseTokens();
 
@@ -91,7 +102,7 @@ export default function NewPassword() {
       email,
     });
 
-    // Case 1: Full session already provided by Supabase redirect
+    // CASE 1: Full session from hash
     if (access_token && refresh_token) {
       const { error } = await supabase.auth.setSession({
         access_token,
@@ -100,7 +111,7 @@ export default function NewPassword() {
       if (!error) return true;
     }
 
-    // Case 2: Token-hash recovery
+    // CASE 2: Standard password recovery
     if (token_hash && email) {
       const { error } = await supabase.auth.verifyOtp({
         type: "recovery",
@@ -110,7 +121,7 @@ export default function NewPassword() {
       if (!error) return true;
     }
 
-    console.log("❌ No session created");
+    console.log("❌ Failed to establish recovery session");
     return false;
   };
 
@@ -119,7 +130,7 @@ export default function NewPassword() {
       const ok = await establishSession();
       if (ok) {
         setSessionReady(true);
-        console.log("✔ Session ready for password reset.");
+        console.log("✔ Recovery session established");
 
         // Clean URL
         if (Platform.OS === "web") {
@@ -128,26 +139,27 @@ export default function NewPassword() {
         }
       }
     };
-
     run();
   }, []);
 
-  // ---- UPDATE PASSWORD ----
+  // -------------------------------------------------------
+  // UPDATE PASSWORD
+  // -------------------------------------------------------
   const updatePassword = async () => {
-    if (!sessionReady)
-      return Alert.alert(
-        "Invalid Link",
-        "Open the reset link directly from your email."
+    if (!sessionReady) {
+      Alert.alert(
+        "Invalid link",
+        "Open the password reset link directly from your email."
       );
+      return;
+    }
 
     if (!password || !confirm)
-      return Alert.alert("Error", "Please fill in both fields.");
-
+      return Alert.alert("Missing Fields", "Enter both fields.");
     if (password !== confirm)
-      return Alert.alert("Error", "Passwords do not match.");
-
+      return Alert.alert("Mismatch", "Passwords do not match.");
     if (password.length < 6)
-      return Alert.alert("Error", "Password must be at least 6 characters.");
+      return Alert.alert("Weak Password", "Minimum 6 characters.");
 
     setLoading(true);
 
@@ -156,27 +168,34 @@ export default function NewPassword() {
     setLoading(false);
 
     if (error) {
-      Alert.alert("Error updating password", error.message);
+      Alert.alert("Update Failed", error.message);
       return;
     }
 
-    console.log("✔ Password updated");
+    console.log("✔ Password updated!");
 
-    setUpdated(true); // <<<<<< SHOW SUCCESS FEEDBACK
+    // Show checkmark success
+    setUpdated(true);
 
     await supabase.auth.signOut();
 
     setTimeout(() => {
-      Alert.alert("Success", "Your password has been updated.");
+      Alert.alert("Success", "Your password has been updated!");
       goToSignIn();
     }, 1200);
   };
 
   const goToSignIn = () => {
-    if (Platform.OS === "web") window.location.href = "/signin";
-    else navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
+    if (Platform.OS === "web") {
+      window.location.href = "/signin";
+    } else {
+      navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
+    }
   };
 
+  // -------------------------------------------------------
+  // UI
+  // -------------------------------------------------------
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: BG }}>
       <View style={styles.container}>
@@ -224,7 +243,7 @@ export default function NewPassword() {
           <TouchableOpacity
             onPress={updatePassword}
             disabled={loading}
-            style={[styles.button, loading && { opacity: 0.6 }]}
+            style={[styles.button, loading && { opacity: 0.5 }]}
           >
             {loading ? (
               <ActivityIndicator color={BG} />
@@ -279,11 +298,9 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: BG, fontWeight: "900", fontSize: 15 },
   error: { color: "red", marginTop: 10, textAlign: "center" },
-
   successBox: {
     alignItems: "center",
     marginBottom: 18,
-    marginTop: -10,
   },
   successText: {
     color: GOLD,
