@@ -1,4 +1,5 @@
 // app/screens/NewPassword.tsx
+
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -32,21 +33,21 @@ export default function NewPassword() {
   const [loading, setLoading] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
 
-  // 🔍 Parse tokens from URL (works for both Web hash & Mobile query params)
+  // Extract tokens from URL (handles both Web + Mobile)
   const parseTokens = (url: string | null) => {
     if (!url) return {};
 
     const parsed = Linking.parse(url);
     let params: Record<string, any> = {};
 
-    // Web uses the hash (#access_token=...)
-    if (Platform.OS === "web" && typeof window !== "undefined") {
+    // Web uses #token
+    if (Platform.OS === "web") {
       const hash = window.location.hash.replace(/^#/, "");
-      const hashParams = new URLSearchParams(hash);
-      hashParams.forEach((v, k) => (params[k] = v));
+      const search = new URLSearchParams(hash);
+      search.forEach((v, k) => (params[k] = v));
     }
 
-    // Mobile uses parsed.queryParams
+    // Mobile uses queryParams
     if (parsed?.queryParams) {
       params = { ...params, ...parsed.queryParams };
     }
@@ -58,36 +59,35 @@ export default function NewPassword() {
     };
   };
 
-  // Restore Supabase recovery session
+  // Restore Supabase session using recovery tokens
   const restoreSession = async (url: string | null) => {
-    if (!url) return;
-
     const { access_token, refresh_token } = parseTokens(url);
 
     if (access_token && refresh_token) {
+      console.log("🔐 Restoring recovery session…");
       const { error } = await supabase.auth.setSession({
         access_token,
         refresh_token,
       });
 
       if (!error) {
-        console.log("🔐 Recovery session restored.");
         setSessionReady(true);
+        console.log("✔ Session restored");
+      } else {
+        console.log("❌ Session restore failed:", error.message);
       }
     }
   };
 
-  // Auto-run restoration when screen mounts
   useEffect(() => {
     const init = async () => {
       if (Platform.OS === "web") {
         await restoreSession(window.location.href);
       } else {
         const initial = await Linking.getInitialURL();
-        await restoreSession(initial ?? null);
+        await restoreSession(initial);
       }
 
-      // Also handle any future URL open events (mobile)
       const sub = Linking.addEventListener("url", async (event) => {
         await restoreSession(event.url);
       });
@@ -98,25 +98,19 @@ export default function NewPassword() {
     init();
   }, []);
 
-  // Redirect helper
   const goToSignIn = () => {
     if (Platform.OS === "web") {
       window.location.replace("/signin");
       return;
     }
-
-    navigation.reset({
-      index: 0,
-      routes: [{ name: "SignIn" }],
-    });
+    navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
   };
 
-  // Update password handler
   const handleUpdatePassword = async () => {
     if (!sessionReady) {
       return Alert.alert(
-        "Session Not Ready",
-        "Please open the password reset link from your email again."
+        "Not Ready",
+        "Your reset link did not restore a session. Please open the link from your email again."
       );
     }
 
@@ -140,18 +134,16 @@ export default function NewPassword() {
       return Alert.alert("Error", error.message);
     }
 
-    // REQUIRED by Supabase
     await supabase.auth.signOut();
-
     setLoading(false);
-    Alert.alert("Success", "Your password has been updated.");
 
+    Alert.alert("Success", "Your password was updated.");
     goToSignIn();
   };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
-      <KeyboardAvoidingView
+      <KeyboardAvoidingView 
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
@@ -163,9 +155,7 @@ export default function NewPassword() {
 
           <View style={styles.card}>
             <Text style={styles.title}>Set a New Password</Text>
-            <Text style={styles.subtitle}>
-              Enter your new password below.
-            </Text>
+            <Text style={styles.subtitle}>Enter your new password below.</Text>
 
             <View style={styles.inputRow}>
               <Ionicons name="lock-closed" size={16} color={SUB} />
@@ -202,6 +192,12 @@ export default function NewPassword() {
                 <Text style={styles.buttonText}>UPDATE PASSWORD</Text>
               )}
             </TouchableOpacity>
+
+            {!sessionReady && (
+              <Text style={{ color: "red", marginTop: 10, textAlign: "center" }}>
+                Waiting for recovery session…
+              </Text>
+            )}
           </View>
         </View>
       </KeyboardAvoidingView>
