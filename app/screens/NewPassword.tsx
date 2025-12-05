@@ -30,23 +30,27 @@ export default function NewPassword() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
+
   const [sessionReady, setSessionReady] = useState(false);
   const [tokenHash, setTokenHash] = useState<string | null>(null);
 
-  // Parse token_hash from URL
-  const parseTokenHash = (url: string | null) => {
+  // -------------------------------------------------------------
+  // EXTRACT ?token_hash= FROM URL (web + mobile)
+  // -------------------------------------------------------------
+  const extractTokenHash = (url: string | null) => {
     if (!url) return null;
 
     const parsed = Linking.parse(url);
+
     let params: Record<string, any> = {};
 
-    // Web: token arrives in ?token_hash=
+    // Web reads from search params
     if (Platform.OS === "web") {
       const search = new URLSearchParams(window.location.search);
       search.forEach((v, k) => (params[k] = v));
     }
 
-    // Mobile: token arrives in queryParams
+    // Mobile reads from parsed.queryParams
     if (parsed?.queryParams) {
       params = { ...params, ...parsed.queryParams };
     }
@@ -54,15 +58,21 @@ export default function NewPassword() {
     return params["token_hash"] ?? null;
   };
 
-  // Restore recovery session using Supabase verifyOtp
+  // -------------------------------------------------------------
+  // RESTORE SESSION VIA verifyOtp (NEW SUPABASE METHOD)
+  // -------------------------------------------------------------
   const restoreSession = async (url: string | null) => {
-    const hash = parseTokenHash(url);
-    if (!hash) return;
+    const hash = extractTokenHash(url);
 
+    if (!hash) {
+      console.log("❌ No token_hash found");
+      return;
+    }
+
+    console.log("🔐 token_hash received:", hash);
     setTokenHash(hash);
-    console.log("🔐 Token hash received:", hash);
 
-    const { data, error } = await supabase.auth.verifyOtp({
+    const { error } = await supabase.auth.verifyOtp({
       type: "recovery",
       token_hash: hash,
     });
@@ -72,19 +82,26 @@ export default function NewPassword() {
       return;
     }
 
-    console.log("✔ Recovery session verified");
+    console.log("✔ Recovery session restored");
     setSessionReady(true);
   };
 
+  // -------------------------------------------------------------
+  // INITIALISE ON MOUNT
+  // -------------------------------------------------------------
   useEffect(() => {
     const init = async () => {
+      let url = "";
+
       if (Platform.OS === "web") {
-        await restoreSession(window.location.href);
+        url = window.location.href;
       } else {
-        const initial = await Linking.getInitialURL();
-        await restoreSession(initial);
+        url = (await Linking.getInitialURL()) ?? "";
       }
 
+      await restoreSession(url);
+
+      // Listen for deep link events on mobile
       const sub = Linking.addEventListener("url", async (event) => {
         await restoreSession(event.url);
       });
@@ -95,16 +112,24 @@ export default function NewPassword() {
     init();
   }, []);
 
-  // Redirect back to sign in
+  // -------------------------------------------------------------
+  // REDIRECT BACK TO SIGN IN
+  // -------------------------------------------------------------
   const goToSignIn = () => {
     if (Platform.OS === "web") {
       window.location.replace("/signin");
       return;
     }
-    navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
+
+    navigation.reset({
+      index: 0,
+      routes: [{ name: "SignIn" }],
+    });
   };
 
-  // Update password
+  // -------------------------------------------------------------
+  // UPDATE PASSWORD
+  // -------------------------------------------------------------
   const handleUpdatePassword = async () => {
     if (!sessionReady) {
       return Alert.alert(
@@ -133,14 +158,18 @@ export default function NewPassword() {
       return Alert.alert("Error", error.message);
     }
 
-    // Must sign out after password update
+    // Supabase requires logout after password update
     await supabase.auth.signOut();
 
     setLoading(false);
     Alert.alert("Success", "Your password has been updated.");
+
     goToSignIn();
   };
 
+  // -------------------------------------------------------------
+  // UI
+  // -------------------------------------------------------------
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
       <KeyboardAvoidingView
@@ -211,6 +240,9 @@ export default function NewPassword() {
   );
 }
 
+// -------------------------------------------------------------
+// STYLES
+// -------------------------------------------------------------
 const styles = StyleSheet.create({
   wrapper: { flex: 1, padding: 24 },
   back: { flexDirection: "row", alignItems: "center", marginBottom: 25 },
@@ -262,4 +294,3 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
 });
-
