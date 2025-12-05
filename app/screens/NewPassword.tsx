@@ -1,6 +1,4 @@
-// app/screens/NewPassword.tsx
-
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -15,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
+import * as Linking from "expo-linking";
 import { supabase } from "../lib/supabase";
 
 const DARK_BG = "#000";
@@ -27,63 +26,104 @@ const BORDER = "#262626";
 export default function NewPassword() {
   const navigation = useNavigation<any>();
 
-  const [email, setEmail] = useState("");
-  const [tempPassword, setTempPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
+  const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // This gets ?token_hash= from the URL — no recovery session is needed.
+  const [tokenHash, setTokenHash] = useState<string | null>(null);
+
+  const readTokenFromUrl = () => {
+    let params: any = {};
+
+    if (Platform.OS === "web") {
+      const search = new URLSearchParams(window.location.search);
+      search.forEach((v, k) => (params[k] = v));
+    } else {
+      const parsed = Linking.parse(window.location.href);
+      params = parsed?.queryParams ?? {};
+    }
+
+    return params["token_hash"] || null;
+  };
+
+  useEffect(() => {
+    const hash = readTokenFromUrl();
+    if (!hash) {
+      Alert.alert(
+        "Invalid Link",
+        "Your password reset link is missing or expired."
+      );
+    }
+    setTokenHash(hash);
+  }, []);
 
   const goToSignIn = () => {
     if (Platform.OS === "web") {
       window.location.replace("/signin");
-    } else {
-      navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
+      return;
     }
+
+    navigation.reset({
+      index: 0,
+      routes: [{ name: "SignIn" }],
+    });
   };
 
+  // ⚡ MAIN: Update password WITHOUT depending on recovery session
   const handleUpdatePassword = async () => {
-    if (!email || !tempPassword || !newPassword || !confirm) {
-      return Alert.alert("Missing Fields", "Please fill all fields.");
+    if (!tokenHash) {
+      return Alert.alert(
+        "Invalid Reset Link",
+        "Your reset link does not contain a valid token."
+      );
     }
 
-    if (newPassword !== confirm) {
+    if (!password || !confirm) {
+      return Alert.alert("Missing Fields", "Enter both fields.");
+    }
+    if (password !== confirm) {
       return Alert.alert("Error", "Passwords do not match.");
     }
-
-    if (newPassword.length < 6) {
-      return Alert.alert("Error", "Password must be at least 6 characters.");
+    if (password.length < 6) {
+      return Alert.alert("Error", "Password must be 6+ characters.");
     }
 
     setLoading(true);
 
-    // 1️⃣ SIGN USER IN WITH TEMP PASSWORD
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password: tempPassword,
-    });
+    try {
+      // 1️⃣ Verify OTP and get a temporary session
+      const { data, error: otpError } = await supabase.auth.verifyOtp({
+        type: "recovery",
+        token_hash: tokenHash,
+      });
 
-    if (signInError) {
+      if (otpError) {
+        setLoading(false);
+        return Alert.alert("Error", otpError.message);
+      }
+
+      // 2️⃣ Now update the password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: password.trim(),
+      });
+
+      if (updateError) {
+        setLoading(false);
+        return Alert.alert("Error", updateError.message);
+      }
+
+      // 3️⃣ Must sign out after password update
+      await supabase.auth.signOut();
+
       setLoading(false);
-      return Alert.alert("Error", "Temporary password incorrect.");
-    }
 
-    // 2️⃣ UPDATE PASSWORD NOW THAT A SESSION EXISTS
-    const { error: updateError } = await supabase.auth.updateUser({
-      password: newPassword,
-    });
-
-    if (updateError) {
+      Alert.alert("Success!", "Your password has been updated.");
+      goToSignIn();
+    } catch (e: any) {
       setLoading(false);
-      return Alert.alert("Error", updateError.message);
+      Alert.alert("Unexpected Error", e.message || "Something went wrong.");
     }
-
-    // 3️⃣ SIGN OUT
-    await supabase.auth.signOut();
-
-    setLoading(false);
-    Alert.alert("Success", "Password updated. Please sign in.");
-
-    goToSignIn();
   };
 
   return (
@@ -99,53 +139,28 @@ export default function NewPassword() {
           </TouchableOpacity>
 
           <View style={styles.card}>
-            <Text style={styles.title}>Reset Your Password</Text>
+            <Text style={styles.title}>Set a New Password</Text>
+            <Text style={styles.subtitle}>
+              Enter your new password below.
+            </Text>
 
-            {/* EMAIL */}
-            <View style={styles.inputRow}>
-              <Ionicons name="mail" size={16} color={SUB} />
-              <TextInput
-                placeholder="Email"
-                placeholderTextColor={SUB}
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                style={styles.input}
-              />
-            </View>
-
-            {/* TEMP PASSWORD */}
-            <View style={styles.inputRow}>
-              <Ionicons name="key" size={16} color={SUB} />
-              <TextInput
-                secureTextEntry
-                placeholder="Temporary password from email"
-                placeholderTextColor={SUB}
-                value={tempPassword}
-                onChangeText={setTempPassword}
-                style={styles.input}
-              />
-            </View>
-
-            {/* NEW PW */}
             <View style={styles.inputRow}>
               <Ionicons name="lock-closed" size={16} color={SUB} />
               <TextInput
                 secureTextEntry
                 placeholder="New password"
                 placeholderTextColor={SUB}
-                value={newPassword}
-                onChangeText={setNewPassword}
+                value={password}
+                onChangeText={setPassword}
                 style={styles.input}
               />
             </View>
 
-            {/* CONFIRM */}
             <View style={styles.inputRow}>
               <Ionicons name="shield-checkmark" size={16} color={SUB} />
               <TextInput
                 secureTextEntry
-                placeholder="Confirm new password"
+                placeholder="Confirm password"
                 placeholderTextColor={SUB}
                 value={confirm}
                 onChangeText={setConfirm}
@@ -156,7 +171,7 @@ export default function NewPassword() {
             <TouchableOpacity
               onPress={handleUpdatePassword}
               disabled={loading}
-              style={[styles.button, loading && { opacity: 0.6 }]}
+              style={[styles.button, loading && { opacity: 0.4 }]}
             >
               {loading ? (
                 <ActivityIndicator color={DARK_BG} />
@@ -164,6 +179,12 @@ export default function NewPassword() {
                 <Text style={styles.buttonText}>UPDATE PASSWORD</Text>
               )}
             </TouchableOpacity>
+
+            {!tokenHash && (
+              <Text style={{ color: "red", marginTop: 10, textAlign: "center" }}>
+                Missing reset token. Re-open the link from your email.
+              </Text>
+            )}
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -186,6 +207,11 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: TEXT,
     fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  subtitle: {
+    color: SUB,
     textAlign: "center",
     marginBottom: 18,
   },
@@ -210,7 +236,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
-    marginTop: 10,
   },
   buttonText: {
     color: DARK_BG,
