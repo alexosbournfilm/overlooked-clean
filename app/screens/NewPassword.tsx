@@ -31,18 +31,23 @@ export default function NewPassword() {
   const [sessionReady, setSessionReady] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Extract token_hash and email from URL
+  // Extract ALL possible recovery parameters
   const extractRecoveryParams = (url: string | null) => {
     try {
       const parsed = Linking.parse(url ?? "");
+
       const params: any = parsed?.queryParams || {};
 
       return {
-        token_hash: params["token_hash"] ?? null,
+        token_hash:
+          params["token_hash"] ??
+          params["access_token"] ?? // fallback Supabase param on web
+          null,
         email: params["email"] ?? null,
+        type: params["type"] ?? null,
       };
     } catch {
-      return { token_hash: null, email: null };
+      return { token_hash: null, email: null, type: null };
     }
   };
 
@@ -52,24 +57,25 @@ export default function NewPassword() {
         ? window.location.href
         : await Linking.getInitialURL();
 
-      const { token_hash, email } = extractRecoveryParams(initial);
+      const { token_hash, email, type } = extractRecoveryParams(initial);
 
       if (!token_hash || !email) {
-        console.log("Missing recovery params");
+        console.log("❌ Missing token or email from URL");
         return;
       }
 
-      console.log("Attempting verifyOtp with:", { token_hash, email });
+      console.log("🔎 Extracted:", { token_hash, email, type });
 
-      const { data, error } = await supabase.auth.verifyOtp({
+      // ALWAYS use type "recovery" here
+      const { error } = await supabase.auth.verifyOtp({
         type: "recovery",
         token_hash,
         email,
       });
 
       if (!error) {
-        setSessionReady(true);
         console.log("✔ Recovery session established");
+        setSessionReady(true);
       } else {
         console.log("❌ verifyOtp error:", error.message);
       }
@@ -86,7 +92,7 @@ export default function NewPassword() {
 
   const updatePassword = async () => {
     if (!sessionReady)
-      return Alert.alert("Invalid Link", "Open the link directly from your email.");
+      return Alert.alert("Invalid Link", "Please open the link from your email.");
 
     if (!password || !confirm)
       return Alert.alert("Error", "Fill in both fields.");
