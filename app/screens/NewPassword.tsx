@@ -12,8 +12,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
 import * as Linking from "expo-linking";
+import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 
 const BG = "#000";
@@ -23,12 +23,6 @@ const SUB = "#A9A7A3";
 const GOLD = "#C6A664";
 const BORDER = "#262626";
 
-declare global {
-  interface Window {
-    __didReloadForReset?: boolean;
-  }
-}
-
 export default function NewPassword() {
   const navigation = useNavigation<any>();
 
@@ -36,74 +30,46 @@ export default function NewPassword() {
   const [confirm, setConfirm] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [updated, setUpdated] = useState(false); // show success UI
 
-  // -------------------------------------------------------
-  // SAFARI FIX: ONE-TIME FORCED RELOAD TO RESTORE QUERY PARAMS
-  // -------------------------------------------------------
-  useEffect(() => {
-    if (Platform.OS === "web") {
-      const hasTokens =
-        window.location.search.includes("token") ||
-        window.location.search.includes("access_token") ||
-        window.location.search.includes("refresh_token") ||
-        window.location.hash.includes("token");
-
-      if (hasTokens && !window.__didReloadForReset) {
-        window.__didReloadForReset = true;
-
-        // ONE-TIME real reload - NO infinite loop
-        const url = window.location.href;
-        setTimeout(() => {
-          window.location.href = url;
-        }, 50);
-
-        return; // stop here on first load
-      }
-    }
-  }, []);
-
-  // -------------------------------------------------------
-  // TOKEN PARSER (WORKS FOR ALL SUPABASE FLOWS)
-  // -------------------------------------------------------
-  const parseTokens = () => {
+  // EXACT SAME TOKEN PARSER USED IN SIGNUP
+  const parseTokensFromUrl = () => {
     let params: Record<string, any> = {};
 
-    // Hash tokens (#access_token=)
+    // 1. Read HASH fragment (Safari + Supabase use this)
     if (Platform.OS === "web") {
       const hash = window.location.hash?.replace(/^#/, "") ?? "";
       const hashParams = new URLSearchParams(hash);
       hashParams.forEach((v, k) => (params[k] = v));
     }
 
-    // Query params (?token_hash=)
-    const query = new URLSearchParams(window.location.search);
-    query.forEach((v, k) => (params[k] = v));
+    // 2. Read query params (?token_hash=...)
+    const search = window.location.search;
+    const searchParams = new URLSearchParams(search);
+    searchParams.forEach((v, k) => (params[k] = v));
 
     return {
-      access_token: params["access_token"] || null,
-      refresh_token: params["refresh_token"] || null,
-      token_hash: params["token_hash"] || null,
-      email: params["email"] || null,
-      type: params["type"] || null,
+      access_token: params["access_token"],
+      refresh_token: params["refresh_token"],
+      token_hash: params["token_hash"],
+      email: params["email"],
+      type: params["type"],
     };
   };
 
-  // -------------------------------------------------------
-  // ESTABLISH RECOVERY SESSION
-  // -------------------------------------------------------
   const establishSession = async () => {
-    const { access_token, refresh_token, token_hash, email } = parseTokens();
+    const { access_token, refresh_token, token_hash, email } =
+      parseTokensFromUrl();
 
-    console.log("Parsed reset tokens:", {
+    console.log("Parsed Tokens:", {
       access_token,
       refresh_token,
       token_hash,
       email,
     });
 
-    // CASE 1: Full session from hash
+    // CASE 1: Supabase recovery gives you a full session in hash
     if (access_token && refresh_token) {
+      console.log("✔ Using full access_token session");
       const { error } = await supabase.auth.setSession({
         access_token,
         refresh_token,
@@ -111,8 +77,9 @@ export default function NewPassword() {
       if (!error) return true;
     }
 
-    // CASE 2: Standard password recovery
+    // CASE 2: Recovery uses token_hash (verifyOtp)
     if (token_hash && email) {
+      console.log("✔ Using token_hash to verify recovery session");
       const { error } = await supabase.auth.verifyOtp({
         type: "recovery",
         token_hash,
@@ -121,7 +88,7 @@ export default function NewPassword() {
       if (!error) return true;
     }
 
-    console.log("❌ Failed to establish recovery session");
+    console.log("❌ No valid session could be created");
     return false;
   };
 
@@ -129,10 +96,10 @@ export default function NewPassword() {
     const run = async () => {
       const ok = await establishSession();
       if (ok) {
-        setSessionReady(true);
         console.log("✔ Recovery session established");
+        setSessionReady(true);
 
-        // Clean URL
+        // CLEAN URL (remove tokens from browser)
         if (Platform.OS === "web") {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
@@ -142,24 +109,24 @@ export default function NewPassword() {
     run();
   }, []);
 
-  // -------------------------------------------------------
-  // UPDATE PASSWORD
-  // -------------------------------------------------------
+  const goToSignIn = () => {
+    Platform.OS === "web"
+      ? (window.location.href = "/signin")
+      : navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
+  };
+
   const updatePassword = async () => {
-    if (!sessionReady) {
-      Alert.alert(
-        "Invalid link",
-        "Open the password reset link directly from your email."
-      );
-      return;
-    }
+    if (!sessionReady)
+      return Alert.alert("Invalid Link", "Please open the reset link again.");
 
     if (!password || !confirm)
-      return Alert.alert("Missing Fields", "Enter both fields.");
+      return Alert.alert("Error", "Fill in both fields.");
+
     if (password !== confirm)
-      return Alert.alert("Mismatch", "Passwords do not match.");
+      return Alert.alert("Error", "Passwords do not match.");
+
     if (password.length < 6)
-      return Alert.alert("Weak Password", "Minimum 6 characters.");
+      return Alert.alert("Error", "Password must be at least 6 characters.");
 
     setLoading(true);
 
@@ -168,34 +135,17 @@ export default function NewPassword() {
     setLoading(false);
 
     if (error) {
-      Alert.alert("Update Failed", error.message);
+      Alert.alert("Error", error.message);
       return;
     }
 
-    console.log("✔ Password updated!");
-
-    // Show checkmark success
-    setUpdated(true);
-
+    // Password updated — now sign out and redirect
     await supabase.auth.signOut();
 
-    setTimeout(() => {
-      Alert.alert("Success", "Your password has been updated!");
-      goToSignIn();
-    }, 1200);
+    Alert.alert("Success", "Your password has been updated.");
+    goToSignIn();
   };
 
-  const goToSignIn = () => {
-    if (Platform.OS === "web") {
-      window.location.href = "/signin";
-    } else {
-      navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
-    }
-  };
-
-  // -------------------------------------------------------
-  // UI
-  // -------------------------------------------------------
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: BG }}>
       <View style={styles.container}>
@@ -206,15 +156,9 @@ export default function NewPassword() {
 
         <View style={styles.card}>
           <Text style={styles.title}>Set a New Password</Text>
-          <Text style={styles.subtitle}>Enter your new password below.</Text>
-
-          {/* SUCCESS CHECKMARK */}
-          {updated && (
-            <View style={styles.successBox}>
-              <Ionicons name="checkmark-circle" size={42} color={GOLD} />
-              <Text style={styles.successText}>Password Updated!</Text>
-            </View>
-          )}
+          <Text style={styles.subtitle}>
+            Enter your new password below.
+          </Text>
 
           <View style={styles.inputRow}>
             <Ionicons name="lock-closed" size={16} color={SUB} />
@@ -243,7 +187,7 @@ export default function NewPassword() {
           <TouchableOpacity
             onPress={updatePassword}
             disabled={loading}
-            style={[styles.button, loading && { opacity: 0.5 }]}
+            style={[styles.button, loading && { opacity: 0.6 }]}
           >
             {loading ? (
               <ActivityIndicator color={BG} />
@@ -298,14 +242,4 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: BG, fontWeight: "900", fontSize: 15 },
   error: { color: "red", marginTop: 10, textAlign: "center" },
-  successBox: {
-    alignItems: "center",
-    marginBottom: 18,
-  },
-  successText: {
-    color: GOLD,
-    marginTop: 6,
-    fontSize: 16,
-    fontWeight: "700",
-  },
 });
