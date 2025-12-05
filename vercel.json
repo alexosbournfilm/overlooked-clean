@@ -1,20 +1,7 @@
 {
   "rewrites": [
-    {
-      "source": "/auth/v1/verify",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/auth/confirm",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/reset-password",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/auth/v1/verify", "destination": "/" },
+    { "source": "/auth/confirm", "destination": "/" },
+    { "source": "/(.*)", "destination": "/" }
   ]
 }

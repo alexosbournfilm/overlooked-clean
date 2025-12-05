@@ -64,7 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const refreshProfile = async () => {
-    if (userId) loadProfile(userId);
+    if (userId) await loadProfile(userId);
   };
 
   /* ------------------------------------------------------------------
@@ -92,9 +92,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (event, session) => {
         console.log("Auth event →", event);
 
-        /* -------------------------------
-           PASSWORD_RECOVERY event
-        ------------------------------- */
+        /* ----------------------------------------------------------
+           PASSWORD_RECOVERY → always navigate to NewPassword
+           (AppNavigator already sets isRecoveryMode flag)
+        ---------------------------------------------------------- */
         if (event === "PASSWORD_RECOVERY") {
           console.log("🔐 PASSWORD_RECOVERY → NewPassword screen");
 
@@ -111,20 +112,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        /* -------------------------------
-           USER_UPDATED — user saved new password
-        ------------------------------- */
+        /* ----------------------------------------------------------
+           USER_UPDATED — password successfully changed
+           DO NOT auto-navigate out of NewPassword yet.
+           AppNavigator handles transitions after session refresh.
+        ---------------------------------------------------------- */
         if (event === "USER_UPDATED") {
           console.log("🔐 USER_UPDATED fired");
 
-          // When recovering password, DO NOT send user into MainTabs yet
           if (window.__RECOVERY__) {
-            console.log("Recovery mode active → stay on NewPassword");
+            console.log("Recovery mode active → staying on NewPassword");
             return;
           }
         }
 
-        // Generic login/logout handler
+        /* ----------------------------------------------------------
+           GENERIC LOGIN/LOGOUT UPDATE
+        ---------------------------------------------------------- */
         const uid = session?.user?.id ?? null;
         setUserId(uid);
 
@@ -139,12 +143,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  /* ------------------------------------------------------------------
+      PROFILE COMPLETENESS
+  ------------------------------------------------------------------ */
   const profileComplete = useMemo(() => {
     if (!profile) return false;
+
     return Boolean(
       profile.full_name &&
-      profile.main_role_id &&
-      profile.city_id
+        profile.main_role_id &&
+        profile.city_id
     );
   }, [profile]);
 
