@@ -29,6 +29,9 @@ export default function NewPassword() {
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
 
+  /** -----------------------------------------------------------
+   * Redirect user straight to Sign In
+   * ----------------------------------------------------------*/
   const goToSignIn = () => {
     if (Platform.OS === "web") {
       window.location.replace("/signin");
@@ -40,6 +43,9 @@ export default function NewPassword() {
     }
   };
 
+  /** -----------------------------------------------------------
+   * Handle password update → logout → redirect
+   * ----------------------------------------------------------*/
   const handleUpdatePassword = async () => {
     if (!password || !confirm) return alert("Fill both fields.");
     if (password !== confirm) return alert("Passwords do not match.");
@@ -47,21 +53,29 @@ export default function NewPassword() {
 
     setLoading(true);
 
-    const { error } = await supabase.auth.updateUser({
-      password: password.trim(),
-    });
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: password.trim(),
+      });
 
-    setLoading(false);
+      if (error) {
+        setLoading(false);
+        alert(error.message);
+        return;
+      }
 
-    if (error) {
-      alert(error.message);
-      return;
+      console.log("Password updated successfully.");
+
+      // ❗ REQUIRED: this clears the invalidated token
+      await supabase.auth.signOut();
+
+      // Redirect to Sign In
+      goToSignIn();
+    } catch (e) {
+      console.log("Unexpected error:", e);
+      alert("Unexpected error");
+      setLoading(false);
     }
-
-    // Required for consistency
-    await supabase.auth.signOut();
-
-    goToSignIn();
   };
 
   return (
