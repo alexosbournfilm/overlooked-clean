@@ -30,21 +30,22 @@ export default function NewPassword() {
   const [loading, setLoading] = useState(false);
 
   /** -----------------------------------------------------------
-   * Redirect user straight to Sign In
+   * Go straight to Sign In (same behavior as Back button)
    * ----------------------------------------------------------*/
   const goToSignIn = () => {
     if (Platform.OS === "web") {
       window.location.replace("/signin");
-    } else {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "SignIn" }],
-      });
+      return;
     }
+
+    navigation.reset({
+      index: 0,
+      routes: [{ name: "SignIn" }],
+    });
   };
 
   /** -----------------------------------------------------------
-   * Handle password update → logout → redirect
+   * Update password → redirect → NO SIGN OUT (fixes infinite load)
    * ----------------------------------------------------------*/
   const handleUpdatePassword = async () => {
     if (!password || !confirm) return alert("Fill both fields.");
@@ -66,14 +67,12 @@ export default function NewPassword() {
 
       console.log("Password updated successfully.");
 
-      // ❗ REQUIRED: this clears the invalidated token
-      await supabase.auth.signOut();
-
-      // Redirect to Sign In
+      // 🎉 NO SIGN OUT — this is what caused the spinner
+      // Instead immediately navigate just like Back button:
       goToSignIn();
     } catch (e) {
       console.log("Unexpected error:", e);
-      alert("Unexpected error");
+      alert("Unexpected error occurred");
       setLoading(false);
     }
   };
@@ -92,7 +91,9 @@ export default function NewPassword() {
 
           <View style={styles.card}>
             <Text style={styles.title}>Set a New Password</Text>
-            <Text style={styles.subtitle}>Enter and confirm your password.</Text>
+            <Text style={styles.subtitle}>
+              Enter and confirm your password.
+            </Text>
 
             <View style={styles.inputRow}>
               <Ionicons name="lock-closed" size={16} color={SUB} />
