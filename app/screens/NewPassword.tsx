@@ -1,5 +1,5 @@
 // app/screens/NewPassword.tsx
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -28,53 +27,17 @@ export default function NewPassword() {
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // 🚀 ALWAYS ensure session exists using URL tokens
-  useEffect(() => {
-    const init = async () => {
-      try {
-        let url = "";
-
-        if (Platform.OS === "web") {
-          url = window.location.href;
-        } else {
-          url = (await Linking.getInitialURL()) || "";
-        }
-
-        if (url.includes("#")) {
-          const params = new URLSearchParams(url.split("#")[1]);
-          const access_token = params.get("access_token");
-          const refresh_token = params.get("refresh_token");
-
-          if (access_token && refresh_token) {
-            await supabase.auth.setSession({
-              access_token,
-              refresh_token,
-            });
-          }
-        }
-      } catch (e) {
-        console.log("Init session error:", e);
-      }
-
-      setReady(true);
-    };
-
-    init();
-  }, []);
-
-  const goToApp = () => {
+  const goToSignIn = () => {
     if (Platform.OS === "web") {
-      window.location.replace("/");
-      return;
+      window.location.replace("/signin");
+    } else {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "SignIn" }],
+      });
     }
-
-    navigation.reset({
-      index: 0,
-      routes: [{ name: "Featured" }],
-    });
   };
 
   const handleUpdatePassword = async () => {
@@ -84,35 +47,22 @@ export default function NewPassword() {
 
     setLoading(true);
 
-    try {
-      // MUST call only this — no other logic
-      const { error } = await supabase.auth.updateUser({
-        password: password.trim(),
-      });
+    const { error } = await supabase.auth.updateUser({
+      password: password.trim(),
+    });
 
-      if (error) {
-        alert(error.message);
-        setLoading(false);
-        return;
-      }
+    setLoading(false);
 
-      // 🚀 SUCCESS → redirect immediately
-      goToApp();
-    } catch (e) {
-      console.log("Unexpected error:", e);
-      alert("Unexpected error");
-      setLoading(false);
+    if (error) {
+      alert(error.message);
+      return;
     }
-  };
 
-  if (!ready) {
-    return (
-      <SafeAreaView style={styles.center}>
-        <ActivityIndicator size="large" color={GOLD} />
-        <Text style={styles.loading}>Preparing reset…</Text>
-      </SafeAreaView>
-    );
-  }
+    // Required for consistency
+    await supabase.auth.signOut();
+
+    goToSignIn();
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
@@ -121,9 +71,9 @@ export default function NewPassword() {
         style={{ flex: 1 }}
       >
         <View style={styles.wrapper}>
-          <TouchableOpacity onPress={goToApp} style={styles.back}>
+          <TouchableOpacity onPress={goToSignIn} style={styles.back}>
             <Ionicons name="chevron-back" size={18} color={SUB} />
-            <Text style={styles.backLabel}>Back</Text>
+            <Text style={styles.backLabel}>Back to Sign In</Text>
           </TouchableOpacity>
 
           <View style={styles.card}>
@@ -133,9 +83,9 @@ export default function NewPassword() {
             <View style={styles.inputRow}>
               <Ionicons name="lock-closed" size={16} color={SUB} />
               <TextInput
+                secureTextEntry
                 placeholder="New password"
                 placeholderTextColor={SUB}
-                secureTextEntry
                 value={password}
                 onChangeText={setPassword}
                 style={styles.input}
@@ -145,9 +95,9 @@ export default function NewPassword() {
             <View style={styles.inputRow}>
               <Ionicons name="shield-checkmark" size={16} color={SUB} />
               <TextInput
+                secureTextEntry
                 placeholder="Confirm password"
                 placeholderTextColor={SUB}
-                secureTextEntry
                 value={confirm}
                 onChangeText={setConfirm}
                 style={styles.input}
@@ -173,30 +123,9 @@ export default function NewPassword() {
 }
 
 const styles = StyleSheet.create({
-  center: {
-    flex: 1,
-    backgroundColor: DARK_BG,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loading: {
-    marginTop: 10,
-    color: SUB,
-  },
-  wrapper: {
-    flex: 1,
-    padding: 24,
-  },
-  back: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 25,
-  },
-  backLabel: {
-    marginLeft: 6,
-    fontSize: 15,
-    color: SUB,
-  },
+  wrapper: { flex: 1, padding: 24 },
+  back: { flexDirection: "row", alignItems: "center", marginBottom: 25 },
+  backLabel: { marginLeft: 6, fontSize: 15, color: SUB },
   card: {
     backgroundColor: CARD_BG,
     padding: 26,
@@ -219,8 +148,8 @@ const styles = StyleSheet.create({
   inputRow: {
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
     borderColor: BORDER,
+    borderWidth: 1,
     borderRadius: 12,
     padding: 12,
     marginBottom: 14,
@@ -229,15 +158,14 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     marginLeft: 10,
-    fontSize: 15,
     color: TEXT,
+    fontSize: 15,
   },
   button: {
     backgroundColor: GOLD,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
-    marginTop: 6,
   },
   buttonText: {
     color: DARK_BG,

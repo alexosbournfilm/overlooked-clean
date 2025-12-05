@@ -6,7 +6,7 @@ import {
 } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { View, ActivityIndicator, Linking as RNLinking } from "react-native";
+import { View, ActivityIndicator } from "react-native";
 
 import AuthStack from "./AuthStack";
 import MainTabs from "./MainTabs";
@@ -22,21 +22,6 @@ import NewPassword from "../screens/NewPassword";
 
 const Stack = createNativeStackNavigator();
 
-/* ------------------------------------------------------------------
-   Helper — detect Supabase-style recovery deep links
------------------------------------------------------------------- */
-function isRecoveryUrl(url?: string | null): boolean {
-  if (!url) return false;
-  if (!url.includes("#")) return false;
-
-  const hash = url.split("#")[1];
-  return (
-    hash.includes("access_token=") ||
-    hash.includes("refresh_token=") ||
-    hash.includes("type=recovery")
-  );
-}
-
 export default function AppNavigator({
   initialAuthRouteName,
 }: {
@@ -47,108 +32,46 @@ export default function AppNavigator({
   const [initialState, setInitialState] = useState<InitialState | undefined>();
   const [navReady, setNavReady] = useState(false);
 
-  // ⭐ Master flag → forces NewPassword screen and disables all other routing
-  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
-
-  /* ------------------------------------------------------------------
-      1) Detect recovery BEFORE AuthProvider and Navigation load
-  ------------------------------------------------------------------ */
-  useEffect(() => {
-    let active = true;
-
-    const detectRecovery = async () => {
-      const url = await RNLinking.getInitialURL();
-      if (!url || !active) return;
-
-      if (!isRecoveryUrl(url)) return;
-
-      console.log("🔐 Recovery URL detected:", url);
-      setIsRecoveryMode(true);
-
-      const hash = url.split("#")[1];
-      const params = new URLSearchParams(hash);
-
-      const access_token = params.get("access_token");
-      const refresh_token = params.get("refresh_token");
-
-      if (access_token && refresh_token) {
-        console.log("🔐 Setting Supabase recovery session...");
-        window.__RECOVERY__ = true;
-
-        await supabase.auth.setSession({
-          access_token,
-          refresh_token,
-        });
-      }
-    };
-
-    detectRecovery();
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  /* ------------------------------------------------------------------
-      2) Navigation restore — DISABLED during recovery
-  ------------------------------------------------------------------ */
+  // --------------------------------------------------------------
+  // Restore navigation only for logged-in users
+  // --------------------------------------------------------------
   useEffect(() => {
     let mounted = true;
 
-    const restore = async () => {
+    const restoreNav = async () => {
       if (!ready) return;
 
-      // BLOCK restore during recovery mode
-      if (isRecoveryMode) {
-        console.log("⛔ Nav restore skipped — recovery mode active");
-        if (mounted) {
-          setInitialState(undefined);
-          setNavReady(true);
-        }
-        return;
-      }
-
-      // Logged out or incomplete profile → clean state
       if (!userId || !profileComplete) {
-        if (mounted) {
-          setInitialState(undefined);
-          setNavReady(true);
-        }
+        setInitialState(undefined);
+        setNavReady(true);
         return;
       }
 
-      // Normal restore for logged-in users
       try {
-        const saved = await AsyncStorage.getItem(
+        const savedState = await AsyncStorage.getItem(
           `NAVIGATION_STATE_v2:${userId}`
         );
-        if (saved && mounted) {
-          setInitialState(JSON.parse(saved));
+        if (savedState && mounted) {
+          setInitialState(JSON.parse(savedState));
         }
-      } catch (err) {
-        console.warn("Navigation restore failed:", err);
-      } finally {
-        if (mounted) setNavReady(true);
-      }
+      } catch {}
+
+      if (mounted) setNavReady(true);
     };
 
-    restore();
-
+    restoreNav();
     return () => {
       mounted = false;
     };
-  }, [ready, userId, profileComplete, isRecoveryMode]);
+  }, [ready, userId, profileComplete]);
 
-  /* ------------------------------------------------------------------
-      3) Paywall subscription logic (unchanged)
-  ------------------------------------------------------------------ */
+  // Subscription check
   const [isPaid, setIsPaid] = useState<boolean | null>(null);
   const [expired, setExpired] = useState(false);
 
   useEffect(() => {
     if (!userId) {
       setIsPaid(null);
-      setExpired(false);
       return;
     }
 
@@ -165,19 +88,17 @@ export default function AppNavigator({
 
       if (!mounted) return;
 
-      const now = Date.now();
       const exp = data?.premium_access_expires_at
         ? new Date(data.premium_access_expires_at).getTime()
         : null;
 
-      const expiredNow = exp ? exp <= now : false;
-      const status = (data?.subscription_status || "").toLowerCase();
-
+      const expiredNow = exp ? Date.now() >= exp : false;
+      const stat = (data?.subscription_status || "").toLowerCase();
       const paid =
         !expiredNow &&
-        (status === "active" ||
-          status === "trialing" ||
-          status === "past_due" ||
+        (stat === "active" ||
+          stat === "trialing" ||
+          stat === "past_due" ||
           data?.grandfathered);
 
       setExpired(expiredNow);
@@ -190,22 +111,20 @@ export default function AppNavigator({
   }, [userId]);
 
   useEffect(() => {
-    if (userId && expired) {
-      supabase.auth.signOut().catch(() => {});
-    }
+    if (userId && expired) supabase.auth.signOut();
   }, [userId, expired]);
 
-  /* ------------------------------------------------------------------
-      4) Global loading
-  ------------------------------------------------------------------ */
+  // --------------------------------------------------------------
+  // Global loading
+  // --------------------------------------------------------------
   if (!ready || !navReady || (userId && isPaid === null)) {
     return (
       <View
         style={{
           flex: 1,
+          backgroundColor: COLORS.background,
           justifyContent: "center",
           alignItems: "center",
-          backgroundColor: COLORS.background,
         }}
       >
         <ActivityIndicator size="large" color={COLORS.primary} />
@@ -215,9 +134,9 @@ export default function AppNavigator({
 
   const mustShowPaywall = false;
 
-  /* ------------------------------------------------------------------
-      5) Navigation Tree — recovery mode OVERRIDES EVERYTHING
-  ------------------------------------------------------------------ */
+  // --------------------------------------------------------------
+  // Navigation tree
+  // --------------------------------------------------------------
   return (
     <NavigationContainer
       ref={navigationRef as any}
@@ -227,10 +146,10 @@ export default function AppNavigator({
     >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
 
-        {/* 🔥 ALWAYS SHOW THIS DURING PASSWORD RECOVERY */}
-        {isRecoveryMode ? (
-          <Stack.Screen name="NewPassword" component={NewPassword} />
-        ) : !userId ? (
+        {/* Always keep NewPassword accessible */}
+        <Stack.Screen name="NewPassword" component={NewPassword} />
+
+        {!userId ? (
           <Stack.Screen
             name="Auth"
             children={() => (
@@ -252,7 +171,6 @@ export default function AppNavigator({
         ) : (
           <Stack.Screen name="MainTabs" component={MainTabs} />
         )}
-
       </Stack.Navigator>
     </NavigationContainer>
   );

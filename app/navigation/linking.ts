@@ -5,35 +5,25 @@ export const linking: LinkingOptions<any> = {
   prefixes: [
     "https://overlooked.cloud",
     "https://www.overlooked.cloud",
-
-    // Supabase callback prefixes (hash-handled)
-    "https://overlooked.cloud/auth/v1/verify",
-    "https://overlooked.cloud/auth/confirm",
-
-    // Mobile deep link
     "overlooked://",
-
-    // Local dev
-    "http://localhost:3000",
-    "exp://localhost:19000",
   ],
 
   config: {
     screens: {
-      /* AUTH FLOW */
+      // DIRECT screen — must exist here!
+      NewPassword: "reset-password",
+
+      // AUTH STACK
       Auth: {
         screens: {
           SignIn: "signin",
           SignUp: "signup",
           ForgotPassword: "forgot-password",
           CreateProfile: "create-profile",
-
-          // 🔥 Important: map accessible path → NewPassword route
-          NewPassword: "reset-password",
         },
       },
 
-      /* MAIN TABS */
+      // MAIN TABS
       MainTabs: {
         screens: {
           Featured: "featured",
@@ -45,31 +35,9 @@ export const linking: LinkingOptions<any> = {
         },
       },
 
-      /* OTHER SCREENS */
-      ChatRoom: "chats/:id",
-      UserProfile: "u/:id",
-      PaySuccess: "pay/success",
+      // OPTIONAL ROUTES SO TS DOESN’T COMPLAIN
+      Paywall: "paywall",
+      PaySuccess: "pay-success",
     },
-  },
-
-  /**
-   * SAFETY: ensures navigation doesn't break if a URL
-   * is unrecognized or broken (especially on Web).
-   */
-  getStateFromPath(path, options) {
-    try {
-      const { getStateFromPath } = require("@react-navigation/native");
-      return getStateFromPath(path, options);
-    } catch (err) {
-      console.warn("[linking] Failed to parse deep link:", path, err);
-      return {
-        routes: [
-          {
-            name: "MainTabs",
-            state: { routes: [{ name: "Featured" }] },
-          },
-        ],
-      };
-    }
   },
 };
