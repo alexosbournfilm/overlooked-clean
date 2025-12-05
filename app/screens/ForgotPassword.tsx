@@ -1,9 +1,5 @@
 // app/screens/ForgotPassword.tsx
-// ------------------------------------------------------------
-// Polished OverLooked-style Password Reset Screen
-// ------------------------------------------------------------
-
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -13,58 +9,38 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import { supabase } from '../lib/supabase';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+import { supabase } from "../lib/supabase";
 
-// SAME THEME AS SignInScreen
-const DARK_BG = '#0D0D0D';
-const DARK_ELEVATED = '#171717';
-const TEXT_IVORY = '#EDEBE6';
-const TEXT_MUTED = '#A7A6A2';
-const GOLD = '#C6A664';
-
-const SYSTEM_SANS =
-  Platform.select({ ios: 'System', android: 'Roboto', web: undefined }) ||
-  undefined;
-
-const T = {
-  bg: DARK_BG,
-  card: DARK_ELEVATED,
-  card2: '#111111',
-  text: TEXT_IVORY,
-  sub: '#D0CEC8',
-  mute: TEXT_MUTED,
-  accent: GOLD,
-  border: '#2E2E2E',
-};
+const BG = "#0D0D0D";
+const CARD = "#121212";
+const TEXT = "#EFEFEF";
+const SUB = "#A8A8A8";
+const GOLD = "#C6A664";
+const BORDER = "#2A2A2A";
 
 export default function ForgotPassword() {
   const navigation = useNavigation<any>();
-  const insets = useSafeAreaInsets();
-
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState("");
 
-  // ------------------------------------------------------------
-  // FIXED: Correct redirectTo for Supabase password recovery
-  // ------------------------------------------------------------
   const handleReset = async () => {
     setSending(true);
-    setMessage('');
+    setMessage("");
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: Platform.select({
-        // ⭐ Correct route for your web app
-        web: 'https://overlooked.cloud/NewPassword',
-
-        // ⭐ Mobile deep-link route
-        default: 'overlooked://reset-password',
-      }),
-    });
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      email.trim(),
+      {
+        redirectTo: Platform.select({
+          web: "https://overlooked.cloud/reset-password",
+          default: "overlooked://reset-password",
+        }),
+      }
+    );
 
     setSending(false);
 
@@ -73,67 +49,55 @@ export default function ForgotPassword() {
       return;
     }
 
-    setMessage('Check your inbox for a link to reset your password.');
+    setMessage("Check your email for the reset link.");
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: BG }}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View
-          style={[
-            styles.container,
-            { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 32 },
-          ]}
-        >
-          {/* Back Button */}
+        <View style={styles.container}>
           <TouchableOpacity
+            style={styles.back}
             onPress={() => navigation.goBack()}
-            style={styles.backButton}
-            activeOpacity={0.9}
           >
-            <Ionicons name="chevron-back" size={20} color={T.sub} />
+            <Ionicons name="chevron-back" size={20} color={SUB} />
             <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
 
-          {/* Card */}
           <View style={styles.card}>
             <Text style={styles.title}>Reset Your Password</Text>
             <Text style={styles.subtitle}>
               Enter the email linked to your account.
             </Text>
 
-            <View style={styles.inputWrap}>
-              <Ionicons name="mail" size={16} color={T.mute} />
+            <View style={styles.inputRow}>
+              <Ionicons name="mail" size={16} color={SUB} />
               <TextInput
-                style={styles.input}
-                placeholder="Email address"
-                placeholderTextColor={T.mute}
-                autoCapitalize="none"
-                keyboardType="email-address"
+                placeholder="Email"
+                placeholderTextColor={SUB}
                 value={email}
                 onChangeText={setEmail}
+                autoCapitalize="none"
+                style={styles.input}
               />
             </View>
 
-            {/* SEND BUTTON */}
             <TouchableOpacity
               onPress={handleReset}
               disabled={sending}
               style={[styles.button, sending && { opacity: 0.7 }]}
-              activeOpacity={0.9}
             >
               {sending ? (
-                <ActivityIndicator color={DARK_BG} />
+                <ActivityIndicator color={BG} />
               ) : (
-                <Text style={styles.buttonText}>Send Reset Email</Text>
+                <Text style={styles.buttonText}>SEND RESET EMAIL</Text>
               )}
             </TouchableOpacity>
 
-            {/* MESSAGE */}
-            {message ? <Text style={styles.message}>{message}</Text> : null}
+            {!!message && <Text style={styles.message}>{message}</Text>}
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -141,104 +105,56 @@ export default function ForgotPassword() {
   );
 }
 
-// ------------------------------------------------------------
-// STYLES
-// ------------------------------------------------------------
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: 22,
-    alignItems: 'center',
-    backgroundColor: T.bg,
-  },
-
-  backButton: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-
-  backText: {
-    color: T.sub,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '600',
-    marginLeft: 4,
-  },
-
+  container: { flex: 1, padding: 24, alignItems: "center" },
+  back: { flexDirection: "row", alignSelf: "flex-start", marginBottom: 16 },
+  backText: { color: SUB, marginLeft: 4, fontSize: 15 },
   card: {
-    width: '100%',
+    width: "100%",
     maxWidth: 420,
-    backgroundColor: T.card2,
-    borderRadius: 18,
-    padding: 22,
+    padding: 24,
+    borderRadius: 16,
+    backgroundColor: CARD,
     borderWidth: 1,
-    borderColor: T.border,
+    borderColor: BORDER,
   },
-
   title: {
+    textAlign: "center",
+    color: TEXT,
     fontSize: 20,
-    color: T.text,
-    fontWeight: '900',
-    letterSpacing: 0.6,
-    textAlign: 'center',
+    fontWeight: "800",
     marginBottom: 6,
-    fontFamily: SYSTEM_SANS,
   },
-
   subtitle: {
-    color: T.sub,
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 18,
-    fontFamily: SYSTEM_SANS,
+    textAlign: "center",
+    color: SUB,
+    marginBottom: 20,
   },
-
-  inputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderColor: BORDER,
     borderWidth: 1,
-    borderColor: T.border,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    backgroundColor: '#0C0C0C',
     marginBottom: 16,
   },
-
-  input: {
-    flex: 1,
-    color: T.text,
-    fontSize: 15,
-    fontFamily: SYSTEM_SANS,
-  },
-
+  input: { flex: 1, color: TEXT, fontSize: 15 },
   button: {
-    backgroundColor: T.accent,
     paddingVertical: 14,
+    backgroundColor: GOLD,
     borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: T.accent,
-    marginTop: 4,
+    alignItems: "center",
   },
-
   buttonText: {
-    color: DARK_BG,
+    color: BG,
+    fontWeight: "900",
     fontSize: 15,
-    fontWeight: '900',
-    fontFamily: SYSTEM_SANS,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
   },
-
   message: {
     marginTop: 16,
-    color: T.sub,
-    textAlign: 'center',
-    fontFamily: SYSTEM_SANS,
-    fontSize: 13.5,
-    lineHeight: 20,
+    color: SUB,
+    textAlign: "center",
   },
 });
