@@ -31,25 +31,35 @@ export default function NewPassword() {
   const [sessionReady, setSessionReady] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Extract ALL possible recovery parameters
+  // Extract params manually on WEB because Linking fails
   const extractRecoveryParams = (url: string | null) => {
-    try {
-      const parsed = Linking.parse(url ?? "");
-
-      const params: any = parsed?.queryParams || {};
+  try {
+    // WEB — Use URLSearchParams
+    if (Platform.OS === "web") {
+      const search = window.location.search;
+      const query = new URLSearchParams(search);
 
       return {
-        token_hash:
-          params["token_hash"] ??
-          params["access_token"] ?? // fallback Supabase param on web
-          null,
-        email: params["email"] ?? null,
-        type: params["type"] ?? null,
+        token_hash: query.get("token_hash") ?? null,
+        email: query.get("email") ?? null,
+        type: query.get("type") ?? null,
       };
-    } catch {
-      return { token_hash: null, email: null, type: null };
     }
-  };
+
+    // MOBILE — Use Linking.parse
+    const parsed = Linking.parse(url ?? "");
+    const qp = parsed?.queryParams ?? {};
+
+    return {
+      token_hash: (qp["token_hash"] as string) ?? null,
+      email: (qp["email"] as string) ?? null,
+      type: (qp["type"] as string) ?? null,
+    };
+  } catch (e) {
+    console.log("Param extraction error:", e);
+    return { token_hash: null, email: null, type: null };
+  }
+};
 
   useEffect(() => {
     const handle = async () => {
@@ -57,27 +67,27 @@ export default function NewPassword() {
         ? window.location.href
         : await Linking.getInitialURL();
 
-      const { token_hash, email, type } = extractRecoveryParams(initial);
+      const { token_hash, email } = extractRecoveryParams(initial);
+
+      console.log("Extracted params:", { token_hash, email });
 
       if (!token_hash || !email) {
         console.log("❌ Missing token or email from URL");
         return;
       }
 
-      console.log("🔎 Extracted:", { token_hash, email, type });
-
-      // ALWAYS use type "recovery" here
+      // Verify OTP
       const { error } = await supabase.auth.verifyOtp({
         type: "recovery",
         token_hash,
         email,
       });
 
-      if (!error) {
+      if (error) {
+        console.log("❌ verifyOtp error:", error.message);
+      } else {
         console.log("✔ Recovery session established");
         setSessionReady(true);
-      } else {
-        console.log("❌ verifyOtp error:", error.message);
       }
     };
 
@@ -109,10 +119,7 @@ export default function NewPassword() {
 
     setLoading(false);
 
-    if (error) {
-      Alert.alert("Error", error.message);
-      return;
-    }
+    if (error) return Alert.alert("Error", error.message);
 
     await supabase.auth.signOut();
 
