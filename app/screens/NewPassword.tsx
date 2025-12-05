@@ -12,8 +12,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import * as Linking from "expo-linking";
 import { useNavigation } from "@react-navigation/native";
+import * as Linking from "expo-linking";
 import { supabase } from "../lib/supabase";
 
 const BG = "#000";
@@ -23,6 +23,12 @@ const SUB = "#A9A7A3";
 const GOLD = "#C6A664";
 const BORDER = "#262626";
 
+declare global {
+  interface Window {
+    __didReloadForReset?: boolean;
+  }
+}
+
 export default function NewPassword() {
   const navigation = useNavigation<any>();
 
@@ -30,46 +36,63 @@ export default function NewPassword() {
   const [confirm, setConfirm] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [updated, setUpdated] = useState(false); // <<<<<< SUCCESS UI FLAG
 
-  // EXACT SAME TOKEN PARSER USED IN SIGNUP
-  const parseTokensFromUrl = () => {
+  // ---- FORCE SAFARI TO RELOAD WITH QUERY PARAMS ----
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      const search = window.location.search;
+      const hash = window.location.hash;
+
+      if (
+        (search.includes("token") || hash.includes("token")) &&
+        !window.__didReloadForReset
+      ) {
+        window.__didReloadForReset = true;
+        window.location.reload();
+      }
+    }
+  }, []);
+
+  // ---- TOKEN PARSER ----
+  const parseTokens = () => {
     let params: Record<string, any> = {};
 
-    // 1. Read HASH fragment (Safari + Supabase use this)
+    // Grab parameters from hash (#token=xyz)
     if (Platform.OS === "web") {
       const hash = window.location.hash?.replace(/^#/, "") ?? "";
       const hashParams = new URLSearchParams(hash);
       hashParams.forEach((v, k) => (params[k] = v));
     }
 
-    // 2. Read query params (?token_hash=...)
-    const search = window.location.search;
-    const searchParams = new URLSearchParams(search);
-    searchParams.forEach((v, k) => (params[k] = v));
+    // Grab parameters from ?token_hash=xyz
+    if (typeof window !== "undefined") {
+      const query = new URLSearchParams(window.location.search);
+      query.forEach((v, k) => (params[k] = v));
+    }
 
     return {
-      access_token: params["access_token"],
-      refresh_token: params["refresh_token"],
-      token_hash: params["token_hash"],
-      email: params["email"],
-      type: params["type"],
+      access_token: params["access_token"] || null,
+      refresh_token: params["refresh_token"] || null,
+      token_hash: params["token_hash"] || null,
+      email: params["email"] || null,
+      type: params["type"] || null,
     };
   };
 
+  // ---- CREATE SESSION ----
   const establishSession = async () => {
-    const { access_token, refresh_token, token_hash, email } =
-      parseTokensFromUrl();
+    const { access_token, refresh_token, token_hash, email } = parseTokens();
 
-    console.log("Parsed Tokens:", {
+    console.log("Parsed reset tokens:", {
       access_token,
       refresh_token,
       token_hash,
       email,
     });
 
-    // CASE 1: Supabase recovery gives you a full session in hash
+    // Case 1: Full session already provided by Supabase redirect
     if (access_token && refresh_token) {
-      console.log("✔ Using full access_token session");
       const { error } = await supabase.auth.setSession({
         access_token,
         refresh_token,
@@ -77,9 +100,8 @@ export default function NewPassword() {
       if (!error) return true;
     }
 
-    // CASE 2: Recovery uses token_hash (verifyOtp)
+    // Case 2: Token-hash recovery
     if (token_hash && email) {
-      console.log("✔ Using token_hash to verify recovery session");
       const { error } = await supabase.auth.verifyOtp({
         type: "recovery",
         token_hash,
@@ -88,7 +110,7 @@ export default function NewPassword() {
       if (!error) return true;
     }
 
-    console.log("❌ No valid session could be created");
+    console.log("❌ No session created");
     return false;
   };
 
@@ -96,31 +118,30 @@ export default function NewPassword() {
     const run = async () => {
       const ok = await establishSession();
       if (ok) {
-        console.log("✔ Recovery session established");
         setSessionReady(true);
+        console.log("✔ Session ready for password reset.");
 
-        // CLEAN URL (remove tokens from browser)
+        // Clean URL
         if (Platform.OS === "web") {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
         }
       }
     };
+
     run();
   }, []);
 
-  const goToSignIn = () => {
-    Platform.OS === "web"
-      ? (window.location.href = "/signin")
-      : navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
-  };
-
+  // ---- UPDATE PASSWORD ----
   const updatePassword = async () => {
     if (!sessionReady)
-      return Alert.alert("Invalid Link", "Please open the reset link again.");
+      return Alert.alert(
+        "Invalid Link",
+        "Open the reset link directly from your email."
+      );
 
     if (!password || !confirm)
-      return Alert.alert("Error", "Fill in both fields.");
+      return Alert.alert("Error", "Please fill in both fields.");
 
     if (password !== confirm)
       return Alert.alert("Error", "Passwords do not match.");
@@ -135,15 +156,25 @@ export default function NewPassword() {
     setLoading(false);
 
     if (error) {
-      Alert.alert("Error", error.message);
+      Alert.alert("Error updating password", error.message);
       return;
     }
 
-    // Password updated — now sign out and redirect
+    console.log("✔ Password updated");
+
+    setUpdated(true); // <<<<<< SHOW SUCCESS FEEDBACK
+
     await supabase.auth.signOut();
 
-    Alert.alert("Success", "Your password has been updated.");
-    goToSignIn();
+    setTimeout(() => {
+      Alert.alert("Success", "Your password has been updated.");
+      goToSignIn();
+    }, 1200);
+  };
+
+  const goToSignIn = () => {
+    if (Platform.OS === "web") window.location.href = "/signin";
+    else navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
   };
 
   return (
@@ -156,9 +187,15 @@ export default function NewPassword() {
 
         <View style={styles.card}>
           <Text style={styles.title}>Set a New Password</Text>
-          <Text style={styles.subtitle}>
-            Enter your new password below.
-          </Text>
+          <Text style={styles.subtitle}>Enter your new password below.</Text>
+
+          {/* SUCCESS CHECKMARK */}
+          {updated && (
+            <View style={styles.successBox}>
+              <Ionicons name="checkmark-circle" size={42} color={GOLD} />
+              <Text style={styles.successText}>Password Updated!</Text>
+            </View>
+          )}
 
           <View style={styles.inputRow}>
             <Ionicons name="lock-closed" size={16} color={SUB} />
@@ -242,4 +279,16 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: BG, fontWeight: "900", fontSize: 15 },
   error: { color: "red", marginTop: 10, textAlign: "center" },
+
+  successBox: {
+    alignItems: "center",
+    marginBottom: 18,
+    marginTop: -10,
+  },
+  successText: {
+    color: GOLD,
+    marginTop: 6,
+    fontSize: 16,
+    fontWeight: "700",
+  },
 });
