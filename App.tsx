@@ -1,18 +1,17 @@
 /**
  * ------------------------------------------------------------
- *  FULLY PATCHED APP.TSX — SAFARI / SUPABASE FIX
+ *  FINAL APP.TSX — SAFARI + SUPABASE PASSWORD RESET FIX
  * ------------------------------------------------------------
  * Fixes:
- * - getInitialURL returns null on first load (Safari bug)
- * - Password reset page requires manual refresh
- * - Deep links load only after refresh
- * - NewPassword screen enters infinite loading after update
+ * - Safari not passing deep link on first load
+ * - Blank white screen until refresh
+ * - Password reset link not opening NewPassword
+ * - getInitialURL() returning null
  *
- * This implementation GUARANTEES:
- * - URL is fetched BEFORE React renders
- * - URL is polled until available
- * - Supabase exchangeCodeForSession always receives correct URL
- * - PASSWORD_RECOVERY event always navigates correctly
+ * Uses:
+ * - index.html injects window.__INITIAL_URL__
+ * - This file overrides Linking.getInitialURL() on web
+ * - No polling, no race conditions, no blank screen
  * ------------------------------------------------------------
  */
 
@@ -47,35 +46,29 @@ import {
   Cinzel_900Black,
 } from "@expo-google-fonts/cinzel";
 
-// ❗ SAFARI FIX (forces URL to hydrate ASAP)
+// ------------------------------------------------------------------
+// SAFARI DEEP LINK FIX — override Linking.getInitialURL to use injected URL
+// ------------------------------------------------------------------
 if (Platform.OS === "web") {
-  Linking.getInitialURL();
+  const injected =
+    typeof window !== "undefined" ? (window as any).__INITIAL_URL__ : null;
+
+  if (injected) {
+    console.log("🔗 Safari injected initial URL:", injected);
+
+    // Override getInitialURL so React Navigation receives the correct URL
+    Linking.getInitialURL = async () => injected;
+  }
 }
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
-
-// ---------------------------------------------------------------
-// SAFARI URL POLLER — ensures URL is available before Supabase
-// ---------------------------------------------------------------
-async function waitForUrl(): Promise<string | null> {
-  let tries = 0;
-
-  while (tries < 20) {
-    const url = await Linking.getInitialURL();
-    if (url) return url;
-
-    await new Promise((res) => setTimeout(res, 120));
-    tries++;
-  }
-
-  return null;
-}
 
 export default function App() {
   const [appIsReady, setAppIsReady] = useState(false);
   const [initialAuthRouteName, setInitialAuthRouteName] =
     useState<"SignIn" | "CreateProfile">("SignIn");
 
+  // Load fonts
   const [courierLoaded] = useCourierFonts({
     CourierPrime_400Regular,
     CourierPrime_700Bold,
@@ -87,71 +80,63 @@ export default function App() {
   });
   const fontsLoaded = courierLoaded && cinzelLoaded;
 
-  /**
-   * -----------------------------------------------------------------
-   *  DEEP LINK HANDLER — patched with Safari URL hydration fix
-   * -----------------------------------------------------------------
-   */
+  // --------------------------------------------------------------
+  // Proper deep-link handler (Supabase recovery tokens)
+  // --------------------------------------------------------------
   const handleDeepLink = useCallback(async (url: string | null) => {
     if (!url) return;
 
-    const isSupabaseLink =
+    const isSupabase =
       url.includes("access_token=") ||
       url.includes("refresh_token=") ||
-      url.includes("type=recovery") ||
-      url.includes("code=");
+      url.includes("type=recovery");
 
-    if (!isSupabaseLink) return;
+    if (!isSupabase) return;
 
-    console.log("Deep link detected:", url);
+    console.log("🔗 Deep link detected:", url);
 
     const { error } = await supabase.auth.exchangeCodeForSession(url);
     if (error) {
-      console.error("exchangeCodeForSession error:", error.message);
+      console.error("exchangeCodeForSession ERROR:", error.message);
       return;
     }
 
-    console.log("Session restored via deep link");
-    setInitialAuthRouteName("SignIn");
+    console.log("🔐 Supabase session restored from deep link");
   }, []);
 
-  /**
-   * --------------------------------------------------------------
-   * PASSWORD_RECOVERY → Navigate to NewPassword (must not race)
-   * --------------------------------------------------------------
-   */
+  // --------------------------------------------------------------
+  // Supabase PASSWORD_RECOVERY event → navigate to NewPassword
+  // --------------------------------------------------------------
   useEffect(() => {
-    const { data: listener } = supabase.auth.onAuthStateChange(
+    const { data: subscription } = supabase.auth.onAuthStateChange(
       async (event) => {
         if (event === "PASSWORD_RECOVERY") {
-          console.log("Supabase event: PASSWORD_RECOVERY");
+          console.log("🚨 PASSWORD_RECOVERY event received");
           navigate("NewPassword");
         }
       }
     );
 
-    return () => listener.subscription.unsubscribe();
+    return () => subscription.subscription.unsubscribe();
   }, []);
 
-  /**
-   * --------------------------------------------------------------
-   * APP INIT — handles splash, deep links, session restoration
-   * --------------------------------------------------------------
-   */
+  // --------------------------------------------------------------
+  // APP INIT — handle initial deep link + session restore
+  // --------------------------------------------------------------
   useEffect(() => {
     let mounted = true;
 
     async function init() {
       try {
-        // 1️⃣ Wait for Safari to deliver URL
-        const initialUrl = await waitForUrl();
+        // 1️⃣ Get initial URL (Safari-safe)
+        const initialUrl = await Linking.getInitialURL();
+        console.log("Initial URL:", initialUrl);
 
-        // 2️⃣ Handle deep link FIRST
         if (initialUrl) {
           await handleDeepLink(initialUrl);
         }
 
-        // 3️⃣ Restore session
+        // 2️⃣ Restore session
         const { data: sessionData } = await supabase.auth.getSession();
         const session = sessionData?.session ?? null;
 
@@ -161,6 +146,7 @@ export default function App() {
             JSON.stringify(session)
           );
 
+          // Load profile completeness
           const { data: profile } = await supabase
             .from("users")
             .select("full_name, main_role_id, city_id")
@@ -178,9 +164,9 @@ export default function App() {
           setInitialAuthRouteName("SignIn");
         }
 
-        // 4️⃣ URL event subscription (for in-app flows)
-        const sub = Linking.addEventListener("url", async (e) => {
-          await handleDeepLink(e.url);
+        // 3️⃣ Listen for in-app deep links
+        const sub = Linking.addEventListener("url", async (ev) => {
+          await handleDeepLink(ev.url);
         });
 
         if (mounted) {
@@ -188,19 +174,21 @@ export default function App() {
         }
 
         return () => sub.remove();
-      } catch (e) {
-        console.error("App init error:", e);
+      } catch (err) {
+        console.error("INIT ERROR:", err);
         if (mounted) setAppIsReady(true);
       }
     }
 
     init();
-
     return () => {
       mounted = false;
     };
   }, [handleDeepLink]);
 
+  // --------------------------------------------------------------
+  // Splash screen final hide
+  // --------------------------------------------------------------
   useEffect(() => {
     if (appIsReady && fontsLoaded) {
       SplashScreen.hideAsync().catch(() => {});
@@ -209,6 +197,9 @@ export default function App() {
 
   if (!appIsReady || !fontsLoaded) return null;
 
+  // --------------------------------------------------------------
+  // RENDER APP
+  // --------------------------------------------------------------
   return (
     <AppErrorBoundary>
       <PaperProvider>
