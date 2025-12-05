@@ -31,14 +31,18 @@ export default function NewPassword() {
   const [sessionReady, setSessionReady] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Extract token_hash from URL
-  const extractTokenHash = (url: string | null) => {
+  // Extract token_hash and email from URL
+  const extractRecoveryParams = (url: string | null) => {
     try {
       const parsed = Linking.parse(url ?? "");
       const params: any = parsed?.queryParams || {};
-      return params["token_hash"] ?? null;
+
+      return {
+        token_hash: params["token_hash"] ?? null,
+        email: params["email"] ?? null,
+      };
     } catch {
-      return null;
+      return { token_hash: null, email: null };
     }
   };
 
@@ -48,12 +52,19 @@ export default function NewPassword() {
         ? window.location.href
         : await Linking.getInitialURL();
 
-      const hash = extractTokenHash(initial);
-      if (!hash) return;
+      const { token_hash, email } = extractRecoveryParams(initial);
 
-      const { error } = await supabase.auth.verifyOtp({
+      if (!token_hash || !email) {
+        console.log("Missing recovery params");
+        return;
+      }
+
+      console.log("Attempting verifyOtp with:", { token_hash, email });
+
+      const { data, error } = await supabase.auth.verifyOtp({
         type: "recovery",
-        token_hash: hash,
+        token_hash,
+        email,
       });
 
       if (!error) {
