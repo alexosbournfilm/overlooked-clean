@@ -27,7 +27,8 @@ const TEXT_MUTED = '#A7A6A2';
 const GOLD = '#C6A664';
 
 const SYSTEM_SANS =
-  Platform.select({ ios: 'System', android: 'Roboto', web: undefined }) || undefined;
+  Platform.select({ ios: 'System', android: 'Roboto', web: undefined }) ||
+  undefined;
 
 const T = {
   bg: DARK_BG,
@@ -37,7 +38,6 @@ const T = {
   sub: '#D0CEC8',
   mute: TEXT_MUTED,
   accent: GOLD,
-  olive: GOLD,
   border: '#2E2E2E',
 };
 
@@ -49,14 +49,19 @@ export default function ForgotPassword() {
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState('');
 
+  // ------------------------------------------------------------
+  // FIXED: Correct redirectTo for Supabase password recovery
+  // ------------------------------------------------------------
   const handleReset = async () => {
     setSending(true);
     setMessage('');
 
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      // ⭐ UPDATED FOR WEB + MOBILE (Step 5)
       redirectTo: Platform.select({
-        web: 'https://overlooked.cloud/reset-password',
+        // ⭐ Correct route for your web app
+        web: 'https://overlooked.cloud/NewPassword',
+
+        // ⭐ Mobile deep-link route
         default: 'overlooked://reset-password',
       }),
     });
@@ -87,6 +92,7 @@ export default function ForgotPassword() {
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={styles.backButton}
+            activeOpacity={0.9}
           >
             <Ionicons name="chevron-back" size={20} color={T.sub} />
             <Text style={styles.backText}>Back</Text>
@@ -99,7 +105,7 @@ export default function ForgotPassword() {
               Enter the email linked to your account.
             </Text>
 
-            <View style={[styles.inputWrap]}>
+            <View style={styles.inputWrap}>
               <Ionicons name="mail" size={16} color={T.mute} />
               <TextInput
                 style={styles.input}
@@ -117,6 +123,7 @@ export default function ForgotPassword() {
               onPress={handleReset}
               disabled={sending}
               style={[styles.button, sending && { opacity: 0.7 }]}
+              activeOpacity={0.9}
             >
               {sending ? (
                 <ActivityIndicator color={DARK_BG} />
