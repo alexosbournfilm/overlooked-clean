@@ -1,5 +1,4 @@
 // app/screens/NewPassword.tsx
-
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -32,51 +31,49 @@ export default function NewPassword() {
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
+  const [tokenHash, setTokenHash] = useState<string | null>(null);
 
-  // Extract tokens from URL (handles both Web + Mobile)
-  const parseTokens = (url: string | null) => {
-    if (!url) return {};
+  // Parse token_hash from URL
+  const parseTokenHash = (url: string | null) => {
+    if (!url) return null;
 
     const parsed = Linking.parse(url);
     let params: Record<string, any> = {};
 
-    // Web uses #token
+    // Web: token arrives in ?token_hash=
     if (Platform.OS === "web") {
-      const hash = window.location.hash.replace(/^#/, "");
-      const search = new URLSearchParams(hash);
+      const search = new URLSearchParams(window.location.search);
       search.forEach((v, k) => (params[k] = v));
     }
 
-    // Mobile uses queryParams
+    // Mobile: token arrives in queryParams
     if (parsed?.queryParams) {
       params = { ...params, ...parsed.queryParams };
     }
 
-    return {
-      access_token: params["access_token"],
-      refresh_token: params["refresh_token"],
-      type: params["type"],
-    };
+    return params["token_hash"] ?? null;
   };
 
-  // Restore Supabase session using recovery tokens
+  // Restore recovery session using Supabase verifyOtp
   const restoreSession = async (url: string | null) => {
-    const { access_token, refresh_token } = parseTokens(url);
+    const hash = parseTokenHash(url);
+    if (!hash) return;
 
-    if (access_token && refresh_token) {
-      console.log("🔐 Restoring recovery session…");
-      const { error } = await supabase.auth.setSession({
-        access_token,
-        refresh_token,
-      });
+    setTokenHash(hash);
+    console.log("🔐 Token hash received:", hash);
 
-      if (!error) {
-        setSessionReady(true);
-        console.log("✔ Session restored");
-      } else {
-        console.log("❌ Session restore failed:", error.message);
-      }
+    const { data, error } = await supabase.auth.verifyOtp({
+      type: "recovery",
+      token_hash: hash,
+    });
+
+    if (error) {
+      console.log("❌ verifyOtp failed:", error.message);
+      return;
     }
+
+    console.log("✔ Recovery session verified");
+    setSessionReady(true);
   };
 
   useEffect(() => {
@@ -98,6 +95,7 @@ export default function NewPassword() {
     init();
   }, []);
 
+  // Redirect back to sign in
   const goToSignIn = () => {
     if (Platform.OS === "web") {
       window.location.replace("/signin");
@@ -106,11 +104,12 @@ export default function NewPassword() {
     navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
   };
 
+  // Update password
   const handleUpdatePassword = async () => {
     if (!sessionReady) {
       return Alert.alert(
-        "Not Ready",
-        "Your reset link did not restore a session. Please open the link from your email again."
+        "Session Not Ready",
+        "Your reset link is invalid or expired. Please open the link again."
       );
     }
 
@@ -134,16 +133,17 @@ export default function NewPassword() {
       return Alert.alert("Error", error.message);
     }
 
+    // Must sign out after password update
     await supabase.auth.signOut();
-    setLoading(false);
 
-    Alert.alert("Success", "Your password was updated.");
+    setLoading(false);
+    Alert.alert("Success", "Your password has been updated.");
     goToSignIn();
   };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
@@ -194,7 +194,13 @@ export default function NewPassword() {
             </TouchableOpacity>
 
             {!sessionReady && (
-              <Text style={{ color: "red", marginTop: 10, textAlign: "center" }}>
+              <Text
+                style={{
+                  color: "red",
+                  marginTop: 10,
+                  textAlign: "center",
+                }}
+              >
                 Waiting for recovery session…
               </Text>
             )}
