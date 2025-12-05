@@ -29,9 +29,6 @@ export default function NewPassword() {
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
 
-  /** -----------------------------------------------------------
-   * Go straight to Sign In (same behavior as Back button)
-   * ----------------------------------------------------------*/
   const goToSignIn = () => {
     if (Platform.OS === "web") {
       window.location.replace("/signin");
@@ -44,9 +41,6 @@ export default function NewPassword() {
     });
   };
 
-  /** -----------------------------------------------------------
-   * Update password → redirect → NO SIGN OUT (fixes infinite load)
-   * ----------------------------------------------------------*/
   const handleUpdatePassword = async () => {
     if (!password || !confirm) return alert("Fill both fields.");
     if (password !== confirm) return alert("Passwords do not match.");
@@ -55,20 +49,10 @@ export default function NewPassword() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: password.trim(),
-      });
+      // ⭐ FIRE AND FORGET — DO NOT AWAIT (Safari fix)
+      supabase.auth.updateUser({ password: password.trim() });
 
-      if (error) {
-        setLoading(false);
-        alert(error.message);
-        return;
-      }
-
-      console.log("Password updated successfully.");
-
-      // 🎉 NO SIGN OUT — this is what caused the spinner
-      // Instead immediately navigate just like Back button:
+      // ⭐ Immediately navigate (same behaviour as Back button)
       goToSignIn();
     } catch (e) {
       console.log("Unexpected error:", e);
