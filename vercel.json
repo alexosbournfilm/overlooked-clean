@@ -2,6 +2,19 @@
   "rewrites": [
     { "source": "/auth/v1/verify", "destination": "/" },
     { "source": "/auth/confirm", "destination": "/" },
+
+    
+    { "source": "/reset-password", "destination": "/" },
+    { "source": "/signin", "destination": "/" },
+    { "source": "/signup", "destination": "/" },
+    { "source": "/profile/:id", "destination": "/" },
+    { "source": "/jobs", "destination": "/" },
+    { "source": "/featured", "destination": "/" },
+    { "source": "/challenge", "destination": "/" },
+    { "source": "/location", "destination": "/" },
+    { "source": "/chats", "destination": "/" },
+
+    
     { "source": "/(.*)", "destination": "/" }
   ]
 }
