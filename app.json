@@ -19,16 +19,12 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.yourname.overlooked",
-
       "infoPlist": {
         "CFBundleURLTypes": [
-          {
-            "CFBundleURLSchemes": ["overlooked"]
-          }
+          { "CFBundleURLSchemes": ["overlooked"] }
         ],
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library for profile uploads."
       },
-
       "associatedDomains": [
         "applinks:overlooked.cloud",
         "applinks:www.overlooked.cloud"
@@ -42,15 +38,13 @@
         "foregroundImage": "./app/assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-
       "intentFilters": [
         {
           "action": "VIEW",
-          "category": ["BROWSABLE", "DEFAULT"],
+          "category": ["DEFAULT", "BROWSABLE"],
           "data": [
             { "scheme": "overlooked", "host": "callback" },
             { "scheme": "overlooked", "host": "reset-password" },
-
             { "scheme": "https", "host": "overlooked.cloud", "pathPrefix": "/" },
             { "scheme": "https", "host": "www.overlooked.cloud", "pathPrefix": "/" }
           ]
@@ -63,7 +57,10 @@
       "name": "Overlooked",
       "shortName": "Overlooked",
       "favicon": "./favicon.png",
-      "display": "standalone",
+
+      "display": "browser",         
+      "pwa": false,                  
+
       "themeColor": "#ffffff",
       "backgroundColor": "#ffffff",
       "startUrl": "/",
@@ -71,15 +68,12 @@
       "lang": "en",
 
       "static": {
-        "copy": ["vercel.json"]
+        "copy": ["vercel.json", "sw.js"]
       }
     },
 
     "extra": {
-      "supabaseRedirectUrl": "overlooked://callback",
-      "eas": {
-        "projectId": "REPLACE_WITH_YOUR_EAS_PROJECT_ID"
-      }
+      "supabaseRedirectUrl": "overlooked://callback"
     },
 
     "plugins": ["expo-secure-store", "expo-font"],

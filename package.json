@@ -2,17 +2,22 @@
   "name": "overlooked-clean",
   "version": "1.0.0",
   "private": true,
+
   "scripts": {
     "start": "expo start",
     "web": "expo start --web",
     "android": "expo run:android",
     "ios": "expo run:ios",
+
     "clean": "rm -rf dist .expo node_modules/.cache",
 
-    "export:web": "npx expo export --platform web --output-dir dist --clear && cp -f favicon.png dist/favicon.png || true && cp -f apple-touch-icon.png dist/apple-touch-icon.png || true",
+    "build": "expo export --platform web --output-dir dist --clear",
+
+    "export:web": "expo export --platform web --output-dir dist --clear && cp -f favicon.png dist/favicon.png || true && cp -f apple-touch-icon.png dist/apple-touch-icon.png || true",
 
     "deploy:web": "npm run export:web && vercel deploy --prod dist"
   },
+
   "dependencies": {
     "@expo-google-fonts/cinzel": "^0.4.2",
     "@expo-google-fonts/courier-prime": "^0.4.0",
@@ -67,6 +72,7 @@
     "react-native-youtube-iframe": "^2.4.1",
     "tus-js-client": "^4.3.1"
   },
+
   "devDependencies": {
     "@expo/cli": "0.17.13",
     "@types/react": "^18.3.24",
