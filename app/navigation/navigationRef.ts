@@ -4,21 +4,27 @@ import {
   CommonActions,
   createNavigationContainerRef,
   type NavigationContainerRef,
-  type NavigationAction,
-  TabActions,
-} from '@react-navigation/native';
+} from "@react-navigation/native";
 
 /* =====================================================
    ROOT NAVIGATION TYPE DEFINITIONS
    ===================================================== */
 export type RootStackParamList = {
-  // AUTH FLOW
+  // ✅ ROOT AUTH STACK (THIS WAS MISSING)
+  Auth:
+    | {
+        screen?: "SignIn" | "SignUp" | "ForgotPassword" | "CreateProfile" | "NewPassword";
+        params?: any;
+      }
+    | undefined;
+
+  // AUTH FLOW (nested inside AuthStack)
   SignIn: undefined;
   SignUp: undefined;
   CreateProfile: undefined;
   ForgotPassword: undefined;
 
-  // PASSWORD RESET (Supabase deep link target)
+  // PASSWORD RESET (also accessible at root)
   NewPassword: undefined;
 
   // PAYFLOW
@@ -138,6 +144,9 @@ export function navigate<RouteName extends keyof RootStackParamList>(
 
 export function resetToMain() {
   store.ref.dispatch(
-    CommonActions.reset({ index: 0, routes: [{ name: "MainTabs" }] })
+    CommonActions.reset({
+      index: 0,
+      routes: [{ name: "MainTabs" }],
+    })
   );
 }

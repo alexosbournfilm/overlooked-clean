@@ -12,8 +12,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, CommonActions } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
+import { navigationRef } from "../navigation/navigationRef";
 
 const BG = "#000";
 const CARD = "#0B0B0B";
@@ -99,7 +100,6 @@ export default function NewPassword() {
         setSessionReady(true);
 
         // CLEAN URL (remove tokens from browser)
-        // IMPORTANT: do NOT force to /reset-password forever, just remove query/hash noise
         if (Platform.OS === "web") {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
@@ -112,39 +112,29 @@ export default function NewPassword() {
   const goToSignIn = () => {
     console.log("➡️ goToSignIn pressed");
 
-    // ✅ WEB: You MUST leave /reset-password completely
-    if (Platform.OS === "web") {
-      const origin = window.location.origin;
+    // ✅ IMPORTANT:
+    // SignIn is NOT a root screen in your app.
+    // Root stack has: NewPassword, Auth, MainTabs, etc.
+    // So we MUST reset to Auth, and then tell AuthStack to show SignIn.
+    const action = CommonActions.reset({
+      index: 0,
+      routes: [{ name: "Auth", params: { screen: "SignIn" } }],
+    });
 
-      // Try the most likely real entry points:
-      // 1) Root hash router with explicit signin route
-      // 2) Root hash router default (often shows auth landing)
-      const targets = [`${origin}/#/signin`, `${origin}/#/`];
-
-      // Use replace so the reset-password URL doesn't stay in history
-      // Do a two-step Safari-friendly redirect: first move to "/", then set hash.
-      try {
-        // Step 1: hard replace to root (no hash)
-        window.location.replace(`${origin}/`);
-        // Step 2: after browser updates, set hash (Safari can be picky)
-        setTimeout(() => {
-          window.location.replace(targets[0]);
-        }, 50);
-      } catch (e) {
-        console.log("Web replace failed:", e);
-        window.location.href = targets[0];
+    try {
+      if (navigationRef.isReady()) {
+        navigationRef.dispatch(action);
+        return;
       }
-      return;
+    } catch (e) {
+      console.log("navigationRef reset failed:", e);
     }
 
-    // ✅ Native: reset to SignIn route (keep your original)
+    // fallback
     try {
-      navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
+      navigation.dispatch(action);
     } catch (e) {
-      console.log("Native reset failed:", e);
-      try {
-        navigation.navigate("SignIn");
-      } catch {}
+      console.log("local navigation reset failed:", e);
     }
   };
 
