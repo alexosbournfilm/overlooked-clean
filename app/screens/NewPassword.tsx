@@ -12,7 +12,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import * as Linking from "expo-linking";
 import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 
@@ -109,26 +108,74 @@ export default function NewPassword() {
     run();
   }, []);
 
-  const goToSignIn = () => {
-    // ✅ Always try React Navigation first (works on web + native)
+  const findSignInRouteName = () => {
     try {
-      navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
-      return;
+      const state = navigation?.getState?.();
+      const routeNames: string[] = state?.routeNames ?? [];
+
+      // Look for ANY route that is basically "SignIn"
+      const match =
+        routeNames.find((n) => n.toLowerCase() === "signin") ||
+        routeNames.find((n) => n.toLowerCase().includes("signin")) ||
+        routeNames.find((n) => n.toLowerCase().includes("sign_in")) ||
+        routeNames.find((n) => n.toLowerCase().includes("sign-in")) ||
+        routeNames.find((n) => n.toLowerCase().includes("login")) ||
+        routeNames.find((n) => n.toLowerCase().includes("auth"));
+
+      console.log("Route names:", routeNames);
+      console.log("Matched sign-in route:", match);
+
+      // Prefer exact-ish screen names first if present
+      const preferredOrder = [
+        "SignIn",
+        "Signin",
+        "SignInScreen",
+        "Login",
+        "Auth",
+      ];
+      const preferred =
+        preferredOrder.find((x) => routeNames.includes(x)) ?? match;
+
+      return preferred ?? null;
     } catch (e) {
-      console.log("navigation.reset failed, falling back:", e);
+      console.log("findSignInRouteName error:", e);
+      return null;
+    }
+  };
+
+  const goToSignIn = () => {
+    const target = findSignInRouteName();
+
+    // ✅ If SignIn exists in THIS navigator, reset to it (best UX)
+    if (target) {
+      try {
+        navigation.reset({ index: 0, routes: [{ name: target }] });
+        return;
+      } catch (e) {
+        console.log("navigation.reset failed:", e);
+        try {
+          navigation.navigate(target);
+          return;
+        } catch (err) {
+          console.log("navigation.navigate failed:", err);
+        }
+      }
     }
 
-    // ✅ Safe fallback for web if navigation isn't available for some reason
+    // ✅ Web fallback: if this screen is not inside your navigator,
+    // go to the safest place (usually Sign In is at "/")
     if (Platform.OS === "web") {
-      // If you have a linking config, this will still be fine.
-      // Otherwise, it simply hard-navigates to /signin.
-      const fallback = "/signin";
-      window.location.assign(fallback);
+      // Try "/" first (most apps route logged-out users to sign-in here)
+      window.location.assign("/");
       return;
     }
 
     // Native fallback
-    navigation.navigate("SignIn");
+    try {
+      navigation.navigate("SignIn");
+    } catch {
+      // no-op
+    }
   };
 
   const updatePassword = async () => {
@@ -158,7 +205,7 @@ export default function NewPassword() {
     // Password updated — now sign out and redirect
     await supabase.auth.signOut();
 
-    // ✅ Use alert callback so navigation reliably runs on web
+    // ✅ Make sure redirect actually happens on web by using alert callback
     Alert.alert("Success", "Your password has been updated.", [
       { text: "OK", onPress: goToSignIn },
     ]);
