@@ -98,9 +98,9 @@ export default function NewPassword() {
         console.log("✔ Recovery session established");
         setSessionReady(true);
 
-        // CLEAN URL (remove tokens from browser)
+        // CLEAN URL (remove tokens from browser) BUT KEEP ROUTE
         if (Platform.OS === "web") {
-          const clean = window.location.origin + window.location.pathname;
+          const clean = window.location.origin + window.location.pathname + window.location.hash?.split("?")[0];
           window.history.replaceState({}, document.title, clean);
         }
       }
@@ -108,74 +108,20 @@ export default function NewPassword() {
     run();
   }, []);
 
-  const findSignInRouteName = () => {
-    try {
-      const state = navigation?.getState?.();
-      const routeNames: string[] = state?.routeNames ?? [];
-
-      // Look for ANY route that is basically "SignIn"
-      const match =
-        routeNames.find((n) => n.toLowerCase() === "signin") ||
-        routeNames.find((n) => n.toLowerCase().includes("signin")) ||
-        routeNames.find((n) => n.toLowerCase().includes("sign_in")) ||
-        routeNames.find((n) => n.toLowerCase().includes("sign-in")) ||
-        routeNames.find((n) => n.toLowerCase().includes("login")) ||
-        routeNames.find((n) => n.toLowerCase().includes("auth"));
-
-      console.log("Route names:", routeNames);
-      console.log("Matched sign-in route:", match);
-
-      // Prefer exact-ish screen names first if present
-      const preferredOrder = [
-        "SignIn",
-        "Signin",
-        "SignInScreen",
-        "Login",
-        "Auth",
-      ];
-      const preferred =
-        preferredOrder.find((x) => routeNames.includes(x)) ?? match;
-
-      return preferred ?? null;
-    } catch (e) {
-      console.log("findSignInRouteName error:", e);
-      return null;
-    }
-  };
-
   const goToSignIn = () => {
-    const target = findSignInRouteName();
-
-    // ✅ If SignIn exists in THIS navigator, reset to it (best UX)
-    if (target) {
-      try {
-        navigation.reset({ index: 0, routes: [{ name: target }] });
-        return;
-      } catch (e) {
-        console.log("navigation.reset failed:", e);
-        try {
-          navigation.navigate(target);
-          return;
-        } catch (err) {
-          console.log("navigation.navigate failed:", err);
-        }
-      }
-    }
-
-    // ✅ Web fallback: if this screen is not inside your navigator,
-    // go to the safest place (usually Sign In is at "/")
+    // ✅ Web: your app is clearly using hash routing -> force hash route to Sign In
     if (Platform.OS === "web") {
-      // Try "/" first (most apps route logged-out users to sign-in here)
-      window.location.assign("/");
+      // Try the most common patterns used in Expo/React Navigation web setups
+      const tryHashes = ["#/signin", "#/SignIn", "#/sign-in", "#/login"];
+
+      // If you already know your exact sign-in hash path, keep only that one.
+      // This will immediately move without "staying" on NewPassword.
+      window.location.hash = tryHashes[0];
       return;
     }
 
-    // Native fallback
-    try {
-      navigation.navigate("SignIn");
-    } catch {
-      // no-op
-    }
+    // ✅ Native: reset to SignIn
+    navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
   };
 
   const updatePassword = async () => {
@@ -202,10 +148,9 @@ export default function NewPassword() {
       return;
     }
 
-    // Password updated — now sign out and redirect
     await supabase.auth.signOut();
 
-    // ✅ Make sure redirect actually happens on web by using alert callback
+    // ✅ Redirect on OK so it always fires on web
     Alert.alert("Success", "Your password has been updated.", [
       { text: "OK", onPress: goToSignIn },
     ]);
