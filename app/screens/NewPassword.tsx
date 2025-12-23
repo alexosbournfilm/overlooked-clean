@@ -118,15 +118,20 @@ export default function NewPassword() {
       // 1) Sign out so Auth stack becomes available in AppNavigator
       await supabase.auth.signOut();
 
-      // 2) WEB: leave /reset-password completely.
-      // Your app routes via hash (/#/signin), so force that URL.
-      // Use hard replace so linking can't snap you back to NewPassword.
+      // 2) WEB: if the browser path is /reset-password, linking will keep sending you back here.
+      // So we must move the URL to /signin before resetting navigation.
       if (Platform.OS === "web") {
-        window.location.replace("/#/signin");
-        return;
+        try {
+          const origin = window.location.origin;
+          window.history.replaceState({}, document.title, `${origin}/signin`);
+        } catch (e) {
+          // hard fallback
+          window.location.href = "/signin";
+          return;
+        }
       }
 
-      // 3) Native: Reset nav to Auth -> SignIn
+      // 3) Reset nav to Auth -> SignIn
       const action = CommonActions.reset({
         index: 0,
         routes: [{ name: "Auth", params: { screen: "SignIn" } }],
@@ -138,7 +143,7 @@ export default function NewPassword() {
       console.log("goToSignIn error:", e);
 
       if (Platform.OS === "web") {
-        window.location.replace("/#/signin");
+        window.location.href = "/signin";
       }
     } finally {
       setSigningOut(false);
