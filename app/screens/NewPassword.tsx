@@ -98,9 +98,9 @@ export default function NewPassword() {
         console.log("✔ Recovery session established");
         setSessionReady(true);
 
-        // CLEAN URL (remove tokens from browser) BUT KEEP ROUTE
+        // CLEAN URL (remove tokens from browser)
         if (Platform.OS === "web") {
-          const clean = window.location.origin + window.location.pathname + window.location.hash?.split("?")[0];
+          const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
         }
       }
@@ -109,18 +109,14 @@ export default function NewPassword() {
   }, []);
 
   const goToSignIn = () => {
-    // ✅ Web: your app is clearly using hash routing -> force hash route to Sign In
+    // ✅ WEB: you are currently on /reset-password (which always renders this screen).
+    // So we MUST leave that path and go back to the app root + hash route.
     if (Platform.OS === "web") {
-      // Try the most common patterns used in Expo/React Navigation web setups
-      const tryHashes = ["#/signin", "#/SignIn", "#/sign-in", "#/login"];
-
-      // If you already know your exact sign-in hash path, keep only that one.
-      // This will immediately move without "staying" on NewPassword.
-      window.location.hash = tryHashes[0];
+      window.location.assign(`${window.location.origin}/#/signin`);
       return;
     }
 
-    // ✅ Native: reset to SignIn
+    // ✅ Native
     navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
   };
 
@@ -148,9 +144,10 @@ export default function NewPassword() {
       return;
     }
 
+    // Password updated — now sign out and redirect
     await supabase.auth.signOut();
 
-    // ✅ Redirect on OK so it always fires on web
+    // ✅ Make redirect reliable on web by doing it after pressing OK
     Alert.alert("Success", "Your password has been updated.", [
       { text: "OK", onPress: goToSignIn },
     ]);
