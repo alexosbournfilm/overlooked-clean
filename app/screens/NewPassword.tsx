@@ -36,14 +36,14 @@ export default function NewPassword() {
   const parseTokensFromUrl = () => {
     let params: Record<string, any> = {};
 
-    // 1. Read HASH fragment (Safari + Supabase use this)
+    // 1) Read HASH fragment (Safari + Supabase use this)
     if (Platform.OS === "web") {
       const hash = window.location.hash?.replace(/^#/, "") ?? "";
       const hashParams = new URLSearchParams(hash);
       hashParams.forEach((v, k) => (params[k] = v));
     }
 
-    // 2. Read query params (?token_hash=...)
+    // 2) Read query params (?token_hash=...)
     const search = Platform.OS === "web" ? window.location.search : "";
     const searchParams = new URLSearchParams(search);
     searchParams.forEach((v, k) => (params[k] = v));
@@ -100,7 +100,8 @@ export default function NewPassword() {
         console.log("✔ Recovery session established");
         setSessionReady(true);
 
-        // CLEAN URL (remove tokens from browser)
+        // CLEAN URL: remove tokens but stay on the same pathname
+        // (keeps /reset-password, removes query/hash)
         if (Platform.OS === "web") {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
@@ -115,23 +116,17 @@ export default function NewPassword() {
     setSigningOut(true);
 
     try {
-      // 1) Sign out so Auth stack becomes available in AppNavigator
+      // 1) Sign out so AppNavigator can show Auth stack again
       await supabase.auth.signOut();
 
-      // 2) WEB: if the browser path is /reset-password, linking will keep sending you back here.
-      // So we must move the URL to /signin before resetting navigation.
+      // 2) WEB: must LEAVE /reset-password (path-based linking)
+      // Use hard navigation so React Navigation re-parses the URL.
       if (Platform.OS === "web") {
-        try {
-          const origin = window.location.origin;
-          window.history.replaceState({}, document.title, `${origin}/signin`);
-        } catch (e) {
-          // hard fallback
-          window.location.href = "/signin";
-          return;
-        }
+        window.location.assign("/signin");
+        return;
       }
 
-      // 3) Reset nav to Auth -> SignIn
+      // 3) Native: Reset nav to Auth -> SignIn
       const action = CommonActions.reset({
         index: 0,
         routes: [{ name: "Auth", params: { screen: "SignIn" } }],
@@ -143,7 +138,7 @@ export default function NewPassword() {
       console.log("goToSignIn error:", e);
 
       if (Platform.OS === "web") {
-        window.location.href = "/signin";
+        window.location.assign("/signin");
       }
     } finally {
       setSigningOut(false);
@@ -174,7 +169,6 @@ export default function NewPassword() {
       return;
     }
 
-    // ✅ Redirect to SignIn after update
     Alert.alert("Success", "Your password has been updated.", [
       { text: "OK", onPress: () => goToSignIn() },
     ]);
