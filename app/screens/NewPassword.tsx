@@ -99,6 +99,7 @@ export default function NewPassword() {
         setSessionReady(true);
 
         // CLEAN URL (remove tokens from browser)
+        // IMPORTANT: do NOT force to /reset-password forever, just remove query/hash noise
         if (Platform.OS === "web") {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
@@ -109,15 +110,42 @@ export default function NewPassword() {
   }, []);
 
   const goToSignIn = () => {
-    // ✅ WEB: you are currently on /reset-password (which always renders this screen).
-    // So we MUST leave that path and go back to the app root + hash route.
+    console.log("➡️ goToSignIn pressed");
+
+    // ✅ WEB: You MUST leave /reset-password completely
     if (Platform.OS === "web") {
-      window.location.assign(`${window.location.origin}/#/signin`);
+      const origin = window.location.origin;
+
+      // Try the most likely real entry points:
+      // 1) Root hash router with explicit signin route
+      // 2) Root hash router default (often shows auth landing)
+      const targets = [`${origin}/#/signin`, `${origin}/#/`];
+
+      // Use replace so the reset-password URL doesn't stay in history
+      // Do a two-step Safari-friendly redirect: first move to "/", then set hash.
+      try {
+        // Step 1: hard replace to root (no hash)
+        window.location.replace(`${origin}/`);
+        // Step 2: after browser updates, set hash (Safari can be picky)
+        setTimeout(() => {
+          window.location.replace(targets[0]);
+        }, 50);
+      } catch (e) {
+        console.log("Web replace failed:", e);
+        window.location.href = targets[0];
+      }
       return;
     }
 
-    // ✅ Native
-    navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
+    // ✅ Native: reset to SignIn route (keep your original)
+    try {
+      navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
+    } catch (e) {
+      console.log("Native reset failed:", e);
+      try {
+        navigation.navigate("SignIn");
+      } catch {}
+    }
   };
 
   const updatePassword = async () => {
@@ -147,7 +175,6 @@ export default function NewPassword() {
     // Password updated — now sign out and redirect
     await supabase.auth.signOut();
 
-    // ✅ Make redirect reliable on web by doing it after pressing OK
     Alert.alert("Success", "Your password has been updated.", [
       { text: "OK", onPress: goToSignIn },
     ]);
