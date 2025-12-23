@@ -110,9 +110,25 @@ export default function NewPassword() {
   }, []);
 
   const goToSignIn = () => {
-    Platform.OS === "web"
-      ? (window.location.href = "/signin")
-      : navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
+    // ✅ Always try React Navigation first (works on web + native)
+    try {
+      navigation.reset({ index: 0, routes: [{ name: "SignIn" }] });
+      return;
+    } catch (e) {
+      console.log("navigation.reset failed, falling back:", e);
+    }
+
+    // ✅ Safe fallback for web if navigation isn't available for some reason
+    if (Platform.OS === "web") {
+      // If you have a linking config, this will still be fine.
+      // Otherwise, it simply hard-navigates to /signin.
+      const fallback = "/signin";
+      window.location.assign(fallback);
+      return;
+    }
+
+    // Native fallback
+    navigation.navigate("SignIn");
   };
 
   const updatePassword = async () => {
@@ -142,8 +158,10 @@ export default function NewPassword() {
     // Password updated — now sign out and redirect
     await supabase.auth.signOut();
 
-    Alert.alert("Success", "Your password has been updated.");
-    goToSignIn();
+    // ✅ Use alert callback so navigation reliably runs on web
+    Alert.alert("Success", "Your password has been updated.", [
+      { text: "OK", onPress: goToSignIn },
+    ]);
   };
 
   return (
@@ -156,9 +174,7 @@ export default function NewPassword() {
 
         <View style={styles.card}>
           <Text style={styles.title}>Set a New Password</Text>
-          <Text style={styles.subtitle}>
-            Enter your new password below.
-          </Text>
+          <Text style={styles.subtitle}>Enter your new password below.</Text>
 
           <View style={styles.inputRow}>
             <Ionicons name="lock-closed" size={16} color={SUB} />
