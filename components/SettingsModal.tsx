@@ -10,7 +10,7 @@ import {
   Platform,
   StyleSheet,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 import { useSettingsModal } from '../app/context/SettingsModalContext';
 import { supabase, FUNCTIONS_URL } from '../app/lib/supabase';
 import { UpgradeModal } from './UpgradeModal';
@@ -146,9 +146,7 @@ function SectionButton(props: {
         {title}
       </Text>
 
-      {subtitle ? (
-        <Text style={styles.sectionSubtitle}>{subtitle}</Text>
-      ) : null}
+      {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
 
       {loading && <ActivityIndicator color={GOLD} style={{ marginTop: 10 }} />}
     </Pressable>
@@ -166,6 +164,19 @@ export default function SettingsModal() {
 
   const [showUpgrade, setShowUpgrade] = useState(false);
 
+  const resetToAuthSignIn = () => {
+    const action = CommonActions.reset({
+      index: 0,
+      routes: [{ name: 'Auth', params: { screen: 'SignIn' } }],
+    });
+
+    try {
+      navigation.dispatch(action);
+    } catch {
+      navigation.reset({ index: 0, routes: [{ name: 'Auth' }] });
+    }
+  };
+
   const onSignOut = async () => {
     const ok = await confirm({
       title: 'Sign out?',
@@ -177,17 +188,29 @@ export default function SettingsModal() {
 
     try {
       setSigningOut(true);
+
       const { error } = await supabase.auth.signOut();
       if (error) {
         Alert.alert('Error', error.message);
         return;
       }
 
+      // ✅ IMPORTANT: if user is currently on /reset-password, linking will force NewPassword.
+      // So on web we MUST leave that URL completely.
+      if (Platform.OS === 'web') {
+        try {
+          // Clear recovery flag if it exists (your AuthProvider uses it)
+          // @ts-ignore
+          if (typeof window !== 'undefined') (window as any).__RECOVERY__ = false;
+        } catch {}
+
+        // Hard navigate so the URL becomes /signin (not /reset-password)
+        window.location.assign('/signin');
+        return;
+      }
+
       close();
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Auth' }],
-      });
+      resetToAuthSignIn();
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to sign out.');
     } finally {
@@ -222,12 +245,20 @@ export default function SettingsModal() {
       }
 
       await supabase.auth.signOut().catch(() => {});
-      close();
 
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Auth' }],
-      });
+      // ✅ Same issue on web: must leave /reset-password if that’s the current path
+      if (Platform.OS === 'web') {
+        try {
+          // @ts-ignore
+          if (typeof window !== 'undefined') (window as any).__RECOVERY__ = false;
+        } catch {}
+
+        window.location.assign('/signin');
+        return;
+      }
+
+      close();
+      resetToAuthSignIn();
     } catch (e: any) {
       setDebug(`delete-account exception: ${e?.message}`);
       Alert.alert('Error', e?.message);
