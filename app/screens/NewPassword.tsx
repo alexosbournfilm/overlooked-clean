@@ -44,11 +44,7 @@ export default function NewPassword() {
     }
 
     // 2. Read query params (?token_hash=...)
-    // NOTE: window.* exists on web only; this file is used on native too, but this line is safe
-    // in Expo because it won't run unless Platform.OS === "web" checks above are used.
-    // (We still reference window.location.search here, so guard it.)
-    const search =
-      Platform.OS === "web" ? window.location.search : "";
+    const search = Platform.OS === "web" ? window.location.search : "";
     const searchParams = new URLSearchParams(search);
     searchParams.forEach((v, k) => (params[k] = v));
 
@@ -114,38 +110,40 @@ export default function NewPassword() {
     run();
   }, []);
 
-  const resetToAuthSignIn = () =>
-    CommonActions.reset({
-      index: 0,
-      routes: [{ name: "Auth", params: { screen: "SignIn" } }],
-    });
-
   const goToSignIn = async () => {
     if (signingOut) return;
-
-    console.log("➡️ goToSignIn pressed");
     setSigningOut(true);
 
     try {
-      // ✅ CRITICAL:
-      // When a recovery session exists, userId becomes truthy,
-      // so AppNavigator removes the Auth screen from the root tree.
-      // We must sign out first so Auth is mounted again.
+      // 1) Sign out so Auth stack becomes available in AppNavigator
       await supabase.auth.signOut();
 
-      const action = resetToAuthSignIn();
-
-      if (navigationRef.isReady()) {
-        navigationRef.dispatch(action);
-      } else {
-        navigation.dispatch(action);
-      }
-    } catch (e) {
-      console.log("goToSignIn failed:", e);
-
-      // last-resort web escape hatch (in case nav tree isn't ready yet)
+      // 2) WEB: if the browser path is /reset-password, linking will keep sending you back here.
+      // So we must move the URL to /signin before resetting navigation.
       if (Platform.OS === "web") {
-        window.location.href = "/#/signin";
+        try {
+          const origin = window.location.origin;
+          window.history.replaceState({}, document.title, `${origin}/signin`);
+        } catch (e) {
+          // hard fallback
+          window.location.href = "/signin";
+          return;
+        }
+      }
+
+      // 3) Reset nav to Auth -> SignIn
+      const action = CommonActions.reset({
+        index: 0,
+        routes: [{ name: "Auth", params: { screen: "SignIn" } }],
+      });
+
+      if (navigationRef.isReady()) navigationRef.dispatch(action);
+      else navigation.dispatch(action);
+    } catch (e) {
+      console.log("goToSignIn error:", e);
+
+      if (Platform.OS === "web") {
+        window.location.href = "/signin";
       }
     } finally {
       setSigningOut(false);
@@ -176,10 +174,7 @@ export default function NewPassword() {
       return;
     }
 
-    // Password updated — now sign out and redirect to SignIn
-    // (goToSignIn signs out too, but keeping this is fine; it makes state consistent)
-    await supabase.auth.signOut();
-
+    // ✅ Redirect to SignIn after update
     Alert.alert("Success", "Your password has been updated.", [
       { text: "OK", onPress: () => goToSignIn() },
     ]);
