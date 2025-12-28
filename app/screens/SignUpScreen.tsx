@@ -46,12 +46,14 @@ export default function SignUpScreen() {
   const [emailConfirmed, setEmailConfirmed] = useState(false);
   const [checkingLink, setCheckingLink] = useState(true);
 
-  // Redirect for email confirmation
+  // ✅ Redirect for email confirmation (FIXED)
+  // Web: stable callback path
+  // Native: uses deep link "overlooked://callback" (matches Supabase Redirect URLs)
   const emailRedirectTo = useMemo(() => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      return window.location.href.split('#')[0];
+      return `${window.location.origin}/auth/callback`;
     }
-    return Linking.createURL('/auth-callback');
+    return Linking.createURL('callback');
   }, []);
 
   const refreshConfirmedFromUser = async () => {
@@ -81,6 +83,7 @@ export default function SignUpScreen() {
       token_type: params['token_type'],
       type: params['type'],
       error_description: params['error_description'],
+      code: params['code'],
     };
   };
 
@@ -98,7 +101,7 @@ export default function SignUpScreen() {
 
         setEmailConfirmed(true);
 
-        if (Platform.OS === 'web') {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
         }
@@ -127,7 +130,7 @@ export default function SignUpScreen() {
           await refreshConfirmedFromUser();
         }
 
-        if (Platform.OS === 'web') {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
         }
@@ -634,21 +637,23 @@ const styles = StyleSheet.create({
 
   // DARK INPUTS
   input: {
-  width: '100%',
-  backgroundColor: DARK_INPUT,
-  borderRadius: 12,
-  padding: 16,
-  marginBottom: 16,
-  color: TEXT_IVORY,
-  borderWidth: 1,
-  borderColor: BORDER,
+    width: '100%',
+    backgroundColor: DARK_INPUT,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    color: TEXT_IVORY,
+    borderWidth: 1,
+    borderColor: BORDER,
 
-  // Web: remove the annoying blue outline
-  ...(Platform.OS === 'web' ? {
-    outline: 'none',
-    boxShadow: 'none',
-  } : {}),
-},
+    // Web: remove the annoying blue outline
+    ...(Platform.OS === 'web'
+      ? ({
+          outline: 'none',
+          boxShadow: 'none',
+        } as any)
+      : {}),
+  },
 
   checkboxRow: {
     flexDirection: 'row',
