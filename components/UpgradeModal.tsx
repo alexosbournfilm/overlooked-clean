@@ -170,16 +170,9 @@ export const UpgradeModal: React.FC<Props> = ({
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={() => {
-                // ✅ If you're already Pro, don't let this feel like a dead click
-                if (currentTier === 'pro') {
-                  setErrorText(
-                    'You are currently on Pro. Downgrades will be available later in account settings.'
-                  );
-                  return;
-                }
-                setErrorText(null);
-                setSelectedTier('free');
-              }}
+  setErrorText(null);
+  setSelectedTier('free');
+}}
               style={[
                 styles.tierCard,
                 selectedTier === 'free' && styles.tierCardSelected,
