@@ -31,6 +31,19 @@ export type CanApplyResult =
     };
 
 // =======================
+// 🔐 MEMBERSHIP CACHE
+// =======================
+// Prevents "I upgraded but app still thinks I'm free" across screens.
+let cachedTier: UserTier | null = null;
+let cacheTimeMs = 0;
+const CACHE_TTL_MS = 10_000; // 10s (and we manually invalidate on upgrade)
+
+export function invalidateMembershipCache() {
+  cachedTier = null;
+  cacheTimeMs = 0;
+}
+
+// =======================
 // 🔐 BASIC HELPERS
 // =======================
 
@@ -40,7 +53,17 @@ export async function getCurrentUserId(): Promise<string | null> {
   return data.user.id;
 }
 
-export async function getCurrentUserTier(): Promise<UserTier | null> {
+/**
+ * Reads tier from DB, with optional caching.
+ * Use force=true when you *just upgraded*.
+ */
+export async function getCurrentUserTier(opts?: { force?: boolean }): Promise<UserTier | null> {
+  const force = opts?.force === true;
+
+  if (!force && cachedTier && Date.now() - cacheTimeMs < CACHE_TTL_MS) {
+    return cachedTier;
+  }
+
   const userId = await getCurrentUserId();
   if (!userId) return null;
 
@@ -55,14 +78,16 @@ export async function getCurrentUserTier(): Promise<UserTier | null> {
     return null;
   }
 
-  return data.tier as UserTier;
+  cachedTier = data.tier as UserTier;
+  cacheTimeMs = Date.now();
+  return cachedTier;
 }
 
 /**
  * Convenience: never returns null tier – falls back to 'free'.
  */
-export async function getCurrentUserTierOrFree(): Promise<UserTier> {
-  const tier = await getCurrentUserTier();
+export async function getCurrentUserTierOrFree(opts?: { force?: boolean }): Promise<UserTier> {
+  const tier = await getCurrentUserTier({ force: opts?.force });
   return tier ?? 'free';
 }
 
@@ -70,13 +95,6 @@ export async function getCurrentUserTierOrFree(): Promise<UserTier> {
 // 🎥 SUBMISSION QUOTAS
 // =======================
 
-/**
- * Returns this month's quota info for the current user:
- *  - tier (free / pro)
- *  - limit (0 / 2)
- *  - used  (from submission_quotas)
- *  - remaining (limit - used)
- */
 export async function getSubmissionQuota(): Promise<SubmissionQuotaInfo | null> {
   const userId = await getCurrentUserId();
   if (!userId) return null;
@@ -105,54 +123,28 @@ export async function getSubmissionQuota(): Promise<SubmissionQuotaInfo | null> 
   return { tier, limit, used, remaining };
 }
 
-/**
- * High-level helper for the Challenge page.
- * Uses the backend-enforced quotas but gives a nice UX message.
- */
 export async function canSubmitToChallenge(): Promise<CanSubmitResult> {
   const quota = await getSubmissionQuota();
 
   if (!quota) {
-    return {
-      allowed: false,
-      reason: 'not_logged_in',
-      remaining: 0,
-    };
+    return { allowed: false, reason: 'not_logged_in', remaining: 0 };
   }
 
   if (quota.limit === 0) {
-    return {
-      allowed: false,
-      reason: 'tier_too_low',
-      remaining: 0,
-    };
+    return { allowed: false, reason: 'tier_too_low', remaining: 0 };
   }
 
   if (quota.remaining <= 0) {
-    return {
-      allowed: false,
-      reason: 'no_submissions_left',
-      remaining: 0,
-    };
+    return { allowed: false, reason: 'no_submissions_left', remaining: 0 };
   }
 
-  return {
-    allowed: true,
-    reason: null,
-    remaining: quota.remaining,
-  };
+  return { allowed: true, reason: null, remaining: quota.remaining };
 }
 
 // =======================
 // 💼 JOB APPLICATIONS
 // =======================
 
-/**
- * Frontend helper for the Jobs page.
- * Backend RLS also enforces this, but this gives you clean UX.
- *
- * @param isPaidJob - true if the job is paid (e.g. type starts with "Paid")
- */
 export async function canApplyToJob(isPaidJob: boolean): Promise<CanApplyResult> {
   const tier = await getCurrentUserTier();
 
@@ -161,11 +153,9 @@ export async function canApplyToJob(isPaidJob: boolean): Promise<CanApplyResult>
   }
 
   if (!isPaidJob) {
-    // Free jobs are open to all tiers
     return { allowed: true, reason: null };
   }
 
-  // Paid jobs: Pro only
   if (tier === 'pro') {
     return { allowed: true, reason: null };
   }
@@ -177,13 +167,6 @@ export async function canApplyToJob(isPaidJob: boolean): Promise<CanApplyResult>
 // 🎓 WORKSHOP ACCESS
 // =======================
 
-/**
- * Wrapper around the has_workshop_access RPC.
- * Returns true if:
- *  - product is free, or
- *  - user purchased it, or
- *  - user is tier 'pro' (handled in SQL)
- */
 export async function hasWorkshopAccess(productId: string): Promise<boolean> {
   const userId = await getCurrentUserId();
   if (!userId) return false;
@@ -198,6 +181,5 @@ export async function hasWorkshopAccess(productId: string): Promise<boolean> {
     return false;
   }
 
-  // RPC returns a boolean
   return !!data;
 }

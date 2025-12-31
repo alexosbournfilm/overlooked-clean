@@ -9,7 +9,10 @@ import {
   Platform,
 } from 'react-native';
 import { type UserTier } from '../app/lib/supabase';
-import { getCurrentUserTierOrFree } from '../app/lib/membership';
+import {
+  getCurrentUserTierOrFree,
+  invalidateMembershipCache,
+} from '../app/lib/membership';
 import { supabase } from '../app/lib/supabase';
 
 type UpgradeContext =
@@ -64,6 +67,7 @@ export const UpgradeModal: React.FC<Props> = ({
     (async () => {
       try {
         setErrorText(null);
+        // Normal read is fine here — cache is ok on open
         const tier = await getCurrentUserTierOrFree();
         if (!mounted) return;
         setCurrentTier(tier);
@@ -106,14 +110,19 @@ export const UpgradeModal: React.FC<Props> = ({
       if (userErr) throw userErr;
       if (!userRes?.user?.id) throw new Error('Not signed in');
 
-      // This RPC is the cleanest way (and avoids letting the client write directly).
-      // Create it in Supabase SQL: public.upgrade_to_pro()
+      // Upgrade in DB (RPC)
       const { error } = await supabase.rpc('upgrade_to_pro');
       if (error) throw error;
 
+      // 🔥 Critical: invalidate cached tier so other screens see Pro immediately
+      invalidateMembershipCache();
+
+      // Force-refresh tier from DB (skip cache)
+      const freshTier = await getCurrentUserTierOrFree({ force: true });
+
       // Update UI immediately
-      setCurrentTier('pro');
-      setSelectedTier('pro');
+      setCurrentTier(freshTier);
+      setSelectedTier(freshTier);
 
       // Let parent know (optional)
       if (onSelectPro) onSelectPro();
@@ -160,11 +169,22 @@ export const UpgradeModal: React.FC<Props> = ({
             {/* Free */}
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={() => setSelectedTier('free')}
+              onPress={() => {
+                // ✅ If you're already Pro, don't let this feel like a dead click
+                if (currentTier === 'pro') {
+                  setErrorText(
+                    'You are currently on Pro. Downgrades will be available later in account settings.'
+                  );
+                  return;
+                }
+                setErrorText(null);
+                setSelectedTier('free');
+              }}
               style={[
                 styles.tierCard,
                 selectedTier === 'free' && styles.tierCardSelected,
                 currentTier === 'free' && styles.tierCardCurrent,
+                currentTier === 'pro' && styles.tierCardDisabled, // optional visual cue
               ]}
             >
               <Text style={styles.tierLabel}>
@@ -192,7 +212,10 @@ export const UpgradeModal: React.FC<Props> = ({
             {/* Pro */}
             <TouchableOpacity
               activeOpacity={0.9}
-              onPress={() => setSelectedTier('pro')}
+              onPress={() => {
+                setErrorText(null);
+                setSelectedTier('pro');
+              }}
               style={[
                 styles.tierCard,
                 styles.tierCardEmphasis,
@@ -333,6 +356,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#111111',
     borderWidth: 1,
     borderColor: '#262626',
+  },
+  tierCardDisabled: {
+    opacity: 0.55,
   },
   tierCardEmphasis: {
     borderColor: GOLD,
