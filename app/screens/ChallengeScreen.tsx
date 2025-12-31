@@ -884,30 +884,58 @@ export default function ChallengeScreen() {
       );
     }
 
-    // Membership gate
-    try {
-      const gate = await canSubmitToChallenge();
-      if (!gate.allowed) {
-        if (gate.reason === "not_logged_in") {
-          notify("Please sign in", "You must be logged in to submit.");
-        } else if (gate.reason === "tier_too_low") {
-          // ✅ UPDATED COPY (Pro)
-          notify("Upgrade required", "Submitting to the monthly challenge is available on the Pro tier.");
-          setUpgradeVisible(true);
-        } else if (gate.reason === "no_submissions_left") {
-          notify("Submission limit reached", "You’ve used all of your submissions for this month.");
-          setUpgradeVisible(true);
-        }
-        return;
-      }
-    } catch (err) {
-      console.warn("canSubmitToChallenge failed:", err);
+    // ✅ Server preflight gate (prevents uploading if not allowed)
+try {
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+
+  if (userErr) throw userErr;
+
+  if (!user) {
+    notify("Please sign in", "You must be logged in to submit.");
+    return;
+  }
+
+  const { data, error } = await supabase.rpc("can_submit_this_month", {
+    p_user_id: user.id,
+  });
+
+  if (error) throw error;
+
+  // If RPC returns a rowset, Supabase returns array
+  const row = Array.isArray(data) ? data[0] : data;
+
+  if (!row?.allowed) {
+    if (row?.reason === "tier_too_low") {
       notify(
-        "Please try again",
-        "We couldn’t verify your submission limit just now. Try again in a moment."
+        "Upgrade required",
+        "Submitting to the monthly challenge is available on the Pro tier."
+      );
+      setUpgradeVisible(true);
+      return;
+    }
+
+    if (row?.reason === "no_submissions_left") {
+      notify(
+        "Submission limit reached",
+        "You’ve used all 2 submissions for this month."
       );
       return;
     }
+
+    notify("Not allowed", "You can’t submit right now.");
+    return;
+  }
+} catch (err) {
+  console.warn("server preflight can_submit_this_month failed:", err);
+  notify(
+    "Please try again",
+    "We couldn’t verify your submission limit just now. Try again in a moment."
+  );
+  return;
+}
 
     setLoading(true);
     setStatus("Uploading file…");
