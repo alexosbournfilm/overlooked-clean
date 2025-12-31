@@ -3,7 +3,7 @@ import { supabase, TIER_SUBMISSION_LIMITS, type UserTier } from './supabase';
 
 export type SubmissionQuotaInfo = {
   tier: UserTier;
-  limit: number;      // 0 / 3 / 6
+  limit: number;      // 0 / 2
   used: number;       // how many this month
   remaining: number;  // limit - used (never negative)
 };
@@ -59,11 +59,11 @@ export async function getCurrentUserTier(): Promise<UserTier | null> {
 }
 
 /**
- * Convenience: never returns null tier – falls back to 'networking'.
+ * Convenience: never returns null tier – falls back to 'free'.
  */
-export async function getCurrentUserTierOrNetworking(): Promise<UserTier> {
+export async function getCurrentUserTierOrFree(): Promise<UserTier> {
   const tier = await getCurrentUserTier();
-  return tier ?? 'networking';
+  return tier ?? 'free';
 }
 
 // =======================
@@ -72,8 +72,8 @@ export async function getCurrentUserTierOrNetworking(): Promise<UserTier> {
 
 /**
  * Returns this month's quota info for the current user:
- *  - tier (networking / artist / tommy)
- *  - limit (0 / 3 / 6)
+ *  - tier (free / pro)
+ *  - limit (0 / 2)
  *  - used  (from submission_quotas)
  *  - remaining (limit - used)
  */
@@ -81,7 +81,7 @@ export async function getSubmissionQuota(): Promise<SubmissionQuotaInfo | null> 
   const userId = await getCurrentUserId();
   if (!userId) return null;
 
-  const tier = await getCurrentUserTierOrNetworking();
+  const tier = await getCurrentUserTierOrFree();
   const limit = TIER_SUBMISSION_LIMITS[tier];
 
   const now = new Date();
@@ -165,7 +165,8 @@ export async function canApplyToJob(isPaidJob: boolean): Promise<CanApplyResult>
     return { allowed: true, reason: null };
   }
 
-  if (tier === 'artist' || tier === 'tommy') {
+  // Paid jobs: Pro only
+  if (tier === 'pro') {
     return { allowed: true, reason: null };
   }
 
@@ -181,7 +182,7 @@ export async function canApplyToJob(isPaidJob: boolean): Promise<CanApplyResult>
  * Returns true if:
  *  - product is free, or
  *  - user purchased it, or
- *  - user is tier 'tommy' (handled in SQL)
+ *  - user is tier 'pro' (handled in SQL)
  */
 export async function hasWorkshopAccess(productId: string): Promise<boolean> {
   const userId = await getCurrentUserId();

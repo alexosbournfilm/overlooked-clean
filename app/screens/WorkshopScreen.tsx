@@ -80,16 +80,21 @@ const WorkshopScreen: React.FC = () => {
           .select('id, tier')
           .eq('id', user.id)
           .single();
+
         if (profileErr) {
           console.warn('Workshop: profile error:', profileErr.message);
         } else if (profileData) {
-          setUserProfile({ id: profileData.id, tier: profileData.tier as UserTier });
+          setUserProfile({
+            id: profileData.id,
+            tier: profileData.tier as UserTier,
+          });
         }
 
         const { data: purchaseData, error: purchaseErr } = await supabase
           .from('workshop_purchases')
           .select('product_id')
           .eq('user_id', user.id);
+
         if (purchaseErr) {
           console.warn('Workshop: purchases error:', purchaseErr.message);
         } else if (purchaseData) {
@@ -136,9 +141,15 @@ const WorkshopScreen: React.FC = () => {
 
   /* --------------------------- access helpers -------------------------- */
   const hasAccess = (product: WorkshopProduct): boolean => {
-    // Now only Tommy tier or explicit purchases can access.
     if (!userProfile) return false;
-    if (userProfile.tier === 'tommy') return true;
+
+    // Free products are available to everyone
+    if (product.price_cents === 0) return true;
+
+    // Pro tier gets full access
+    if (userProfile.tier === 'pro') return true;
+
+    // Otherwise require purchase
     return purchases.some((p) => p.product_id === product.id);
   };
 
@@ -151,7 +162,6 @@ const WorkshopScreen: React.FC = () => {
 
   const openProductContent = (product: WorkshopProduct) => {
     if (!hasAccess(product)) {
-      // Fallback guard – should normally be handled before calling this
       setUpgradeVisible(true);
       return;
     }
@@ -169,9 +179,8 @@ const WorkshopScreen: React.FC = () => {
 
   const renderCTA = (product: WorkshopProduct) => {
     const access = hasAccess(product);
-    const isTommy = userProfile?.tier === 'tommy';
+    const isPro = userProfile?.tier === 'pro';
 
-    // If user has access (Tommy or explicit purchase) → real download/access
     if (access) {
       const isStarter =
         product.slug === 'starter-lut-pack' ||
@@ -193,8 +202,7 @@ const WorkshopScreen: React.FC = () => {
       );
     }
 
-    // No access: always show Upgrade modal for Workshop
-    const label = isTommy ? 'Access with Tommy' : 'Unlock with Tommy';
+    const label = isPro ? 'Included with Pro' : 'Unlock with Pro';
 
     return (
       <TouchableOpacity
@@ -218,12 +226,12 @@ const WorkshopScreen: React.FC = () => {
         <Text style={styles.headerTitle}>Workshop</Text>
       </View>
 
-      {/* Professional intro copy */}
+      {/* Intro copy */}
       <Text style={styles.intro}>
         The Workshop curates hand-crafted, practical tools designed to help creatives at every stage
         produce stronger work.
-        {'\n'}All products are included with the premium{' '}
-        <Text style={styles.introEmph}>Tommy Tier</Text>.
+        {'\n'}All products are included with{' '}
+        <Text style={styles.introEmph}>Pro</Text>.
       </Text>
 
       {loading && !refreshing ? (
@@ -243,14 +251,12 @@ const WorkshopScreen: React.FC = () => {
             <View style={styles.emptyState}>
               <Ionicons name="cube-outline" size={30} color={TEXT_MUTED} />
               <Text style={styles.emptyTitle}>Nothing in the crate yet</Text>
-              <Text style={styles.emptyText}>
-                Your first Workshop pack will drop here soon.
-              </Text>
+              <Text style={styles.emptyText}>Your first Workshop pack will drop here soon.</Text>
             </View>
           )}
 
           {products.map((product) => {
-            // ✨ Treat the existing OUT PACK row as the STARTER LUT Pack, but now gated by tier.
+            // Keep your existing OUT PACK mapping behavior
             const isStarter =
               product.slug === 'starter-lut-pack' ||
               product.slug === 'out-pack' ||
@@ -271,7 +277,7 @@ const WorkshopScreen: React.FC = () => {
               : product;
 
             const access = hasAccess(mappedProduct);
-            const isTommy = userProfile?.tier === 'tommy';
+            const isPro = userProfile?.tier === 'pro';
 
             return (
               <View key={mappedProduct.id} style={styles.card}>
@@ -291,16 +297,16 @@ const WorkshopScreen: React.FC = () => {
                       {mappedProduct.name}
                     </Text>
 
-                    {isTommy && (
-                      <View style={styles.badgeTommy}>
-                        <Text style={styles.badgeTommyText}>Tommy</Text>
+                    {isPro && (
+                      <View style={styles.badgePro}>
+                        <Text style={styles.badgeProText}>Pro</Text>
                       </View>
                     )}
 
-                    {access && !isTommy && (
+                    {access && !isPro && (
                       <View style={styles.badgeOwned}>
                         <Text style={styles.badgeOwnedText}>
-                          {isStarter ? 'Unlocked' : 'Owned'}
+                          {isStarter || mappedProduct.price_cents === 0 ? 'Unlocked' : 'Owned'}
                         </Text>
                       </View>
                     )}
@@ -316,14 +322,14 @@ const WorkshopScreen: React.FC = () => {
                   {isStarter ? (
                     <View style={styles.metaRow}>
                       <Text style={styles.metaHint}>
-                        Free beta download • included with Tommy while we’re in early access.
+                        Free beta download • included with Pro while we’re in early access.
                       </Text>
                     </View>
                   ) : (
                     <View style={styles.metaRow}>
                       <Text style={styles.priceLabel}>{formatPrice(mappedProduct)}</Text>
                       {!access && mappedProduct.price_cents > 0 && (
-                        <Text style={styles.metaHint}>Included with Tommy</Text>
+                        <Text style={styles.metaHint}>Included with Pro</Text>
                       )}
                       {access && <Text style={styles.metaHint}>Unlocked</Text>}
                     </View>
@@ -335,7 +341,6 @@ const WorkshopScreen: React.FC = () => {
             );
           })}
 
-          {/* Big footer message to fill empty space */}
           {products.length > 0 && (
             <Text style={styles.comingSoonBig}>MORE TOOLS COMING SOON.</Text>
           )}
@@ -347,18 +352,11 @@ const WorkshopScreen: React.FC = () => {
         visible={upgradeVisible}
         onClose={() => setUpgradeVisible(false)}
         context="workshop"
-        onSelectArtist={() => {
+        onSelectPro={() => {
           setUpgradeVisible(false);
           Alert.alert(
-            'Upgrade to Artist',
-            'The Artist upgrade flow is not wired up yet. Once it is, you’ll unlock extra challenge submissions and access to paid jobs.'
-          );
-        }}
-        onSelectTommy={() => {
-          setUpgradeVisible(false);
-          Alert.alert(
-            'Upgrade to Tommy',
-            'The Tommy upgrade flow is not wired up yet. Once it is, you’ll unlock all Workshop products automatically.'
+            'Upgrade to Pro',
+            'The Pro upgrade flow is not wired up yet. Once it is, you’ll unlock all Workshop products automatically.'
           );
         }}
       />
@@ -490,14 +488,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     fontFamily: SYSTEM_SANS,
   },
-  badgeTommy: {
+  badgePro: {
     marginLeft: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 999,
     backgroundColor: GOLD,
   },
-  badgeTommyText: {
+  badgeProText: {
     fontSize: 8,
     fontWeight: '800',
     color: '#050505',
@@ -564,7 +562,6 @@ const styles = StyleSheet.create({
   },
   ctaTextOutline: { color: GOLD },
 
-  // Giant footer banner
   comingSoonBig: {
     marginTop: 28,
     marginBottom: 6,

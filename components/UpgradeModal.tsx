@@ -9,7 +9,8 @@ import {
   Platform,
 } from 'react-native';
 import { type UserTier } from '../app/lib/supabase';
-import { getCurrentUserTierOrNetworking } from '../app/lib/membership';
+import { getCurrentUserTierOrFree } from '../app/lib/membership';
+import { supabase } from '../app/lib/supabase';
 
 type UpgradeContext =
   | 'challenge'
@@ -22,8 +23,7 @@ type Props = {
   visible: boolean;
   onClose: () => void;
   context?: UpgradeContext;
-  onSelectArtist?: () => void;
-  onSelectTommy?: () => void;
+  onSelectPro?: () => void;
 };
 
 /* -------------------------- shared palette/fonts -------------------------- */
@@ -42,20 +42,20 @@ const SYSTEM_SANS = Platform.select({
 });
 
 const HUMAN_TIER_LONG: Record<UserTier, string> = {
-  networking: 'Networking (Free)',
-  artist: 'Artist – £6.99 / month',
-  tommy: 'Tommy – £9.99 / month',
+  free: 'Free',
+  pro: 'Pro – £4.99 / month',
 };
 
 export const UpgradeModal: React.FC<Props> = ({
   visible,
   onClose,
   context,
-  onSelectArtist,
-  onSelectTommy,
+  onSelectPro,
 }) => {
-  const [selectedTier, setSelectedTier] = useState<UserTier>('artist');
+  const [selectedTier, setSelectedTier] = useState<UserTier>('pro');
   const [currentTier, setCurrentTier] = useState<UserTier | null>(null);
+  const [upgrading, setUpgrading] = useState(false);
+  const [errorText, setErrorText] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -63,7 +63,8 @@ export const UpgradeModal: React.FC<Props> = ({
 
     (async () => {
       try {
-        const tier = await getCurrentUserTierOrNetworking();
+        setErrorText(null);
+        const tier = await getCurrentUserTierOrFree();
         if (!mounted) return;
         setCurrentTier(tier);
         setSelectedTier(tier);
@@ -87,24 +88,60 @@ export const UpgradeModal: React.FC<Props> = ({
       ? 'Apply for Paid Jobs'
       : context === 'workshop'
       ? 'Unlock Workshop Products'
+      : context === 'extra_submission'
+      ? 'Unlock More Submissions'
       : 'Unlock More on Overlooked';
 
-  const currentTierLabel = currentTier
-    ? HUMAN_TIER_LONG[currentTier]
-    : 'Networking (Free)';
+  const currentTierLabel = currentTier ? HUMAN_TIER_LONG[currentTier] : 'Free';
 
-  const isArtistDisabled = currentTier === 'artist' || currentTier === 'tommy';
-  const isTommyDisabled = currentTier === 'tommy';
+  const isProDisabled = currentTier === 'pro';
+
+  const doFakeUpgradeToPro = async () => {
+    try {
+      setUpgrading(true);
+      setErrorText(null);
+
+      // Must be signed in
+      const { data: userRes, error: userErr } = await supabase.auth.getUser();
+      if (userErr) throw userErr;
+      if (!userRes?.user?.id) throw new Error('Not signed in');
+
+      // This RPC is the cleanest way (and avoids letting the client write directly).
+      // Create it in Supabase SQL: public.upgrade_to_pro()
+      const { error } = await supabase.rpc('upgrade_to_pro');
+      if (error) throw error;
+
+      // Update UI immediately
+      setCurrentTier('pro');
+      setSelectedTier('pro');
+
+      // Let parent know (optional)
+      if (onSelectPro) onSelectPro();
+
+      // Close modal after success
+      onClose();
+    } catch (err: any) {
+      console.log('UpgradeModal upgrade error', err?.message || err);
+      setErrorText(err?.message || 'Upgrade failed');
+    } finally {
+      setUpgrading(false);
+    }
+  };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
       <View style={styles.backdrop}>
         <View style={styles.card}>
           {/* Header */}
           <Text style={styles.kicker}>UPGRADE</Text>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.subtitle}>
-            Choose a plan to unlock more challenge submissions, paid jobs, and premium resources.
+            Go Pro to unlock challenge submissions, paid jobs, and all Workshop tools.
           </Text>
 
           {currentTier && (
@@ -114,24 +151,28 @@ export const UpgradeModal: React.FC<Props> = ({
             </Text>
           )}
 
+          {errorText ? (
+            <Text style={styles.errorText}>{errorText}</Text>
+          ) : null}
+
           {/* Tiers */}
           <View style={styles.tiersRow}>
-            {/* Networking */}
+            {/* Free */}
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={() => setSelectedTier('networking')}
+              onPress={() => setSelectedTier('free')}
               style={[
                 styles.tierCard,
-                selectedTier === 'networking' && styles.tierCardSelected,
-                currentTier === 'networking' && styles.tierCardCurrent,
+                selectedTier === 'free' && styles.tierCardSelected,
+                currentTier === 'free' && styles.tierCardCurrent,
               ]}
             >
               <Text style={styles.tierLabel}>
-                {currentTier === 'networking' ? 'Current Plan' : 'Free'}
+                {currentTier === 'free' ? 'Current Plan' : 'Free'}
               </Text>
 
-              <Text style={styles.tierName}>Networking</Text>
-              <Text style={styles.tierTagline}>Build your creative network</Text>
+              <Text style={styles.tierName}>Free</Text>
+              <Text style={styles.tierTagline}>Browse, connect, collaborate</Text>
 
               <View style={styles.priceRow}>
                 <Text style={styles.priceMain}>FREE</Text>
@@ -148,99 +189,66 @@ export const UpgradeModal: React.FC<Props> = ({
               </View>
             </TouchableOpacity>
 
-            {/* Artist */}
+            {/* Pro */}
             <TouchableOpacity
               activeOpacity={0.9}
-              onPress={() => setSelectedTier('artist')}
+              onPress={() => setSelectedTier('pro')}
               style={[
                 styles.tierCard,
                 styles.tierCardEmphasis,
-                selectedTier === 'artist' && styles.tierCardSelected,
-                currentTier === 'artist' && styles.tierCardCurrent,
+                selectedTier === 'pro' && styles.tierCardSelected,
+                currentTier === 'pro' && styles.tierCardCurrent,
               ]}
             >
               <Text style={styles.tierLabel}>
-                {currentTier === 'artist' ? 'Current Plan' : ''}
+                {currentTier === 'pro' ? 'Current Plan' : 'Pro'}
               </Text>
 
-              <Text style={styles.tierName}>Artist</Text>
-              <Text style={styles.tierTagline}>Showcase your work, get seen</Text>
+              <Text style={styles.tierName}>Pro</Text>
+              <Text style={styles.tierTagline}>Submit, apply, unlock everything</Text>
 
               <View style={styles.priceRow}>
                 <Text style={styles.priceCurrency}>£</Text>
-                <Text style={styles.priceMain}>6.99</Text>
+                <Text style={styles.priceMain}>4.99</Text>
                 <Text style={styles.priceSub}>/ month</Text>
               </View>
 
               <View style={styles.divider} />
 
               <View style={styles.featureList}>
-                <Text style={styles.featureItem}>✓ Everything in Networking</Text>
-                <Text style={styles.featureItem}>✓ Up to 3 challenge submissions / month</Text>
+                <Text style={styles.featureItem}>✓ 2 challenge submissions / month</Text>
                 <Text style={styles.featureItem}>✓ Apply for all paid jobs</Text>
-                <Text style={styles.featureItem}>✓ Priority visibility on job applications</Text>
-              </View>
-            </TouchableOpacity>
-
-            {/* Tommy */}
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => setSelectedTier('tommy')}
-              style={[
-                styles.tierCard,
-                selectedTier === 'tommy' && styles.tierCardSelected,
-                currentTier === 'tommy' && styles.tierCardCurrent,
-              ]}
-            >
-              <Text style={styles.tierLabel}>
-                {currentTier === 'tommy' ? 'Current Plan' : 'All-Access'}
-              </Text>
-
-              <Text style={styles.tierName}>Tommy</Text>
-              <Text style={styles.tierTagline}>For those taking their art seriously</Text>
-
-              <View style={styles.priceRow}>
-                <Text style={styles.priceCurrency}>£</Text>
-                <Text style={styles.priceMain}>9.99</Text>
-                <Text style={styles.priceSub}>/ month</Text>
-              </View>
-
-              <View style={styles.divider} />
-
-              <View style={styles.featureList}>
-                <Text style={styles.featureItem}>✓ Up to 6 challenge submissions / month</Text>
-                <Text style={styles.featureItem}>✓ Highest priority on paid job applications</Text>
                 <Text style={styles.featureItem}>✓ Full access to all workshop products & releases</Text>
               </View>
             </TouchableOpacity>
           </View>
 
-          {/* Buttons */}
+          {/* Button */}
           <TouchableOpacity
-            style={[styles.buttonBase, styles.artistButton, isArtistDisabled && styles.buttonDisabled]}
-            onPress={isArtistDisabled ? undefined : onSelectArtist}
-            activeOpacity={isArtistDisabled ? 1 : 0.9}
+            style={[
+              styles.buttonBase,
+              styles.proButton,
+              (selectedTier !== 'pro' || isProDisabled || upgrading) && styles.buttonDisabled,
+            ]}
+            onPress={
+              selectedTier !== 'pro' || isProDisabled || upgrading
+                ? undefined
+                : doFakeUpgradeToPro
+            }
+            activeOpacity={selectedTier !== 'pro' || isProDisabled || upgrading ? 1 : 0.9}
           >
-            <Text style={[styles.buttonText, isArtistDisabled && styles.buttonTextDisabled]}>
-              {currentTier === 'artist'
-                ? "You're on Artist"
-                : currentTier === 'tommy'
-                ? 'Included in Tommy'
-                : 'Upgrade to Artist'}
+            <Text
+              style={[
+                styles.buttonText,
+                (selectedTier !== 'pro' || isProDisabled || upgrading) &&
+                  styles.buttonTextDisabled,
+              ]}
+            >
+              {isProDisabled ? "You're on Pro" : upgrading ? 'Upgrading...' : 'Upgrade to Pro'}
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.buttonBase, styles.tommyButton, isTommyDisabled && styles.buttonDisabled]}
-            onPress={isTommyDisabled ? undefined : onSelectTommy}
-            activeOpacity={isTommyDisabled ? 1 : 0.9}
-          >
-            <Text style={[styles.buttonText, isTommyDisabled && styles.buttonTextDisabled]}>
-              {currentTier === 'tommy' ? "You're on Tommy" : 'Upgrade to Tommy'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={onClose} style={styles.laterButton}>
+          <TouchableOpacity onPress={onClose} style={styles.laterButton} disabled={upgrading}>
             <Text style={styles.laterText}>Maybe later</Text>
           </TouchableOpacity>
         </View>
@@ -302,6 +310,12 @@ const styles = StyleSheet.create({
     color: GOLD,
     fontWeight: '700',
   },
+  errorText: {
+    fontSize: 12,
+    color: '#FFB3B3',
+    marginBottom: 10,
+    fontFamily: SYSTEM_SANS,
+  },
   tiersRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -310,7 +324,7 @@ const styles = StyleSheet.create({
   },
   tierCard: {
     flex: 1,
-    minWidth: 220,
+    minWidth: 260,
     marginHorizontal: 4,
     marginBottom: 10,
     paddingVertical: 16,
@@ -401,11 +415,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 999,
   },
-  artistButton: {
-    backgroundColor: GOLD,
-  },
-  tommyButton: {
-    marginTop: 10,
+  proButton: {
     backgroundColor: GOLD,
   },
   buttonDisabled: {

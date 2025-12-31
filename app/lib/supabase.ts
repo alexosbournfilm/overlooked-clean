@@ -156,19 +156,17 @@ export async function giveXp(
 // =======================
 
 // These names match the `users.tier` CHECK constraint in SQL.
-export type UserTier = 'networking' | 'artist' | 'tommy';
+export type UserTier = 'free' | 'pro';
 
 /**
  * Frontend mirror of the backend logic:
- *  - networking → 0 submissions/month
- *  - artist     → 3 submissions/month
- *  - tommy      → 6 submissions/month
+ *  - free → 0 submissions/month
+ *  - pro  → 2 submissions/month
  *
  * Keep this in sync with:
  *  - public.allowed_submissions_by_tier(p_tier text)
  */
 export const TIER_SUBMISSION_LIMITS: Record<UserTier, number> = {
-  networking: 0,
-  artist: 3,
-  tommy: 6,
+  free: 0,
+  pro: 2,
 };

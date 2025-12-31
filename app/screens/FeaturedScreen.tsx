@@ -1090,48 +1090,57 @@ function normalizeIsoRange(start: string, end: string) {
   };
 }
 
-async function fetchCurrentChallenge() {
+async function fetchChallengesForFeatured() {
+  // 1) finalize last month if needed
   try {
-    const { error: finalizeErr } =
-      await supabase.rpc(
-        'finalize_last_month_winner_if_needed'
-      );
+    const { error: finalizeErr } = await supabase.rpc('finalize_last_month_winner_if_needed');
     if (finalizeErr) {
-      console.warn(
-        'finalize_last_month_winner_if_needed failed:',
-        finalizeErr.message
-      );
+      console.warn('finalize_last_month_winner_if_needed failed:', finalizeErr.message);
     }
   } catch {}
 
-  const { data, error } = await supabase
+  // 2) ensure current month challenge exists
+  try {
+    const { error: insertErr } = await supabase.rpc('insert_monthly_challenge_if_not_exists');
+    if (insertErr) {
+      console.warn('insert_monthly_challenge_if_not_exists failed:', insertErr.message);
+    }
+  } catch {}
+
+  const nowIso = new Date().toISOString();
+
+  // CURRENT month row (for range/theme)
+  const { data: current, error: curErr } = await supabase
     .from('monthly_challenges')
-    .select(
-      'theme_word, winner_submission_id, month_start, month_end'
-    )
-    .order('month_start', {
-      ascending: false,
-    })
+    .select('id, theme_word, month_start, month_end')
+    .lte('month_start', nowIso)
+    .gt('month_end', nowIso)
+    .order('month_start', { ascending: false })
     .limit(1)
     .single();
 
-  if (error) {
-    console.warn(
-      'Failed to fetch current challenge:',
-      error.message
-    );
+  if (curErr) {
+    console.warn('Failed to fetch CURRENT month challenge:', curErr.message);
   }
 
-  return (data as
-    | {
-        theme_word: string | null;
-        winner_submission_id: string | null;
-        month_start: string;
-        month_end: string;
-      }
-    | null) ?? null;
-}
+  // PREVIOUS month row (for last month winner)
+  const { data: previous, error: prevErr } = await supabase
+    .from('monthly_challenges')
+    .select('id, winner_submission_id, month_start, month_end')
+    .lte('month_end', nowIso)
+    .order('month_end', { ascending: false })
+    .limit(1)
+    .single();
 
+  if (prevErr) {
+    console.warn('Failed to fetch PREVIOUS month challenge:', prevErr.message);
+  }
+
+  return {
+    current: current ?? null,
+    previous: previous ?? null,
+  };
+}
 /* 🔥 Count votes in current month for cap enforcement */
 async function countUserVotesInRange(
   uid: string,
@@ -1671,17 +1680,16 @@ const FeaturedScreen = () => {
   ) => {
     setLoading(true);
 
-    const challenge =
-      await fetchCurrentChallenge();
-    const range = challenge
-      ? {
-          start: challenge.month_start,
-          end: challenge.month_end,
-        }
-      : undefined;
+    const challenges = await fetchChallengesForFeatured();
 
-    currentRangeRef.current =
-      range ?? null;
+const range = challenges.current
+  ? {
+      start: challenges.current.month_start,
+      end: challenges.current.month_end,
+    }
+  : undefined;
+
+currentRangeRef.current = range ?? null;
 
     // Winner
     let winnerData:
@@ -1695,34 +1703,23 @@ const FeaturedScreen = () => {
         })
       | null = null;
 
-    if (challenge?.winner_submission_id) {
-      const { data: w } =
-        await fetchWinnerSafe(
-          challenge.winner_submission_id,
-          cat
-        );
-      winnerData = w
-        ? normalizeRow(
-            w as RawSubmission
-          )
-        : null;
-      if (
-        winnerData &&
-        winnerData.category !== cat
-      ) {
-        winnerData = null;
-      }
-      if (
-        (winnerData as any)
-          ?.storage_path
-      ) {
-        signStoragePath(
-          (winnerData as any)
-            .storage_path!,
-          180
-        ).catch(() => {});
-      }
-    }
+    // Winner must come from PREVIOUS month (not current month)
+if (challenges.previous?.winner_submission_id) {
+  const { data: w } = await fetchWinnerSafe(
+    challenges.previous.winner_submission_id,
+    cat
+  );
+
+  winnerData = w ? normalizeRow(w as RawSubmission) : null;
+
+  if (winnerData && winnerData.category !== cat) {
+    winnerData = null;
+  }
+
+  if ((winnerData as any)?.storage_path) {
+    signStoragePath((winnerData as any).storage_path!, 180).catch(() => {});
+  }
+}
 
     // Submissions
     const resp = await fetchSubsSafe(

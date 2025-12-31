@@ -31,7 +31,7 @@ import { decode } from 'html-entities';
 import { COLORS as THEME_COLORS } from '../theme/colors';
 import { supabase, XP_VALUES, type UserTier } from '../lib/supabase';
 import { useGamification } from '../context/GamificationContext';
-import { getCurrentUserTierOrNetworking } from '../lib/membership';
+import { getCurrentUserTierOrFree } from '../lib/membership';
 import { UpgradeModal } from '../../components/UpgradeModal';
 
 const SYSTEM_SANS = Platform.select({
@@ -379,7 +379,7 @@ export default function JobsScreen() {
   const realtimeThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Tier / upgrade modal
-  const [userTier, setUserTier] = useState<UserTier>('networking');
+  const [userTier, setUserTier] = useState<UserTier>('free');
   const [upgradeVisible, setUpgradeVisible] = useState(false);
   const [upgradeContext, setUpgradeContext] = useState<UpgradeContext>('jobs');
 
@@ -429,7 +429,7 @@ export default function JobsScreen() {
     let mounted = true;
     (async () => {
       try {
-        const tier = await getCurrentUserTierOrNetworking();
+        const tier = await getCurrentUserTierOrFree();
         if (!mounted) return;
         setUserTier(tier);
       } catch (err) {
@@ -901,7 +901,7 @@ export default function JobsScreen() {
     if (!selectedJob) return;
 
     // 🔒 Membership gate: Networking cannot apply for PAID jobs
-    if (selectedJob.type === 'Paid' && userTier === 'networking') {
+    if (selectedJob.type === 'Paid' && userTier === 'free') {
       setUpgradeContext('jobs');
       setUpgradeVisible(true);
       return;
@@ -2136,18 +2136,14 @@ export default function JobsScreen() {
 
       {/* Tier / Upgrade Modal */}
       <UpgradeModal
-        visible={upgradeVisible}
-        context={upgradeContext}
-        onClose={() => setUpgradeVisible(false)}
-        onSelectArtist={() => {
-          setUpgradeVisible(false);
-          show('Artist upgrade flow coming soon.', 'info');
-        }}
-        onSelectTommy={() => {
-          setUpgradeVisible(false);
-          show('Tommy upgrade flow coming soon.', 'info');
-        }}
-      />
+  visible={upgradeVisible}
+  context={upgradeContext}
+  onClose={() => setUpgradeVisible(false)}
+  onSelectPro={() => {
+    setUpgradeVisible(false);
+    show('Pro upgrade flow coming soon.', 'info');
+  }}
+/>
     </View>
   );
 }
@@ -2344,20 +2340,20 @@ const styles = StyleSheet.create({
 
   /* Post Job button */
   postButton: {
-    position: 'absolute',
-    bottom: 32,
-    left: 16,
-    right: 16,
-    backgroundColor: T.accent,
-    padding: 14,
-    borderRadius: RADIUS,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: T.accent,
-  },
+  position: 'absolute',
+  bottom: 32,
+  left: 16,
+  right: 16,
+  backgroundColor: GOLD,      // ✅ match Challenge gold button
+  padding: 14,
+  borderRadius: RADIUS,
+  alignItems: 'center',
+  flexDirection: 'row',
+  justifyContent: 'center',
+  gap: 8,
+  borderWidth: 1,
+  borderColor: '#000000',     // ✅ same “gold button” border style as Challenge
+},
   postButtonText: {
     color: '#000',
     fontFamily: SYSTEM_SANS,
@@ -2416,14 +2412,14 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  submitButton: {
-    backgroundColor: T.accent,
-    padding: 14,
-    borderRadius: RADIUS,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: T.accent,
-  },
+    submitButton: {
+  backgroundColor: GOLD,      // ✅ match Challenge gold button
+  padding: 14,
+  borderRadius: RADIUS,
+  alignItems: 'center',
+  borderWidth: 1,
+  borderColor: '#000000',     // ✅ same gold button border style as Challenge
+},
   submitText: {
     color: '#000',
     fontFamily: SYSTEM_SANS,
@@ -2484,16 +2480,16 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   footerPrimary: {
-    backgroundColor: T.accent,
-    borderWidth: 1,
-    borderColor: T.accent,
-  },
-  footerPrimaryText: {
-    color: '#000',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
+  backgroundColor: GOLD,   // ✅ gold like Challenge
+  borderWidth: 1,
+  borderColor: '#000000',  // ✅ same border feel as Challenge buttons
+},
+footerPrimaryText: {
+  color: '#0B0B0B',        // ✅ dark text like Challenge
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  letterSpacing: 1,
+},
 
   /* Inline overlays */
   inlineOverlay: {

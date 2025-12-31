@@ -1,5 +1,5 @@
 // app/screens/LocationScreen.tsx
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -12,50 +12,40 @@ import {
   ActivityIndicator,
   Platform,
   Alert,
+  Image,
 } from 'react-native';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
-import { COLORS as THEME_COLORS } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 
 /* ────────────────────────────────────────────────────────────
-   Cinematic noir base (gold accents, flatter like Jobs page)
+   Match MainTabs aesthetic (same palette + font system)
    ──────────────────────────────────────────────────────────── */
+const DARK_BG = '#0D0D0D';
+const DARK_ELEVATED = '#171717';
+const TEXT_IVORY = '#EDEBE6';
+const TEXT_MUTED = '#A7A6A2';
+const DIVIDER = '#2A2A2A';
 const GOLD = '#C6A664';
 
-const T = {
-  bg: '#0B0B0B',
-  surface: '#111111',
-  text: '#FFFFFF',
-  sub: '#C9C9C9',
-  mute: '#9A9A9A',
-  accent: '#FFFFFF',
-  line: '#1A1A1A',
-  border: '#1E1E1E',
-  borderSoft: '#1A1A1A',
-};
+const SYSTEM_SANS = Platform.select({
+  ios: 'System',
+  android: 'Roboto',
+  web: undefined,
+  default: undefined,
+});
 
 /** Reduced, consistent top offset (good on web & mobile) */
 const TOP_BAR_OFFSET = Platform.OS === 'web' ? 24 : 12;
 
-/** Headline & category font families */
-const FONT_CINEMATIC =
-  Platform.select({ ios: 'Cinzel', android: 'Cinzel', default: 'Cinzel' }) || 'Cinzel';
-const FONT_CATEGORY =
-  Platform.select({ ios: 'Avenir Next', android: 'sans-serif-light', default: 'Avenir Next' }) ||
-  'Avenir Next';
-
-const COLORS = {
-  ...THEME_COLORS,
-  background: T.bg,
-  card: T.surface,
-  textPrimary: T.text,
-  textSecondary: T.sub,
-  primary: T.accent,
-  textOnPrimary: '#000000',
-  border: T.border,
-  borderSoft: T.borderSoft,
-};
+/**
+ * ✅ Web-only focus ring removal (prevents the blue outline on web)
+ * TS-safe because we don't put these props inside StyleSheet.create()
+ */
+const WEB_NO_OUTLINE =
+  Platform.OS === 'web'
+    ? ({ outlineStyle: 'none', outlineWidth: 0 } as any)
+    : null;
 
 /* -------------------------------------------
    Types
@@ -78,6 +68,8 @@ type Conversation = {
 type LocatedUser = {
   id: string;
   full_name: string;
+  avatar_url?: string | null;
+  level?: number | null;
 };
 
 type JoinedUser =
@@ -85,11 +77,13 @@ type JoinedUser =
   | { id: string; full_name?: string }[]
   | null
   | undefined;
+
 type JoinedCity =
   | { name?: string; country_code?: string }
   | { name?: string; country_code?: string }[]
   | null
   | undefined;
+
 type JoinedRole =
   | { name?: string }
   | { name?: string }[]
@@ -133,29 +127,117 @@ const getFlag = (countryCode: string) =>
     .toUpperCase()
     .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
 
-/** Prioritize exact match first, then starts-with, then others */
+/* ✅ Same level ring logic as Chats */
+const getLevelRingColor = (level?: number | null): string => {
+  if (!level || level < 25) return '#FFFFFF'; // 1–24 (and unknown)
+  if (level < 50) return '#C0C0C0'; // 25–49 silver
+  return '#FFD700'; // 50+ gold
+};
+
+/**
+ * Parse query like:
+ * - "rome"
+ * - "rome, it"
+ * - "rome it"
+ * - "rome (it)"
+ */
+const parseCityQuery = (raw: string) => {
+  const s = (raw || '').trim();
+  const cleaned = s.replace(/[()]/g, '').replace(/\s+/g, ' ');
+  const lower = cleaned.toLowerCase();
+
+  const partsComma = lower
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  let cityPart = partsComma[0] || '';
+  let countryPart = partsComma[1] || '';
+
+  if (!countryPart) {
+    const tokens = lower.split(' ').filter(Boolean);
+    if (tokens.length >= 2) {
+      const last = tokens[tokens.length - 1];
+      if (/^[a-z]{2}$/.test(last)) {
+        countryPart = last;
+        cityPart = tokens.slice(0, -1).join(' ');
+      }
+    }
+  }
+
+  const cityQuery = (cityPart || '').trim();
+  const countryCode = (countryPart || '').trim();
+
+  return {
+    cityQuery,
+    countryCode: /^[a-z]{2}$/.test(countryCode) ? countryCode.toUpperCase() : '',
+  };
+};
+
+/**
+ * ✅ Better match ordering so the city you’re searching is the top one.
+ * Also handles diacritics (Skýros etc).
+ */
 const prioritizeCityMatches = (
   list: { id: number; name: string; country_code: string }[],
-  term: string
+  rawTerm: string
 ) => {
-  const q = term.trim().toLowerCase();
+  const { cityQuery, countryCode } = parseCityQuery(rawTerm);
+  const q = cityQuery.trim();
+
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+
+  const qn = norm(q);
+
+  const score = (row: { name: string; country_code: string }) => {
+    const name = norm(row.name);
+    const cc = (row.country_code || '').toUpperCase();
+
+    const exactCity = name === qn;
+    const starts = name.startsWith(qn);
+    const contains = name.includes(qn);
+
+    // If user typed a country code, prefer rows in that country.
+    if (countryCode && exactCity && cc === countryCode) return 0;
+    if (exactCity) return 1;
+    if (countryCode && starts && cc === countryCode) return 2;
+    if (starts) return 3;
+    if (countryCode && contains && cc === countryCode) return 4;
+    if (contains) return 5;
+    return 6;
+  };
+
   return list.sort((a, b) => {
-    const A = a.name.toLowerCase();
-    const B = b.name.toLowerCase();
-    const score = (s: string) => (s === q ? 0 : s.startsWith(q) ? 1 : 2);
-    const cmp = score(A) - score(B);
-    return cmp !== 0 ? cmp : A.localeCompare(B);
+    const sa = score(a);
+    const sb = score(b);
+    if (sa !== sb) return sa - sb;
+
+    if (countryCode) {
+      const ac = (a.country_code || '').toUpperCase() === countryCode ? 0 : 1;
+      const bc = (b.country_code || '').toUpperCase() === countryCode ? 0 : 1;
+      if (ac !== bc) return ac - bc;
+    }
+
+    const an = a.name.toLowerCase();
+    const bn = b.name.toLowerCase();
+    if (an !== bn) return an.localeCompare(bn);
+    return (a.country_code || '').localeCompare(b.country_code || '');
   });
 };
 
-/* Small icon + text helper (neutral) */
+/* Small icon + text helper */
 const IconText: React.FC<{
   name: keyof typeof Ionicons.glyphMap;
   text: string;
   bold?: boolean;
 }> = ({ name, text, bold }) => (
   <View style={styles.iconTextRow}>
-    <Ionicons name={name} size={16} color={T.sub} style={{ marginRight: 8 }} />
+    <Ionicons name={name} size={16} color={TEXT_MUTED} style={{ marginRight: 8 }} />
     <Text style={[styles.jobMeta, bold && styles.jobMetaStrong]}>{text}</Text>
   </View>
 );
@@ -184,37 +266,81 @@ export default function LocationScreen() {
 
   const navigation = useNavigation<any>();
 
+  /**
+   * ✅ Fix for your "Rome -> Roma sometimes" bug:
+   * This is a classic race condition (older supabase response overwriting newer input).
+   * We track a request id + latest term; only the newest request is allowed to update the list.
+   */
+  const cityReqIdRef = useRef(0);
+  const latestCityTermRef = useRef('');
+
+  const effectiveCityQuery = useMemo(() => parseCityQuery(citySearchTerm), [citySearchTerm]);
+
   const fetchCities = useCallback(async (search: string) => {
-    const q = search?.trim() || '';
-    if (q.length < 2) {
+    const raw = (search || '').trim();
+    const { cityQuery, countryCode } = parseCityQuery(raw);
+
+    latestCityTermRef.current = raw;
+
+    if (cityQuery.length < 2) {
       setCityItems([]);
+      setIsSearchingCities(false);
       return;
     }
 
+    const myReqId = ++cityReqIdRef.current;
     setIsSearchingCities(true);
 
-    const { data, error } = await supabase
-      .from('cities')
-      .select('id, name, country_code')
-      .ilike('name', `%${q}%`)
-      .limit(50);
+    try {
+      // If user typed a country code, bias results by filtering first
+      const baseQuery = supabase
+        .from('cities')
+        .select('id, name, country_code')
+        .ilike('name', `%${cityQuery}%`)
+        .limit(120);
 
-    setIsSearchingCities(false);
+      const primary = countryCode ? await baseQuery.eq('country_code', countryCode) : await baseQuery;
 
-    if (error) {
-      console.error('Error fetching cities:', error.message);
-      return;
-    }
+      // If country filtered yielded nothing, fallback to global search
+      let finalData = primary.data;
+      let finalError = primary.error;
 
-    if (data) {
-      const prioritized = prioritizeCityMatches(data, q);
-      setCityItems(
-        prioritized.map((item) => ({
-          label: `${getFlag(item.country_code)} ${item.name}, ${item.country_code}`,
-          value: item.id,
-          country: item.country_code,
-        }))
-      );
+      if (countryCode && (!finalData || finalData.length === 0)) {
+        const fallback = await supabase
+          .from('cities')
+          .select('id, name, country_code')
+          .ilike('name', `%${cityQuery}%`)
+          .limit(120);
+
+        finalData = fallback.data;
+        finalError = fallback.error;
+      }
+
+      // ✅ Ignore stale responses
+      if (myReqId !== cityReqIdRef.current) return;
+      if (latestCityTermRef.current !== raw) return;
+
+      if (finalError) {
+        console.error('Error fetching cities:', finalError.message);
+        setCityItems([]);
+        return;
+      }
+
+      if (finalData) {
+        const prioritized = prioritizeCityMatches(finalData, raw);
+        setCityItems(
+          prioritized.map((item) => ({
+            label: `${getFlag(item.country_code)} ${item.name}, ${item.country_code}`,
+            value: item.id,
+            country: item.country_code,
+          }))
+        );
+      }
+    } finally {
+      // Only end loading for the latest request
+      if (myReqId === cityReqIdRef.current && latestCityTermRef.current === raw) {
+        setIsSearchingCities(false);
+      }
     }
   }, []);
 
@@ -225,7 +351,8 @@ export default function LocationScreen() {
     setSearched(false);
 
     const [usersRes, jobsRes] = await Promise.all([
-      supabase.from('users').select('id, full_name').eq('city_id', city.value),
+      // ✅ include avatar_url + level so we can do the ring color properly
+      supabase.from('users').select('id, full_name, avatar_url, level').eq('city_id', city.value),
       supabase
         .from('jobs')
         .select('id, title, is_closed, creative_roles:role_id (name)')
@@ -381,9 +508,7 @@ export default function LocationScreen() {
   const onPressJob = async (jobRow: LocatedJobLite) => {
     setJobDetailModalOpen(true);
     const detail = await fetchJobDetail(jobRow.id);
-    if (detail) {
-      setSelectedJob(detail);
-    }
+    if (detail) setSelectedJob(detail);
   };
 
   const applyToSelectedJob = useCallback(async () => {
@@ -393,7 +518,6 @@ export default function LocationScreen() {
     const me = auth?.user;
     if (!me) return Alert.alert('Please log in to apply.');
 
-    // Safety re-check
     const { data: latest, error: latestErr } = await supabase
       .from('jobs')
       .select('is_closed')
@@ -451,43 +575,35 @@ export default function LocationScreen() {
 
   return (
     <ScrollView
+      style={{ flex: 1, backgroundColor: DARK_BG }}
       contentContainerStyle={[styles.container, { paddingTop: TOP_BAR_OFFSET }]}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       showsVerticalScrollIndicator={false}
     >
-      {/* Headline (now matches category font/weight/letter-spacing) */}
       <Text style={styles.title}>Find jobs and creatives in your city</Text>
 
-      {/* City select — turns GOLD + Cinzel when a city is selected */}
       <TouchableOpacity
         style={styles.citySelectButton}
         onPress={() => setSearchModalVisible(true)}
         activeOpacity={0.92}
       >
         <View style={styles.citySelectInner}>
-          <Ionicons name="location-outline" size={18} color={city ? GOLD : T.sub} />
-          <Text
-            style={[
-              styles.citySelectButtonText,
-              city && styles.citySelectButtonTextSelected,
-            ]}
-          >
+          <Ionicons name="location-outline" size={18} color={city ? GOLD : TEXT_MUTED} />
+          <Text style={[styles.citySelectButtonText, city && styles.citySelectButtonTextSelected]}>
             {city ? city.label : 'Spell your city correctly, e.g. Skyros / Skýros'}
           </Text>
         </View>
       </TouchableOpacity>
 
-      {/* Softer Search button (calm fill, no harsh contrast) */}
       {city && (
         <TouchableOpacity style={styles.searchButton} onPress={handleSearch} activeOpacity={0.92}>
-          {searching ? <ActivityIndicator color={T.text} /> : <Text style={styles.searchButtonText}>Search</Text>}
+          {searching ? <ActivityIndicator color={TEXT_IVORY} /> : <Text style={styles.searchButtonText}>Search</Text>}
         </TouchableOpacity>
       )}
 
       {searched && (
         <View style={styles.resultsSection}>
-          {/* Category-style tabs (CREATIVES / JOBS) */}
           <View style={styles.categoryTabsRow}>
             {(['creatives', 'jobs'] as const).map((tab) => {
               const active = activeTab === tab;
@@ -507,25 +623,41 @@ export default function LocationScreen() {
             })}
           </View>
 
-          {/* Tab content */}
           {activeTab === 'creatives' ? (
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>Creatives in {city?.label}</Text>
               {users.length === 0 ? (
                 <Text style={styles.emptyText}>No creatives here yet, be the first.</Text>
               ) : (
-                users.map((user) => (
-                  <TouchableOpacity
-                    key={user.id}
-                    onPress={() => goToProfile(user)}
-                    activeOpacity={0.85}
-                    style={styles.resultRow}
-                  >
-                    {/* User name in gold Cinzel */}
-                    <Text style={styles.resultUserGold}>• {user.full_name}</Text>
-                    <Text style={styles.viewLink}>View</Text>
-                  </TouchableOpacity>
-                ))
+                users.map((user) => {
+                  const avatarUri = user.avatar_url || null;
+                  const ringColor = getLevelRingColor(user.level);
+
+                  return (
+                    <TouchableOpacity
+                      key={user.id}
+                      onPress={() => goToProfile(user)}
+                      activeOpacity={0.85}
+                      style={styles.userRow}
+                    >
+                      <View style={[styles.avatarRing, { borderColor: ringColor }]}>
+                        {avatarUri ? (
+                          <Image source={{ uri: avatarUri }} style={styles.avatar} />
+                        ) : (
+                          <View style={[styles.avatar, styles.fallbackAvatar]}>
+                            <Ionicons name="person-outline" size={18} color={TEXT_MUTED} />
+                          </View>
+                        )}
+                      </View>
+
+                      <Text style={styles.userName} numberOfLines={1}>
+                        {user.full_name}
+                      </Text>
+
+                      <Text style={styles.viewLink}>View</Text>
+                    </TouchableOpacity>
+                  );
+                })
               )}
             </View>
           ) : (
@@ -543,8 +675,7 @@ export default function LocationScreen() {
                       activeOpacity={0.85}
                       style={styles.resultRow}
                     >
-                      {/* Job role name in gold + category font */}
-                      <Text style={styles.resultJobGold}>• {roleName || job.title || 'Job'}</Text>
+                      <Text style={styles.resultPrimary}>• {roleName || job.title || 'Job'}</Text>
                       <Text style={styles.viewLink}>Open</Text>
                     </TouchableOpacity>
                   );
@@ -553,20 +684,12 @@ export default function LocationScreen() {
             </View>
           )}
 
-          {/* Bottom CTA */}
-          <TouchableOpacity
-            style={styles.joinButton}
-            onPress={joinCityChat}
-            disabled={joining}
-            activeOpacity={0.92}
-          >
+          <TouchableOpacity style={styles.joinButton} onPress={joinCityChat} disabled={joining} activeOpacity={0.92}>
             {joining ? (
-              <ActivityIndicator />
+              <ActivityIndicator color={TEXT_IVORY} />
             ) : (
               <Text style={styles.joinButtonText}>
-                {users.length === 0 && jobs.length === 0
-                  ? 'Be the first — Join City Group Chat'
-                  : 'Join City Group Chat'}
+                {users.length === 0 && jobs.length === 0 ? 'Be the first — Join City Group Chat' : 'Join City Group Chat'}
               </Text>
             )}
           </TouchableOpacity>
@@ -581,25 +704,27 @@ export default function LocationScreen() {
       >
         <View style={styles.modalContainer}>
           <Text style={styles.modalTitle}>Search for your city</Text>
+
           <TextInput
             placeholder="Start typing..."
-            placeholderTextColor={T.mute}
+            placeholderTextColor={TEXT_MUTED}
             value={citySearchTerm}
             onChangeText={(text) => {
               setCitySearchTerm(text);
               void fetchCities(text);
             }}
-            style={styles.searchInput}
+            style={[styles.searchInput, WEB_NO_OUTLINE]}
             autoFocus
           />
-        {isSearchingCities ? (
-            <ActivityIndicator style={{ marginTop: 20 }} color={T.accent} />
+
+          {isSearchingCities ? (
+            <ActivityIndicator style={{ marginTop: 20 }} color={GOLD} />
           ) : (
             <FlatList
               data={cityItems}
               keyExtractor={(item) => item.value.toString()}
               keyboardShouldPersistTaps="handled"
-              renderItem={({ item }) => {
+              renderItem={({ item, index }) => {
                 const selected = city?.value === item.value;
                 return (
                   <TouchableOpacity
@@ -614,11 +739,18 @@ export default function LocationScreen() {
                       {selected ? <Ionicons name="checkmark-outline" size={16} color={GOLD} /> : null}
                       <Text style={[styles.cityItemText, selected && { color: GOLD }]}>{item.label}</Text>
                     </View>
+
+                    {index === 0 && effectiveCityQuery.cityQuery.length >= 3 ? (
+                      <View style={styles.bestMatchPill}>
+                        <Text style={styles.bestMatchText}>BEST MATCH</Text>
+                      </View>
+                    ) : null}
                   </TouchableOpacity>
                 );
               }}
             />
           )}
+
           <TouchableOpacity
             onPress={() => setSearchModalVisible(false)}
             style={styles.closeModalButton}
@@ -643,26 +775,20 @@ export default function LocationScreen() {
           <View style={styles.jobModalCard}>
             {loadingSelectedJob ? (
               <View style={{ paddingVertical: 20 }}>
-                <ActivityIndicator size="large" color={T.accent} />
+                <ActivityIndicator size="large" color={GOLD} />
               </View>
             ) : selectedJob ? (
               <>
-                <Text style={styles.jobTitleBig}>
-                  {getRoleFromJoin(selectedJob.creative_roles)?.name ?? 'Job'}
-                </Text>
+                <Text style={styles.jobTitleBig}>{getRoleFromJoin(selectedJob.creative_roles)?.name ?? 'Job'}</Text>
 
-                {/* Closed notice */}
                 {selectedJob.is_closed ? (
                   <View style={{ marginTop: 6 }}>
                     <IconText name="alert-circle-outline" text="This job is closed." bold />
                   </View>
                 ) : null}
 
-                {selectedJob.description ? (
-                  <Text style={styles.jobBody}>{selectedJob.description}</Text>
-                ) : null}
+                {selectedJob.description ? <Text style={styles.jobBody}>{selectedJob.description}</Text> : null}
 
-                {/* Meta */}
                 <View style={{ marginTop: 8 }}>
                   <IconText
                     name="location-outline"
@@ -673,16 +799,16 @@ export default function LocationScreen() {
                     }`}
                   />
 
-                  {/* Person + clickable name */}
                   <View style={styles.iconTextRow}>
-                    <Ionicons name="person-outline" size={16} color={T.sub} style={{ marginRight: 8 }} />
+                    <Ionicons name="person-outline" size={16} color={TEXT_MUTED} style={{ marginRight: 8 }} />
                     <TouchableOpacity
                       onPress={() => {
                         const poster = getUserFromJoin(selectedJob.users);
                         if (poster?.id) {
-                          // Navigate to profile
                           // @ts-ignore
-                          navigation.navigate('Profile', { user: { id: poster.id, full_name: poster.full_name || 'Profile' } });
+                          navigation.navigate('Profile', {
+                            user: { id: poster.id, full_name: poster.full_name || 'Profile' },
+                          });
                         }
                       }}
                       activeOpacity={0.8}
@@ -705,28 +831,20 @@ export default function LocationScreen() {
                     <IconText name="people-outline" bold text="Free / Collab" />
                   )}
 
-                  {selectedJob.time ? (
-                    <IconText name="time-outline" text={selectedJob.time} />
-                  ) : null}
+                  {selectedJob.time ? <IconText name="time-outline" text={selectedJob.time} /> : null}
                 </View>
 
-                {/* Apply */}
                 <View style={styles.applyBox}>
                   <TouchableOpacity
-                    style={[
-                      styles.primaryBtn,
-                      (applyLoading || selectedJob.is_closed) && { opacity: 0.6 },
-                    ]}
+                    style={[styles.primaryBtn, (applyLoading || selectedJob.is_closed) && { opacity: 0.6 }]}
                     onPress={applyToSelectedJob}
                     disabled={applyLoading || !!selectedJob.is_closed}
                     activeOpacity={0.9}
                   >
                     {applyLoading ? (
-                      <ActivityIndicator color={T.text} />
+                      <ActivityIndicator color={TEXT_IVORY} />
                     ) : (
-                      <Text style={styles.primaryBtnText}>
-                        {selectedJob.is_closed ? 'Closed' : 'Apply'}
-                      </Text>
+                      <Text style={styles.primaryBtnText}>{selectedJob.is_closed ? 'Closed' : 'Apply'}</Text>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -754,72 +872,74 @@ export default function LocationScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: COLORS.background,
+    backgroundColor: DARK_BG,
     padding: 16,
     paddingBottom: 28,
     flexGrow: 1,
   },
 
-  /** Title now matches category font (OBLIVION-style) */
   title: {
-    fontSize: 20,
-    letterSpacing: 6.5,
-    color: COLORS.textPrimary,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 2.4,
+    color: TEXT_IVORY,
     marginBottom: 14,
     textAlign: 'center',
     textTransform: 'uppercase',
-    fontFamily: FONT_CATEGORY,
-    fontWeight: Platform.OS === 'android' ? ('300' as any) : '400',
+    fontFamily: SYSTEM_SANS,
   },
 
-  /* City select */
   citySelectButton: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
+    borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 12,
-    backgroundColor: '#121212',
+    backgroundColor: '#111111',
     marginBottom: 12,
   },
   citySelectInner: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
   citySelectButtonText: {
-    color: COLORS.textSecondary,
-    fontSize: 15,
+    color: TEXT_MUTED,
+    fontSize: 13,
     textAlign: 'center',
-    fontFamily: FONT_CATEGORY,
-    letterSpacing: 1.8,
+    fontFamily: SYSTEM_SANS,
+    letterSpacing: 0.6,
+    fontWeight: '700',
   },
   citySelectButtonTextSelected: {
     color: GOLD,
-    fontFamily: FONT_CINEMATIC,
-    letterSpacing: 2.5,
-    fontWeight: Platform.OS === 'web' ? ('700' as any) : '700',
+    letterSpacing: 0.8,
+    fontWeight: '900',
   },
 
-  /* Softer search button */
   searchButton: {
-    backgroundColor: '#151515',
+    backgroundColor: DARK_ELEVATED,
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
   },
   searchButtonText: {
-    color: COLORS.textPrimary,
-    fontWeight: '800',
-    letterSpacing: 0.6,
+    color: TEXT_IVORY,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
   },
 
   resultsSection: {
     marginTop: 4,
   },
 
-  /* Category tabs (like Challenge categories) */
   categoryTabsRow: {
     flexDirection: 'row',
     alignSelf: 'center',
@@ -830,223 +950,308 @@ const styles = StyleSheet.create({
   },
   categoryTap: { alignItems: 'center' },
   categoryText: {
-    color: '#CFCFCF',
-    fontFamily: FONT_CATEGORY,
-    letterSpacing: 6.0,
-    textTransform: 'uppercase',
-    fontSize: 12.5,
-    fontWeight: Platform.OS === 'android' ? ('300' as any) : '400',
-  },
-  categoryTextActive: { color: GOLD },
-  categoryUnderline: { marginTop: 6, height: 3, width: 42, backgroundColor: GOLD, borderRadius: 2 },
-
-  /* Cards */
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.textPrimary,
-    marginBottom: 8,
+    color: TEXT_MUTED,
+    fontFamily: SYSTEM_SANS,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
+    fontSize: 11,
+    fontWeight: '900',
   },
-  emptyText: {
-    color: COLORS.textSecondary,
-    fontStyle: 'italic',
-    marginBottom: 6,
+  categoryTextActive: { color: GOLD },
+  categoryUnderline: {
+    marginTop: 6,
+    height: 3,
+    width: 42,
+    backgroundColor: GOLD,
+    borderRadius: 2,
   },
 
-  /* Rows */
+  card: {
+    backgroundColor: DARK_ELEVATED,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    marginBottom: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+  },
+  emptyText: {
+    color: TEXT_MUTED,
+    fontStyle: 'italic',
+    marginBottom: 6,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#232323',
+  },
+  avatarRing: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    backgroundColor: '#101010',
+  },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#111',
+  },
+  fallbackAvatar: {
+    backgroundColor: '#111111',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
+  },
+  userName: {
+    flex: 1,
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+
   resultRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 8,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#232323',
   },
-  // Users: gold Cinzel
-  resultUserGold: {
-    color: GOLD,
-    fontFamily: FONT_CINEMATIC,
-    letterSpacing: 1.2,
-    fontSize: 15,
-  },
-  // Jobs: gold category font
-  resultJobGold: {
-    color: GOLD,
-    fontFamily: FONT_CATEGORY,
-    letterSpacing: 2.5,
-    textTransform: 'uppercase',
-    fontSize: 13.5,
-    fontWeight: Platform.OS === 'android' ? ('300' as any) : '400',
-  },
-  viewLink: {
-    color: COLORS.primary,
-    fontWeight: '700',
-    paddingHorizontal: 6,
+  resultPrimary: {
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    fontWeight: '800',
     letterSpacing: 0.2,
   },
+  viewLink: {
+    color: GOLD,
+    fontWeight: '900',
+    paddingHorizontal: 6,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 11,
+  },
 
-  /* Join CTA */
   joinButton: {
-    backgroundColor: '#121212',
+    backgroundColor: DARK_ELEVATED,
     padding: 14,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
   },
   joinButtonText: {
-    color: COLORS.textPrimary,
-    fontWeight: '800',
-    fontSize: 15,
-    letterSpacing: 0.6,
+    color: TEXT_IVORY,
+    fontWeight: '900',
+    fontSize: 12,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
   },
 
   /* Modal */
   modalContainer: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: DARK_BG,
     padding: 20,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
   },
   modalTitle: {
-    fontSize: 16,
-    fontWeight: Platform.OS === 'web' ? ('700' as any) : '700',
-    color: COLORS.textPrimary,
+    fontSize: 12,
+    fontWeight: '900',
+    color: TEXT_IVORY,
     marginBottom: 12,
     textAlign: 'center',
     textTransform: 'uppercase',
     letterSpacing: 2.0,
-    fontFamily: FONT_CINEMATIC,
+    fontFamily: SYSTEM_SANS,
   },
+
   searchInput: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
+    borderRadius: 12,
     padding: 12,
-    fontSize: 15,
-    color: COLORS.textPrimary,
-    backgroundColor: '#121212',
+    fontSize: 14,
+    color: TEXT_IVORY,
+    backgroundColor: '#111111',
+    fontFamily: SYSTEM_SANS,
   },
+
   cityItem: {
     paddingVertical: 12,
     paddingHorizontal: 8,
-    borderBottomColor: COLORS.border,
-    borderBottomWidth: 1,
+    borderBottomColor: DIVIDER,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   cityItemSelected: {
-    backgroundColor: '#131313',
+    backgroundColor: '#111111',
   },
   cityItemText: {
-    fontSize: 15,
-    color: COLORS.textPrimary,
+    fontSize: 14,
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '700',
   },
+
+  bestMatchPill: {
+    marginLeft: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: GOLD,
+    backgroundColor: '#111111',
+  },
+  bestMatchText: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    color: GOLD,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+  },
+
   closeModalButton: {
     marginTop: 16,
     padding: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
-    backgroundColor: '#121212',
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    backgroundColor: DARK_ELEVATED,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
   },
   closeModalText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    letterSpacing: 0.4,
+    fontSize: 12,
+    fontWeight: '900',
+    color: TEXT_MUTED,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
   },
 
   /* Job modal */
   dimOverlay: {
     flex: 1,
-    backgroundColor: '#00000066',
+    backgroundColor: 'rgba(0,0,0,0.66)',
     justifyContent: 'flex-end',
   },
   jobModalCard: {
-    backgroundColor: COLORS.background,
+    backgroundColor: DARK_BG,
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
     padding: 18,
     maxHeight: '88%',
-    shadowColor: COLORS.shadow || '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: -4 },
-    elevation: 8,
-    borderTopWidth: 1,
-    borderColor: COLORS.border,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: -6 },
+    elevation: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
   },
   jobTitleBig: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
+    fontSize: 16,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    letterSpacing: 0.8,
+    fontFamily: SYSTEM_SANS,
+    textTransform: 'uppercase',
   },
   jobBody: {
     fontSize: 14,
-    color: COLORS.textPrimary,
+    color: TEXT_IVORY,
     marginTop: 8,
     lineHeight: 20,
+    fontFamily: SYSTEM_SANS,
   },
   jobMeta: {
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: TEXT_MUTED,
     marginTop: 4,
+    fontFamily: SYSTEM_SANS,
   },
   jobMetaStrong: {
-    fontSize: 14,
-    color: COLORS.textPrimary,
-    fontWeight: '800',
+    fontSize: 13,
+    color: TEXT_IVORY,
+    fontWeight: '900',
     marginTop: 4,
+    fontFamily: SYSTEM_SANS,
   },
   link: {
-    color: COLORS.primary,
-    fontWeight: '700',
+    color: GOLD,
+    fontWeight: '900',
     textDecorationLine: 'underline',
+    fontFamily: SYSTEM_SANS,
   },
   iconTextRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 6,
   },
   applyBox: {
     marginTop: 14,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: DIVIDER,
   },
   primaryBtn: {
-    backgroundColor: '#151515',
+    backgroundColor: DARK_ELEVATED,
     padding: 14,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
   },
   primaryBtnText: {
-    color: COLORS.textPrimary,
-    fontWeight: '800',
-    fontSize: 16,
-    letterSpacing: 0.6,
+    color: TEXT_IVORY,
+    fontWeight: '900',
+    fontSize: 12,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
   },
   ghostBtn: {
-    backgroundColor: '#121212',
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    backgroundColor: '#111111',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
     padding: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
     marginTop: 12,
   },
   ghostBtnText: {
-    color: COLORS.primary,
-    fontWeight: '700',
+    color: TEXT_MUTED,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
   },
 });
