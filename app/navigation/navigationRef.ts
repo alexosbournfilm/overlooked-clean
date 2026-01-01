@@ -10,10 +10,15 @@ import {
    ROOT NAVIGATION TYPE DEFINITIONS
    ===================================================== */
 export type RootStackParamList = {
-  // ✅ ROOT AUTH STACK (THIS WAS MISSING)
+  // ✅ ROOT AUTH STACK
   Auth:
     | {
-        screen?: "SignIn" | "SignUp" | "ForgotPassword" | "CreateProfile" | "NewPassword";
+        screen?:
+          | "SignIn"
+          | "SignUp"
+          | "ForgotPassword"
+          | "CreateProfile"
+          | "NewPassword";
         params?: any;
       }
     | undefined;
@@ -47,6 +52,9 @@ export type RootStackParamList = {
     | { user?: { id: string; full_name: string } }
     | { userId?: string }
     | undefined;
+
+  // (Optional) if you ever register ChatRoom at root, this keeps typing happy.
+  ChatRoom: any;
 };
 
 export type ChatRoomParams = {
@@ -149,4 +157,25 @@ export function resetToMain() {
       routes: [{ name: "MainTabs" }],
     })
   );
+}
+
+/* =====================================================
+   CHAT HELPER (FIXES YOUR ProfileScreen IMPORT ERROR)
+   ===================================================== */
+export function openChat(params: ChatRoomParams) {
+  // Most apps have ChatRoom inside the Chats stack.
+  // This works whether Chats is a stack or tab-stack.
+  try {
+    store.ref.navigate("Chats" as any, {
+      screen: "ChatRoom",
+      params,
+    });
+  } catch (e) {
+    // Fallback: if ChatRoom exists at root in some builds
+    try {
+      store.ref.navigate("ChatRoom" as any, params as any);
+    } catch (err) {
+      console.warn("[nav] openChat failed", err);
+    }
+  }
 }

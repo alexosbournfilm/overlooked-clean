@@ -1,5 +1,5 @@
 // app/screens/ChallengeScreen.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -27,7 +27,6 @@ import * as DocumentPicker from "expo-document-picker";
 import { Upload } from "tus-js-client";
 import { LinearGradient } from "expo-linear-gradient";
 import { useGamification } from "../context/GamificationContext";
-import { canSubmitToChallenge } from "../lib/membership";
 import { UpgradeModal } from "../../components/UpgradeModal";
 
 import * as FileSystem from "expo-file-system";
@@ -98,6 +97,54 @@ function notify(title: string, message?: string) {
   }
 }
 
+/**
+ * ✅ THEME GUARANTEE (server-persisted)
+ * IMPORTANT: Theme must NOT change on refresh.
+ *
+ * If theme_word is blank, we try to pick one and WRITE IT BACK to the DB.
+ * If we cannot persist it (RLS / permissions / network), we DO NOT show a random word.
+ * Instead we show a stable fallback ("Untitled") so the theme stays consistent across refreshes.
+ */
+async function ensureThemeWordOnChallengeRow(ch: MonthlyChallenge): Promise<MonthlyChallenge> {
+  try {
+    const current = (ch?.theme_word ?? "").trim();
+    if (current) return ch;
+
+    // Pull list of theme words and pick randomly
+    const pick = await supabase.from("theme_words").select("word").order("word", { ascending: true });
+
+    if (!pick.error && Array.isArray(pick.data) && pick.data.length > 0) {
+      const words = pick.data
+        .map((r: any) => String(r?.word ?? "").trim())
+        .filter((w: string) => w.length > 0);
+
+      if (words.length > 0) {
+        const chosen = words[Math.floor(Math.random() * words.length)];
+
+        // Try to persist so it stays constant for everyone this month
+        const upd = await supabase
+          .from("monthly_challenges")
+          .update({ theme_word: chosen })
+          .eq("id", ch.id)
+          .select("id, month_start, month_end, theme_word")
+          .single();
+
+        // ✅ Only return chosen if it actually persisted
+        if (!upd.error && upd.data?.theme_word) return upd.data as MonthlyChallenge;
+
+        // ❗ If we can't persist, DO NOT use a random local value (would change on refresh).
+        return { ...ch, theme_word: "Untitled" } as MonthlyChallenge;
+      }
+    }
+
+    return { ...ch, theme_word: "Untitled" } as MonthlyChallenge;
+  } catch (e) {
+    console.warn("[challenge] ensureThemeWord failed:", (e as any)?.message ?? e);
+    // Stable fallback (doesn't change every refresh)
+    return { ...ch, theme_word: (ch?.theme_word ?? "").trim() || "Untitled" } as MonthlyChallenge;
+  }
+}
+
 async function fetchCurrentChallenge() {
   // 1) finalize winner (previous month) if needed
   try {
@@ -122,7 +169,7 @@ async function fetchCurrentChallenge() {
   const startDateOnly = start.format("YYYY-MM-DD");
   const endDateOnly = end.format("YYYY-MM-DD");
 
-  // Try exact DATE match first (best if your columns are DATE)
+  // Try exact DATE match (best if DATE columns)
   const exact = await supabase
     .from("monthly_challenges")
     .select("id, month_start, month_end, theme_word")
@@ -131,9 +178,11 @@ async function fetchCurrentChallenge() {
     .limit(1)
     .single();
 
-  if (!exact.error && exact.data) return exact.data as MonthlyChallenge;
+  if (!exact.error && exact.data) {
+    return (await ensureThemeWordOnChallengeRow(exact.data as MonthlyChallenge)) as MonthlyChallenge;
+  }
 
-  // Try timestamp range (best if your columns are TIMESTAMPTZ)
+  // Try timestamp range (best if TIMESTAMPTZ)
   const nowIso = new Date().toISOString();
   const range = await supabase
     .from("monthly_challenges")
@@ -144,7 +193,9 @@ async function fetchCurrentChallenge() {
     .limit(1)
     .single();
 
-  if (!range.error && range.data) return range.data as MonthlyChallenge;
+  if (!range.error && range.data) {
+    return (await ensureThemeWordOnChallengeRow(range.data as MonthlyChallenge)) as MonthlyChallenge;
+  }
 
   // Final fallback: latest row
   const fallback = await supabase
@@ -164,7 +215,7 @@ async function fetchCurrentChallenge() {
     endDateOnly
   );
 
-  return fallback.data as MonthlyChallenge;
+  return (await ensureThemeWordOnChallengeRow(fallback.data as MonthlyChallenge)) as MonthlyChallenge;
 }
 
 async function getResumableEndpoint() {
@@ -580,53 +631,53 @@ export default function ChallengeScreen() {
   }, []);
 
   useEffect(() => {
-  if (!challenge) return;
+    if (!challenge) return;
 
-  let alive = true;
+    let alive = true;
 
-  const updateCountdown = async () => {
-    // ✅ If DB row is wrong/outdated, fall back to real current month end.
-    const fallbackEnd = dayjs().startOf("month").add(1, "month");
+    const updateCountdown = async () => {
+      // ✅ If DB row is wrong/outdated, fall back to real current month end.
+      const fallbackEnd = dayjs().startOf("month").add(1, "month");
 
-    const dbEnd = challenge?.month_end ? dayjs(challenge.month_end) : null;
+      const dbEnd = challenge?.month_end ? dayjs(challenge.month_end) : null;
 
-    // If dbEnd is invalid OR already in the past, use fallbackEnd
-    const targetEnd = dbEnd && dbEnd.isValid() && dbEnd.isAfter(dayjs()) ? dbEnd : fallbackEnd;
+      // If dbEnd is invalid OR already in the past, use fallbackEnd
+      const targetEnd = dbEnd && dbEnd.isValid() && dbEnd.isAfter(dayjs()) ? dbEnd : fallbackEnd;
 
-    const diffMs = targetEnd.diff(dayjs());
+      const diffMs = targetEnd.diff(dayjs());
 
-    if (diffMs <= 0) {
-      setCountdown("This challenge has ended. Updating…");
-      try {
-        const next = await fetchCurrentChallenge();
-        if (alive) setChallenge(next);
-      } catch {}
-      return;
-    }
+      if (diffMs <= 0) {
+        setCountdown("This challenge has ended. Updating…");
+        try {
+          const next = await fetchCurrentChallenge();
+          if (alive) setChallenge(next);
+        } catch {}
+        return;
+      }
 
-    const totalMinutes = Math.floor(diffMs / 60000);
-    const minsPerDay = 60 * 24;
-    const days = Math.floor(totalMinutes / minsPerDay);
-    const hours = Math.floor((totalMinutes % minsPerDay) / 60);
-    const minutes = totalMinutes % 60;
+      const totalMinutes = Math.floor(diffMs / 60000);
+      const minsPerDay = 60 * 24;
+      const days = Math.floor(totalMinutes / minsPerDay);
+      const hours = Math.floor((totalMinutes % minsPerDay) / 60);
+      const minutes = totalMinutes % 60;
 
-    setCountdown(`${days}d ${hours}h ${minutes}m`);
-  };
+      setCountdown(`${days}d ${hours}h ${minutes}m`);
+    };
 
-  updateCountdown();
-  const t = setInterval(updateCountdown, 60_000);
+    updateCountdown();
+    const t = setInterval(updateCountdown, 60_000);
 
-  // Optional: refresh challenge row occasionally so it flips month automatically
-  const refresh = setInterval(() => {
-    fetchCurrentChallenge().then((c) => alive && setChallenge(c)).catch(() => {});
-  }, 10 * 60_000);
+    // Optional: refresh challenge row occasionally so it flips month automatically
+    const refresh = setInterval(() => {
+      fetchCurrentChallenge().then((c) => alive && setChallenge(c)).catch(() => {});
+    }, 10 * 60_000);
 
-  return () => {
-    alive = false;
-    clearInterval(t);
-    clearInterval(refresh);
-  };
-}, [challenge]);
+    return () => {
+      alive = false;
+      clearInterval(t);
+      clearInterval(refresh);
+    };
+  }, [challenge]);
 
   useEffect(() => {
     resetSelectedFile();
@@ -885,57 +936,50 @@ export default function ChallengeScreen() {
     }
 
     // ✅ Server preflight gate (prevents uploading if not allowed)
-try {
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
+    try {
+      const {
+        data: { user },
+        error: userErr,
+      } = await supabase.auth.getUser();
 
-  if (userErr) throw userErr;
+      if (userErr) throw userErr;
 
-  if (!user) {
-    notify("Please sign in", "You must be logged in to submit.");
-    return;
-  }
+      if (!user) {
+        notify("Please sign in", "You must be logged in to submit.");
+        return;
+      }
 
-  const { data, error } = await supabase.rpc("can_submit_this_month", {
-    p_user_id: user.id,
-  });
+      const { data, error } = await supabase.rpc("can_submit_this_month", {
+        p_user_id: user.id,
+      });
 
-  if (error) throw error;
+      if (error) throw error;
 
-  // If RPC returns a rowset, Supabase returns array
-  const row = Array.isArray(data) ? data[0] : data;
+      const row = Array.isArray(data) ? data[0] : data;
 
-  if (!row?.allowed) {
-    if (row?.reason === "tier_too_low") {
+      if (!row?.allowed) {
+        if (row?.reason === "tier_too_low") {
+          notify("Upgrade required", "Submitting to the monthly challenge is available on the Pro tier.");
+          setUpgradeVisible(true);
+          return;
+        }
+
+        if (row?.reason === "no_submissions_left") {
+          notify("Submission limit reached", "You’ve used all 2 submissions for this month.");
+          return;
+        }
+
+        notify("Not allowed", "You can’t submit right now.");
+        return;
+      }
+    } catch (err) {
+      console.warn("server preflight can_submit_this_month failed:", err);
       notify(
-        "Upgrade required",
-        "Submitting to the monthly challenge is available on the Pro tier."
+        "Please try again",
+        "We couldn’t verify your submission limit just now. Try again in a moment."
       );
-      setUpgradeVisible(true);
       return;
     }
-
-    if (row?.reason === "no_submissions_left") {
-      notify(
-        "Submission limit reached",
-        "You’ve used all 2 submissions for this month."
-      );
-      return;
-    }
-
-    notify("Not allowed", "You can’t submit right now.");
-    return;
-  }
-} catch (err) {
-  console.warn("server preflight can_submit_this_month failed:", err);
-  notify(
-    "Please try again",
-    "We couldn’t verify your submission limit just now. Try again in a moment."
-  );
-  return;
-}
 
     setLoading(true);
     setStatus("Uploading file…");
@@ -950,8 +994,7 @@ try {
 
       const { path, contentType } = await uploadResumable({
         userId: user.id,
-        fileBlob:
-          Platform.OS === "web" ? ((webFile as File | Blob | null) ?? undefined) : undefined,
+        fileBlob: Platform.OS === "web" ? ((webFile as File | Blob | null) ?? undefined) : undefined,
         localUri: Platform.OS !== "web" ? (localUri as string) : undefined,
         onProgress: (pct) => setProgressPct(pct),
         onPhase: (label) => setStatus(label),
@@ -964,13 +1007,13 @@ try {
 
       const media_kind = mediaKindFromMime(contentType);
 
-      // ✅ Avoid TS “session possibly null” by using the authenticated user id we already have
       const payload: any = {
         user_id: user.id,
         title: title.trim(),
         description: description.trim(),
         submitted_at: new Date().toISOString(),
-        word: challenge?.theme_word ?? null,
+        // ✅ theme word stored on submission (stable for the month)
+        word: (challenge?.theme_word ?? "Untitled").trim() || "Untitled",
         storage_path: path,
         video_path: path,
         mime_type: contentType,
@@ -1084,7 +1127,7 @@ try {
                         <View style={styles.pillsRow}>
                           <View style={[styles.pill, styles.pillGold]}>
                             <Text style={[styles.pillText, styles.pillTextDark]}>
-                              THEME · {(challenge.theme_word ?? "—").toUpperCase()}
+                              THEME · {String(challenge.theme_word ?? "Untitled").toUpperCase()}
                             </Text>
                           </View>
 
@@ -1100,16 +1143,26 @@ try {
 
                   <Text style={styles.heroExplainer}>{explainer}</Text>
 
-                  <View style={styles.hypeCard}>
-                    <Text style={styles.hypeTitle}>WHY UPLOAD MONTHLY?</Text>
-                    <Text style={styles.hypeBody}>
-                      Consistency builds creative credit. Uploading every month becomes your public proof of work —
-                      you grow faster, get sharper, and your profile starts to speak for you.
-                    </Text>
-                    <Text style={styles.hypeBody}>
-                      Over time, your submissions become a portfolio people actually watch.
-                    </Text>
-                  </View>
+                  {/* ✅ Keep this section as before (why upload monthly) */}
+                <View style={styles.hypeCard}>
+  <Text style={styles.hypeTitle}>WHY UPLOAD MONTHLY</Text>
+
+  <Text style={styles.hypeBody}>
+    Most film students make only a handful of films across three years.
+    Progress comes faster when you stop waiting and start finishing.
+  </Text>
+
+  <Text style={styles.hypeBody}>
+    Uploading monthly builds momentum. Each project teaches you more than the last —
+    and over time, your work naturally gets better.
+  </Text>
+
+  <Text style={styles.hypeBodyTight}>
+    <Text style={styles.hypeStrong}>All levels are welcome.</Text> You don’t need to make something great —
+    just make something, submit it, and keep going.
+  </Text>
+</View>
+                  
 
                   <View style={styles.segmentWrap}>
                     {(["film", "acting", "music"] as Category[]).map((c) => {
@@ -1132,7 +1185,8 @@ try {
 
                   <View style={styles.xpBanner}>
                     <Text style={styles.xpLine}>
-                      Submit this month to earn <Text style={styles.xpStrong}>+{SUBMIT_XP} XP</Text>. Win the month and gain{" "}
+                      Submit this month to earn{" "}
+                      <Text style={styles.xpStrong}>+{SUBMIT_XP} XP</Text>. Win the month and gain{" "}
                       <Text style={styles.xpStrong}>+500 XP</Text>.
                     </Text>
 
@@ -1142,7 +1196,8 @@ try {
                         {levelTitle ? (
                           <>
                             {" "}
-                            · <Text style={styles.xpTitle}>{String(levelTitle).toUpperCase()}</Text>
+                            ·{" "}
+                            <Text style={styles.xpTitle}>{String(levelTitle).toUpperCase()}</Text>
                           </>
                         ) : null}
                         {xpToNext !== null && xpToNext > 0 ? (
@@ -1198,8 +1253,12 @@ try {
                     />
 
                     <TouchableOpacity style={styles.pickBtn} onPress={pickFile} activeOpacity={0.92}>
-                      <Text style={styles.pickBtnText}>{localUri ? "PICK A DIFFERENT FILE" : "PICK A FILE"}</Text>
-                      <Text style={styles.pickBtnSub}>{category === "acting" ? "Max 2 minutes" : "Max 5 minutes"}</Text>
+                      <Text style={styles.pickBtnText}>
+                        {localUri ? "PICK A DIFFERENT FILE" : "PICK A FILE"}
+                      </Text>
+                      <Text style={styles.pickBtnSub}>
+                        {category === "acting" ? "Max 2 minutes" : "Max 5 minutes"}
+                      </Text>
                     </TouchableOpacity>
 
                     {localUri ? (
@@ -1285,15 +1344,32 @@ try {
                       </View>
                     ) : null}
 
-                    <Pressable
-                      onPress={() => setAgreed(!agreed)}
-                      style={({ pressed }) => [styles.agreeRow, pressed && { opacity: 0.9 }]}
-                    >
-                      <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
-                        {agreed ? <Text style={styles.checkGlyph}>✓</Text> : null}
-                      </View>
-                      <Text style={styles.agreeText}>I agree to the rules & terms</Text>
-                    </Pressable>
+                    {/* ✅ AGREEMENT + CLICKABLE TERMS (keep as-is) */}
+                    <View style={styles.agreeBlock}>
+                      <Pressable
+                        onPress={() => setAgreed(!agreed)}
+                        style={({ pressed }) => [styles.agreeRow, pressed && { opacity: 0.9 }]}
+                      >
+                        <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
+                          {agreed ? <Text style={styles.checkGlyph}>✓</Text> : null}
+                        </View>
+
+                        <Text style={styles.agreeText}>
+                          I agree to{" "}
+                          <Text
+                            style={styles.termsLink}
+                            onPress={() => setRulesVisible(true)}
+                            suppressHighlighting
+                          >
+                            the rules & terms
+                          </Text>
+                        </Text>
+                      </Pressable>
+
+                      <Pressable onPress={() => setRulesVisible(true)} style={styles.termsHintRow}>
+                        <Text style={styles.termsHintText}>View rules</Text>
+                      </Pressable>
+                    </View>
 
                     <TouchableOpacity
                       style={[styles.submitBtn, (!agreed || loading) && { opacity: 0.78 }]}
@@ -1316,18 +1392,52 @@ try {
           </View>
         </View>
 
-        {/* RULES MODAL */}
+        {/* RULES MODAL (keep as-is) */}
         <Modal visible={rulesVisible} animationType="fade" transparent>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Challenge Rules & Terms</Text>
+
               <ScrollView style={{ marginBottom: 16 }}>
-                <Text style={styles.modalText}>• Keep it under the time limit ({capText.toLowerCase()}).</Text>
-                <Text style={styles.modalText}>• No inappropriate, offensive, or harmful material.</Text>
-                <Text style={styles.modalText}>• Use only copyright-free music/sounds and assets.</Text>
-                <Text style={styles.modalText}>• You may submit multiple entries, but each must be unique.</Text>
-                <Text style={styles.modalText}>• The monthly theme word is optional inspiration.</Text>
+                <Text style={styles.modalText}>• Time limit: {capText}</Text>
+
+                <Text style={styles.modalText}>
+                  • File size: keep it reasonable. Extremely large uploads may fail or be removed.
+                </Text>
+
+                <Text style={styles.modalText}>
+                  • Keep it original. No stolen footage, copyrighted films, or unlicensed music.
+                </Text>
+
+                <Text style={styles.modalText}>
+                  • Be appropriate. No hate, harassment, explicit sexual content, or violent / harmful material.
+                </Text>
+
+                <Text style={styles.modalTextStrong}>• IMPORTANT: Overlooked is for ART — not content.</Text>
+
+                <Text style={styles.modalText}>
+                  • This is not Instagram or TikTok. Brain-rot / “content farm” style videos will be removed.
+                </Text>
+
+                <Text style={styles.modalTextStrong}>
+                  • Repeated low-effort “content” uploads can result in a permanent ban.
+                </Text>
+
+                <Text style={styles.modalText}>
+                  • All levels are welcome. You do not need to submit something “perfect” — just finish work and keep
+                  going.
+                </Text>
+
+                <Text style={styles.modalText}>
+                  • If you submit every month for a year, you’ll make 12 films — more than most people make in their
+                  entire lives.
+                </Text>
+
+                <Text style={styles.modalText}>
+                  • The monthly theme word is optional inspiration — you don’t have to mention it.
+                </Text>
               </ScrollView>
+
               <Pressable style={styles.modalClose} onPress={() => setRulesVisible(false)}>
                 <Text style={styles.modalCloseText}>Close</Text>
               </Pressable>
@@ -1698,6 +1808,12 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     marginBottom: 0,
   },
+  hypeStrong: {
+    color: T.text,
+    fontWeight: "900",
+    fontFamily: SYSTEM_SANS,
+  },
+
   formHeaderText: {
     fontSize: 14,
     fontWeight: "900",
@@ -1889,196 +2005,223 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
+  /* -------- status + progress -------- */
+
   statusRow: {
-    marginTop: 12,
+    marginTop: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    alignSelf: "center",
   },
   statusText: {
-    fontSize: 12,
     color: T.sub,
-    textAlign: "center",
-    fontWeight: "800",
+    fontSize: 12,
     fontFamily: SYSTEM_SANS,
   },
 
-  progressWrap: { marginTop: 14 },
+  progressWrap: {
+    marginTop: 12,
+  },
   progressBar: {
-    height: 8,
-    width: "100%",
-    backgroundColor: "#0E0E0E",
+    height: 6,
     borderRadius: 999,
+    backgroundColor: "#1B1B1B",
     overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#ffffff14",
   },
   progressFill: {
     height: "100%",
     backgroundColor: T.olive,
-    borderRadius: 999,
   },
   progressLabels: {
-    marginTop: 8,
+    marginTop: 6,
     flexDirection: "row",
     justifyContent: "space-between",
   },
   progressText: {
-    fontSize: 12,
+    fontSize: 11,
     color: T.text,
-    fontWeight: "900",
+    fontWeight: "800",
     fontFamily: SYSTEM_SANS,
   },
-  progressEta: { fontSize: 12, color: T.mute, fontFamily: SYSTEM_SANS },
+  progressEta: {
+    fontSize: 11,
+    color: T.mute,
+    fontFamily: SYSTEM_SANS,
+  },
 
-  agreeRow: {
+  /* -------- agreement -------- */
+
+  agreeBlock: {
     marginTop: 16,
+  },
+  agreeRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
     gap: 10,
-    paddingVertical: 10,
   },
   checkbox: {
-    width: 22,
-    height: 22,
-    borderWidth: 2,
-    borderColor: T.olive,
+    width: 20,
+    height: 20,
     borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#3A3A3A",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "transparent",
+    backgroundColor: "#0B0B0B",
   },
-  // ✅ keep (even if not used directly)
-  checkboxChecked: { backgroundColor: T.olive, borderColor: T.olive },
-  checkGlyph: { color: "#000", fontWeight: "900", lineHeight: 18, fontFamily: SYSTEM_SANS },
-  agreeText: {
+  checkboxChecked: {
+    backgroundColor: T.olive,
+    borderColor: T.olive,
+  },
+  checkGlyph: {
+    color: "#0B0B0B",
+    fontWeight: "900",
     fontSize: 12,
+    fontFamily: SYSTEM_SANS,
+  },
+  agreeText: {
     color: T.sub,
-    fontWeight: "800",
-    letterSpacing: 0.3,
+    fontSize: 12,
+    fontFamily: SYSTEM_SANS,
+  },
+  termsLink: {
+    color: T.olive,
+    fontWeight: "900",
+  },
+  termsHintRow: {
+    marginTop: 6,
+  },
+  termsHintText: {
+    fontSize: 11,
+    color: T.mute,
+    textDecorationLine: "underline",
     fontFamily: SYSTEM_SANS,
   },
 
+  /* -------- submit -------- */
   submitBtn: {
-    marginTop: 10,
-    width: "100%",
+    marginTop: 14,
     borderRadius: 16,
-    backgroundColor: T.olive,
     paddingVertical: 14,
     alignItems: "center",
+    backgroundColor: T.olive,
     borderWidth: 1,
-    borderColor: "#000000",
+    borderColor: "rgba(0,0,0,0.35)",
   },
   submitText: {
-    fontWeight: "900",
-    fontSize: 13,
     color: "#0B0B0B",
-    letterSpacing: 2.4,
+    fontWeight: "900",
+    letterSpacing: 2,
+    fontSize: 12,
     textTransform: "uppercase",
     fontFamily: SYSTEM_SANS,
   },
   formFootnote: {
-    marginTop: 12,
-    fontSize: 12,
-    color: "#7E7E7E",
+    marginTop: 10,
+    fontSize: 11,
+    color: T.mute,
     textAlign: "center",
     fontFamily: SYSTEM_SANS,
   },
 
+  /* -------- Modals -------- */
+
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.62)",
-    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.72)",
     justifyContent: "center",
-    padding: 16,
+    alignItems: "center",
+    paddingHorizontal: 16,
   },
   modalContent: {
-    backgroundColor: T.card,
-    borderRadius: 16,
-    padding: 18,
     width: "100%",
-    maxWidth: 560,
-    maxHeight: "80%",
+    maxWidth: 520,
+    borderRadius: 18,
+    padding: 16,
     borderWidth: 1,
-    borderColor: "#ffffff14",
+    borderColor: "#2B2B2B",
+    backgroundColor: "#0F0F0F",
   },
   modalTitle: {
     fontSize: 14,
     fontWeight: "900",
-    marginBottom: 12,
+    letterSpacing: 1.6,
     color: T.text,
-    letterSpacing: 1.8,
     textTransform: "uppercase",
     fontFamily: SYSTEM_SANS,
+    marginBottom: 12,
   },
   modalText: {
     fontSize: 13,
+    color: "#D0D0D0",
+    lineHeight: 19,
     marginBottom: 10,
-    color: T.sub,
-    lineHeight: 20,
     fontFamily: SYSTEM_SANS,
   },
+  modalTextStrong: {
+    fontSize: 13,
+    color: T.text,
+    lineHeight: 19,
+    marginBottom: 10,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: "900",
+  },
   modalClose: {
-    backgroundColor: T.olive,
-    borderRadius: 12,
+    width: "100%",
+    borderRadius: 14,
     paddingVertical: 12,
     alignItems: "center",
-    marginTop: 8,
+    backgroundColor: "#151515",
     borderWidth: 1,
-    borderColor: "#000000",
+    borderColor: "#2B2B2B",
   },
   modalCloseText: {
-    color: "#0B0B0B",
+    color: T.text,
     fontWeight: "900",
-    letterSpacing: 1.5,
+    letterSpacing: 1.4,
     textTransform: "uppercase",
+    fontSize: 12,
     fontFamily: SYSTEM_SANS,
   },
 
+  /* -------- Preview Modal -------- */
+
   previewModal: {
-    backgroundColor: T.card,
-    borderRadius: 16,
-    padding: 18,
     width: "100%",
     maxWidth: 720,
+    borderRadius: 18,
+    padding: 16,
     borderWidth: 1,
-    borderColor: "#ffffff14",
+    borderColor: "#2B2B2B",
+    backgroundColor: "#0F0F0F",
   },
   previewTitle: {
     fontSize: 14,
     fontWeight: "900",
-    marginBottom: 12,
+    letterSpacing: 1.6,
     color: T.text,
-    letterSpacing: 1.8,
     textTransform: "uppercase",
     fontFamily: SYSTEM_SANS,
+    marginBottom: 10,
   },
   previewVideoWrap: {
-    borderRadius: 14,
+    width: "100%",
+    borderRadius: 16,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#ffffff14",
+    borderColor: "#2B2B2B",
     backgroundColor: "#0B0B0B",
   },
   previewVideoStage: {
     width: "100%",
-    height: 420,
+    aspectRatio: 16 / 9,
     backgroundColor: "#0B0B0B",
-    position: "relative",
   },
   previewVideo: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
     width: "100%",
     height: "100%",
     backgroundColor: "#0B0B0B",
   },
-
   previewLoadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
@@ -2090,23 +2233,22 @@ const styles = StyleSheet.create({
     color: T.sub,
     fontSize: 12,
     fontWeight: "900",
-    letterSpacing: 1.0,
+    letterSpacing: 1.2,
     textTransform: "uppercase",
     fontFamily: SYSTEM_SANS,
   },
   previewErrorOverlay: {
     ...StyleSheet.absoluteFillObject,
+    padding: 14,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 16,
     backgroundColor: "rgba(0,0,0,0.55)",
   },
   previewErrorText: {
     color: T.text,
-    fontSize: 12.5,
-    fontWeight: "800",
-    textAlign: "center",
+    fontSize: 13,
     lineHeight: 18,
+    textAlign: "center",
     fontFamily: SYSTEM_SANS,
     marginBottom: 12,
   },
@@ -2115,49 +2257,47 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   previewRetryBtn: {
-    paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#000000",
+    paddingHorizontal: 14,
+    borderRadius: 12,
     backgroundColor: T.olive,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.35)",
   },
   previewRetryText: {
     color: "#0B0B0B",
     fontWeight: "900",
-    letterSpacing: 1.4,
+    letterSpacing: 1.2,
     textTransform: "uppercase",
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: SYSTEM_SANS,
   },
   previewAltBtn: {
-    paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 999,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: "#151515",
     borderWidth: 1,
-    borderColor: "#ffffff22",
-    backgroundColor: "rgba(0,0,0,0.35)",
+    borderColor: "#2B2B2B",
   },
   previewAltText: {
     color: T.text,
     fontWeight: "900",
-    letterSpacing: 1.4,
+    letterSpacing: 1.2,
     textTransform: "uppercase",
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: SYSTEM_SANS,
   },
 
   previewMetaRow: {
-    marginTop: 12,
+    marginTop: 10,
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 12,
   },
   previewMeta: {
     fontSize: 12,
-    color: "#B8B8B8",
+    color: T.mute,
     fontFamily: SYSTEM_SANS,
-    fontWeight: "700",
   },
   previewMetaStrong: {
     color: T.text,

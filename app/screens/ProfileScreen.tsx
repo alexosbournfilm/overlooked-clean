@@ -95,6 +95,11 @@ const looksLikeVideo = (url: string) =>
 const looksLikeYouTube = (url: string) => !!extractYoutubeId((url || '').trim());
 const ONE_GB = 1024 * 1024 * 1024;
 
+const ytThumb = (url: string) => {
+  const id = extractYoutubeId((url || '').trim());
+  return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : null;
+};
+
 /* Flag emoji from country code */
 const codeToFlag = (cc?: string) => {
   if (!cc) return '';
@@ -240,7 +245,7 @@ const Grain = ({ opacity = 0.06 }: { opacity?: number }) => {
 /* Web: hide native controls (align with FeaturedScreen) */
 let PROFILE_VIDEO_CSS_INJECTED = false;
 function injectWebVideoCSS() {
-  if (Platform.OS !== 'web' || PROFILE_VIDEO_CSS_INJECTED) return;
+  if (Platform.OS !== 'web' || typeof document === 'undefined' || PROFILE_VIDEO_CSS_INJECTED) return;
   const style = document.createElement('style');
   style.innerHTML = `
     .ovk-video { outline: none !important; }
@@ -771,6 +776,20 @@ interface PortfolioItem {
   created_at: string;
 }
 
+interface SubmissionRow {
+  id: string;
+  user_id: string;
+  title: string | null;
+  word: string | null;
+  youtube_url: string | null;
+video_url?: string | null;      // if you store public URL
+video_path?: string | null;     // if you store storage path
+mime_type?: string | null;      // optional
+  votes?: number | null;
+  submitted_at: string;
+}
+
+
 interface ShowreelRow {
   id: string;
   user_id: string;
@@ -849,8 +868,12 @@ export default function ProfileScreen() {
   const savingRef = useRef(false);
 
   const viewedUserFromObj = route.params?.user;
-  const viewedUserId: string | undefined =
-    route.params?.userId ?? viewedUserFromObj?.id ?? undefined;
+const viewedUserId: string | undefined =
+  route.params?.userId ?? viewedUserFromObj?.id ?? undefined;
+
+// ✅ single source of truth for which profile should load
+const targetIdParam: string | null =
+  route.params?.userId ?? route.params?.user?.id ?? null;
 
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [mainRoleName, setMainRoleName] = useState('');
@@ -906,6 +929,12 @@ export default function ProfileScreen() {
   // Portfolio (extra)
   const [portfolioItems, setPortfolioItems] = useState<PortfolioItem[]>([]);
   const [loadingPortfolio, setLoadingPortfolio] = useState(false);
+
+  // Submissions (monthly films)
+const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
+const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+const [submissionModalOpen, setSubmissionModalOpen] = useState(false);
+const [activeSubmission, setActiveSubmission] = useState<SubmissionRow | null>(null);
 
   // audio
   const soundRef = useRef<Audio.Sound | null>(null);
@@ -1022,7 +1051,7 @@ const fetchProfile = useCallback(async () => {
   // Auth is valid now
   setCurrentUserId(authUser.id);
 
-  const targetId = viewedUserId ?? authUser.id;
+  const targetId = targetIdParam ?? authUser.id;
   const own = !viewedUserId || viewedUserId === authUser.id;
   setIsOwnProfile(own);
 
@@ -1154,9 +1183,10 @@ const fetchProfile = useCallback(async () => {
 
   if (targetId) {
     await Promise.all([
-      fetchPortfolioItems(targetId),
-      fetchShowreelList(targetId),
-    ]);
+  fetchPortfolioItems(targetId),
+  fetchShowreelList(targetId),
+  fetchUserSubmissions(targetId),
+]);
   }
 
   if (own) {
@@ -1170,7 +1200,7 @@ const fetchProfile = useCallback(async () => {
   }
 
   setIsLoading(false);
-}, [viewedUserId, loadGamificationMeta]);
+}, [targetIdParam, loadGamificationMeta]);
 
 
   useEffect(() => {
@@ -1345,6 +1375,127 @@ const fetchProfile = useCallback(async () => {
     if (data) setPortfolioItems(data);
     setLoadingPortfolio(false);
   };
+
+  const fetchUserSubmissions = async (userId: string) => {
+  try {
+    setLoadingSubmissions(true);
+
+    const targetUserId = userId || viewedUserId;
+    if (!targetUserId) {
+      setSubmissions([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("submissions")
+      .select("*") // <-- STOP GUESSING. PULL EVERYTHING.
+      .eq("user_id", targetUserId)
+      .order("submitted_at", { ascending: false });
+
+    if (error) {
+      console.warn("fetchUserSubmissions error:", error.message);
+      setSubmissions([]);
+      return;
+    }
+
+    const rows = (data || []) as any[];
+
+    // 🔥 PROOF LOG: look at ONE mp4 row in the console and you’ll know instantly what column is used.
+    if (rows.length) {
+      console.log("[SUBMISSIONS raw sample]", rows[0]);
+    }
+
+    const stripQuery = (u: string) => (u ? u.split("?")[0] : u);
+
+    const pathFromPublicUrl = (u: string) => {
+      const clean = stripQuery(u);
+      const m = clean.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
+      if (!m) return null;
+      return { bucket: m[1], path: m[2] };
+    };
+
+    const pickVideoField = (s: any) => {
+      // try ALL common names (because your DB may not match what we think)
+      return (
+        s.video_url ||
+        s.video_path ||
+        s.file_url ||
+        s.file_path ||
+        s.mp4_url ||
+        s.mp4_path ||
+        s.storage_url ||
+        s.storage_path ||
+        s.url ||
+        s.path ||
+        ""
+      ).toString().trim();
+    };
+
+    const withPlayableUrls: SubmissionRow[] = await Promise.all(
+      rows.map(async (s) => {
+        const raw = pickVideoField(s);
+
+        // If nothing exists, this is the REAL problem (upload didn’t store a reference)
+        if (!raw) return s as SubmissionRow;
+
+        // If already http(s):
+        if (/^https?:\/\//i.test(raw)) {
+          const pub = pathFromPublicUrl(raw);
+
+          // Not a supabase public object url → just use directly
+          if (!pub) {
+            return { ...(s as SubmissionRow), video_url: stripQuery(raw) };
+          }
+
+          // Supabase public url → sign for reliable access
+          const { data: signed, error: signErr } = await supabase.storage
+            .from(pub.bucket)
+            .createSignedUrl(pub.path, 60 * 60);
+
+          if (!signErr && signed?.signedUrl) {
+            return { ...(s as SubmissionRow), video_url: signed.signedUrl };
+          }
+
+          console.warn("[SIGN FAIL public url]", raw, signErr?.message || "");
+          return { ...(s as SubmissionRow), video_url: stripQuery(raw) };
+        }
+
+        // Otherwise raw is a storage path
+        const cleanPath = stripQuery(raw);
+
+        // Try films
+        const { data: signedFilms, error: signErrFilms } = await supabase.storage
+          .from("films")
+          .createSignedUrl(cleanPath, 60 * 60);
+
+        if (!signErrFilms && signedFilms?.signedUrl) {
+          return { ...(s as SubmissionRow), video_url: signedFilms.signedUrl };
+        }
+
+        // Fallback portfolios
+        const { data: signedPort, error: signErrPort } = await supabase.storage
+          .from("portfolios")
+          .createSignedUrl(cleanPath, 60 * 60);
+
+        if (!signErrPort && signedPort?.signedUrl) {
+          return { ...(s as SubmissionRow), video_url: signedPort.signedUrl };
+        }
+
+        console.warn(
+          "[SIGN FAIL path]",
+          cleanPath,
+          signErrFilms?.message || signErrPort?.message || ""
+        );
+
+        return s as SubmissionRow;
+      })
+    );
+
+    setSubmissions(withPlayableUrls);
+  } finally {
+    setLoadingSubmissions(false);
+  }
+};
 
   /* ---------- My Jobs with applicants (own profile) ---------- */
   const fetchMyJobsWithApplicants = async (ownerId: string) => {
@@ -2400,22 +2551,23 @@ const renderHero = () => {
     <TouchableOpacity
       activeOpacity={0.85}
       onPress={async () => {
-        if (!viewedUserId) return;
+  const targetIdToSupport = profile?.id; // ✅ always correct
+  if (!targetIdToSupport) return;
 
-        if (isSupporting) {
-          const { error } = await unsupportUser(viewedUserId);
-          if (!error) {
-            setIsSupporting(false);
-            setSupportersCount((n) => Math.max(0, n - 1));
-          }
-        } else {
-          const { error } = await supportUser(viewedUserId);
-          if (!error) {
-            setIsSupporting(true);
-            setSupportersCount((n) => n + 1);
-          }
-        }
-      }}
+  if (isSupporting) {
+    const { error } = await unsupportUser(targetIdToSupport);
+    if (!error) {
+      setIsSupporting(false);
+      setSupportersCount((n) => Math.max(0, n - 1));
+    }
+  } else {
+    const { error } = await supportUser(targetIdToSupport);
+    if (!error) {
+      setIsSupporting(true);
+      setSupportersCount((n) => n + 1);
+    }
+  }
+}}
       style={[
         {
           paddingVertical: 12,
@@ -2905,6 +3057,196 @@ const renderHero = () => {
     );
   };
 
+  const renderSubmissionsSection = () => {
+  if (loadingSubmissions) {
+    return (
+      <View style={block.section}>
+        <Text style={block.sectionTitleCentered}>Submissions</Text>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (!submissions.length) return null;
+
+  const cols = isMobile ? 2 : 4;
+  const usable = Math.min(width, PAGE_MAX) - horizontalPad * 2;
+  const tileW = Math.floor((usable - GRID_GAP * (cols - 1)) / cols);
+  const tileH = Math.floor(tileW * (9 / 16));
+
+  return (
+    <View style={block.section}>
+      <Text style={block.sectionTitleCentered}>Submissions</Text>
+<View style={[block.grid, { gap: GRID_GAP }]}>
+  {submissions.map((s) => {
+    const thumb = s.youtube_url ? ytThumb(s.youtube_url) : null;
+
+    return (
+      <Pressable
+        key={s.id}
+        onPress={() => {
+          setActiveSubmission(s);
+          setSubmissionModalOpen(true);
+        }}
+        style={{ width: tileW }}
+      >
+        <View
+          style={{
+            height: tileH,
+            borderRadius: 12,
+            overflow: "hidden",
+            borderWidth: 1,
+            borderColor: COLORS.border,
+            backgroundColor: "#000",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {/* YOUTUBE → thumbnail */}
+          {s.youtube_url && thumb ? (
+            <Image
+              source={{ uri: thumb }}
+              style={{ width: "100%", height: "100%" }}
+              resizeMode="cover"
+            />
+          ) : (
+            /* MP4 → visible placeholder */
+            <>
+              <Ionicons
+                name="videocam"
+                size={28}
+                color={COLORS.textSecondary}
+              />
+              <Text
+                style={{
+                  marginTop: 6,
+                  color: COLORS.textSecondary,
+                  fontFamily: FONT_OBLIVION,
+                  fontSize: 11,
+                }}
+              >
+                MP4 submission
+              </Text>
+            </>
+          )}
+
+          {/* subtle overlay */}
+          <View
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              padding: 10,
+              backgroundColor: "rgba(0,0,0,0.55)",
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.textPrimary,
+                fontFamily: FONT_OBLIVION,
+                fontWeight: "800",
+              }}
+              numberOfLines={1}
+            >
+              {s.title || "Untitled"}
+            </Text>
+
+            {!!s.word && (
+              <Text
+                style={{
+                  color: COLORS.textSecondary,
+                  fontFamily: FONT_OBLIVION,
+                  fontSize: 12,
+                }}
+                numberOfLines={1}
+              >
+                “{s.word}”
+              </Text>
+            )}
+          </View>
+        </View>
+      </Pressable>
+    );
+  })}
+</View>
+
+
+      {/* Playback modal */}
+      <Modal
+        visible={submissionModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setSubmissionModalOpen(false);
+          setActiveSubmission(null);
+        }}
+      >
+        <View style={{ flex: 1, backgroundColor: '#000000EE', justifyContent: 'center', padding: 14 }}>
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => {
+              setSubmissionModalOpen(false);
+              setActiveSubmission(null);
+            }}
+          />
+
+          <View
+            style={{
+              backgroundColor: COLORS.cardAlt,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: COLORS.border,
+              overflow: 'hidden',
+              padding: 12,
+            }}
+          >
+            <Text style={{ color: COLORS.textPrimary, fontFamily: FONT_OBLIVION, fontWeight: '900', marginBottom: 8 }}>
+              {activeSubmission?.title || 'Untitled'}
+            </Text>
+
+            {activeSubmission ? (
+  activeSubmission.youtube_url ? (
+    <YoutubePlayer
+      height={isMobile ? 220 : 360}
+      width={Math.min(Math.min(width, PAGE_MAX) - horizontalPad * 2, 760)}
+      videoId={extractYoutubeId(activeSubmission.youtube_url) || undefined}
+      play={false}
+      webViewStyle={{ backgroundColor: "#000" }}
+      webViewProps={{
+        allowsInlineMediaPlayback: true,
+        mediaPlaybackRequiresUserAction: false,
+      }}
+    />
+  ) : activeSubmission.video_url || activeSubmission.video_path ? (
+    <ShowreelVideoInline
+      playerId={`submission_${activeSubmission.id}`}
+      filePathOrUrl={activeSubmission.video_url || activeSubmission.video_path!}
+      width={Math.min(Math.min(width, PAGE_MAX) - horizontalPad * 2, 760)}
+      autoPlay={false}
+    />
+  ) : (
+    <Text style={[block.muted, { paddingVertical: 10, textAlign: "center" }]}>
+      No video found for this submission.
+    </Text>
+  )
+) : null}
+            <TouchableOpacity
+              onPress={() => {
+                setSubmissionModalOpen(false);
+                setActiveSubmission(null);
+              }}
+              style={[styles.ghostBtn, { marginTop: 12 }]}
+            >
+              <Text style={styles.ghostBtnText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+};
+
   /* ---------- MAIN RENDER ---------- */
 
   if (isLoading) {
@@ -2957,6 +3299,7 @@ const renderHero = () => {
                        {renderHero()}
             {renderFeaturedFilm()}
             {renderEditorialPortfolio()}
+            {renderSubmissionsSection()}
           </View>
         </ScrollView>
       </SafeAreaView>
