@@ -13,10 +13,12 @@ import {
   Platform,
   Alert,
   Image,
+  useWindowDimensions,
 } from 'react-native';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 /* ────────────────────────────────────────────────────────────
    Match MainTabs aesthetic (same palette + font system)
@@ -46,6 +48,14 @@ const WEB_NO_OUTLINE =
   Platform.OS === 'web'
     ? ({ outlineStyle: 'none', outlineWidth: 0 } as any)
     : null;
+
+/**
+ * ✅ Warm “people collaborating” image (direct URL so it actually renders on web)
+ * If you later want this to be a local asset, replace with:
+ *   const COLLAB_IMAGE = require('../assets/collab.jpg');
+ */
+const COLLAB_IMAGE_URI =
+  'https://images.unsplash.com/photo-1568992688065-536aad8a12f6?auto=format&fit=crop&w=1800&q=70';
 
 /* -------------------------------------------
    Types
@@ -264,7 +274,20 @@ export default function LocationScreen() {
   const [loadingSelectedJob, setLoadingSelectedJob] = useState(false);
   const [applyLoading, setApplyLoading] = useState(false);
 
+  // Collab image fallback
+  const [collabImageFailed, setCollabImageFailed] = useState(false);
+
   const navigation = useNavigation<any>();
+  const { height: screenH } = useWindowDimensions();
+
+  /**
+   * ✅ Make the "hero" image take up MOST of the screen (like your screenshot),
+   * while staying sane on small phones and not going absurd on big monitors.
+   */
+  const HERO_HEIGHT = useMemo(() => {
+    const h = screenH * 0.58;
+    return Math.min(Math.max(h, 360), 560);
+  }, [screenH]);
 
   /**
    * ✅ Fix for your "Rome -> Roma sometimes" bug:
@@ -573,6 +596,73 @@ export default function LocationScreen() {
     }
   }, [selectedJob]);
 
+  const InspirationCard = () => (
+    <View style={styles.inspirationCard}>
+      <View style={styles.inspirationImageWrap}>
+        {!collabImageFailed ? (
+          <Image
+            source={{ uri: COLLAB_IMAGE_URI }}
+            style={[styles.inspirationImage, { height: HERO_HEIGHT }]}
+            resizeMode="cover"
+            onError={() => setCollabImageFailed(true)}
+          />
+        ) : (
+          <View style={[styles.inspirationFallback, { height: HERO_HEIGHT }]}>
+            <View style={styles.inspirationFallbackIcon}>
+              <Ionicons name="people-outline" size={34} color={GOLD} />
+            </View>
+          </View>
+        )}
+
+        {/* ✅ Smooth vignette (no hard shadow borders) */}
+        <LinearGradient
+          colors={['rgba(0,0,0,0.10)', 'rgba(0,0,0,0.22)']}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={styles.vignetteFill}
+          pointerEvents="none"
+        />
+        <LinearGradient
+          colors={['rgba(0,0,0,0.00)', 'rgba(0,0,0,0.78)']}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={styles.vignetteBottom}
+          pointerEvents="none"
+        />
+        <LinearGradient
+          colors={['rgba(0,0,0,0.40)', 'rgba(0,0,0,0.00)']}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={styles.vignetteLeft}
+          pointerEvents="none"
+        />
+        <LinearGradient
+          colors={['rgba(0,0,0,0.00)', 'rgba(0,0,0,0.40)']}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={styles.vignetteRight}
+          pointerEvents="none"
+        />
+
+        {/* Badge */}
+        <View style={styles.inspirationBadge}>
+          <Ionicons name="location-outline" size={14} color={GOLD} style={{ marginRight: 6 }} />
+          <Text style={styles.inspirationBadgeText}>LOCAL COLLABS</Text>
+        </View>
+
+        {/* Text over image */}
+        <View style={styles.inspirationTextWrap} pointerEvents="none">
+          <View style={styles.inspirationTextPill}>
+            <Text style={styles.inspirationHeadline}>CREATIVES ARE EVERYWHERE.</Text>
+            <Text style={styles.inspirationCopy}>
+              Find people near you — you don’t need to move to massive creator hubs to collaborate.
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: DARK_BG }}
@@ -695,6 +785,11 @@ export default function LocationScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* ✅ Always BELOW everything (even after searching) */}
+      <View style={{ marginTop: searched ? 14 : 12 }}>
+        <InspirationCard />
+      </View>
 
       {/* City Search Modal */}
       <Modal
@@ -1070,6 +1165,132 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
+  },
+
+  /* ✅ Inspiration banner (hero-style height + bigger text over image) */
+  inspirationCard: {
+    backgroundColor: DARK_ELEVATED,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
+    overflow: 'hidden',
+  },
+  inspirationImageWrap: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    // ✅ remove the “hard border” feel around the vignette area
+    borderWidth: 0,
+    backgroundColor: '#111111',
+  },
+  inspirationImage: {
+    width: '100%',
+  },
+  inspirationFallback: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#101010',
+  },
+  inspirationFallbackIcon: {
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
+    backgroundColor: '#0F0F0F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  /* ✅ Smooth vignette layers (gradients) */
+  vignetteFill: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
+  vignetteBottom: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '62%',
+  },
+  vignetteLeft: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: '22%',
+  },
+  vignetteRight: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: '22%',
+  },
+
+  inspirationBadge: {
+    position: 'absolute',
+    left: 12,
+    top: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(17,17,17,0.90)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
+  },
+  inspirationBadgeText: {
+    color: GOLD,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+
+  inspirationTextWrap: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 14,
+    alignItems: 'center',
+  },
+  inspirationTextPill: {
+    width: '100%',
+    maxWidth: 760,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.44)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  inspirationHeadline: {
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 18, // ✅ bigger (your “text over LV/age” request)
+    fontWeight: '900',
+    letterSpacing: 1.9,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  inspirationCopy: {
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 15, // ✅ bigger
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    textAlign: 'center',
+    lineHeight: 22,
+    opacity: 0.94,
   },
 
   /* Modal */
