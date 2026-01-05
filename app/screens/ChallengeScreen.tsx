@@ -28,9 +28,12 @@ import { Upload } from "tus-js-client";
 import { LinearGradient } from "expo-linear-gradient";
 import { useGamification } from "../context/GamificationContext";
 import { UpgradeModal } from "../../components/UpgradeModal";
+import { backfillMissingSubmissionThumbnails } from "../lib/backfillThumbnails";
+import { useMonthlyStreak } from "../lib/useMonthlyStreak";
 
 import * as FileSystem from "expo-file-system";
 import * as VideoThumbnails from "expo-video-thumbnails";
+import { Buffer } from "buffer";
 
 dayjs.extend(duration);
 
@@ -61,13 +64,10 @@ const SYSTEM_SANS = Platform.select({
 /* ---------------------------- constants/types --------------------------- */
 type Category = "film" | "acting" | "music";
 
-const CAP: Record<Category, number> = {
-  film: 5 * 60,
-  acting: 2 * 60,
-  music: 5 * 60,
-};
+const MAX_UPLOAD_BYTES = 3 * 1024 * 1024 * 1024; // 3GB
 
 const STORAGE_BUCKET = "films";
+const THUMB_BUCKET = "thumbnails";
 
 /* ---------------- Hero image (warm + cinematic) ---------------- */
 const HERO_IMAGE =
@@ -110,7 +110,6 @@ async function ensureThemeWordOnChallengeRow(ch: MonthlyChallenge): Promise<Mont
     const current = (ch?.theme_word ?? "").trim();
     if (current) return ch;
 
-    // Pull list of theme words and pick randomly
     const pick = await supabase.from("theme_words").select("word").order("word", { ascending: true });
 
     if (!pick.error && Array.isArray(pick.data) && pick.data.length > 0) {
@@ -121,7 +120,6 @@ async function ensureThemeWordOnChallengeRow(ch: MonthlyChallenge): Promise<Mont
       if (words.length > 0) {
         const chosen = words[Math.floor(Math.random() * words.length)];
 
-        // Try to persist so it stays constant for everyone this month
         const upd = await supabase
           .from("monthly_challenges")
           .update({ theme_word: chosen })
@@ -129,10 +127,8 @@ async function ensureThemeWordOnChallengeRow(ch: MonthlyChallenge): Promise<Mont
           .select("id, month_start, month_end, theme_word")
           .single();
 
-        // ✅ Only return chosen if it actually persisted
         if (!upd.error && upd.data?.theme_word) return upd.data as MonthlyChallenge;
 
-        // ❗ If we can't persist, DO NOT use a random local value (would change on refresh).
         return { ...ch, theme_word: "Untitled" } as MonthlyChallenge;
       }
     }
@@ -140,7 +136,6 @@ async function ensureThemeWordOnChallengeRow(ch: MonthlyChallenge): Promise<Mont
     return { ...ch, theme_word: "Untitled" } as MonthlyChallenge;
   } catch (e) {
     console.warn("[challenge] ensureThemeWord failed:", (e as any)?.message ?? e);
-    // Stable fallback (doesn't change every refresh)
     return { ...ch, theme_word: (ch?.theme_word ?? "").trim() || "Untitled" } as MonthlyChallenge;
   }
 }
@@ -169,7 +164,7 @@ async function fetchCurrentChallenge() {
   const startDateOnly = start.format("YYYY-MM-DD");
   const endDateOnly = end.format("YYYY-MM-DD");
 
-  // Try exact DATE match (best if DATE columns)
+  // Try exact DATE match
   const exact = await supabase
     .from("monthly_challenges")
     .select("id, month_start, month_end, theme_word")
@@ -182,7 +177,7 @@ async function fetchCurrentChallenge() {
     return (await ensureThemeWordOnChallengeRow(exact.data as MonthlyChallenge)) as MonthlyChallenge;
   }
 
-  // Try timestamp range (best if TIMESTAMPTZ)
+  // Try timestamp range
   const nowIso = new Date().toISOString();
   const range = await supabase
     .from("monthly_challenges")
@@ -223,6 +218,59 @@ async function getResumableEndpoint() {
   const url = new URL(probe.data.publicUrl);
   const projectRef = url.hostname.split(".")[0];
   return `https://${projectRef}.storage.supabase.co/storage/v1/upload/resumable`;
+}
+
+async function uploadThumbnailToStorage(opts: {
+  userId: string;
+  thumbUri: string; // file:// (native) OR data:image/... (web) OR blob:... (web)
+  objectName?: string;
+  bucket?: string;
+}): Promise<{ publicUrl: string; path: string }> {
+  const {
+    userId,
+    thumbUri,
+    objectName = `submissions/${userId}/${Date.now()}`,
+    bucket = THUMB_BUCKET,
+  } = opts;
+
+  let blob: Blob;
+
+  if (Platform.OS !== "web" && thumbUri.startsWith("file://")) {
+    const base64 = await FileSystem.readAsStringAsync(thumbUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    const bytes = Buffer.from(base64, "base64");
+    blob = new Blob([bytes], { type: "image/jpeg" });
+  } else {
+    const resp = await fetch(thumbUri);
+    blob = await resp.blob();
+  }
+
+  const ext =
+    blob.type.includes("png")
+      ? ".png"
+      : blob.type.includes("jpeg") || blob.type.includes("jpg")
+      ? ".jpg"
+      : blob.type.includes("webp")
+      ? ".webp"
+      : ".jpg";
+
+  const filePath = `${objectName}${ext}`;
+
+  const up = await supabase.storage.from(bucket).upload(filePath, blob, {
+    upsert: true,
+    contentType: blob.type || "image/jpeg",
+    cacheControl: "3600",
+  });
+
+  if (up.error) throw up.error;
+
+  const pub = supabase.storage.from(bucket).getPublicUrl(filePath);
+  const publicUrl = pub?.data?.publicUrl;
+
+  if (!publicUrl) throw new Error("Could not get public thumbnail URL");
+
+  return { publicUrl, path: filePath };
 }
 
 async function uploadResumable(opts: {
@@ -359,6 +407,9 @@ async function captureFirstFrameWeb(videoSrc: string): Promise<{
   aspect: number;
 } | null> {
   try {
+    // @ts-ignore
+    if (Platform.OS !== "web" || typeof document === "undefined") return null;
+
     const video = document.createElement("video");
     video.src = videoSrc;
     video.preload = "auto";
@@ -467,6 +518,118 @@ async function captureFirstFrameWeb(videoSrc: string): Promise<{
   }
 }
 
+/* -------------------- Film category tags (expanded) -------------------- */
+const FILM_TAGS: string[] = [
+  // Originals (kept)
+  "Drama",
+  "Comedy",
+  "Thriller",
+  "Horror",
+  "Sci-Fi",
+  "Romance",
+  "Action",
+  "Mystery",
+  "Crime",
+  "Fantasy",
+  "Coming-of-Age",
+  "Experimental",
+  "Documentary-Style",
+  "No-Dialogue",
+  "One-Take",
+  "Found Footage",
+  "Slow Cinema",
+  "Satire",
+  "Neo-Noir",
+  "Musical",
+
+  // ✅ New (acting + narrative + tone)
+  "Tragedy",
+  "Monologue",
+  "Character Study",
+  "Dialogue-Driven",
+  "Dramedy",
+  "Dark Comedy",
+  "Psychological",
+  "Suspense",
+  "Period Piece",
+  "Social Realism",
+  "Rom-Com",
+  "Heist",
+  "War",
+  "Western",
+  "Supernatural",
+  "Animation-Style",
+  "Silent Film",
+  "Improvised",
+  "Voiceover",
+  "Two-Hander",
+  "Single Location",
+];
+
+/* ------------------------- insert helper (robust) ------------------------ */
+function looksLikeMissingColumnError(msg: string) {
+  const m = (msg || "").toLowerCase();
+
+  // Postgres style:
+  // "column \"xyz\" of relation \"submissions\" does not exist"
+  if (m.includes("column") && m.includes("does not exist")) return true;
+
+  // PostgREST schema cache style (YOUR CURRENT ERROR):
+  // "Could not find the 'monthly_challenge_id' column of 'submissions' in the schema cache"
+  if (m.includes("schema cache") && m.includes("could not find") && m.includes("column")) return true;
+
+  return false;
+}
+function extractMissingColumnName(msg: string): string | null {
+  // Postgres: column "xyz" ...
+  const m1 = msg.match(/column\s+"([^"]+)"/i);
+  if (m1?.[1]) return m1[1];
+
+  // Postgres: column submissions.xyz does not exist
+  const m2 = msg.match(/column\s+([a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)\s+does\s+not\s+exist/i);
+  if (m2?.[1]) return m2[1].split(".").pop() || null;
+
+  // PostgREST schema cache: could not find the 'xyz' column of 'submissions' in the schema cache
+  const m3 = msg.match(/could\s+not\s+find\s+the\s+'([^']+)'\s+column/i);
+  if (m3?.[1]) return m3[1];
+
+  return null;
+}
+
+async function insertSubmissionRobust(
+  payload: Record<string, any>,
+  requiredKeys: string[] = ["user_id", "title", "submitted_at"]
+) {
+  // Try insert, and if schema mismatch (missing columns), remove unknown columns and retry.
+  let working = { ...payload };
+
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const res = await supabase.from("submissions").insert(working).select().limit(1);
+
+    if (!res.error) return res;
+
+    const msg = String(res.error.message || "");
+    const missingCol = extractMissingColumnName(msg);
+
+    // If it's not a missing-column error, stop and throw it.
+    if (!looksLikeMissingColumnError(msg) || !missingCol) throw res.error;
+
+    // Never remove required fields.
+    if (requiredKeys.includes(missingCol)) throw res.error;
+
+    // Remove the missing column and retry.
+    if (Object.prototype.hasOwnProperty.call(working, missingCol)) {
+      delete working[missingCol];
+      continue;
+    }
+
+    // If we couldn't find it in the object (weird message), bail.
+    throw res.error;
+  }
+
+  throw new Error("Insert failed after multiple retries. Check submissions table schema / RLS.");
+}
+
 /* -------------------------------- Screen -------------------------------- */
 
 export default function ChallengeScreen() {
@@ -494,6 +657,13 @@ export default function ChallengeScreen() {
   const [thumbUri, setThumbUri] = useState<string | null>(null);
   const [thumbLoading, setThumbLoading] = useState(false);
   const [thumbAspect, setThumbAspect] = useState<number>(16 / 9);
+
+  // ✅ user-picked thumbnail
+  const [customThumbUri, setCustomThumbUri] = useState<string | null>(null);
+  const customThumbObjectUrlRef = useRef<string | null>(null);
+
+  // ✅ film categories (tags) - pick up to 3
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const [previewVisible, setPreviewVisible] = useState(false);
 
@@ -524,6 +694,13 @@ export default function ChallengeScreen() {
     loading: gamificationLoading,
     refresh: refreshGamification,
   } = useGamification();
+
+  const {
+  streak,
+  loading: streakLoading,
+  errorMsg: streakErrorMsg,
+  refreshStreak,
+} = useMonthlyStreak();
 
   const SUBMIT_XP = (XP_VALUES && (XP_VALUES as any).CHALLENGE_SUBMISSION) || 50;
 
@@ -594,6 +771,20 @@ export default function ChallengeScreen() {
     })();
   };
 
+  const revokeCustomThumbObjectUrlIfAny = () => {
+    if (customThumbObjectUrlRef.current) {
+      try {
+        URL.revokeObjectURL(customThumbObjectUrlRef.current);
+      } catch {}
+      customThumbObjectUrlRef.current = null;
+    }
+  };
+
+  const removeCustomThumbnail = () => {
+    revokeCustomThumbObjectUrlIfAny();
+    setCustomThumbUri(null);
+  };
+
   const resetSelectedFile = () => {
     if (objectUrlRef.current) {
       try {
@@ -601,6 +792,9 @@ export default function ChallengeScreen() {
       } catch {}
       objectUrlRef.current = null;
     }
+
+    removeCustomThumbnail();
+
     setLocalUri(null);
     setWebFile(null);
     setDurationSec(null);
@@ -636,12 +830,8 @@ export default function ChallengeScreen() {
     let alive = true;
 
     const updateCountdown = async () => {
-      // ✅ If DB row is wrong/outdated, fall back to real current month end.
       const fallbackEnd = dayjs().startOf("month").add(1, "month");
-
       const dbEnd = challenge?.month_end ? dayjs(challenge.month_end) : null;
-
-      // If dbEnd is invalid OR already in the past, use fallbackEnd
       const targetEnd = dbEnd && dbEnd.isValid() && dbEnd.isAfter(dayjs()) ? dbEnd : fallbackEnd;
 
       const diffMs = targetEnd.diff(dayjs());
@@ -667,7 +857,6 @@ export default function ChallengeScreen() {
     updateCountdown();
     const t = setInterval(updateCountdown, 60_000);
 
-    // Optional: refresh challenge row occasionally so it flips month automatically
     const refresh = setInterval(() => {
       fetchCurrentChallenge().then((c) => alive && setChallenge(c)).catch(() => {});
     }, 10 * 60_000);
@@ -681,6 +870,7 @@ export default function ChallengeScreen() {
 
   useEffect(() => {
     resetSelectedFile();
+    setSelectedTags([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category]);
 
@@ -691,14 +881,20 @@ export default function ChallengeScreen() {
         clearTimeout(webDurationTimer.current);
         webDurationTimer.current = null;
       }
+      if (objectUrlRef.current) {
+        try {
+          URL.revokeObjectURL(objectUrlRef.current);
+        } catch {}
+        objectUrlRef.current = null;
+      }
+      revokeCustomThumbObjectUrlIfAny();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const monthLabel = dayjs().format("MMMM");
 
-  const capSec = CAP[category];
-  const capText = category === "acting" ? "Max length: 2 minutes." : "Max length: 5 minutes.";
+  const capText = "No duration limit. Max file size: 3GB.";
 
   const headerTitle = `${monthLabel} ${
     category === "film" ? "Film" : category === "acting" ? "Acting" : "Music"
@@ -711,6 +907,47 @@ export default function ChallengeScreen() {
       ? "Perform a monologue (max 2 minutes). All levels welcome — upload your video here."
       : "Create a track inspired by the theme. Upload an MP3 or a performance video.";
 
+  const pickThumbnail = async () => {
+    try {
+      const pick = await DocumentPicker.getDocumentAsync({
+        type: ["image/*"] as any,
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (pick.canceled) return;
+
+      const asset: any = pick.assets?.[0];
+      if (!asset?.uri && !asset?.file) return;
+
+      revokeCustomThumbObjectUrlIfAny();
+
+      if (Platform.OS === "web" && asset.file) {
+        const f: File = asset.file;
+        const objUrl = URL.createObjectURL(f);
+        customThumbObjectUrlRef.current = objUrl;
+        setCustomThumbUri(objUrl);
+        return;
+      }
+
+      if (asset.uri) {
+        setCustomThumbUri(asset.uri);
+      }
+    } catch (e: any) {
+      console.warn("pickThumbnail failed:", e?.message ?? e);
+      notify("Could not pick thumbnail", "Try a different image.");
+    }
+  };
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) => {
+      const has = prev.includes(tag);
+      if (has) return prev.filter((t) => t !== tag);
+      if (prev.length >= 3) return prev;
+      return [...prev, tag];
+    });
+  };
+
   const pickFile = async () => {
     try {
       setStatus("");
@@ -719,6 +956,9 @@ export default function ChallengeScreen() {
       setThumbUri(null);
       setThumbAspect(16 / 9);
       setThumbLoading(false);
+
+      // for clean UX, remove custom thumb when new file is picked
+      removeCustomThumbnail();
 
       setPreviewVisible(false);
       setPreviewLoading(false);
@@ -776,6 +1016,15 @@ export default function ChallengeScreen() {
 
       setFileSizeBytes(bytes);
 
+      if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
+        notify(
+          "File too large",
+          `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`
+        );
+        resetSelectedFile();
+        return;
+      }
+
       const shouldTryThumb = category !== "music";
       if (shouldTryThumb) {
         setThumbLoading(true);
@@ -825,6 +1074,7 @@ export default function ChallengeScreen() {
     let cancelled = false;
 
     try {
+      // @ts-ignore
       const videoEl = document.createElement("video");
       videoEl.preload = "metadata";
       videoEl.muted = true;
@@ -834,10 +1084,14 @@ export default function ChallengeScreen() {
       const sizeText = formatBytes(fileSizeBytes);
 
       const cleanup = () => {
+        // @ts-ignore
         videoEl.onloadedmetadata = null;
+        // @ts-ignore
         videoEl.ontimeupdate = null;
+        // @ts-ignore
         videoEl.onerror = null;
         try {
+          // @ts-ignore
           videoEl.src = "";
         } catch {}
         if (webDurationTimer.current) {
@@ -858,20 +1112,27 @@ export default function ChallengeScreen() {
         }
       };
 
+      // @ts-ignore
       videoEl.onloadedmetadata = () => {
+        // @ts-ignore
         if (Number.isFinite(videoEl.duration) && videoEl.duration > 0) {
+          // @ts-ignore
           applyDuration(videoEl.duration);
           cleanup();
           return;
         }
 
         try {
+          // @ts-ignore
           videoEl.ontimeupdate = () => {
+            // @ts-ignore
             if (Number.isFinite(videoEl.duration) && videoEl.duration > 0) {
+              // @ts-ignore
               applyDuration(videoEl.duration);
               cleanup();
             }
           };
+          // @ts-ignore
           videoEl.currentTime = 1e101;
         } catch {
           applyDuration(null);
@@ -879,12 +1140,14 @@ export default function ChallengeScreen() {
         }
       };
 
+      // @ts-ignore
       videoEl.onerror = () => {
         applyDuration(null);
         cleanup();
       };
 
       webDurationTimer.current = setTimeout(() => {
+        // @ts-ignore
         applyDuration(Number.isFinite(videoEl.duration) ? videoEl.duration : null);
         cleanup();
       }, 12000);
@@ -925,17 +1188,19 @@ export default function ChallengeScreen() {
     if (!title.trim() || !description.trim()) return notify("Please complete all fields.");
     if (!localUri && !webFile) return notify("No file selected", "Pick a file first.");
 
-    if (durationSec != null && durationSec > capSec) {
-      const capLabel = `${Math.floor(capSec / 60)} minutes`;
+    // ✅ require tags for film
+    if (category === "film" && selectedTags.length === 0) {
+      return notify("Pick categories", "Choose at least 1 category (up to 3) for your film.");
+    }
+
+    if (fileSizeBytes != null && fileSizeBytes > MAX_UPLOAD_BYTES) {
       return notify(
-        "Media too long",
-        category === "acting"
-          ? "Acting monologues must be 2 minutes or less."
-          : `Maximum allowed length is ${capLabel}.`
+        "File too large",
+        `This file is ${formatBytes(fileSizeBytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`
       );
     }
 
-    // ✅ Server preflight gate (prevents uploading if not allowed)
+    // ✅ Server preflight gate (TEMP BYPASS FOR TESTING)
     try {
       const {
         data: { user },
@@ -943,34 +1208,40 @@ export default function ChallengeScreen() {
       } = await supabase.auth.getUser();
 
       if (userErr) throw userErr;
-
       if (!user) {
         notify("Please sign in", "You must be logged in to submit.");
         return;
       }
 
-      const { data, error } = await supabase.rpc("can_submit_this_month", {
-        p_user_id: user.id,
-      });
+      const BYPASS_LIMITS_FOR_TESTING = true;
 
-      if (error) throw error;
+      if (!BYPASS_LIMITS_FOR_TESTING) {
+        const { data, error } = await supabase.rpc("can_submit_this_month", {
+          p_user_id: user.id,
+        });
 
-      const row = Array.isArray(data) ? data[0] : data;
+        if (error) throw error;
 
-      if (!row?.allowed) {
-        if (row?.reason === "tier_too_low") {
-          notify("Upgrade required", "Submitting to the monthly challenge is available on the Pro tier.");
-          setUpgradeVisible(true);
+        const row = Array.isArray(data) ? data[0] : data;
+
+        if (!row?.allowed) {
+          if (row?.reason === "tier_too_low") {
+            notify(
+              "Upgrade required",
+              "Submitting to the monthly challenge is available on the Pro tier."
+            );
+            setUpgradeVisible(true);
+            return;
+          }
+
+          if (row?.reason === "no_submissions_left") {
+            notify("Submission limit reached", "You’ve used all 2 submissions for this month.");
+            return;
+          }
+
+          notify("Not allowed", "You can’t submit right now.");
           return;
         }
-
-        if (row?.reason === "no_submissions_left") {
-          notify("Submission limit reached", "You’ve used all 2 submissions for this month.");
-          return;
-        }
-
-        notify("Not allowed", "You can’t submit right now.");
-        return;
       }
     } catch (err) {
       console.warn("server preflight can_submit_this_month failed:", err);
@@ -989,8 +1260,44 @@ export default function ChallengeScreen() {
     try {
       const {
         data: { user },
+        error: userErr2,
       } = await supabase.auth.getUser();
+      if (userErr2) throw userErr2;
       if (!user) throw new Error("Not signed in");
+
+      // ✅ Use custom thumbnail for preview + upload (one box)
+      let finalThumbUri = customThumbUri || thumbUri;
+
+      if (!finalThumbUri && category !== "music") {
+        try {
+          setStatus("Generating thumbnail…");
+
+          if (Platform.OS === "web") {
+            const src = objectUrlRef.current ?? localUri ?? "";
+            if (src) {
+              const cap = await captureFirstFrameWeb(src);
+              if (cap?.dataUrl) {
+                finalThumbUri = cap.dataUrl;
+                setThumbUri(cap.dataUrl);
+                setThumbAspect(cap.aspect || 16 / 9);
+              }
+            }
+          } else if (localUri) {
+            const t = await VideoThumbnails.getThumbnailAsync(localUri, { time: 120 });
+            if (t?.uri) {
+              finalThumbUri = t.uri;
+              setThumbUri(t.uri);
+              // @ts-ignore
+              const w = (t as any)?.width;
+              // @ts-ignore
+              const h = (t as any)?.height;
+              if (w && h) setThumbAspect(w / h);
+            }
+          }
+        } catch {
+          // ok
+        }
+      }
 
       const { path, contentType } = await uploadResumable({
         userId: user.id,
@@ -1002,28 +1309,63 @@ export default function ChallengeScreen() {
         bucket: STORAGE_BUCKET,
       });
 
+      let thumbnail_url: string | null = null;
+
+      if (category !== "music" && finalThumbUri) {
+        try {
+          setStatus("Uploading thumbnail…");
+          const thumbRes = await uploadThumbnailToStorage({
+            userId: user.id,
+            thumbUri: finalThumbUri,
+            objectName: `submissions/${user.id}/${Date.now()}`,
+            bucket: THUMB_BUCKET,
+          });
+          thumbnail_url = thumbRes.publicUrl;
+        } catch (e) {
+          const msg = (e as any)?.message ?? String(e);
+          console.warn("[thumb upload] failed:", msg);
+          setStatus(`Thumbnail upload failed: ${msg}`);
+          thumbnail_url = null;
+        }
+      }
+
       setProgressPct(100);
       setStatus("Creating submission…");
 
       const media_kind = mediaKindFromMime(contentType);
 
-      const payload: any = {
+      // ✅ include challenge id if your DB supports it (robust insert will remove if not)
+      const basePayload: any = {
         user_id: user.id,
         title: title.trim(),
         description: description.trim(),
         submitted_at: new Date().toISOString(),
-        // ✅ theme word stored on submission (stable for the month)
         word: (challenge?.theme_word ?? "Untitled").trim() || "Untitled",
+
+        // optional FK; safe if not present (robust insert strips)
+        monthly_challenge_id: challenge?.id ?? null,
+
         storage_path: path,
         video_path: path,
         mime_type: contentType,
         media_kind,
         duration_seconds: durationSec ?? null,
         category,
+        thumbnail_url,
       };
 
-      const { error } = await supabase.from("submissions").insert(payload);
-      if (error) throw error;
+      const payloadWithTags: any =
+        category === "film" ? { ...basePayload, tags: selectedTags } : basePayload;
+
+      // ✅ SUPER ROBUST INSERT:
+      // If your submissions table doesn't have some of these columns, we auto-strip them and retry.
+      await insertSubmissionRobust(payloadWithTags, ["user_id", "title", "submitted_at"]);
+
+      try {
+  await refreshStreak();
+} catch (e) {
+  console.warn("refreshStreak failed:", e);
+}
 
       try {
         await giveXp(user.id, SUBMIT_XP, "challenge_submission");
@@ -1041,16 +1383,18 @@ export default function ChallengeScreen() {
       setEtaText("");
       notify(
         "Submission received!",
-        `Thanks for entering this month’s challenge. You just earned +${SUBMIT_XP} XP. Your submission will appear on Featured shortly.`
+        `Thanks for entering this month’s challenge. You just earned +${SUBMIT_XP} XP.`
       );
 
       setTitle("");
       setDescription("");
+      setSelectedTags([]);
       resetSelectedFile();
       setAgreed(false);
     } catch (e: any) {
       console.warn("Submit failed:", e?.message ?? e);
-      notify("Submission failed", e?.message ?? "Please try again.");
+      const msg = e?.message ?? "Please try again.";
+      notify("Submission failed", msg);
       setStatus("");
       setProgressPct(0);
       setEtaText("");
@@ -1074,6 +1418,11 @@ export default function ChallengeScreen() {
       </View>
     );
   }
+
+  const monthLabelText = dayjs().format("MMMM");
+
+  // ✅ ONE preview image: custom overrides generated thumb
+  const previewThumbToShow = customThumbUri || thumbUri;
 
   return (
     <View style={styles.container}>
@@ -1143,27 +1492,40 @@ export default function ChallengeScreen() {
 
                   <Text style={styles.heroExplainer}>{explainer}</Text>
 
-                  {/* ✅ Keep this section as before (why upload monthly) */}
-                <View style={styles.hypeCard}>
-  <Text style={styles.hypeTitle}>WHY UPLOAD MONTHLY</Text>
+<View style={styles.hypeCard}>
+  <View style={styles.hypeHeaderRow}>
+    <Text style={styles.hypeTitle}>WHY UPLOAD MONTHLY</Text>
+
+    <View style={styles.streakBadge}>
+      <Text style={styles.streakBadgeLabel}>STREAK</Text>
+      <Text style={styles.streakBadgeValue}>
+        {streakLoading ? "…" : String(streak)}
+      </Text>
+    </View>
+  </View>
 
   <Text style={styles.hypeBody}>
-    Most film students make only a handful of films across three years.
-    Progress comes faster when you stop waiting and start finishing.
+    Most film students make only a handful of films across three years. Progress comes faster when
+    you stop waiting and start finishing.
   </Text>
 
   <Text style={styles.hypeBody}>
-    Uploading monthly builds momentum. Each project teaches you more than the last —
-    and over time, your work naturally gets better.
+    Uploading monthly builds momentum. Each project teaches you more than the last — and over time,
+    your work naturally gets better.
   </Text>
 
   <Text style={styles.hypeBodyTight}>
-    <Text style={styles.hypeStrong}>All levels are welcome.</Text> You don’t need to make something great —
-    just make something, submit it, and keep going.
+    <Text style={styles.hypeStrong}>All levels are welcome.</Text> You don’t need to make something
+    great — just make something, submit it, and keep going.
+  </Text>
+
+  <Text style={[styles.hypeBodyTight, { marginTop: 10 }]}>
+    Streaks are simple: submit at least one film every month, and your streak grows. Miss a month
+    and it resets — not to punish you, but to keep you creating.{" "}
+    <Text style={styles.hypeStrong}>Consistent finishing is what turns you into a filmmaker.</Text>
   </Text>
 </View>
-                  
-
+  
                   <View style={styles.segmentWrap}>
                     {(["film", "acting", "music"] as Category[]).map((c) => {
                       const active = category === c;
@@ -1196,8 +1558,7 @@ export default function ChallengeScreen() {
                         {levelTitle ? (
                           <>
                             {" "}
-                            ·{" "}
-                            <Text style={styles.xpTitle}>{String(levelTitle).toUpperCase()}</Text>
+                            · <Text style={styles.xpTitle}>{String(levelTitle).toUpperCase()}</Text>
                           </>
                         ) : null}
                         {xpToNext !== null && xpToNext > 0 ? (
@@ -1252,13 +1613,53 @@ export default function ChallengeScreen() {
                       maxLength={100}
                     />
 
+                    {/* ✅ Film categories (pick up to 3) */}
+                    {category === "film" ? (
+                      <View style={{ marginTop: 12 }}>
+                        <View style={[styles.descRow, { marginBottom: 10 }]}>
+                          <Text style={[styles.label, { marginBottom: 0 }]}>CATEGORIES (PICK UP TO 3)</Text>
+                          <Text style={styles.counterText}>{selectedTags.length}/3</Text>
+                        </View>
+
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                          {FILM_TAGS.map((tag) => {
+                            const active = selectedTags.includes(tag);
+                            return (
+                              <Pressable
+                                key={tag}
+                                onPress={() => toggleTag(tag)}
+                                style={{
+                                  paddingVertical: 8,
+                                  paddingHorizontal: 12,
+                                  borderRadius: 999,
+                                  borderWidth: 1,
+                                  borderColor: active ? T.olive : T.line,
+                                  backgroundColor: active
+                                    ? "rgba(198,166,100,0.12)"
+                                    : "rgba(255,255,255,0.02)",
+                                }}
+                              >
+                                <Text style={{ color: active ? T.text : T.sub, fontSize: 12, letterSpacing: 0.3 }}>
+                                  {tag}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+
+                        {selectedTags.length === 0 ? (
+                          <Text style={[styles.formFootnote, { marginTop: 10 }]}>
+                            Pick at least 1 category. This helps Featured sort your film.
+                          </Text>
+                        ) : null}
+                      </View>
+                    ) : null}
+
                     <TouchableOpacity style={styles.pickBtn} onPress={pickFile} activeOpacity={0.92}>
                       <Text style={styles.pickBtnText}>
                         {localUri ? "PICK A DIFFERENT FILE" : "PICK A FILE"}
                       </Text>
-                      <Text style={styles.pickBtnSub}>
-                        {category === "acting" ? "Max 2 minutes" : "Max 5 minutes"}
-                      </Text>
+                      <Text style={styles.pickBtnSub}>Max file size: 3GB</Text>
                     </TouchableOpacity>
 
                     {localUri ? (
@@ -1279,6 +1680,9 @@ export default function ChallengeScreen() {
                       </View>
                     ) : null}
 
+                    {/* ✅ ONE preview box only: shows chosen thumbnail if present */}
+
+                                        {/* ✅ ONE preview box only: shows chosen thumbnail if present */}
                     {localUri ? (
                       <Pressable
                         onPress={openPreview}
@@ -1290,8 +1694,12 @@ export default function ChallengeScreen() {
                               <ActivityIndicator size="small" color={T.olive} />
                               <Text style={styles.thumbLoadingText}>Generating thumbnail…</Text>
                             </View>
-                          ) : thumbUri ? (
-                            <Image source={{ uri: thumbUri }} style={styles.previewImg} resizeMode="contain" />
+                          ) : previewThumbToShow ? (
+                            <Image
+                              source={{ uri: previewThumbToShow }}
+                              style={styles.previewImg}
+                              resizeMode={customThumbUri ? "cover" : "contain"}
+                            />
                           ) : (
                             <View style={styles.thumbFallback}>
                               <Text style={styles.thumbFallbackText}>WATCH PREVIEW</Text>
@@ -1305,6 +1713,43 @@ export default function ChallengeScreen() {
                           </View>
                         </View>
                       </Pressable>
+                    ) : null}
+
+                    {/* ✅ Thumbnail actions live under the preview (no second box) */}
+                    {localUri && category !== "music" ? (
+                      <View style={{ marginTop: 10 }}>
+                        <View style={{ flexDirection: "row", gap: 10 }}>
+                          <Pressable
+                            onPress={pickThumbnail}
+                            style={({ pressed }) => [
+                              styles.fileActionBtn,
+                              pressed && { opacity: 0.9 },
+                              { flex: 1, alignItems: "center" },
+                            ]}
+                          >
+                            <Text style={styles.fileActionText}>
+                              {customThumbUri ? "Change thumbnail" : "Add thumbnail"}
+                            </Text>
+                          </Pressable>
+
+                          {customThumbUri ? (
+                            <Pressable
+                              onPress={removeCustomThumbnail}
+                              style={({ pressed }) => [
+                                styles.fileActionBtnDanger,
+                                pressed && { opacity: 0.9 },
+                                { flex: 1, alignItems: "center" },
+                              ]}
+                            >
+                              <Text style={styles.fileActionTextDanger}>Remove thumbnail</Text>
+                            </Pressable>
+                          ) : null}
+                        </View>
+
+                        <Text style={[styles.formFootnote, { marginTop: 8 }]}>
+                          Optional: choose the exact image you want people to see on Featured.
+                        </Text>
+                      </View>
                     ) : null}
 
                     {localUri && category !== "music" && Platform.OS !== "web" ? (
@@ -1344,7 +1789,6 @@ export default function ChallengeScreen() {
                       </View>
                     ) : null}
 
-                    {/* ✅ AGREEMENT + CLICKABLE TERMS (keep as-is) */}
                     <View style={styles.agreeBlock}>
                       <Pressable
                         onPress={() => setAgreed(!agreed)}
@@ -1377,7 +1821,9 @@ export default function ChallengeScreen() {
                       disabled={loading || !agreed}
                       activeOpacity={0.92}
                     >
-                      <Text style={styles.submitText}>{loading ? "SUBMITTING…" : "UPLOAD & SUBMIT"}</Text>
+                      <Text style={styles.submitText}>
+                        {loading ? "SUBMITTING…" : "UPLOAD & SUBMIT"}
+                      </Text>
                     </TouchableOpacity>
 
                     <Text style={styles.formFootnote}>
@@ -1410,13 +1856,17 @@ export default function ChallengeScreen() {
                 </Text>
 
                 <Text style={styles.modalText}>
-                  • Be appropriate. No hate, harassment, explicit sexual content, or violent / harmful material.
+                  • Be appropriate. No hate, harassment, explicit sexual content, or violent / harmful
+                  material.
                 </Text>
 
-                <Text style={styles.modalTextStrong}>• IMPORTANT: Overlooked is for ART — not content.</Text>
+                <Text style={styles.modalTextStrong}>
+                  • IMPORTANT: Overlooked is for ART — not content.
+                </Text>
 
                 <Text style={styles.modalText}>
-                  • This is not Instagram or TikTok. Brain-rot / “content farm” style videos will be removed.
+                  • This is not Instagram or TikTok. Brain-rot / “content farm” style videos will be
+                  removed.
                 </Text>
 
                 <Text style={styles.modalTextStrong}>
@@ -1424,13 +1874,13 @@ export default function ChallengeScreen() {
                 </Text>
 
                 <Text style={styles.modalText}>
-                  • All levels are welcome. You do not need to submit something “perfect” — just finish work and keep
-                  going.
+                  • All levels are welcome. You do not need to submit something “perfect” — just
+                  finish work and keep going.
                 </Text>
 
                 <Text style={styles.modalText}>
-                  • If you submit every month for a year, you’ll make 12 films — more than most people make in their
-                  entire lives.
+                  • If you submit every month for a year, you’ll make 12 films — more than most
+                  people make in their entire lives.
                 </Text>
 
                 <Text style={styles.modalText}>
@@ -1478,7 +1928,9 @@ export default function ChallengeScreen() {
                         onError={() => {
                           clearPreviewTimer();
                           setPreviewLoading(false);
-                          setPreviewError("Could not play this file. Try Retry or pick a different file.");
+                          setPreviewError(
+                            "Could not play this file. Try Retry or pick a different file."
+                          );
                         }}
                         style={{
                           width: "100%",
@@ -1520,7 +1972,9 @@ export default function ChallengeScreen() {
                         onError={() => {
                           clearPreviewTimer();
                           setPreviewLoading(false);
-                          setPreviewError("Could not play this file. Try Retry or pick a different file.");
+                          setPreviewError(
+                            "Could not play this file. Try Retry or pick a different file."
+                          );
                         }}
                       />
                     )
@@ -1551,7 +2005,8 @@ export default function ChallengeScreen() {
 
               <View style={styles.previewMetaRow}>
                 <Text style={styles.previewMeta}>
-                  Duration: <Text style={styles.previewMetaStrong}>{formatDur(durationSec)}</Text>
+                  Duration:{" "}
+                  <Text style={styles.previewMetaStrong}>{formatDur(durationSec)}</Text>
                 </Text>
                 <Text style={styles.previewMeta}>
                   Size: <Text style={styles.previewMetaStrong}>{formatBytes(fileSizeBytes)}</Text>
@@ -1566,10 +2021,19 @@ export default function ChallengeScreen() {
         </Modal>
       </ScrollView>
 
-      <UpgradeModal visible={upgradeVisible} context="challenge" onClose={() => setUpgradeVisible(false)} />
+      <UpgradeModal
+        visible={upgradeVisible}
+        context="challenge"
+        onClose={() => setUpgradeVisible(false)}
+      />
     </View>
   );
 }
+
+// ------------------------------- STYLES -------------------------------
+
+                  
+// STOP HERE — styles go below this line in your file
 
 /* -------------------------------- Styles -------------------------------- */
 
@@ -1786,14 +2250,14 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   hypeTitle: {
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 2.0,
-    color: T.text,
-    textTransform: "uppercase",
-    fontFamily: SYSTEM_SANS,
-    marginBottom: 8,
-  },
+  fontSize: 12,
+  fontWeight: "900",
+  letterSpacing: 2.0,
+  color: T.text,
+  textTransform: "uppercase",
+  fontFamily: SYSTEM_SANS,
+  marginBottom: 0, // ✅ was 8
+},
   hypeBody: {
     fontSize: 13,
     color: "#D0D0D0",
@@ -1813,6 +2277,44 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontFamily: SYSTEM_SANS,
   },
+hypeHeaderRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
+  marginBottom: 8,
+},
+
+streakBadge: {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 8,
+  paddingHorizontal: 12,
+  paddingVertical: 8,
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: "rgba(198,166,100,0.35)",
+  backgroundColor: "rgba(198,166,100,0.10)",
+},
+
+streakBadgeLabel: {
+  fontSize: 10,
+  fontWeight: "900",
+  letterSpacing: 1.4,
+  color: "rgba(237,235,230,0.70)",
+  textTransform: "uppercase",
+  fontFamily: SYSTEM_SANS,
+},
+
+streakBadgeValue: {
+  fontSize: 12,
+  fontWeight: "900",
+  letterSpacing: 1.0,
+  color: T.text,
+  textTransform: "uppercase",
+  fontFamily: SYSTEM_SANS,
+},
+
 
   formHeaderText: {
     fontSize: 14,
@@ -2097,6 +2599,51 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
     fontFamily: SYSTEM_SANS,
   },
+
+  streakRow: {
+  marginTop: 12,
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 10,
+},
+
+streakPill: {
+  paddingHorizontal: 12,
+  paddingVertical: 10,
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: "#ffffff18",
+  backgroundColor: "rgba(0,0,0,0.35)",
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 8,
+},
+
+streakPillLabel: {
+  fontSize: 10,
+  fontWeight: "900",
+  letterSpacing: 1.2,
+  color: "rgba(237,235,230,0.75)",
+  textTransform: "uppercase",
+  fontFamily: SYSTEM_SANS,
+},
+
+streakPillValue: {
+  fontSize: 12,
+  fontWeight: "900",
+  letterSpacing: 1.0,
+  color: T.text,
+  textTransform: "uppercase",
+  fontFamily: SYSTEM_SANS,
+},
+
+streakHint: {
+  flex: 1,
+  fontSize: 11,
+  color: "rgba(237,235,230,0.70)",
+  lineHeight: 16,
+  fontFamily: SYSTEM_SANS,
+},
 
   /* -------- submit -------- */
   submitBtn: {

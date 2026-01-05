@@ -1,7 +1,7 @@
 // app/navigation/MainTabs.tsx
-import React, { memo, useEffect, useRef, useState } from 'react';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { TabActions, useNavigation } from '@react-navigation/native';
+import { TabActions, useNavigation, useFocusEffect } from '@react-navigation/native';
 import {
   StyleSheet,
   View,
@@ -31,6 +31,13 @@ import WorkshopScreen from '../screens/WorkshopScreen';
 import { SettingsModalProvider } from '../context/SettingsModalContext';
 import SettingsButton from '../../components/SettingsButton';
 import SettingsModal from '../../components/SettingsModal';
+
+// ✅ NEW: streak hook
+import { useMonthlyStreak } from '../lib/useMonthlyStreak';
+
+// NOTE: keeping this import because your file already has it.
+// Even if TopBarXpProgress isn’t used now, leaving it in place avoids breaking anything else
+// you might still rely on.
 import { useGamification } from '../context/GamificationContext';
 
 const Tab = createBottomTabNavigator();
@@ -57,13 +64,9 @@ const VOTES_PER_MONTH = 10;
 
 function normalizeIsoRange(start: string, end: string) {
   const mkStart = (s: string) =>
-    /^\d{4}-\d{2}-\d{2}$/.test(s)
-      ? `${s}T00:00:00.000Z`
-      : new Date(s).toISOString();
+    /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T00:00:00.000Z` : new Date(s).toISOString();
   const mkEnd = (s: string) =>
-    /^\d{4}-\d{2}-\d{2}$/.test(s)
-      ? `${s}T23:59:59.999Z`
-      : new Date(s).toISOString();
+    /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T23:59:59.999Z` : new Date(s).toISOString();
   return {
     startIso: new Date(mkStart(start)).toISOString(),
     endIso: new Date(mkEnd(end)).toISOString(),
@@ -71,14 +74,9 @@ function normalizeIsoRange(start: string, end: string) {
 }
 
 async function fetchCurrentChallenge() {
-  const { error: finalizeErr } = await supabase.rpc(
-    'finalize_last_month_winner_if_needed'
-  );
+  const { error: finalizeErr } = await supabase.rpc('finalize_last_month_winner_if_needed');
   if (finalizeErr) {
-    console.warn(
-      'finalize_last_month_winner_if_needed failed:',
-      finalizeErr.message
-    );
+    console.warn('finalize_last_month_winner_if_needed failed:', finalizeErr.message);
   }
 
   const { data, error } = await supabase
@@ -104,10 +102,7 @@ async function fetchCurrentChallenge() {
   );
 }
 
-async function countUserVotesInRange(
-  uid: string,
-  range: { start: string; end: string }
-) {
+async function countUserVotesInRange(uid: string, range: { start: string; end: string }) {
   try {
     const { startIso, endIso } = normalizeIsoRange(range.start, range.end);
 
@@ -124,23 +119,50 @@ async function countUserVotesInRange(
       const retry = await attempt('voted_at');
       count = retry.count ?? 0;
       if (retry.error) {
-        console.warn(
-          'Failed to count monthly votes (header):',
-          retry.error.message
-        );
+        console.warn('Failed to count monthly votes (header):', retry.error.message);
         return 0;
       }
     }
 
     return count ?? 0;
   } catch (e: any) {
-    console.warn(
-      'Failed to count monthly votes (header):',
-      e?.message || String(e)
-    );
+    console.warn('Failed to count monthly votes (header):', e?.message || String(e));
     return 0;
   }
 }
+
+/* ------------------------ Smooth Tab Transitions ----------------------- */
+
+const TabTransition = memo(function TabTransition({ children }: { children: React.ReactNode }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.985)).current;
+
+  useFocusEffect(
+    React.useCallback(() => {
+      Animated.parallel([
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 220,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scale, {
+          toValue: 1,
+          duration: 240,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      return () => {
+        opacity.setValue(0);
+        scale.setValue(0.985);
+      };
+    }, [opacity, scale])
+  );
+
+  return <Animated.View style={{ flex: 1, opacity, transform: [{ scale }] }}>{children}</Animated.View>;
+});
 
 /* --------------------------- Top Bar elements -------------------------- */
 
@@ -167,9 +189,7 @@ const TopBarVotesKicker = memo(function TopBarVotesKicker() {
     const setupForUser = async (uid: string | null) => {
       try {
         channelRef.current?.unsubscribe();
-      } catch {
-        // ignore
-      }
+      } catch {}
       channelRef.current = null;
 
       if (!mounted) return;
@@ -246,29 +266,22 @@ const TopBarVotesKicker = memo(function TopBarVotesKicker() {
 
     bootstrap();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (!mounted) return;
-        const uid = session?.user?.id ?? null;
-        setupForUser(uid);
-      }
-    );
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      const uid = session?.user?.id ?? null;
+      setupForUser(uid);
+    });
 
-    authSubRef.current =
-      (authListener as any)?.subscription ?? (authListener as any) ?? null;
+    authSubRef.current = (authListener as any)?.subscription ?? (authListener as any) ?? null;
 
     return () => {
       mounted = false;
       try {
         channelRef.current?.unsubscribe();
-      } catch {
-        // ignore
-      }
+      } catch {}
       try {
         authSubRef.current?.unsubscribe();
-      } catch {
-        // ignore
-      }
+      } catch {}
     };
   }, []);
 
@@ -282,10 +295,99 @@ const TopBarVotesKicker = memo(function TopBarVotesKicker() {
   );
 });
 
+/* ---------------------- ✅ STREAK Progress Bar --------------------- */
+
+type TopBarStreakProgressProps = {
+  variant: 'wide' | 'compact';
+  onOpenLeaderboard?: () => void;
+};
+
+const TopBarStreakProgress = memo(function TopBarStreakProgress({
+  variant,
+  onOpenLeaderboard,
+}: TopBarStreakProgressProps) {
+  const isWide = variant === 'wide';
+
+  // ✅ This uses authed user inside the hook (so it cannot “share” streaks across profiles)
+  const { streak, loading, refreshStreak } = useMonthlyStreak();
+
+  // Refresh streak when the current tab/screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshStreak?.();
+    }, [refreshStreak])
+  );
+
+  // Animate fill
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
+  const { targetMonths, yearLabel, pct } = useMemo(() => {
+    const safe = Math.max(0, Number(streak || 0));
+
+    // target: 12, 24, 36, ...
+    const target = (Math.floor(safe / 12) + 1) * 12;
+    const year = Math.max(1, Math.floor(target / 12));
+
+    const fraction = target > 0 ? Math.min(1, safe / target) : 0;
+
+    return {
+      targetMonths: target,
+      yearLabel: year,
+      pct: fraction,
+    };
+  }, [streak]);
+
+  useEffect(() => {
+    if (loading) return;
+    Animated.timing(progressAnim, {
+      toValue: pct,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [loading, pct, progressAnim]);
+
+  // ✅ FIX: accurate fill (NO forced minimum)
+  const widthInterpolated = progressAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
+
+  return (
+    <View style={[styles.streakWrap, isWide ? styles.streakWrapWide : styles.streakWrapCompact]}>
+      {onOpenLeaderboard && (
+        <View
+          style={[
+            styles.leaderboardLinkRow,
+            isWide ? styles.leaderboardLinkRowWide : styles.leaderboardLinkRowCompact,
+          ]}
+        >
+          <Pressable onPress={onOpenLeaderboard} hitSlop={8}>
+            <Text style={styles.leaderboardLinkText}>VIEW LEADERBOARD</Text>
+          </Pressable>
+        </View>
+      )}
+
+      <View style={[styles.streakBarOuter, isWide && styles.streakBarOuterWide]}>
+        <Animated.View style={[styles.streakBarFill, { width: widthInterpolated }]} />
+        <View style={styles.streakBarOverlay}>
+          <Text style={styles.streakBarLeft}>STREAK</Text>
+
+          <Text style={styles.streakBarCenter} numberOfLines={1}>
+            {loading ? '—' : `${Math.max(0, streak)} / ${targetMonths}`}
+          </Text>
+
+          <Text style={styles.streakBarRight}>Year {yearLabel}</Text>
+        </View>
+      </View>
+      {/* ✅ Intentionally no extra caption under the streak bar */}
+    </View>
+  );
+});
+
 /* --------------------------- Leaderboard Modal ------------------------- */
 
-type LeaderboardTab = 'monthly' | 'allTime' | 'city' | 'category';
-type CategoryType = 'film' | 'acting' | 'music';
+type LeaderboardTab = 'monthly' | 'allTime' | 'city';
 
 type LeaderboardEntry = {
   user_id: string;
@@ -300,8 +402,6 @@ type LeaderboardEntry = {
   city_id?: number | null;
   city_name?: string | null;
   country_code?: string | null;
-  category?: string | null;
-  submissions_count?: number | null;
 };
 
 type LeaderboardModalProps = {
@@ -309,14 +409,10 @@ type LeaderboardModalProps = {
   onClose: () => void;
 };
 
-const LeaderboardModal = memo(function LeaderboardModal({
-  visible,
-  onClose,
-}: LeaderboardModalProps) {
+const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: LeaderboardModalProps) {
   const navigation = useNavigation<any>();
 
   const [activeTab, setActiveTab] = useState<LeaderboardTab>('monthly');
-  const [activeCategory, setActiveCategory] = useState<CategoryType>('film');
   const [loading, setLoading] = useState(false);
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -325,13 +421,10 @@ const LeaderboardModal = memo(function LeaderboardModal({
   const [userCityName, setUserCityName] = useState<string | null>(null);
 
   const handlePressEntry = (entry: LeaderboardEntry) => {
-    navigation.navigate('Profile', {
-      userId: entry.user_id,
-    });
+    navigation.navigate('Profile', { userId: entry.user_id });
     onClose();
   };
 
-  // Grab user's city when modal opens
   useEffect(() => {
     if (!visible) return;
 
@@ -364,10 +457,7 @@ const LeaderboardModal = memo(function LeaderboardModal({
           if (cityRow?.name) setUserCityName(cityRow.name);
         }
       } catch (e: any) {
-        console.warn(
-          'Error bootstrapping leaderboard city:',
-          e?.message || String(e)
-        );
+        console.warn('Error bootstrapping leaderboard city:', e?.message || String(e));
       }
     })();
   }, [visible]);
@@ -410,15 +500,6 @@ const LeaderboardModal = memo(function LeaderboardModal({
           if (err) throw err;
           setEntries((data || []) as LeaderboardEntry[]);
         }
-      } else if (tab === 'category') {
-        const { data, error: err } = await supabase
-          .from('leaderboard_category_submissions')
-          .select('*')
-          .eq('category', activeCategory)
-          .order('rank', { ascending: true })
-          .limit(100);
-        if (err) throw err;
-        setEntries((data || []) as LeaderboardEntry[]);
       }
     } catch (e: any) {
       console.warn('Leaderboard fetch error:', e?.message || String(e));
@@ -433,7 +514,7 @@ const LeaderboardModal = memo(function LeaderboardModal({
     if (!visible) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, activeTab, activeCategory, userCityId]);
+  }, [visible, activeTab, userCityId]);
 
   const renderRow = (item: LeaderboardEntry) => {
     const isTop3 = item.rank <= 3;
@@ -450,10 +531,6 @@ const LeaderboardModal = memo(function LeaderboardModal({
     } else if (activeTab === 'city') {
       primaryValue = typeof item.xp === 'number' ? item.xp : 0;
       label = 'City XP';
-    } else if (activeTab === 'category') {
-      primaryValue =
-        typeof item.submissions_count === 'number' ? item.submissions_count : 0;
-      label = 'Submissions';
     }
 
     const initials =
@@ -468,14 +545,12 @@ const LeaderboardModal = memo(function LeaderboardModal({
 
     return (
       <Pressable
-        key={`${item.user_id}-${item.rank}-${activeTab}-${activeCategory}`}
+        key={`${item.user_id}-${item.rank}-${activeTab}`}
         style={[styles.lbRow, isTop3 && styles.lbRowTop]}
         onPress={() => handlePressEntry(item)}
       >
         <View style={styles.lbRankWrap}>
-          <Text style={[styles.lbRankText, isTop3 && styles.lbRankTextTop]}>
-            {item.rank}
-          </Text>
+          <Text style={[styles.lbRankText, isTop3 && styles.lbRankTextTop]}>{item.rank}</Text>
           {isTop3 && <View style={styles.lbCrownDot} />}
         </View>
 
@@ -502,12 +577,6 @@ const LeaderboardModal = memo(function LeaderboardModal({
               {userCityName}
             </Text>
           )}
-
-          {activeTab === 'category' && item.category && (
-            <Text style={styles.lbSubCity} numberOfLines={1}>
-              {item.category.toUpperCase()}
-            </Text>
-          )}
         </View>
 
         <View style={styles.lbXpWrap}>
@@ -522,7 +591,6 @@ const LeaderboardModal = memo(function LeaderboardModal({
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={styles.lbOverlay}>
         <View style={styles.lbCard}>
-          {/* Header */}
           <View style={styles.lbHeader}>
             <Text style={styles.lbTitle}>Leaderboard</Text>
             <Pressable onPress={onClose} hitSlop={10} style={styles.lbCloseBtn}>
@@ -530,18 +598,12 @@ const LeaderboardModal = memo(function LeaderboardModal({
             </Pressable>
           </View>
 
-          {/* Tabs */}
           <View style={styles.lbTabs}>
             <Pressable
               onPress={() => setActiveTab('monthly')}
               style={[styles.lbTab, activeTab === 'monthly' && styles.lbTabActive]}
             >
-              <Text
-                style={[
-                  styles.lbTabText,
-                  activeTab === 'monthly' && styles.lbTabTextActive,
-                ]}
-              >
+              <Text style={[styles.lbTabText, activeTab === 'monthly' && styles.lbTabTextActive]}>
                 This Month
               </Text>
             </Pressable>
@@ -550,12 +612,7 @@ const LeaderboardModal = memo(function LeaderboardModal({
               onPress={() => setActiveTab('allTime')}
               style={[styles.lbTab, activeTab === 'allTime' && styles.lbTabActive]}
             >
-              <Text
-                style={[
-                  styles.lbTabText,
-                  activeTab === 'allTime' && styles.lbTabTextActive,
-                ]}
-              >
+              <Text style={[styles.lbTabText, activeTab === 'allTime' && styles.lbTabTextActive]}>
                 All Time
               </Text>
             </Pressable>
@@ -564,64 +621,17 @@ const LeaderboardModal = memo(function LeaderboardModal({
               onPress={() => setActiveTab('city')}
               style={[styles.lbTab, activeTab === 'city' && styles.lbTabActive]}
             >
-              <Text
-                style={[
-                  styles.lbTabText,
-                  activeTab === 'city' && styles.lbTabTextActive,
-                ]}
-              >
+              <Text style={[styles.lbTabText, activeTab === 'city' && styles.lbTabTextActive]}>
                 My City
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => setActiveTab('category')}
-              style={[styles.lbTab, activeTab === 'category' && styles.lbTabActive]}
-            >
-              <Text
-                style={[
-                  styles.lbTabText,
-                  activeTab === 'category' && styles.lbTabTextActive,
-                ]}
-              >
-                Categories
               </Text>
             </Pressable>
           </View>
 
-          {/* Category sub-tabs */}
-          {activeTab === 'category' && (
-            <View style={styles.lbCategoryTabs}>
-              {(['film', 'acting', 'music'] as CategoryType[]).map((cat) => (
-                <Pressable
-                  key={cat}
-                  onPress={() => setActiveCategory(cat)}
-                  style={[
-                    styles.lbCategoryTab,
-                    activeCategory === cat && styles.lbCategoryTabActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.lbCategoryText,
-                      activeCategory === cat && styles.lbCategoryTextActive,
-                    ]}
-                  >
-                    {cat.toUpperCase()}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-
-          {/* Content */}
           <View style={styles.lbBody}>
             {loading && (
               <View style={styles.lbLoadingWrap}>
                 <ActivityIndicator size="small" color={GOLD} />
-                <Text style={styles.lbLoadingText}>
-                  Fetching who&apos;s actually doing the work...
-                </Text>
+                <Text style={styles.lbLoadingText}>Fetching who&apos;s actually doing the work...</Text>
               </View>
             )}
 
@@ -634,17 +644,13 @@ const LeaderboardModal = memo(function LeaderboardModal({
             {!loading && !error && entries.length === 0 && (
               <View style={styles.lbEmptyWrap}>
                 <Text style={styles.lbEmptyText}>
-                  No data yet for this view. Make something. Post something. Vote on
-                  something.
+                  No data yet for this view. Make something. Post something. Vote on something.
                 </Text>
               </View>
             )}
 
             {!loading && !error && entries.length > 0 && (
-              <ScrollView
-                style={styles.lbScroll}
-                contentContainerStyle={styles.lbScrollContent}
-              >
+              <ScrollView style={styles.lbScroll} contentContainerStyle={styles.lbScrollContent}>
                 {entries.map(renderRow)}
               </ScrollView>
             )}
@@ -656,6 +662,7 @@ const LeaderboardModal = memo(function LeaderboardModal({
 });
 
 /* ---------------------- XP Progress (from context) --------------------- */
+/* Keeping your original component in the file, but it’s no longer rendered in TopBar. */
 
 type TopBarXpProgressProps = {
   variant: 'wide' | 'compact';
@@ -667,23 +674,16 @@ const TopBarXpProgress = memo(function TopBarXpProgress({
   onOpenLeaderboard,
 }: TopBarXpProgressProps) {
   const gamification = useGamification();
-  const {
-    loading,
-    xp,
-    level,
-    levelTitle,
-    currentLevelMinXp,
-    nextLevelMinXp,
-    progress,
-  } = gamification;
+  const { loading, xp, level, levelTitle, currentLevelMinXp, nextLevelMinXp, progress } = gamification;
+
+  const [uid, setUid] = useState<string | null>(null);
 
   const refreshGamification: (() => Promise<void> | void) | null =
-    (gamification as any).refresh ||
-    (gamification as any).reload ||
-    (gamification as any).refetch ||
-    null;
+    (gamification as any).refresh || (gamification as any).reload || (gamification as any).refetch || null;
 
   const [ready, setReady] = useState(false);
+  const [hydratedForUser, setHydratedForUser] = useState(false);
+
   const lastXpRef = useRef(0);
   const lastLevelRef = useRef(1);
 
@@ -743,6 +743,7 @@ const TopBarXpProgress = memo(function TopBarXpProgress({
 
   const triggerLevelUp = (from: number, to: number, newTitle: string) => {
     if (to <= from) return;
+
     setLvlFrom(from);
     setLvlTo(to);
     setLvlTitleText(newTitle);
@@ -775,6 +776,50 @@ const TopBarXpProgress = memo(function TopBarXpProgress({
   };
 
   useEffect(() => {
+    let mounted = true;
+
+    const bootstrap = async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        const nextUid = data?.user?.id ?? null;
+        if (mounted) setUid(nextUid);
+      } catch {
+        if (mounted) setUid(null);
+      }
+    };
+
+    bootstrap();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      const nextUid = session?.user?.id ?? null;
+      setUid(nextUid);
+    });
+
+    const subObj = (sub as any)?.subscription ?? (sub as any) ?? null;
+
+    return () => {
+      mounted = false;
+      try {
+        subObj?.unsubscribe?.();
+      } catch {}
+    };
+  }, []);
+
+  useEffect(() => {
+    setReady(false);
+    setHydratedForUser(false);
+
+    setShowLevelModal(false);
+    setGainLabel(null);
+
+    lastXpRef.current = 0;
+    lastLevelRef.current = 1;
+
+    progressAnim.setValue(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
+
+  useEffect(() => {
     if (typeof refreshGamification === 'function') {
       Promise.resolve(refreshGamification()).catch((err) =>
         console.warn('Gamification refresh failed:', (err as any)?.message)
@@ -791,6 +836,15 @@ const TopBarXpProgress = memo(function TopBarXpProgress({
       lastLevelRef.current = level || 1;
       progressAnim.setValue(progress || 0);
       setReady(true);
+      setHydratedForUser(false);
+      return;
+    }
+
+    if (!hydratedForUser) {
+      lastXpRef.current = xp || 0;
+      lastLevelRef.current = level || 1;
+      animateProgressTo(progress || 0);
+      setHydratedForUser(true);
       return;
     }
 
@@ -801,6 +855,7 @@ const TopBarXpProgress = memo(function TopBarXpProgress({
 
     const delta = newXp - prevXp;
     if (delta > 0) triggerGain(delta);
+
     if (newLvl > prevLvl) {
       const lt = levelTitle || 'Background Pixel';
       triggerLevelUp(prevLvl, newLvl, lt);
@@ -809,19 +864,15 @@ const TopBarXpProgress = memo(function TopBarXpProgress({
     lastXpRef.current = newXp;
     lastLevelRef.current = newLvl;
     animateProgressTo(progress || 0);
-  }, [loading, xp, level, progress, levelTitle, ready, progressAnim]);
+  }, [loading, xp, level, progress, levelTitle, ready, hydratedForUser, progressAnim]);
 
   if (loading || !ready) return null;
 
-  const isMax =
-    !nextLevelMinXp ||
-    nextLevelMinXp <= currentLevelMinXp ||
-    (level || 1) >= 50;
+  const isMax = !nextLevelMinXp || nextLevelMinXp <= currentLevelMinXp || (level || 1) >= 50;
 
   const gained = Math.max(0, (xp || 0) - currentLevelMinXp);
   const span = Math.max(1, (nextLevelMinXp || currentLevelMinXp) - currentLevelMinXp);
 
-  // Minimal width so XP label never cramps against the left
   const widthInterpolated = progressAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['10%', '100%'],
@@ -831,19 +882,12 @@ const TopBarXpProgress = memo(function TopBarXpProgress({
 
   return (
     <>
-      <View
-        style={[
-          styles.xpWrap,
-          isWide ? styles.xpWrapWide : styles.xpWrapCompact,
-        ]}
-      >
+      <View style={[styles.xpWrap, isWide ? styles.xpWrapWide : styles.xpWrapCompact]}>
         {onOpenLeaderboard && (
           <View
             style={[
               styles.leaderboardLinkRow,
-              isWide
-                ? styles.leaderboardLinkRowWide
-                : styles.leaderboardLinkRowCompact,
+              isWide ? styles.leaderboardLinkRowWide : styles.leaderboardLinkRowCompact,
             ]}
           >
             <Pressable onPress={onOpenLeaderboard} hitSlop={8}>
@@ -852,15 +896,8 @@ const TopBarXpProgress = memo(function TopBarXpProgress({
           </View>
         )}
 
-        <View
-          style={[styles.xpBarOuter, isWide && styles.xpBarOuterWide]}
-        >
-          <Animated.View
-            style={[
-              styles.xpBarFill,
-              { width: widthInterpolated },
-            ]}
-          />
+        <View style={[styles.xpBarOuter, isWide && styles.xpBarOuterWide]}>
+          <Animated.View style={[styles.xpBarFill, { width: widthInterpolated }]} />
           <View style={styles.xpBarOverlay}>
             <Text style={styles.xpBarLevelLeft}>Lv {level || 1}</Text>
 
@@ -879,11 +916,7 @@ const TopBarXpProgress = memo(function TopBarXpProgress({
               styles.xpGainBubble,
               {
                 opacity: gainOpacity,
-                transform: [
-                  {
-                    translateY: gainTranslate,
-                  },
-                ],
+                transform: [{ translateY: gainTranslate }],
               },
             ]}
           >
@@ -892,34 +925,15 @@ const TopBarXpProgress = memo(function TopBarXpProgress({
         )}
       </View>
 
-      {/* Level up micro-modal */}
       <Modal visible={showLevelModal} transparent animationType="none">
-        <Animated.View
-          style={[
-            styles.levelModalOverlay,
-            { opacity: modalOpacity },
-          ]}
-        >
-          <Animated.View
-            style={[
-              styles.levelModalCard,
-              {
-                transform: [
-                  {
-                    scale: modalScale,
-                  },
-                ],
-              },
-            ]}
-          >
+        <Animated.View style={[styles.levelModalOverlay, { opacity: modalOpacity }]}>
+          <Animated.View style={[styles.levelModalCard, { transform: [{ scale: modalScale }] }]}>
             <Text style={styles.levelModalKicker}>LEVEL UP</Text>
             <Text style={styles.levelModalLevel}>
               Lv {lvlFrom} ➜ <Text style={{ color: GOLD }}>Lv {lvlTo}</Text>
             </Text>
             <Text style={styles.levelModalTitle}>{lvlTitleText}</Text>
-            <Text style={styles.levelModalHint}>
-              Keep creating. Keep getting seen.
-            </Text>
+            <Text style={styles.levelModalHint}>Keep creating. Keep getting seen.</Text>
           </Animated.View>
         </Animated.View>
       </Modal>
@@ -939,34 +953,20 @@ const TopBar = memo(function TopBar({ topOffset, navHeight }: TopBarProps) {
   const isWide = width >= 980;
   const [showLeaderboard, setShowLeaderboard] = useState(false);
 
-  const wrapperHeight = isWide ? navHeight : navHeight + 24;
+  // ✅ FIX: compact header no longer needs extra height for removed caption under streak bar
+  const wrapperHeight = isWide ? navHeight : navHeight + 38;
 
   return (
     <>
-      <View
-        style={[
-          styles.topBarWrapper,
-          {
-            height: wrapperHeight,
-            top: topOffset,
-          },
-        ]}
-      >
-        <View
-          style={[
-            styles.topBarInner,
-            { height: navHeight },
-          ]}
-        >
+      <View style={[styles.topBarWrapper, { height: wrapperHeight, top: topOffset }]}>
+        <View style={[styles.topBarInner, { height: navHeight }]}>
           <BrandWordmark />
 
           {isWide ? (
             <>
               <View style={styles.xpCenterSlot}>
-                <TopBarXpProgress
-                  variant="wide"
-                  onOpenLeaderboard={() => setShowLeaderboard(true)}
-                />
+                {/* ✅ REPLACED: XP → STREAK */}
+                <TopBarStreakProgress variant="wide" onOpenLeaderboard={() => setShowLeaderboard(true)} />
               </View>
               <View style={styles.rightTools}>
                 <TopBarVotesKicker />
@@ -992,18 +992,13 @@ const TopBar = memo(function TopBar({ topOffset, navHeight }: TopBarProps) {
 
         {!isWide && (
           <View style={styles.topBarInnerXpRow}>
-            <TopBarXpProgress
-              variant="compact"
-              onOpenLeaderboard={() => setShowLeaderboard(true)}
-            />
+            {/* ✅ REPLACED: XP → STREAK */}
+            <TopBarStreakProgress variant="compact" onOpenLeaderboard={() => setShowLeaderboard(true)} />
           </View>
         )}
       </View>
 
-      <LeaderboardModal
-        visible={showLeaderboard}
-        onClose={() => setShowLeaderboard(false)}
-      />
+      <LeaderboardModal visible={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
     </>
   );
 });
@@ -1015,31 +1010,18 @@ function withTopBar(Component: React.ComponentType<any>) {
 
     const NAV_HEIGHT = width >= 980 ? 56 : 46;
     const topOffset =
-      width >= 980
-        ? 0
-        : Platform.OS === 'ios'
-        ? Math.max((insets.top || 0) - 4, 0)
-        : 0;
+      width >= 980 ? 0 : Platform.OS === 'ios' ? Math.max((insets.top || 0) - 4, 0) : 0;
 
-    const contentTopPadding = NAV_HEIGHT + (width >= 980 ? 0 : 26);
+    // ✅ FIX: compact header padding adjusted for the streak bar only (no extra caption line)
+    const contentTopPadding = NAV_HEIGHT + (width >= 980 ? 0 : 40);
 
     return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: DARK_BG,
-        }}
-      >
+      <View style={{ flex: 1, backgroundColor: DARK_BG }}>
         <TopBar topOffset={topOffset} navHeight={NAV_HEIGHT} />
-        <SafeAreaView
-          style={[
-            styles.safeArea,
-            {
-              paddingTop: contentTopPadding,
-            },
-          ]}
-        >
-          <Component {...props} />
+        <SafeAreaView style={[styles.safeArea, { paddingTop: contentTopPadding }]}>
+          <TabTransition>
+            <Component {...props} />
+          </TabTransition>
         </SafeAreaView>
       </View>
     );
@@ -1053,6 +1035,9 @@ const ChallengeWrapped = withTopBar(ChallengeScreen);
 const LocationWrapped = withTopBar(LocationScreen);
 const ProfileWrapped = withTopBar(ProfileScreen);
 const WorkshopWrapped = withTopBar(WorkshopScreen);
+
+// ✅ FIX: Wrap ChatsStack with the SAME TopBar wrapper so the Chats tab shows the top bar too.
+const ChatsWrapped = withTopBar(ChatsStack);
 
 /* --------------------------------- Tabs -------------------------------- */
 
@@ -1072,10 +1057,7 @@ export default function MainTabs() {
             paddingBottom: Platform.OS === 'ios' ? 10 : 6,
             shadowColor: '#000',
             shadowOpacity: 0.3,
-            shadowOffset: {
-              width: 0,
-              height: -4,
-            },
+            shadowOffset: { width: 0, height: -4 },
             shadowRadius: 6,
             elevation: 10,
           },
@@ -1086,12 +1068,12 @@ export default function MainTabs() {
             fontWeight: '800',
             fontFamily: SYSTEM_SANS,
           },
-          tabBarItemStyle: {
-            paddingVertical: 0,
-          },
-          lazy: false,
-          detachInactiveScreens: false,
+          tabBarItemStyle: { paddingVertical: 0 },
+
+          lazy: true,
+          detachInactiveScreens: true,
           unmountOnBlur: false,
+
           tabBarIcon: ({ color }) => {
             let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
             switch (route.name) {
@@ -1126,22 +1108,23 @@ export default function MainTabs() {
         <Tab.Screen name="Challenge" component={ChallengeWrapped} />
         <Tab.Screen name="Workshop" component={WorkshopWrapped} />
         <Tab.Screen name="Location" component={LocationWrapped} />
+
+        {/* ✅ Chats now uses the same TopBar wrapper as every other tab */}
         <Tab.Screen
           name="Chats"
-          component={ChatsStack}
+          component={ChatsWrapped}
           options={{
             unmountOnBlur: false,
           }}
         />
+
         <Tab.Screen
           name="Profile"
           component={ProfileWrapped}
           listeners={({ navigation }) => ({
             tabPress: (e) => {
               e.preventDefault();
-              navigation.dispatch(
-                TabActions.jumpTo('Profile', undefined)
-              );
+              navigation.dispatch(TabActions.jumpTo('Profile', undefined));
             },
           })}
         />
@@ -1151,7 +1134,6 @@ export default function MainTabs() {
     </SettingsModalProvider>
   );
 }
-
 /* -------------------------------- Styles -------------------------------- */
 
 const styles = StyleSheet.create({
@@ -1181,7 +1163,8 @@ const styles = StyleSheet.create({
     maxWidth: 1200,
     alignSelf: 'center',
     paddingHorizontal: 16,
-    paddingTop: 2,
+    paddingTop: 6,
+    paddingBottom: 6,
   },
   brandWrap: {
     paddingVertical: 6,
@@ -1205,6 +1188,8 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#3A3A3A',
   },
+
+  /* Votes */
   kickerRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -1239,27 +1224,14 @@ const styles = StyleSheet.create({
     marginLeft: 2,
     fontFamily: SYSTEM_SANS,
   },
+
   xpCenterSlot: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 18,
   },
-  xpWrap: {
-    paddingVertical: 2,
-  },
-  xpWrapWide: {
-    width: '100%',
-    maxWidth: 520,
-    alignItems: 'center',
-    alignSelf: 'center',
-  },
-  xpWrapCompact: {
-    width: '100%',
-    maxWidth: '100%',
-    alignSelf: 'stretch',
-    alignItems: 'flex-start',
-  },
+
   leaderboardLinkRow: {
     marginBottom: 2,
   },
@@ -1278,6 +1250,85 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     fontFamily: SYSTEM_SANS,
   },
+
+  /* ✅ STREAK styles */
+  streakWrap: {
+    paddingVertical: 2,
+  },
+  streakWrapWide: {
+    width: '100%',
+    maxWidth: 520,
+    alignItems: 'center',
+    alignSelf: 'center',
+  },
+  streakWrapCompact: {
+    width: '100%',
+    maxWidth: '100%',
+    alignSelf: 'stretch',
+    alignItems: 'flex-start',
+  },
+  streakBarOuter: {
+    width: '100%',
+    height: 14,
+    borderRadius: 999,
+    backgroundColor: '#1F1F1F',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  streakBarOuterWide: {
+    width: '100%',
+  },
+  streakBarFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: 999,
+    backgroundColor: GOLD,
+  },
+  streakBarOverlay: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    justifyContent: 'space-between',
+  },
+  streakBarLeft: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+  },
+  streakBarCenter: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+  },
+  streakBarRight: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: TEXT_MUTED,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  /* XP styles kept (unused in TopBar now but preserved) */
+  xpWrap: { paddingVertical: 2 },
+  xpWrapWide: {
+    width: '100%',
+    maxWidth: 520,
+    alignItems: 'center',
+    alignSelf: 'center',
+  },
+  xpWrapCompact: {
+    width: '100%',
+    maxWidth: '100%',
+    alignSelf: 'stretch',
+    alignItems: 'flex-start',
+  },
   xpBarOuter: {
     marginTop: 0,
     width: '100%',
@@ -1288,9 +1339,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#333333',
   },
-  xpBarOuterWide: {
-    width: '100%',
-  },
+  xpBarOuterWide: { width: '100%' },
   xpBarFill: {
     position: 'absolute',
     left: 0,
@@ -1341,6 +1390,7 @@ const styles = StyleSheet.create({
     color: GOLD,
     fontFamily: SYSTEM_SANS,
   },
+
   levelModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.94)',
@@ -1388,6 +1438,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontFamily: SYSTEM_SANS,
   },
+
   /* Leaderboard modal */
   lbOverlay: {
     flex: 1,
@@ -1451,32 +1502,6 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
   lbTabTextActive: {
-    color: '#050505',
-  },
-  lbCategoryTabs: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    paddingVertical: 2,
-    marginBottom: 2,
-  },
-  lbCategoryTab: {
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-    borderRadius: 999,
-    marginHorizontal: 4,
-    backgroundColor: '#111111',
-  },
-  lbCategoryTabActive: {
-    backgroundColor: GOLD,
-  },
-  lbCategoryText: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: TEXT_MUTED,
-    letterSpacing: 0.8,
-    fontFamily: SYSTEM_SANS,
-  },
-  lbCategoryTextActive: {
     color: '#050505',
   },
   lbBody: {

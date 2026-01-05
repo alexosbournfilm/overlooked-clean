@@ -39,6 +39,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../context/AuthProvider';
 import { Upload } from 'tus-js-client';
 import { supportUser, unsupportUser } from "../lib/connections";
+import * as FileSystem from "expo-file-system";
+import { Buffer } from "buffer";
+import { useMonthlyStreak } from "../lib/useMonthlyStreak";
+
+
 
 
 /* ---------- Noir palette ---------- */
@@ -782,9 +787,10 @@ interface SubmissionRow {
   title: string | null;
   word: string | null;
   youtube_url: string | null;
-video_url?: string | null;      // if you store public URL
-video_path?: string | null;     // if you store storage path
-mime_type?: string | null;      // optional
+  video_url?: string | null;
+  video_path?: string | null;
+  mime_type?: string | null;
+  thumbnail_url?: string | null;   // ✅ ADD THIS
   votes?: number | null;
   submitted_at: string;
 }
@@ -867,9 +873,25 @@ export default function ProfileScreen() {
   const { refreshProfile } = useAuth();
   const savingRef = useRef(false);
 
+  // ✅ 1) figure out which profile we're viewing FIRST
   const viewedUserFromObj = route.params?.user;
-const viewedUserId: string | undefined =
-  route.params?.userId ?? viewedUserFromObj?.id ?? undefined;
+  const viewedUserId: string | undefined =
+    route.params?.userId ?? viewedUserFromObj?.id ?? undefined;
+
+  // ✅ 2) pass viewedUserId into the hook (so streak matches the profile)
+  const {
+    streak,
+    loading: streakLoading,
+    errorMsg: streakErrorMsg,
+    refreshStreak,
+  } = useMonthlyStreak(viewedUserId);
+
+  // ✅ 3) refresh when screen focuses (like Challenge)
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshStreak?.();
+    }, [refreshStreak])
+  );
 
 // ✅ single source of truth for which profile should load
 const targetIdParam: string | null =
@@ -934,7 +956,10 @@ const targetIdParam: string | null =
 const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
 const [loadingSubmissions, setLoadingSubmissions] = useState(false);
 const [submissionModalOpen, setSubmissionModalOpen] = useState(false);
+const [thumbUploading, setThumbUploading] = useState(false);
+const [thumbError, setThumbError] = useState<string | null>(null);
 const [activeSubmission, setActiveSubmission] = useState<SubmissionRow | null>(null);
+const [thumbUploadingId, setThumbUploadingId] = useState<string | null>(null);
 
   // audio
   const soundRef = useRef<Audio.Sound | null>(null);
@@ -1033,179 +1058,168 @@ const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 /* ---------- profile loader with job wiring ---------- */
 const fetchProfile = useCallback(async () => {
   if (savingRef.current) return;
+
   setIsLoading(true);
-
-  // 1) GET AUTH USER
-  const {
-    data: { user: authUser },
-    error: authErr,
-  } = await supabase.auth.getUser();
-
-  // If auth isn't ready yet → STOP here
-  if (authErr || !authUser || !authUser.id) {
-    console.log("Auth not ready yet — delaying profile load...");
-    setIsLoading(false);
-    return;
-  }
-
-  // Auth is valid now
-  setCurrentUserId(authUser.id);
-
-  const targetId = targetIdParam ?? authUser.id;
-  const own = !viewedUserId || viewedUserId === authUser.id;
-  setIsOwnProfile(own);
-
-  // 2) LOAD PROFILE DATA
-  const { data, error: userError } = await supabase
-    .from("users")
-    .select("*")
-    .eq("id", targetId)
-    .maybeSingle();
-
-  if (userError || !data) {
-    Alert.alert("Error loading profile");
-    setIsLoading(false);
-    return;
-  }
-
-  const pd = data as ProfileData;
-  setProfile(pd);
-
-  // 3) SUPPORT SYSTEM (only run when authUser.id EXISTS)
   try {
-    // Supporters: how many support THIS profile user
-    const { count: supportersRaw } = await supabase
-      .from("user_supports")
-      .select("supported_id", { count: "exact", head: true })
-      .eq("supported_id", targetId);
+    // 1) GET AUTH USER
+    const {
+      data: { user: authUser },
+      error: authErr,
+    } = await supabase.auth.getUser();
 
-    setSupportersCount(supportersRaw ?? 0);
+    // If auth isn't ready yet → STOP here
+    if (authErr || !authUser || !authUser.id) {
+      console.log("Auth not ready yet — delaying profile load...");
+      return; // <-- IMPORTANT: no setIsLoading(false) here anymore
+    }
 
-    // Supporting: how many THIS user supports
-    const { count: supportingRaw } = await supabase
-      .from("user_supports")
-      .select("supporter_id", { count: "exact", head: true })
-      .eq("supporter_id", targetId);
+    // Auth is valid now
+    setCurrentUserId(authUser.id);
 
-    setSupportingCount(supportingRaw ?? 0);
+    const targetId = targetIdParam ?? authUser.id;
+    const own = !viewedUserId || viewedUserId === authUser.id;
+    setIsOwnProfile(own);
 
-    // Does LOGGED-IN user support this profile?
-    if (!own) {
-      const { count: supportCheck } = await supabase
+    // 2) LOAD PROFILE DATA
+    const { data, error: userError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", targetId)
+      .maybeSingle();
+
+    if (userError || !data) {
+      Alert.alert("Error loading profile");
+      return;
+    }
+
+    const pd = data as ProfileData;
+    setProfile(pd);
+
+    // 3) SUPPORT SYSTEM (only run when authUser.id EXISTS)
+    try {
+      const { count: supportersRaw } = await supabase
         .from("user_supports")
         .select("supported_id", { count: "exact", head: true })
-        .eq("supporter_id", authUser.id)
         .eq("supported_id", targetId);
 
-      setIsSupporting((supportCheck ?? 0) > 0);
-    } else {
-      setIsSupporting(false);
+      setSupportersCount(supportersRaw ?? 0);
+
+      const { count: supportingRaw } = await supabase
+        .from("user_supports")
+        .select("supporter_id", { count: "exact", head: true })
+        .eq("supporter_id", targetId);
+
+      setSupportingCount(supportingRaw ?? 0);
+
+      if (!own) {
+        const { count: supportCheck } = await supabase
+          .from("user_supports")
+          .select("supported_id", { count: "exact", head: true })
+          .eq("supporter_id", authUser.id)
+          .eq("supported_id", targetId);
+
+        setIsSupporting((supportCheck ?? 0) > 0);
+      } else {
+        setIsSupporting(false);
+      }
+    } catch (e) {
+      console.log("Support load error:", e);
     }
-  } catch (e) {
-    console.log("Support load error:", e);
-  }
 
-  // 4) REMAINING PROFILE LOGIC (unchanged)
-  setFullName(pd.full_name || "");
-  setMainRole(
-    typeof pd.main_role_id === "number"
-      ? pd.main_role_id
-      : pd.main_role_id != null
-      ? Number(pd.main_role_id) || null
-      : null
-  );
-  setSideRoles(
-    Array.isArray(pd.side_roles) ? (pd.side_roles as string[]).filter(Boolean) : []
-  );
-  setCityId(
-    typeof pd.city_id === "number"
-      ? pd.city_id
-      : pd.city_id != null
-      ? Number(pd.city_id) || null
-      : null
-  );
-  setImage(pd.avatar_url || null);
-  setBio(pd.bio ?? "");
+    // 4) REMAINING PROFILE LOGIC (unchanged)
+    setFullName(pd.full_name || "");
+    setMainRole(
+      typeof pd.main_role_id === "number"
+        ? pd.main_role_id
+        : pd.main_role_id != null
+        ? Number(pd.main_role_id) || null
+        : null
+    );
+    setSideRoles(Array.isArray(pd.side_roles) ? (pd.side_roles as string[]).filter(Boolean) : []);
+    setCityId(
+      typeof pd.city_id === "number"
+        ? pd.city_id
+        : pd.city_id != null
+        ? Number(pd.city_id) || null
+        : null
+    );
+    setImage(pd.avatar_url || null);
+    setBio(pd.bio ?? "");
 
-  const existing = (pd.portfolio_url || "").trim();
-  if (existing) {
-    if (looksLikeYouTube(existing)) {
+    const existing = (pd.portfolio_url || "").trim();
+    if (existing) {
+      if (looksLikeYouTube(existing)) {
+        setPortfolioChoice("youtube");
+        setPortfolioUrl(existing);
+        setMp4MainUrl("");
+        setMp4MainName("");
+      } else if (looksLikeVideo(existing) || existing.startsWith("http")) {
+        setPortfolioChoice("mp4");
+        setMp4MainUrl(`${existing}${ts()}`);
+        setMp4MainName(existing.split("/").pop() || "Showreel");
+        setPortfolioUrl("");
+      } else {
+        setPortfolioChoice("youtube");
+        setPortfolioUrl(existing);
+      }
+    } else {
       setPortfolioChoice("youtube");
-      setPortfolioUrl(existing);
+      setPortfolioUrl("");
       setMp4MainUrl("");
       setMp4MainName("");
-    } else if (looksLikeVideo(existing) || existing.startsWith("http")) {
-      setPortfolioChoice("mp4");
-      setMp4MainUrl(`${existing}${ts()}`);
-      setMp4MainName(existing.split("/").pop() || "Showreel");
-      setPortfolioUrl("");
-    } else {
-      setPortfolioChoice("youtube");
-      setPortfolioUrl(existing);
     }
-  } else {
-    setPortfolioChoice("youtube");
-    setPortfolioUrl("");
-    setMp4MainUrl("");
-    setMp4MainName("");
+
+    if (pd.main_role_id != null) {
+      const { data: roleData } = await supabase
+        .from("creative_roles")
+        .select("name")
+        .eq("id", Number(pd.main_role_id))
+        .maybeSingle<{ name: string }>();
+      setMainRoleName(roleData?.name ?? "");
+    } else {
+      setMainRoleName("");
+    }
+
+    if (pd.city_id != null) {
+      const { data: cityData } = await supabase
+        .from("cities")
+        .select("name, country_code")
+        .eq("id", Number(pd.city_id))
+        .maybeSingle<{ name?: string; country_code?: string }>();
+      const label = cityData?.name ?? "";
+      setCityName(
+        label ? (cityData?.country_code ? `${label}, ${cityData.country_code}` : label) : ""
+      );
+    } else {
+      setCityName("");
+    }
+
+    await loadGamificationMeta(pd);
+
+    if (targetId) {
+      await Promise.all([
+        fetchPortfolioItems(targetId),
+        fetchShowreelList(targetId),
+        fetchUserSubmissions(targetId),
+      ]);
+    }
+
+    if (own) {
+      await fetchMyJobsWithApplicants(authUser.id);
+      setUserJobs([]);
+      setLoadingUserJobs(false);
+      setAlreadyAppliedJobIds([]);
+    } else {
+      setMyJobs([]);
+      await fetchUserJobs(targetId, authUser.id);
+    }
+  } catch (e) {
+    console.log("fetchProfile fatal:", e);
+  } finally {
+    setIsLoading(false);
   }
-
-  if (pd.main_role_id != null) {
-    const { data: roleData } = await supabase
-      .from("creative_roles")
-      .select("name")
-      .eq("id", Number(pd.main_role_id))
-      .maybeSingle<{ name: string }>();
-    setMainRoleName(roleData?.name ?? "");
-  } else {
-    setMainRoleName("");
-  }
-
-  if (pd.city_id != null) {
-    const { data: cityData } = await supabase
-      .from("cities")
-      .select("name, country_code")
-      .eq("id", Number(pd.city_id))
-      .maybeSingle<{ name?: string; country_code?: string }>();
-    const label = cityData?.name ?? "";
-    setCityName(
-      label
-        ? cityData?.country_code
-          ? `${label}, ${cityData.country_code}`
-          : label
-        : ""
-    );
-  } else {
-    setCityName("");
-  }
-
-  await loadGamificationMeta(pd);
-
-  if (targetId) {
-    await Promise.all([
-  fetchPortfolioItems(targetId),
-  fetchShowreelList(targetId),
-  fetchUserSubmissions(targetId),
-]);
-  }
-
-  if (own) {
-    await fetchMyJobsWithApplicants(authUser.id);
-    setUserJobs([]);
-    setLoadingUserJobs(false);
-    setAlreadyAppliedJobIds([]);
-  } else {
-    setMyJobs([]);
-    await fetchUserJobs(targetId, authUser.id);
-  }
-
-  setIsLoading(false);
 }, [targetIdParam, loadGamificationMeta]);
 
-
-  useEffect(() => {
-    fetchProfile();
-  }, [fetchProfile]);
 
   useFocusEffect(
     useCallback(() => {
@@ -2052,6 +2066,191 @@ const applicants: JobApplicant[] =
 
   /* ---------- save profile ---------- */
 
+  
+
+  const deleteSubmission = async (submission: SubmissionRow) => {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      Alert.alert('Sign in required', 'Please sign in to delete submissions.');
+      return;
+    }
+
+    const stripQuery = (u: string) => (u ? u.split('?')[0] : u);
+
+    const pathFromPublicUrl = (u: string) => {
+      const clean = stripQuery(u);
+      const m = clean.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
+      if (!m) return null;
+      return { bucket: m[1], path: m[2] };
+    };
+
+    const pickVideoField = (s: any) => {
+      return (
+        s.video_path ||
+        s.video_url ||
+        s.file_path ||
+        s.file_url ||
+        s.mp4_path ||
+        s.mp4_url ||
+        s.storage_path ||
+        s.storage_url ||
+        s.url ||
+        s.path ||
+        ''
+      )
+        .toString()
+        .trim();
+    };
+
+    const changeSubmissionThumbnail = async (submission: any) => {
+  try {
+    setThumbError(null);
+    setThumbUploading(true);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+
+    const pick = await DocumentPicker.getDocumentAsync({
+      type: ["image/*"] as any,
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+
+    if (pick.canceled) {
+  setThumbUploading(false);
+  return;
+}
+
+    const asset: any = pick.assets?.[0];
+    if (!asset?.uri && !asset?.file) throw new Error("No image selected");
+
+    // 1) upload to storage
+    const { publicUrl } = await uploadSubmissionThumbToStorage({
+      userId: user.id,
+      submissionId: submission.id,
+      asset,
+      bucket: "thumbnails",
+    });
+
+    // 2) write to DB
+    const { error: updErr } = await supabase
+      .from("submissions")
+      .update({ thumbnail_url: publicUrl })
+      .eq("id", submission.id);
+
+    if (updErr) throw updErr;
+
+    // 3) update local UI immediately
+    setSubmissions((prev) =>
+      prev.map((s: any) => (s.id === submission.id ? { ...s, thumbnail_url: publicUrl } : s))
+    );
+
+    // Also update active modal submission if open
+    setActiveSubmission((prev: any) => (prev?.id === submission.id ? { ...prev, thumbnail_url: publicUrl } : prev));
+
+    Alert.alert("Thumbnail updated", "Your film thumbnail has been updated.");
+  } catch (e: any) {
+    console.error("changeSubmissionThumbnail error:", e);
+    setThumbError(e?.message ?? "Could not update thumbnail.");
+    Alert.alert("Thumbnail failed", e?.message ?? "Could not update thumbnail.");
+  } finally {
+    setThumbUploading(false);
+  }
+};
+
+    const performDelete = async () => {
+      const prevSubs = submissions;
+
+      // Optimistic UI (instant feedback)
+      setSubmissions((p) => p.filter((row) => row.id !== submission.id));
+      setSubmissionModalOpen(false);
+      setActiveSubmission(null);
+
+      try {
+        // 1) Delete on the server (RPC should delete votes/comments + submission)
+const { error: delErr } = await supabase.rpc('delete_submission', {
+  p_submission_id: submission.id,
+});
+
+if (delErr) throw delErr;
+
+// 2) Storage cleanup AFTER DB delete (never blocks delete if it fails)
+try {
+  const raw = pickVideoField(submission as any);
+
+  // only cleanup storage for NON-youtube
+  if (!(submission as any).youtube_url && raw) {
+    if (/^https?:\/\//i.test(raw)) {
+      const pub = pathFromPublicUrl(raw);
+      if (pub?.bucket && pub?.path) {
+        await supabase.storage.from(pub.bucket).remove([pub.path]);
+      }
+    } else {
+      const cleanPath = stripQuery(raw);
+
+      // try films first, then portfolios
+      const resFilms = await supabase.storage.from('films').remove([cleanPath]);
+      if (resFilms?.error) {
+        await supabase.storage.from('portfolios').remove([cleanPath]);
+      }
+    }
+  }
+} catch (e) {
+  console.warn('Storage delete failed (continuing):', (e as any)?.message ?? e);
+}
+
+// 3) Authoritative refresh so it never “reappears”
+await fetchUserSubmissions(user.id);
+
+if (Platform.OS !== 'web') {
+  Alert.alert('Deleted', 'Your submission has been removed.');
+}
+} catch (e: any) {
+  console.warn('Delete submission error:', e?.message ?? e);
+
+  // rollback
+  setSubmissions(prevSubs);
+
+  const msg = e?.message ?? 'Could not delete submission.';
+  if (Platform.OS === 'web') {
+    console.warn('Delete failed:', msg);
+    if (typeof window !== 'undefined') window.alert(`Delete failed: ${msg}`);
+  } else {
+    Alert.alert('Delete failed', msg);
+  }
+}
+};
+
+ // ✅ WEB CONFIRM (Alert.alert is unreliable on web)
+if (Platform.OS === 'web') {
+  const ok =
+    typeof window !== 'undefined' &&
+    window.confirm('Delete submission? This will remove it from your profile.');
+  if (ok) await performDelete();
+  return;
+}
+
+// ✅ NATIVE CONFIRM
+Alert.alert('Delete submission?', 'This will remove it from your profile.', [
+  { text: 'Cancel', style: 'cancel' },
+  {
+    text: 'Delete',
+    style: 'destructive',
+    onPress: () => {
+      performDelete();
+    },
+  },
+]);
+} catch (e: any) {
+Alert.alert('Delete failed', e?.message ?? 'Could not delete submission.');
+}
+};
   const saveProfile = async () => {
     try {
       savingRef.current = true;
@@ -2209,7 +2408,185 @@ const applicants: JobApplicant[] =
     }
   };
 
+  /* ---------- submission thumbnail upload (copy from Challenge) ---------- */
+
+const THUMB_BUCKET = "thumbnails";
+
+async function uploadSubmissionThumbToStorage(opts: {
+  userId: string;
+  submissionId: string;
+  asset: any; // DocumentPicker asset
+  bucket?: string;
+}): Promise<{ publicUrl: string; path: string }> {
+  const { userId, submissionId, asset, bucket = "thumbnails" } = opts;
+
+  // ✅ Build a blob safely for BOTH web + native
+  let blob: Blob;
+
+  // WEB: asset.file is a real File (best path)
+  if (Platform.OS === "web" && asset?.file) {
+    blob = asset.file as Blob;
+  } else {
+    // NATIVE: asset.uri is file:// ... (or sometimes content://)
+    const uri = asset?.uri;
+    if (!uri) throw new Error("No thumbnail URI");
+
+    if (Platform.OS !== "web" && uri.startsWith("file://")) {
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const bytes = Buffer.from(base64, "base64");
+      blob = new Blob([bytes], { type: "image/jpeg" });
+    } else {
+      const resp = await fetch(uri);
+      blob = await resp.blob();
+    }
+  }
+
+  const ext =
+    blob.type.includes("png")
+      ? ".png"
+      : blob.type.includes("jpeg") || blob.type.includes("jpg")
+      ? ".jpg"
+      : blob.type.includes("webp")
+      ? ".webp"
+      : ".jpg";
+
+  const path = `submissions/${userId}/${submissionId}/${Date.now()}${ext}`;
+
+  const up = await supabase.storage.from(bucket).upload(path, blob, {
+    upsert: true,
+    contentType: blob.type || "image/jpeg",
+    cacheControl: "3600",
+  });
+
+  if (up.error) throw up.error;
+
+  const pub = supabase.storage.from(bucket).getPublicUrl(path);
+  const publicUrl = pub?.data?.publicUrl;
+
+  if (!publicUrl) throw new Error("Could not get public thumbnail URL");
+
+  return { publicUrl, path };
+}
+
+async function uploadThumbnailToStorage(opts: {
+  userId: string;
+  thumbUri: string; // file:// (native) OR data:image/... (web) OR blob:... (web)
+  objectName?: string;
+  bucket?: string;
+}): Promise<{ publicUrl: string; path: string }> {
+  const {
+    userId,
+    thumbUri,
+    objectName = `submissions/${userId}/${Date.now()}`,
+    bucket = THUMB_BUCKET,
+  } = opts;
+
+  let blob: Blob;
+
+  if (Platform.OS !== "web" && thumbUri.startsWith("file://")) {
+    const base64 = await FileSystem.readAsStringAsync(thumbUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    const bytes = Buffer.from(base64, "base64");
+    blob = new Blob([bytes], { type: "image/jpeg" });
+  } else {
+    const resp = await fetch(thumbUri);
+    blob = await resp.blob();
+  }
+
+  const ext =
+    blob.type.includes("png")
+      ? ".png"
+      : blob.type.includes("jpeg") || blob.type.includes("jpg")
+      ? ".jpg"
+      : blob.type.includes("webp")
+      ? ".webp"
+      : ".jpg";
+
+  const filePath = `${objectName}${ext}`;
+
+  const up = await supabase.storage.from(bucket).upload(filePath, blob, {
+    upsert: true,
+    contentType: blob.type || "image/jpeg",
+    cacheControl: "3600",
+  });
+
+  if (up.error) throw up.error;
+
+  const pub = supabase.storage.from(bucket).getPublicUrl(filePath);
+  const publicUrl = pub?.data?.publicUrl;
+
+  if (!publicUrl) throw new Error("Could not get public thumbnail URL");
+
+  return { publicUrl, path: filePath };
+}
+
   /* ---------- apply to job in viewed user's profile ---------- */
+
+  const changeSubmissionThumbnail = async (submission: any) => {
+  try {
+    setThumbUploadingId(submission.id);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+
+    const pick = await DocumentPicker.getDocumentAsync({
+      type: ["image/*"] as any,
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+
+    if (pick.canceled) return;
+
+    const asset: any = pick.assets?.[0];
+    if (!asset?.uri && !asset?.file) throw new Error("No image selected");
+
+    let chosenUri: string | null = null;
+
+    // web: use object url
+    if (Platform.OS === "web" && asset.file) {
+      chosenUri = URL.createObjectURL(asset.file as File);
+    } else {
+      chosenUri = asset.uri;
+    }
+
+    if (!chosenUri) throw new Error("Could not read selected image");
+
+    const { publicUrl } = await uploadThumbnailToStorage({
+      userId: user.id,
+      thumbUri: chosenUri,
+      objectName: `submissions/${user.id}/${submission.id}_${Date.now()}`,
+      bucket: THUMB_BUCKET,
+    });
+
+    const { error: updErr } = await supabase
+      .from("submissions")
+      .update({ thumbnail_url: publicUrl })
+      .eq("id", submission.id);
+
+    if (updErr) throw updErr;
+
+    // ✅ update local submissions list immediately
+    setSubmissions((prev) =>
+      prev.map((s) => (s.id === submission.id ? { ...s, thumbnail_url: publicUrl } : s))
+    );
+
+    // ✅ update active submission (modal) immediately
+    setActiveSubmission((prev: any) =>
+      prev?.id === submission.id ? { ...prev, thumbnail_url: publicUrl } : prev
+    );
+
+    Alert.alert("Updated", "Thumbnail updated.");
+  } catch (e: any) {
+    Alert.alert("Thumbnail update failed", e?.message ?? "Could not update thumbnail.");
+  } finally {
+    setThumbUploadingId(null);
+  }
+};
 
   const applyToJob = async (job: MyJob) => {
     try {
@@ -2272,6 +2649,7 @@ const applicants: JobApplicant[] =
       setApplyLoadingJobId(null);
     }
   };
+  
 
     /* ---------- AUTH / CHAT ---------- */
 
@@ -2626,6 +3004,112 @@ const renderHero = () => {
               </View>
             </View>
           </View>
+
+{/* Filmmaking streak (Year-by-year) */}
+<View style={{ marginTop: 12 }}>
+  {(() => {
+    const s = streakLoading ? 0 : Math.max(0, Number(streak || 0));
+
+    // Full years completed (12 months each)
+    const fullYears = Math.floor(s / 12);
+
+    // Months into the current year (0..11)
+    const remainder = s % 12;
+
+    // Always show the current “building” year.
+    // If s === 12 exactly -> Year 1 full + Year 2 starts at 0/12
+    const yearsToShow = Math.max(1, fullYears + 1);
+
+    return Array.from({ length: yearsToShow }).map((_, idx) => {
+      const yearNumber = idx + 1;
+
+      const isCompletedYear = yearNumber <= fullYears;
+      const monthsThisYear = isCompletedYear ? 12 : remainder;
+
+      const pct = streakLoading ? 0 : Math.min((monthsThisYear / 12) * 100, 100);
+
+      return (
+        <View key={`year-${yearNumber}`} style={{ marginTop: idx === 0 ? 0 : 12 }}>
+          {/* Filmmaking streak • Year X (same line) */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: 6,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 11,
+                color: COLORS.textSecondary,
+                letterSpacing: 1.4,
+                fontFamily: FONT_OBLIVION,
+              }}
+            >
+              Filmmaking streak
+            </Text>
+
+            <Text
+              style={{
+                fontSize: 11,
+                color: COLORS.textSecondary,
+                letterSpacing: 1.4,
+                fontFamily: FONT_OBLIVION,
+                opacity: 0.9,
+                marginLeft: 8,
+              }}
+            >
+              • Year {yearNumber}
+            </Text>
+
+            {isCompletedYear ? (
+              <View
+                style={{
+                  marginLeft: 10,
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 999,
+                  backgroundColor: "rgba(198,166,100,0.18)",
+                  borderWidth: 1,
+                  borderColor: "rgba(198,166,100,0.35)",
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 9,
+                    color: "#C6A664",
+                    letterSpacing: 1.2,
+                    fontFamily: FONT_OBLIVION,
+                  }}
+                >
+                  COMPLETED
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View style={block.progressRail}>
+            <View style={[block.progressFill, { width: `${pct}%` }]} />
+          </View>
+
+          <Text
+            style={{
+              marginTop: 6,
+              fontSize: 12,
+              color: COLORS.textPrimary,
+              fontFamily: FONT_OBLIVION,
+              textAlign: "center",
+            }}
+          >
+            {streakLoading ? "—" : `${monthsThisYear} / 12 months`}
+          </Text>
+        </View>
+      );
+    });
+  })()}
+</View>
+
 
           {/* About */}
           {(bio?.trim()?.length || sideRoles.length || isOwnProfile) ? (
@@ -3079,7 +3563,8 @@ const renderHero = () => {
       <Text style={block.sectionTitleCentered}>Submissions</Text>
 <View style={[block.grid, { gap: GRID_GAP }]}>
   {submissions.map((s) => {
-    const thumb = s.youtube_url ? ytThumb(s.youtube_url) : null;
+  const yt = s.youtube_url ? ytThumb(s.youtube_url) : null;
+  const mp4Thumb = s.thumbnail_url ? addBuster(s.thumbnail_url) : null;
 
     return (
       <Pressable
@@ -3103,32 +3588,33 @@ const renderHero = () => {
           }}
         >
           {/* YOUTUBE → thumbnail */}
-          {s.youtube_url && thumb ? (
-            <Image
-              source={{ uri: thumb }}
-              style={{ width: "100%", height: "100%" }}
-              resizeMode="cover"
-            />
-          ) : (
-            /* MP4 → visible placeholder */
-            <>
-              <Ionicons
-                name="videocam"
-                size={28}
-                color={COLORS.textSecondary}
-              />
-              <Text
-                style={{
-                  marginTop: 6,
-                  color: COLORS.textSecondary,
-                  fontFamily: FONT_OBLIVION,
-                  fontSize: 11,
-                }}
-              >
-                MP4 submission
-              </Text>
-            </>
-          )}
+          {yt ? (
+  <Image
+    source={{ uri: yt }}
+    style={{ width: "100%", height: "100%" }}
+    resizeMode="cover"
+  />
+) : mp4Thumb ? (
+  <Image
+    source={{ uri: mp4Thumb }}
+    style={{ width: "100%", height: "100%" }}
+    resizeMode="cover"
+  />
+) : (
+  <>
+    <Ionicons name="videocam" size={28} color={COLORS.textSecondary} />
+    <Text
+      style={{
+        marginTop: 6,
+        color: COLORS.textSecondary,
+        fontFamily: FONT_OBLIVION,
+        fontSize: 11,
+      }}
+    >
+      MP4 submission
+    </Text>
+  </>
+)}
 
           {/* subtle overlay */}
           <View
@@ -3231,6 +3717,28 @@ const renderHero = () => {
     </Text>
   )
 ) : null}
+
+{isOwnProfile && activeSubmission && (
+  <TouchableOpacity
+    onPress={() => deleteSubmission(activeSubmission)}
+    style={[
+      styles.ghostBtn,
+      {
+        borderColor: COLORS.danger,
+        marginTop: 12,
+      },
+    ]}
+  >
+    <Text
+      style={[
+        styles.ghostBtnText,
+        { color: COLORS.danger },
+      ]}
+    >
+      Delete submission
+    </Text>
+  </TouchableOpacity>
+)}
             <TouchableOpacity
               onPress={() => {
                 setSubmissionModalOpen(false);

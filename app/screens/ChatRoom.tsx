@@ -47,6 +47,10 @@ type Conversation = {
   last_message_content?: string | null;
   last_message_sent_at?: string | null;
   created_at?: string | null;
+
+  // ✅ ADDED: support custom group chats
+  group_avatar_url?: string | null;
+  created_by?: string | null;
 };
 
 type Message = {
@@ -225,7 +229,8 @@ export default function ChatRoom() {
       const { data, error } = await supabase
         .from('conversations')
         .select(
-          'id,label,is_group,is_city_group,city_id,participant_ids,last_message_content,last_message_sent_at,created_at'
+          // ✅ ADDED: group_avatar_url + created_by
+          'id,label,is_group,is_city_group,city_id,participant_ids,last_message_content,last_message_sent_at,created_at,group_avatar_url,created_by'
         )
         .eq('id', nextId)
         .single();
@@ -530,6 +535,15 @@ export default function ChatRoom() {
             styles.headerTitleRow
           }
         >
+          {/* ✅ ADDED: normal group avatar (non-city) */}
+          {!conversation.is_city_group && conversation.group_avatar_url ? (
+            <Image
+              source={{ uri: conversation.group_avatar_url }}
+              style={styles.headerAvatar}
+            />
+          ) : null}
+
+          {/* existing city group flag behavior (unchanged) */}
           {conversation.is_city_group &&
           cityMeta.flagUri ? (
             <Image
@@ -541,6 +555,7 @@ export default function ChatRoom() {
               }
             />
           ) : null}
+
           <View
             style={{
               flexDirection:
