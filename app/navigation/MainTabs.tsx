@@ -15,6 +15,7 @@ import {
   ScrollView,
   Image,
   ActivityIndicator,
+  InteractionManager,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,8 +37,6 @@ import SettingsModal from '../../components/SettingsModal';
 import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 
 // NOTE: keeping this import because your file already has it.
-// Even if TopBarXpProgress isn’t used now, leaving it in place avoids breaking anything else
-// you might still rely on.
 import { useGamification } from '../context/GamificationContext';
 
 const Tab = createBottomTabNavigator();
@@ -132,36 +131,52 @@ async function countUserVotesInRange(uid: string, range: { start: string; end: s
 }
 
 /* ------------------------ Smooth Tab Transitions ----------------------- */
-
+/**
+ * ✅ Smoother than before:
+ * - We keep content solid (no fade-to-0)
+ * - We fade OUT a DARK scrim overlay on focus
+ * - We START the fade AFTER interactions finish (reduces hitching)
+ */
 const TabTransition = memo(function TabTransition({ children }: { children: React.ReactNode }) {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const scale = useRef(new Animated.Value(0.985)).current;
+  const scrimOpacity = useRef(new Animated.Value(0)).current;
 
   useFocusEffect(
     React.useCallback(() => {
-      Animated.parallel([
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 220,
+      scrimOpacity.setValue(1);
+
+      const task = InteractionManager.runAfterInteractions(() => {
+        Animated.timing(scrimOpacity, {
+          toValue: 0,
+          duration: 280,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
-        }),
-        Animated.timing(scale, {
-          toValue: 1,
-          duration: 240,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]).start();
+        }).start();
+      });
 
       return () => {
-        opacity.setValue(0);
-        scale.setValue(0.985);
+        try {
+          // @ts-ignore
+          task?.cancel?.();
+        } catch {}
       };
-    }, [opacity, scale])
+    }, [scrimOpacity])
   );
 
-  return <Animated.View style={{ flex: 1, opacity, transform: [{ scale }] }}>{children}</Animated.View>;
+  return (
+    <View style={{ flex: 1, backgroundColor: DARK_BG }}>
+      {children}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFillObject,
+          {
+            backgroundColor: DARK_BG,
+            opacity: scrimOpacity,
+          },
+        ]}
+      />
+    </View>
+  );
 });
 
 /* --------------------------- Top Bar elements -------------------------- */
@@ -308,26 +323,14 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
 }: TopBarStreakProgressProps) {
   const isWide = variant === 'wide';
 
-  // ✅ This uses authed user inside the hook (so it cannot “share” streaks across profiles)
-  const { streak, loading, refreshStreak } = useMonthlyStreak();
+  const { streak, loading } = useMonthlyStreak();
 
-  // Refresh streak when the current tab/screen is focused
-  useFocusEffect(
-    React.useCallback(() => {
-      refreshStreak?.();
-    }, [refreshStreak])
-  );
-
-  // Animate fill
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   const { targetMonths, yearLabel, pct } = useMemo(() => {
     const safe = Math.max(0, Number(streak || 0));
-
-    // target: 12, 24, 36, ...
     const target = (Math.floor(safe / 12) + 1) * 12;
     const year = Math.max(1, Math.floor(target / 12));
-
     const fraction = target > 0 ? Math.min(1, safe / target) : 0;
 
     return {
@@ -347,7 +350,6 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
     }).start();
   }, [loading, pct, progressAnim]);
 
-  // ✅ FIX: accurate fill (NO forced minimum)
   const widthInterpolated = progressAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['0%', '100%'],
@@ -380,7 +382,6 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
           <Text style={styles.streakBarRight}>Year {yearLabel}</Text>
         </View>
       </View>
-      {/* ✅ Intentionally no extra caption under the streak bar */}
     </View>
   );
 });
@@ -953,7 +954,6 @@ const TopBar = memo(function TopBar({ topOffset, navHeight }: TopBarProps) {
   const isWide = width >= 980;
   const [showLeaderboard, setShowLeaderboard] = useState(false);
 
-  // ✅ FIX: compact header no longer needs extra height for removed caption under streak bar
   const wrapperHeight = isWide ? navHeight : navHeight + 38;
 
   return (
@@ -965,7 +965,6 @@ const TopBar = memo(function TopBar({ topOffset, navHeight }: TopBarProps) {
           {isWide ? (
             <>
               <View style={styles.xpCenterSlot}>
-                {/* ✅ REPLACED: XP → STREAK */}
                 <TopBarStreakProgress variant="wide" onOpenLeaderboard={() => setShowLeaderboard(true)} />
               </View>
               <View style={styles.rightTools}>
@@ -992,7 +991,6 @@ const TopBar = memo(function TopBar({ topOffset, navHeight }: TopBarProps) {
 
         {!isWide && (
           <View style={styles.topBarInnerXpRow}>
-            {/* ✅ REPLACED: XP → STREAK */}
             <TopBarStreakProgress variant="compact" onOpenLeaderboard={() => setShowLeaderboard(true)} />
           </View>
         )}
@@ -1003,137 +1001,160 @@ const TopBar = memo(function TopBar({ topOffset, navHeight }: TopBarProps) {
   );
 });
 
-function withTopBar(Component: React.ComponentType<any>) {
+/* ---------------------- ✅ Screen wrapper (NO TopBar) --------------------- */
+
+function withTabTransition(Component: React.ComponentType<any>) {
   const Wrapped = function Wrapped(props: any) {
-    const { width } = useWindowDimensions();
-    const insets = useSafeAreaInsets();
-
-    const NAV_HEIGHT = width >= 980 ? 56 : 46;
-    const topOffset =
-      width >= 980 ? 0 : Platform.OS === 'ios' ? Math.max((insets.top || 0) - 4, 0) : 0;
-
-    // ✅ FIX: compact header padding adjusted for the streak bar only (no extra caption line)
-    const contentTopPadding = NAV_HEIGHT + (width >= 980 ? 0 : 40);
-
     return (
-      <View style={{ flex: 1, backgroundColor: DARK_BG }}>
-        <TopBar topOffset={topOffset} navHeight={NAV_HEIGHT} />
-        <SafeAreaView style={[styles.safeArea, { paddingTop: contentTopPadding }]}>
-          <TabTransition>
-            <Component {...props} />
-          </TabTransition>
-        </SafeAreaView>
-      </View>
+      <TabTransition>
+        <Component {...props} />
+      </TabTransition>
     );
   };
   return Wrapped;
 }
 
-const FeaturedWrapped = withTopBar(FeaturedScreen);
-const JobsWrapped = withTopBar(JobsScreen);
-const ChallengeWrapped = withTopBar(ChallengeScreen);
-const LocationWrapped = withTopBar(LocationScreen);
-const ProfileWrapped = withTopBar(ProfileScreen);
-const WorkshopWrapped = withTopBar(WorkshopScreen);
-
-// ✅ FIX: Wrap ChatsStack with the SAME TopBar wrapper so the Chats tab shows the top bar too.
-const ChatsWrapped = withTopBar(ChatsStack);
+const FeaturedWrapped = withTabTransition(FeaturedScreen);
+const JobsWrapped = withTabTransition(JobsScreen);
+const ChallengeWrapped = withTabTransition(ChallengeScreen);
+const LocationWrapped = withTabTransition(LocationScreen);
+const ProfileWrapped = withTabTransition(ProfileScreen);
+const WorkshopWrapped = withTabTransition(WorkshopScreen);
+const ChatsWrapped = withTabTransition(ChatsStack);
 
 /* --------------------------------- Tabs -------------------------------- */
 
 export default function MainTabs() {
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  // ✅ Web-only: force body background so the browser never flashes white on reflow
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      try {
+        // @ts-ignore
+        if (typeof document !== 'undefined' && document?.body) {
+          // @ts-ignore
+          document.body.style.backgroundColor = DARK_BG;
+        }
+      } catch {}
+    }
+  }, []);
+
+  const NAV_HEIGHT = width >= 980 ? 56 : 46;
+  const topOffset = width >= 980 ? 0 : Platform.OS === 'ios' ? Math.max((insets.top || 0) - 4, 0) : 0;
+
+  const contentTopPadding = NAV_HEIGHT + (width >= 980 ? 0 : 40);
+
   return (
     <SettingsModalProvider>
-      <Tab.Navigator
-        screenOptions={({ route }) => ({
-          headerShown: false,
-          tabBarActiveTintColor: GOLD,
-          tabBarInactiveTintColor: TEXT_MUTED,
-          tabBarStyle: {
-            backgroundColor: DARK_ELEVATED,
-            borderTopWidth: 0,
-            height: 52,
-            paddingTop: 4,
-            paddingBottom: Platform.OS === 'ios' ? 10 : 6,
-            shadowColor: '#000',
-            shadowOpacity: 0.3,
-            shadowOffset: { width: 0, height: -4 },
-            shadowRadius: 6,
-            elevation: 10,
-          },
-          tabBarLabelStyle: {
-            fontSize: 10,
-            letterSpacing: 0.7,
-            textTransform: 'uppercase',
-            fontWeight: '800',
-            fontFamily: SYSTEM_SANS,
-          },
-          tabBarItemStyle: { paddingVertical: 0 },
+      <View style={{ flex: 1, backgroundColor: DARK_BG }}>
+        {/* ✅ Top bar renders ONCE and persists across tab changes */}
+        <TopBar topOffset={topOffset} navHeight={NAV_HEIGHT} />
 
-          lazy: true,
-          detachInactiveScreens: true,
-          unmountOnBlur: false,
+        <SafeAreaView
+          style={[styles.safeArea, { paddingTop: contentTopPadding }]}
+          edges={['left', 'right', 'bottom']}
+        >
+          <Tab.Navigator
+            screenOptions={({ route }) => ({
+              headerShown: false,
 
-          tabBarIcon: ({ color }) => {
-            let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
-            switch (route.name) {
-              case 'Featured':
-                icon = 'star-outline';
-                break;
-              case 'Jobs':
-                icon = 'briefcase-outline';
-                break;
-              case 'Challenge':
-                icon = 'trophy-outline';
-                break;
-              case 'Workshop':
-                icon = 'cube-outline';
-                break;
-              case 'Location':
-                icon = 'location-outline';
-                break;
-              case 'Chats':
-                icon = 'chatbubble-ellipses-outline';
-                break;
-              case 'Profile':
-                icon = 'person-outline';
-                break;
-            }
-            return <Ionicons name={icon} size={20} color={color} />;
-          },
-        })}
-      >
-        <Tab.Screen name="Featured" component={FeaturedWrapped} />
-        <Tab.Screen name="Jobs" component={JobsWrapped} />
-        <Tab.Screen name="Challenge" component={ChallengeWrapped} />
-        <Tab.Screen name="Workshop" component={WorkshopWrapped} />
-        <Tab.Screen name="Location" component={LocationWrapped} />
+              // ✅ Prevent "white flash" between screens
+              sceneContainerStyle: { backgroundColor: DARK_BG },
 
-        {/* ✅ Chats now uses the same TopBar wrapper as every other tab */}
-        <Tab.Screen
-          name="Chats"
-          component={ChatsWrapped}
-          options={{
-            unmountOnBlur: false,
-          }}
-        />
+              tabBarActiveTintColor: GOLD,
+              tabBarInactiveTintColor: TEXT_MUTED,
+              tabBarStyle: {
+                backgroundColor: DARK_ELEVATED,
+                borderTopWidth: 0,
+                height: 52,
+                paddingTop: 4,
+                paddingBottom: Platform.OS === 'ios' ? 10 : 6,
+                shadowColor: '#000',
+                shadowOpacity: 0.3,
+                shadowOffset: { width: 0, height: -4 },
+                shadowRadius: 6,
+                elevation: 10,
+              },
+              tabBarLabelStyle: {
+                fontSize: 10,
+                letterSpacing: 0.7,
+                textTransform: 'uppercase',
+                fontWeight: '800',
+                fontFamily: SYSTEM_SANS,
+              },
+              tabBarItemStyle: { paddingVertical: 0 },
 
-        <Tab.Screen
-          name="Profile"
-          component={ProfileWrapped}
-          listeners={({ navigation }) => ({
-            tabPress: (e) => {
-              e.preventDefault();
-              navigation.dispatch(TabActions.jumpTo('Profile', undefined));
-            },
-          })}
-        />
-      </Tab.Navigator>
+              // ✅ Smoother switching
+              lazy: true,
+              lazyPreloadDistance: 6, // preload all tabs
+              freezeOnBlur: true, // stop background work on inactive tabs
+              detachInactiveScreens: false, // prevent blank frames / flashes
+              unmountOnBlur: false,
 
-      <SettingsModal />
+              tabBarIcon: ({ color }) => {
+                let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
+                switch (route.name) {
+                  case 'Featured':
+                    icon = 'star-outline';
+                    break;
+                  case 'Jobs':
+                    icon = 'briefcase-outline';
+                    break;
+                  case 'Challenge':
+                    icon = 'trophy-outline';
+                    break;
+                  case 'Workshop':
+                    icon = 'cube-outline';
+                    break;
+                  case 'Location':
+                    icon = 'location-outline';
+                    break;
+                  case 'Chats':
+                    icon = 'chatbubble-ellipses-outline';
+                    break;
+                  case 'Profile':
+                    icon = 'person-outline';
+                    break;
+                }
+                return <Ionicons name={icon} size={20} color={color} />;
+              },
+            })}
+          >
+            <Tab.Screen name="Featured" component={FeaturedWrapped} />
+            <Tab.Screen name="Jobs" component={JobsWrapped} />
+            <Tab.Screen name="Challenge" component={ChallengeWrapped} />
+            <Tab.Screen name="Workshop" component={WorkshopWrapped} />
+            <Tab.Screen name="Location" component={LocationWrapped} />
+
+            <Tab.Screen
+              name="Chats"
+              component={ChatsWrapped}
+              options={{
+                unmountOnBlur: false,
+              }}
+            />
+
+            <Tab.Screen
+              name="Profile"
+              component={ProfileWrapped}
+              listeners={({ navigation }) => ({
+                tabPress: (e) => {
+                  e.preventDefault();
+                  navigation.dispatch(TabActions.jumpTo('Profile', undefined));
+                },
+              })}
+            />
+          </Tab.Navigator>
+        </SafeAreaView>
+
+        <SettingsModal />
+      </View>
     </SettingsModalProvider>
   );
 }
+
 /* -------------------------------- Styles -------------------------------- */
 
 const styles = StyleSheet.create({
