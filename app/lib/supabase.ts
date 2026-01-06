@@ -29,35 +29,28 @@ const SUPABASE_ANON_KEY_ENV =
     ? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
     : undefined;
 
-// Fallbacks (dev only)
+// Fallbacks (keep these matching your REAL project!)
 const FALLBACK_URL = "https://sdatmuzzsebvckfmnqsv.supabase.co";
 const FALLBACK_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkYXRtdXp6c2VidmNrZm1ucXN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMyOTIwNzIsImV4cCI6MjA2ODg2ODA3Mn0.IO2vFDIsb8JF6cunEu_URFRPoaAk0aZIRZa-BBcT450";
 
-// Detect dev mode safely (works in RN/Web builds)
-const IS_DEV = typeof __DEV__ !== "undefined" ? __DEV__ : false;
-
-// IMPORTANT:
-// - In production, DO NOT silently fall back. It causes “invalid credentials”
-//   when web/mobile point at different Supabase projects.
-// - In dev, allow fallbacks so local runs don’t instantly die.
-const RESOLVED_URL = (SUPABASE_URL_ENV || (IS_DEV ? FALLBACK_URL : "")).replace(
-  /\/+$/,
-  ""
-);
-const RESOLVED_KEY = SUPABASE_ANON_KEY_ENV || (IS_DEV ? FALLBACK_ANON_KEY : "");
-
-if (!RESOLVED_URL || !RESOLVED_KEY) {
-  throw new Error(
-    "Missing Supabase env vars. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY."
-  );
-}
-
-export const SUPABASE_URL = RESOLVED_URL;
-export const SUPABASE_ANON_KEY = RESOLVED_KEY;
-
 // Detect if web or native
 const isWeb = typeof window !== "undefined" && typeof document !== "undefined";
+
+// Resolve (NO THROW — prevent blank white screen)
+const resolvedUrlRaw = (SUPABASE_URL_ENV || FALLBACK_URL).replace(/\/+$/, "");
+const resolvedKeyRaw = SUPABASE_ANON_KEY_ENV || FALLBACK_ANON_KEY;
+
+export const SUPABASE_URL = resolvedUrlRaw;
+export const SUPABASE_ANON_KEY = resolvedKeyRaw;
+
+// ✅ Loud warning if env vars missing (helps you fix deployment without crashing app)
+if (!SUPABASE_URL_ENV || !SUPABASE_ANON_KEY_ENV) {
+  console.warn(
+    "⚠️ Supabase env vars missing. Using FALLBACK_URL/FALLBACK_ANON_KEY.\n" +
+      "Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in your deployment to avoid auth mismatches."
+  );
+}
 
 // =======================
 // 🧠 CLIENT INITIALIZATION
@@ -110,21 +103,11 @@ console.log("🔧 FUNCTIONS_URL =", FUNCTIONS_URL);
 // 🏆 GAMIFICATION (FRONTEND VIEW)
 // =======================
 
-/**
- * XP reward values used for DISPLAY + UX copy.
- * Backend triggers now own the real XP updates.
- *
- * Keep these IN SYNC with:
- * - trg_award_xp_for_submission      → +300
- * - trg_award_xp_for_challenge_win   → +500
- * - trg_award_xp_for_job_post        → +100
- * - trg_award_xp_for_job_apply       → +50
- */
 export const XP_VALUES = {
-  CHALLENGE_SUBMISSION: 300, // submitting a film
-  CHALLENGE_WIN: 500, // winning the monthly challenge
-  JOB_POSTED: 100, // posting a job
-  JOB_APPLIED: 50, // applying to a job
+  CHALLENGE_SUBMISSION: 300,
+  CHALLENGE_WIN: 500,
+  JOB_POSTED: 100,
+  JOB_APPLIED: 50,
 } as const;
 
 export type XpReason =
@@ -134,18 +117,6 @@ export type XpReason =
   | "job_application"
   | "manual_adjust";
 
-/**
- * 🔴 IMPORTANT:
- * The normal app flow SHOULD NOT call this for challenge submissions,
- * wins, job posts, or applications.
- *
- * Those are handled automatically by Postgres triggers calling public.add_xp().
- *
- * This helper is ONLY for:
- * - manual admin adjustments
- * - one-off fixes
- * - tooling / migrations
- */
 export async function giveXp(
   userId: string | null | undefined,
   amount: number,
@@ -167,21 +138,8 @@ export async function giveXp(
   }
 }
 
-// =======================
-// 🎟️ MEMBERSHIP / TIERS
-// =======================
-
-// These names match the `users.tier` CHECK constraint in SQL.
 export type UserTier = "free" | "pro";
 
-/**
- * Frontend mirror of the backend logic:
- *  - free → 0 submissions/month
- *  - pro  → 2 submissions/month
- *
- * Keep this in sync with:
- *  - public.allowed_submissions_by_tier(p_tier text)
- */
 export const TIER_SUBMISSION_LIMITS: Record<UserTier, number> = {
   free: 0,
   pro: 2,
