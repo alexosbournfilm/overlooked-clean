@@ -53,7 +53,7 @@ export default function SignUpScreen() {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       return `${window.location.origin}/auth/callback`;
     }
-    return Linking.createURL('callback');
+    return Linking.createURL('auth/callback');
   }, []);
 
   const refreshConfirmedFromUser = async () => {
