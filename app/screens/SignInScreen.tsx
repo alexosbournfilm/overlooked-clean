@@ -1,6 +1,6 @@
 // app/screens/SignInScreen.tsx
 // ------------------------------------------------------------
-// FULL PAYWALL-FREE VERSION
+// FULL PAYWALL-FREE VERSION (UPDATED SIGN-IN LOGIC)
 // ------------------------------------------------------------
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -28,6 +28,9 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
+// NOTE: we keep this import so your file structure stays the same,
+// but we intentionally DO NOT call resetToMain() anymore because it can silently fail
+// if it resets to a route that doesn't exist in your RootStack.
 import { resetToMain } from '../navigation/navigationRef';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -70,6 +73,7 @@ const GRAIN_PNG =
 
 // --- REMOVE GRAIN COMPLETELY (safe for all platforms) ---
 const Grain = () => null;
+
 // --- Typing animation text ---------------------------------
 const MANIFESTO_LINES = [
   'Meet your crew this month. Make a film together.',
@@ -116,8 +120,7 @@ const FEATURES: Feature[] = [
     title: 'Create Your Profile',
     subtitle: 'Choose role & city',
     icon: 'person',
-    detail:
-      'Pick your main role, add side roles, set your city, and link a portfolio.',
+    detail: 'Pick your main role, add side roles, set your city, and link a portfolio.',
     cta: 'Set up my profile',
     route: 'CreateProfile',
   },
@@ -126,8 +129,7 @@ const FEATURES: Feature[] = [
     title: 'Meet Creatives Near You',
     subtitle: 'City groups & chat',
     icon: 'location',
-    detail:
-      'Find collaborators in your city. Join the city chat and build a crew.',
+    detail: 'Find collaborators in your city. Join the city chat and build a crew.',
     cta: 'Explore my city',
     route: 'Location',
   },
@@ -136,8 +138,7 @@ const FEATURES: Feature[] = [
     title: 'Post & Apply to Jobs',
     subtitle: 'Paid and free gigs',
     icon: 'briefcase',
-    detail:
-      'Browse or post gigs. Your profile is automatically attached to applications.',
+    detail: 'Browse or post gigs. Your profile is automatically attached to applications.',
     cta: 'Open the job board',
     route: 'Jobs',
   },
@@ -146,8 +147,7 @@ const FEATURES: Feature[] = [
     title: 'Monthly Film Challenge',
     subtitle: 'Submit & get seen',
     icon: 'trophy',
-    detail:
-      'Submit a YouTube film each month. Get voted, get featured, get seen.',
+    detail: 'Submit a YouTube film each month. Get voted, get featured, get seen.',
     cta: 'See this month',
     route: 'Featured',
   },
@@ -280,14 +280,16 @@ export default function SignInScreen() {
     let mounted = true;
     let timer: any;
 
-    const rand = (a: number, b: number) => Math.floor(Math.random() * (b - a + 1)) + a;
+    const rand = (a: number, b: number) =>
+      Math.floor(Math.random() * (b - a + 1)) + a;
 
     const nextTypeDelay = (typed: string) => {
       let d = rand(TYPE_MIN_MS, TYPE_MAX_MS);
       const last = typed.slice(-1);
       if (last === ' ') d += WORD_PAUSE_MS;
       if (['.', ',', '!', '?', ';', ':'].includes(last)) d += PUNCT_PAUSE_MS;
-      if (Math.random() < RANDOM_PAUSE_CHANCE) d += rand(RANDOM_PAUSE_MIN, RANDOM_PAUSE_MAX);
+      if (Math.random() < RANDOM_PAUSE_CHANCE)
+        d += rand(RANDOM_PAUSE_MIN, RANDOM_PAUSE_MAX);
       return d;
     };
 
@@ -340,61 +342,107 @@ export default function SignInScreen() {
   }, [displayText, isDeleting, fullLine]);
 
   // ============================================================
-  //      🚀 SIGN IN — PAYWALL REMOVED COMPLETELY
+  //      ✅ SIGN IN — FIXED (NO SILENT RESET, CONFIRM CHECK)
   // ============================================================
   const handleSignIn = async () => {
-    if (!email || !password) {
-      Alert.alert('Sign in to continue', 'Enter your email and password.');
+    const trimmedEmail = email.trim();
+
+    const showError = (title: string, message: string) => {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        try {
+          window.alert(`${title}\n\n${message}`);
+          return;
+        } catch {}
+      }
+      Alert.alert(title, message);
+    };
+
+    if (!trimmedEmail || !password) {
+      showError('Sign in to continue', 'Enter your email and password.');
       return;
     }
+
+    if (loading) return;
 
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-
-    if (error) {
-      setLoading(false);
-      Alert.alert('Login Error', error.message);
-      return;
-    }
-
-    const userId = data?.user?.id;
-    if (!userId) {
-      setLoading(false);
-      Alert.alert('Error', 'Login failed. Please try again.');
-      return;
-    }
-
-    // Fetch user profile
-    const { data: profile } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', userId)
-      .maybeSingle();
-
-    setLoading(false);
-    setShowSignIn(false);
-
-    if (!profile) {
-      (navigation as any).reset({
-        index: 0,
-        routes: [{ name: 'CreateProfile' }],
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password,
       });
-      return;
+
+      if (error) {
+        showError('Login Error', error.message);
+        return;
+      }
+
+      const userId = data?.user?.id;
+      if (!userId) {
+        showError('Error', 'Login failed. Please try again.');
+        return;
+      }
+
+      // If email isn't confirmed, Supabase may still allow a session in some cases
+      // depending on project settings — so we check explicitly.
+      const isConfirmed = !!data?.user?.email_confirmed_at;
+      if (!isConfirmed) {
+        showError(
+          'Email not confirmed',
+          'Please confirm your email first, then try signing in again.'
+        );
+        return;
+      }
+
+      // Fetch user profile
+      const { data: profile, error: profileError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (profileError) {
+        console.log('Profile fetch error:', profileError);
+        showError('Error', 'Could not load your profile. Please try again.');
+        return;
+      }
+
+      setShowSignIn(false);
+
+      if (!profile) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'CreateProfile' }],
+        });
+        return;
+      }
+
+      // ✅ IMPORTANT:
+      // Your previous resetToMain() can silently fail if it resets to a route name
+      // that doesn't exist in your RootStack (very common on web).
+      // So we reset to a route you already confirmed exists: MainTabs (or Featured).
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'MainTabs' }],
+      });
+
+      // (We keep resetToMain import for file stability, but we don't call it)
+      void resetToMain;
+    } catch (err: any) {
+      console.log('SignIn exception:', err);
+      showError('Login Error', 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
     }
-
-    // 🎉 NO PAYWALL. Go straight to the app.
-    resetToMain();
   };
-
   // ============================================================
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
         {/* BG */}
         <View style={styles.bgSolid} />
         <View style={styles.radialGlowTop} pointerEvents="none" />
@@ -448,12 +496,6 @@ export default function SignInScreen() {
           ]}
           keyboardShouldPersistTaps="handled"
         >
-          {/* MAIN LAYOUT: hero + features + FAQ */}
-          {/* (unchanged) */}
-          {/* ------------------------------------------------------ */}
-          {/* NOTE: All UI below here is unchanged from your version */}
-          {/* ------------------------------------------------------ */}
-
           <View
             style={[
               styles.wrap,
@@ -465,7 +507,6 @@ export default function SignInScreen() {
             ]}
           >
             {/* HERO SECTION */}
-            {/* (unchanged UI) */}
             <View
               style={[
                 styles.heroCol,
@@ -615,9 +656,7 @@ export default function SignInScreen() {
             {/* --- EXPANDED CARDS (About, Why, FAQ) --- */}
             <View style={[styles.fullWidthRow, !isWide && { marginTop: 4 }]}>
               {/* WHAT IS OVERLOOKED */}
-              {/* (unchanged UI) */}
               <View style={[styles.collapsibleCard, styles.fullCard]}>
-                {/* HEADER */}
                 <Pressable onPress={() => setAboutOpen((v) => !v)}>
                   <View style={styles.collapsibleHeaderPressFull}>
                     <View style={styles.centerRow}>
@@ -681,9 +720,7 @@ export default function SignInScreen() {
                   <View key={q.title} style={[styles.collapsibleCard, styles.fullCard]}>
                     <Pressable
                       onPress={() =>
-                        setOpenFaqs((p) =>
-                          p.includes(i) ? p.filter((x) => x !== i) : [...p, i]
-                        )
+                        setOpenFaqs((p) => (p.includes(i) ? p.filter((x) => x !== i) : [...p, i]))
                       }
                     >
                       <View style={styles.collapsibleHeaderPressFull}>
@@ -775,23 +812,23 @@ export default function SignInScreen() {
               </View>
 
               {/* Forgot Password */}
-<TouchableOpacity
-  onPress={() => {
-    setShowSignIn(false);
-    navigation.navigate('ForgotPassword');
-  }}
-  style={{ marginTop: 8 }}
->
-  <Text
-    style={{
-      color: T.mute,
-      fontSize: 13,
-      textDecorationLine: 'underline',
-    }}
-  >
-    Forgot password?
-  </Text>
-</TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowSignIn(false);
+                  navigation.navigate('ForgotPassword');
+                }}
+                style={{ marginTop: 8 }}
+              >
+                <Text
+                  style={{
+                    color: T.mute,
+                    fontSize: 13,
+                    textDecorationLine: 'underline',
+                  }}
+                >
+                  Forgot password?
+                </Text>
+              </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.button, loading && { opacity: 0.9 }]}
@@ -813,7 +850,8 @@ export default function SignInScreen() {
                 style={{ marginTop: 16 }}
               >
                 <Text style={styles.link}>
-                  New to OverLooked? <Text style={{ textDecorationLine: 'underline' }}>Create an account</Text>
+                  New to OverLooked?{' '}
+                  <Text style={{ textDecorationLine: 'underline' }}>Create an account</Text>
                 </Text>
               </TouchableOpacity>
             </View>
@@ -931,9 +969,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
     // @ts-ignore — web-only blur
-backdropFilter: 'saturate(120%) blur(8px)',
-// @ts-ignore
-WebkitBackdropFilter: 'saturate(120%) blur(8px)',
+    backdropFilter: 'saturate(120%) blur(8px)',
+    // @ts-ignore
+    WebkitBackdropFilter: 'saturate(120%) blur(8px)',
   },
 
   brandWrap: { paddingVertical: 4, paddingRight: 8 },
