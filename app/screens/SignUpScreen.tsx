@@ -241,8 +241,7 @@ export default function SignUpScreen() {
         return;
       }
 
-      // ✅ Always show a clear success notification
-      // Supabase typically returns user + no session until email is confirmed.
+      // ✅ Always show a clear success notification (what you asked for)
       Alert.alert(
         'Check your email',
         `We sent a confirmation link to:\n\n${trimmedEmail}\n\nOpen it to confirm your email, then come back and sign in.`,
