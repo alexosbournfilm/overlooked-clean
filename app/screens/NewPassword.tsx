@@ -53,24 +53,103 @@ export default function NewPassword() {
       refresh_token: params["refresh_token"],
       token_hash: params["token_hash"],
       email: params["email"],
-      type: params["type"],
+      type: params["type"], // IMPORTANT: Supabase puts type=recovery, signup, magiclink, invite, etc.
+      error: params["error"],
+      error_code: params["error_code"],
+      error_description: params["error_description"],
     };
   };
 
-  const establishSession = async () => {
-    const { access_token, refresh_token, token_hash, email } =
-      parseTokensFromUrl();
+  const hardGoToSignInWeb = () => {
+    // Use hard navigation so the router + React Navigation re-parse the URL
+    if (Platform.OS === "web") {
+      window.location.assign("/signin");
+    }
+  };
 
-    console.log("Parsed Tokens:", {
+  const resetToSignInNative = () => {
+    const action = CommonActions.reset({
+      index: 0,
+      routes: [{ name: "Auth", params: { screen: "SignIn" } }],
+    });
+
+    if (navigationRef.isReady()) navigationRef.dispatch(action);
+    else navigation.dispatch(action);
+  };
+
+  const goToSignIn = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+
+    try {
+      await supabase.auth.signOut();
+
+      if (Platform.OS === "web") {
+        hardGoToSignInWeb();
+        return;
+      }
+
+      resetToSignInNative();
+    } catch (e) {
+      console.log("goToSignIn error:", e);
+
+      if (Platform.OS === "web") hardGoToSignInWeb();
+      else resetToSignInNative();
+    } finally {
+      setSigningOut(false);
+    }
+  };
+
+  const establishSession = async () => {
+    const {
       access_token,
       refresh_token,
       token_hash,
       email,
+      type,
+      error_description,
+      error_code,
+    } = parseTokensFromUrl();
+
+    console.log("Parsed Tokens:", {
+      access_token: !!access_token,
+      refresh_token: !!refresh_token,
+      token_hash: !!token_hash,
+      email,
+      type,
+      error_code,
+      error_description,
     });
 
+    // ---------------------------------------------------------
+    // ✅ GUARD #1: If this is NOT a recovery link, DO NOT show this screen.
+    // Signup confirmations often have access_token/refresh_token too.
+    // Only allow type === "recovery".
+    // ---------------------------------------------------------
+    if (type && type !== "recovery") {
+      console.log(`🔁 Not a recovery link (type=${type}). Redirecting to Sign In.`);
+      await goToSignIn();
+      return false;
+    }
+
+    // ---------------------------------------------------------
+    // ✅ GUARD #2: If Supabase says link invalid/expired, go to Sign In.
+    // (You can also show an alert first.)
+    // ---------------------------------------------------------
+    if (error_code === "otp_expired" || error_description) {
+      Alert.alert(
+        "Link expired",
+        "That password reset link is invalid or has expired. Please request a new one from Sign In.",
+        [{ text: "OK", onPress: () => goToSignIn() }]
+      );
+      return false;
+    }
+
+    // ---------------------------------------------------------
     // CASE 1: Supabase recovery gives you a full session in hash
+    // ---------------------------------------------------------
     if (access_token && refresh_token) {
-      console.log("✔ Using full access_token session");
+      console.log("✔ Using full access_token session (recovery)");
       const { error } = await supabase.auth.setSession({
         access_token,
         refresh_token,
@@ -78,7 +157,9 @@ export default function NewPassword() {
       if (!error) return true;
     }
 
+    // ---------------------------------------------------------
     // CASE 2: Recovery uses token_hash (verifyOtp)
+    // ---------------------------------------------------------
     if (token_hash && email) {
       console.log("✔ Using token_hash to verify recovery session");
       const { error } = await supabase.auth.verifyOtp({
@@ -89,12 +170,19 @@ export default function NewPassword() {
       if (!error) return true;
     }
 
-    console.log("❌ No valid session could be created");
+    console.log("❌ No valid recovery session could be created");
+    Alert.alert(
+      "Invalid link",
+      "This password reset link is invalid. Please request a new one from Sign In.",
+      [{ text: "OK", onPress: () => goToSignIn() }]
+    );
     return false;
   };
 
   useEffect(() => {
     const run = async () => {
+      // ✅ If user somehow navigated here with no URL (native) this page shouldn't be used
+      // but we won't force kick them out immediately unless establishSession says so.
       const ok = await establishSession();
       if (ok) {
         console.log("✔ Recovery session established");
@@ -110,40 +198,6 @@ export default function NewPassword() {
     };
     run();
   }, []);
-
-  const goToSignIn = async () => {
-    if (signingOut) return;
-    setSigningOut(true);
-
-    try {
-      // 1) Sign out so AppNavigator can show Auth stack again
-      await supabase.auth.signOut();
-
-      // 2) WEB: must LEAVE /reset-password (path-based linking)
-      // Use hard navigation so React Navigation re-parses the URL.
-      if (Platform.OS === "web") {
-        window.location.assign("/signin");
-        return;
-      }
-
-      // 3) Native: Reset nav to Auth -> SignIn
-      const action = CommonActions.reset({
-        index: 0,
-        routes: [{ name: "Auth", params: { screen: "SignIn" } }],
-      });
-
-      if (navigationRef.isReady()) navigationRef.dispatch(action);
-      else navigation.dispatch(action);
-    } catch (e) {
-      console.log("goToSignIn error:", e);
-
-      if (Platform.OS === "web") {
-        window.location.assign("/signin");
-      }
-    } finally {
-      setSigningOut(false);
-    }
-  };
 
   const updatePassword = async () => {
     if (!sessionReady)
