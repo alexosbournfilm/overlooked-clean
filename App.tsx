@@ -1,6 +1,6 @@
 // App.tsx
 import "./app/polyfills"; // must stay first
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
@@ -31,23 +31,26 @@ import {
 } from "@expo-google-fonts/cinzel";
 
 // ------------------------------------------------------------------
-// SAFARI DEEP LINK FIX — override Linking.getInitialURL to use injected URL
+// SAFARI DEEP LINK FIX — one-shot override (prevents stale replay)
 // ------------------------------------------------------------------
 if (Platform.OS === "web") {
-  const injected =
-    typeof window !== "undefined" ? (window as any).__INITIAL_URL__ : null;
+  const originalGetInitialURL = Linking.getInitialURL;
 
-  if (injected) {
-    console.log("🔗 Safari injected initial URL:", injected);
+  Linking.getInitialURL = async () => {
+    const injected =
+      typeof window !== "undefined" ? (window as any).__INITIAL_URL__ : null;
 
-    // Override getInitialURL so React Navigation receives the correct URL
-    Linking.getInitialURL = async () => injected;
+    if (injected) {
+      console.log("🔗 Safari injected initial URL:", injected);
+      try {
+        (window as any).__INITIAL_URL__ = null;
+      } catch {}
+      return injected;
+    }
 
-    // ✅ IMPORTANT: clear it so we don't keep reusing a stale URL later
-    try {
-      (window as any).__INITIAL_URL__ = null;
-    } catch {}
-  }
+    if (typeof window !== "undefined") return window.location.href;
+    return originalGetInitialURL();
+  };
 }
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -75,22 +78,7 @@ function parseAuthParamsFromUrl(url: string) {
       error_description = hp.get("error_description") || error_description;
     }
   } catch {
-    const hasHash = url.includes("#");
-    const [base, hashPart] = url.split("#");
-    try {
-      const u2 = new URL(base);
-      code = u2.searchParams.get("code");
-      type = u2.searchParams.get("type") || type;
-      error_description = u2.searchParams.get("error_description");
-    } catch {}
-
-    if (hasHash && hashPart) {
-      const hp = new URLSearchParams(hashPart);
-      access_token = hp.get("access_token") || access_token;
-      refresh_token = hp.get("refresh_token") || refresh_token;
-      type = hp.get("type") || type;
-      error_description = hp.get("error_description") || error_description;
-    }
+    // ignore
   }
 
   return { code, access_token, refresh_token, type, error_description };
@@ -100,9 +88,6 @@ export default function App() {
   const [appIsReady, setAppIsReady] = useState(false);
   const [initialAuthRouteName, setInitialAuthRouteName] =
     useState<"SignIn" | "CreateProfile">("SignIn");
-
-  // ✅ Only navigate to NewPassword if we actually just handled a recovery link
-  const recoveryLinkSeenRef = useRef(false);
 
   // Load fonts
   const [courierLoaded] = useCourierFonts({
@@ -145,10 +130,7 @@ export default function App() {
       return;
     }
 
-    // ✅ Mark recovery link ONLY when type=recovery
-    recoveryLinkSeenRef.current = type === "recovery";
-
-    // 1) PKCE flow: ?code=...
+    // PKCE flow: ?code=...
     if (code) {
       const { error } = await supabase.auth.exchangeCodeForSession(url);
       if (error) {
@@ -158,22 +140,20 @@ export default function App() {
       console.log("✅ Session exchanged from code");
     }
 
-    // 2) Legacy token flow: #access_token=...&refresh_token=...
+    // Legacy tokens on native: set session explicitly
     if (access_token && refresh_token && Platform.OS !== "web") {
       const { error } = await supabase.auth.setSession({
         access_token,
         refresh_token,
       });
-
       if (error) {
         console.error("setSession ERROR:", error.message);
         return;
       }
-
       console.log("✅ Session restored from legacy tokens");
     }
 
-    // ✅ Clean URL on web so linking doesn’t re-process / mis-route
+    // Clean URL on web (prevents re-processing)
     if (Platform.OS === "web" && typeof window !== "undefined") {
       const clean = window.location.origin + window.location.pathname;
       window.history.replaceState({}, document.title, clean);
@@ -181,44 +161,45 @@ export default function App() {
   }, []);
 
   // --------------------------------------------------------------
-  // Supabase PASSWORD_RECOVERY event → navigate to NewPassword (guarded)
+  // PASSWORD_RECOVERY event → NewPassword
   // --------------------------------------------------------------
   useEffect(() => {
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      async (event) => {
-        if (event === "PASSWORD_RECOVERY") {
-          // ✅ Only navigate if we *actually* just opened a recovery link
-          if (recoveryLinkSeenRef.current) {
-            console.log("🚨 PASSWORD_RECOVERY event received (from recovery link)");
-            navigate("NewPassword");
-            // One-shot
-            recoveryLinkSeenRef.current = false;
-          } else {
-            console.log(
-              "ℹ️ PASSWORD_RECOVERY event ignored (not from a recovery link)"
-            );
-          }
-          return;
-        }
-
-        // Any normal auth event should clear the recovery flag
-        if (event === "SIGNED_IN" || event === "USER_UPDATED" || event === "SIGNED_OUT") {
-          recoveryLinkSeenRef.current = false;
-        }
+    const { data: subscription } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        console.log("🚨 PASSWORD_RECOVERY event received");
+        navigate("NewPassword");
       }
-    );
+    });
 
     return () => subscription.subscription.unsubscribe();
   }, []);
 
   // --------------------------------------------------------------
-  // APP INIT — handle initial deep link + session restore
+  // APP INIT — handle initial URL + prevent fake /reset-password loads
   // --------------------------------------------------------------
   useEffect(() => {
     let mounted = true;
 
     async function init() {
       try {
+        // ✅ HARD GUARD:
+        // If someone loads /reset-password without any recovery tokens, kick to /signin.
+        if (Platform.OS === "web" && typeof window !== "undefined") {
+          const path = window.location.pathname || "";
+          const hasRecoveryStuff =
+            window.location.href.includes("type=recovery") ||
+            window.location.href.includes("access_token=") ||
+            window.location.href.includes("refresh_token=") ||
+            window.location.href.includes("token_hash=") ||
+            window.location.href.includes("code=");
+
+          if (path.includes("reset-password") && !hasRecoveryStuff) {
+            console.log("🛑 Loaded /reset-password without tokens → redirecting to /signin");
+            window.location.replace("/signin");
+            return; // stop init
+          }
+        }
+
         const initialUrl = await Linking.getInitialURL();
         console.log("Initial URL:", initialUrl);
 
@@ -230,10 +211,7 @@ export default function App() {
         const session = sessionData?.session ?? null;
 
         if (session) {
-          await SecureStore.setItemAsync(
-            "supabaseSession",
-            JSON.stringify(session)
-          );
+          await SecureStore.setItemAsync("supabaseSession", JSON.stringify(session));
 
           const { data: profile } = await supabase
             .from("users")
@@ -242,10 +220,7 @@ export default function App() {
             .maybeSingle();
 
           const needsProfile =
-            !profile ||
-            !profile.full_name ||
-            !profile.main_role_id ||
-            !profile.city_id;
+            !profile || !profile.full_name || !profile.main_role_id || !profile.city_id;
 
           setInitialAuthRouteName(needsProfile ? "CreateProfile" : "SignIn");
         } else {
@@ -256,10 +231,7 @@ export default function App() {
           await handleDeepLink(ev.url);
         });
 
-        if (mounted) {
-          setAppIsReady(true);
-        }
-
+        if (mounted) setAppIsReady(true);
         return () => sub.remove();
       } catch (err) {
         console.error("INIT ERROR:", err);
