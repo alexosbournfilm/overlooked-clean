@@ -6,6 +6,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { Platform } from "react-native";
 import { supabase } from "../lib/supabase";
 import { navigationRef } from "../navigation/navigationRef";
 import { CommonActions } from "@react-navigation/native";
@@ -32,6 +33,40 @@ const AuthContext = createContext<AuthContextType>({
   profileComplete: false,
   refreshProfile: async () => {},
 });
+
+// ✅ Safe global flag across web + native
+const G = globalThis as any;
+if (typeof G.__OVERLOOKED_RECOVERY__ === "undefined") {
+  G.__OVERLOOKED_RECOVERY__ = false;
+}
+
+// ✅ Web-only helper: are we ACTUALLY on a recovery/reset link?
+function isWebRecoveryUrl(): boolean {
+  if (Platform.OS !== "web") return false;
+  if (typeof window === "undefined") return false;
+
+  const href = window.location.href || "";
+  const path = window.location.pathname || "";
+  const hash = window.location.hash || "";
+  const search = window.location.search || "";
+
+  // Any of these strongly indicate a recovery link
+  const hasRecoveryType =
+    href.includes("type=recovery") ||
+    hash.includes("type=recovery") ||
+    search.includes("type=recovery");
+
+  const hasTokenHash =
+    href.includes("token_hash=") ||
+    hash.includes("token_hash=") ||
+    search.includes("token_hash=");
+
+  // Your linking maps reset-password → NewPassword
+  const isResetRoute =
+    path.includes("/reset-password") || path.endsWith("/reset-password");
+
+  return Boolean(hasRecoveryType || hasTokenHash || isResetRoute);
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -74,6 +109,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let mounted = true;
 
     const init = async () => {
+      // ✅ On app start, DO NOT stay in recovery mode unless URL proves it
+      // This prevents "stuck recovery" where plain /signin keeps showing NewPassword.
+      const shouldBeRecovery = isWebRecoveryUrl();
+      G.__OVERLOOKED_RECOVERY__ = shouldBeRecovery;
+
       const { data } = await supabase.auth.getSession();
       const uid = data.session?.user?.id ?? null;
 
@@ -92,38 +132,75 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (event, session) => {
         console.log("Auth event →", event);
 
-        /* ----------------------------------------------------------
-           PASSWORD_RECOVERY → always navigate to NewPassword
-           (AppNavigator already sets isRecoveryMode flag)
-        ---------------------------------------------------------- */
+        // ✅ PASSWORD_RECOVERY should ONLY push to NewPassword
+        // when we are truly processing a recovery link.
         if (event === "PASSWORD_RECOVERY") {
-          console.log("🔐 PASSWORD_RECOVERY → NewPassword screen");
+          const okRecovery = isWebRecoveryUrl() || Platform.OS !== "web";
 
-          window.__RECOVERY__ = true;
+          console.log(
+            "🔐 PASSWORD_RECOVERY event received. okRecovery=",
+            okRecovery
+          );
 
-          if (navigationRef.isReady()) {
-            navigationRef.dispatch(
-              CommonActions.reset({
-                index: 0,
-                routes: [{ name: "NewPassword" }],
-              })
+          if (okRecovery) {
+            G.__OVERLOOKED_RECOVERY__ = true;
+
+            if (navigationRef.isReady()) {
+              navigationRef.dispatch(
+                CommonActions.reset({
+                  index: 0,
+                  routes: [{ name: "NewPassword" }],
+                })
+              );
+            }
+          } else {
+            // If Supabase fires it unexpectedly, don't trap the user.
+            console.warn(
+              "⚠️ PASSWORD_RECOVERY fired but URL is not recovery. Ignoring."
             );
+            G.__OVERLOOKED_RECOVERY__ = false;
           }
+
           return;
         }
 
-        /* ----------------------------------------------------------
-           USER_UPDATED — password successfully changed
-           DO NOT auto-navigate out of NewPassword yet.
-           AppNavigator handles transitions after session refresh.
-        ---------------------------------------------------------- */
+        // ✅ USER_UPDATED happens after password is successfully changed
+        // We END recovery mode here and return user to SignIn.
         if (event === "USER_UPDATED") {
           console.log("🔐 USER_UPDATED fired");
 
-          if (window.__RECOVERY__) {
-            console.log("Recovery mode active → staying on NewPassword");
+          if (G.__OVERLOOKED_RECOVERY__) {
+            console.log("✅ Recovery complete → exiting recovery mode");
+            G.__OVERLOOKED_RECOVERY__ = false;
+
+            // Optional hard clean of URL on web
+            if (Platform.OS === "web" && typeof window !== "undefined") {
+              const clean = window.location.origin + "/signin";
+              window.history.replaceState({}, document.title, clean);
+            }
+
+            if (navigationRef.isReady()) {
+              navigationRef.dispatch(
+                CommonActions.reset({
+                  index: 0,
+                  routes: [{ name: "Auth", params: { screen: "SignIn" } }],
+                })
+              );
+            }
             return;
           }
+        }
+
+        // ✅ Clear recovery mode on normal sign in/out
+        if (event === "SIGNED_IN") {
+          // If user signed in normally, we should not remain in recovery mode
+          if (!isWebRecoveryUrl()) {
+            G.__OVERLOOKED_RECOVERY__ = false;
+          }
+        }
+
+        if (event === "SIGNED_OUT") {
+          G.__OVERLOOKED_RECOVERY__ = false;
         }
 
         /* ----------------------------------------------------------
@@ -149,11 +226,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const profileComplete = useMemo(() => {
     if (!profile) return false;
 
-    return Boolean(
-      profile.full_name &&
-        profile.main_role_id &&
-        profile.city_id
-    );
+    return Boolean(profile.full_name && profile.main_role_id && profile.city_id);
   }, [profile]);
 
   const value = useMemo(
