@@ -10,7 +10,7 @@ import {
    ROOT NAVIGATION TYPE DEFINITIONS
    ===================================================== */
 export type RootStackParamList = {
-  // ✅ ROOT AUTH STACK
+  // ✅ ROOT AUTH STACK (AUTH SCREENS LIVE *INSIDE* THIS)
   Auth:
     | {
         screen?:
@@ -22,12 +22,6 @@ export type RootStackParamList = {
         params?: any;
       }
     | undefined;
-
-  // AUTH FLOW (nested inside AuthStack)
-  SignIn: undefined;
-  SignUp: undefined;
-  CreateProfile: undefined;
-  ForgotPassword: undefined;
 
   // PASSWORD RESET (also accessible at root)
   NewPassword: undefined;

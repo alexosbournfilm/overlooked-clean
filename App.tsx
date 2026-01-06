@@ -1,17 +1,22 @@
+// App.tsx
 /**
  * ------------------------------------------------------------
- *  FINAL APP.TSX — SAFARI + SUPABASE PASSWORD RESET FIX
+ *  FINAL APP.TSX — SAFARI + SUPABASE AUTH CALLBACK FIX (SIGNUP + RECOVERY)
  * ------------------------------------------------------------
  * Fixes:
  * - Safari not passing deep link on first load
  * - Blank white screen until refresh
  * - Password reset link not opening NewPassword
  * - getInitialURL() returning null
+ * - ✅ Email confirmation links (?code=... / type=signup) not being handled
  *
  * Uses:
  * - index.html injects window.__INITIAL_URL__
  * - This file overrides Linking.getInitialURL() on web
- * - No polling, no race conditions, no blank screen
+ * - Handles BOTH:
+ *    - PKCE links: ?code=...
+ *    - Legacy token links: #access_token=...&refresh_token=...
+ * - Cleans URL on web to prevent re-processing and bad routing
  * ------------------------------------------------------------
  */
 
@@ -63,6 +68,57 @@ if (Platform.OS === "web") {
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
+function parseAuthParamsFromUrl(url: string) {
+  // Supports:
+  // - PKCE: ?code=...
+  // - Legacy: #access_token=...&refresh_token=...&type=recovery|signup
+  let code: string | null = null;
+  let access_token: string | null = null;
+  let refresh_token: string | null = null;
+  let type: string | null = null;
+  let error_description: string | null = null;
+
+  try {
+    // Best effort parse
+    const u = new URL(url);
+
+    // Query params (PKCE / error)
+    code = u.searchParams.get("code");
+    type = u.searchParams.get("type") || type;
+    error_description = u.searchParams.get("error_description");
+
+    // Hash params (legacy)
+    const hash = (u.hash || "").replace(/^#/, "");
+    if (hash) {
+      const hp = new URLSearchParams(hash);
+      access_token = hp.get("access_token") || access_token;
+      refresh_token = hp.get("refresh_token") || refresh_token;
+      type = hp.get("type") || type;
+      error_description = hp.get("error_description") || error_description;
+    }
+  } catch {
+    // Fallback for non-standard URLs
+    const hasHash = url.includes("#");
+    const [base, hashPart] = url.split("#");
+    try {
+      const u2 = new URL(base);
+      code = u2.searchParams.get("code");
+      type = u2.searchParams.get("type") || type;
+      error_description = u2.searchParams.get("error_description");
+    } catch {}
+
+    if (hasHash && hashPart) {
+      const hp = new URLSearchParams(hashPart);
+      access_token = hp.get("access_token") || access_token;
+      refresh_token = hp.get("refresh_token") || refresh_token;
+      type = hp.get("type") || type;
+      error_description = hp.get("error_description") || error_description;
+    }
+  }
+
+  return { code, access_token, refresh_token, type, error_description };
+}
+
 export default function App() {
   const [appIsReady, setAppIsReady] = useState(false);
   const [initialAuthRouteName, setInitialAuthRouteName] =
@@ -81,27 +137,66 @@ export default function App() {
   const fontsLoaded = courierLoaded && cinzelLoaded;
 
   // --------------------------------------------------------------
-  // Proper deep-link handler (Supabase recovery tokens)
+  // Proper deep-link handler (Supabase signup confirm + recovery)
   // --------------------------------------------------------------
   const handleDeepLink = useCallback(async (url: string | null) => {
     if (!url) return;
 
-    const isSupabase =
-      url.includes("access_token=") ||
-      url.includes("refresh_token=") ||
-      url.includes("type=recovery");
+    const { code, access_token, refresh_token, type, error_description } =
+      parseAuthParamsFromUrl(url);
 
-    if (!isSupabase) return;
+    const isSupabaseAuthCallback =
+      !!code ||
+      !!access_token ||
+      !!refresh_token ||
+      (type === "recovery") ||
+      (type === "signup");
 
-    console.log("🔗 Deep link detected:", url);
+    if (!isSupabaseAuthCallback) return;
 
-    const { error } = await supabase.auth.exchangeCodeForSession(url);
-    if (error) {
-      console.error("exchangeCodeForSession ERROR:", error.message);
+    console.log("🔗 Supabase auth callback detected:", {
+      url,
+      hasCode: !!code,
+      hasTokens: !!access_token || !!refresh_token,
+      type,
+    });
+
+    if (error_description) {
+      console.error("Supabase auth callback error:", error_description);
       return;
     }
 
-    console.log("🔐 Supabase session restored from deep link");
+    // 1) PKCE flow (modern): ?code=...
+    if (code) {
+      const { error } = await supabase.auth.exchangeCodeForSession(url);
+      if (error) {
+        console.error("exchangeCodeForSession ERROR:", error.message);
+        return;
+      }
+      console.log("✅ Session exchanged from code");
+    }
+
+    // 2) Legacy token flow: #access_token=...&refresh_token=...
+    // On native, detectSessionInUrl is false, so we set the session explicitly if tokens exist.
+    if (access_token && refresh_token && Platform.OS !== "web") {
+      const { error } = await supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      });
+
+      if (error) {
+        console.error("setSession ERROR:", error.message);
+        return;
+      }
+
+      console.log("✅ Session restored from legacy tokens");
+    }
+
+    // IMPORTANT: clean URL on web so linking doesn't keep re-processing / mis-route
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const clean = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, clean);
+    }
   }, []);
 
   // --------------------------------------------------------------

@@ -1,7 +1,7 @@
 // app/lib/supabase.ts
-import 'react-native-url-polyfill/auto';
-import { createClient } from '@supabase/supabase-js';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import "react-native-url-polyfill/auto";
+import { createClient } from "@supabase/supabase-js";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Some tooling in RN / Expo doesn't have Node types by default,
 // so we defensively type process to avoid TS "cannot find name 'process'" errors.
@@ -20,28 +20,44 @@ declare const process:
 // =======================
 
 const SUPABASE_URL_ENV =
-  typeof process !== 'undefined' && process?.env
+  typeof process !== "undefined" && process?.env
     ? process.env.EXPO_PUBLIC_SUPABASE_URL
     : undefined;
 
 const SUPABASE_ANON_KEY_ENV =
-  typeof process !== 'undefined' && process?.env
+  typeof process !== "undefined" && process?.env
     ? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
     : undefined;
 
-// Fallbacks (safe for local/dev; replace in production)
-const FALLBACK_URL = 'https://sdatmuzzsebvckfmnqsv.supabase.co';
+// Fallbacks (dev only)
+const FALLBACK_URL = "https://sdatmuzzsebvckfmnqsv.supabase.co";
 const FALLBACK_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkYXRtdXp6c2VidmNrZm1ucXN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMyOTIwNzIsImV4cCI6MjA2ODg2ODA3Mn0.IO2vFDIsb8JF6cunEu_URFRPoaAk0aZIRZa-BBcT450';
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkYXRtdXp6c2VidmNrZm1ucXN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMyOTIwNzIsImV4cCI6MjA2ODg2ODA3Mn0.IO2vFDIsb8JF6cunEu_URFRPoaAk0aZIRZa-BBcT450";
 
-export const SUPABASE_URL = (SUPABASE_URL_ENV || FALLBACK_URL).replace(
+// Detect dev mode safely (works in RN/Web builds)
+const IS_DEV = typeof __DEV__ !== "undefined" ? __DEV__ : false;
+
+// IMPORTANT:
+// - In production, DO NOT silently fall back. It causes “invalid credentials”
+//   when web/mobile point at different Supabase projects.
+// - In dev, allow fallbacks so local runs don’t instantly die.
+const RESOLVED_URL = (SUPABASE_URL_ENV || (IS_DEV ? FALLBACK_URL : "")).replace(
   /\/+$/,
-  '',
+  ""
 );
-export const SUPABASE_ANON_KEY = SUPABASE_ANON_KEY_ENV || FALLBACK_ANON_KEY;
+const RESOLVED_KEY = SUPABASE_ANON_KEY_ENV || (IS_DEV ? FALLBACK_ANON_KEY : "");
+
+if (!RESOLVED_URL || !RESOLVED_KEY) {
+  throw new Error(
+    "Missing Supabase env vars. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY."
+  );
+}
+
+export const SUPABASE_URL = RESOLVED_URL;
+export const SUPABASE_ANON_KEY = RESOLVED_KEY;
 
 // Detect if web or native
-const isWeb = typeof window !== 'undefined' && typeof document !== 'undefined';
+const isWeb = typeof window !== "undefined" && typeof document !== "undefined";
 
 // =======================
 // 🧠 CLIENT INITIALIZATION
@@ -59,7 +75,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         autoRefreshToken: true,
         detectSessionInUrl: false,
         storage: AsyncStorage,
-        storageKey: 'overlooked.supabase.auth',
+        storageKey: "overlooked.supabase.auth",
       },
   realtime: {
     params: {
@@ -74,7 +90,7 @@ supabase.auth.onAuthStateChange((_event, session) => {
   try {
     supabase.auth.startAutoRefresh();
   } catch (e) {
-    console.warn('[supabase] autoRefresh error', e);
+    console.warn("[supabase] autoRefresh error", e);
   }
 });
 
@@ -86,9 +102,9 @@ try {
   (globalThis as any).supabaseClient = supabase;
   (globalThis as any).functionsUrl = FUNCTIONS_URL;
 } catch {}
-console.log('🔑 SUPABASE_URL =', SUPABASE_URL);
-console.log('🔑 Anon key defined =', !!SUPABASE_ANON_KEY);
-console.log('🔧 FUNCTIONS_URL =', FUNCTIONS_URL);
+console.log("🔑 SUPABASE_URL =", SUPABASE_URL);
+console.log("🔑 Anon key defined =", !!SUPABASE_ANON_KEY);
+console.log("🔧 FUNCTIONS_URL =", FUNCTIONS_URL);
 
 // =======================
 // 🏆 GAMIFICATION (FRONTEND VIEW)
@@ -112,11 +128,11 @@ export const XP_VALUES = {
 } as const;
 
 export type XpReason =
-  | 'challenge_submission'
-  | 'challenge_win'
-  | 'job_posted'
-  | 'job_application'
-  | 'manual_adjust';
+  | "challenge_submission"
+  | "challenge_win"
+  | "job_posted"
+  | "job_application"
+  | "manual_adjust";
 
 /**
  * 🔴 IMPORTANT:
@@ -133,19 +149,19 @@ export type XpReason =
 export async function giveXp(
   userId: string | null | undefined,
   amount: number,
-  reason: XpReason,
+  reason: XpReason
 ) {
   if (!userId) return;
   if (!amount || amount === 0) return;
 
-  const { error } = await supabase.rpc('add_xp', {
+  const { error } = await supabase.rpc("add_xp", {
     p_user_id: userId,
     p_amount: amount,
     p_reason: reason,
   });
 
   if (error) {
-    console.log('⚠️ giveXp error', { error, userId, amount, reason });
+    console.log("⚠️ giveXp error", { error, userId, amount, reason });
   } else {
     console.log(`🏅 MANUAL XP: +${amount} XP for ${reason} (user ${userId})`);
   }
@@ -156,7 +172,7 @@ export async function giveXp(
 // =======================
 
 // These names match the `users.tier` CHECK constraint in SQL.
-export type UserTier = 'free' | 'pro';
+export type UserTier = "free" | "pro";
 
 /**
  * Frontend mirror of the backend logic:
