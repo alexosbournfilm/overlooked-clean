@@ -46,6 +46,10 @@ export default function SignUpScreen() {
   const [emailConfirmed, setEmailConfirmed] = useState(false);
   const [checkingLink, setCheckingLink] = useState(true);
 
+  // ✅ NEW: In-app "Email sent" modal (works on WEB + mobile)
+  const [emailSentVisible, setEmailSentVisible] = useState(false);
+  const [emailSentTo, setEmailSentTo] = useState<string>('');
+
   // ✅ Redirect for email confirmation (FIXED)
   // Web: stable callback path
   // Native: uses deep link "overlooked://auth/callback" (matches Supabase Redirect URLs)
@@ -241,24 +245,18 @@ export default function SignUpScreen() {
         return;
       }
 
-      // ✅ Always show a clear success notification (what you asked for)
-      Alert.alert(
-        'Check your email',
-        `We sent a confirmation link to:\n\n${trimmedEmail}\n\nOpen it to confirm your email, then come back and sign in.`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // Navigate to CheckEmail if it exists, otherwise fall back to SignIn.
-              try {
-                navigation.navigate('CheckEmail', { email: trimmedEmail });
-              } catch (e) {
-                navigation.navigate('SignIn');
-              }
-            },
-          },
-        ]
-      );
+      // ✅ SHOW "EMAIL SENT" INDICATION (WORKS ON WEB + MOBILE)
+      setEmailSentTo(trimmedEmail);
+      setEmailSentVisible(true);
+
+      // Optional: on web, also trigger a native browser alert (backup)
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        try {
+          window.alert(
+            `We sent a confirmation link to:\n\n${trimmedEmail}\n\nOpen it to confirm your email, then come back and sign in.`
+          );
+        } catch {}
+      }
 
       // (Keep your legal update attempt)
       try {
@@ -421,6 +419,53 @@ export default function SignUpScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* ✅ EMAIL SENT MODAL (NEW) */}
+      <Modal
+        visible={emailSentVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEmailSentVisible(false)}
+      >
+        <View style={styles.emailModalOverlay}>
+          <View style={styles.emailModalCard}>
+            <Text style={styles.emailModalTitle}>Email Sent ✅</Text>
+            <Text style={styles.emailModalText}>
+              We sent a confirmation link{emailSentTo ? ' to:' : '.'}
+            </Text>
+
+            {!!emailSentTo && (
+              <Text style={styles.emailModalEmail}>{emailSentTo}</Text>
+            )}
+
+            <Text style={styles.emailModalText}>
+              Open the email to confirm your account, then come back and sign in.
+            </Text>
+
+            <View style={styles.emailModalButtons}>
+              <TouchableOpacity
+                style={styles.emailModalPrimary}
+                onPress={() => {
+                  setEmailSentVisible(false);
+                  navigation.navigate('CheckEmail', { email: emailSentTo });
+                }}
+              >
+                <Text style={styles.emailModalPrimaryText}>Go to Check Email</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.emailModalSecondary}
+                onPress={() => {
+                  setEmailSentVisible(false);
+                  navigation.navigate('SignIn');
+                }}
+              >
+                <Text style={styles.emailModalSecondaryText}>Back to Sign In</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ---------- LEGAL MODALS (unchanged structure) ---------- */}
 
@@ -762,7 +807,67 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
 
-  // Modals
+  // ✅ Email sent modal styles (NEW)
+  emailModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  emailModalCard: {
+    backgroundColor: DARK_CARD,
+    borderRadius: 14,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  emailModalTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    marginBottom: 10,
+  },
+  emailModalText: {
+    color: TEXT_MUTED,
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  emailModalEmail: {
+    color: GOLD,
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 12,
+  },
+  emailModalButtons: {
+    marginTop: 10,
+    gap: 10,
+  },
+  emailModalPrimary: {
+    backgroundColor: GOLD,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  emailModalPrimaryText: {
+    color: '#000',
+    fontWeight: '900',
+    fontSize: 15,
+  },
+  emailModalSecondary: {
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  emailModalSecondaryText: {
+    color: TEXT_IVORY,
+    fontWeight: '800',
+    fontSize: 14,
+  },
+
+  // Modals (existing)
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.85)',
