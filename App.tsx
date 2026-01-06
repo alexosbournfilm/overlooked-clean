@@ -1,27 +1,6 @@
 // App.tsx
-/**
- * ------------------------------------------------------------
- *  FINAL APP.TSX — SAFARI + SUPABASE AUTH CALLBACK FIX (SIGNUP + RECOVERY)
- * ------------------------------------------------------------
- * Fixes:
- * - Safari not passing deep link on first load
- * - Blank white screen until refresh
- * - Password reset link not opening NewPassword
- * - getInitialURL() returning null
- * - ✅ Email confirmation links (?code=... / type=signup) not being handled
- *
- * Uses:
- * - index.html injects window.__INITIAL_URL__
- * - This file overrides Linking.getInitialURL() on web
- * - Handles BOTH:
- *    - PKCE links: ?code=...
- *    - Legacy token links: #access_token=...&refresh_token=...
- * - Cleans URL on web to prevent re-processing and bad routing
- * ------------------------------------------------------------
- */
-
 import "./app/polyfills"; // must stay first
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
@@ -63,15 +42,17 @@ if (Platform.OS === "web") {
 
     // Override getInitialURL so React Navigation receives the correct URL
     Linking.getInitialURL = async () => injected;
+
+    // ✅ IMPORTANT: clear it so we don't keep reusing a stale URL later
+    try {
+      (window as any).__INITIAL_URL__ = null;
+    } catch {}
   }
 }
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function parseAuthParamsFromUrl(url: string) {
-  // Supports:
-  // - PKCE: ?code=...
-  // - Legacy: #access_token=...&refresh_token=...&type=recovery|signup
   let code: string | null = null;
   let access_token: string | null = null;
   let refresh_token: string | null = null;
@@ -79,15 +60,12 @@ function parseAuthParamsFromUrl(url: string) {
   let error_description: string | null = null;
 
   try {
-    // Best effort parse
     const u = new URL(url);
 
-    // Query params (PKCE / error)
     code = u.searchParams.get("code");
     type = u.searchParams.get("type") || type;
     error_description = u.searchParams.get("error_description");
 
-    // Hash params (legacy)
     const hash = (u.hash || "").replace(/^#/, "");
     if (hash) {
       const hp = new URLSearchParams(hash);
@@ -97,7 +75,6 @@ function parseAuthParamsFromUrl(url: string) {
       error_description = hp.get("error_description") || error_description;
     }
   } catch {
-    // Fallback for non-standard URLs
     const hasHash = url.includes("#");
     const [base, hashPart] = url.split("#");
     try {
@@ -124,6 +101,9 @@ export default function App() {
   const [initialAuthRouteName, setInitialAuthRouteName] =
     useState<"SignIn" | "CreateProfile">("SignIn");
 
+  // ✅ Only navigate to NewPassword if we actually just handled a recovery link
+  const recoveryLinkSeenRef = useRef(false);
+
   // Load fonts
   const [courierLoaded] = useCourierFonts({
     CourierPrime_400Regular,
@@ -137,7 +117,7 @@ export default function App() {
   const fontsLoaded = courierLoaded && cinzelLoaded;
 
   // --------------------------------------------------------------
-  // Proper deep-link handler (Supabase signup confirm + recovery)
+  // Deep-link handler (Supabase signup confirm + recovery)
   // --------------------------------------------------------------
   const handleDeepLink = useCallback(async (url: string | null) => {
     if (!url) return;
@@ -149,13 +129,12 @@ export default function App() {
       !!code ||
       !!access_token ||
       !!refresh_token ||
-      (type === "recovery") ||
-      (type === "signup");
+      type === "recovery" ||
+      type === "signup";
 
     if (!isSupabaseAuthCallback) return;
 
     console.log("🔗 Supabase auth callback detected:", {
-      url,
       hasCode: !!code,
       hasTokens: !!access_token || !!refresh_token,
       type,
@@ -166,7 +145,10 @@ export default function App() {
       return;
     }
 
-    // 1) PKCE flow (modern): ?code=...
+    // ✅ Mark recovery link ONLY when type=recovery
+    recoveryLinkSeenRef.current = type === "recovery";
+
+    // 1) PKCE flow: ?code=...
     if (code) {
       const { error } = await supabase.auth.exchangeCodeForSession(url);
       if (error) {
@@ -177,7 +159,6 @@ export default function App() {
     }
 
     // 2) Legacy token flow: #access_token=...&refresh_token=...
-    // On native, detectSessionInUrl is false, so we set the session explicitly if tokens exist.
     if (access_token && refresh_token && Platform.OS !== "web") {
       const { error } = await supabase.auth.setSession({
         access_token,
@@ -192,7 +173,7 @@ export default function App() {
       console.log("✅ Session restored from legacy tokens");
     }
 
-    // IMPORTANT: clean URL on web so linking doesn't keep re-processing / mis-route
+    // ✅ Clean URL on web so linking doesn’t re-process / mis-route
     if (Platform.OS === "web" && typeof window !== "undefined") {
       const clean = window.location.origin + window.location.pathname;
       window.history.replaceState({}, document.title, clean);
@@ -200,14 +181,29 @@ export default function App() {
   }, []);
 
   // --------------------------------------------------------------
-  // Supabase PASSWORD_RECOVERY event → navigate to NewPassword
+  // Supabase PASSWORD_RECOVERY event → navigate to NewPassword (guarded)
   // --------------------------------------------------------------
   useEffect(() => {
     const { data: subscription } = supabase.auth.onAuthStateChange(
       async (event) => {
         if (event === "PASSWORD_RECOVERY") {
-          console.log("🚨 PASSWORD_RECOVERY event received");
-          navigate("NewPassword");
+          // ✅ Only navigate if we *actually* just opened a recovery link
+          if (recoveryLinkSeenRef.current) {
+            console.log("🚨 PASSWORD_RECOVERY event received (from recovery link)");
+            navigate("NewPassword");
+            // One-shot
+            recoveryLinkSeenRef.current = false;
+          } else {
+            console.log(
+              "ℹ️ PASSWORD_RECOVERY event ignored (not from a recovery link)"
+            );
+          }
+          return;
+        }
+
+        // Any normal auth event should clear the recovery flag
+        if (event === "SIGNED_IN" || event === "USER_UPDATED" || event === "SIGNED_OUT") {
+          recoveryLinkSeenRef.current = false;
         }
       }
     );
@@ -223,7 +219,6 @@ export default function App() {
 
     async function init() {
       try {
-        // 1️⃣ Get initial URL (Safari-safe)
         const initialUrl = await Linking.getInitialURL();
         console.log("Initial URL:", initialUrl);
 
@@ -231,7 +226,6 @@ export default function App() {
           await handleDeepLink(initialUrl);
         }
 
-        // 2️⃣ Restore session
         const { data: sessionData } = await supabase.auth.getSession();
         const session = sessionData?.session ?? null;
 
@@ -241,7 +235,6 @@ export default function App() {
             JSON.stringify(session)
           );
 
-          // Load profile completeness
           const { data: profile } = await supabase
             .from("users")
             .select("full_name, main_role_id, city_id")
@@ -259,7 +252,6 @@ export default function App() {
           setInitialAuthRouteName("SignIn");
         }
 
-        // 3️⃣ Listen for in-app deep links
         const sub = Linking.addEventListener("url", async (ev) => {
           await handleDeepLink(ev.url);
         });
@@ -292,9 +284,6 @@ export default function App() {
 
   if (!appIsReady || !fontsLoaded) return null;
 
-  // --------------------------------------------------------------
-  // RENDER APP
-  // --------------------------------------------------------------
   return (
     <AppErrorBoundary>
       <PaperProvider>
