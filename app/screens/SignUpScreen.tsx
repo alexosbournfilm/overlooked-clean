@@ -48,7 +48,7 @@ export default function SignUpScreen() {
 
   // ✅ Redirect for email confirmation (FIXED)
   // Web: stable callback path
-  // Native: uses deep link "overlooked://callback" (matches Supabase Redirect URLs)
+  // Native: uses deep link "overlooked://auth/callback" (matches Supabase Redirect URLs)
   const emailRedirectTo = useMemo(() => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       return `${window.location.origin}/auth/callback`;
@@ -229,32 +229,56 @@ export default function SignUpScreen() {
 
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signUp({
-      email: trimmedEmail,
-      password,
-      options: { emailRedirectTo },
-    });
-
-    setLoading(false);
-
-    if (error) {
-      Alert.alert('Signup Error', error.message);
-      return;
-    }
-
     try {
-      if (data?.user) {
-        await supabase
-          .from('users')
-          .update({
-            legal_accepted: true,
-            legal_accepted_at: new Date().toISOString(),
-          })
-          .eq('id', data.user.id);
-      }
-    } catch {}
+      const { data, error } = await supabase.auth.signUp({
+        email: trimmedEmail,
+        password,
+        options: { emailRedirectTo },
+      });
 
-    navigation.navigate('CheckEmail', { email: trimmedEmail });
+      if (error) {
+        Alert.alert('Signup Error', error.message);
+        return;
+      }
+
+      // ✅ Always show a clear success notification
+      // Supabase typically returns user + no session until email is confirmed.
+      Alert.alert(
+        'Check your email',
+        `We sent a confirmation link to:\n\n${trimmedEmail}\n\nOpen it to confirm your email, then come back and sign in.`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Navigate to CheckEmail if it exists, otherwise fall back to SignIn.
+              try {
+                navigation.navigate('CheckEmail', { email: trimmedEmail });
+              } catch (e) {
+                navigation.navigate('SignIn');
+              }
+            },
+          },
+        ]
+      );
+
+      // (Keep your legal update attempt)
+      try {
+        if (data?.user) {
+          await supabase
+            .from('users')
+            .update({
+              legal_accepted: true,
+              legal_accepted_at: new Date().toISOString(),
+            })
+            .eq('id', data.user.id);
+        }
+      } catch {}
+    } catch (err: any) {
+      console.error('Signup exception:', err);
+      Alert.alert('Signup Error', 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const canSubmit =
