@@ -17,7 +17,6 @@ import {
 import * as Linking from 'expo-linking';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
-import COLORS from '../theme/colors';
 
 // DARK THEME PALETTE (aligned with MainTabs)
 const DARK_BG = '#0D0D0D';
@@ -46,18 +45,29 @@ export default function SignUpScreen() {
   const [emailConfirmed, setEmailConfirmed] = useState(false);
   const [checkingLink, setCheckingLink] = useState(true);
 
-  // ✅ NEW: In-app "Email sent" modal (works on WEB + mobile)
+  // ✅ In-app "Email sent" modal (works on WEB + mobile)
   const [emailSentVisible, setEmailSentVisible] = useState(false);
   const [emailSentTo, setEmailSentTo] = useState<string>('');
 
-  // ✅ Redirect for email confirmation (FIXED)
-  // Web: stable callback path
-  // Native: uses deep link "overlooked://auth/callback" (matches Supabase Redirect URLs)
+  /**
+   * ✅ IMPORTANT FIX:
+   * Redirect email confirmations to a route that definitely exists in your app.
+   * If your web app does not implement /auth/callback (or linking doesn’t map it),
+   * the PKCE exchange won’t run reliably.
+   *
+   * So we send people to /signin (web) / overlooked://signin (native),
+   * which you already have.
+   *
+   * Make sure these exact URLs are added in Supabase:
+   * - Authentication > URL Configuration > Redirect URLs
+   *   e.g. https://overlooked.cloud/signin
+   *        overlooked://signin
+   */
   const emailRedirectTo = useMemo(() => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      return `${window.location.origin}/auth/callback`;
+      return `${window.location.origin}/signin`;
     }
-    return Linking.createURL('auth/callback');
+    return Linking.createURL('signin');
   }, []);
 
   const refreshConfirmedFromUser = async () => {
@@ -73,6 +83,7 @@ export default function SignUpScreen() {
     const parsed = Linking.parse(url);
     let params: Record<string, any> = {};
 
+    // Web: Supabase can return tokens in hash in some flows
     if (typeof window !== 'undefined' && Platform.OS === 'web') {
       const hash = window.location.hash?.replace(/^#/, '') ?? '';
       const searchParams = new URLSearchParams(hash);
@@ -95,23 +106,32 @@ export default function SignUpScreen() {
     if (!url) return false;
 
     try {
-      // PKCE
+      // ✅ PKCE flow (most common in modern Supabase auth):
+      // If the URL contains ?code=..., we must exchange it for a session.
       if (url.includes('code=')) {
         const { error } = await supabase.auth.exchangeCodeForSession(url);
+
         if (error) {
-          Alert.alert('Email Confirmation', 'Could not finish sign-in. Try again.');
+          console.error('exchangeCodeForSession error:', error);
+          Alert.alert(
+            'Email Confirmation',
+            'Could not finish email confirmation. Try opening the newest email link again.'
+          );
           return false;
         }
 
         setEmailConfirmed(true);
 
+        // Clean URL on web so refresh doesn’t re-run exchange
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
         }
+
         return true;
       }
 
+      // Legacy token flow (hash access_token/refresh_token)
       const { access_token, refresh_token, type, error_description } =
         parseTokensFromUrl(url);
 
@@ -126,7 +146,10 @@ export default function SignUpScreen() {
           refresh_token,
         });
 
-        if (error) return false;
+        if (error) {
+          console.error('setSession error:', error);
+          return false;
+        }
 
         if (type === 'signup' || data?.session?.user?.email_confirmed_at) {
           setEmailConfirmed(true);
@@ -154,6 +177,8 @@ export default function SignUpScreen() {
 
     const init = async () => {
       try {
+        // If user opens a confirmation link and lands on this screen for any reason,
+        // we can still finalize the confirmation here.
         if (Platform.OS !== 'web') {
           const initial = await Linking.getInitialURL();
           await maybeHandleAuthDeepLink(initial);
@@ -354,9 +379,7 @@ export default function SignUpScreen() {
             style={styles.checkboxRow}
             onPress={() => setIsEighteen(!isEighteen)}
           >
-            <View
-              style={[styles.checkbox, isEighteen && styles.checkboxChecked]}
-            />
+            <View style={[styles.checkbox, isEighteen && styles.checkboxChecked]} />
             <Text style={styles.checkboxText}>
               I confirm that I am at least 18 years old.
             </Text>
@@ -384,12 +407,7 @@ export default function SignUpScreen() {
             style={styles.checkboxRow}
             onPress={() => setAgreedPrograms(!agreedPrograms)}
           >
-            <View
-              style={[
-                styles.checkbox,
-                agreedPrograms && styles.checkboxChecked,
-              ]}
-            />
+            <View style={[styles.checkbox, agreedPrograms && styles.checkboxChecked]} />
             <Text style={styles.checkboxText}>
               I agree to the{' '}
               <Text style={styles.link} onPress={() => setShowRewards(true)}>
@@ -420,7 +438,7 @@ export default function SignUpScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* ✅ EMAIL SENT MODAL (NEW) */}
+      {/* ✅ EMAIL SENT MODAL */}
       <Modal
         visible={emailSentVisible}
         transparent
@@ -434,9 +452,7 @@ export default function SignUpScreen() {
               We sent a confirmation link{emailSentTo ? ' to:' : '.'}
             </Text>
 
-            {!!emailSentTo && (
-              <Text style={styles.emailModalEmail}>{emailSentTo}</Text>
-            )}
+            {!!emailSentTo && <Text style={styles.emailModalEmail}>{emailSentTo}</Text>}
 
             <Text style={styles.emailModalText}>
               Open the email to confirm your account, then come back and sign in.
@@ -467,7 +483,7 @@ export default function SignUpScreen() {
         </View>
       </Modal>
 
-      {/* ---------- LEGAL MODALS (unchanged structure) ---------- */}
+      {/* ---------- LEGAL MODALS (unchanged) ---------- */}
 
       {/* Terms of Service (UK Law) */}
       <Modal
@@ -483,12 +499,10 @@ export default function SignUpScreen() {
               <Text
                 style={[
                   styles.modalText,
-                  Platform.OS === 'web'
-                    ? ({ whiteSpace: 'pre-wrap' } as any)
-                    : null,
+                  Platform.OS === 'web' ? ({ whiteSpace: 'pre-wrap' } as any) : null,
                 ]}
               >
-{`Last updated: ${new Date().toISOString().slice(0,10)}
+                {`Last updated: ${new Date().toISOString().slice(0, 10)}
 
 These Terms of Service (“Terms”) constitute a legally binding agreement between you and Overlooked LTD (“Overlooked”, “we”, “our”, “us”). By creating an account or using Overlooked, you agree to abide by these Terms and all applicable laws of England and Wales.
 
@@ -542,10 +556,7 @@ You must not upload or share:
               </Text>
             </ScrollView>
 
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setShowTos(false)}
-            >
+            <TouchableOpacity style={styles.closeButton} onPress={() => setShowTos(false)}>
               <Text style={styles.closeButtonText}>Close</Text>
             </TouchableOpacity>
           </View>
@@ -566,12 +577,10 @@ You must not upload or share:
               <Text
                 style={[
                   styles.modalText,
-                  Platform.OS === 'web'
-                    ? ({ whiteSpace: 'pre-wrap' } as any)
-                    : null,
+                  Platform.OS === 'web' ? ({ whiteSpace: 'pre-wrap' } as any) : null,
                 ]}
               >
-{`Last updated: ${new Date().toISOString().slice(0,10)}
+                {`Last updated: ${new Date().toISOString().slice(0, 10)}
 
 This Privacy Policy explains how Overlooked LTD (“Overlooked”, “we”, “our”) collects and processes your personal data in accordance with UK GDPR.
 
@@ -638,12 +647,10 @@ This Privacy Policy explains how Overlooked LTD (“Overlooked”, “we”, “
               <Text
                 style={[
                   styles.modalText,
-                  Platform.OS === 'web'
-                    ? ({ whiteSpace: 'pre-wrap' } as any)
-                    : null,
+                  Platform.OS === 'web' ? ({ whiteSpace: 'pre-wrap' } as any) : null,
                 ]}
               >
-{`Last updated: ${new Date().toISOString().slice(0,10)}
+                {`Last updated: ${new Date().toISOString().slice(0, 10)}
 
 1. OVERVIEW
 Overlooked awards cash prizes and rewards to encourage creativity.
@@ -671,10 +678,7 @@ Overlooked awards cash prizes and rewards to encourage creativity.
               </Text>
             </ScrollView>
 
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setShowRewards(false)}
-            >
+            <TouchableOpacity style={styles.closeButton} onPress={() => setShowRewards(false)}>
               <Text style={styles.closeButtonText}>Close</Text>
             </TouchableOpacity>
           </View>
@@ -703,7 +707,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
   },
 
-  // DARK INPUTS
   input: {
     width: '100%',
     backgroundColor: DARK_INPUT,
@@ -713,8 +716,6 @@ const styles = StyleSheet.create({
     color: TEXT_IVORY,
     borderWidth: 1,
     borderColor: BORDER,
-
-    // Web: remove the annoying blue outline
     ...(Platform.OS === 'web'
       ? ({
           outline: 'none',
@@ -774,7 +775,6 @@ const styles = StyleSheet.create({
     color: TEXT_IVORY,
   },
 
-  // Banner
   banner: {
     borderRadius: 12,
     padding: 12,
@@ -807,7 +807,6 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
 
-  // ✅ Email sent modal styles (NEW)
   emailModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.85)',
@@ -867,7 +866,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  // Modals (existing)
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.85)',
