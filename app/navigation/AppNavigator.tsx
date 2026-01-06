@@ -80,9 +80,7 @@ export default function AppNavigator({
     (async () => {
       const { data } = await supabase
         .from("users")
-        .select(
-          "subscription_status, grandfathered, premium_access_expires_at"
-        )
+        .select("subscription_status, grandfathered, premium_access_expires_at")
         .eq("id", userId)
         .single();
 
@@ -134,6 +132,13 @@ export default function AppNavigator({
 
   const mustShowPaywall = false;
 
+  // ✅ CRITICAL FIX:
+  // If no deep-link matches, React Navigation uses the first screen in the stack
+  // unless initialRouteName is set. Your first screen was NewPassword, so it
+  // becomes the default landing screen.
+  const rootInitialRouteName =
+    !userId || !profileComplete ? "Auth" : mustShowPaywall ? "Paywall" : "MainTabs";
+
   // --------------------------------------------------------------
   // Navigation tree
   // --------------------------------------------------------------
@@ -144,11 +149,11 @@ export default function AppNavigator({
       initialState={initialState}
       onReady={() => setNavigatorReady(true)}
     >
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-
-        {/* Always keep NewPassword accessible */}
-        <Stack.Screen name="NewPassword" component={NewPassword} />
-
+      <Stack.Navigator
+        screenOptions={{ headerShown: false }}
+        initialRouteName={rootInitialRouteName as any}
+      >
+        {/* AUTH / MAIN TREE */}
         {!userId ? (
           <Stack.Screen
             name="Auth"
@@ -164,13 +169,14 @@ export default function AppNavigator({
         ) : !profileComplete ? (
           <Stack.Screen
             name="Auth"
-            children={() => (
-              <AuthStack initialRouteName="CreateProfile" />
-            )}
+            children={() => <AuthStack initialRouteName="CreateProfile" />}
           />
         ) : (
           <Stack.Screen name="MainTabs" component={MainTabs} />
         )}
+
+        {/* Always keep NewPassword accessible (deep link + manual nav) */}
+        <Stack.Screen name="NewPassword" component={NewPassword} />
       </Stack.Navigator>
     </NavigationContainer>
   );
