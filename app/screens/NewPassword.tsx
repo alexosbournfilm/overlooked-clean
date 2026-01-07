@@ -7,14 +7,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   Platform,
   Modal,
   Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation, CommonActions } from "@react-navigation/native";
+import { CommonActions, useNavigation } from "@react-navigation/native";
 import * as Linking from "expo-linking";
 import { supabase } from "../lib/supabase";
 import { navigationRef } from "../navigation/navigationRef";
@@ -31,46 +30,32 @@ export default function NewPassword() {
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+
   const [sessionReady, setSessionReady] = useState(false);
+  const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(false);
+
   const [status, setStatus] = useState("Waiting for valid reset link…");
 
-  // ✅ Keep the last known “current” password the user typed earlier in this session
-  // (Best-effort only. We can’t truly know their old password unless they entered it.)
-  const lastAttemptedPasswordRef = useRef<string>("");
-
-  // ✅ Success modal
   const [successVisible, setSuccessVisible] = useState(false);
-
-  // ✅ Error modal (for in-app indication)
   const [errorVisible, setErrorVisible] = useState(false);
   const [errorText, setErrorText] = useState("Something went wrong.");
 
-  const showInlineError = (msg: string) => {
-    // Web fallback (optional)
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      try {
-        // still show in-app modal too, but this helps debugging on web
-        // window.alert(msg);
-      } catch {}
-    }
+  const lastAttemptedPasswordRef = useRef<string>("");
+
+  const showError = (msg: string) => {
     setErrorText(msg);
     setErrorVisible(true);
   };
 
-  const goToSignIn = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch {}
+  const hardGoToSignInWeb = () => {
+    if (Platform.OS === "web") window.location.assign("/signin");
+  };
 
-    if (Platform.OS === "web") {
-      window.location.assign("/signin");
-      return;
-    }
-
-    // Your app may have SignIn directly in root, or inside Auth stack.
-    // We keep it simple (direct SignIn). If your navigator uses Auth stack,
-    // change route to: { name: "Auth", params: { screen: "SignIn" } }
+  const resetToSignInNative = () => {
+    // If your root route is just "SignIn", keep this.
+    // If your app uses Auth stack, change to:
+    // routes: [{ name: "Auth", params: { screen: "SignIn" } }],
     const action = CommonActions.reset({
       index: 0,
       routes: [{ name: "SignIn" }],
@@ -80,77 +65,177 @@ export default function NewPassword() {
     else navigation.dispatch(action);
   };
 
-  // ------------------------------------------------------------
-  // 🔑 HANDLE PKCE PASSWORD RECOVERY
-  // ------------------------------------------------------------
-  useEffect(() => {
-    const handleUrl = async (url: string) => {
-      try {
-        if (!url.includes("code=")) return;
+  const goToSignIn = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {}
 
+    if (Platform.OS === "web") hardGoToSignInWeb();
+    else resetToSignInNative();
+  };
+
+  // Parses hash + query params on web
+  const parseWebParams = (url: string) => {
+    const u = new URL(url);
+    const params: Record<string, string> = {};
+
+    // query
+    u.searchParams.forEach((v, k) => (params[k] = v));
+
+    // hash can contain tokens
+    const hash = (u.hash || "").replace(/^#/, "");
+    if (hash) {
+      const h = new URLSearchParams(hash);
+      h.forEach((v, k) => (params[k] = v));
+    }
+
+    return params;
+  };
+
+  const establishRecoverySessionFromUrl = async (url: string) => {
+    try {
+      // --- 1) PKCE: ?code=... ---
+      if (url.includes("code=")) {
         const { error } = await supabase.auth.exchangeCodeForSession(url);
-
         if (error) {
-          setStatus("Reset link expired or invalid.");
+          console.log("exchangeCodeForSession error:", error);
           setSessionReady(false);
-          return;
+          setStatus("Reset link expired or invalid.");
+          return false;
         }
 
         setSessionReady(true);
         setStatus("Ready to reset password");
+        return true;
+      }
 
-        // Clean URL (web)
-        if (Platform.OS === "web") {
-          const clean = window.location.origin + window.location.pathname;
-          window.history.replaceState({}, document.title, clean);
+      // --- 2) token_hash + email fallback ---
+      if (Platform.OS === "web") {
+        const params = parseWebParams(url);
+
+        const token_hash = params["token_hash"];
+        const email = params["email"];
+        const type = params["type"]; // should be recovery
+
+        // Guard: only accept recovery
+        if (type && type !== "recovery") {
+          setSessionReady(false);
+          setStatus("Invalid link type.");
+          return false;
         }
-      } catch (e) {
-        console.log("Recovery exchange error:", e);
-        setStatus("Invalid reset link.");
-        setSessionReady(false);
+
+        if (token_hash && email) {
+          const { error } = await supabase.auth.verifyOtp({
+            type: "recovery",
+            token_hash,
+            email,
+          });
+
+          if (error) {
+            console.log("verifyOtp error:", error);
+            setSessionReady(false);
+
+            const msg = (error.message || "").toLowerCase();
+            if (msg.includes("expired") || msg.includes("otp_expired")) {
+              setStatus("Reset link expired or invalid.");
+            } else {
+              setStatus("Reset link invalid.");
+            }
+            return false;
+          }
+
+          setSessionReady(true);
+          setStatus("Ready to reset password");
+          return true;
+        }
+      }
+
+      // If we got here, we didn't have usable params
+      setSessionReady(false);
+      setStatus("Reset link expired or invalid.");
+      return false;
+    } catch (e) {
+      console.log("establishRecoverySessionFromUrl exception:", e);
+      setSessionReady(false);
+      setStatus("Reset link expired or invalid.");
+      return false;
+    }
+  };
+
+  // On mount: check initial URL (native) or window URL (web), and listen for deep links
+  useEffect(() => {
+    let mounted = true;
+
+    const run = async () => {
+      setChecking(true);
+
+      try {
+        let url = "";
+
+        if (Platform.OS === "web" && typeof window !== "undefined") {
+          url = window.location.href;
+        } else {
+          const initial = await Linking.getInitialURL();
+          url = initial || "";
+        }
+
+        if (url) {
+          const ok = await establishRecoverySessionFromUrl(url);
+
+          // Clean URL on web AFTER session established attempt (don’t wipe tokens too early)
+          if (Platform.OS === "web" && typeof window !== "undefined") {
+            const clean = window.location.origin + window.location.pathname;
+            window.history.replaceState({}, document.title, clean);
+          }
+
+          if (!ok) {
+            // keep screen visible with message
+          }
+        } else {
+          setStatus("Reset link expired or invalid.");
+        }
+      } finally {
+        if (mounted) setChecking(false);
       }
     };
 
-    // Web initial
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      handleUrl(window.location.href);
-    }
+    run();
 
-    // Native deep link listener
-    const sub = Linking.addEventListener("url", (event) => handleUrl(event.url));
+    // Listener for native deep links
+    const sub = Linking.addEventListener("url", async (event) => {
+      await establishRecoverySessionFromUrl(event.url);
+    });
 
-    return () => sub.remove();
+    return () => {
+      mounted = false;
+      sub.remove();
+    };
   }, []);
 
-  // ------------------------------------------------------------
-  // UPDATE PASSWORD (with in-app indication)
-  // ------------------------------------------------------------
   const updatePassword = async () => {
     if (!sessionReady) {
-      showInlineError("This reset link is invalid. Please request a new one from Sign In.");
+      showError("This reset link is invalid or expired. Please request a new one from Sign In.");
       return;
     }
 
     if (!password || !confirm) {
-      showInlineError("Please fill in both fields.");
+      showError("Please fill in both fields.");
       return;
     }
 
     if (password !== confirm) {
-      showInlineError("Passwords do not match.");
+      showError("Passwords do not match.");
       return;
     }
 
     if (password.length < 6) {
-      showInlineError("Password must be at least 6 characters.");
+      showError("Password must be at least 6 characters.");
       return;
     }
 
-    // ✅ Best-effort “same password” guard:
-    // If the user just tried this same password in this reset session already, block it.
-    // (We can't know their real old password — but this catches the common "I hit update twice" / same value issue.)
+    // Local best-effort guard (prevents immediate same attempt)
     if (lastAttemptedPasswordRef.current && lastAttemptedPasswordRef.current === password) {
-      showInlineError("You can’t change your password to the same password. Choose a new one.");
+      showError("You can’t change your password to the same password. Choose a new one.");
       return;
     }
 
@@ -163,27 +248,21 @@ export default function NewPassword() {
     if (error) {
       const msg = (error.message || "").toLowerCase();
 
-      // ✅ Some providers return messages like:
-      // "New password should be different from the old password"
-      // or "same password" etc.
       if (
         msg.includes("different") ||
         msg.includes("same password") ||
         msg.includes("same as") ||
         msg.includes("must not be the same")
       ) {
-        showInlineError("You can’t change your password to the same password. Choose a new one.");
+        showError("You can’t change your password to the same password. Choose a new one.");
         return;
       }
 
-      showInlineError(error.message);
+      showError(error.message);
       return;
     }
 
-    // record last attempted password in this reset session
     lastAttemptedPasswordRef.current = password;
-
-    // ✅ Show success popup
     setSuccessVisible(true);
   };
 
@@ -192,7 +271,9 @@ export default function NewPassword() {
       <View style={styles.container}>
         <View style={styles.card}>
           <Text style={styles.title}>Set a New Password</Text>
-          <Text style={styles.subtitle}>{status}</Text>
+          <Text style={styles.subtitle}>
+            {checking ? "Validating reset link…" : status}
+          </Text>
 
           <View style={styles.inputRow}>
             <Ionicons name="lock-closed" size={16} color={SUB} />
@@ -203,6 +284,7 @@ export default function NewPassword() {
               value={password}
               onChangeText={setPassword}
               style={styles.input}
+              editable={!loading}
             />
           </View>
 
@@ -215,13 +297,17 @@ export default function NewPassword() {
               value={confirm}
               onChangeText={setConfirm}
               style={styles.input}
+              editable={!loading}
             />
           </View>
 
           <TouchableOpacity
             onPress={updatePassword}
-            disabled={loading}
-            style={[styles.button, loading && { opacity: 0.6 }]}
+            disabled={loading || !sessionReady}
+            style={[
+              styles.button,
+              (loading || !sessionReady) && { opacity: 0.6 },
+            ]}
           >
             {loading ? (
               <ActivityIndicator color={BG} />
@@ -229,10 +315,16 @@ export default function NewPassword() {
               <Text style={styles.buttonText}>UPDATE PASSWORD</Text>
             )}
           </TouchableOpacity>
+
+          {!sessionReady && !checking && (
+            <TouchableOpacity style={styles.linkBtn} onPress={goToSignIn}>
+              <Text style={styles.linkText}>Go to Sign In</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
-      {/* ✅ SUCCESS POPUP MODAL */}
+      {/* ✅ SUCCESS MODAL */}
       <Modal transparent visible={successVisible} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -267,12 +359,12 @@ export default function NewPassword() {
         </View>
       </Modal>
 
-      {/* ✅ ERROR POPUP MODAL */}
+      {/* ✅ ERROR MODAL */}
       <Modal transparent visible={errorVisible} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Something went wrong</Text>
+              <Text style={styles.modalTitle}>Can’t update password</Text>
               <Pressable onPress={() => setErrorVisible(false)} hitSlop={10}>
                 <Ionicons name="close" size={20} color={SUB} />
               </Pressable>
@@ -280,10 +372,7 @@ export default function NewPassword() {
 
             <Text style={styles.modalText}>{errorText}</Text>
 
-            <TouchableOpacity
-              style={styles.modalPrimary}
-              onPress={() => setErrorVisible(false)}
-            >
+            <TouchableOpacity style={styles.modalPrimary} onPress={() => setErrorVisible(false)}>
               <Text style={styles.modalPrimaryText}>OK</Text>
             </TouchableOpacity>
           </View>
@@ -330,7 +419,9 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: BG, fontWeight: "900", fontSize: 15 },
 
-  // Modals
+  linkBtn: { marginTop: 14, alignItems: "center" },
+  linkText: { color: GOLD, fontWeight: "800", textDecorationLine: "underline" },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.72)",

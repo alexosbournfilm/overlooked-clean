@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -29,18 +30,33 @@ export default function ForgotPassword() {
   const [message, setMessage] = useState("");
 
   const handleReset = async () => {
+    const trimmed = email.trim();
+
+    if (!trimmed) {
+      setMessage("Please enter your email.");
+      return;
+    }
+
+    // light validation (prevents accidental blanks/spaces)
+    if (!trimmed.includes("@") || !trimmed.includes(".")) {
+      setMessage("Please enter a valid email address.");
+      return;
+    }
+
     setSending(true);
     setMessage("");
 
-    const { error } = await supabase.auth.resetPasswordForEmail(
-      email.trim(),
-      {
-        redirectTo: Platform.select({
-          web: "https://overlooked.cloud/reset-password",
-          default: "overlooked://reset-password",
-        }),
-      }
-    );
+    // ✅ IMPORTANT:
+    // This MUST match the route that actually renders NewPassword.tsx on web,
+    // and your deep link route on native.
+    const redirectTo = Platform.select({
+      web: "https://overlooked.cloud/reset-password",
+      default: "overlooked://reset-password",
+    });
+
+    const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
+      redirectTo,
+    });
 
     setSending(false);
 
@@ -59,19 +75,14 @@ export default function ForgotPassword() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View style={styles.container}>
-          <TouchableOpacity
-            style={styles.back}
-            onPress={() => navigation.goBack()}
-          >
+          <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={20} color={SUB} />
             <Text style={styles.backText}>Back</Text>
           </TouchableOpacity>
 
           <View style={styles.card}>
             <Text style={styles.title}>Reset Your Password</Text>
-            <Text style={styles.subtitle}>
-              Enter the email linked to your account.
-            </Text>
+            <Text style={styles.subtitle}>Enter the email linked to your account.</Text>
 
             <View style={styles.inputRow}>
               <Ionicons name="mail" size={16} color={SUB} />
@@ -81,6 +92,7 @@ export default function ForgotPassword() {
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
+                keyboardType="email-address"
                 style={styles.input}
               />
             </View>
