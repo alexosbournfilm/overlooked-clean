@@ -1,6 +1,7 @@
 // app/screens/SignInScreen.tsx
 // ------------------------------------------------------------
 // FULL PAYWALL-FREE VERSION (UPDATED SIGN-IN LOGIC)
+// + ✅ Handles email-confirm deep links (PKCE exchange) on /signin
 // ------------------------------------------------------------
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -24,6 +25,7 @@ import {
   UIManager,
   ImageBackground,
 } from 'react-native';
+import * as Linking from 'expo-linking';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -41,7 +43,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
  ────────────────────────────────────────────────────────────
    ALL THEME + UI CODE IS UNCHANGED
  ────────────────────────────────────────────────────────────
-   Only the sign-in logic (handleSignIn) is updated.
+   Only auth/deep-link handling + sign-in logic updated.
  ────────────────────────────────────────────────────────────
 */
 
@@ -251,6 +253,112 @@ export default function SignInScreen() {
   const [caretVisible, setCaretVisible] = useState(true);
   const [focus, setFocus] = useState<'email' | 'password' | null>(null);
 
+  const showError = (title: string, message: string) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      try {
+        window.alert(`${title}\n\n${message}`);
+        return;
+      } catch {}
+    }
+    Alert.alert(title, message);
+  };
+
+  const finishPostAuthRedirect = async () => {
+    // Decide CreateProfile vs MainTabs based on whether a users row exists
+    const { data: u } = await supabase.auth.getUser();
+    const userId = u?.user?.id;
+
+    if (!userId) return;
+
+    const { data: profile, error: profileError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (profileError) {
+      console.log('Profile fetch error:', profileError);
+      showError('Error', 'Could not load your profile. Please try again.');
+      return;
+    }
+
+    if (!profile) {
+      navigation.reset({ index: 0, routes: [{ name: 'CreateProfile' }] });
+      return;
+    }
+
+    navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
+
+    // keep import stable
+    void resetToMain;
+  };
+
+  // ✅ Handle email-confirm deep link / PKCE exchange on this screen.
+  // This is important because your confirmation emails redirect to /signin.
+  const handleAuthDeepLink = async (url: string) => {
+    try {
+      // PKCE exchange flow (Supabase confirmation links often include ?code=...)
+      if (url && url.includes('code=')) {
+        const { error } = await supabase.auth.exchangeCodeForSession(url);
+
+        if (error) {
+          console.log('exchangeCodeForSession error:', error);
+          showError(
+            'Email Confirmation',
+            'Could not finish email confirmation. Please open the newest confirmation email link again.'
+          );
+          return;
+        }
+
+        // Clean URL on web so refresh doesn’t re-run exchange
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          const clean = window.location.origin + window.location.pathname;
+          window.history.replaceState({}, document.title, clean);
+        }
+
+        await finishPostAuthRedirect();
+      }
+    } catch (e) {
+      console.log('handleAuthDeepLink exception:', e);
+    }
+  };
+
+  // ✅ Listen for initial URL + runtime deep links
+  useEffect(() => {
+    let unsub: (() => void) | undefined;
+
+    const init = async () => {
+      // 1) If already signed in (e.g., session restored), route appropriately
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData?.session?.user) {
+        await finishPostAuthRedirect();
+        return;
+      }
+
+      // 2) If this screen receives a deep link with code=..., exchange it
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        await handleAuthDeepLink(window.location.href);
+      } else {
+        const initial = await Linking.getInitialURL();
+        if (initial) await handleAuthDeepLink(initial);
+      }
+
+      // 3) Subscribe for future deep links
+      const sub = Linking.addEventListener('url', (event) => {
+        void handleAuthDeepLink(event.url);
+      });
+
+      unsub = () => sub.remove();
+    };
+
+    init();
+
+    return () => {
+      if (unsub) unsub();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // caret blink
   useEffect(() => {
     const id = setInterval(() => setCaretVisible((v) => !v), CARET_BLINK_MS);
@@ -342,20 +450,10 @@ export default function SignInScreen() {
   }, [displayText, isDeleting, fullLine]);
 
   // ============================================================
-  //      ✅ SIGN IN — FIXED (NO SILENT RESET, CONFIRM CHECK)
+  //      ✅ SIGN IN — CONFIRM CHECK + ROUTING
   // ============================================================
   const handleSignIn = async () => {
     const trimmedEmail = email.trim();
-
-    const showError = (title: string, message: string) => {
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        try {
-          window.alert(`${title}\n\n${message}`);
-          return;
-        } catch {}
-      }
-      Alert.alert(title, message);
-    };
 
     if (!trimmedEmail || !password) {
       showError('Sign in to continue', 'Enter your email and password.');
@@ -383,8 +481,6 @@ export default function SignInScreen() {
         return;
       }
 
-      // If email isn't confirmed, Supabase may still allow a session in some cases
-      // depending on project settings — so we check explicitly.
       const isConfirmed = !!data?.user?.email_confirmed_at;
       if (!isConfirmed) {
         showError(
@@ -394,39 +490,11 @@ export default function SignInScreen() {
         return;
       }
 
-      // Fetch user profile
-      const { data: profile, error: profileError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (profileError) {
-        console.log('Profile fetch error:', profileError);
-        showError('Error', 'Could not load your profile. Please try again.');
-        return;
-      }
-
       setShowSignIn(false);
 
-      if (!profile) {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'CreateProfile' }],
-        });
-        return;
-      }
+      await finishPostAuthRedirect();
 
-      // ✅ IMPORTANT:
-      // Your previous resetToMain() can silently fail if it resets to a route name
-      // that doesn't exist in your RootStack (very common on web).
-      // So we reset to a route you already confirmed exists: MainTabs (or Featured).
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'MainTabs' }],
-      });
-
-      // (We keep resetToMain import for file stability, but we don't call it)
+      // keep import stable
       void resetToMain;
     } catch (err: any) {
       console.log('SignIn exception:', err);
