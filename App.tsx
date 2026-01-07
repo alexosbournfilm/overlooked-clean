@@ -140,20 +140,31 @@ export default function App() {
       console.log("✅ Session exchanged from code");
     }
 
-    // Legacy tokens on native: set session explicitly
-    if (access_token && refresh_token && Platform.OS !== "web") {
+    // ✅ IMPORTANT FIX:
+    // If tokens exist in the URL hash, setSession MUST run on WEB too.
+    // Otherwise NewPassword will never be able to update the password.
+    if (access_token && refresh_token) {
       const { error } = await supabase.auth.setSession({
         access_token,
         refresh_token,
       });
+
       if (error) {
         console.error("setSession ERROR:", error.message);
         return;
       }
-      console.log("✅ Session restored from legacy tokens");
+      console.log("✅ Session restored from tokens (web + native)");
     }
 
-    // Clean URL on web (prevents re-processing)
+    // ✅ If this is a recovery link, go to NewPassword.
+    // DO NOT clean the URL here — NewPassword needs token_hash/email OR hash tokens.
+    if (type === "recovery") {
+      console.log("🔐 Recovery link detected → navigating to NewPassword");
+      navigate("NewPassword");
+      return;
+    }
+
+    // Clean URL on web (prevents re-processing) — ONLY for non-recovery flows
     if (Platform.OS === "web" && typeof window !== "undefined") {
       const clean = window.location.origin + window.location.pathname;
       window.history.replaceState({}, document.title, clean);
@@ -186,15 +197,21 @@ export default function App() {
         // If someone loads /reset-password without any recovery tokens, kick to /signin.
         if (Platform.OS === "web" && typeof window !== "undefined") {
           const path = window.location.pathname || "";
+          const href = window.location.href || "";
+
+          // include token= too (Supabase verify links use token=)
           const hasRecoveryStuff =
-            window.location.href.includes("type=recovery") ||
-            window.location.href.includes("access_token=") ||
-            window.location.href.includes("refresh_token=") ||
-            window.location.href.includes("token_hash=") ||
-            window.location.href.includes("code=");
+            href.includes("type=recovery") ||
+            href.includes("access_token=") ||
+            href.includes("refresh_token=") ||
+            href.includes("token_hash=") ||
+            href.includes("token=") ||
+            href.includes("code=");
 
           if (path.includes("reset-password") && !hasRecoveryStuff) {
-            console.log("🛑 Loaded /reset-password without tokens → redirecting to /signin");
+            console.log(
+              "🛑 Loaded /reset-password without tokens → redirecting to /signin"
+            );
             window.location.replace("/signin");
             return; // stop init
           }
@@ -211,7 +228,10 @@ export default function App() {
         const session = sessionData?.session ?? null;
 
         if (session) {
-          await SecureStore.setItemAsync("supabaseSession", JSON.stringify(session));
+          await SecureStore.setItemAsync(
+            "supabaseSession",
+            JSON.stringify(session)
+          );
 
           const { data: profile } = await supabase
             .from("users")
@@ -220,7 +240,10 @@ export default function App() {
             .maybeSingle();
 
           const needsProfile =
-            !profile || !profile.full_name || !profile.main_role_id || !profile.city_id;
+            !profile ||
+            !profile.full_name ||
+            !profile.main_role_id ||
+            !profile.city_id;
 
           setInitialAuthRouteName(needsProfile ? "CreateProfile" : "SignIn");
         } else {
