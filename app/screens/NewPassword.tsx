@@ -36,20 +36,22 @@ export default function NewPassword() {
   // ✅ Success popup
   const [successOpen, setSuccessOpen] = useState(false);
 
-  // ✅ Optional status line
+  // ✅ Status line (shows what’s happening)
   const [status, setStatus] = useState("");
 
-  // EXACT SAME TOKEN PARSER USED IN SIGNUP
+  // ---------------------------------------------------------
+  // Parse ALL possible Supabase params (PKCE + token + token_hash + legacy)
+  // ---------------------------------------------------------
   const parseTokensFromUrl = () => {
     let params: Record<string, any> = {};
 
-    if (Platform.OS === "web") {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
       // hash (#access_token=...)
       const hash = window.location.hash?.replace(/^#/, "") ?? "";
       const hashParams = new URLSearchParams(hash);
       hashParams.forEach((v, k) => (params[k] = v));
 
-      // query (?code=..., ?token_hash=...)
+      // query (?code=..., ?token_hash=..., ?token=...)
       const search = window.location.search || "";
       const searchParams = new URLSearchParams(search);
       searchParams.forEach((v, k) => (params[k] = v));
@@ -63,11 +65,13 @@ export default function NewPassword() {
       access_token: params["access_token"],
       refresh_token: params["refresh_token"],
 
-      // otp verify
+      // OTP tokens
+      token: params["token"],
       token_hash: params["token_hash"],
-      email: params["email"],
 
+      email: params["email"],
       type: params["type"],
+
       error: params["error"],
       error_code: params["error_code"],
       error_description: params["error_description"],
@@ -75,7 +79,7 @@ export default function NewPassword() {
   };
 
   const hardGoToSignInWeb = () => {
-    if (Platform.OS === "web") {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
       window.location.assign("/signin");
     }
   };
@@ -112,11 +116,15 @@ export default function NewPassword() {
     }
   };
 
+  // ---------------------------------------------------------
+  // Establish recovery session
+  // ---------------------------------------------------------
   const establishSession = async () => {
     const {
       code,
       access_token,
       refresh_token,
+      token,
       token_hash,
       email,
       type,
@@ -128,6 +136,7 @@ export default function NewPassword() {
       hasCode: !!code,
       access_token: !!access_token,
       refresh_token: !!refresh_token,
+      token: !!token,
       token_hash: !!token_hash,
       email,
       type,
@@ -152,12 +161,11 @@ export default function NewPassword() {
       return false;
     }
 
-    // ---------------------------------------------------------
-    // ✅ CASE 0 (MOST IMPORTANT): PKCE recovery link with ?code=
-    // ---------------------------------------------------------
-    if (Platform.OS === "web" && code) {
+    // ✅ CASE 0: PKCE flow (?code=...)
+    if (Platform.OS === "web" && code && typeof window !== "undefined") {
       console.log("✔ Using PKCE code to exchange session (recovery)");
       const { error } = await supabase.auth.exchangeCodeForSession(window.location.href);
+
       if (!error) return true;
 
       console.log("❌ exchangeCodeForSession error:", error.message);
@@ -169,29 +177,60 @@ export default function NewPassword() {
       return false;
     }
 
-    // ---------------------------------------------------------
-    // CASE 1: access_token/refresh_token in hash (older flow)
-    // ---------------------------------------------------------
+    // ✅ CASE 1: legacy access_token/refresh_token
     if (access_token && refresh_token) {
-      console.log("✔ Using full access_token session (recovery)");
-      const { error } = await supabase.auth.setSession({
-        access_token,
-        refresh_token,
-      });
+      console.log("✔ Using access_token/refresh_token session (recovery)");
+      const { error } = await supabase.auth.setSession({ access_token, refresh_token });
       if (!error) return true;
     }
 
-    // ---------------------------------------------------------
-    // CASE 2: token_hash + email (verifyOtp)
-    // ---------------------------------------------------------
-    if (token_hash && email) {
-      console.log("✔ Using token_hash to verify recovery session");
-      const { error } = await supabase.auth.verifyOtp({
-        type: "recovery",
-        token_hash,
-        email,
-      });
-      if (!error) return true;
+    // ✅ CASE 2: token / token_hash (verifyOtp)
+    // We try the most common variants.
+    if (token || token_hash) {
+      console.log("✔ Trying verifyOtp (recovery) ...");
+
+      // Try token_hash first (hashed variant)
+      if (token_hash) {
+        const attempt1 = await supabase.auth.verifyOtp({
+          type: "recovery",
+          token_hash,
+        } as any);
+
+        if (!attempt1.error) return true;
+
+        // Some configs require email too
+        if (email) {
+          const attempt2 = await supabase.auth.verifyOtp({
+            type: "recovery",
+            token_hash,
+            email,
+          } as any);
+
+          if (!attempt2.error) return true;
+        }
+
+        console.log("verifyOtp token_hash failed:", attempt1.error?.message);
+      }
+
+      // Try token (plain variant)
+      if (token && email) {
+        const attempt3 = await supabase.auth.verifyOtp({
+          type: "recovery",
+          token,
+          email,
+        } as any);
+
+        if (!attempt3.error) return true;
+
+        console.log("verifyOtp token failed:", attempt3.error?.message);
+      }
+    }
+
+    // ✅ FINAL fallback: sometimes Supabase already established a session
+    const { data: s } = await supabase.auth.getSession();
+    if (s?.session) {
+      console.log("✔ Session already exists");
+      return true;
     }
 
     console.log("❌ No valid recovery session could be created");
@@ -212,8 +251,8 @@ export default function NewPassword() {
         setSessionReady(true);
         setStatus("");
 
-        // ✅ Clean URL after session is established
-        if (Platform.OS === "web") {
+        // ✅ Clean URL after session is established (prevents reprocessing)
+        if (Platform.OS === "web" && typeof window !== "undefined") {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
         }
@@ -221,6 +260,7 @@ export default function NewPassword() {
         setStatus("");
       }
     };
+
     run();
   }, []);
 
