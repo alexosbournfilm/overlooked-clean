@@ -65,7 +65,9 @@ export default function AppNavigator({
     };
   }, [ready, userId, profileComplete]);
 
-  // Subscription check
+  // --------------------------------------------------------------
+  // Paid / membership check
+  // --------------------------------------------------------------
   const [isPaid, setIsPaid] = useState<boolean | null>(null);
   const [expired, setExpired] = useState(false);
 
@@ -80,7 +82,7 @@ export default function AppNavigator({
     (async () => {
       const { data } = await supabase
         .from("users")
-        .select("subscription_status, grandfathered, premium_access_expires_at")
+        .select("tier, subscription_status, grandfathered, premium_access_expires_at")
         .eq("id", userId)
         .single();
 
@@ -92,12 +94,19 @@ export default function AppNavigator({
 
       const expiredNow = exp ? Date.now() >= exp : false;
       const stat = (data?.subscription_status || "").toLowerCase();
-      const paid =
+
+      // ✅ PRIMARY: tier (because membership.ts gates off tier)
+      const paidByTier = (data?.tier || "").toLowerCase() === "pro";
+
+      // ✅ FALLBACK: keep your existing logic
+      const paidByStatus =
         !expiredNow &&
         (stat === "active" ||
           stat === "trialing" ||
           stat === "past_due" ||
           data?.grandfathered);
+
+      const paid = paidByTier || paidByStatus;
 
       setExpired(expiredNow);
       setIsPaid(paid);
@@ -130,12 +139,13 @@ export default function AppNavigator({
     );
   }
 
+  // If you ever want to force paywall globally, set this.
+  // But Paywall is now always registered so you can navigate to it anytime.
   const mustShowPaywall = false;
 
   // ✅ CRITICAL FIX:
   // If no deep-link matches, React Navigation uses the first screen in the stack
-  // unless initialRouteName is set. Your first screen was NewPassword, so it
-  // becomes the default landing screen.
+  // unless initialRouteName is set.
   const rootInitialRouteName =
     !userId || !profileComplete ? "Auth" : mustShowPaywall ? "Paywall" : "MainTabs";
 
@@ -153,6 +163,10 @@ export default function AppNavigator({
         screenOptions={{ headerShown: false }}
         initialRouteName={rootInitialRouteName as any}
       >
+        {/* ✅ Always register these so UpgradeModal can nav.navigate('Paywall') */}
+        <Stack.Screen name="Paywall" component={PaywallScreen} />
+        <Stack.Screen name="PaySuccess" component={PaySuccessScreen} />
+
         {/* AUTH / MAIN TREE */}
         {!userId ? (
           <Stack.Screen
@@ -162,10 +176,8 @@ export default function AppNavigator({
             )}
           />
         ) : mustShowPaywall ? (
-          <>
-            <Stack.Screen name="Paywall" component={PaywallScreen} />
-            <Stack.Screen name="PaySuccess" component={PaySuccessScreen} />
-          </>
+          // If you ever force paywall, it’s already registered above.
+          <Stack.Screen name="PaywallGate" component={PaywallScreen} />
         ) : !profileComplete ? (
           <Stack.Screen
             name="Auth"

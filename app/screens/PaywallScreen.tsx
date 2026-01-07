@@ -12,6 +12,7 @@ import * as Linking from 'expo-linking';
 import { useFocusEffect, useIsFocused, useNavigation, CommonActions } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import COLORS from '../theme/colors';
+import { invalidateMembershipCache } from '../lib/membership';
 
 const PAYMENT_LINK =
   (process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK as string | undefined) || '';
@@ -95,14 +96,21 @@ export default function PaywallScreen() {
 
       const { data, error } = await supabase
         .from('users')
-        .select('subscription_status,current_period_end')
+        .select('tier, subscription_status, current_period_end')
         .eq('id', uid)
         .maybeSingle();
 
       if (error) throw error;
 
-      if (isActive(data?.subscription_status, data?.current_period_end)) {
+      const proByTier = data?.tier === 'pro';
+      const proByStatus = isActive(data?.subscription_status, data?.current_period_end);
+
+      if (proByTier || proByStatus) {
         if (!isFocused || hasExited.current) return;
+
+        // ✅ make every screen re-check tier immediately
+        invalidateMembershipCache();
+
         nav.reset({ index: 0, routes: [{ name: 'CreateProfile' }] });
       }
     } catch (e) {
@@ -139,14 +147,11 @@ export default function PaywallScreen() {
     } catch {}
 
     if (Platform.OS === 'web') {
-      // Build your deep link to the SignIn route and replace the URL,
-      // so any lingering /pay/success or other link is wiped from history.
       const signInUrl = Linking.createURL('signin');
-      window.location.replace(signInUrl); // 🔒 hard replace prevents rehydration jumps
+      window.location.replace(signInUrl);
       return;
     }
 
-    // Native: reset stack to Auth -> SignIn
     nav.dispatch(
       CommonActions.reset({
         index: 0,

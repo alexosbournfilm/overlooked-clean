@@ -10,8 +10,9 @@ import {
   Pressable,
   ActivityIndicator,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { type UserTier } from '../app/lib/supabase';
-import { getCurrentUserTierOrFree } from '../app/lib/membership';
+import { getCurrentUserTierOrFree, invalidateMembershipCache } from '../app/lib/membership';
 import { supabase } from '../app/lib/supabase';
 
 type UpgradeContext =
@@ -54,6 +55,8 @@ export const UpgradeModal: React.FC<Props> = ({
   context,
   onSelectPro,
 }) => {
+  const nav = useNavigation<any>();
+
   const [selectedTier, setSelectedTier] = useState<UserTier>('pro');
   const [currentTier, setCurrentTier] = useState<UserTier | null>(null);
 
@@ -148,6 +151,7 @@ export const UpgradeModal: React.FC<Props> = ({
     return all;
   }, [context]);
 
+  // ✅ REAL UPGRADE: go to Stripe Paywall
   const doUpgradeToPro = async () => {
     try {
       setUpgrading(true);
@@ -157,19 +161,18 @@ export const UpgradeModal: React.FC<Props> = ({
       if (userErr) throw userErr;
       if (!userRes?.user?.id) throw new Error('Not signed in');
 
-      const { error } = await supabase.rpc('upgrade_to_pro');
-      if (error) throw error;
+      // Clear cached tier so the app re-reads as soon as Stripe updates DB
+      invalidateMembershipCache();
 
-      // Refresh from DB to be 100% sure
-      const tier = await getCurrentUserTierOrFree();
-      setCurrentTier(tier);
-      setSelectedTier(tier);
-
+      // Optional hook for analytics/UI
       if (onSelectPro) onSelectPro();
+
+      // Close modal then navigate to Paywall
       onClose();
+      nav.navigate('Paywall');
     } catch (err: any) {
-      console.log('UpgradeModal upgrade error', err?.message || err);
-      setErrorText(err?.message || 'Upgrade failed');
+      console.log('UpgradeModal upgrade start error', err?.message || err);
+      setErrorText(err?.message || 'Could not start checkout');
     } finally {
       setUpgrading(false);
     }
@@ -193,7 +196,7 @@ export const UpgradeModal: React.FC<Props> = ({
       if (error) throw error;
 
       // Refresh tier from DB
-      const tier = await getCurrentUserTierOrFree();
+      const tier = await getCurrentUserTierOrFree({ force: true });
       setCurrentTier(tier);
       setSelectedTier(tier);
 
@@ -337,7 +340,7 @@ export const UpgradeModal: React.FC<Props> = ({
                     styles.buttonTextDisabled,
                 ]}
               >
-                {isProDisabled ? "You're on Pro" : upgrading ? 'Upgrading…' : 'Upgrade to Pro'}
+                {isProDisabled ? "You're on Pro" : upgrading ? 'Opening checkout…' : 'Upgrade to Pro'}
               </Text>
             </TouchableOpacity>
 

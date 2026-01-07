@@ -55,6 +55,9 @@ type UserUpdate = {
   cancel_at_period_end?: boolean;
   is_premium?: boolean;
   price_id?: string | null;
+
+  // ✅ Your app uses this as the real entitlement
+  tier?: "free" | "pro";
 };
 
 async function upsertStripeIdsOnUser(opts: {
@@ -85,8 +88,11 @@ async function upsertStripeIdsOnUser(opts: {
     }
     update.price_id = subPriceId ?? priceId ?? null;
 
-    update.is_premium =
+    const premium =
       subscription.status === "active" || subscription.status === "trialing";
+
+    update.is_premium = premium;
+    update.tier = premium ? "pro" : "free";
   } else if (typeof priceId === "string") {
     update.price_id = priceId;
   }
@@ -199,6 +205,15 @@ Deno.serve(async (req) => {
             customerId,
             subscription: sub,
           });
+        } else {
+          // ✅ If your Payment Link is NOT subscription mode, mark Pro here.
+          // If you ONLY want Pro via subscription, you can remove this block.
+          const update: UserUpdate = {
+            tier: "pro",
+            is_premium: true,
+            subscription_status: "active",
+          };
+          await supabase.from("users").update(update).eq("id", userId);
         }
 
         return json({ ok: true });
@@ -246,6 +261,7 @@ Deno.serve(async (req) => {
             current_period_end: null,
             cancel_at_period_end: false,
             is_premium: false,
+            tier: "free",
           };
           await supabase.from("users").update(update).eq("id", userId);
         }
@@ -260,6 +276,7 @@ Deno.serve(async (req) => {
           const update: UserUpdate = {
             subscription_status: "past_due",
             is_premium: false,
+            tier: "free",
           };
           await supabase.from("users").update(update).eq("id", userId);
         }

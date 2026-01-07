@@ -347,6 +347,16 @@ function ShowreelVideoInline({
 
   const progressRef = useRef<View>(null);
 
+  // Comments (submission modal)
+const [comments, setComments] = useState<SubmissionCommentRow[]>([]);
+const [loadingComments, setLoadingComments] = useState(false);
+const [commentText, setCommentText] = useState("");
+const [sendingComment, setSendingComment] = useState(false);
+const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+
+  // ✅ Track fullscreen so we can swap COVER -> CONTAIN (no crop)
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
   const clampedW = Math.min(width, SHOWREEL_MAX_W);
   const heightFromAspect = clampedW / aspect;
 
@@ -515,9 +525,16 @@ function ShowreelVideoInline({
     fadeIn();
   };
 
-  const onExpoFullscreen = async ({ fullscreenUpdate }: { fullscreenUpdate: number }) => {
+  // ✅ Toggle fullscreen state on native, so we switch to CONTAIN (no crop)
+  const onExpoFullscreen = async ({
+    fullscreenUpdate,
+  }: {
+    fullscreenUpdate: number;
+  }) => {
     if (Platform.OS === 'web') return;
+
     if (fullscreenUpdate === VideoFullscreenUpdate.PLAYER_WILL_PRESENT) {
+      setIsFullscreen(true);
       try {
         await pauseAllExcept(playerId);
         await expoRef.current?.setIsMutedAsync(false);
@@ -527,6 +544,10 @@ function ShowreelVideoInline({
       } catch (e) {
         console.warn('Fullscreen error', e);
       }
+    }
+
+    if (fullscreenUpdate === VideoFullscreenUpdate.PLAYER_DID_DISMISS) {
+      setIsFullscreen(false);
     }
   };
 
@@ -550,13 +571,16 @@ function ShowreelVideoInline({
     }
   };
 
-  // fullscreen on web
+  // ✅ Fullscreen tracking on web
   useEffect(() => {
     if (Platform.OS !== 'web') return;
+
     const handler = () => {
       const el = htmlRef.current as any;
       const fs = (document as any).fullscreenElement;
+
       if (el && fs === el) {
+        setIsFullscreen(true);
         pauseAllExcept(playerId).then(async () => {
           try {
             el.muted = false;
@@ -566,8 +590,11 @@ function ShowreelVideoInline({
             setIsPlaying(true);
           } catch {}
         });
+      } else {
+        setIsFullscreen(false);
       }
     };
+
     document.addEventListener('fullscreenchange', handler);
     return () => {
       document.removeEventListener('fullscreenchange', handler);
@@ -578,11 +605,17 @@ function ShowreelVideoInline({
     try {
       await pauseAllExcept(playerId);
       await play(true);
+
       if (Platform.OS === 'web') {
         const el = htmlRef.current as any;
-        if (el?.requestFullscreen) await el.requestFullscreen();
+        if (el?.requestFullscreen) {
+          await el.requestFullscreen();
+          // fullscreenchange listener will set state, but this helps instantly
+          setIsFullscreen(true);
+        }
       } else {
         (expoRef.current as any)?.presentFullscreenPlayer?.();
+        // native events will toggle state
       }
     } catch (e) {
       console.warn('enterFullscreen error', e);
@@ -613,9 +646,11 @@ function ShowreelVideoInline({
       const rect = node.getBoundingClientRect
         ? node.getBoundingClientRect()
         : { left: 0, width: 1 };
-      const clientX = evt.nativeEvent?.locationX != null
-        ? rect.left + evt.nativeEvent.locationX
-        : evt.nativeEvent?.pageX ?? 0;
+
+      const clientX =
+        evt.nativeEvent?.locationX != null
+          ? rect.left + evt.nativeEvent.locationX
+          : evt.nativeEvent?.pageX ?? 0;
 
       const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
       const target = ratio * duration;
@@ -641,12 +676,7 @@ function ShowreelVideoInline({
         position: 'relative',
       }}
     >
-      <Animated.View
-        style={[
-          StyleSheet.absoluteFillObject,
-          { opacity },
-        ]}
-      >
+      <Animated.View style={[StyleSheet.absoluteFillObject, { opacity }]}>
         {Platform.OS === 'web' ? (
           <WebVideo
             ref={htmlRef}
@@ -655,7 +685,8 @@ function ShowreelVideoInline({
             style={{
               width: '100%',
               height: '100%',
-              objectFit: 'cover',
+              // ✅ Inline = cover, Fullscreen = contain (no crop)
+              objectFit: isFullscreen ? 'contain' : 'cover',
               objectPosition: 'center center',
               display: 'block',
               background: '#000',
@@ -678,7 +709,8 @@ function ShowreelVideoInline({
             ref={expoRef}
             source={src ? { uri: src } : undefined}
             style={StyleSheet.absoluteFillObject}
-            resizeMode={ResizeMode.COVER}
+            // ✅ Inline = cover, Fullscreen = contain (no crop)
+            resizeMode={isFullscreen ? ResizeMode.CONTAIN : ResizeMode.COVER}
             isLooping
             shouldPlay={autoPlay}
             isMuted={muted}
@@ -695,17 +727,10 @@ function ShowreelVideoInline({
       <Grain opacity={0.05} />
 
       {/* Click surface */}
-      <Pressable
-        style={StyleSheet.absoluteFillObject}
-        onPress={onSurfacePress}
-      />
+      <Pressable style={StyleSheet.absoluteFillObject} onPress={onSurfacePress} />
 
       {/* Progress bar */}
-      <Pressable
-        ref={progressRef}
-        onPress={onProgressPress}
-        style={stylesShowreel.progressHit}
-      >
+      <Pressable ref={progressRef} onPress={onProgressPress} style={stylesShowreel.progressHit}>
         <View style={stylesShowreel.progressTrack}>
           <View
             style={[
@@ -717,28 +742,18 @@ function ShowreelVideoInline({
       </Pressable>
 
       {/* Fullscreen button */}
-      <TouchableOpacity
-        onPress={enterFullscreen}
-        style={stylesShowreel.fsButton}
-        activeOpacity={0.9}
-      >
+      <TouchableOpacity onPress={enterFullscreen} style={stylesShowreel.fsButton} activeOpacity={0.9}>
         <View style={stylesShowreel.cornerBox} />
       </TouchableOpacity>
 
       {/* Sound button */}
-      <TouchableOpacity
-        onPress={toggleMute}
-        style={stylesShowreel.soundBtn}
-        activeOpacity={0.9}
-      >
+      <TouchableOpacity onPress={toggleMute} style={stylesShowreel.soundBtn} activeOpacity={0.9}>
         <Ionicons
           name={muted ? 'volume-mute-outline' : 'volume-high-outline'}
           size={14}
           color="#fff"
         />
-        <Text style={stylesShowreel.soundText}>
-          {muted ? 'Sound Off' : 'Sound On'}
-        </Text>
+        <Text style={stylesShowreel.soundText}>{muted ? 'Sound Off' : 'Sound On'}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -793,6 +808,19 @@ interface SubmissionRow {
   thumbnail_url?: string | null;   // ✅ ADD THIS
   votes?: number | null;
   submitted_at: string;
+}
+
+interface SubmissionCommentRow {
+  id: string;
+  submission_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  user?: {
+    id: string;
+    full_name?: string | null;
+    avatar_url?: string | null;
+  } | null;
 }
 
 
@@ -1393,6 +1421,7 @@ const fetchProfile = useCallback(async () => {
   const fetchUserSubmissions = async (userId: string) => {
   try {
     setLoadingSubmissions(true);
+    
 
     const targetUserId = userId || viewedUserId;
     if (!targetUserId) {
@@ -3541,7 +3570,7 @@ const renderHero = () => {
     );
   };
 
-  const renderSubmissionsSection = () => {
+ const renderSubmissionsSection = () => {
   if (loadingSubmissions) {
     return (
       <View style={block.section}>
@@ -3558,105 +3587,110 @@ const renderHero = () => {
   const tileW = Math.floor((usable - GRID_GAP * (cols - 1)) / cols);
   const tileH = Math.floor(tileW * (9 / 16));
 
+  // Modal media sizing (always numeric → avoids TS error)
+  const modalMaxW = Math.min(Math.min(width, PAGE_MAX) - horizontalPad * 2, 760);
+  const modalMediaW = Math.max(280, Math.floor(modalMaxW));
+  const modalMediaH = Math.floor(modalMediaW * (9 / 16));
+
   return (
     <View style={block.section}>
       <Text style={block.sectionTitleCentered}>Submissions</Text>
-<View style={[block.grid, { gap: GRID_GAP }]}>
-  {submissions.map((s) => {
-  const yt = s.youtube_url ? ytThumb(s.youtube_url) : null;
-  const mp4Thumb = s.thumbnail_url ? addBuster(s.thumbnail_url) : null;
 
-    return (
-      <Pressable
-        key={s.id}
-        onPress={() => {
-          setActiveSubmission(s);
-          setSubmissionModalOpen(true);
-        }}
-        style={{ width: tileW }}
-      >
-        <View
-          style={{
-            height: tileH,
-            borderRadius: 12,
-            overflow: "hidden",
-            borderWidth: 1,
-            borderColor: COLORS.border,
-            backgroundColor: "#000",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {/* YOUTUBE → thumbnail */}
-          {yt ? (
-  <Image
-    source={{ uri: yt }}
-    style={{ width: "100%", height: "100%" }}
-    resizeMode="cover"
-  />
-) : mp4Thumb ? (
-  <Image
-    source={{ uri: mp4Thumb }}
-    style={{ width: "100%", height: "100%" }}
-    resizeMode="cover"
-  />
-) : (
-  <>
-    <Ionicons name="videocam" size={28} color={COLORS.textSecondary} />
-    <Text
-      style={{
-        marginTop: 6,
-        color: COLORS.textSecondary,
-        fontFamily: FONT_OBLIVION,
-        fontSize: 11,
-      }}
-    >
-      MP4 submission
-    </Text>
-  </>
-)}
+      <View style={[block.grid, { gap: GRID_GAP }]}>
+        {submissions.map((s) => {
+          const yt = s.youtube_url ? ytThumb(s.youtube_url) : null;
+          const mp4Thumb = s.thumbnail_url ? addBuster(s.thumbnail_url) : null;
 
-          {/* subtle overlay */}
-          <View
-            style={{
-              position: "absolute",
-              left: 0,
-              right: 0,
-              bottom: 0,
-              padding: 10,
-              backgroundColor: "rgba(0,0,0,0.55)",
-            }}
-          >
-            <Text
-              style={{
-                color: COLORS.textPrimary,
-                fontFamily: FONT_OBLIVION,
-                fontWeight: "800",
+          return (
+            <Pressable
+              key={s.id}
+              onPress={() => {
+                setActiveSubmission(s);
+                setSubmissionModalOpen(true);
               }}
-              numberOfLines={1}
+              style={{ width: tileW }}
             >
-              {s.title || "Untitled"}
-            </Text>
-
-            {!!s.word && (
-              <Text
+              <View
                 style={{
-                  color: COLORS.textSecondary,
-                  fontFamily: FONT_OBLIVION,
-                  fontSize: 12,
+                  height: tileH,
+                  borderRadius: 12,
+                  overflow: "hidden",
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                  backgroundColor: "#000",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
-                numberOfLines={1}
               >
-                “{s.word}”
-              </Text>
-            )}
-          </View>
-        </View>
-      </Pressable>
-    );
-  })}
-</View>
+                {/* Thumbnail */}
+                {yt ? (
+                  <Image
+                    source={{ uri: yt }}
+                    style={{ width: "100%", height: "100%" }}
+                    resizeMode="cover"
+                  />
+                ) : mp4Thumb ? (
+                  <Image
+                    source={{ uri: mp4Thumb }}
+                    style={{ width: "100%", height: "100%" }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <>
+                    <Ionicons name="videocam" size={28} color={COLORS.textSecondary} />
+                    <Text
+                      style={{
+                        marginTop: 6,
+                        color: COLORS.textSecondary,
+                        fontFamily: FONT_OBLIVION,
+                        fontSize: 11,
+                      }}
+                    >
+                      MP4 submission
+                    </Text>
+                  </>
+                )}
 
+                {/* overlay */}
+                <View
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    padding: 10,
+                    backgroundColor: "rgba(0,0,0,0.55)",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: COLORS.textPrimary,
+                      fontFamily: FONT_OBLIVION,
+                      fontWeight: "800",
+                    }}
+                    numberOfLines={1}
+                  >
+                    {s.title || "Untitled"}
+                  </Text>
+
+                  {!!s.word && (
+                    <Text
+                      style={{
+                        color: COLORS.textSecondary,
+                        fontFamily: FONT_OBLIVION,
+                        fontSize: 12,
+                      }}
+                      numberOfLines={1}
+                    >
+                      “{s.word}”
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
 
       {/* Playback modal */}
       <Modal
@@ -3668,7 +3702,14 @@ const renderHero = () => {
           setActiveSubmission(null);
         }}
       >
-        <View style={{ flex: 1, backgroundColor: '#000000EE', justifyContent: 'center', padding: 14 }}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "#000000EE",
+            justifyContent: "center",
+            padding: 14,
+          }}
+        >
           <Pressable
             style={StyleSheet.absoluteFillObject}
             onPress={() => {
@@ -3683,62 +3724,91 @@ const renderHero = () => {
               borderRadius: 16,
               borderWidth: 1,
               borderColor: COLORS.border,
-              overflow: 'hidden',
+              overflow: "hidden",
               padding: 12,
             }}
           >
-            <Text style={{ color: COLORS.textPrimary, fontFamily: FONT_OBLIVION, fontWeight: '900', marginBottom: 8 }}>
-              {activeSubmission?.title || 'Untitled'}
+            <Text
+              style={{
+                color: COLORS.textPrimary,
+                fontFamily: FONT_OBLIVION,
+                fontWeight: "900",
+                marginBottom: 8,
+              }}
+            >
+              {activeSubmission?.title || "Untitled"}
             </Text>
 
-            {activeSubmission ? (
-  activeSubmission.youtube_url ? (
-    <YoutubePlayer
-      height={isMobile ? 220 : 360}
-      width={Math.min(Math.min(width, PAGE_MAX) - horizontalPad * 2, 760)}
-      videoId={extractYoutubeId(activeSubmission.youtube_url) || undefined}
-      play={false}
-      webViewStyle={{ backgroundColor: "#000" }}
-      webViewProps={{
-        allowsInlineMediaPlayback: true,
-        mediaPlaybackRequiresUserAction: false,
-      }}
-    />
-  ) : activeSubmission.video_url || activeSubmission.video_path ? (
-    <ShowreelVideoInline
-      playerId={`submission_${activeSubmission.id}`}
-      filePathOrUrl={activeSubmission.video_url || activeSubmission.video_path!}
-      width={Math.min(Math.min(width, PAGE_MAX) - horizontalPad * 2, 760)}
-      autoPlay={false}
-    />
-  ) : (
-    <Text style={[block.muted, { paddingVertical: 10, textAlign: "center" }]}>
-      No video found for this submission.
-    </Text>
-  )
-) : null}
+            {/* ✅ Give the media a predictable 16:9 box (matches Featured behavior) */}
+            <View
+              style={{
+                width: "100%",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <View
+                style={{
+                  width: modalMediaW,
+                  height: modalMediaH,
+                  backgroundColor: "#000",
+                  borderRadius: 14,
+                  overflow: "hidden",
+                }}
+              >
+                {activeSubmission ? (
+                  activeSubmission.youtube_url ? (
+                    <YoutubePlayer
+                      height={modalMediaH} // ✅ always a number
+                      width={modalMediaW}  // ✅ always a number
+                      videoId={extractYoutubeId(activeSubmission.youtube_url) || undefined}
+                      play={false}
+                      webViewStyle={{ backgroundColor: "#000" }}
+                      webViewProps={{
+                        allowsInlineMediaPlayback: true,
+                        mediaPlaybackRequiresUserAction: false,
+                        // @ts-ignore (some platforms expose this)
+                        allowsFullscreenVideo: true,
+                      }}
+                      initialPlayerParams={{
+                        rel: false,
+                      }}
+                    />
+                  ) : activeSubmission.video_url || activeSubmission.video_path ? (
+                    <ShowreelVideoInline
+                      playerId={`submission_${activeSubmission.id}`}
+                      filePathOrUrl={activeSubmission.video_url || activeSubmission.video_path!}
+                      width={modalMediaW}
+                      autoPlay={false}
+                      // NOTE: the fullscreen crop fix MUST be done inside ShowreelVideoInline:
+                      // - native: ResizeMode.CONTAIN
+                      // - web: objectFit: 'contain'
+                    />
+                  ) : (
+                    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                      <Text style={[block.muted, { textAlign: "center" }]}>
+                        No video found for this submission.
+                      </Text>
+                    </View>
+                  )
+                ) : null}
+              </View>
+            </View>
 
-{isOwnProfile && activeSubmission && (
-  <TouchableOpacity
-    onPress={() => deleteSubmission(activeSubmission)}
-    style={[
-      styles.ghostBtn,
-      {
-        borderColor: COLORS.danger,
-        marginTop: 12,
-      },
-    ]}
-  >
-    <Text
-      style={[
-        styles.ghostBtnText,
-        { color: COLORS.danger },
-      ]}
-    >
-      Delete submission
-    </Text>
-  </TouchableOpacity>
-)}
+            {isOwnProfile && activeSubmission && (
+              <TouchableOpacity
+                onPress={() => deleteSubmission(activeSubmission)}
+                style={[
+                  styles.ghostBtn,
+                  { borderColor: COLORS.danger, marginTop: 12 },
+                ]}
+              >
+                <Text style={[styles.ghostBtnText, { color: COLORS.danger }]}>
+                  Delete submission
+                </Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
               onPress={() => {
                 setSubmissionModalOpen(false);
@@ -3754,7 +3824,6 @@ const renderHero = () => {
     </View>
   );
 };
-
   /* ---------- MAIN RENDER ---------- */
 
   if (isLoading) {
