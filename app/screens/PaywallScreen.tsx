@@ -1,3 +1,4 @@
+// screens/PaywallScreen.tsx
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
@@ -9,7 +10,12 @@ import {
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
-import { useFocusEffect, useIsFocused, useNavigation, CommonActions } from '@react-navigation/native';
+import {
+  useFocusEffect,
+  useIsFocused,
+  useNavigation,
+  CommonActions,
+} from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { invalidateMembershipCache } from '../lib/membership';
 
@@ -42,6 +48,7 @@ const SYSTEM_SANS = Platform.select({
 export default function PaywallScreen() {
   const nav = useNavigation<any>();
   const isFocused = useIsFocused();
+
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -70,6 +77,7 @@ export default function PaywallScreen() {
   const openCheckout = async () => {
     setSubmitting(true);
     setMessage(null);
+
     try {
       await supabase.auth.getUser(); // keep session warm
 
@@ -80,6 +88,8 @@ export default function PaywallScreen() {
 
       const { data: auth } = await supabase.auth.getUser();
       const user = auth?.user;
+
+      // Prefill email for better conversions
       const url =
         user?.email && PAYMENT_LINK.indexOf('prefilled_email=') === -1
           ? `${PAYMENT_LINK}${PAYMENT_LINK.includes('?') ? '&' : '?'}prefilled_email=${encodeURIComponent(
@@ -90,6 +100,7 @@ export default function PaywallScreen() {
       if (Platform.OS === 'web') {
         (window as any).location.assign(url);
       } else {
+        // On native: open Stripe in browser. The app will re-focus afterwards.
         await WebBrowser.openBrowserAsync(url);
       }
     } catch (e: any) {
@@ -100,9 +111,26 @@ export default function PaywallScreen() {
     }
   };
 
+  // ✅ When Pro becomes active, reset correctly into Auth -> CreateProfile.
+  // (CreateProfile is inside AuthStack, so navigating to it directly can fail.)
+  const enterCreateProfile = useCallback(() => {
+    nav.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: 'Auth',
+            state: { routes: [{ name: 'CreateProfile' }] },
+          },
+        ],
+      })
+    );
+  }, [nav]);
+
   // Check status -> go to CreateProfile (only if focused & not exited)
   const checkStatusAndMaybeEnter = useCallback(async () => {
     if (!isFocused || hasExited.current) return;
+
     try {
       const { data: auth } = await supabase.auth.getUser();
       const uid = auth.user?.id;
@@ -125,41 +153,53 @@ export default function PaywallScreen() {
         // ✅ make every screen re-check tier immediately
         invalidateMembershipCache();
 
-        nav.reset({ index: 0, routes: [{ name: 'CreateProfile' }] });
+        // ✅ correct reset path
+        enterCreateProfile();
       }
     } catch (e) {
       console.warn('status check failed', e);
     }
-  }, [isFocused, nav]);
+  }, [isFocused, enterCreateProfile]);
 
-  // Auto-poll only while focused
+  // Auto-poll only while focused (gives Stripe webhook time to update DB)
   useEffect(() => {
     if (!isFocused || hasExited.current) {
       clearPoll();
       return;
     }
+
     let tries = 0;
+
     const poll = async () => {
       if (!isFocused || hasExited.current) return;
       tries += 1;
+
       await checkStatusAndMaybeEnter();
+
       if (isFocused && !hasExited.current && tries < 20) {
         pollTimerRef.current = setTimeout(poll, 2000);
       }
     };
+
     poll();
     return () => clearPoll();
   }, [isFocused, checkStatusAndMaybeEnter]);
 
-  // Back: stop poll, mark exit, sign out, and HARD-redirect to /signin on web
-  const handleBack = useCallback(async () => {
+  // ✅ "Maybe later" should NOT sign users out.
+  // It should safely take them back to wherever they came from (UpgradeModal),
+  // or fall back to SignIn if there is no back stack.
+  const handleBack = useCallback(() => {
     hasExited.current = true;
     clearPoll();
 
     try {
-      await supabase.auth.signOut();
+      if (nav.canGoBack?.()) {
+        nav.goBack();
+        return;
+      }
     } catch {}
 
+    // Fallback: go to SignIn (do NOT sign out here)
     if (Platform.OS === 'web') {
       const signInUrl = Linking.createURL('signin');
       window.location.replace(signInUrl);
