@@ -33,46 +33,46 @@ export default function NewPassword() {
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
+  // ✅ Success popup
   const [successOpen, setSuccessOpen] = useState(false);
+
+  // ✅ Status text (replaces “waiting…” in a clearer way)
   const [status, setStatus] = useState("");
 
   // ---------------------------------------------------------
-  // Parse auth params from current URL (web)
-  // Supports:
-  // - PKCE: ?code=...
-  // - legacy: #access_token=...&refresh_token=...
-  // - fallback: ?token=...&token_hash=...
+  // Token parser (web only)
   // ---------------------------------------------------------
   const parseTokensFromUrl = () => {
-    const out: Record<string, string> = {};
+    let params: Record<string, any> = {};
 
     if (Platform.OS === "web" && typeof window !== "undefined") {
-      // query (?code=..., ?error_description=...)
-      const searchParams = new URLSearchParams(window.location.search || "");
-      searchParams.forEach((v, k) => (out[k] = v));
-
-      // hash (#access_token=..., #type=recovery)
-      const hash = (window.location.hash || "").replace(/^#/, "");
+      // hash (#access_token=...)
+      const hash = window.location.hash?.replace(/^#/, "") ?? "";
       const hashParams = new URLSearchParams(hash);
-      hashParams.forEach((v, k) => (out[k] = v));
+      hashParams.forEach((v, k) => (params[k] = v));
+
+      // query (?code=..., ?token_hash=...)
+      const search = window.location.search || "";
+      const searchParams = new URLSearchParams(search);
+      searchParams.forEach((v, k) => (params[k] = v));
     }
 
     return {
-      code: out["code"] || null,
-      access_token: out["access_token"] || null,
-      refresh_token: out["refresh_token"] || null,
-      type: out["type"] || null,
-
-      token: out["token"] || null,
-      token_hash: out["token_hash"] || null,
-      email: out["email"] || null,
-
-      error: out["error"] || null,
-      error_code: out["error_code"] || null,
-      error_description: out["error_description"] || null,
+      code: params["code"],
+      access_token: params["access_token"],
+      refresh_token: params["refresh_token"],
+      token_hash: params["token_hash"],
+      email: params["email"],
+      type: params["type"],
+      error: params["error"],
+      error_code: params["error_code"],
+      error_description: params["error_description"],
     };
   };
 
+  // ---------------------------------------------------------
+  // Navigation helpers
+  // ---------------------------------------------------------
   const hardGoToSignInWeb = () => {
     if (Platform.OS === "web" && typeof window !== "undefined") {
       window.location.assign("/signin");
@@ -112,40 +112,42 @@ export default function NewPassword() {
   };
 
   // ---------------------------------------------------------
-  // Establish recovery session
+  // ✅ FIX: Establish recovery session reliably
+  // 1) FIRST trust supabase.auth.getSession()
+  // 2) If no session, fall back to URL tokens (code/hash/token_hash)
   // ---------------------------------------------------------
   const establishSession = async () => {
+    // ✅ Step 1: If Supabase already has a session, we are GOOD.
+    const { data: existing } = await supabase.auth.getSession();
+    if (existing?.session) {
+      console.log("✅ Existing session found — recovery is ready");
+      return true;
+    }
+
+    // ✅ Step 2: Fall back to URL parsing
     const {
       code,
       access_token,
       refresh_token,
-      type,
-      token,
       token_hash,
       email,
+      type,
       error_description,
       error_code,
     } = parseTokensFromUrl();
 
-    console.log("NewPassword URL params:", {
+    console.log("Parsed Tokens:", {
       hasCode: !!code,
-      hasLegacyTokens: !!access_token || !!refresh_token,
-      type,
-      hasToken: !!token,
-      hasTokenHash: !!token_hash,
+      access_token: !!access_token,
+      refresh_token: !!refresh_token,
+      token_hash: !!token_hash,
       email,
+      type,
       error_code,
       error_description,
     });
 
-    // Must be recovery if type is present
-    if (type && type !== "recovery") {
-      console.log(`Not a recovery link (type=${type}) → go sign in`);
-      await goToSignIn();
-      return false;
-    }
-
-    // Expired/invalid
+    // If Supabase says expired/invalid, stop
     if (error_code === "otp_expired" || error_description) {
       Alert.alert(
         "Link expired",
@@ -155,16 +157,20 @@ export default function NewPassword() {
       return false;
     }
 
-    // ✅ BEST CASE: PKCE flow (?code=...)
-    if (Platform.OS === "web" && code && typeof window !== "undefined") {
-      console.log("Using PKCE code → exchangeCodeForSession");
-      const { error } = await supabase.auth.exchangeCodeForSession(
-        window.location.href
-      );
+    // Only allow recovery links (BUT don’t punish missing type if we still have tokens)
+    if (type && type !== "recovery") {
+      console.log(`🔁 Not a recovery link (type=${type}). Redirecting to Sign In.`);
+      await goToSignIn();
+      return false;
+    }
 
+    // CASE A: PKCE code
+    if (Platform.OS === "web" && code && typeof window !== "undefined") {
+      console.log("✔ Using PKCE code to exchange session (recovery)");
+      const { error } = await supabase.auth.exchangeCodeForSession(window.location.href);
       if (!error) return true;
 
-      console.log("exchangeCodeForSession error:", error.message);
+      console.log("❌ exchangeCodeForSession error:", error.message);
       Alert.alert(
         "Invalid link",
         "This password reset link is invalid. Please request a new one from Sign In.",
@@ -173,48 +179,29 @@ export default function NewPassword() {
       return false;
     }
 
-    // ✅ Legacy hash tokens (#access_token=...&refresh_token=...)
+    // CASE B: access_token/refresh_token in hash (older flow)
     if (access_token && refresh_token) {
-      console.log("Using legacy access_token/refresh_token → setSession");
+      console.log("✔ Using access_token session (recovery)");
       const { error } = await supabase.auth.setSession({
         access_token,
         refresh_token,
       });
-
       if (!error) return true;
-      console.log("setSession error:", error.message);
     }
 
-    // ✅ Fallback: token / token_hash direct verifyOtp
-    // (This is NOT the preferred email flow, but we still support it.)
-    if (token && email) {
-      console.log("Fallback verifyOtp with token + email");
-      const { error } = await supabase.auth.verifyOtp({
-        type: "recovery",
-        token,
-        email,
-      } as any);
-
-      if (!error) return true;
-      console.log("verifyOtp(token) error:", error.message);
-    }
-
-    if (token_hash) {
-      console.log("Fallback verifyOtp with token_hash");
+    // CASE C: token_hash + email
+    if (token_hash && email) {
+      console.log("✔ Using token_hash to verify recovery session");
       const { error } = await supabase.auth.verifyOtp({
         type: "recovery",
         token_hash,
-        ...(email ? { email } : {}),
-      } as any);
-
+        email,
+      });
       if (!error) return true;
-      console.log("verifyOtp(token_hash) error:", error.message);
     }
 
-    // Final: check if session exists anyway
-    const { data } = await supabase.auth.getSession();
-    if (data?.session) return true;
-
+    // Nothing worked
+    console.log("❌ No valid recovery session could be created");
     Alert.alert(
       "Invalid link",
       "This password reset link is invalid. Please request a new one from Sign In.",
@@ -232,7 +219,7 @@ export default function NewPassword() {
         setSessionReady(true);
         setStatus("");
 
-        // Clean URL (prevents re-processing)
+        // ✅ Clean URL AFTER session is ready (web only)
         if (Platform.OS === "web" && typeof window !== "undefined") {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
@@ -245,16 +232,29 @@ export default function NewPassword() {
     run();
   }, []);
 
+  // ---------------------------------------------------------
+  // Update password
+  // ---------------------------------------------------------
   const updatePassword = async () => {
     if (!sessionReady) {
       Alert.alert("Invalid Link", "Please open the reset link again.");
       return;
     }
 
-    if (!password || !confirm) return Alert.alert("Error", "Fill in both fields.");
-    if (password !== confirm) return Alert.alert("Error", "Passwords do not match.");
-    if (password.length < 6)
-      return Alert.alert("Error", "Password must be at least 6 characters.");
+    if (!password || !confirm) {
+      Alert.alert("Error", "Fill in both fields.");
+      return;
+    }
+
+    if (password !== confirm) {
+      Alert.alert("Error", "Passwords do not match.");
+      return;
+    }
+
+    if (password.length < 6) {
+      Alert.alert("Error", "Password must be at least 6 characters.");
+      return;
+    }
 
     setLoading(true);
     setStatus("Updating password...");
@@ -267,6 +267,7 @@ export default function NewPassword() {
     if (error) {
       const msg = (error.message || "").toLowerCase();
 
+      // ✅ Same password message (Supabase wording varies by project)
       if (
         msg.includes("different") ||
         msg.includes("same") ||
@@ -284,7 +285,7 @@ export default function NewPassword() {
       return;
     }
 
-    // ✅ Success popup
+    // ✅ Success popup with “Go to Sign In”
     setSuccessOpen(true);
   };
 
@@ -355,6 +356,7 @@ export default function NewPassword() {
         </View>
       </View>
 
+      {/* ✅ SUCCESS POPUP with “Go to Sign In” */}
       <Modal
         visible={successOpen}
         transparent
