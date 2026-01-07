@@ -33,33 +33,40 @@ export default function NewPassword() {
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  // ✅ NEW: success modal
+  // ✅ Success popup
   const [successOpen, setSuccessOpen] = useState(false);
 
-  // ✅ NEW: inline status
-  const [status, setStatus] = useState<string>("");
+  // ✅ Optional status line
+  const [status, setStatus] = useState("");
 
   // EXACT SAME TOKEN PARSER USED IN SIGNUP
   const parseTokensFromUrl = () => {
     let params: Record<string, any> = {};
 
-    // 1) Read HASH fragment (Safari + Supabase use this)
     if (Platform.OS === "web") {
+      // hash (#access_token=...)
       const hash = window.location.hash?.replace(/^#/, "") ?? "";
       const hashParams = new URLSearchParams(hash);
       hashParams.forEach((v, k) => (params[k] = v));
+
+      // query (?code=..., ?token_hash=...)
+      const search = window.location.search || "";
+      const searchParams = new URLSearchParams(search);
+      searchParams.forEach((v, k) => (params[k] = v));
     }
 
-    // 2) Read query params (?token_hash=...)
-    const search = Platform.OS === "web" ? window.location.search : "";
-    const searchParams = new URLSearchParams(search);
-    searchParams.forEach((v, k) => (params[k] = v));
-
     return {
+      // PKCE
+      code: params["code"],
+
+      // legacy tokens
       access_token: params["access_token"],
       refresh_token: params["refresh_token"],
+
+      // otp verify
       token_hash: params["token_hash"],
       email: params["email"],
+
       type: params["type"],
       error: params["error"],
       error_code: params["error_code"],
@@ -74,7 +81,6 @@ export default function NewPassword() {
   };
 
   const resetToSignInNative = () => {
-    // NOTE: keep your original structure — if your root routes differ, update here.
     const action = CommonActions.reset({
       index: 0,
       routes: [{ name: "Auth", params: { screen: "SignIn" } }],
@@ -99,7 +105,6 @@ export default function NewPassword() {
       resetToSignInNative();
     } catch (e) {
       console.log("goToSignIn error:", e);
-
       if (Platform.OS === "web") hardGoToSignInWeb();
       else resetToSignInNative();
     } finally {
@@ -109,6 +114,7 @@ export default function NewPassword() {
 
   const establishSession = async () => {
     const {
+      code,
       access_token,
       refresh_token,
       token_hash,
@@ -119,6 +125,7 @@ export default function NewPassword() {
     } = parseTokensFromUrl();
 
     console.log("Parsed Tokens:", {
+      hasCode: !!code,
       access_token: !!access_token,
       refresh_token: !!refresh_token,
       token_hash: !!token_hash,
@@ -128,13 +135,14 @@ export default function NewPassword() {
       error_description,
     });
 
-    // Only allow recovery links
+    // ✅ Only allow recovery links
     if (type && type !== "recovery") {
       console.log(`🔁 Not a recovery link (type=${type}). Redirecting to Sign In.`);
       await goToSignIn();
       return false;
     }
 
+    // ✅ explicit expired/invalid messages
     if (error_code === "otp_expired" || error_description) {
       Alert.alert(
         "Link expired",
@@ -144,7 +152,26 @@ export default function NewPassword() {
       return false;
     }
 
-    // CASE 1: hash contains full session tokens (most common)
+    // ---------------------------------------------------------
+    // ✅ CASE 0 (MOST IMPORTANT): PKCE recovery link with ?code=
+    // ---------------------------------------------------------
+    if (Platform.OS === "web" && code) {
+      console.log("✔ Using PKCE code to exchange session (recovery)");
+      const { error } = await supabase.auth.exchangeCodeForSession(window.location.href);
+      if (!error) return true;
+
+      console.log("❌ exchangeCodeForSession error:", error.message);
+      Alert.alert(
+        "Invalid link",
+        "This password reset link is invalid. Please request a new one from Sign In.",
+        [{ text: "OK", onPress: () => goToSignIn() }]
+      );
+      return false;
+    }
+
+    // ---------------------------------------------------------
+    // CASE 1: access_token/refresh_token in hash (older flow)
+    // ---------------------------------------------------------
     if (access_token && refresh_token) {
       console.log("✔ Using full access_token session (recovery)");
       const { error } = await supabase.auth.setSession({
@@ -154,7 +181,9 @@ export default function NewPassword() {
       if (!error) return true;
     }
 
-    // CASE 2: token_hash + email (older flow)
+    // ---------------------------------------------------------
+    // CASE 2: token_hash + email (verifyOtp)
+    // ---------------------------------------------------------
     if (token_hash && email) {
       console.log("✔ Using token_hash to verify recovery session");
       const { error } = await supabase.auth.verifyOtp({
@@ -178,13 +207,12 @@ export default function NewPassword() {
     const run = async () => {
       setStatus("Validating reset link...");
       const ok = await establishSession();
+
       if (ok) {
-        console.log("✔ Recovery session established");
         setSessionReady(true);
         setStatus("");
 
-        // ✅ IMPORTANT:
-        // Do NOT clean URL until AFTER the session is established.
+        // ✅ Clean URL after session is established
         if (Platform.OS === "web") {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
@@ -202,20 +230,10 @@ export default function NewPassword() {
       return;
     }
 
-    if (!password || !confirm) {
-      Alert.alert("Error", "Fill in both fields.");
-      return;
-    }
-
-    if (password !== confirm) {
-      Alert.alert("Error", "Passwords do not match.");
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters.");
-      return;
-    }
+    if (!password || !confirm) return Alert.alert("Error", "Fill in both fields.");
+    if (password !== confirm) return Alert.alert("Error", "Passwords do not match.");
+    if (password.length < 6)
+      return Alert.alert("Error", "Password must be at least 6 characters.");
 
     setLoading(true);
     setStatus("Updating password...");
@@ -223,27 +241,30 @@ export default function NewPassword() {
     const { error } = await supabase.auth.updateUser({ password });
 
     setLoading(false);
+    setStatus("");
 
     if (error) {
       const msg = (error.message || "").toLowerCase();
 
-      // ✅ Your custom “same password” messaging
-      if (msg.includes("different") || msg.includes("same") || msg.includes("old password")) {
+      // ✅ Same password message (Supabase wording varies)
+      if (
+        msg.includes("different") ||
+        msg.includes("same") ||
+        msg.includes("old password") ||
+        msg.includes("must be different")
+      ) {
         Alert.alert(
           "Choose a different password",
           "You can’t change your password to the same password as before. Please choose a new one."
         );
-        setStatus("");
         return;
       }
 
       Alert.alert("Error", error.message);
-      setStatus("");
       return;
     }
 
-    // ✅ Success UI (in-app)
-    setStatus("");
+    // ✅ Show success popup with “Go to Sign In”
     setSuccessOpen(true);
   };
 
@@ -306,7 +327,6 @@ export default function NewPassword() {
             )}
           </TouchableOpacity>
 
-          {/* ✅ clearer status messaging */}
           {!!status && <Text style={styles.status}>{status}</Text>}
 
           {!sessionReady && !status && (
@@ -315,7 +335,7 @@ export default function NewPassword() {
         </View>
       </View>
 
-      {/* ✅ SUCCESS POPUP */}
+      {/* ✅ SUCCESS POPUP with “Go to Sign In” */}
       <Modal
         visible={successOpen}
         transparent
@@ -356,7 +376,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 24 },
   back: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
   backText: { marginLeft: 6, color: SUB, fontSize: 15 },
-
   card: {
     backgroundColor: CARD,
     padding: 26,
@@ -372,7 +391,6 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   subtitle: { color: SUB, textAlign: "center", marginBottom: 18 },
-
   inputRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -383,7 +401,6 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   input: { flex: 1, marginLeft: 10, color: TEXT, fontSize: 15 },
-
   button: {
     backgroundColor: GOLD,
     paddingVertical: 14,
@@ -391,7 +408,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   buttonText: { color: BG, fontWeight: "900", fontSize: 15 },
-
   error: { color: "red", marginTop: 10, textAlign: "center" },
   status: { color: SUB, marginTop: 10, textAlign: "center" },
 
