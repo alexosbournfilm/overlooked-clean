@@ -33,48 +33,43 @@ export default function NewPassword() {
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  // ✅ Success popup
   const [successOpen, setSuccessOpen] = useState(false);
-
-  // ✅ Status line (shows what’s happening)
   const [status, setStatus] = useState("");
 
   // ---------------------------------------------------------
-  // Parse ALL possible Supabase params (PKCE + token + token_hash + legacy)
+  // Parse auth params from current URL (web)
+  // Supports:
+  // - PKCE: ?code=...
+  // - legacy: #access_token=...&refresh_token=...
+  // - fallback: ?token=...&token_hash=...
   // ---------------------------------------------------------
   const parseTokensFromUrl = () => {
-    let params: Record<string, any> = {};
+    const out: Record<string, string> = {};
 
     if (Platform.OS === "web" && typeof window !== "undefined") {
-      // hash (#access_token=...)
-      const hash = window.location.hash?.replace(/^#/, "") ?? "";
-      const hashParams = new URLSearchParams(hash);
-      hashParams.forEach((v, k) => (params[k] = v));
+      // query (?code=..., ?error_description=...)
+      const searchParams = new URLSearchParams(window.location.search || "");
+      searchParams.forEach((v, k) => (out[k] = v));
 
-      // query (?code=..., ?token_hash=..., ?token=...)
-      const search = window.location.search || "";
-      const searchParams = new URLSearchParams(search);
-      searchParams.forEach((v, k) => (params[k] = v));
+      // hash (#access_token=..., #type=recovery)
+      const hash = (window.location.hash || "").replace(/^#/, "");
+      const hashParams = new URLSearchParams(hash);
+      hashParams.forEach((v, k) => (out[k] = v));
     }
 
     return {
-      // PKCE
-      code: params["code"],
+      code: out["code"] || null,
+      access_token: out["access_token"] || null,
+      refresh_token: out["refresh_token"] || null,
+      type: out["type"] || null,
 
-      // legacy tokens
-      access_token: params["access_token"],
-      refresh_token: params["refresh_token"],
+      token: out["token"] || null,
+      token_hash: out["token_hash"] || null,
+      email: out["email"] || null,
 
-      // OTP tokens
-      token: params["token"],
-      token_hash: params["token_hash"],
-
-      email: params["email"],
-      type: params["type"],
-
-      error: params["error"],
-      error_code: params["error_code"],
-      error_description: params["error_description"],
+      error: out["error"] || null,
+      error_code: out["error_code"] || null,
+      error_description: out["error_description"] || null,
     };
   };
 
@@ -124,34 +119,33 @@ export default function NewPassword() {
       code,
       access_token,
       refresh_token,
+      type,
       token,
       token_hash,
       email,
-      type,
       error_description,
       error_code,
     } = parseTokensFromUrl();
 
-    console.log("Parsed Tokens:", {
+    console.log("NewPassword URL params:", {
       hasCode: !!code,
-      access_token: !!access_token,
-      refresh_token: !!refresh_token,
-      token: !!token,
-      token_hash: !!token_hash,
-      email,
+      hasLegacyTokens: !!access_token || !!refresh_token,
       type,
+      hasToken: !!token,
+      hasTokenHash: !!token_hash,
+      email,
       error_code,
       error_description,
     });
 
-    // ✅ Only allow recovery links
+    // Must be recovery if type is present
     if (type && type !== "recovery") {
-      console.log(`🔁 Not a recovery link (type=${type}). Redirecting to Sign In.`);
+      console.log(`Not a recovery link (type=${type}) → go sign in`);
       await goToSignIn();
       return false;
     }
 
-    // ✅ explicit expired/invalid messages
+    // Expired/invalid
     if (error_code === "otp_expired" || error_description) {
       Alert.alert(
         "Link expired",
@@ -161,14 +155,16 @@ export default function NewPassword() {
       return false;
     }
 
-    // ✅ CASE 0: PKCE flow (?code=...)
+    // ✅ BEST CASE: PKCE flow (?code=...)
     if (Platform.OS === "web" && code && typeof window !== "undefined") {
-      console.log("✔ Using PKCE code to exchange session (recovery)");
-      const { error } = await supabase.auth.exchangeCodeForSession(window.location.href);
+      console.log("Using PKCE code → exchangeCodeForSession");
+      const { error } = await supabase.auth.exchangeCodeForSession(
+        window.location.href
+      );
 
       if (!error) return true;
 
-      console.log("❌ exchangeCodeForSession error:", error.message);
+      console.log("exchangeCodeForSession error:", error.message);
       Alert.alert(
         "Invalid link",
         "This password reset link is invalid. Please request a new one from Sign In.",
@@ -177,63 +173,48 @@ export default function NewPassword() {
       return false;
     }
 
-    // ✅ CASE 1: legacy access_token/refresh_token
+    // ✅ Legacy hash tokens (#access_token=...&refresh_token=...)
     if (access_token && refresh_token) {
-      console.log("✔ Using access_token/refresh_token session (recovery)");
-      const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+      console.log("Using legacy access_token/refresh_token → setSession");
+      const { error } = await supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      });
+
       if (!error) return true;
+      console.log("setSession error:", error.message);
     }
 
-    // ✅ CASE 2: token / token_hash (verifyOtp)
-    // We try the most common variants.
-    if (token || token_hash) {
-      console.log("✔ Trying verifyOtp (recovery) ...");
+    // ✅ Fallback: token / token_hash direct verifyOtp
+    // (This is NOT the preferred email flow, but we still support it.)
+    if (token && email) {
+      console.log("Fallback verifyOtp with token + email");
+      const { error } = await supabase.auth.verifyOtp({
+        type: "recovery",
+        token,
+        email,
+      } as any);
 
-      // Try token_hash first (hashed variant)
-      if (token_hash) {
-        const attempt1 = await supabase.auth.verifyOtp({
-          type: "recovery",
-          token_hash,
-        } as any);
-
-        if (!attempt1.error) return true;
-
-        // Some configs require email too
-        if (email) {
-          const attempt2 = await supabase.auth.verifyOtp({
-            type: "recovery",
-            token_hash,
-            email,
-          } as any);
-
-          if (!attempt2.error) return true;
-        }
-
-        console.log("verifyOtp token_hash failed:", attempt1.error?.message);
-      }
-
-      // Try token (plain variant)
-      if (token && email) {
-        const attempt3 = await supabase.auth.verifyOtp({
-          type: "recovery",
-          token,
-          email,
-        } as any);
-
-        if (!attempt3.error) return true;
-
-        console.log("verifyOtp token failed:", attempt3.error?.message);
-      }
+      if (!error) return true;
+      console.log("verifyOtp(token) error:", error.message);
     }
 
-    // ✅ FINAL fallback: sometimes Supabase already established a session
-    const { data: s } = await supabase.auth.getSession();
-    if (s?.session) {
-      console.log("✔ Session already exists");
-      return true;
+    if (token_hash) {
+      console.log("Fallback verifyOtp with token_hash");
+      const { error } = await supabase.auth.verifyOtp({
+        type: "recovery",
+        token_hash,
+        ...(email ? { email } : {}),
+      } as any);
+
+      if (!error) return true;
+      console.log("verifyOtp(token_hash) error:", error.message);
     }
 
-    console.log("❌ No valid recovery session could be created");
+    // Final: check if session exists anyway
+    const { data } = await supabase.auth.getSession();
+    if (data?.session) return true;
+
     Alert.alert(
       "Invalid link",
       "This password reset link is invalid. Please request a new one from Sign In.",
@@ -251,7 +232,7 @@ export default function NewPassword() {
         setSessionReady(true);
         setStatus("");
 
-        // ✅ Clean URL after session is established (prevents reprocessing)
+        // Clean URL (prevents re-processing)
         if (Platform.OS === "web" && typeof window !== "undefined") {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
@@ -286,7 +267,6 @@ export default function NewPassword() {
     if (error) {
       const msg = (error.message || "").toLowerCase();
 
-      // ✅ Same password message (Supabase wording varies)
       if (
         msg.includes("different") ||
         msg.includes("same") ||
@@ -304,7 +284,7 @@ export default function NewPassword() {
       return;
     }
 
-    // ✅ Show success popup with “Go to Sign In”
+    // ✅ Success popup
     setSuccessOpen(true);
   };
 
@@ -375,7 +355,6 @@ export default function NewPassword() {
         </View>
       </View>
 
-      {/* ✅ SUCCESS POPUP with “Go to Sign In” */}
       <Modal
         visible={successOpen}
         transparent
