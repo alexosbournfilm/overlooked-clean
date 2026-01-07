@@ -130,6 +130,16 @@ export default function App() {
       return;
     }
 
+    // ✅ IMPORTANT:
+    // For password recovery, DO NOT exchange/clean here.
+    // Let NewPassword.tsx establish the session from the URL.
+    if (type === "recovery") {
+      console.log("🔐 Recovery link detected → letting NewPassword handle URL");
+      // If you want, you can navigate here, but usually web already loads /reset-password.
+      // navigate("NewPassword");
+      return;
+    }
+
     // PKCE flow: ?code=...
     if (code) {
       const { error } = await supabase.auth.exchangeCodeForSession(url);
@@ -153,7 +163,7 @@ export default function App() {
       console.log("✅ Session restored from legacy tokens");
     }
 
-    // Clean URL on web (prevents re-processing)
+    // ✅ Clean URL on web (prevents re-processing) — BUT NOT FOR RECOVERY
     if (Platform.OS === "web" && typeof window !== "undefined") {
       const clean = window.location.origin + window.location.pathname;
       window.history.replaceState({}, document.title, clean);
@@ -186,17 +196,19 @@ export default function App() {
         // If someone loads /reset-password without any recovery tokens, kick to /signin.
         if (Platform.OS === "web" && typeof window !== "undefined") {
           const path = window.location.pathname || "";
+          const href = window.location.href || "";
+
           const hasRecoveryStuff =
-            window.location.href.includes("type=recovery") ||
-            window.location.href.includes("access_token=") ||
-            window.location.href.includes("refresh_token=") ||
-            window.location.href.includes("token_hash=") ||
-            window.location.href.includes("code=");
+            href.includes("type=recovery") ||
+            href.includes("access_token=") ||
+            href.includes("refresh_token=") ||
+            href.includes("token_hash=") ||
+            href.includes("code=");
 
           if (path.includes("reset-password") && !hasRecoveryStuff) {
             console.log("🛑 Loaded /reset-password without tokens → redirecting to /signin");
             window.location.replace("/signin");
-            return; // stop init
+            return;
           }
         }
 
