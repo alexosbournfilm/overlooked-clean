@@ -1,5 +1,5 @@
 // app/screens/NewPassword.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -7,14 +7,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
   Platform,
   Modal,
-  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { CommonActions, useNavigation } from "@react-navigation/native";
-import * as Linking from "expo-linking";
+import { useNavigation, CommonActions } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 import { navigationRef } from "../navigation/navigationRef";
 
@@ -32,33 +31,36 @@ export default function NewPassword() {
   const [confirm, setConfirm] = useState("");
 
   const [sessionReady, setSessionReady] = useState(false);
-  const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
-  const [status, setStatus] = useState("Waiting for valid reset link…");
+  // ✅ Success modal
+  const [successOpen, setSuccessOpen] = useState(false);
 
-  const [successVisible, setSuccessVisible] = useState(false);
-  const [errorVisible, setErrorVisible] = useState(false);
-  const [errorText, setErrorText] = useState("Something went wrong.");
+  // ✅ Error banner text (instead of silent failure)
+  const [linkStatus, setLinkStatus] = useState<"checking" | "ready" | "invalid">(
+    "checking"
+  );
+  const statusText = useMemo(() => {
+    if (linkStatus === "checking") return "Waiting for valid reset link…";
+    if (linkStatus === "invalid") return "Reset link expired or invalid.";
+    return "";
+  }, [linkStatus]);
 
-  const lastAttemptedPasswordRef = useRef<string>("");
-
-  const showError = (msg: string) => {
-    setErrorText(msg);
-    setErrorVisible(true);
-  };
-
+  // ---------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------
   const hardGoToSignInWeb = () => {
-    if (Platform.OS === "web") window.location.assign("/signin");
+    if (Platform.OS === "web") {
+      window.location.assign("/signin");
+    }
   };
 
   const resetToSignInNative = () => {
-    // If your root route is just "SignIn", keep this.
-    // If your app uses Auth stack, change to:
-    // routes: [{ name: "Auth", params: { screen: "SignIn" } }],
+    // If your stack route is not "Auth", change this to your real route name.
     const action = CommonActions.reset({
       index: 0,
-      routes: [{ name: "SignIn" }],
+      routes: [{ name: "Auth", params: { screen: "SignIn" } }],
     });
 
     if (navigationRef.isReady()) navigationRef.dispatch(action);
@@ -66,176 +68,218 @@ export default function NewPassword() {
   };
 
   const goToSignIn = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+
     try {
       await supabase.auth.signOut();
-    } catch {}
 
-    if (Platform.OS === "web") hardGoToSignInWeb();
-    else resetToSignInNative();
+      if (Platform.OS === "web") {
+        hardGoToSignInWeb();
+        return;
+      }
+
+      resetToSignInNative();
+    } catch (e) {
+      console.log("goToSignIn error:", e);
+      if (Platform.OS === "web") hardGoToSignInWeb();
+      else resetToSignInNative();
+    } finally {
+      setSigningOut(false);
+    }
   };
 
-  // Parses hash + query params on web
-  const parseWebParams = (url: string) => {
-    const u = new URL(url);
-    const params: Record<string, string> = {};
+  // ---------------------------------------------------------
+  // Parse URL (WEB)
+  // - Supports:
+  //   1) ?code=...  (PKCE)
+  //   2) #access_token=...&refresh_token=... (legacy)
+  //   3) ?token_hash=...&type=recovery&email=...
+  // ---------------------------------------------------------
+  const parseWebUrlParams = () => {
+    let params: Record<string, any> = {};
 
-    // query
-    u.searchParams.forEach((v, k) => (params[k] = v));
-
-    // hash can contain tokens
-    const hash = (u.hash || "").replace(/^#/, "");
+    // Hash fragment
+    const hash = Platform.OS === "web" ? window.location.hash?.replace(/^#/, "") ?? "" : "";
     if (hash) {
-      const h = new URLSearchParams(hash);
-      h.forEach((v, k) => (params[k] = v));
+      const hp = new URLSearchParams(hash);
+      hp.forEach((v, k) => (params[k] = v));
     }
 
-    return params;
+    // Query string
+    const search = Platform.OS === "web" ? window.location.search ?? "" : "";
+    if (search) {
+      const sp = new URLSearchParams(search);
+      sp.forEach((v, k) => (params[k] = v));
+    }
+
+    return {
+      code: params["code"],
+
+      access_token: params["access_token"],
+      refresh_token: params["refresh_token"],
+
+      token_hash: params["token_hash"],
+      email: params["email"],
+      type: params["type"],
+
+      error: params["error"],
+      error_code: params["error_code"],
+      error_description: params["error_description"],
+    };
   };
 
-  const establishRecoverySessionFromUrl = async (url: string) => {
+  const cleanWebUrl = () => {
+    if (Platform.OS !== "web") return;
+    const clean = window.location.origin + window.location.pathname;
+    window.history.replaceState({}, document.title, clean);
+  };
+
+  // ---------------------------------------------------------
+  // Establish Recovery Session
+  // ✅ Accept PKCE code flow (MOST COMMON)
+  // ✅ Accept legacy hash access_token flow
+  // ✅ Accept token_hash verifyOtp flow
+  // ---------------------------------------------------------
+  const establishSession = async () => {
     try {
-      // --- 1) PKCE: ?code=... ---
-      if (url.includes("code=")) {
-        const { error } = await supabase.auth.exchangeCodeForSession(url);
+      if (Platform.OS !== "web") {
+        // On native, Supabase usually triggers PASSWORD_RECOVERY event from the deep link.
+        // We still try to see if a session already exists.
+        const { data } = await supabase.auth.getSession();
+        if (data?.session) {
+          setSessionReady(true);
+          setLinkStatus("ready");
+          return true;
+        }
+        // If no session, keep waiting (don’t auto-kick)
+        setLinkStatus("invalid");
+        return false;
+      }
+
+      const p = parseWebUrlParams();
+
+      // Supabase sometimes sets error info
+      if (p.error_code === "otp_expired" || p.error_description) {
+        setLinkStatus("invalid");
+        return false;
+      }
+
+      // ✅ CASE 1: PKCE code in query string (modern reset)
+      if (p.code) {
+        const fullUrl = window.location.href;
+        const { error } = await supabase.auth.exchangeCodeForSession(fullUrl);
+
         if (error) {
           console.log("exchangeCodeForSession error:", error);
-          setSessionReady(false);
-          setStatus("Reset link expired or invalid.");
+          setLinkStatus("invalid");
           return false;
         }
 
         setSessionReady(true);
-        setStatus("Ready to reset password");
+        setLinkStatus("ready");
+        cleanWebUrl();
         return true;
       }
 
-      // --- 2) token_hash + email fallback ---
-      if (Platform.OS === "web") {
-        const params = parseWebParams(url);
+      // ✅ CASE 2: legacy access_token in hash
+      if (p.access_token && p.refresh_token) {
+        const { error } = await supabase.auth.setSession({
+          access_token: p.access_token,
+          refresh_token: p.refresh_token,
+        });
 
-        const token_hash = params["token_hash"];
-        const email = params["email"];
-        const type = params["type"]; // should be recovery
-
-        // Guard: only accept recovery
-        if (type && type !== "recovery") {
-          setSessionReady(false);
-          setStatus("Invalid link type.");
+        if (error) {
+          console.log("setSession error:", error);
+          setLinkStatus("invalid");
           return false;
         }
 
-        if (token_hash && email) {
-          const { error } = await supabase.auth.verifyOtp({
-            type: "recovery",
-            token_hash,
-            email,
-          });
-
-          if (error) {
-            console.log("verifyOtp error:", error);
-            setSessionReady(false);
-
-            const msg = (error.message || "").toLowerCase();
-            if (msg.includes("expired") || msg.includes("otp_expired")) {
-              setStatus("Reset link expired or invalid.");
-            } else {
-              setStatus("Reset link invalid.");
-            }
-            return false;
-          }
-
-          setSessionReady(true);
-          setStatus("Ready to reset password");
-          return true;
-        }
+        setSessionReady(true);
+        setLinkStatus("ready");
+        cleanWebUrl();
+        return true;
       }
 
-      // If we got here, we didn't have usable params
-      setSessionReady(false);
-      setStatus("Reset link expired or invalid.");
+      // ✅ CASE 3: token_hash verifyOtp (only if present)
+      if (p.token_hash && p.email) {
+        // Only if type is recovery or missing
+        const { error } = await supabase.auth.verifyOtp({
+          type: "recovery",
+          token_hash: p.token_hash,
+          email: p.email,
+        });
+
+        if (error) {
+          console.log("verifyOtp error:", error);
+          setLinkStatus("invalid");
+          return false;
+        }
+
+        setSessionReady(true);
+        setLinkStatus("ready");
+        cleanWebUrl();
+        return true;
+      }
+
+      // Nothing we can use
+      setLinkStatus("invalid");
       return false;
     } catch (e) {
-      console.log("establishRecoverySessionFromUrl exception:", e);
-      setSessionReady(false);
-      setStatus("Reset link expired or invalid.");
+      console.log("establishSession exception:", e);
+      setLinkStatus("invalid");
       return false;
     }
   };
 
-  // On mount: check initial URL (native) or window URL (web), and listen for deep links
   useEffect(() => {
-    let mounted = true;
-
     const run = async () => {
-      setChecking(true);
-
-      try {
-        let url = "";
-
-        if (Platform.OS === "web" && typeof window !== "undefined") {
-          url = window.location.href;
-        } else {
-          const initial = await Linking.getInitialURL();
-          url = initial || "";
-        }
-
-        if (url) {
-          const ok = await establishRecoverySessionFromUrl(url);
-
-          // Clean URL on web AFTER session established attempt (don’t wipe tokens too early)
-          if (Platform.OS === "web" && typeof window !== "undefined") {
-            const clean = window.location.origin + window.location.pathname;
-            window.history.replaceState({}, document.title, clean);
-          }
-
-          if (!ok) {
-            // keep screen visible with message
-          }
-        } else {
-          setStatus("Reset link expired or invalid.");
-        }
-      } finally {
-        if (mounted) setChecking(false);
-      }
+      setLinkStatus("checking");
+      await establishSession();
     };
-
     run();
+  }, []);
 
-    // Listener for native deep links
-    const sub = Linking.addEventListener("url", async (event) => {
-      await establishRecoverySessionFromUrl(event.url);
+  // Also listen for native recovery events (and web fallback)
+  useEffect(() => {
+    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        // Supabase says recovery flow is active
+        setSessionReady(true);
+        setLinkStatus("ready");
+        return;
+      }
+
+      // If a session appears, allow update password
+      if (event === "SIGNED_IN" && session) {
+        setSessionReady(true);
+        setLinkStatus("ready");
+      }
     });
 
     return () => {
-      mounted = false;
-      sub.remove();
+      listener.subscription.unsubscribe();
     };
   }, []);
 
   const updatePassword = async () => {
     if (!sessionReady) {
-      showError("This reset link is invalid or expired. Please request a new one from Sign In.");
+      Alert.alert("Invalid Link", "Please open the reset link again.");
       return;
     }
 
     if (!password || !confirm) {
-      showError("Please fill in both fields.");
+      Alert.alert("Error", "Fill in both fields.");
       return;
     }
 
     if (password !== confirm) {
-      showError("Passwords do not match.");
+      Alert.alert("Error", "Passwords do not match.");
       return;
     }
 
     if (password.length < 6) {
-      showError("Password must be at least 6 characters.");
-      return;
-    }
-
-    // Local best-effort guard (prevents immediate same attempt)
-    if (lastAttemptedPasswordRef.current && lastAttemptedPasswordRef.current === password) {
-      showError("You can’t change your password to the same password. Choose a new one.");
+      Alert.alert("Error", "Password must be at least 6 characters.");
       return;
     }
 
@@ -248,31 +292,50 @@ export default function NewPassword() {
     if (error) {
       const msg = (error.message || "").toLowerCase();
 
+      // Friendly message for same-password attempts
       if (
+        msg.includes("same") ||
         msg.includes("different") ||
-        msg.includes("same password") ||
-        msg.includes("same as") ||
-        msg.includes("must not be the same")
+        msg.includes("new password") ||
+        msg.includes("should be different")
       ) {
-        showError("You can’t change your password to the same password. Choose a new one.");
+        Alert.alert(
+          "Choose a new password",
+          "You can’t change your password to the same password as before. Please choose a different one."
+        );
         return;
       }
 
-      showError(error.message);
+      Alert.alert("Error", error.message);
       return;
     }
 
-    lastAttemptedPasswordRef.current = password;
-    setSuccessVisible(true);
+    // ✅ In-app success modal with “Go to sign in”
+    setSuccessOpen(true);
   };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: BG }}>
       <View style={styles.container}>
+        <TouchableOpacity
+          onPress={() => goToSignIn()}
+          style={styles.back}
+          disabled={signingOut}
+        >
+          {signingOut ? (
+            <ActivityIndicator color={SUB} />
+          ) : (
+            <Ionicons name="chevron-back" size={18} color={SUB} />
+          )}
+          <Text style={styles.backText}>Back to Sign In</Text>
+        </TouchableOpacity>
+
         <View style={styles.card}>
           <Text style={styles.title}>Set a New Password</Text>
           <Text style={styles.subtitle}>
-            {checking ? "Validating reset link…" : status}
+            {linkStatus === "invalid"
+              ? "Reset link expired or invalid."
+              : "Enter your new password below."}
           </Text>
 
           <View style={styles.inputRow}>
@@ -284,7 +347,6 @@ export default function NewPassword() {
               value={password}
               onChangeText={setPassword}
               style={styles.input}
-              editable={!loading}
             />
           </View>
 
@@ -297,16 +359,15 @@ export default function NewPassword() {
               value={confirm}
               onChangeText={setConfirm}
               style={styles.input}
-              editable={!loading}
             />
           </View>
 
           <TouchableOpacity
             onPress={updatePassword}
-            disabled={loading || !sessionReady}
+            disabled={loading || signingOut || linkStatus !== "ready"}
             style={[
               styles.button,
-              (loading || !sessionReady) && { opacity: 0.6 },
+              (loading || signingOut || linkStatus !== "ready") && { opacity: 0.6 },
             ]}
           >
             {loading ? (
@@ -316,33 +377,30 @@ export default function NewPassword() {
             )}
           </TouchableOpacity>
 
-          {!sessionReady && !checking && (
-            <TouchableOpacity style={styles.linkBtn} onPress={goToSignIn}>
-              <Text style={styles.linkText}>Go to Sign In</Text>
-            </TouchableOpacity>
+          {linkStatus !== "ready" && (
+            <Text style={styles.error}>{statusText}</Text>
           )}
         </View>
       </View>
 
-      {/* ✅ SUCCESS MODAL */}
-      <Modal transparent visible={successVisible} animationType="fade">
+      {/* ✅ SUCCESS POPUP MODAL */}
+      <Modal
+        visible={successOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSuccessOpen(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Password changed ✅</Text>
-              <Pressable onPress={() => setSuccessVisible(false)} hitSlop={10}>
-                <Ionicons name="close" size={20} color={SUB} />
-              </Pressable>
-            </View>
-
+            <Text style={styles.modalTitle}>Password updated ✅</Text>
             <Text style={styles.modalText}>
-              Your password has been updated successfully.
+              Your password has been changed successfully.
             </Text>
 
             <TouchableOpacity
               style={styles.modalPrimary}
               onPress={async () => {
-                setSuccessVisible(false);
+                setSuccessOpen(false);
                 await goToSignIn();
               }}
             >
@@ -351,29 +409,9 @@ export default function NewPassword() {
 
             <TouchableOpacity
               style={styles.modalSecondary}
-              onPress={() => setSuccessVisible(false)}
+              onPress={() => setSuccessOpen(false)}
             >
               <Text style={styles.modalSecondaryText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ✅ ERROR MODAL */}
-      <Modal transparent visible={errorVisible} animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Can’t update password</Text>
-              <Pressable onPress={() => setErrorVisible(false)} hitSlop={10}>
-                <Ionicons name="close" size={20} color={SUB} />
-              </Pressable>
-            </View>
-
-            <Text style={styles.modalText}>{errorText}</Text>
-
-            <TouchableOpacity style={styles.modalPrimary} onPress={() => setErrorVisible(false)}>
-              <Text style={styles.modalPrimaryText}>OK</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -383,7 +421,10 @@ export default function NewPassword() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, justifyContent: "center" },
+  container: { flex: 1, padding: 24 },
+  back: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
+  backText: { marginLeft: 6, color: SUB, fontSize: 15 },
+
   card: {
     backgroundColor: CARD,
     padding: 26,
@@ -419,68 +460,50 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: BG, fontWeight: "900", fontSize: 15 },
 
-  linkBtn: { marginTop: 14, alignItems: "center" },
-  linkText: { color: GOLD, fontWeight: "800", textDecorationLine: "underline" },
+  error: { color: "red", marginTop: 10, textAlign: "center" },
 
+  // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.72)",
+    backgroundColor: "rgba(0,0,0,0.85)",
     justifyContent: "center",
-    alignItems: "center",
-    padding: 18,
+    padding: 20,
   },
   modalCard: {
-    width: "100%",
-    maxWidth: 460,
-    backgroundColor: "#0C0C0C",
-    borderRadius: 18,
+    backgroundColor: CARD,
+    borderRadius: 16,
     padding: 18,
     borderWidth: 1,
     borderColor: BORDER,
   },
-  modalHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
   modalTitle: {
     color: TEXT,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "900",
-    letterSpacing: 0.4,
+    textAlign: "center",
+    marginBottom: 10,
   },
   modalText: {
     color: SUB,
     fontSize: 14,
     lineHeight: 20,
+    textAlign: "center",
     marginBottom: 14,
   },
   modalPrimary: {
     backgroundColor: GOLD,
-    borderRadius: 12,
     paddingVertical: 12,
+    borderRadius: 12,
     alignItems: "center",
-    marginTop: 4,
+    marginBottom: 10,
   },
-  modalPrimaryText: {
-    color: BG,
-    fontWeight: "900",
-    fontSize: 14,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
+  modalPrimaryText: { color: BG, fontWeight: "900", fontSize: 15 },
   modalSecondary: {
     borderWidth: 1,
     borderColor: BORDER,
-    borderRadius: 12,
     paddingVertical: 12,
+    borderRadius: 12,
     alignItems: "center",
-    marginTop: 10,
   },
-  modalSecondaryText: {
-    color: TEXT,
-    fontWeight: "800",
-    fontSize: 13,
-  },
+  modalSecondaryText: { color: TEXT, fontWeight: "800", fontSize: 14 },
 });
