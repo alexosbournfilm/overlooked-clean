@@ -32,10 +32,25 @@ type Props = {
 /* -------------------------- shared palette/fonts -------------------------- */
 
 const DARK_ELEVATED = '#171717';
+const SURFACE = '#121212';
+const SURFACE_2 = '#0F0F0F';
+
 const TEXT_IVORY = '#EDEBE6';
-const TEXT_MUTED = '#A7A6A2';
-const DIVIDER = '#2A2A2A';
+const TEXT_MUTED = 'rgba(237,235,230,0.60)';
+const TEXT_MUTED_2 = 'rgba(237,235,230,0.42)';
+
+const HAIRLINE = 'rgba(255,255,255,0.09)';
+const HAIRLINE_2 = 'rgba(255,255,255,0.06)';
+
 const GOLD = '#C6A664';
+const GOLD_SOFT_2 = 'rgba(198,166,100,0.08)';
+
+// ✅ Premium offer styling (calm, not neon)
+const OFFER_ACCENT = '#2ED47A';
+const OFFER_STRIP_BG = 'rgba(46,212,122,0.10)';
+const OFFER_STRIP_BORDER = 'rgba(46,212,122,0.18)';
+const OFFER_TILE_BG = 'rgba(46,212,122,0.12)';
+const OFFER_TILE_BORDER = 'rgba(46,212,122,0.22)';
 
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
@@ -46,8 +61,28 @@ const SYSTEM_SANS = Platform.select({
 
 const HUMAN_TIER_LONG: Record<UserTier, string> = {
   free: 'Free',
-  pro: 'Pro – £4.99 / month',
+  pro: 'Pro',
 };
+
+// Countdown to Jan 25, 2026 (end of day local time)
+function getOfferRemaining() {
+  const end = new Date(2026, 0, 25, 23, 59, 59);
+  const now = new Date();
+  const ms = end.getTime() - now.getTime();
+
+  if (ms <= 0) {
+    return { expired: true, short: 'Offer ended', long: 'Offer ended' };
+  }
+
+  const totalMinutes = Math.floor(ms / (1000 * 60));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+
+  const short = days > 0 ? `${days}d ${hours}h left` : `${hours}h left`;
+  const long = `Ends Jan 25 • ${short}`;
+
+  return { expired: false, short, long };
+}
 
 export const UpgradeModal: React.FC<Props> = ({
   visible,
@@ -68,6 +103,19 @@ export const UpgradeModal: React.FC<Props> = ({
   const [downgradeConfirmVisible, setDowngradeConfirmVisible] = useState(false);
   const [downgradeConfirmError, setDowngradeConfirmError] = useState<string | null>(null);
 
+  const [offerCountdown, setOfferCountdown] = useState(() => getOfferRemaining());
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const tick = () => setOfferCountdown(getOfferRemaining());
+    tick();
+
+    // ✅ Clean countdown: update every minute (no seconds)
+    const id = setInterval(tick, 60 * 1000);
+    return () => clearInterval(id);
+  }, [visible]);
+
   useEffect(() => {
     if (!visible) return;
 
@@ -84,10 +132,7 @@ export const UpgradeModal: React.FC<Props> = ({
         setCurrentTier(tier);
         setSelectedTier(tier);
       } catch (err) {
-        console.log(
-          'UpgradeModal getCurrentUserTier error',
-          (err as any)?.message || err
-        );
+        console.log('UpgradeModal getCurrentUserTier error', (err as any)?.message || err);
       }
     })();
 
@@ -96,62 +141,22 @@ export const UpgradeModal: React.FC<Props> = ({
     };
   }, [visible]);
 
-  const title =
-    context === 'challenge'
-      ? 'Submit to the Monthly Challenge'
-      : context === 'jobs'
-      ? 'Apply for Paid Jobs'
-      : context === 'workshop'
-      ? 'Unlock Workshop Products'
-      : context === 'extra_submission'
-      ? 'Unlock More Submissions'
-      : 'Unlock More on Overlooked';
+  const title = 'Upgrade to unlock everything';
+  const subtitle =
+    'Submit films to the Monthly Film Challenge, apply for paid jobs, and get full access to Workshop tools & downloads.';
 
   const currentTierLabel = currentTier ? HUMAN_TIER_LONG[currentTier] : 'Free';
-
   const isProDisabled = currentTier === 'pro';
+  const offerActive = !offerCountdown.expired;
 
   const downgradeLossBullets = useMemo(() => {
-    // Always show the full truth (not just the context), but lead with the relevant one.
-    const all = [
-      'Monthly challenge submissions will be locked (Pro only).',
+    return [
+      'Monthly Film Challenge submissions will be locked (Pro only).',
       'Paid job applications will be locked (Pro only).',
-      'Workshop products & downloads will be locked (Pro only).',
+      'Workshop tools & downloads will be locked (Pro only).',
     ];
-
-    if (context === 'challenge') {
-      return [
-        'You will lose access to monthly challenge submissions.',
-        'Paid job applications will be locked (Pro only).',
-        'Workshop products & downloads will be locked (Pro only).',
-      ];
-    }
-    if (context === 'jobs') {
-      return [
-        'You will lose access to paid job applications.',
-        'Monthly challenge submissions will be locked (Pro only).',
-        'Workshop products & downloads will be locked (Pro only).',
-      ];
-    }
-    if (context === 'workshop') {
-      return [
-        'You will lose access to Workshop products & downloads.',
-        'Monthly challenge submissions will be locked (Pro only).',
-        'Paid job applications will be locked (Pro only).',
-      ];
-    }
-    if (context === 'extra_submission') {
-      return [
-        'You will lose access to monthly challenge submissions.',
-        'Paid job applications will be locked (Pro only).',
-        'Workshop products & downloads will be locked (Pro only).',
-      ];
-    }
-
-    return all;
   }, [context]);
 
-  // ✅ REAL UPGRADE: go to Stripe Paywall
   const doUpgradeToPro = async () => {
     try {
       setUpgrading(true);
@@ -161,13 +166,9 @@ export const UpgradeModal: React.FC<Props> = ({
       if (userErr) throw userErr;
       if (!userRes?.user?.id) throw new Error('Not signed in');
 
-      // Clear cached tier so the app re-reads as soon as Stripe updates DB
       invalidateMembershipCache();
-
-      // Optional hook for analytics/UI
       if (onSelectPro) onSelectPro();
 
-      // Close modal then navigate to Paywall
       onClose();
       nav.navigate('Paywall');
     } catch (err: any) {
@@ -195,7 +196,6 @@ export const UpgradeModal: React.FC<Props> = ({
       const { error } = await supabase.rpc('downgrade_to_free');
       if (error) throw error;
 
-      // Refresh tier from DB
       const tier = await getCurrentUserTierOrFree({ force: true });
       setCurrentTier(tier);
       setSelectedTier(tier);
@@ -210,116 +210,163 @@ export const UpgradeModal: React.FC<Props> = ({
     }
   };
 
+  const ctaLabel = isProDisabled
+    ? "You're on Pro"
+    : upgrading
+      ? 'Opening checkout…'
+      : 'See Pro plans';
+
   return (
     <>
-      <Modal
-        visible={visible}
-        transparent
-        animationType="fade"
-        onRequestClose={onClose}
-      >
+      <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
         <View style={styles.backdrop}>
           <View style={styles.card}>
             {/* Header */}
-            <Text style={styles.kicker}>UPGRADE</Text>
-            <Text style={styles.title}>{title}</Text>
-            <Text style={styles.subtitle}>
-              Go Pro to unlock challenge submissions, paid jobs, and all Workshop tools.
-            </Text>
+            <View style={styles.header}>
+              <View style={{ flex: 1, minWidth: 240 }}>
+                <Text style={styles.kicker}>UPGRADE</Text>
+                <Text style={styles.title}>{title}</Text>
+                <Text style={styles.subtitle}>{subtitle}</Text>
+              </View>
+            </View>
 
             {currentTier && (
               <Text style={styles.currentTierText}>
-                Current plan:{' '}
-                <Text style={styles.currentTierName}>{currentTierLabel}</Text>
+                Current plan: <Text style={styles.currentTierName}>{currentTierLabel}</Text>
               </Text>
             )}
 
             {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
-            {/* Tiers */}
             <View style={styles.tiersRow}>
               {/* Free */}
               <TouchableOpacity
-                activeOpacity={0.85}
+                activeOpacity={0.9}
                 onPress={() => {
                   setErrorText(null);
 
-                  // If they're on Pro, clicking Free should prompt downgrade confirmation.
                   if (currentTier === 'pro') {
                     setSelectedTier('free');
                     openDowngradeConfirm();
                     return;
                   }
 
-                  // If they’re already Free (or tier unknown), just select it.
                   setSelectedTier('free');
                 }}
                 style={[
                   styles.tierCard,
+                  styles.freeCard,
                   selectedTier === 'free' && styles.tierCardSelected,
-                  currentTier === 'free' && styles.tierCardCurrent,
+                  currentTier === 'free' && styles.tierCardCurrentFree,
                 ]}
               >
-                <Text style={styles.tierLabel}>
-                  {currentTier === 'free' ? 'Current Plan' : 'Free'}
-                </Text>
+                {/* ✅ Clean: no “CURRENT PLAN” header inside card */}
+                <Text style={styles.freeSmallLabel}>Free</Text>
 
-                <Text style={styles.tierName}>Free</Text>
-                <Text style={styles.tierTagline}>Browse, connect, collaborate</Text>
+                <Text style={styles.tierNameFree}>Free</Text>
+                <Text style={styles.tierTaglineMuted}>Browse, connect, collaborate</Text>
 
                 <View style={styles.priceRow}>
                   <Text style={styles.priceMain}>FREE</Text>
                   <Text style={styles.priceSub}>forever</Text>
                 </View>
 
-                <View style={styles.divider} />
+                <View style={styles.dividerSoft} />
 
                 <View style={styles.featureList}>
-                  <Text style={styles.featureItem}>✓ Discover and connect with filmmakers worldwide</Text>
-                  <Text style={styles.featureItem}>✓ Browse profiles and message other creatives</Text>
-                  <Text style={styles.featureItem}>✓ Join city-based group chats and find local crews</Text>
-                  <Text style={styles.featureItem}>✓ Apply for free jobs and post your own gigs</Text>
+                  <Text style={styles.featureItemMuted}>✓ Discover and connect with filmmakers worldwide</Text>
+                  <Text style={styles.featureItemMuted}>✓ Browse profiles and message other creatives</Text>
+                  <Text style={styles.featureItemMuted}>✓ Join city-based group chats and find local crews</Text>
+                  <Text style={styles.featureItemMuted}>✓ Apply for free jobs and post your own gigs</Text>
                 </View>
               </TouchableOpacity>
 
               {/* Pro */}
               <TouchableOpacity
-                activeOpacity={0.9}
+                activeOpacity={0.92}
                 onPress={() => {
                   setErrorText(null);
                   setSelectedTier('pro');
                 }}
                 style={[
                   styles.tierCard,
-                  styles.tierCardEmphasis,
-                  selectedTier === 'pro' && styles.tierCardSelected,
-                  currentTier === 'pro' && styles.tierCardCurrent,
+                  styles.proCard,
+                  selectedTier === 'pro' && styles.tierCardSelectedPro,
+                  currentTier === 'pro' && styles.tierCardCurrentPro,
                 ]}
               >
-                <Text style={styles.tierLabel}>
-                  {currentTier === 'pro' ? 'Current Plan' : 'Pro'}
-                </Text>
+                {/* ✅ Offer strip stays (and includes NEW YEAR’S OFFER line) */}
+                <View style={styles.offerStrip}>
+                  <View style={styles.offerStripLeft}>
+                    <Text style={styles.offerStripKicker}>NEW YEAR’S OFFER</Text>
+                    <Text style={styles.offerStripTitle}>£25 Lifetime</Text>
+                  </View>
 
+                  <View style={styles.offerStripRight}>
+                    <View style={styles.offerDot} />
+                    <Text style={styles.offerStripMeta}>
+                      {offerCountdown.expired ? 'Offer ended' : offerCountdown.long}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* ✅ Clean: remove extra “PRO” kicker noise */}
                 <Text style={styles.tierName}>Pro</Text>
                 <Text style={styles.tierTagline}>Submit, apply, unlock everything</Text>
 
-                <View style={styles.priceRow}>
-                  <Text style={styles.priceCurrency}>£</Text>
-                  <Text style={styles.priceMain}>4.99</Text>
-                  <Text style={styles.priceSub}>/ month</Text>
+                {/* Plans */}
+                <View style={styles.plansArea}>
+                  <View style={styles.planRow}>
+                    {/* Lifetime hero */}
+                    <View style={[styles.planTile, styles.planTileHero]}>
+                      {/* ✅ match structure/alignment of other tiles */}
+                      <Text style={[styles.planKicker, styles.planKickerHero]}>LIFETIME</Text>
+
+                      <View style={styles.planPriceRow}>
+                        <Text style={styles.planCurrency}>£</Text>
+                        <Text style={styles.planPriceHero}>25</Text>
+                      </View>
+
+                      <Text style={styles.planSubHero}>
+                        {offerCountdown.expired ? 'Offer ended' : 'Ends Jan 25'}
+                      </Text>
+                    </View>
+
+                    {/* Yearly */}
+                    <View style={[styles.planTile, styles.planTileSecondary]}>
+                      <Text style={styles.planKicker}>YEARLY</Text>
+                      <View style={styles.planPriceRow}>
+                        <Text style={styles.planCurrency}>£</Text>
+                        <Text style={styles.planPrice}>49.99</Text>
+                      </View>
+                      {/* ✅ add cancel anytime under yearly */}
+                      <Text style={styles.planSub}>Cancel anytime</Text>
+                    </View>
+
+                    {/* Monthly */}
+                    <View style={[styles.planTile, styles.planTileSecondary]}>
+                      <Text style={styles.planKicker}>MONTHLY</Text>
+                      <View style={styles.planPriceRow}>
+                        <Text style={styles.planCurrency}>£</Text>
+                        <Text style={styles.planPrice}>4.99</Text>
+                      </View>
+                      <Text style={styles.planSub}>Cancel anytime</Text>
+                    </View>
+                  </View>
                 </View>
 
-                <View style={styles.divider} />
+                {/* ✅ Ultra soft separator (barely there) */}
+                <View style={styles.dividerUltraSoft} />
 
                 <View style={styles.featureList}>
-                  <Text style={styles.featureItem}>✓ 2 challenge submissions / month</Text>
+                  <Text style={styles.featureItem}>✓ Submit films to the Monthly Film Challenge</Text>
                   <Text style={styles.featureItem}>✓ Apply for all paid jobs</Text>
-                  <Text style={styles.featureItem}>✓ Full access to all workshop products & releases</Text>
+                  <Text style={styles.featureItem}>✓ Full access to Workshop tools & downloads</Text>
                 </View>
               </TouchableOpacity>
             </View>
 
-            {/* Main CTA (Upgrade) */}
+            {/* CTA */}
             <TouchableOpacity
               style={[
                 styles.buttonBase,
@@ -327,24 +374,25 @@ export const UpgradeModal: React.FC<Props> = ({
                 (selectedTier !== 'pro' || isProDisabled || upgrading) && styles.buttonDisabled,
               ]}
               onPress={
-                selectedTier !== 'pro' || isProDisabled || upgrading
-                  ? undefined
-                  : doUpgradeToPro
+                selectedTier !== 'pro' || isProDisabled || upgrading ? undefined : doUpgradeToPro
               }
-              activeOpacity={selectedTier !== 'pro' || isProDisabled || upgrading ? 1 : 0.9}
+              activeOpacity={selectedTier !== 'pro' || isProDisabled || upgrading ? 1 : 0.92}
             >
               <Text
                 style={[
                   styles.buttonText,
-                  (selectedTier !== 'pro' || isProDisabled || upgrading) &&
-                    styles.buttonTextDisabled,
+                  (selectedTier !== 'pro' || isProDisabled || upgrading) && styles.buttonTextDisabled,
                 ]}
               >
-                {isProDisabled ? "You're on Pro" : upgrading ? 'Opening checkout…' : 'Upgrade to Pro'}
+                {ctaLabel}
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={onClose} style={styles.laterButton} disabled={upgrading || downgrading}>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.laterButton}
+              disabled={upgrading || downgrading}
+            >
               <Text style={styles.laterText}>Maybe later</Text>
             </TouchableOpacity>
           </View>
@@ -410,9 +458,7 @@ export const UpgradeModal: React.FC<Props> = ({
               </Pressable>
             </View>
 
-            <Text style={styles.confirmFoot}>
-              Tip: you can upgrade again any time.
-            </Text>
+            <Text style={styles.confirmFoot}>Tip: you can upgrade again any time.</Text>
           </View>
         </View>
       </Modal>
@@ -433,19 +479,28 @@ const styles = StyleSheet.create({
 
   card: {
     width: '100%',
-    maxWidth: 880,
-    borderRadius: 24,
-    paddingVertical: 22,
-    paddingHorizontal: 20,
+    maxWidth: 920,
+    borderRadius: 22,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
     backgroundColor: DARK_ELEVATED,
     borderWidth: 1,
-    borderColor: DIVIDER,
+    borderColor: HAIRLINE,
+  },
+
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+    marginBottom: 8,
   },
 
   kicker: {
     fontSize: 11,
     fontWeight: '900',
-    letterSpacing: 1.8,
+    letterSpacing: 1.6,
     color: GOLD,
     textTransform: 'uppercase',
     marginBottom: 4,
@@ -454,7 +509,7 @@ const styles = StyleSheet.create({
 
   title: {
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: '900',
     color: TEXT_IVORY,
     marginBottom: 6,
     fontFamily: SYSTEM_SANS,
@@ -463,7 +518,7 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 13,
     color: TEXT_MUTED,
-    marginBottom: 6,
+    lineHeight: 18,
     maxWidth: 560,
     fontFamily: SYSTEM_SANS,
   },
@@ -471,102 +526,125 @@ const styles = StyleSheet.create({
   currentTierText: {
     fontSize: 12,
     color: TEXT_MUTED,
-    marginBottom: 16,
+    marginBottom: 14,
     fontFamily: SYSTEM_SANS,
   },
 
   currentTierName: {
     color: GOLD,
-    fontWeight: '700',
+    fontWeight: '900',
   },
 
   errorText: {
     fontSize: 12,
     color: '#FFB3B3',
-    marginTop: 10,
+    marginTop: 8,
     fontFamily: SYSTEM_SANS,
   },
 
   tiersRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 18,
+    alignItems: 'stretch',
+    marginBottom: 14,
+    gap: 12,
     flexWrap: 'wrap',
   },
 
   tierCard: {
     flex: 1,
-    minWidth: 260,
-    marginHorizontal: 4,
-    marginBottom: 10,
+    minWidth: 280,
     paddingVertical: 16,
-    paddingHorizontal: 14,
-    borderRadius: 18,
-    backgroundColor: '#111111',
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: SURFACE,
     borderWidth: 1,
-    borderColor: '#262626',
+    borderColor: HAIRLINE_2,
   },
 
-  tierCardEmphasis: {
-    borderColor: GOLD,
+  /* ✅ Free: no border, feels like “background” */
+  freeCard: {
+    borderWidth: 0,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+
+  proCard: {
+    backgroundColor: SURFACE_2,
+    borderColor: 'rgba(198,166,100,0.20)',
   },
 
   tierCardSelected: {
-    borderColor: GOLD,
-    backgroundColor: '#151515',
+    borderColor: 'rgba(255,255,255,0.14)',
   },
 
-  tierCardCurrent: {
-    borderColor: GOLD,
+  tierCardSelectedPro: {
+    borderColor: 'rgba(198,166,100,0.36)',
+  },
+
+  tierCardCurrentFree: {
+    borderWidth: 0,
+  },
+
+  tierCardCurrentPro: {
+    borderColor: 'rgba(198,166,100,0.42)',
     shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.24,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 6,
   },
 
-  tierLabel: {
+  /* Free small label */
+  freeSmallLabel: {
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '900',
     letterSpacing: 1,
     textTransform: 'uppercase',
-    color: GOLD,
-    marginBottom: 6,
+    color: 'rgba(198,166,100,0.62)',
+    marginBottom: 8,
     fontFamily: SYSTEM_SANS,
   },
 
   tierName: {
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '900',
     color: TEXT_IVORY,
-    marginBottom: 2,
+    marginBottom: 3,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  tierNameFree: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    marginBottom: 3,
     fontFamily: SYSTEM_SANS,
   },
 
   tierTagline: {
-    fontSize: 11,
+    fontSize: 12,
     color: TEXT_MUTED,
-    marginBottom: 10,
+    marginBottom: 12,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  tierTaglineMuted: {
+    fontSize: 12,
+    color: 'rgba(237,235,230,0.48)',
+    marginBottom: 12,
     fontFamily: SYSTEM_SANS,
   },
 
   priceRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    marginBottom: 8,
-  },
-
-  priceCurrency: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: TEXT_IVORY,
-    marginRight: 2,
-    fontFamily: SYSTEM_SANS,
+    marginBottom: 10,
+    minHeight: 34,
   },
 
   priceMain: {
     fontSize: 24,
-    fontWeight: '800',
+    fontWeight: '900',
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
   },
@@ -574,19 +652,25 @@ const styles = StyleSheet.create({
   priceSub: {
     fontSize: 11,
     color: TEXT_MUTED,
-    marginLeft: 6,
-    marginBottom: 2,
+    marginLeft: 8,
+    marginBottom: 3,
     fontFamily: SYSTEM_SANS,
   },
 
-  divider: {
+  dividerSoft: {
     height: 1,
-    backgroundColor: '#262626',
-    marginVertical: 10,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    marginVertical: 12,
+  },
+
+  dividerUltraSoft: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.035)',
+    marginVertical: 12,
   },
 
   featureList: {
-    gap: 4,
+    gap: 6,
   },
 
   featureItem: {
@@ -596,12 +680,166 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
+  featureItemMuted: {
+    fontSize: 11.5,
+    lineHeight: 18,
+    color: 'rgba(237,235,230,0.45)',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  /* Offer strip */
+  offerStrip: {
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: OFFER_STRIP_BG,
+    borderWidth: 1,
+    borderColor: OFFER_STRIP_BORDER,
+    marginBottom: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+
+  offerStripLeft: {
+    flex: 1,
+    minWidth: 140,
+  },
+
+  offerStripKicker: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    color: 'rgba(237,235,230,0.82)',
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+    marginBottom: 2,
+  },
+
+  offerStripTitle: {
+    fontSize: 14.5,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  offerStripRight: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 6,
+  },
+
+  offerDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 99,
+    backgroundColor: OFFER_ACCENT,
+    opacity: 0.95,
+  },
+
+  offerStripMeta: {
+    fontSize: 11.5,
+    color: 'rgba(237,235,230,0.72)',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  /* Plans area: minimal container */
+  plansArea: {
+    marginTop: 6,
+    borderRadius: 18,
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+
+  planRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10,
+  },
+
+  planTile: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 0,
+  },
+
+  planTileHero: {
+    backgroundColor: OFFER_TILE_BG,
+    borderWidth: 1,
+    borderColor: OFFER_TILE_BORDER,
+    // ✅ match vertical rhythm with the other tiles
+    paddingVertical: 10,
+  },
+
+  planTileSecondary: {
+    backgroundColor: 'rgba(255,255,255,0.025)',
+  },
+
+  planKicker: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+    color: TEXT_MUTED_2,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  planKickerHero: {
+    color: 'rgba(46,212,122,0.95)',
+  },
+
+  planPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+
+  planCurrency: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    marginRight: 2,
+    marginBottom: 3,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  planPrice: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  planPriceHero: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  planSub: {
+    marginTop: 6,
+    fontSize: 11,
+    color: TEXT_MUTED_2,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  planSubHero: {
+    marginTop: 6,
+    fontSize: 11,
+    color: 'rgba(237,235,230,0.74)',
+    fontFamily: SYSTEM_SANS,
+  },
+
   buttonBase: {
-    marginTop: 4,
+    marginTop: 2,
     paddingVertical: 12,
     borderRadius: 999,
   },
 
+  /* ✅ Keep premium gold CTA (cleaner than grey slab) */
   proButton: {
     backgroundColor: GOLD,
   },
@@ -613,14 +851,22 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#000000',
     textAlign: 'center',
-    fontWeight: '700',
+    fontWeight: '900',
     fontSize: 15,
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
     fontFamily: SYSTEM_SANS,
   },
 
   buttonTextDisabled: {
     color: TEXT_MUTED,
+  },
+
+  ctaMicro: {
+    marginTop: 8,
+    textAlign: 'center',
+    fontSize: 11.5,
+    color: 'rgba(237,235,230,0.55)',
+    fontFamily: SYSTEM_SANS,
   },
 
   laterButton: {
@@ -645,7 +891,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     backgroundColor: DARK_ELEVATED,
     borderWidth: 1,
-    borderColor: DIVIDER,
+    borderColor: HAIRLINE,
   },
 
   confirmTitle: {
@@ -692,13 +938,13 @@ const styles = StyleSheet.create({
 
   confirmBtnGhost: {
     borderWidth: 1,
-    borderColor: '#3A3A3A',
-    backgroundColor: '#111111',
+    borderColor: HAIRLINE,
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
 
   confirmBtnGhostText: {
     color: TEXT_IVORY,
-    fontWeight: '800',
+    fontWeight: '900',
     fontSize: 13,
     fontFamily: SYSTEM_SANS,
   },

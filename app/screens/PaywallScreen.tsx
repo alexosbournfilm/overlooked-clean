@@ -19,8 +19,11 @@ import {
 import { supabase } from '../lib/supabase';
 import { invalidateMembershipCache } from '../lib/membership';
 
-const PAYMENT_LINK =
-  (process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK as string | undefined) || '';
+/* ----------------------------- Stripe pay links ---------------------------- */
+/** ✅ Wired to the links you provided */
+const PAYMENT_LINK_LIFETIME = 'https://buy.stripe.com/8x27sLaAY67d5gi5YH1sQ03';
+const PAYMENT_LINK_YEARLY = 'https://buy.stripe.com/3cI7sL10ofHN7oq0En1sQ02';
+const PAYMENT_LINK_MONTHLY = 'https://buy.stripe.com/6oUeVd5gE0MTbEG72L1sQ01';
 
 function isActive(status?: string | null, currentPeriodEnd?: string | null) {
   if (!status) return false;
@@ -33,10 +36,23 @@ function isActive(status?: string | null, currentPeriodEnd?: string | null) {
 /* -------------------------- match UpgradeModal UI -------------------------- */
 
 const DARK_ELEVATED = '#171717';
+const SURFACE = '#121212';
+const SURFACE_2 = '#0F0F0F';
+
 const TEXT_IVORY = '#EDEBE6';
-const TEXT_MUTED = '#A7A6A2';
-const DIVIDER = '#2A2A2A';
+const TEXT_MUTED = 'rgba(237,235,230,0.60)';
+const TEXT_MUTED_2 = 'rgba(237,235,230,0.42)';
+
+const HAIRLINE = 'rgba(255,255,255,0.09)';
+const HAIRLINE_2 = 'rgba(255,255,255,0.06)';
+
 const GOLD = '#C6A664';
+
+const OFFER_ACCENT = '#2ED47A';
+const OFFER_STRIP_BG = 'rgba(46,212,122,0.10)';
+const OFFER_STRIP_BORDER = 'rgba(46,212,122,0.18)';
+const OFFER_TILE_BG = 'rgba(46,212,122,0.12)';
+const OFFER_TILE_BORDER = 'rgba(46,212,122,0.22)';
 
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
@@ -45,12 +61,37 @@ const SYSTEM_SANS = Platform.select({
   default: undefined,
 });
 
+// Countdown to Jan 25, 2026 (end of day local time)
+function getOfferRemaining() {
+  const end = new Date(2026, 0, 25, 23, 59, 59);
+  const now = new Date();
+  const ms = end.getTime() - now.getTime();
+
+  if (ms <= 0) {
+    return { expired: true, short: 'Offer ended', long: 'Offer ended' };
+  }
+
+  const totalMinutes = Math.floor(ms / (1000 * 60));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+
+  const short = days > 0 ? `${days}d ${hours}h left` : `${hours}h left`;
+  const long = `Ends Jan 25 • ${short}`;
+
+  return { expired: false, short, long };
+}
+
+type PlanKey = 'lifetime' | 'yearly' | 'monthly';
+
 export default function PaywallScreen() {
   const nav = useNavigation<any>();
   const isFocused = useIsFocused();
 
-  const [submitting, setSubmitting] = useState(false);
+  const [submittingPlan, setSubmittingPlan] = useState<PlanKey | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<PlanKey>('lifetime');
   const [message, setMessage] = useState<string | null>(null);
+
+  const [offerCountdown, setOfferCountdown] = useState(() => getOfferRemaining());
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasExited = useRef(false);
@@ -61,6 +102,17 @@ export default function PaywallScreen() {
       pollTimerRef.current = null;
     }
   };
+
+  // keep countdown updated while on screen
+  useEffect(() => {
+    if (!isFocused || hasExited.current) return;
+
+    const tick = () => setOfferCountdown(getOfferRemaining());
+    tick();
+
+    const id = setInterval(tick, 60 * 1000);
+    return () => clearInterval(id);
+  }, [isFocused]);
 
   // Disable native back gesture & header back while on paywall
   useFocusEffect(
@@ -73,16 +125,23 @@ export default function PaywallScreen() {
     }, [nav])
   );
 
-  // Stripe checkout
-  const openCheckout = async () => {
-    setSubmitting(true);
+  const getPaymentLinkForPlan = (plan: PlanKey) => {
+    if (plan === 'lifetime') return PAYMENT_LINK_LIFETIME;
+    if (plan === 'yearly') return PAYMENT_LINK_YEARLY;
+    return PAYMENT_LINK_MONTHLY;
+  };
+
+  // Stripe checkout (plan-aware)
+  const openCheckout = async (plan: PlanKey) => {
+    setSubmittingPlan(plan);
     setMessage(null);
 
     try {
       await supabase.auth.getUser(); // keep session warm
 
-      if (!PAYMENT_LINK) {
-        setMessage('Checkout is not configured. Missing EXPO_PUBLIC_STRIPE_PAYMENT_LINK.');
+      const rawLink = getPaymentLinkForPlan(plan);
+      if (!rawLink) {
+        setMessage('Checkout is not configured for this plan.');
         return;
       }
 
@@ -91,23 +150,22 @@ export default function PaywallScreen() {
 
       // Prefill email for better conversions
       const url =
-        user?.email && PAYMENT_LINK.indexOf('prefilled_email=') === -1
-          ? `${PAYMENT_LINK}${PAYMENT_LINK.includes('?') ? '&' : '?'}prefilled_email=${encodeURIComponent(
+        user?.email && rawLink.indexOf('prefilled_email=') === -1
+          ? `${rawLink}${rawLink.includes('?') ? '&' : '?'}prefilled_email=${encodeURIComponent(
               user.email
             )}`
-          : PAYMENT_LINK;
+          : rawLink;
 
       if (Platform.OS === 'web') {
         (window as any).location.assign(url);
       } else {
-        // On native: open Stripe in browser. The app will re-focus afterwards.
         await WebBrowser.openBrowserAsync(url);
       }
     } catch (e: any) {
       console.error('checkout redirect error', e);
       setMessage(e?.message || 'Could not open checkout.');
     } finally {
-      setSubmitting(false);
+      setSubmittingPlan(null);
     }
   };
 
@@ -150,10 +208,7 @@ export default function PaywallScreen() {
       if (proByTier || proByStatus) {
         if (!isFocused || hasExited.current) return;
 
-        // ✅ make every screen re-check tier immediately
         invalidateMembershipCache();
-
-        // ✅ correct reset path
         enterCreateProfile();
       }
     } catch (e) {
@@ -186,8 +241,6 @@ export default function PaywallScreen() {
   }, [isFocused, checkStatusAndMaybeEnter]);
 
   // ✅ "Maybe later" should NOT sign users out.
-  // It should safely take them back to wherever they came from (UpgradeModal),
-  // or fall back to SignIn if there is no back stack.
   const handleBack = useCallback(() => {
     hasExited.current = true;
     clearPoll();
@@ -199,7 +252,6 @@ export default function PaywallScreen() {
       }
     } catch {}
 
-    // Fallback: go to SignIn (do NOT sign out here)
     if (Platform.OS === 'web') {
       const signInUrl = Linking.createURL('signin');
       window.location.replace(signInUrl);
@@ -214,6 +266,24 @@ export default function PaywallScreen() {
     );
   }, [nav]);
 
+  const anySubmitting = !!submittingPlan;
+
+  const planTitle =
+    selectedPlan === 'lifetime'
+      ? '£25 Lifetime'
+      : selectedPlan === 'yearly'
+        ? '£49.99 / year'
+        : '£4.99 / month';
+
+  const ctaText =
+    submittingPlan
+      ? 'Opening checkout…'
+      : selectedPlan === 'lifetime'
+        ? 'Get Lifetime'
+        : selectedPlan === 'yearly'
+          ? 'Choose Yearly'
+          : 'Choose Monthly';
+
   return (
     <View style={styles.container}>
       <View style={styles.card}>
@@ -223,26 +293,107 @@ export default function PaywallScreen() {
           Submit to challenges, apply for paid jobs, and unlock Workshop tools.
         </Text>
 
+        {/* Offer strip */}
+        <View style={styles.offerStrip}>
+          <View style={styles.offerStripLeft}>
+            <Text style={styles.offerStripKicker}>NEW YEAR’S OFFER</Text>
+            <Text style={styles.offerStripTitle}>£25 Lifetime</Text>
+          </View>
+
+          <View style={styles.offerStripRight}>
+            <View style={styles.offerDot} />
+            <Text style={styles.offerStripMeta}>
+              {offerCountdown.expired ? 'Offer ended' : offerCountdown.long}
+            </Text>
+          </View>
+        </View>
+
+        {/* Plan tiles */}
+        <View style={styles.plansArea}>
+          <View style={styles.planRow}>
+            {/* Lifetime */}
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={() => setSelectedPlan('lifetime')}
+              style={[
+                styles.planTile,
+                styles.planTileHero,
+                selectedPlan === 'lifetime' && styles.planSelected,
+              ]}
+            >
+              <Text style={[styles.planKicker, styles.planKickerHero]}>LIFETIME</Text>
+              <View style={styles.planPriceRow}>
+                <Text style={styles.planCurrency}>£</Text>
+                <Text style={styles.planPriceHero}>25</Text>
+              </View>
+              <Text style={styles.planSubHero}>
+                {offerCountdown.expired ? 'Offer ended' : 'Ends Jan 25'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Yearly */}
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={() => setSelectedPlan('yearly')}
+              style={[
+                styles.planTile,
+                styles.planTileSecondary,
+                selectedPlan === 'yearly' && styles.planSelectedSecondary,
+              ]}
+            >
+              <Text style={styles.planKicker}>YEARLY</Text>
+              <View style={styles.planPriceRow}>
+                <Text style={styles.planCurrency}>£</Text>
+                <Text style={styles.planPrice}>49.99</Text>
+              </View>
+              <Text style={styles.planSub}>Cancel anytime</Text>
+            </TouchableOpacity>
+
+            {/* Monthly */}
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={() => setSelectedPlan('monthly')}
+              style={[
+                styles.planTile,
+                styles.planTileSecondary,
+                selectedPlan === 'monthly' && styles.planSelectedSecondary,
+              ]}
+            >
+              <Text style={styles.planKicker}>MONTHLY</Text>
+              <View style={styles.planPriceRow}>
+                <Text style={styles.planCurrency}>£</Text>
+                <Text style={styles.planPrice}>4.99</Text>
+              </View>
+              <Text style={styles.planSub}>Cancel anytime</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* CTA */}
         <TouchableOpacity
-          onPress={openCheckout}
-          style={[styles.buttonBase, styles.proButton, submitting && styles.buttonDisabled]}
-          disabled={submitting}
-          activeOpacity={submitting ? 1 : 0.9}
+          onPress={() => openCheckout(selectedPlan)}
+          style={[styles.buttonBase, styles.proButton, anySubmitting && styles.buttonDisabled]}
+          disabled={anySubmitting}
+          activeOpacity={anySubmitting ? 1 : 0.9}
         >
-          {submitting ? (
+          {anySubmitting ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <ActivityIndicator color="#0B0B0B" />
               <Text style={styles.buttonText}>Opening checkout…</Text>
             </View>
           ) : (
-            <Text style={styles.buttonText}>Upgrade to Pro</Text>
+            <Text style={styles.buttonText}>{ctaText}</Text>
           )}
         </TouchableOpacity>
+
+        <Text style={styles.ctaMicro}>
+          Selected: <Text style={{ color: GOLD, fontWeight: '900' }}>{planTitle}</Text>
+        </Text>
 
         <View style={styles.divider} />
 
         <View style={styles.benefits}>
-          <Text style={styles.benefitItem}>✓ 2 challenge submissions / month</Text>
+          <Text style={styles.benefitItem}>✓ Submit to the Monthly Film Challenge</Text>
           <Text style={styles.benefitItem}>✓ Apply for all paid jobs</Text>
           <Text style={styles.benefitItem}>✓ Full access to all workshop products & releases</Text>
         </View>
@@ -252,7 +403,7 @@ export default function PaywallScreen() {
         <TouchableOpacity
           style={styles.backLink}
           onPress={handleBack}
-          disabled={submitting}
+          disabled={anySubmitting}
           activeOpacity={0.85}
         >
           <Text style={styles.backText}>Maybe later</Text>
@@ -268,18 +419,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.85)', // match UpgradeModal backdrop
+    backgroundColor: 'rgba(0,0,0,0.85)',
   },
 
   card: {
     width: '100%',
-    maxWidth: 560,
+    maxWidth: 720,
     borderRadius: 24,
     paddingVertical: 22,
     paddingHorizontal: 20,
     backgroundColor: DARK_ELEVATED,
     borderWidth: 1,
-    borderColor: DIVIDER,
+    borderColor: HAIRLINE,
   },
 
   kicker: {
@@ -304,8 +455,160 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: TEXT_MUTED,
     marginBottom: 14,
-    maxWidth: 520,
+    maxWidth: 640,
     lineHeight: 18,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  offerStrip: {
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: OFFER_STRIP_BG,
+    borderWidth: 1,
+    borderColor: OFFER_STRIP_BORDER,
+    marginBottom: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+
+  offerStripLeft: {
+    flex: 1,
+    minWidth: 140,
+  },
+
+  offerStripKicker: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    color: 'rgba(237,235,230,0.82)',
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+    marginBottom: 2,
+  },
+
+  offerStripTitle: {
+    fontSize: 14.5,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  offerStripRight: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 6,
+  },
+
+  offerDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 99,
+    backgroundColor: OFFER_ACCENT,
+    opacity: 0.95,
+  },
+
+  offerStripMeta: {
+    fontSize: 11.5,
+    color: 'rgba(237,235,230,0.72)',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  plansArea: {
+    borderRadius: 18,
+    padding: 8,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    marginBottom: 12,
+  },
+
+  planRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10,
+  },
+
+  planTile: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    backgroundColor: SURFACE,
+    borderWidth: 1,
+    borderColor: HAIRLINE_2,
+  },
+
+  planTileHero: {
+    backgroundColor: OFFER_TILE_BG,
+    borderColor: OFFER_TILE_BORDER,
+  },
+
+  planTileSecondary: {
+    backgroundColor: 'rgba(255,255,255,0.025)',
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+
+  planSelected: {
+    borderColor: 'rgba(46,212,122,0.55)',
+  },
+
+  planSelectedSecondary: {
+    borderColor: 'rgba(198,166,100,0.40)',
+  },
+
+  planKicker: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+    color: TEXT_MUTED_2,
+    fontFamily: SYSTEM_SANS,
+    marginBottom: 6,
+  },
+
+  planKickerHero: {
+    color: 'rgba(46,212,122,0.95)',
+  },
+
+  planPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+
+  planCurrency: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    marginRight: 2,
+    marginBottom: 3,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  planPrice: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  planPriceHero: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  planSub: {
+    marginTop: 6,
+    fontSize: 11,
+    color: TEXT_MUTED_2,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  planSubHero: {
+    marginTop: 6,
+    fontSize: 11,
+    color: 'rgba(237,235,230,0.74)',
     fontFamily: SYSTEM_SANS,
   },
 
@@ -333,9 +636,17 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
+  ctaMicro: {
+    marginTop: 8,
+    textAlign: 'center',
+    fontSize: 11.5,
+    color: 'rgba(237,235,230,0.55)',
+    fontFamily: SYSTEM_SANS,
+  },
+
   divider: {
     height: 1,
-    backgroundColor: '#262626',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     marginVertical: 14,
   },
 
@@ -346,7 +657,7 @@ const styles = StyleSheet.create({
   benefitItem: {
     fontSize: 12.5,
     lineHeight: 18,
-    color: TEXT_MUTED,
+    color: 'rgba(237,235,230,0.58)',
     fontFamily: SYSTEM_SANS,
   },
 
@@ -364,7 +675,7 @@ const styles = StyleSheet.create({
   },
 
   backText: {
-    color: TEXT_MUTED,
+    color: 'rgba(237,235,230,0.60)',
     fontSize: 13,
     fontWeight: '700',
     fontFamily: SYSTEM_SANS,
