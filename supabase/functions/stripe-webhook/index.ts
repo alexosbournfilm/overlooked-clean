@@ -38,12 +38,26 @@ async function findUserIdByCustomer(customerId?: string) {
 
 async function findUserIdByEmail(email?: string | null) {
   if (!email) return undefined;
+  const normalized = (email || "").toLowerCase().trim();
+
+  // ✅ Make matching more forgiving (case-insensitive)
   const { data } = await supabase
     .from("users")
     .select("id")
-    .eq("email", (email || "").toLowerCase())
+    .ilike("email", normalized)
     .maybeSingle();
+
   return (data?.id as string) || undefined;
+}
+
+async function userExists(userId?: string | null) {
+  if (!userId) return false;
+  const { data } = await supabase
+    .from("users")
+    .select("id")
+    .eq("id", userId)
+    .maybeSingle();
+  return Boolean(data?.id);
 }
 
 /** Shape for updates to public.users (keeps TS happy) */
@@ -150,21 +164,36 @@ Deno.serve(async (req) => {
         const customerId = (s.customer as string) || undefined;
         const email =
           s.customer_details?.email || s.customer_email || undefined;
+
         const meta = (s.metadata || {}) as Record<string, string>;
         const userIdFromMeta = meta.user_id || meta.supabase_user_id;
-        const userIdFromClientRef = s.client_reference_id || undefined;
 
-        // Prefer explicit IDs, then fallbacks
+        // ✅ BEST: set by your app via Payment Link query param
+        const userIdFromClientRef = (s.client_reference_id as string) || undefined;
+
+        // Fallbacks
         const byCustomer = await findUserIdByCustomer(customerId);
         const byEmail = !byCustomer ? await findUserIdByEmail(email) : undefined;
 
-        const userId =
-          userIdFromMeta || userIdFromClientRef || byCustomer || byEmail;
+        // ✅ Prefer explicit user IDs first
+        let userId =
+          userIdFromClientRef || userIdFromMeta || byCustomer || byEmail;
+
+        // ✅ Validate user exists (prevents bad/missing client_reference_id)
+        if (userId && !(await userExists(userId))) {
+          console.warn("checkout.session.completed: userId not found in users table", {
+            userId,
+            customerId,
+            email,
+          });
+          userId = undefined;
+        }
 
         if (!userId) {
           console.warn("No user match for checkout.session.completed", {
             customerId,
             email,
+            mode: s.mode,
           });
           return json({ ok: true });
         }
@@ -185,7 +214,7 @@ Deno.serve(async (req) => {
           console.warn("Could not fetch session line items for price_id", e);
         }
 
-        // Upsert customer id and price id first
+        // Upsert customer id and price id first (always)
         await upsertStripeIdsOnUser({
           userId,
           customerId,
@@ -195,7 +224,7 @@ Deno.serve(async (req) => {
 
         if (customerId) await tagCustomerWithUserId(customerId, userId);
 
-        // If subscription mode, fetch the subscription for authoritative fields
+        // Subscription mode: fetch subscription for authoritative fields
         if (s.mode === "subscription" && s.subscription) {
           const sub = await stripe.subscriptions.retrieve(
             s.subscription as string,
@@ -206,12 +235,14 @@ Deno.serve(async (req) => {
             subscription: sub,
           });
         } else {
-          // ✅ If your Payment Link is NOT subscription mode, mark Pro here.
-          // If you ONLY want Pro via subscription, you can remove this block.
+          // ✅ One-time payments (Lifetime): unlock Pro immediately.
           const update: UserUpdate = {
             tier: "pro",
             is_premium: true,
-            subscription_status: "active",
+            // Keep subscription fields neutral for lifetime:
+            subscription_status: null,
+            current_period_end: null,
+            cancel_at_period_end: false,
           };
           await supabase.from("users").update(update).eq("id", userId);
         }

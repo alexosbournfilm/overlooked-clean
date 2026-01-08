@@ -20,7 +20,6 @@ import { supabase } from '../lib/supabase';
 import { invalidateMembershipCache } from '../lib/membership';
 
 /* ----------------------------- Stripe pay links ---------------------------- */
-/** ✅ Wired to the links you provided */
 const PAYMENT_LINK_LIFETIME = 'https://buy.stripe.com/8x27sLaAY67d5gi5YH1sQ03';
 const PAYMENT_LINK_YEARLY = 'https://buy.stripe.com/3cI7sL10ofHN7oq0En1sQ02';
 const PAYMENT_LINK_MONTHLY = 'https://buy.stripe.com/6oUeVd5gE0MTbEG72L1sQ01';
@@ -103,7 +102,6 @@ export default function PaywallScreen() {
     }
   };
 
-  // keep countdown updated while on screen
   useEffect(() => {
     if (!isFocused || hasExited.current) return;
 
@@ -148,12 +146,20 @@ export default function PaywallScreen() {
       const { data: auth } = await supabase.auth.getUser();
       const user = auth?.user;
 
-      // Prefill email for better conversions
+      // ✅ Prefill email + pass Supabase user id (for webhook matching)
+      const params: string[] = [];
+
+      if (user?.email && rawLink.indexOf('prefilled_email=') === -1) {
+        params.push(`prefilled_email=${encodeURIComponent(user.email)}`);
+      }
+
+      if (user?.id && rawLink.indexOf('client_reference_id=') === -1) {
+        params.push(`client_reference_id=${encodeURIComponent(user.id)}`);
+      }
+
       const url =
-        user?.email && rawLink.indexOf('prefilled_email=') === -1
-          ? `${rawLink}${rawLink.includes('?') ? '&' : '?'}prefilled_email=${encodeURIComponent(
-              user.email
-            )}`
+        params.length > 0
+          ? `${rawLink}${rawLink.includes('?') ? '&' : '?'}${params.join('&')}`
           : rawLink;
 
       if (Platform.OS === 'web') {
@@ -170,7 +176,6 @@ export default function PaywallScreen() {
   };
 
   // ✅ When Pro becomes active, reset correctly into Auth -> CreateProfile.
-  // (CreateProfile is inside AuthStack, so navigating to it directly can fail.)
   const enterCreateProfile = useCallback(() => {
     nav.dispatch(
       CommonActions.reset({

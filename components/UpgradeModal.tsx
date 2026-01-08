@@ -295,7 +295,7 @@ export const UpgradeModal: React.FC<Props> = ({
                   currentTier === 'pro' && styles.tierCardCurrentPro,
                 ]}
               >
-                {/* ✅ Offer strip stays (and includes NEW YEAR’S OFFER line) */}
+                {/* ✅ Offer strip stays */}
                 <View style={styles.offerStrip}>
                   <View style={styles.offerStripLeft}>
                     <Text style={styles.offerStripKicker}>NEW YEAR’S OFFER</Text>
@@ -310,7 +310,6 @@ export const UpgradeModal: React.FC<Props> = ({
                   </View>
                 </View>
 
-                {/* ✅ Clean: remove extra “PRO” kicker noise */}
                 <Text style={styles.tierName}>Pro</Text>
                 <Text style={styles.tierTagline}>Submit, apply, unlock everything</Text>
 
@@ -319,7 +318,7 @@ export const UpgradeModal: React.FC<Props> = ({
                   <View style={styles.planRow}>
                     {/* Lifetime hero */}
                     <View style={[styles.planTile, styles.planTileHero]}>
-                      {/* ✅ match structure/alignment of other tiles */}
+                      {/* ✅ Remove green bubble + align like other tiles */}
                       <Text style={[styles.planKicker, styles.planKickerHero]}>LIFETIME</Text>
 
                       <View style={styles.planPriceRow}>
@@ -339,7 +338,7 @@ export const UpgradeModal: React.FC<Props> = ({
                         <Text style={styles.planCurrency}>£</Text>
                         <Text style={styles.planPrice}>49.99</Text>
                       </View>
-                      {/* ✅ add cancel anytime under yearly */}
+                      {/* ✅ Add cancel anytime under yearly */}
                       <Text style={styles.planSub}>Cancel anytime</Text>
                     </View>
 
@@ -355,7 +354,6 @@ export const UpgradeModal: React.FC<Props> = ({
                   </View>
                 </View>
 
-                {/* ✅ Ultra soft separator (barely there) */}
                 <View style={styles.dividerUltraSoft} />
 
                 <View style={styles.featureList}>
@@ -562,7 +560,6 @@ const styles = StyleSheet.create({
     borderColor: HAIRLINE_2,
   },
 
-  /* ✅ Free: no border, feels like “background” */
   freeCard: {
     borderWidth: 0,
     backgroundColor: 'rgba(255,255,255,0.02)',
@@ -594,7 +591,6 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
 
-  /* Free small label */
   freeSmallLabel: {
     fontSize: 10,
     fontWeight: '900',
@@ -687,7 +683,6 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  /* Offer strip */
   offerStrip: {
     borderRadius: 16,
     paddingVertical: 10,
@@ -743,7 +738,6 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  /* Plans area: minimal container */
   plansArea: {
     marginTop: 6,
     borderRadius: 18,
@@ -770,7 +764,7 @@ const styles = StyleSheet.create({
     backgroundColor: OFFER_TILE_BG,
     borderWidth: 1,
     borderColor: OFFER_TILE_BORDER,
-    // ✅ match vertical rhythm with the other tiles
+    // ✅ keep same vertical rhythm as other tiles
     paddingVertical: 10,
   },
 
@@ -839,7 +833,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
 
-  /* ✅ Keep premium gold CTA (cleaner than grey slab) */
   proButton: {
     backgroundColor: GOLD,
   },
