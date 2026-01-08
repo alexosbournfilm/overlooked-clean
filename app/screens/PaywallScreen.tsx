@@ -1,5 +1,5 @@
 // screens/PaywallScreen.tsx
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -19,10 +19,18 @@ import {
 import { supabase } from '../lib/supabase';
 import { invalidateMembershipCache } from '../lib/membership';
 
-/* ----------------------------- Stripe pay links ---------------------------- */
-const PAYMENT_LINK_LIFETIME = 'https://buy.stripe.com/8x27sLaAY67d5gi5YH1sQ03';
-const PAYMENT_LINK_YEARLY = 'https://buy.stripe.com/3cI7sL10ofHN7oq0En1sQ02';
-const PAYMENT_LINK_MONTHLY = 'https://buy.stripe.com/6oUeVd5gE0MTbEG72L1sQ01';
+/* -------------------------- Stripe Payment Links -------------------------- */
+/**
+ * Your three Stripe payment links:
+ * 1) Lifetime (£25)
+ * 2) Yearly (£49.99)
+ * 3) Monthly (£4.99)
+ */
+const STRIPE_LINK_LIFETIME = 'https://buy.stripe.com/8x27sLaAY67d5gi5YH1sQ03';
+const STRIPE_LINK_YEARLY = 'https://buy.stripe.com/3cI7sL10ofHN7oq0En1sQ02';
+const STRIPE_LINK_MONTHLY = 'https://buy.stripe.com/6oUeVd5gE0MTbEG72L1sQ01';
+
+type PlanKey = 'lifetime' | 'yearly' | 'monthly';
 
 function isActive(status?: string | null, currentPeriodEnd?: string | null) {
   if (!status) return false;
@@ -35,7 +43,6 @@ function isActive(status?: string | null, currentPeriodEnd?: string | null) {
 /* -------------------------- match UpgradeModal UI -------------------------- */
 
 const DARK_ELEVATED = '#171717';
-const SURFACE = '#121212';
 const SURFACE_2 = '#0F0F0F';
 
 const TEXT_IVORY = '#EDEBE6';
@@ -80,17 +87,18 @@ function getOfferRemaining() {
   return { expired: false, short, long };
 }
 
-type PlanKey = 'lifetime' | 'yearly' | 'monthly';
-
 export default function PaywallScreen() {
   const nav = useNavigation<any>();
   const isFocused = useIsFocused();
 
-  const [submittingPlan, setSubmittingPlan] = useState<PlanKey | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<PlanKey>('lifetime');
+  const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
+  const [selectedPlan, setSelectedPlan] = useState<PlanKey>('monthly');
   const [offerCountdown, setOfferCountdown] = useState(() => getOfferRemaining());
+
+  // prevents "flash" by not rendering until we confirm user isn't already Pro
+  const [gateChecking, setGateChecking] = useState(true);
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasExited = useRef(false);
@@ -103,14 +111,11 @@ export default function PaywallScreen() {
   };
 
   useEffect(() => {
-    if (!isFocused || hasExited.current) return;
-
     const tick = () => setOfferCountdown(getOfferRemaining());
     tick();
-
     const id = setInterval(tick, 60 * 1000);
     return () => clearInterval(id);
-  }, [isFocused]);
+  }, []);
 
   // Disable native back gesture & header back while on paywall
   useFocusEffect(
@@ -123,44 +128,108 @@ export default function PaywallScreen() {
     }, [nav])
   );
 
-  const getPaymentLinkForPlan = (plan: PlanKey) => {
-    if (plan === 'lifetime') return PAYMENT_LINK_LIFETIME;
-    if (plan === 'yearly') return PAYMENT_LINK_YEARLY;
-    return PAYMENT_LINK_MONTHLY;
-  };
+  const planLabel = useMemo(() => {
+    if (selectedPlan === 'lifetime') return 'Choose Lifetime';
+    if (selectedPlan === 'yearly') return 'Choose Yearly';
+    return 'Choose Monthly';
+  }, [selectedPlan]);
 
-  // Stripe checkout (plan-aware)
-  const openCheckout = async (plan: PlanKey) => {
-    setSubmittingPlan(plan);
-    setMessage(null);
+  const selectedSubLabel = useMemo(() => {
+    if (selectedPlan === 'lifetime') return 'Selected: £25 lifetime';
+    if (selectedPlan === 'yearly') return 'Selected: £49.99 / year';
+    return 'Selected: £4.99 / month';
+  }, [selectedPlan]);
 
+  const selectedPaymentLink = useMemo(() => {
+    if (selectedPlan === 'lifetime') return STRIPE_LINK_LIFETIME;
+    if (selectedPlan === 'yearly') return STRIPE_LINK_YEARLY;
+    return STRIPE_LINK_MONTHLY;
+  }, [selectedPlan]);
+
+  const enterFeatured = useCallback(() => {
+    // Use your existing main tabs structure; this is the safest "land in app" path.
+    nav.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'MainTabs' }],
+      })
+    );
+  }, [nav]);
+
+  // If user is already pro, don't show paywall at all (prevents sign-in flash)
+  const fastGate = useCallback(async () => {
     try {
-      await supabase.auth.getUser(); // keep session warm
-
-      const rawLink = getPaymentLinkForPlan(plan);
-      if (!rawLink) {
-        setMessage('Checkout is not configured for this plan.');
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth?.user?.id;
+      if (!uid) {
+        setGateChecking(false);
         return;
       }
 
-      const { data: auth } = await supabase.auth.getUser();
+      const { data, error } = await supabase
+        .from('users')
+        .select('tier, subscription_status, current_period_end')
+        .eq('id', uid)
+        .maybeSingle();
+
+      if (!error) {
+        const proByTier = data?.tier === 'pro';
+        const proByStatus = isActive(data?.subscription_status, data?.current_period_end);
+        if (proByTier || proByStatus) {
+          invalidateMembershipCache();
+          enterFeatured();
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setGateChecking(false);
+    }
+  }, [enterFeatured]);
+
+  useEffect(() => {
+    if (!isFocused) return;
+    hasExited.current = false;
+    setGateChecking(true);
+    fastGate();
+  }, [isFocused, fastGate]);
+
+  // Stripe checkout
+  const openCheckout = async () => {
+    setSubmitting(true);
+    setMessage(null);
+
+    try {
+      const { data: auth, error: authErr } = await supabase.auth.getUser();
+      if (authErr) throw authErr;
+
       const user = auth?.user;
-
-      // ✅ Prefill email + pass Supabase user id (for webhook matching)
-      const params: string[] = [];
-
-      if (user?.email && rawLink.indexOf('prefilled_email=') === -1) {
-        params.push(`prefilled_email=${encodeURIComponent(user.email)}`);
+      if (!user?.id) {
+        setMessage('Not signed in.');
+        return;
       }
 
-      if (user?.id && rawLink.indexOf('client_reference_id=') === -1) {
-        params.push(`client_reference_id=${encodeURIComponent(user.id)}`);
+      const base = selectedPaymentLink;
+      if (!base) {
+        setMessage('Checkout is not configured.');
+        return;
       }
 
+      /**
+       * ✅ CRITICAL FIX:
+       * Pass client_reference_id so webhook can match the user deterministically.
+       * Also pass prefilled_email for Stripe UX.
+       *
+       * Your webhook already supports:
+       * - s.client_reference_id
+       * - customer_details.email / customer_email
+       */
       const url =
-        params.length > 0
-          ? `${rawLink}${rawLink.includes('?') ? '&' : '?'}${params.join('&')}`
-          : rawLink;
+        base +
+        (base.includes('?') ? '&' : '?') +
+        `client_reference_id=${encodeURIComponent(user.id)}` +
+        (user.email ? `&prefilled_email=${encodeURIComponent(user.email)}` : '');
 
       if (Platform.OS === 'web') {
         (window as any).location.assign(url);
@@ -171,26 +240,11 @@ export default function PaywallScreen() {
       console.error('checkout redirect error', e);
       setMessage(e?.message || 'Could not open checkout.');
     } finally {
-      setSubmittingPlan(null);
+      setSubmitting(false);
     }
   };
 
-  // ✅ When Pro becomes active, reset correctly into Auth -> CreateProfile.
-  const enterCreateProfile = useCallback(() => {
-    nav.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [
-          {
-            name: 'Auth',
-            state: { routes: [{ name: 'CreateProfile' }] },
-          },
-        ],
-      })
-    );
-  }, [nav]);
-
-  // Check status -> go to CreateProfile (only if focused & not exited)
+  // Check status -> enter app (only if focused & not exited)
   const checkStatusAndMaybeEnter = useCallback(async () => {
     if (!isFocused || hasExited.current) return;
 
@@ -214,14 +268,14 @@ export default function PaywallScreen() {
         if (!isFocused || hasExited.current) return;
 
         invalidateMembershipCache();
-        enterCreateProfile();
+        enterFeatured();
       }
     } catch (e) {
       console.warn('status check failed', e);
     }
-  }, [isFocused, enterCreateProfile]);
+  }, [isFocused, enterFeatured]);
 
-  // Auto-poll only while focused (gives Stripe webhook time to update DB)
+  // Auto-poll only while focused (gives webhook time to update DB)
   useEffect(() => {
     if (!isFocused || hasExited.current) {
       clearPoll();
@@ -236,7 +290,7 @@ export default function PaywallScreen() {
 
       await checkStatusAndMaybeEnter();
 
-      if (isFocused && !hasExited.current && tries < 20) {
+      if (isFocused && !hasExited.current && tries < 25) {
         pollTimerRef.current = setTimeout(poll, 2000);
       }
     };
@@ -245,7 +299,7 @@ export default function PaywallScreen() {
     return () => clearPoll();
   }, [isFocused, checkStatusAndMaybeEnter]);
 
-  // ✅ "Maybe later" should NOT sign users out.
+  // "Maybe later" back
   const handleBack = useCallback(() => {
     hasExited.current = true;
     clearPoll();
@@ -257,6 +311,7 @@ export default function PaywallScreen() {
       }
     } catch {}
 
+    // Fallback: go to SignIn (do NOT sign out)
     if (Platform.OS === 'web') {
       const signInUrl = Linking.createURL('signin');
       window.location.replace(signInUrl);
@@ -271,23 +326,19 @@ export default function PaywallScreen() {
     );
   }, [nav]);
 
-  const anySubmitting = !!submittingPlan;
-
-  const planTitle =
-    selectedPlan === 'lifetime'
-      ? '£25 Lifetime'
-      : selectedPlan === 'yearly'
-        ? '£49.99 / year'
-        : '£4.99 / month';
-
-  const ctaText =
-    submittingPlan
-      ? 'Opening checkout…'
-      : selectedPlan === 'lifetime'
-        ? 'Get Lifetime'
-        : selectedPlan === 'yearly'
-          ? 'Choose Yearly'
-          : 'Choose Monthly';
+  if (gateChecking) {
+    // Prevents any “flash” while we quickly check if already Pro
+    return (
+      <View style={styles.container}>
+        <View style={[styles.card, { alignItems: 'center' }]}>
+          <ActivityIndicator color={GOLD} />
+          <Text style={{ marginTop: 10, color: TEXT_MUTED, fontFamily: SYSTEM_SANS }}>
+            Loading…
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -295,17 +346,17 @@ export default function PaywallScreen() {
         <Text style={styles.kicker}>UPGRADE</Text>
         <Text style={styles.title}>Upgrade to Pro</Text>
         <Text style={styles.subtitle}>
-          Submit to challenges, apply for paid jobs, and unlock Workshop tools.
+          Submit films to the Monthly Film Challenge, apply for paid jobs, and unlock Workshop tools.
         </Text>
 
         {/* Offer strip */}
         <View style={styles.offerStrip}>
-          <View style={styles.offerStripLeft}>
+          <View style={{ flex: 1, minWidth: 160 }}>
             <Text style={styles.offerStripKicker}>NEW YEAR’S OFFER</Text>
             <Text style={styles.offerStripTitle}>£25 Lifetime</Text>
           </View>
 
-          <View style={styles.offerStripRight}>
+          <View style={{ alignItems: 'flex-end', justifyContent: 'center', gap: 6 }}>
             <View style={styles.offerDot} />
             <Text style={styles.offerStripMeta}>
               {offerCountdown.expired ? 'Offer ended' : offerCountdown.long}
@@ -323,7 +374,7 @@ export default function PaywallScreen() {
               style={[
                 styles.planTile,
                 styles.planTileHero,
-                selectedPlan === 'lifetime' && styles.planSelected,
+                selectedPlan === 'lifetime' ? styles.tileSelected : null,
               ]}
             >
               <Text style={[styles.planKicker, styles.planKickerHero]}>LIFETIME</Text>
@@ -331,9 +382,7 @@ export default function PaywallScreen() {
                 <Text style={styles.planCurrency}>£</Text>
                 <Text style={styles.planPriceHero}>25</Text>
               </View>
-              <Text style={styles.planSubHero}>
-                {offerCountdown.expired ? 'Offer ended' : 'Ends Jan 25'}
-              </Text>
+              <Text style={styles.planSubHero}>{offerCountdown.expired ? 'Offer ended' : 'Ends Jan 25'}</Text>
             </TouchableOpacity>
 
             {/* Yearly */}
@@ -343,7 +392,7 @@ export default function PaywallScreen() {
               style={[
                 styles.planTile,
                 styles.planTileSecondary,
-                selectedPlan === 'yearly' && styles.planSelectedSecondary,
+                selectedPlan === 'yearly' ? styles.tileSelected : null,
               ]}
             >
               <Text style={styles.planKicker}>YEARLY</Text>
@@ -361,7 +410,7 @@ export default function PaywallScreen() {
               style={[
                 styles.planTile,
                 styles.planTileSecondary,
-                selectedPlan === 'monthly' && styles.planSelectedSecondary,
+                selectedPlan === 'monthly' ? styles.tileSelected : null,
               ]}
             >
               <Text style={styles.planKicker}>MONTHLY</Text>
@@ -376,31 +425,30 @@ export default function PaywallScreen() {
 
         {/* CTA */}
         <TouchableOpacity
-          onPress={() => openCheckout(selectedPlan)}
-          style={[styles.buttonBase, styles.proButton, anySubmitting && styles.buttonDisabled]}
-          disabled={anySubmitting}
-          activeOpacity={anySubmitting ? 1 : 0.9}
+          onPress={openCheckout}
+          style={[styles.buttonBase, styles.proButton, submitting && styles.buttonDisabled]}
+          disabled={submitting}
+          activeOpacity={submitting ? 1 : 0.9}
         >
-          {anySubmitting ? (
+          {submitting ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <ActivityIndicator color="#0B0B0B" />
               <Text style={styles.buttonText}>Opening checkout…</Text>
             </View>
           ) : (
-            <Text style={styles.buttonText}>{ctaText}</Text>
+            <Text style={styles.buttonText}>{planLabel}</Text>
           )}
         </TouchableOpacity>
 
-        <Text style={styles.ctaMicro}>
-          Selected: <Text style={{ color: GOLD, fontWeight: '900' }}>{planTitle}</Text>
-        </Text>
+        <Text style={styles.selectedText}>{selectedSubLabel}</Text>
 
         <View style={styles.divider} />
 
+        {/* Benefits (updated per your note) */}
         <View style={styles.benefits}>
-          <Text style={styles.benefitItem}>✓ Submit to the Monthly Film Challenge</Text>
+          <Text style={styles.benefitItem}>✓ Submit films to the Monthly Film Challenge</Text>
           <Text style={styles.benefitItem}>✓ Apply for all paid jobs</Text>
-          <Text style={styles.benefitItem}>✓ Full access to all workshop products & releases</Text>
+          <Text style={styles.benefitItem}>✓ Full access to Workshop tools & downloads</Text>
         </View>
 
         {!!message && <Text style={styles.errorText}>{message}</Text>}
@@ -408,7 +456,7 @@ export default function PaywallScreen() {
         <TouchableOpacity
           style={styles.backLink}
           onPress={handleBack}
-          disabled={anySubmitting}
+          disabled={submitting}
           activeOpacity={0.85}
         >
           <Text style={styles.backText}>Maybe later</Text>
@@ -429,7 +477,7 @@ const styles = StyleSheet.create({
 
   card: {
     width: '100%',
-    maxWidth: 720,
+    maxWidth: 920,
     borderRadius: 24,
     paddingVertical: 22,
     paddingHorizontal: 20,
@@ -460,7 +508,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: TEXT_MUTED,
     marginBottom: 14,
-    maxWidth: 640,
+    maxWidth: 720,
     lineHeight: 18,
     fontFamily: SYSTEM_SANS,
   },
@@ -472,15 +520,10 @@ const styles = StyleSheet.create({
     backgroundColor: OFFER_STRIP_BG,
     borderWidth: 1,
     borderColor: OFFER_STRIP_BORDER,
-    marginBottom: 14,
+    marginBottom: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
-  },
-
-  offerStripLeft: {
-    flex: 1,
-    minWidth: 140,
   },
 
   offerStripKicker: {
@@ -500,12 +543,6 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  offerStripRight: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    gap: 6,
-  },
-
   offerDot: {
     width: 7,
     height: 7,
@@ -521,26 +558,28 @@ const styles = StyleSheet.create({
   },
 
   plansArea: {
+    marginTop: 6,
     borderRadius: 18,
     padding: 8,
     backgroundColor: 'rgba(255,255,255,0.02)',
-    marginBottom: 12,
   },
 
   planRow: {
     flexDirection: 'row',
     alignItems: 'stretch',
     gap: 10,
+    flexWrap: 'wrap',
   },
 
   planTile: {
     flex: 1,
+    minWidth: 200,
     borderRadius: 16,
     paddingVertical: 10,
     paddingHorizontal: 10,
-    backgroundColor: SURFACE,
+    backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: 1,
-    borderColor: HAIRLINE_2,
+    borderColor: 'transparent',
   },
 
   planTileHero: {
@@ -550,15 +589,11 @@ const styles = StyleSheet.create({
 
   planTileSecondary: {
     backgroundColor: 'rgba(255,255,255,0.025)',
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.06)',
   },
 
-  planSelected: {
-    borderColor: 'rgba(46,212,122,0.55)',
-  },
-
-  planSelectedSecondary: {
-    borderColor: 'rgba(198,166,100,0.40)',
+  tileSelected: {
+    borderColor: 'rgba(198,166,100,0.42)',
   },
 
   planKicker: {
@@ -568,7 +603,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     color: TEXT_MUTED_2,
     fontFamily: SYSTEM_SANS,
-    marginBottom: 6,
   },
 
   planKickerHero: {
@@ -578,6 +612,7 @@ const styles = StyleSheet.create({
   planPriceRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
+    marginTop: 4,
   },
 
   planCurrency: {
@@ -618,6 +653,7 @@ const styles = StyleSheet.create({
   },
 
   buttonBase: {
+    marginTop: 14,
     paddingVertical: 12,
     borderRadius: 999,
     alignItems: 'center',
@@ -635,23 +671,23 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#0B0B0B',
     textAlign: 'center',
-    fontWeight: '800',
+    fontWeight: '900',
     fontSize: 15,
     letterSpacing: 0.4,
     fontFamily: SYSTEM_SANS,
   },
 
-  ctaMicro: {
-    marginTop: 8,
+  selectedText: {
+    marginTop: 10,
     textAlign: 'center',
-    fontSize: 11.5,
-    color: 'rgba(237,235,230,0.55)',
+    fontSize: 12,
+    color: 'rgba(237,235,230,0.60)',
     fontFamily: SYSTEM_SANS,
   },
 
   divider: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
     marginVertical: 14,
   },
 
@@ -662,7 +698,7 @@ const styles = StyleSheet.create({
   benefitItem: {
     fontSize: 12.5,
     lineHeight: 18,
-    color: 'rgba(237,235,230,0.58)',
+    color: 'rgba(237,235,230,0.55)',
     fontFamily: SYSTEM_SANS,
   },
 
@@ -680,7 +716,7 @@ const styles = StyleSheet.create({
   },
 
   backText: {
-    color: 'rgba(237,235,230,0.60)',
+    color: 'rgba(237,235,230,0.55)',
     fontSize: 13,
     fontWeight: '700',
     fontFamily: SYSTEM_SANS,

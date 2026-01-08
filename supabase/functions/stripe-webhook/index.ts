@@ -37,30 +37,17 @@ async function findUserIdByCustomer(customerId?: string) {
 }
 
 async function findUserIdByEmail(email?: string | null) {
-  if (!email) return undefined;
-  const normalized = (email || "").toLowerCase().trim();
+  const normalized = (email || "").trim().toLowerCase();
+  if (!normalized) return undefined;
 
-  // ✅ Make matching more forgiving (case-insensitive)
   const { data } = await supabase
     .from("users")
     .select("id")
-    .ilike("email", normalized)
+    .eq("email", normalized)
     .maybeSingle();
-
   return (data?.id as string) || undefined;
 }
 
-async function userExists(userId?: string | null) {
-  if (!userId) return false;
-  const { data } = await supabase
-    .from("users")
-    .select("id")
-    .eq("id", userId)
-    .maybeSingle();
-  return Boolean(data?.id);
-}
-
-/** Shape for updates to public.users (keeps TS happy) */
 type UserUpdate = {
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
@@ -69,8 +56,6 @@ type UserUpdate = {
   cancel_at_period_end?: boolean;
   is_premium?: boolean;
   price_id?: string | null;
-
-  // ✅ Your app uses this as the real entitlement
   tier?: "free" | "pro";
 };
 
@@ -91,7 +76,6 @@ async function upsertStripeIdsOnUser(opts: {
     update.current_period_end = ts(subscription.current_period_end);
     update.cancel_at_period_end = Boolean(subscription.cancel_at_period_end);
 
-    // derive price id from subscription item (string or expanded object)
     const firstItem = subscription.items?.data?.[0];
     let subPriceId: string | null = null;
     if (firstItem?.price) {
@@ -112,7 +96,8 @@ async function upsertStripeIdsOnUser(opts: {
   }
 
   if (Object.keys(update).length > 0) {
-    await supabase.from("users").update(update).eq("id", userId);
+    const { error } = await supabase.from("users").update(update).eq("id", userId);
+    if (error) console.error("Failed updating users for stripe ids:", error);
   }
 }
 
@@ -127,7 +112,6 @@ async function tagCustomerWithUserId(customerId: string, userId: string) {
 }
 
 Deno.serve(async (req) => {
-  // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
@@ -145,6 +129,7 @@ Deno.serve(async (req) => {
 
   const raw = await req.text();
   let event: Stripe.Event;
+
   try {
     event = await stripe.webhooks.constructEventAsync(
       raw,
@@ -162,43 +147,27 @@ Deno.serve(async (req) => {
         const s = event.data.object as Stripe.Checkout.Session;
 
         const customerId = (s.customer as string) || undefined;
-        const email =
-          s.customer_details?.email || s.customer_email || undefined;
-
+        const email = s.customer_details?.email || s.customer_email || undefined;
         const meta = (s.metadata || {}) as Record<string, string>;
         const userIdFromMeta = meta.user_id || meta.supabase_user_id;
+        const userIdFromClientRef = s.client_reference_id || undefined;
 
-        // ✅ BEST: set by your app via Payment Link query param
-        const userIdFromClientRef = (s.client_reference_id as string) || undefined;
-
-        // Fallbacks
         const byCustomer = await findUserIdByCustomer(customerId);
         const byEmail = !byCustomer ? await findUserIdByEmail(email) : undefined;
 
-        // ✅ Prefer explicit user IDs first
-        let userId =
-          userIdFromClientRef || userIdFromMeta || byCustomer || byEmail;
-
-        // ✅ Validate user exists (prevents bad/missing client_reference_id)
-        if (userId && !(await userExists(userId))) {
-          console.warn("checkout.session.completed: userId not found in users table", {
-            userId,
-            customerId,
-            email,
-          });
-          userId = undefined;
-        }
+        const userId =
+          userIdFromMeta || userIdFromClientRef || byCustomer || byEmail;
 
         if (!userId) {
           console.warn("No user match for checkout.session.completed", {
             customerId,
             email,
-            mode: s.mode,
+            client_reference_id: userIdFromClientRef,
           });
           return json({ ok: true });
         }
 
-        // Fetch price from line items (events don’t include line_items)
+        // Try to fetch priceId from line items
         let priceId: string | null = null;
         try {
           const items = await stripe.checkout.sessions.listLineItems(s.id, {
@@ -214,7 +183,6 @@ Deno.serve(async (req) => {
           console.warn("Could not fetch session line items for price_id", e);
         }
 
-        // Upsert customer id and price id first (always)
         await upsertStripeIdsOnUser({
           userId,
           customerId,
@@ -224,7 +192,6 @@ Deno.serve(async (req) => {
 
         if (customerId) await tagCustomerWithUserId(customerId, userId);
 
-        // Subscription mode: fetch subscription for authoritative fields
         if (s.mode === "subscription" && s.subscription) {
           const sub = await stripe.subscriptions.retrieve(
             s.subscription as string,
@@ -235,16 +202,16 @@ Deno.serve(async (req) => {
             subscription: sub,
           });
         } else {
-          // ✅ One-time payments (Lifetime): unlock Pro immediately.
+          // Payment Link one-time purchase OR non-subscription checkout
           const update: UserUpdate = {
             tier: "pro",
             is_premium: true,
-            // Keep subscription fields neutral for lifetime:
-            subscription_status: null,
+            subscription_status: "active",
             current_period_end: null,
             cancel_at_period_end: false,
           };
-          await supabase.from("users").update(update).eq("id", userId);
+          const { error } = await supabase.from("users").update(update).eq("id", userId);
+          if (error) console.error("Failed marking user pro:", error);
         }
 
         return json({ ok: true });
