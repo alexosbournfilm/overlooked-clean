@@ -16,19 +16,13 @@ import {
   useNavigation,
   CommonActions,
 } from '@react-navigation/native';
-import { supabase } from '../lib/supabase';
+import { supabase, FUNCTIONS_URL } from '../lib/supabase';
 import { invalidateMembershipCache } from '../lib/membership';
 
-/* -------------------------- Stripe Payment Links -------------------------- */
-/**
- * Your three Stripe payment links:
- * 1) Lifetime (£25)
- * 2) Yearly (£49.99)
- * 3) Monthly (£4.99)
- */
-const STRIPE_LINK_LIFETIME = 'https://buy.stripe.com/8x27sLaAY67d5gi5YH1sQ03';
-const STRIPE_LINK_YEARLY = 'https://buy.stripe.com/3cI7sL10ofHN7oq0En1sQ02';
-const STRIPE_LINK_MONTHLY = 'https://buy.stripe.com/6oUeVd5gE0MTbEG72L1sQ01';
+/* -------------------------- Stripe Price IDs (authoritative) -------------------------- */
+const STRIPE_PRICE_MONTHLY = 'price_1S1jLxIaba42c4jIsVBQneb0';
+const STRIPE_PRICE_YEARLY = 'price_1SnJ7bIaba42c4jIyjgmASbH';
+const STRIPE_PRICE_LIFETIME = 'price_1SnJ5vIaba42c4jIf8o7Ys6w';
 
 type PlanKey = 'lifetime' | 'yearly' | 'monthly';
 
@@ -43,17 +37,11 @@ function isActive(status?: string | null, currentPeriodEnd?: string | null) {
 /* -------------------------- match UpgradeModal UI -------------------------- */
 
 const DARK_ELEVATED = '#171717';
-const SURFACE_2 = '#0F0F0F';
-
 const TEXT_IVORY = '#EDEBE6';
 const TEXT_MUTED = 'rgba(237,235,230,0.60)';
 const TEXT_MUTED_2 = 'rgba(237,235,230,0.42)';
-
 const HAIRLINE = 'rgba(255,255,255,0.09)';
-const HAIRLINE_2 = 'rgba(255,255,255,0.06)';
-
 const GOLD = '#C6A664';
-
 const OFFER_ACCENT = '#2ED47A';
 const OFFER_STRIP_BG = 'rgba(46,212,122,0.10)';
 const OFFER_STRIP_BORDER = 'rgba(46,212,122,0.18)';
@@ -140,14 +128,17 @@ export default function PaywallScreen() {
     return 'Selected: £4.99 / month';
   }, [selectedPlan]);
 
-  const selectedPaymentLink = useMemo(() => {
-    if (selectedPlan === 'lifetime') return STRIPE_LINK_LIFETIME;
-    if (selectedPlan === 'yearly') return STRIPE_LINK_YEARLY;
-    return STRIPE_LINK_MONTHLY;
+  const selectedPlanPayload = useMemo(() => {
+    if (selectedPlan === 'lifetime') {
+      return { plan: 'lifetime' as const, priceId: STRIPE_PRICE_LIFETIME };
+    }
+    if (selectedPlan === 'yearly') {
+      return { plan: 'yearly' as const, priceId: STRIPE_PRICE_YEARLY };
+    }
+    return { plan: 'monthly' as const, priceId: STRIPE_PRICE_MONTHLY };
   }, [selectedPlan]);
 
   const enterFeatured = useCallback(() => {
-    // Use your existing main tabs structure; this is the safest "land in app" path.
     nav.dispatch(
       CommonActions.reset({
         index: 0,
@@ -195,7 +186,7 @@ export default function PaywallScreen() {
     fastGate();
   }, [isFocused, fastGate]);
 
-  // Stripe checkout
+  // ✅ Use Edge Function checkout session (NOT payment links)
   const openCheckout = async () => {
     setSubmitting(true);
     setMessage(null);
@@ -210,26 +201,26 @@ export default function PaywallScreen() {
         return;
       }
 
-      const base = selectedPaymentLink;
-      if (!base) {
-        setMessage('Checkout is not configured.');
-        return;
+      const endpoint = `${FUNCTIONS_URL}/create-checkout-session`;
+
+      const resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          email: user.email ?? undefined,
+          plan: selectedPlanPayload.plan,
+          priceId: selectedPlanPayload.priceId,
+        }),
+      });
+
+      const json = await resp.json();
+      if (!resp.ok) {
+        throw new Error(json?.error || 'Checkout session failed.');
       }
 
-      /**
-       * ✅ CRITICAL FIX:
-       * Pass client_reference_id so webhook can match the user deterministically.
-       * Also pass prefilled_email for Stripe UX.
-       *
-       * Your webhook already supports:
-       * - s.client_reference_id
-       * - customer_details.email / customer_email
-       */
-      const url =
-        base +
-        (base.includes('?') ? '&' : '?') +
-        `client_reference_id=${encodeURIComponent(user.id)}` +
-        (user.email ? `&prefilled_email=${encodeURIComponent(user.email)}` : '');
+      const url = json?.url as string | undefined;
+      if (!url) throw new Error('No checkout URL returned.');
 
       if (Platform.OS === 'web') {
         (window as any).location.assign(url);
@@ -327,7 +318,6 @@ export default function PaywallScreen() {
   }, [nav]);
 
   if (gateChecking) {
-    // Prevents any “flash” while we quickly check if already Pro
     return (
       <View style={styles.container}>
         <View style={[styles.card, { alignItems: 'center' }]}>
@@ -444,7 +434,6 @@ export default function PaywallScreen() {
 
         <View style={styles.divider} />
 
-        {/* Benefits (updated per your note) */}
         <View style={styles.benefits}>
           <Text style={styles.benefitItem}>✓ Submit films to the Monthly Film Challenge</Text>
           <Text style={styles.benefitItem}>✓ Apply for all paid jobs</Text>

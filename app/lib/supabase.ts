@@ -3,8 +3,6 @@ import "react-native-url-polyfill/auto";
 import { createClient } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// Some tooling in RN / Expo doesn't have Node types by default,
-// so we defensively type process to avoid TS "cannot find name 'process'" errors.
 declare const process:
   | {
       env?: {
@@ -29,7 +27,7 @@ const SUPABASE_ANON_KEY_ENV =
     ? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
     : undefined;
 
-// Fallbacks (keep these matching your REAL project!)
+// Fallbacks (DEV ONLY)
 const FALLBACK_URL = "https://sdatmuzzsebvckfmnqsv.supabase.co";
 const FALLBACK_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkYXRtdXp6c2VidmNrZm1ucXN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMyOTIwNzIsImV4cCI6MjA2ODg2ODA3Mn0.IO2vFDIsb8JF6cunEu_URFRPoaAk0aZIRZa-BBcT450";
@@ -37,20 +35,46 @@ const FALLBACK_ANON_KEY =
 // Detect if web or native
 const isWeb = typeof window !== "undefined" && typeof document !== "undefined";
 
-// Resolve (NO THROW — prevent blank white screen)
-const resolvedUrlRaw = (SUPABASE_URL_ENV || FALLBACK_URL).replace(/\/+$/, "");
-const resolvedKeyRaw = SUPABASE_ANON_KEY_ENV || FALLBACK_ANON_KEY;
+// ✅ Expo provides __DEV__ globally
+const isDev = typeof __DEV__ !== "undefined" ? __DEV__ : false;
+
+function sanitizeUrl(url: string) {
+  return url.replace(/\/+$/, "");
+}
+
+// Resolve URL/key with safety rules
+let resolvedUrlRaw = "";
+let resolvedKeyRaw = "";
+
+if (SUPABASE_URL_ENV && SUPABASE_ANON_KEY_ENV) {
+  resolvedUrlRaw = sanitizeUrl(SUPABASE_URL_ENV);
+  resolvedKeyRaw = SUPABASE_ANON_KEY_ENV;
+} else {
+  // In DEV: allow fallbacks to prevent white screen while developing
+  if (isDev) {
+    console.warn(
+      "⚠️ Supabase env vars missing (DEV). Using FALLBACK_URL/FALLBACK_ANON_KEY.\n" +
+        "Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to avoid auth mismatches."
+    );
+    resolvedUrlRaw = sanitizeUrl(FALLBACK_URL);
+    resolvedKeyRaw = FALLBACK_ANON_KEY;
+  } else {
+    // ✅ In PROD: do NOT silently connect to the wrong project
+    console.error(
+      "❌ Supabase env vars missing (PROD). Refusing to use fallback to prevent billing/auth mismatches.\n" +
+        "You must set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY."
+    );
+
+    // You can either throw, or set empty to force obvious failure.
+    // Throwing is usually best because it fails fast and obvious.
+    throw new Error(
+      "Missing EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY (production)"
+    );
+  }
+}
 
 export const SUPABASE_URL = resolvedUrlRaw;
 export const SUPABASE_ANON_KEY = resolvedKeyRaw;
-
-// ✅ Loud warning if env vars missing (helps you fix deployment without crashing app)
-if (!SUPABASE_URL_ENV || !SUPABASE_ANON_KEY_ENV) {
-  console.warn(
-    "⚠️ Supabase env vars missing. Using FALLBACK_URL/FALLBACK_ANON_KEY.\n" +
-      "Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in your deployment to avoid auth mismatches."
-  );
-}
 
 // =======================
 // 🧠 CLIENT INITIALIZATION
@@ -90,13 +114,13 @@ supabase.auth.onAuthStateChange((_event, session) => {
 // Handy constants for manual fetch fallbacks / debugging
 export const FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`;
 
-// Debug (can remove later)
+// Debug (safe)
 try {
   (globalThis as any).supabaseClient = supabase;
   (globalThis as any).functionsUrl = FUNCTIONS_URL;
 } catch {}
+
 console.log("🔑 SUPABASE_URL =", SUPABASE_URL);
-console.log("🔑 Anon key defined =", !!SUPABASE_ANON_KEY);
 console.log("🔧 FUNCTIONS_URL =", FUNCTIONS_URL);
 
 // =======================
