@@ -59,17 +59,30 @@ if (SUPABASE_URL_ENV && SUPABASE_ANON_KEY_ENV) {
     resolvedUrlRaw = sanitizeUrl(FALLBACK_URL);
     resolvedKeyRaw = FALLBACK_ANON_KEY;
   } else {
-    // ✅ In PROD: do NOT silently connect to the wrong project
+    /**
+     * ✅ IMPORTANT CHANGE:
+     * Do NOT throw in production, because it causes a blank screen on web.
+     * Instead, log loudly and fall back so the app still loads.
+     *
+     * NOTE: This can still cause auth/billing mismatches if your fallback
+     * points to a different Supabase project than your deployed backend.
+     * You should still set the env vars in your hosting provider.
+     */
     console.error(
-      "❌ Supabase env vars missing (PROD). Refusing to use fallback to prevent billing/auth mismatches.\n" +
-        "You must set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY."
+      "❌ Supabase env vars missing (PROD). App is falling back to FALLBACK_URL/FALLBACK_ANON_KEY so it can load.\n" +
+        "This MAY cause Stripe upgrades not to reflect in-app if your webhook updates a different Supabase project.\n" +
+        "Fix: Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in your deployment."
     );
 
-    // You can either throw, or set empty to force obvious failure.
-    // Throwing is usually best because it fails fast and obvious.
-    throw new Error(
-      "Missing EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY (production)"
-    );
+    resolvedUrlRaw = sanitizeUrl(FALLBACK_URL);
+    resolvedKeyRaw = FALLBACK_ANON_KEY;
+
+    // Optional: If you want a visible indicator without crashing:
+    if (isWeb) {
+      try {
+        (window as any).__SUPABASE_ENV_MISSING__ = true;
+      } catch {}
+    }
   }
 }
 
