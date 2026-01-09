@@ -13,7 +13,7 @@ const JSON_HEADERS: Record<string, string> = {
 
 const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
 
-// Prices (recommended: set these in Supabase function env vars)
+// Prices
 const PRICE_MONTHLY =
   Deno.env.get("STRIPE_PRICE_MONTHLY") ??
   Deno.env.get("STRIPE_PRICE_ID") ?? // legacy fallback
@@ -31,7 +31,6 @@ const SUCCESS_URL =
 const CANCEL_URL =
   Deno.env.get("STRIPE_CANCEL_URL") ?? `${APP_URL}/pay/cancel`;
 
-// Stripe client (Fetch client for Deno/Edge)
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
   httpClient: Stripe.createFetchHttpClient(),
 });
@@ -59,14 +58,11 @@ type Incoming = {
   plan?: Plan;
   referral_code?: string;
   promoCode?: string;
-
-  // Optional override to force exact price from client (handy for debugging)
-  priceId?: string;
+  priceId?: string; // optional override for debugging
 };
 
 // ---------- handler ----------
 Deno.serve(async (req) => {
-  // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: JSON_HEADERS });
   }
@@ -91,7 +87,6 @@ Deno.serve(async (req) => {
         ? "yearly"
         : "monthly";
 
-  // Determine price
   const fallbackPrice =
     plan === "monthly"
       ? PRICE_MONTHLY
@@ -116,17 +111,13 @@ Deno.serve(async (req) => {
     const mode: Stripe.Checkout.SessionCreateParams.Mode =
       plan === "lifetime" ? "payment" : "subscription";
 
-    const sessionParams: Stripe.Checkout.SessionCreateParams = {
+    const common: Stripe.Checkout.SessionCreateParams = {
       mode,
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: SUCCESS_URL,
       cancel_url: CANCEL_URL,
       allow_promotion_codes: true,
 
-      // ✅ customer_creation is ONLY allowed for payment mode
-      ...(mode === "payment" ? { customer_creation: "always" } : {}),
-
-      // Strong user linkage
       ...(user_id ? { client_reference_id: user_id } : {}),
       ...(body.email ? { customer_email: body.email } : {}),
 
@@ -136,18 +127,25 @@ Deno.serve(async (req) => {
         ...(referral_code ? { referral_code } : {}),
         plan,
       },
+    };
 
-      // Also tag subscription object with user id (sub mode only)
-      ...(mode === "subscription"
+    // IMPORTANT:
+    // - customer_creation is ONLY valid for payment mode
+    // - for subscription mode, Stripe will handle customer creation automatically
+    const params: Stripe.Checkout.SessionCreateParams =
+      mode === "payment"
         ? {
+            ...common,
+            customer_creation: "always",
+          }
+        : {
+            ...common,
             subscription_data: {
               metadata: user_id ? { supabase_user_id: user_id } : {},
             },
-          }
-        : {}),
-    };
+          };
 
-    const session = await stripe.checkout.sessions.create(sessionParams);
+    const session = await stripe.checkout.sessions.create(params);
 
     return ok({ id: session.id, url: session.url });
   } catch (e: unknown) {
