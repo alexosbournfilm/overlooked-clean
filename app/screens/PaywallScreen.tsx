@@ -17,6 +17,9 @@ import {
   CommonActions,
 } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
+// If your supabase.ts exports FUNCTIONS_URL, this fallback will work.
+// If not, this import is still safe to remove (fallback will just be skipped).
+import { FUNCTIONS_URL } from '../lib/supabase';
 import { invalidateMembershipCache } from '../lib/membership';
 
 /* -------------------------- Stripe Price IDs (authoritative) -------------------------- */
@@ -33,6 +36,8 @@ function isActive(status?: string | null, currentPeriodEnd?: string | null) {
   if (!currentPeriodEnd) return true;
   return new Date(currentPeriodEnd).getTime() > Date.now() - 5_000;
 }
+
+/* -------------------------- match UpgradeModal UI -------------------------- */
 
 const DARK_ELEVATED = '#171717';
 const TEXT_IVORY = '#EDEBE6';
@@ -73,6 +78,18 @@ function getOfferRemaining() {
   return { expired: false, short, long };
 }
 
+function extractInvokeError(err: any): string {
+  // Supabase functions.invoke error shapes vary by platform/version.
+  return (
+    err?.message ||
+    err?.context ||
+    err?.details ||
+    err?.error ||
+    (typeof err === 'string' ? err : '') ||
+    'Checkout session failed.'
+  );
+}
+
 export default function PaywallScreen() {
   const nav = useNavigation<any>();
   const isFocused = useIsFocused();
@@ -83,6 +100,7 @@ export default function PaywallScreen() {
   const [selectedPlan, setSelectedPlan] = useState<PlanKey>('monthly');
   const [offerCountdown, setOfferCountdown] = useState(() => getOfferRemaining());
 
+  // prevents "flash" by not rendering until we confirm user isn't already Pro
   const [gateChecking, setGateChecking] = useState(true);
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -102,6 +120,7 @@ export default function PaywallScreen() {
     return () => clearInterval(id);
   }, []);
 
+  // Disable native back gesture & header back while on paywall
   useFocusEffect(
     useCallback(() => {
       const parent = nav.getParent?.();
@@ -143,6 +162,7 @@ export default function PaywallScreen() {
     );
   }, [nav]);
 
+  // If user is already pro, don't show paywall at all (prevents sign-in flash)
   const fastGate = useCallback(async () => {
     try {
       const { data: auth } = await supabase.auth.getUser();
@@ -181,7 +201,8 @@ export default function PaywallScreen() {
     fastGate();
   }, [isFocused, fastGate]);
 
-  // ✅ Correct way: invoke Edge Function with auth automatically
+  // ✅ Best path: supabase.functions.invoke (auto headers/auth handled)
+  // ✅ Fallback path: direct fetch to FUNCTIONS_URL with access token
   const openCheckout = async () => {
     setSubmitting(true);
     setMessage(null);
@@ -196,7 +217,13 @@ export default function PaywallScreen() {
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke('create-checkout-session', {
+      if (!selectedPlanPayload?.priceId) {
+        setMessage('Missing Stripe price id for this plan.');
+        return;
+      }
+
+      // ---- 1) Try invoke ----
+      const invokeRes = await supabase.functions.invoke('create-checkout-session', {
         body: {
           user_id: user.id,
           email: user.email ?? undefined,
@@ -205,16 +232,63 @@ export default function PaywallScreen() {
         },
       });
 
-      if (error) {
-        const msg =
-          (error as any)?.message ||
-          (error as any)?.context ||
-          (error as any)?.details ||
-          'Checkout session failed.';
-        throw new Error(msg);
+      if (invokeRes.error) {
+        // show the real error AND try fallback
+        const primaryMsg = extractInvokeError(invokeRes.error);
+        console.warn('[paywall] invoke error:', invokeRes.error);
+
+        // ---- 2) Fallback: direct fetch (only if FUNCTIONS_URL exists) ----
+        if (typeof FUNCTIONS_URL === 'string' && FUNCTIONS_URL.length > 0) {
+          try {
+            const { data: sessionRes } = await supabase.auth.getSession();
+            const token = sessionRes?.session?.access_token;
+
+            const endpoint = `${FUNCTIONS_URL}/create-checkout-session`;
+
+            const resp = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                ...(token ? { authorization: `Bearer ${token}` } : {}),
+              },
+              body: JSON.stringify({
+                user_id: user.id,
+                email: user.email ?? undefined,
+                plan: selectedPlanPayload.plan,
+                priceId: selectedPlanPayload.priceId,
+              }),
+            });
+
+            const json = await resp.json().catch(() => ({}));
+            if (!resp.ok) {
+              const msg =
+                json?.error ||
+                json?.message ||
+                `Checkout session failed (HTTP ${resp.status}).`;
+              throw new Error(msg);
+            }
+
+            const url = json?.url as string | undefined;
+            if (!url) throw new Error('No checkout URL returned.');
+
+            if (Platform.OS === 'web') {
+              (window as any).location.assign(url);
+            } else {
+              await WebBrowser.openBrowserAsync(url);
+            }
+            return;
+          } catch (fallbackErr: any) {
+            console.warn('[paywall] fallback fetch error:', fallbackErr);
+            throw new Error(
+              `Checkout failed.\n\nPrimary: ${primaryMsg}\nFallback: ${fallbackErr?.message || 'Unknown error'}`
+            );
+          }
+        }
+
+        throw new Error(primaryMsg);
       }
 
-      const url = (data as any)?.url as string | undefined;
+      const url = (invokeRes.data as any)?.url as string | undefined;
       if (!url) throw new Error('No checkout URL returned.');
 
       if (Platform.OS === 'web') {
@@ -230,6 +304,7 @@ export default function PaywallScreen() {
     }
   };
 
+  // Check status -> enter app (only if focused & not exited)
   const checkStatusAndMaybeEnter = useCallback(async () => {
     if (!isFocused || hasExited.current) return;
 
@@ -259,6 +334,7 @@ export default function PaywallScreen() {
     }
   }, [isFocused, enterFeatured]);
 
+  // Auto-poll only while focused (gives webhook time to update DB)
   useEffect(() => {
     if (!isFocused || hasExited.current) {
       clearPoll();
@@ -282,6 +358,7 @@ export default function PaywallScreen() {
     return () => clearPoll();
   }, [isFocused, checkStatusAndMaybeEnter]);
 
+  // "Maybe later" back
   const handleBack = useCallback(() => {
     hasExited.current = true;
     clearPoll();
@@ -293,6 +370,7 @@ export default function PaywallScreen() {
       }
     } catch {}
 
+    // Fallback: go to SignIn (do NOT sign out)
     if (Platform.OS === 'web') {
       const signInUrl = Linking.createURL('signin');
       window.location.replace(signInUrl);
@@ -329,6 +407,7 @@ export default function PaywallScreen() {
           Submit films to the Monthly Film Challenge, apply for paid jobs, and unlock Workshop tools.
         </Text>
 
+        {/* Offer strip */}
         <View style={styles.offerStrip}>
           <View style={{ flex: 1, minWidth: 160 }}>
             <Text style={styles.offerStripKicker}>NEW YEAR’S OFFER</Text>
@@ -343,8 +422,10 @@ export default function PaywallScreen() {
           </View>
         </View>
 
+        {/* Plan tiles */}
         <View style={styles.plansArea}>
           <View style={styles.planRow}>
+            {/* Lifetime */}
             <TouchableOpacity
               activeOpacity={0.92}
               onPress={() => setSelectedPlan('lifetime')}
@@ -364,6 +445,7 @@ export default function PaywallScreen() {
               </Text>
             </TouchableOpacity>
 
+            {/* Yearly */}
             <TouchableOpacity
               activeOpacity={0.92}
               onPress={() => setSelectedPlan('yearly')}
@@ -381,6 +463,7 @@ export default function PaywallScreen() {
               <Text style={styles.planSub}>Cancel anytime</Text>
             </TouchableOpacity>
 
+            {/* Monthly */}
             <TouchableOpacity
               activeOpacity={0.92}
               onPress={() => setSelectedPlan('monthly')}
@@ -400,6 +483,7 @@ export default function PaywallScreen() {
           </View>
         </View>
 
+        {/* CTA */}
         <TouchableOpacity
           onPress={openCheckout}
           style={[styles.buttonBase, styles.proButton, submitting && styles.buttonDisabled]}
@@ -682,6 +766,7 @@ const styles = StyleSheet.create({
     color: '#FFB3B3',
     marginTop: 12,
     fontFamily: SYSTEM_SANS,
+    lineHeight: 16,
   },
 
   backLink: {
