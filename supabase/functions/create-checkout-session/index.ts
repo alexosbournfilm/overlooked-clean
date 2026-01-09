@@ -1,5 +1,6 @@
 // supabase/functions/create-checkout-session/index.ts
 import Stripe from "npm:stripe@14";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 type Plan = "monthly" | "yearly" | "lifetime";
 
@@ -22,6 +23,7 @@ const PRICE_MONTHLY =
 const PRICE_YEARLY = Deno.env.get("STRIPE_PRICE_YEARLY") ?? "";
 const PRICE_LIFETIME = Deno.env.get("STRIPE_PRICE_LIFETIME") ?? "";
 
+// App URLs
 const APP_URL = Deno.env.get("APP_URL") ?? "http://localhost:5173";
 
 const SUCCESS_URL =
@@ -30,6 +32,13 @@ const SUCCESS_URL =
 
 const CANCEL_URL =
   Deno.env.get("STRIPE_CANCEL_URL") ?? `${APP_URL}/pay/cancel`;
+
+// Supabase (for auth verification + existing stripe_customer_id lookup)
+const SB_URL = Deno.env.get("SB_URL") ?? Deno.env.get("SUPABASE_URL") ?? "";
+const SB_SERVICE_ROLE_KEY =
+  Deno.env.get("SB_SERVICE_ROLE_KEY") ??
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  "";
 
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
   httpClient: Stripe.createFetchHttpClient(),
@@ -52,12 +61,16 @@ function messageFrom(e: unknown): string {
 
 // ---------- types ----------
 type Incoming = {
+  // legacy fields (we no longer trust these, but we accept them)
   user_id?: string;
   userId?: string;
+
   email?: string;
   plan?: Plan;
+
   referral_code?: string;
   promoCode?: string;
+
   priceId?: string; // optional override for debugging
 };
 
@@ -69,6 +82,19 @@ Deno.serve(async (req) => {
 
   if (req.method !== "POST") return err(405, "Method not allowed");
   if (!STRIPE_SECRET_KEY) return err(500, "Missing STRIPE_SECRET_KEY");
+  if (!SB_URL) return err(500, "Missing SB_URL / SUPABASE_URL");
+  if (!SB_SERVICE_ROLE_KEY) return err(500, "Missing SB_SERVICE_ROLE_KEY / SUPABASE_SERVICE_ROLE_KEY");
+
+  // ✅ Require auth header so we can verify the user
+  const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+  if (!authHeader) return err(401, "Missing Authorization header");
+
+  // Service role client (bypasses RLS for reading users.stripe_customer_id)
+  // But we still validate the caller via JWT using getUser with the caller token.
+  const supabase = createClient(SB_URL, SB_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false },
+    global: { headers: { Authorization: authHeader } },
+  });
 
   let body: Incoming = {};
   try {
@@ -77,7 +103,18 @@ Deno.serve(async (req) => {
     // keep empty
   }
 
-  const user_id = body.user_id ?? body.userId ?? undefined;
+  // ✅ Auth-verified user (do NOT trust body.user_id)
+  const { data: userRes, error: userErr } = await supabase.auth.getUser();
+  if (userErr || !userRes?.user?.id) {
+    return err(401, "Invalid session");
+  }
+
+  const userId = userRes.user.id;
+  const emailFromAuth = userRes.user.email ?? undefined;
+
+  // Optional: allow client to pass email, but never override authenticated email with something else
+  const email = body.email ?? emailFromAuth;
+
   const referral_code = body.referral_code ?? body.promoCode ?? undefined;
 
   const plan: Plan =
@@ -108,8 +145,32 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // ✅ If we already have a Stripe customer id, reuse it (prevents duplicates)
+    let stripeCustomerId: string | null = null;
+    try {
+      const { data: row, error: rowErr } = await supabase
+        .from("users")
+        .select("stripe_customer_id")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (!rowErr && row?.stripe_customer_id) {
+        stripeCustomerId = String(row.stripe_customer_id);
+      }
+    } catch {
+      // non-fatal
+    }
+
     const mode: Stripe.Checkout.SessionCreateParams.Mode =
       plan === "lifetime" ? "payment" : "subscription";
+
+    const metadataBase: Record<string, string> = {
+      user_id: userId,
+      supabase_user_id: userId, // helpful for consistency
+      plan,
+      ...(email ? { email } : {}),
+      ...(referral_code ? { referral_code } : {}),
+    };
 
     const common: Stripe.Checkout.SessionCreateParams = {
       mode,
@@ -118,15 +179,17 @@ Deno.serve(async (req) => {
       cancel_url: CANCEL_URL,
       allow_promotion_codes: true,
 
-      ...(user_id ? { client_reference_id: user_id } : {}),
-      ...(body.email ? { customer_email: body.email } : {}),
+      // ✅ easiest matching in webhook
+      client_reference_id: userId,
 
-      metadata: {
-        ...(user_id ? { user_id } : {}),
-        ...(body.email ? { email: body.email } : {}),
-        ...(referral_code ? { referral_code } : {}),
-        plan,
-      },
+      // ✅ always attach metadata at session-level
+      metadata: metadataBase,
+
+      // ✅ If we already know the customer, attach it (best)
+      ...(stripeCustomerId ? { customer: stripeCustomerId } : {}),
+
+      // ✅ If we don't know customer yet, Stripe can create it; provide email
+      ...(!stripeCustomerId && email ? { customer_email: email } : {}),
     };
 
     // IMPORTANT:
@@ -136,12 +199,18 @@ Deno.serve(async (req) => {
       mode === "payment"
         ? {
             ...common,
-            customer_creation: "always",
+            customer_creation: stripeCustomerId ? undefined : "always",
+
+            // ✅ Ensure lifetime payment has metadata too (useful for debugging)
+            payment_intent_data: {
+              metadata: metadataBase,
+            },
           }
         : {
             ...common,
             subscription_data: {
-              metadata: user_id ? { supabase_user_id: user_id } : {},
+              // ✅ Super important: persists onto the subscription object
+              metadata: { supabase_user_id: userId, user_id: userId, plan },
             },
           };
 

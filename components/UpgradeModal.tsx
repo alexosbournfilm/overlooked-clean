@@ -84,6 +84,17 @@ function getOfferRemaining() {
   return { expired: false, short, long };
 }
 
+// Friendly date formatter (keeps it simple + consistent across platforms)
+function formatEndDate(iso: string) {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  } catch {
+    return null;
+  }
+}
+
 export const UpgradeModal: React.FC<Props> = ({
   visible,
   onClose,
@@ -103,6 +114,11 @@ export const UpgradeModal: React.FC<Props> = ({
   const [downgradeConfirmVisible, setDowngradeConfirmVisible] = useState(false);
   const [downgradeConfirmError, setDowngradeConfirmError] = useState<string | null>(null);
 
+  // NEW: show what will happen on downgrade
+  const [periodEndIso, setPeriodEndIso] = useState<string | null>(null);
+  const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState<boolean>(false);
+  const [hasStripeSubscription, setHasStripeSubscription] = useState<boolean>(false);
+
   const [offerCountdown, setOfferCountdown] = useState(() => getOfferRemaining());
 
   useEffect(() => {
@@ -116,6 +132,7 @@ export const UpgradeModal: React.FC<Props> = ({
     return () => clearInterval(id);
   }, [visible]);
 
+  // Load tier + billing status for better downgrade UX
   useEffect(() => {
     if (!visible) return;
 
@@ -126,13 +143,32 @@ export const UpgradeModal: React.FC<Props> = ({
         setErrorText(null);
         setDowngradeConfirmError(null);
 
+        // Tier (cache ok)
         const tier = await getCurrentUserTierOrFree();
         if (!mounted) return;
-
         setCurrentTier(tier);
         setSelectedTier(tier);
+
+        // Billing snapshot (best effort)
+        const { data: userRes, error: userErr } = await supabase.auth.getUser();
+        if (userErr) throw userErr;
+        if (!userRes?.user?.id) return;
+
+        const { data, error } = await supabase
+          .from('users')
+          .select('premium_access_expires_at, cancel_at_period_end, stripe_subscription_id')
+          .eq('id', userRes.user.id)
+          .single();
+
+        if (!mounted) return;
+
+        if (!error && data) {
+          setPeriodEndIso((data as any)?.premium_access_expires_at ?? null);
+          setCancelAtPeriodEnd(Boolean((data as any)?.cancel_at_period_end));
+          setHasStripeSubscription(Boolean((data as any)?.stripe_subscription_id));
+        }
       } catch (err) {
-        console.log('UpgradeModal getCurrentUserTier error', (err as any)?.message || err);
+        console.log('UpgradeModal load error', (err as any)?.message || err);
       }
     })();
 
@@ -149,7 +185,10 @@ export const UpgradeModal: React.FC<Props> = ({
   const isProDisabled = currentTier === 'pro';
   const offerActive = !offerCountdown.expired;
 
+  const endDateLabel = periodEndIso ? formatEndDate(periodEndIso) : null;
+
   const downgradeLossBullets = useMemo(() => {
+    // NOTE: This is now “what happens after your Pro ends”.
     return [
       'Monthly Film Challenge submissions will be locked (Pro only).',
       'Paid job applications will be locked (Pro only).',
@@ -193,12 +232,49 @@ export const UpgradeModal: React.FC<Props> = ({
       if (userErr) throw userErr;
       if (!userRes?.user?.id) throw new Error('Not signed in');
 
-      const { error } = await supabase.rpc('downgrade_to_free');
-      if (error) throw error;
+      // If user is Pro but has no Stripe subscription, they’re likely Lifetime (or manually granted).
+      // In that case, there is nothing to "stop paying".
+      if (!hasStripeSubscription) {
+        setDowngradeConfirmError(
+          "You're on Pro without an active subscription. If this is Lifetime Pro, there’s nothing to cancel."
+        );
+        return;
+      }
 
-      const tier = await getCurrentUserTierOrFree({ force: true });
-      setCurrentTier(tier);
-      setSelectedTier(tier);
+      // ✅ IMPORTANT: cancel in Stripe (so next payment does NOT happen)
+      const { data: fnData, error: fnError } = await supabase.functions.invoke('cancel-subscription', {
+        body: {},
+      });
+      if (fnError) throw fnError;
+
+      // Refresh local tier cache + reload billing snapshot
+      invalidateMembershipCache();
+
+      const { data: row, error: rowErr } = await supabase
+        .from('users')
+        .select('tier, premium_access_expires_at, cancel_at_period_end, stripe_subscription_id')
+        .eq('id', userRes.user.id)
+        .single();
+
+      if (rowErr) {
+        // Even if DB read fails, close UI; Stripe cancellation already happened
+        setDowngradeConfirmVisible(false);
+        onClose();
+        return;
+      }
+
+      // IMPORTANT:
+      // After cancelling at period end, user usually stays "pro" until premium_access_expires_at.
+      const newTier = (row as any)?.tier as UserTier | undefined;
+      const expires = (row as any)?.premium_access_expires_at ?? null;
+
+      setPeriodEndIso(expires);
+      setCancelAtPeriodEnd(Boolean((row as any)?.cancel_at_period_end));
+      setHasStripeSubscription(Boolean((row as any)?.stripe_subscription_id));
+
+      // Keep UI consistent with DB
+      setCurrentTier(newTier ?? 'pro');
+      setSelectedTier(newTier ?? 'pro');
 
       setDowngradeConfirmVisible(false);
       onClose();
@@ -233,6 +309,9 @@ export const UpgradeModal: React.FC<Props> = ({
             {currentTier && (
               <Text style={styles.currentTierText}>
                 Current plan: <Text style={styles.currentTierName}>{currentTierLabel}</Text>
+                {currentTier === 'pro' && cancelAtPeriodEnd && endDateLabel ? (
+                  <Text style={{ color: TEXT_MUTED }}>{`  •  Cancels ${endDateLabel}`}</Text>
+                ) : null}
               </Text>
             )}
 
@@ -260,7 +339,6 @@ export const UpgradeModal: React.FC<Props> = ({
                   currentTier === 'free' && styles.tierCardCurrentFree,
                 ]}
               >
-                {/* ✅ Clean: no “CURRENT PLAN” header inside card */}
                 <Text style={styles.freeSmallLabel}>Free</Text>
 
                 <Text style={styles.tierNameFree}>Free</Text>
@@ -295,7 +373,6 @@ export const UpgradeModal: React.FC<Props> = ({
                   currentTier === 'pro' && styles.tierCardCurrentPro,
                 ]}
               >
-                {/* ✅ Offer strip stays */}
                 <View style={styles.offerStrip}>
                   <View style={styles.offerStripLeft}>
                     <Text style={styles.offerStripKicker}>NEW YEAR’S OFFER</Text>
@@ -313,12 +390,9 @@ export const UpgradeModal: React.FC<Props> = ({
                 <Text style={styles.tierName}>Pro</Text>
                 <Text style={styles.tierTagline}>Submit, apply, unlock everything</Text>
 
-                {/* Plans */}
                 <View style={styles.plansArea}>
                   <View style={styles.planRow}>
-                    {/* Lifetime hero */}
                     <View style={[styles.planTile, styles.planTileHero]}>
-                      {/* ✅ Remove green bubble + align like other tiles */}
                       <Text style={[styles.planKicker, styles.planKickerHero]}>LIFETIME</Text>
 
                       <View style={styles.planPriceRow}>
@@ -331,18 +405,15 @@ export const UpgradeModal: React.FC<Props> = ({
                       </Text>
                     </View>
 
-                    {/* Yearly */}
                     <View style={[styles.planTile, styles.planTileSecondary]}>
                       <Text style={styles.planKicker}>YEARLY</Text>
                       <View style={styles.planPriceRow}>
                         <Text style={styles.planCurrency}>£</Text>
                         <Text style={styles.planPrice}>49.99</Text>
                       </View>
-                      {/* ✅ Add cancel anytime under yearly */}
                       <Text style={styles.planSub}>Cancel anytime</Text>
                     </View>
 
-                    {/* Monthly */}
                     <View style={[styles.planTile, styles.planTileSecondary]}>
                       <Text style={styles.planKicker}>MONTHLY</Text>
                       <View style={styles.planPriceRow}>
@@ -406,12 +477,15 @@ export const UpgradeModal: React.FC<Props> = ({
       >
         <View style={styles.backdrop}>
           <View style={styles.confirmCard}>
-            <Text style={styles.confirmTitle}>Downgrade to Free?</Text>
+            <Text style={styles.confirmTitle}>Cancel renewal?</Text>
+
             <Text style={styles.confirmSub}>
-              Are you sure you want to downgrade? You’ll lose access to Pro features immediately:
+              Your Pro subscription will be cancelled so you won’t be charged again.
+              {endDateLabel ? ` You’ll keep Pro until ${endDateLabel}, then switch to Free.` : ` You’ll keep Pro until the end of your current billing period.`}
             </Text>
 
             <View style={styles.confirmList}>
+              <Text style={styles.confirmItem}>After Pro ends, you’ll lose access to:</Text>
               {downgradeLossBullets.map((t, idx) => (
                 <Text key={`${idx}-${t}`} style={styles.confirmItem}>
                   • {t}
@@ -434,7 +508,7 @@ export const UpgradeModal: React.FC<Props> = ({
                   downgrading ? { opacity: 0.5 } : null,
                 ]}
               >
-                <Text style={styles.confirmBtnGhostText}>Cancel</Text>
+                <Text style={styles.confirmBtnGhostText}>Keep Pro</Text>
               </Pressable>
 
               <Pressable
@@ -450,13 +524,13 @@ export const UpgradeModal: React.FC<Props> = ({
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   {downgrading ? <ActivityIndicator size="small" color="#0B0B0B" /> : null}
                   <Text style={styles.confirmBtnDangerText}>
-                    {downgrading ? 'Downgrading…' : 'Yes, downgrade'}
+                    {downgrading ? 'Cancelling…' : 'Cancel renewal'}
                   </Text>
                 </View>
               </Pressable>
             </View>
 
-            <Text style={styles.confirmFoot}>Tip: you can upgrade again any time.</Text>
+            <Text style={styles.confirmFoot}>Tip: you can re-subscribe any time.</Text>
           </View>
         </View>
       </Modal>
@@ -764,7 +838,6 @@ const styles = StyleSheet.create({
     backgroundColor: OFFER_TILE_BG,
     borderWidth: 1,
     borderColor: OFFER_TILE_BORDER,
-    // ✅ keep same vertical rhythm as other tiles
     paddingVertical: 10,
   },
 

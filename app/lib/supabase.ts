@@ -27,7 +27,7 @@ const SUPABASE_ANON_KEY_ENV =
     ? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
     : undefined;
 
-// Fallbacks (DEV ONLY — but we won't crash if missing in prod)
+// Fallbacks (DEV ONLY)
 const FALLBACK_URL = "https://sdatmuzzsebvckfmnqsv.supabase.co";
 const FALLBACK_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkYXRtdXp6c2VidmNrZm1ucXN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMyOTIwNzIsImV4cCI6MjA2ODg2ODA3Mn0.IO2vFDIsb8JF6cunEu_URFRPoaAk0aZIRZa-BBcT450";
@@ -53,16 +53,21 @@ if (SUPABASE_ENV_OK) {
   resolvedUrlRaw = sanitizeUrl(SUPABASE_URL_ENV!);
   resolvedKeyRaw = SUPABASE_ANON_KEY_ENV!;
 } else {
-  // ✅ Never hard-crash (prevents blank screen), but warn loudly.
-  // In dev, fallback is expected. In prod, this warning means your deployment is misconfigured.
-  console.warn(
-    "⚠️ Supabase env vars missing. The app will use FALLBACK_URL/FALLBACK_ANON_KEY.\n" +
-      "This can cause AUTH/BILLING mismatches if your fallback is not the same project.\n" +
-      "Fix by setting EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in your deployment."
-  );
-
-  resolvedUrlRaw = sanitizeUrl(FALLBACK_URL);
-  resolvedKeyRaw = FALLBACK_ANON_KEY;
+  // ✅ In DEV we can fallback; in PROD we should fail loudly
+  if (isDev) {
+    console.warn(
+      "⚠️ Supabase env vars missing (DEV). Using FALLBACK_URL/FALLBACK_ANON_KEY."
+    );
+    resolvedUrlRaw = sanitizeUrl(FALLBACK_URL);
+    resolvedKeyRaw = FALLBACK_ANON_KEY;
+  } else {
+    console.error(
+      "❌ Supabase env vars missing (PROD). Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY."
+    );
+    // Fail safe: empty values will cause obvious errors instead of silently pointing to the wrong project
+    resolvedUrlRaw = "";
+    resolvedKeyRaw = "";
+  }
 }
 
 export const SUPABASE_URL = resolvedUrlRaw;
@@ -93,18 +98,19 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
-// 🚀 Ensure sessions auto-refresh properly
-supabase.auth.onAuthStateChange((_event, session) => {
-  if (!session) return;
+// Optional: explicitly start/stop refresh on native lifecycle (usually not needed)
+// Keeping it simple: rely on autoRefreshToken.
+// If you *do* want it, do it once:
+if (!isWeb) {
   try {
     supabase.auth.startAutoRefresh();
   } catch (e) {
-    console.warn("[supabase] autoRefresh error", e);
+    console.warn("[supabase] startAutoRefresh error", e);
   }
-});
+}
 
 // Handy constants for manual fetch fallbacks / debugging
-export const FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`;
+export const FUNCTIONS_URL = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : "";
 
 // Debug (safe)
 try {
@@ -112,9 +118,11 @@ try {
   (globalThis as any).functionsUrl = FUNCTIONS_URL;
 } catch {}
 
-console.log("🔑 SUPABASE_URL =", SUPABASE_URL);
-console.log("🔑 SUPABASE_ENV_OK =", SUPABASE_ENV_OK);
-console.log("🔧 FUNCTIONS_URL =", FUNCTIONS_URL);
+if (isDev) {
+  console.log("🔑 SUPABASE_URL =", SUPABASE_URL);
+  console.log("🔑 SUPABASE_ENV_OK =", SUPABASE_ENV_OK);
+  console.log("🔧 FUNCTIONS_URL =", FUNCTIONS_URL);
+}
 
 // =======================
 // 🏆 GAMIFICATION (FRONTEND VIEW)

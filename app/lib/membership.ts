@@ -53,9 +53,19 @@ export async function getCurrentUserId(): Promise<string | null> {
   return data.user.id;
 }
 
+function isPremiumStillActive(premiumAccessExpiresAt?: string | null) {
+  if (!premiumAccessExpiresAt) return false;
+  const t = new Date(premiumAccessExpiresAt).getTime();
+  if (!Number.isFinite(t)) return false;
+  return t > Date.now();
+}
+
 /**
  * Reads tier from DB, with optional caching.
- * Use force=true when you *just upgraded*.
+ * IMPORTANT: We compute an "effective tier" so cancel-at-period-end users
+ * keep Pro access until premium_access_expires_at.
+ *
+ * Use force=true when you *just upgraded/downgraded*.
  */
 export async function getCurrentUserTier(opts?: { force?: boolean }): Promise<UserTier | null> {
   const force = opts?.force === true;
@@ -69,16 +79,26 @@ export async function getCurrentUserTier(opts?: { force?: boolean }): Promise<Us
 
   const { data, error } = await supabase
     .from('users')
-    .select('tier')
+    .select('tier, is_premium, premium_access_expires_at')
     .eq('id', userId)
     .single();
 
-  if (error || !data?.tier) {
+  if (error || !data) {
     console.log('getCurrentUserTier error', error);
     return null;
   }
 
-  cachedTier = data.tier as UserTier;
+  const dbTier = (data.tier as UserTier | null) ?? 'free';
+  const premiumByFlag = Boolean(data.is_premium);
+  const premiumByExpiry = isPremiumStillActive(data.premium_access_expires_at as string | null);
+
+  // Effective Pro rules:
+  // - If DB tier says pro, OR
+  // - If is_premium true, OR
+  // - If premium_access_expires_at still in future
+  const effectiveTier: UserTier = (dbTier === 'pro' || premiumByFlag || premiumByExpiry) ? 'pro' : 'free';
+
+  cachedTier = effectiveTier;
   cacheTimeMs = Date.now();
   return cachedTier;
 }
@@ -99,6 +119,7 @@ export async function getSubmissionQuota(): Promise<SubmissionQuotaInfo | null> 
   const userId = await getCurrentUserId();
   if (!userId) return null;
 
+  // Use effective tier (handles cancel-at-period-end correctly)
   const tier = await getCurrentUserTierOrFree();
   const limit = TIER_SUBMISSION_LIMITS[tier];
 
@@ -146,7 +167,7 @@ export async function canSubmitToChallenge(): Promise<CanSubmitResult> {
 // =======================
 
 export async function canApplyToJob(isPaidJob: boolean): Promise<CanApplyResult> {
-  const tier = await getCurrentUserTier();
+  const tier = await getCurrentUserTier(); // effective tier
 
   if (!tier) {
     return { allowed: false, reason: 'not_logged_in' };

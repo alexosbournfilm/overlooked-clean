@@ -7,6 +7,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   Platform,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
@@ -17,8 +19,6 @@ import {
   CommonActions,
 } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
-// If your supabase.ts exports FUNCTIONS_URL, this fallback will work.
-// If not, this import is still safe to remove (fallback will just be skipped).
 import { FUNCTIONS_URL } from '../lib/supabase';
 import { invalidateMembershipCache } from '../lib/membership';
 
@@ -35,6 +35,32 @@ function isActive(status?: string | null, currentPeriodEnd?: string | null) {
   if (!ok) return false;
   if (!currentPeriodEnd) return true;
   return new Date(currentPeriodEnd).getTime() > Date.now() - 5_000;
+}
+
+function hasProAccess(row?: {
+  tier?: string | null;
+  subscription_status?: string | null;
+  current_period_end?: string | null;
+  premium_access_expires_at?: string | null;
+}) {
+  const proByTier = row?.tier === 'pro';
+  const proByStatus = isActive(row?.subscription_status, row?.current_period_end);
+
+  const expires = row?.premium_access_expires_at;
+  const proByGrace =
+    !!expires && new Date(expires).getTime() > Date.now() - 5_000;
+
+  return proByTier || proByStatus || proByGrace;
+}
+
+function formatEndDate(iso: string) {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  } catch {
+    return null;
+  }
 }
 
 /* -------------------------- match UpgradeModal UI -------------------------- */
@@ -79,7 +105,6 @@ function getOfferRemaining() {
 }
 
 function extractInvokeError(err: any): string {
-  // Supabase functions.invoke error shapes vary by platform/version.
   return (
     err?.message ||
     err?.context ||
@@ -102,6 +127,11 @@ export default function PaywallScreen() {
 
   // prevents "flash" by not rendering until we confirm user isn't already Pro
   const [gateChecking, setGateChecking] = useState(true);
+
+  // NEW: if they’re already Pro or cancelled-but-still-Pro, show a friendly screen
+  const [alreadyPro, setAlreadyPro] = useState(false);
+  const [proEndsIso, setProEndsIso] = useState<string | null>(null);
+  const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState<boolean>(false);
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasExited = useRef(false);
@@ -162,43 +192,59 @@ export default function PaywallScreen() {
     );
   }, [nav]);
 
-  // If user is already pro, don't show paywall at all (prevents sign-in flash)
+  const fetchBillingRow = useCallback(async () => {
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth?.user?.id;
+    if (!uid) return null;
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('tier, subscription_status, current_period_end, premium_access_expires_at, cancel_at_period_end')
+      .eq('id', uid)
+      .maybeSingle();
+
+    if (error) return null;
+
+    setProEndsIso((data as any)?.premium_access_expires_at ?? null);
+    setCancelAtPeriodEnd(Boolean((data as any)?.cancel_at_period_end));
+
+    return data as any;
+  }, []);
+
+  // If user is already pro (or cancelled-but-still-pro), don't show paywall UI
   const fastGate = useCallback(async () => {
     try {
-      const { data: auth } = await supabase.auth.getUser();
-      const uid = auth?.user?.id;
-      if (!uid) {
-        setGateChecking(false);
+      const row = await fetchBillingRow();
+      if (!row) {
+        setAlreadyPro(false);
         return;
       }
 
-      const { data, error } = await supabase
-        .from('users')
-        .select('tier, subscription_status, current_period_end')
-        .eq('id', uid)
-        .maybeSingle();
-
-      if (!error) {
-        const proByTier = data?.tier === 'pro';
-        const proByStatus = isActive(data?.subscription_status, data?.current_period_end);
-        if (proByTier || proByStatus) {
-          invalidateMembershipCache();
-          enterFeatured();
-          return;
-        }
+      const pro = hasProAccess(row);
+      if (pro) {
+        invalidateMembershipCache();
+        // Instead of instantly bouncing (which can feel jarring),
+        // show a small "Already Pro" state with a button to enter.
+        setAlreadyPro(true);
+        return;
       }
+
+      setAlreadyPro(false);
     } catch {
       // ignore
-    } finally {
-      setGateChecking(false);
+      setAlreadyPro(false);
     }
-  }, [enterFeatured]);
+  }, [fetchBillingRow]);
 
   useEffect(() => {
     if (!isFocused) return;
     hasExited.current = false;
     setGateChecking(true);
-    fastGate();
+
+    (async () => {
+      await fastGate();
+      setGateChecking(false);
+    })();
   }, [isFocused, fastGate]);
 
   // ✅ Best path: supabase.functions.invoke (auto headers/auth handled)
@@ -222,7 +268,6 @@ export default function PaywallScreen() {
         return;
       }
 
-      // ---- 1) Try invoke ----
       const invokeRes = await supabase.functions.invoke('create-checkout-session', {
         body: {
           user_id: user.id,
@@ -233,11 +278,9 @@ export default function PaywallScreen() {
       });
 
       if (invokeRes.error) {
-        // show the real error AND try fallback
         const primaryMsg = extractInvokeError(invokeRes.error);
         console.warn('[paywall] invoke error:', invokeRes.error);
 
-        // ---- 2) Fallback: direct fetch (only if FUNCTIONS_URL exists) ----
         if (typeof FUNCTIONS_URL === 'string' && FUNCTIONS_URL.length > 0) {
           try {
             const { data: sessionRes } = await supabase.auth.getSession();
@@ -309,22 +352,12 @@ export default function PaywallScreen() {
     if (!isFocused || hasExited.current) return;
 
     try {
-      const { data: auth } = await supabase.auth.getUser();
-      const uid = auth.user?.id;
-      if (!uid) return;
+      const row = await fetchBillingRow();
+      if (!row) return;
 
-      const { data, error } = await supabase
-        .from('users')
-        .select('tier, subscription_status, current_period_end')
-        .eq('id', uid)
-        .maybeSingle();
+      const pro = hasProAccess(row);
 
-      if (error) throw error;
-
-      const proByTier = data?.tier === 'pro';
-      const proByStatus = isActive(data?.subscription_status, data?.current_period_end);
-
-      if (proByTier || proByStatus) {
+      if (pro) {
         if (!isFocused || hasExited.current) return;
         invalidateMembershipCache();
         enterFeatured();
@@ -332,7 +365,7 @@ export default function PaywallScreen() {
     } catch (e) {
       console.warn('status check failed', e);
     }
-  }, [isFocused, enterFeatured]);
+  }, [isFocused, enterFeatured, fetchBillingRow]);
 
   // Auto-poll only while focused (gives webhook time to update DB)
   useEffect(() => {
@@ -358,6 +391,20 @@ export default function PaywallScreen() {
     return () => clearPoll();
   }, [isFocused, checkStatusAndMaybeEnter]);
 
+  // ✅ Native: when returning from browser/Stripe, AppState becomes active -> re-check immediately
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+
+    const onChange = (state: AppStateStatus) => {
+      if (state === 'active') {
+        checkStatusAndMaybeEnter();
+      }
+    };
+
+    const sub = AppState.addEventListener('change', onChange);
+    return () => sub.remove();
+  }, [checkStatusAndMaybeEnter]);
+
   // "Maybe later" back
   const handleBack = useCallback(() => {
     hasExited.current = true;
@@ -373,7 +420,7 @@ export default function PaywallScreen() {
     // Fallback: go to SignIn (do NOT sign out)
     if (Platform.OS === 'web') {
       const signInUrl = Linking.createURL('signin');
-      window.location.replace(signInUrl);
+      (window as any).location.replace(signInUrl);
       return;
     }
 
@@ -393,6 +440,41 @@ export default function PaywallScreen() {
           <Text style={{ marginTop: 10, color: TEXT_MUTED, fontFamily: SYSTEM_SANS }}>
             Loading…
           </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // ✅ If already pro (or pro until date), don’t show checkout tiles
+  if (alreadyPro) {
+    const endLabel = proEndsIso ? formatEndDate(proEndsIso) : null;
+    return (
+      <View style={styles.container}>
+        <View style={styles.card}>
+          <Text style={styles.kicker}>PRO</Text>
+          <Text style={styles.title}>You already have Pro</Text>
+
+          <Text style={styles.subtitle}>
+            {cancelAtPeriodEnd && endLabel
+              ? `Your subscription is set to cancel. You’ll keep Pro until ${endLabel}.`
+              : 'You’re currently on Pro. No need to upgrade again.'}
+          </Text>
+
+          <TouchableOpacity
+            onPress={enterFeatured}
+            style={[styles.buttonBase, styles.proButton]}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.buttonText}>Go to app</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.backLink}
+            onPress={handleBack}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.backText}>Back</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
