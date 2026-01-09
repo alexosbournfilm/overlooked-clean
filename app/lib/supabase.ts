@@ -3,75 +3,54 @@ import "react-native-url-polyfill/auto";
 import { createClient } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-declare const process:
-  | {
-      env?: {
-        EXPO_PUBLIC_SUPABASE_URL?: string;
-        EXPO_PUBLIC_SUPABASE_ANON_KEY?: string;
-        [key: string]: string | undefined;
-      };
-    }
-  | undefined;
-
 // =======================
 // 🔐 SUPABASE CONFIG
 // =======================
 
+// IMPORTANT:
+// Do NOT wrap process.env in "typeof process !== 'undefined'" checks.
+// On Expo Web builds, bundlers often inline these values at build-time.
+// If you guard it, the bundler can’t inline, and runtime "process" may be undefined -> blank screen.
 const SUPABASE_URL_ENV =
-  typeof process !== "undefined" && process?.env
-    ? process.env.EXPO_PUBLIC_SUPABASE_URL
-    : undefined;
+  (process as any)?.env?.EXPO_PUBLIC_SUPABASE_URL ||
+  (globalThis as any)?.process?.env?.EXPO_PUBLIC_SUPABASE_URL ||
+  (typeof window !== "undefined" ? (window as any)?.EXPO_PUBLIC_SUPABASE_URL : undefined);
 
 const SUPABASE_ANON_KEY_ENV =
-  typeof process !== "undefined" && process?.env
-    ? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
-    : undefined;
+  (process as any)?.env?.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  (globalThis as any)?.process?.env?.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  (typeof window !== "undefined" ? (window as any)?.EXPO_PUBLIC_SUPABASE_ANON_KEY : undefined);
 
-// Fallbacks (DEV ONLY)
+// Fallbacks (LAST RESORT — prevents blank screen if env is misconfigured)
 const FALLBACK_URL = "https://sdatmuzzsebvckfmnqsv.supabase.co";
 const FALLBACK_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkYXRtdXp6c2VidmNrZm1ucXN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMyOTIwNzIsImV4cCI6MjA2ODg2ODA3Mn0.IO2vFDIsb8JF6cunEu_URFRPoaAk0aZIRZa-BBcT450";
 
-// Detect if web or native
 const isWeb = typeof window !== "undefined" && typeof document !== "undefined";
-
-// ✅ Expo provides __DEV__ globally
 const isDev = typeof __DEV__ !== "undefined" ? __DEV__ : false;
 
-function sanitizeUrl(url: string) {
-  return (url || "").replace(/\/+$/, "");
+function sanitizeUrl(url?: string) {
+  return (url || "").trim().replace(/\/+$/, "");
 }
 
-// Resolve URL/key with safety rules
-let resolvedUrlRaw = "";
-let resolvedKeyRaw = "";
+const envUrl = sanitizeUrl(SUPABASE_URL_ENV);
+const envKey = (SUPABASE_ANON_KEY_ENV || "").trim();
 
 // Did we get the real env vars?
-export const SUPABASE_ENV_OK = Boolean(SUPABASE_URL_ENV && SUPABASE_ANON_KEY_ENV);
+export const SUPABASE_ENV_OK = Boolean(envUrl && envKey);
 
-if (SUPABASE_ENV_OK) {
-  resolvedUrlRaw = sanitizeUrl(SUPABASE_URL_ENV!);
-  resolvedKeyRaw = SUPABASE_ANON_KEY_ENV!;
-} else {
-  // ✅ In DEV we can fallback; in PROD we should fail loudly
-  if (isDev) {
-    console.warn(
-      "⚠️ Supabase env vars missing (DEV). Using FALLBACK_URL/FALLBACK_ANON_KEY."
-    );
-    resolvedUrlRaw = sanitizeUrl(FALLBACK_URL);
-    resolvedKeyRaw = FALLBACK_ANON_KEY;
-  } else {
-    console.error(
-      "❌ Supabase env vars missing (PROD). Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY."
-    );
-    // Fail safe: empty values will cause obvious errors instead of silently pointing to the wrong project
-    resolvedUrlRaw = "";
-    resolvedKeyRaw = "";
-  }
+// Always resolve to something non-empty to avoid crashing to a blank screen.
+// If env is missing in prod, we still run, but we scream loudly in console.
+export const SUPABASE_URL = SUPABASE_ENV_OK ? envUrl : sanitizeUrl(FALLBACK_URL);
+export const SUPABASE_ANON_KEY = SUPABASE_ENV_OK ? envKey : FALLBACK_ANON_KEY;
+
+if (!SUPABASE_ENV_OK) {
+  console.error(
+    "❌ SUPABASE ENV MISSING: EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY not found.\n" +
+      "➡️ App is using FALLBACK_URL/FALLBACK_ANON_KEY to avoid a blank screen.\n" +
+      "➡️ FIX YOUR DEPLOY ENV VARS to ensure billing/auth uses the correct project."
+  );
 }
-
-export const SUPABASE_URL = resolvedUrlRaw;
-export const SUPABASE_ANON_KEY = resolvedKeyRaw;
 
 // =======================
 // 🧠 CLIENT INITIALIZATION
@@ -98,9 +77,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
-// Optional: explicitly start/stop refresh on native lifecycle (usually not needed)
-// Keeping it simple: rely on autoRefreshToken.
-// If you *do* want it, do it once:
+// On native, starting auto-refresh is OK; on web it can be redundant.
+// Keep it simple:
 if (!isWeb) {
   try {
     supabase.auth.startAutoRefresh();
@@ -109,8 +87,8 @@ if (!isWeb) {
   }
 }
 
-// Handy constants for manual fetch fallbacks / debugging
-export const FUNCTIONS_URL = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : "";
+// Handy constants for functions
+export const FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`;
 
 // Debug (safe)
 try {
