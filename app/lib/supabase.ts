@@ -27,7 +27,7 @@ const SUPABASE_ANON_KEY_ENV =
     ? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
     : undefined;
 
-// Fallbacks (DEV ONLY)
+// Fallbacks (DEV ONLY — but we won't crash if missing in prod)
 const FALLBACK_URL = "https://sdatmuzzsebvckfmnqsv.supabase.co";
 const FALLBACK_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkYXRtdXp6c2VidmNrZm1ucXN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMyOTIwNzIsImV4cCI6MjA2ODg2ODA3Mn0.IO2vFDIsb8JF6cunEu_URFRPoaAk0aZIRZa-BBcT450";
@@ -39,51 +39,30 @@ const isWeb = typeof window !== "undefined" && typeof document !== "undefined";
 const isDev = typeof __DEV__ !== "undefined" ? __DEV__ : false;
 
 function sanitizeUrl(url: string) {
-  return url.replace(/\/+$/, "");
+  return (url || "").replace(/\/+$/, "");
 }
 
 // Resolve URL/key with safety rules
 let resolvedUrlRaw = "";
 let resolvedKeyRaw = "";
 
-if (SUPABASE_URL_ENV && SUPABASE_ANON_KEY_ENV) {
-  resolvedUrlRaw = sanitizeUrl(SUPABASE_URL_ENV);
-  resolvedKeyRaw = SUPABASE_ANON_KEY_ENV;
+// Did we get the real env vars?
+export const SUPABASE_ENV_OK = Boolean(SUPABASE_URL_ENV && SUPABASE_ANON_KEY_ENV);
+
+if (SUPABASE_ENV_OK) {
+  resolvedUrlRaw = sanitizeUrl(SUPABASE_URL_ENV!);
+  resolvedKeyRaw = SUPABASE_ANON_KEY_ENV!;
 } else {
-  // In DEV: allow fallbacks to prevent white screen while developing
-  if (isDev) {
-    console.warn(
-      "⚠️ Supabase env vars missing (DEV). Using FALLBACK_URL/FALLBACK_ANON_KEY.\n" +
-        "Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to avoid auth mismatches."
-    );
-    resolvedUrlRaw = sanitizeUrl(FALLBACK_URL);
-    resolvedKeyRaw = FALLBACK_ANON_KEY;
-  } else {
-    /**
-     * ✅ IMPORTANT CHANGE:
-     * Do NOT throw in production, because it causes a blank screen on web.
-     * Instead, log loudly and fall back so the app still loads.
-     *
-     * NOTE: This can still cause auth/billing mismatches if your fallback
-     * points to a different Supabase project than your deployed backend.
-     * You should still set the env vars in your hosting provider.
-     */
-    console.error(
-      "❌ Supabase env vars missing (PROD). App is falling back to FALLBACK_URL/FALLBACK_ANON_KEY so it can load.\n" +
-        "This MAY cause Stripe upgrades not to reflect in-app if your webhook updates a different Supabase project.\n" +
-        "Fix: Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in your deployment."
-    );
+  // ✅ Never hard-crash (prevents blank screen), but warn loudly.
+  // In dev, fallback is expected. In prod, this warning means your deployment is misconfigured.
+  console.warn(
+    "⚠️ Supabase env vars missing. The app will use FALLBACK_URL/FALLBACK_ANON_KEY.\n" +
+      "This can cause AUTH/BILLING mismatches if your fallback is not the same project.\n" +
+      "Fix by setting EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in your deployment."
+  );
 
-    resolvedUrlRaw = sanitizeUrl(FALLBACK_URL);
-    resolvedKeyRaw = FALLBACK_ANON_KEY;
-
-    // Optional: If you want a visible indicator without crashing:
-    if (isWeb) {
-      try {
-        (window as any).__SUPABASE_ENV_MISSING__ = true;
-      } catch {}
-    }
-  }
+  resolvedUrlRaw = sanitizeUrl(FALLBACK_URL);
+  resolvedKeyRaw = FALLBACK_ANON_KEY;
 }
 
 export const SUPABASE_URL = resolvedUrlRaw;
@@ -134,6 +113,7 @@ try {
 } catch {}
 
 console.log("🔑 SUPABASE_URL =", SUPABASE_URL);
+console.log("🔑 SUPABASE_ENV_OK =", SUPABASE_ENV_OK);
 console.log("🔧 FUNCTIONS_URL =", FUNCTIONS_URL);
 
 // =======================
