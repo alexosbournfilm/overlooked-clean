@@ -206,7 +206,6 @@ export default function PaywallScreen() {
       });
 
       if (error) {
-        // Supabase returns useful details here; show them
         const msg =
           (error as any)?.message ||
           (error as any)?.context ||
