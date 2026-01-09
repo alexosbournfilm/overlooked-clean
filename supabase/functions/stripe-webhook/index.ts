@@ -10,33 +10,58 @@ const JSON_HEADERS: Record<string, string> = {
 
 const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
 const STRIPE_WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET") ?? "";
+
 const SB_URL = Deno.env.get("SB_URL") ?? Deno.env.get("SUPABASE_URL") ?? "";
 const SB_SERVICE_ROLE_KEY =
   Deno.env.get("SB_SERVICE_ROLE_KEY") ??
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   "";
 
+/** Helpers */
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
+
+function requireEnv() {
+  const missing: string[] = [];
+  if (!STRIPE_SECRET_KEY) missing.push("STRIPE_SECRET_KEY");
+  if (!STRIPE_WEBHOOK_SECRET) missing.push("STRIPE_WEBHOOK_SECRET");
+  if (!SB_URL) missing.push("SB_URL or SUPABASE_URL");
+  if (!SB_SERVICE_ROLE_KEY) missing.push("SB_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY");
+
+  if (missing.length) {
+    console.error("Missing required env vars:", missing);
+    throw new Error(`Missing required env vars: ${missing.join(", ")}`);
+  }
+}
+
+const ts = (unix?: number | null): string | null =>
+  typeof unix === "number" ? new Date(unix * 1000).toISOString() : null;
+
+// Used for lifetime purchases
+function farFutureISO() {
+  return new Date("2099-12-31T23:59:59.000Z").toISOString();
+}
+
 // ✅ IMPORTANT for Deno Edge: use Fetch HTTP client
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
   httpClient: Stripe.createFetchHttpClient(),
 });
 
-const supabase = createClient(SB_URL, SB_SERVICE_ROLE_KEY);
+// ✅ Supabase admin client (service role)
+const supabase = createClient(SB_URL, SB_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },
+});
 
-/** Helpers */
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
-
-const ts = (unix?: number | null): string | null =>
-  typeof unix === "number" ? new Date(unix * 1000).toISOString() : null;
-
+/** User helpers */
 async function findUserIdByCustomer(customerId?: string) {
   if (!customerId) return undefined;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .select("id")
     .eq("stripe_customer_id", customerId)
     .maybeSingle();
+
+  if (error) console.warn("findUserIdByCustomer error:", error);
   return (data?.id as string) || undefined;
 }
 
@@ -45,12 +70,13 @@ async function findUserIdByEmail(email?: string | null) {
   if (!normalized) return undefined;
 
   // ✅ case-insensitive match
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("users")
     .select("id")
     .ilike("email", normalized)
     .maybeSingle();
 
+  if (error) console.warn("findUserIdByEmail error:", error);
   return (data?.id as string) || undefined;
 }
 
@@ -76,11 +102,6 @@ async function tagCustomerWithUserId(customerId: string, userId: string) {
   }
 }
 
-// Used for lifetime purchases
-function farFutureISO() {
-  return new Date("2099-12-31T23:59:59.000Z").toISOString();
-}
-
 type UserUpdate = {
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
@@ -95,7 +116,6 @@ type UserUpdate = {
   is_premium?: boolean;
   price_id?: string | null;
   tier?: "free" | "pro";
-
   premium_access_expires_at?: string | null;
   grandfathered?: boolean | null;
 };
@@ -105,8 +125,9 @@ async function upsertStripeIdsOnUser(opts: {
   customerId?: string | null;
   subscription?: Stripe.Subscription | null;
   priceId?: string | null;
+  forceCancel?: boolean; // used for subscription.deleted
 }) {
-  const { userId, customerId, subscription, priceId } = opts;
+  const { userId, customerId, subscription, priceId, forceCancel } = opts;
 
   const update: UserUpdate = {};
   if (customerId) update.stripe_customer_id = customerId;
@@ -127,19 +148,30 @@ async function upsertStripeIdsOnUser(opts: {
     }
     update.price_id = subPriceId ?? priceId ?? null;
 
+    // Consider past_due as "still pro" for a short time if you want.
+    // If you want strict pro = active/trialing only, remove past_due below.
     const premium =
-      subscription.status === "active" || subscription.status === "trialing";
+      subscription.status === "active" ||
+      subscription.status === "trialing" ||
+      subscription.status === "past_due";
 
     update.is_premium = premium;
     update.tier = premium ? "pro" : "free";
-
-    update.premium_access_expires_at = premium
-      ? ts(subscription.current_period_end)
-      : null;
-
+    update.premium_access_expires_at = premium ? ts(subscription.current_period_end) : null;
     update.grandfathered = false;
   } else if (typeof priceId === "string") {
     update.price_id = priceId;
+  }
+
+  if (forceCancel) {
+    update.subscription_status = "canceled";
+    update.is_premium = false;
+    update.tier = "free";
+    update.current_period_end = null;
+    update.cancel_at_period_end = false;
+    update.premium_access_expires_at = null;
+    update.grandfathered = false;
+    update.stripe_subscription_id = null;
   }
 
   if (Object.keys(update).length > 0) {
@@ -149,6 +181,13 @@ async function upsertStripeIdsOnUser(opts: {
 }
 
 Deno.serve(async (req) => {
+  try {
+    requireEnv();
+  } catch (e) {
+    return json({ error: (e as Error).message }, 500);
+  }
+
+  // Preflight
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
@@ -159,6 +198,7 @@ Deno.serve(async (req) => {
       },
     });
   }
+
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   const signature = req.headers.get("stripe-signature");
@@ -185,15 +225,15 @@ Deno.serve(async (req) => {
 
         const customerId = (s.customer as string) || undefined;
         const email = s.customer_details?.email || s.customer_email || undefined;
+
         const meta = (s.metadata || {}) as Record<string, string>;
-        const userIdFromMeta = meta.user_id || meta.supabase_user_id;
+        const userIdFromMeta = meta.user_id || meta.supabase_user_id || undefined;
         const userIdFromClientRef = s.client_reference_id || undefined;
 
         const byCustomer = await findUserIdByCustomer(customerId);
         const byEmail = !byCustomer ? await findUserIdByEmail(email) : undefined;
 
-        const userId =
-          userIdFromMeta || userIdFromClientRef || byCustomer || byEmail;
+        const userId = userIdFromMeta || userIdFromClientRef || byCustomer || byEmail;
 
         if (!userId) {
           console.warn("No user match for checkout.session.completed", {
@@ -213,13 +253,13 @@ Deno.serve(async (req) => {
           });
           const li = items.data?.[0];
           if (li?.price) {
-            priceId =
-              typeof li.price === "string" ? li.price : li.price.id ?? null;
+            priceId = typeof li.price === "string" ? li.price : li.price.id ?? null;
           }
         } catch (e) {
           console.warn("Could not fetch session line items for price_id", e);
         }
 
+        // Persist customer id and price id
         await upsertStripeIdsOnUser({
           userId,
           customerId,
@@ -229,37 +269,38 @@ Deno.serve(async (req) => {
 
         if (customerId) await tagCustomerWithUserId(customerId, userId);
 
+        // Subscription checkout (monthly/yearly)
         if (s.mode === "subscription" && s.subscription) {
-          // subscription checkout (monthly/yearly)
           const sub = await stripe.subscriptions.retrieve(s.subscription as string);
           await upsertStripeIdsOnUser({
             userId,
             customerId,
             subscription: sub,
+            priceId,
           });
-        } else {
-          // one-time checkout (lifetime)
-          const update: UserUpdate = {
-            tier: "pro",
-            is_premium: true,
-            subscription_status: "active",
-            current_period_end: null,
-            cancel_at_period_end: false,
-            premium_access_expires_at: farFutureISO(),
-            grandfathered: false,
-            price_id: priceId ?? null,
-          };
-
-          const { error } = await supabase.from("users").update(update).eq("id", userId);
-          if (error) console.error("Failed marking user pro (one-time):", error);
+          return json({ ok: true });
         }
+
+        // One-time checkout (lifetime)
+        const update: UserUpdate = {
+          tier: "pro",
+          is_premium: true,
+          subscription_status: "active",
+          current_period_end: null,
+          cancel_at_period_end: false,
+          premium_access_expires_at: farFutureISO(),
+          grandfathered: false,
+          price_id: priceId ?? null,
+        };
+
+        const { error } = await supabase.from("users").update(update).eq("id", userId);
+        if (error) console.error("Failed marking user pro (one-time):", error);
 
         return json({ ok: true });
       }
 
       case "customer.subscription.created":
-      case "customer.subscription.updated":
-      case "customer.subscription.deleted": {
+      case "customer.subscription.updated": {
         const sub = event.data.object as Stripe.Subscription;
         const customerId = sub.customer as string;
 
@@ -276,8 +317,31 @@ Deno.serve(async (req) => {
         return json({ ok: true });
       }
 
+      case "customer.subscription.deleted": {
+        const sub = event.data.object as Stripe.Subscription;
+        const customerId = sub.customer as string;
+
+        let userId = await findUserIdByCustomer(customerId);
+        if (!userId) userId = await getUserIdFromCustomerMetadata(customerId);
+
+        if (!userId) {
+          console.warn("No user for subscription.deleted", { customerId });
+          return json({ ok: true });
+        }
+
+        // ✅ force cancel + remove pro access
+        await upsertStripeIdsOnUser({
+          userId,
+          customerId,
+          subscription: null,
+          forceCancel: true,
+        });
+
+        await tagCustomerWithUserId(customerId, userId);
+        return json({ ok: true });
+      }
+
       case "invoice.payment_succeeded": {
-        // ✅ Most reliable “they paid” signal for subscriptions
         const inv = event.data.object as Stripe.Invoice;
 
         const customerId = (inv.customer as string) || undefined;
@@ -310,17 +374,16 @@ Deno.serve(async (req) => {
         return json({ ok: true });
       }
 
-      case "customer.deleted": {
-        const c = event.data.object as Stripe.Customer;
-        const userId = await findUserIdByCustomer(c.id);
+      case "invoice.payment_failed": {
+        const inv = event.data.object as Stripe.Invoice;
+        const customerId = inv.customer as string;
+
+        let userId = await findUserIdByCustomer(customerId);
+        if (!userId) userId = await getUserIdFromCustomerMetadata(customerId);
 
         if (userId) {
           const update: UserUpdate = {
-            stripe_customer_id: null,
-            stripe_subscription_id: null,
-            subscription_status: "canceled",
-            current_period_end: null,
-            cancel_at_period_end: false,
+            subscription_status: "past_due",
             is_premium: false,
             tier: "free",
             premium_access_expires_at: null,
@@ -332,16 +395,17 @@ Deno.serve(async (req) => {
         return json({ ok: true });
       }
 
-      case "invoice.payment_failed": {
-        const inv = event.data.object as Stripe.Invoice;
-        const customerId = inv.customer as string;
-
-        let userId = await findUserIdByCustomer(customerId);
-        if (!userId) userId = await getUserIdFromCustomerMetadata(customerId);
+      case "customer.deleted": {
+        const c = event.data.object as Stripe.Customer;
+        const userId = await findUserIdByCustomer(c.id);
 
         if (userId) {
           const update: UserUpdate = {
-            subscription_status: "past_due",
+            stripe_customer_id: null,
+            stripe_subscription_id: null,
+            subscription_status: "canceled",
+            current_period_end: null,
+            cancel_at_period_end: false,
             is_premium: false,
             tier: "free",
             premium_access_expires_at: null,

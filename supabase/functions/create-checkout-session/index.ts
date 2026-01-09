@@ -113,21 +113,23 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const mode = plan === "lifetime" ? "payment" : "subscription";
+    const mode: Stripe.Checkout.SessionCreateParams.Mode =
+      plan === "lifetime" ? "payment" : "subscription";
 
-    const session = await stripe.checkout.sessions.create({
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode,
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: SUCCESS_URL,
       cancel_url: CANCEL_URL,
       allow_promotion_codes: true,
 
-      // Always create a Stripe Customer
-      customer_creation: "always",
+      // ✅ customer_creation is ONLY allowed for payment mode
+      ...(mode === "payment" ? { customer_creation: "always" } : {}),
 
       // Strong user linkage
       ...(user_id ? { client_reference_id: user_id } : {}),
       ...(body.email ? { customer_email: body.email } : {}),
+
       metadata: {
         ...(user_id ? { user_id } : {}),
         ...(body.email ? { email: body.email } : {}),
@@ -143,7 +145,9 @@ Deno.serve(async (req) => {
             },
           }
         : {}),
-    });
+    };
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
 
     return ok({ id: session.id, url: session.url });
   } catch (e: unknown) {
