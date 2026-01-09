@@ -26,7 +26,8 @@ function requireEnv() {
   if (!STRIPE_SECRET_KEY) missing.push("STRIPE_SECRET_KEY");
   if (!STRIPE_WEBHOOK_SECRET) missing.push("STRIPE_WEBHOOK_SECRET");
   if (!SB_URL) missing.push("SB_URL or SUPABASE_URL");
-  if (!SB_SERVICE_ROLE_KEY) missing.push("SB_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY");
+  if (!SB_SERVICE_ROLE_KEY)
+    missing.push("SB_SERVICE_ROLE_KEY or SUPABASE_SERVICE_ROLE_KEY");
 
   if (missing.length) {
     console.error("Missing required env vars:", missing);
@@ -102,7 +103,27 @@ async function tagCustomerWithUserId(customerId: string, userId: string) {
   }
 }
 
-type UserUpdate = {
+/**
+ * 🔥 IMPORTANT
+ * Your app/UI uses these columns (per your screenshot):
+ * - tier (text)
+ * - is_pro (bool)
+ * - pro_since (timestamptz)
+ *
+ * So we MUST update these on payment.
+ */
+type CoreUserUpdate = {
+  tier?: "free" | "pro";
+  is_pro?: boolean;
+  pro_since?: string | null;
+};
+
+/**
+ * Optional Stripe columns you *might* have.
+ * We write them in a separate update so missing columns
+ * won't block setting tier/is_pro.
+ */
+type OptionalStripeUpdate = {
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
   subscription_status?:
@@ -113,23 +134,72 @@ type UserUpdate = {
     | null;
   current_period_end?: string | null;
   cancel_at_period_end?: boolean;
-  is_premium?: boolean;
   price_id?: string | null;
-  tier?: "free" | "pro";
+
+  // legacy fields you used earlier — kept optional & isolated
+  is_premium?: boolean;
   premium_access_expires_at?: string | null;
   grandfathered?: boolean | null;
 };
 
-async function upsertStripeIdsOnUser(opts: {
+async function updateCorePro(userId: string) {
+  const update: CoreUserUpdate = {
+    tier: "pro",
+    is_pro: true,
+    pro_since: new Date().toISOString(),
+  };
+
+  const { error } = await supabase.from("users").update(update).eq("id", userId);
+  if (error) console.error("❌ Failed updating core pro fields:", error);
+}
+
+async function updateCoreFree(userId: string) {
+  const update: CoreUserUpdate = {
+    tier: "free",
+    is_pro: false,
+    // you can choose to keep pro_since or null it. I’ll null it to be clean.
+    pro_since: null,
+  };
+
+  const { error } = await supabase.from("users").update(update).eq("id", userId);
+  if (error) console.error("❌ Failed updating core free fields:", error);
+}
+
+/**
+ * Optional write — does NOT block core tier/is_pro updates.
+ */
+async function tryUpdateOptionalStripeFields(userId: string, update: OptionalStripeUpdate) {
+  if (!Object.keys(update).length) return;
+
+  const { error } = await supabase.from("users").update(update).eq("id", userId);
+
+  // If you don't have those columns, Supabase returns an error like:
+  // 'column "stripe_customer_id" of relation "users" does not exist'
+  // We log but do NOT fail, because core fields already got updated.
+  if (error) console.warn("⚠️ Optional Stripe field update skipped/error:", error.message);
+}
+
+async function upsertStripeOnUser(opts: {
   userId: string;
   customerId?: string | null;
   subscription?: Stripe.Subscription | null;
   priceId?: string | null;
-  forceCancel?: boolean; // used for subscription.deleted
+  forceCancel?: boolean;
+  lifetime?: boolean;
 }) {
-  const { userId, customerId, subscription, priceId, forceCancel } = opts;
+  const { userId, customerId, subscription, priceId, forceCancel, lifetime } = opts;
 
-  const update: UserUpdate = {};
+  // 1) Always update core fields first (this is what your app reads)
+  if (forceCancel) {
+    await updateCoreFree(userId);
+  } else {
+    // If paid (subscription active/trialing/past_due OR lifetime purchase), set pro
+    await updateCorePro(userId);
+  }
+
+  // 2) Then (optionally) attempt to persist Stripe metadata if your schema supports it
+  const update: OptionalStripeUpdate = {};
+
   if (customerId) update.stripe_customer_id = customerId;
 
   if (subscription) {
@@ -148,36 +218,38 @@ async function upsertStripeIdsOnUser(opts: {
     }
     update.price_id = subPriceId ?? priceId ?? null;
 
-    // Consider past_due as "still pro" for a short time if you want.
-    // If you want strict pro = active/trialing only, remove past_due below.
+    // legacy fields (if they exist)
     const premium =
       subscription.status === "active" ||
       subscription.status === "trialing" ||
       subscription.status === "past_due";
 
     update.is_premium = premium;
-    update.tier = premium ? "pro" : "free";
     update.premium_access_expires_at = premium ? ts(subscription.current_period_end) : null;
     update.grandfathered = false;
-  } else if (typeof priceId === "string") {
-    update.price_id = priceId;
+  }
+
+  if (lifetime) {
+    update.subscription_status = "active";
+    update.current_period_end = null;
+    update.cancel_at_period_end = false;
+    update.premium_access_expires_at = farFutureISO();
+    update.grandfathered = false;
+    update.is_premium = true;
+    update.price_id = priceId ?? null;
   }
 
   if (forceCancel) {
     update.subscription_status = "canceled";
-    update.is_premium = false;
-    update.tier = "free";
     update.current_period_end = null;
     update.cancel_at_period_end = false;
     update.premium_access_expires_at = null;
+    update.is_premium = false;
     update.grandfathered = false;
     update.stripe_subscription_id = null;
   }
 
-  if (Object.keys(update).length > 0) {
-    const { error } = await supabase.from("users").update(update).eq("id", userId);
-    if (error) console.error("Failed updating users for stripe ids:", error);
-  }
+  await tryUpdateOptionalStripeFields(userId, update);
 }
 
 Deno.serve(async (req) => {
@@ -259,20 +331,12 @@ Deno.serve(async (req) => {
           console.warn("Could not fetch session line items for price_id", e);
         }
 
-        // Persist customer id and price id
-        await upsertStripeIdsOnUser({
-          userId,
-          customerId,
-          subscription: null,
-          priceId,
-        });
-
         if (customerId) await tagCustomerWithUserId(customerId, userId);
 
-        // Subscription checkout (monthly/yearly)
+        // ✅ Subscription checkout (monthly/yearly)
         if (s.mode === "subscription" && s.subscription) {
           const sub = await stripe.subscriptions.retrieve(s.subscription as string);
-          await upsertStripeIdsOnUser({
+          await upsertStripeOnUser({
             userId,
             customerId,
             subscription: sub,
@@ -281,20 +345,14 @@ Deno.serve(async (req) => {
           return json({ ok: true });
         }
 
-        // One-time checkout (lifetime)
-        const update: UserUpdate = {
-          tier: "pro",
-          is_premium: true,
-          subscription_status: "active",
-          current_period_end: null,
-          cancel_at_period_end: false,
-          premium_access_expires_at: farFutureISO(),
-          grandfathered: false,
-          price_id: priceId ?? null,
-        };
-
-        const { error } = await supabase.from("users").update(update).eq("id", userId);
-        if (error) console.error("Failed marking user pro (one-time):", error);
+        // ✅ One-time checkout (lifetime)
+        await upsertStripeOnUser({
+          userId,
+          customerId,
+          subscription: null,
+          priceId,
+          lifetime: true,
+        });
 
         return json({ ok: true });
       }
@@ -312,7 +370,7 @@ Deno.serve(async (req) => {
           return json({ ok: true });
         }
 
-        await upsertStripeIdsOnUser({ userId, customerId, subscription: sub });
+        await upsertStripeOnUser({ userId, customerId, subscription: sub });
         await tagCustomerWithUserId(customerId, userId);
         return json({ ok: true });
       }
@@ -329,8 +387,7 @@ Deno.serve(async (req) => {
           return json({ ok: true });
         }
 
-        // ✅ force cancel + remove pro access
-        await upsertStripeIdsOnUser({
+        await upsertStripeOnUser({
           userId,
           customerId,
           subscription: null,
@@ -342,6 +399,7 @@ Deno.serve(async (req) => {
       }
 
       case "invoice.payment_succeeded": {
+        // ✅ Most reliable “they paid” signal for subscriptions
         const inv = event.data.object as Stripe.Invoice;
 
         const customerId = (inv.customer as string) || undefined;
@@ -358,19 +416,13 @@ Deno.serve(async (req) => {
         const subId = (inv.subscription as string) || undefined;
         if (subId) {
           const sub = await stripe.subscriptions.retrieve(subId);
-          await upsertStripeIdsOnUser({ userId, customerId, subscription: sub });
+          await upsertStripeOnUser({ userId, customerId, subscription: sub });
           await tagCustomerWithUserId(customerId, userId);
           return json({ ok: true });
         }
 
-        // Rare fallback
-        const update: UserUpdate = {
-          tier: "pro",
-          is_premium: true,
-          subscription_status: "active",
-          grandfathered: false,
-        };
-        await supabase.from("users").update(update).eq("id", userId);
+        // Rare fallback: still mark pro
+        await updateCorePro(userId);
         return json({ ok: true });
       }
 
@@ -381,15 +433,16 @@ Deno.serve(async (req) => {
         let userId = await findUserIdByCustomer(customerId);
         if (!userId) userId = await getUserIdFromCustomerMetadata(customerId);
 
+        // You can choose whether a failed payment immediately downgrades.
+        // If you’d rather keep them pro until subscription actually cancels, remove this.
         if (userId) {
-          const update: UserUpdate = {
+          await updateCoreFree(userId);
+          await tryUpdateOptionalStripeFields(userId, {
             subscription_status: "past_due",
             is_premium: false,
-            tier: "free",
             premium_access_expires_at: null,
             grandfathered: false,
-          };
-          await supabase.from("users").update(update).eq("id", userId);
+          });
         }
 
         return json({ ok: true });
@@ -400,18 +453,17 @@ Deno.serve(async (req) => {
         const userId = await findUserIdByCustomer(c.id);
 
         if (userId) {
-          const update: UserUpdate = {
+          await updateCoreFree(userId);
+          await tryUpdateOptionalStripeFields(userId, {
             stripe_customer_id: null,
             stripe_subscription_id: null,
             subscription_status: "canceled",
             current_period_end: null,
             cancel_at_period_end: false,
             is_premium: false,
-            tier: "free",
             premium_access_expires_at: null,
             grandfathered: false,
-          };
-          await supabase.from("users").update(update).eq("id", userId);
+          });
         }
 
         return json({ ok: true });
