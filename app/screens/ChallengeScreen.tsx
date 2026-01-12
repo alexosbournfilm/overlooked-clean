@@ -845,7 +845,7 @@ export default function ChallengeScreen() {
           .eq("id", user.id)
           .single();
 
-        setUserTier(profile?.tier ?? null);
+        setUserTier((profile?.tier ?? "").toLowerCase().trim() || null);
       } else {
         setUserTier(null);
       }
@@ -981,7 +981,136 @@ export default function ChallengeScreen() {
 
 const pickFile = async () => {
   try {
-    // ✅ Always verify user fresh (session + tier can be stale on screen mount)
+    // ---------------------------
+    // ✅ WEB: MUST be synchronous
+    // ---------------------------
+    if (Platform.OS === "web") {
+      // If tier hasn't loaded yet, don't try to open picker (browser will block if we await first)
+      const tierNorm = (userTier ?? "").toLowerCase().trim();
+
+      if (!tierNorm) {
+        notify("Loading your account…", "Try again in 1 second.", setStatus);
+
+        // refresh tier in background (NO picker this click)
+        (async () => {
+          try {
+            const {
+              data: { user },
+              error: uErr,
+            } = await supabase.auth.getUser();
+
+            if (uErr || !user) return;
+
+            const { data: profile } = await supabase
+              .from("users")
+              .select("tier")
+              .eq("id", user.id)
+              .single();
+
+            if (profile?.tier) setUserTier(profile.tier);
+          } catch {}
+        })();
+
+        return;
+      }
+
+      if (tierNorm !== "pro") {
+        setUpgradeVisible(true);
+        return;
+      }
+
+      // ✅ Tier is pro, so we are allowed to open picker immediately (no awaits before this)
+      setStatus("");
+      setDurationSec(null);
+      setThumbUri(null);
+      setThumbAspect(16 / 9);
+      setThumbLoading(false);
+
+      removeCustomThumbnail();
+
+      setPreviewVisible(false);
+      setPreviewLoading(false);
+      setPreviewError(null);
+      clearPreviewTimer();
+
+      setLocalUri(null);
+      setWebFile(null);
+      setProgressPct(0);
+      setEtaText("");
+
+      const acceptType = category === "music" ? ["audio/*", "video/*"] : ["video/*"];
+
+      const pick = await DocumentPicker.getDocumentAsync({
+        type: acceptType as any,
+        copyToCacheDirectory: true,
+      });
+
+      if (pick.canceled) return;
+
+      const asset: any = pick.assets?.[0];
+      if (!asset?.uri) {
+        notify("No file", "Please choose a file.");
+        return;
+      }
+
+      let bytes: number | null = null;
+
+      if (asset.file) {
+        const f: File = asset.file;
+        bytes = typeof f.size === "number" ? f.size : null;
+
+        if (objectUrlRef.current) {
+          try {
+            URL.revokeObjectURL(objectUrlRef.current);
+          } catch {}
+        }
+
+        const objUrl = URL.createObjectURL(f);
+        objectUrlRef.current = objUrl;
+
+        setWebFile(f);
+        setLocalUri(objUrl);
+      } else {
+        // fallback (rare on web)
+        setWebFile(null);
+        setLocalUri(asset.uri);
+      }
+
+      setFileSizeBytes(bytes);
+
+      if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
+        notify(
+          "File too large",
+          `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`
+        );
+        resetSelectedFile();
+        return;
+      }
+
+      const shouldTryThumb = category !== "music";
+      if (shouldTryThumb) {
+        setThumbLoading(true);
+
+        const src = objectUrlRef.current ?? asset.uri;
+        const thumb = await captureFirstFrameWeb(src);
+
+        if (thumb?.dataUrl) {
+          setThumbUri(thumb.dataUrl);
+          setThumbAspect(thumb.aspect || 16 / 9);
+        } else {
+          setThumbUri(null);
+        }
+
+        setThumbLoading(false);
+      }
+
+      setStatus("Loaded file. Checking duration…");
+      return;
+    }
+
+    // ---------------------------
+    // ✅ NATIVE (iOS/Android): can await safely
+    // ---------------------------
     const {
       data: { user },
       error: uErr,
@@ -996,31 +1125,27 @@ const pickFile = async () => {
       return;
     }
 
-    // ✅ Don’t block Pro users due to userTier being null/not loaded yet
-    let tier = userTier;
+    // check tier (native can await before picker)
+    const { data: profile, error: pErr } = await supabase
+      .from("users")
+      .select("tier")
+      .eq("id", user.id)
+      .single();
 
-    if (!tier) {
-      const { data: profile, error: pErr } = await supabase
-        .from("users")
-        .select("tier")
-        .eq("id", user.id)
-        .single();
-
-      if (pErr) {
-        notify("Please try again", "We couldn’t verify your Pro status right now.");
-        return;
-      }
-
-      tier = profile?.tier ?? null;
-      setUserTier(tier);
+    if (pErr) {
+      notify("Please try again", "We couldn’t verify your Pro status right now.");
+      return;
     }
 
-    if (tier !== "pro") {
+    const tierNorm = String(profile?.tier ?? "").toLowerCase().trim();
+    setUserTier(profile?.tier ?? null);
+
+    if (tierNorm !== "pro") {
       setUpgradeVisible(true);
       return;
     }
 
-    // 🔽 existing code continues unchanged
+    // 🔽 existing picker logic (native)
     setStatus("");
     setDurationSec(null);
 
@@ -1028,7 +1153,6 @@ const pickFile = async () => {
     setThumbAspect(16 / 9);
     setThumbLoading(false);
 
-    // for clean UX, remove custom thumb when new file is picked
     removeCustomThumbnail();
 
     setPreviewVisible(false);
@@ -1057,33 +1181,17 @@ const pickFile = async () => {
 
     let bytes: number | null = null;
 
-    if (Platform.OS === "web" && asset.file) {
-      const f: File = asset.file;
-      bytes = typeof f.size === "number" ? f.size : null;
-
-      if (objectUrlRef.current) {
-        try {
-          URL.revokeObjectURL(objectUrlRef.current);
-        } catch {}
-      }
-      const objUrl = URL.createObjectURL(f);
-      objectUrlRef.current = objUrl;
-
-      setWebFile(f);
-      setLocalUri(objUrl);
-    } else {
-      if (typeof asset.size === "number") bytes = asset.size;
-      if (bytes == null) {
-        try {
-          const info = await FileSystem.getInfoAsync(asset.uri, { size: true } as any);
-          // @ts-ignore
-          if (info?.exists && typeof (info as any)?.size === "number") bytes = (info as any).size;
-        } catch {}
-      }
-
-      setWebFile(null);
-      setLocalUri(asset.uri);
+    if (typeof asset.size === "number") bytes = asset.size;
+    if (bytes == null) {
+      try {
+        const info = await FileSystem.getInfoAsync(asset.uri, { size: true } as any);
+        // @ts-ignore
+        if (info?.exists && typeof (info as any)?.size === "number") bytes = (info as any).size;
+      } catch {}
     }
+
+    setWebFile(null);
+    setLocalUri(asset.uri);
 
     setFileSizeBytes(bytes);
 
@@ -1100,35 +1208,21 @@ const pickFile = async () => {
     if (shouldTryThumb) {
       setThumbLoading(true);
 
-      if (Platform.OS === "web") {
-        const src = objectUrlRef.current ?? asset.uri;
-        const thumb = await captureFirstFrameWeb(src);
+      try {
+        const thumb = await VideoThumbnails.getThumbnailAsync(asset.uri, { time: 120 });
+        if (thumb?.uri) setThumbUri(thumb.uri);
 
-        if (thumb?.dataUrl) {
-          setThumbUri(thumb.dataUrl);
-          setThumbAspect(thumb.aspect || 16 / 9);
-        } else {
-          setThumbUri(null);
+        // @ts-ignore
+        const w = (thumb as any)?.width;
+        // @ts-ignore
+        const h = (thumb as any)?.height;
+        if (typeof w === "number" && typeof h === "number" && w > 0 && h > 0) {
+          setThumbAspect(w / h);
         }
-
+      } catch {
+        setThumbUri(null);
+      } finally {
         setThumbLoading(false);
-      } else {
-        try {
-          const thumb = await VideoThumbnails.getThumbnailAsync(asset.uri, { time: 120 });
-          if (thumb?.uri) setThumbUri(thumb.uri);
-
-          // @ts-ignore
-          const w = (thumb as any)?.width;
-          // @ts-ignore
-          const h = (thumb as any)?.height;
-          if (typeof w === "number" && typeof h === "number" && w > 0 && h > 0) {
-            setThumbAspect(w / h);
-          }
-        } catch {
-          setThumbUri(null);
-        } finally {
-          setThumbLoading(false);
-        }
       }
     }
 
@@ -1138,6 +1232,7 @@ const pickFile = async () => {
     notify("Could not open picker", "Try again.");
   }
 };
+
 
   useEffect(() => {
     if (Platform.OS !== "web" || !localUri) return;
