@@ -39,6 +39,9 @@ import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 // NOTE: keeping this import because your file already has it.
 import { useGamification } from '../context/GamificationContext';
 
+// ✅ FIX: correct import path (MainTabs is in app/navigation; UpgradeModal is in app/components)
+import { UpgradeModal } from '../../components/UpgradeModal';
+
 const Tab = createBottomTabNavigator();
 
 /* ------------------------------- palette ------------------------------- */
@@ -48,6 +51,11 @@ const TEXT_IVORY = '#EDEBE6';
 const TEXT_MUTED = '#A7A6A2';
 const DIVIDER = '#2A2A2A';
 const GOLD = '#C6A664';
+
+// Pro sale (match your UpgradeModal vibe)
+const OFFER_ACCENT = '#2ED47A';
+const OFFER_STRIP_BG = 'rgba(46,212,122,0.12)';
+const OFFER_STRIP_BORDER = 'rgba(46,212,122,0.20)';
 
 /* ------------------------------- fonts --------------------------------- */
 const SYSTEM_SANS = Platform.select({
@@ -59,95 +67,71 @@ const SYSTEM_SANS = Platform.select({
 
 /* ------------------------------- helpers ------------------------------- */
 
-const VOTES_PER_MONTH = 10;
+// Countdown to Jan 25, 2026 (end of day local time)
+function getOfferRemaining() {
+  const end = new Date(2026, 0, 25, 23, 59, 59);
+  const now = new Date();
+  const ms = end.getTime() - now.getTime();
 
-function normalizeIsoRange(start: string, end: string) {
-  const mkStart = (s: string) =>
-    /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T00:00:00.000Z` : new Date(s).toISOString();
-  const mkEnd = (s: string) =>
-    /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T23:59:59.999Z` : new Date(s).toISOString();
-  return {
-    startIso: new Date(mkStart(start)).toISOString(),
-    endIso: new Date(mkEnd(end)).toISOString(),
-  };
+  if (ms <= 0) {
+    return { expired: true, short: 'Offer ended', long: 'Offer ended' };
+  }
+
+  const totalMinutes = Math.floor(ms / (1000 * 60));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+
+  const short = days > 0 ? `${days}d ${hours}h left` : `${hours}h left`;
+  const long = `Ends Jan 25 • ${short}`;
+
+  return { expired: false, short, long };
 }
 
-async function fetchCurrentChallenge() {
-  const { error: finalizeErr } = await supabase.rpc('finalize_last_month_winner_if_needed');
-  if (finalizeErr) {
-    console.warn('finalize_last_month_winner_if_needed failed:', finalizeErr.message);
-  }
-
-  const { data, error } = await supabase
-    .from('monthly_challenges')
-    .select('theme_word, winner_submission_id, month_start, month_end')
-    .order('month_start', { ascending: false })
-    .limit(1)
-    .single();
-
-  if (error) {
-    console.warn('Failed to fetch current challenge:', error.message);
-  }
-
-  return (
-    (data as
-      | {
-          theme_word: string | null;
-          winner_submission_id: string | null;
-          month_start: string;
-          month_end: string;
-        }
-      | null) ?? null
-  );
-}
-
-async function countUserVotesInRange(uid: string, range: { start: string; end: string }) {
-  try {
-    const { startIso, endIso } = normalizeIsoRange(range.start, range.end);
-
-    const attempt = async (tsCol: 'created_at' | 'voted_at') =>
-      supabase
-        .from('user_votes')
-        .select('user_id', { count: 'exact', head: true })
-        .eq('user_id', uid)
-        .gte(tsCol, startIso)
-        .lt(tsCol, endIso);
-
-    let { count, error } = await attempt('created_at');
-    if (error) {
-      const retry = await attempt('voted_at');
-      count = retry.count ?? 0;
-      if (retry.error) {
-        console.warn('Failed to count monthly votes (header):', retry.error.message);
-        return 0;
-      }
-    }
-
-    return count ?? 0;
-  } catch (e: any) {
-    console.warn('Failed to count monthly votes (header):', e?.message || String(e));
-    return 0;
-  }
+function withTimeout<T>(promise: Promise<T>, ms = 9000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error('Request timed out')), ms);
+    promise
+      .then((v) => {
+        clearTimeout(id);
+        resolve(v);
+      })
+      .catch((e) => {
+        clearTimeout(id);
+        reject(e);
+      });
+  });
 }
 
 /* ------------------------ Smooth Tab Transitions ----------------------- */
 /**
- * ✅ Smoother than before:
- * - We keep content solid (no fade-to-0)
- * - We fade OUT a DARK scrim overlay on focus
- * - We START the fade AFTER interactions finish (reduces hitching)
+ * ✅ Fix flashing/glitching:
+ * - On web: avoid InteractionManager + native-driver opacity timing (common flicker culprit)
+ * - Keep scrim subtle (not 0→1 hard flash)
+ * - Only animate opacity on native; on web, do a small JS-driven fade
  */
 const TabTransition = memo(function TabTransition({ children }: { children: React.ReactNode }) {
   const scrimOpacity = useRef(new Animated.Value(0)).current;
 
   useFocusEffect(
     React.useCallback(() => {
-      scrimOpacity.setValue(1);
+      // Start subtle, not full black (prevents “flash”)
+      scrimOpacity.setValue(Platform.OS === 'web' ? 0.15 : 0.22);
+
+      if (Platform.OS === 'web') {
+        // Web: small JS fade (no InteractionManager, no native driver)
+        Animated.timing(scrimOpacity, {
+          toValue: 0,
+          duration: 180,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }).start();
+        return () => {};
+      }
 
       const task = InteractionManager.runAfterInteractions(() => {
         Animated.timing(scrimOpacity, {
           toValue: 0,
-          duration: 280,
+          duration: 220,
           easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }).start();
@@ -183,143 +167,20 @@ const TabTransition = memo(function TabTransition({ children }: { children: Reac
 
 function BrandWordmark() {
   return (
-    <Pressable style={styles.brandWrap}>
+    <View style={styles.brandWrap} pointerEvents="none">
       <Text style={styles.brandTitle}>OVERLOOKED</Text>
-    </Pressable>
-  );
-}
-
-/**
- * Votes left indicator
- */
-const TopBarVotesKicker = memo(function TopBarVotesKicker() {
-  const [loading, setLoading] = useState(true);
-  const [left, setLeft] = useState<number>(VOTES_PER_MONTH);
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const authSubRef = useRef<{ unsubscribe: () => void } | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const setupForUser = async (uid: string | null) => {
-      try {
-        channelRef.current?.unsubscribe();
-      } catch {}
-      channelRef.current = null;
-
-      if (!mounted) return;
-
-      if (!uid) {
-        setLeft(VOTES_PER_MONTH);
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-
-      const challenge = await fetchCurrentChallenge();
-      if (!mounted) return;
-
-      if (!challenge) {
-        setLeft(VOTES_PER_MONTH);
-        setLoading(false);
-        return;
-      }
-
-      const used = await countUserVotesInRange(uid, {
-        start: challenge.month_start,
-        end: challenge.month_end,
-      });
-
-      if (!mounted) return;
-
-      setLeft(Math.max(0, VOTES_PER_MONTH - used));
-      setLoading(false);
-
-      try {
-        const ch = supabase
-          .channel(`votes-kicker-${uid}`)
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'user_votes',
-              filter: `user_id=eq.${uid}`,
-            },
-            async () => {
-              if (!mounted) return;
-              const fresh = await countUserVotesInRange(uid, {
-                start: challenge.month_start,
-                end: challenge.month_end,
-              });
-              if (!mounted) return;
-              setLeft(Math.max(0, VOTES_PER_MONTH - fresh));
-            }
-          )
-          .subscribe();
-
-        channelRef.current = ch;
-      } catch (err) {
-        console.warn('votes kicker realtime failed:', (err as any)?.message);
-      }
-    };
-
-    const bootstrap = async () => {
-      try {
-        const { data } = await supabase.auth.getUser();
-        const uid = data?.user?.id ?? null;
-        await setupForUser(uid);
-      } catch (err) {
-        console.warn('getUser failed (votes kicker):', (err as any)?.message);
-        if (mounted) {
-          setLeft(VOTES_PER_MONTH);
-          setLoading(false);
-        }
-      }
-    };
-
-    bootstrap();
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!mounted) return;
-      const uid = session?.user?.id ?? null;
-      setupForUser(uid);
-    });
-
-    authSubRef.current = (authListener as any)?.subscription ?? (authListener as any) ?? null;
-
-    return () => {
-      mounted = false;
-      try {
-        channelRef.current?.unsubscribe();
-      } catch {}
-      try {
-        authSubRef.current?.unsubscribe();
-      } catch {}
-    };
-  }, []);
-
-  return (
-    <View style={styles.kickerRow}>
-      <Text style={styles.kickerLabel}>VOTES LEFT</Text>
-      <Text style={styles.kickerDot}>·</Text>
-      <Text style={styles.kickerNumber}>{loading ? '—' : left}</Text>
-      <Text style={styles.kickerTotal}>/ {VOTES_PER_MONTH}</Text>
     </View>
   );
-});
+}
 
 /* ---------------------- ✅ STREAK Progress Bar --------------------- */
 
 type TopBarStreakProgressProps = {
   variant: 'wide' | 'compact';
-  onOpenLeaderboard?: () => void;
 };
 
 const TopBarStreakProgress = memo(function TopBarStreakProgress({
   variant,
-  onOpenLeaderboard,
 }: TopBarStreakProgressProps) {
   const isWide = variant === 'wide';
 
@@ -357,19 +218,6 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
 
   return (
     <View style={[styles.streakWrap, isWide ? styles.streakWrapWide : styles.streakWrapCompact]}>
-      {onOpenLeaderboard && (
-        <View
-          style={[
-            styles.leaderboardLinkRow,
-            isWide ? styles.leaderboardLinkRowWide : styles.leaderboardLinkRowCompact,
-          ]}
-        >
-          <Pressable onPress={onOpenLeaderboard} hitSlop={8}>
-            <Text style={styles.leaderboardLinkText}>VIEW LEADERBOARD</Text>
-          </Pressable>
-        </View>
-      )}
-
       <View style={[styles.streakBarOuter, isWide && styles.streakBarOuterWide]}>
         <Animated.View style={[styles.streakBarFill, { width: widthInterpolated }]} />
         <View style={styles.streakBarOverlay}>
@@ -435,11 +283,13 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
         const uid = data?.user?.id;
         if (!uid) return;
 
-        const { data: userRow, error: userErr } = await supabase
-          .from('users')
-          .select('city_id')
-          .eq('id', uid)
-          .maybeSingle();
+        const res = await withTimeout<any>(
+          (supabase.from('users').select('city_id').eq('id', uid).maybeSingle() as any) as Promise<any>,
+          8000
+        );
+
+        const userRow = res?.data as any;
+        const userErr = res?.error as any;
 
         if (userErr) {
           console.warn('Failed to fetch user city:', userErr.message);
@@ -449,12 +299,12 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
         if (userRow?.city_id != null) {
           setUserCityId(userRow.city_id as number);
 
-          const { data: cityRow } = await supabase
-            .from('cities')
-            .select('name')
-            .eq('id', userRow.city_id)
-            .maybeSingle();
+          const cityRes = await withTimeout<any>(
+            (supabase.from('cities').select('name').eq('id', userRow.city_id).maybeSingle() as any) as Promise<any>,
+            8000
+          );
 
+          const cityRow = cityRes?.data as any;
           if (cityRow?.name) setUserCityName(cityRow.name);
         }
       } catch (e: any) {
@@ -472,39 +322,44 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
 
     try {
       if (tab === 'monthly') {
-        const { data, error: err } = await supabase
-          .from('leaderboard_monthly_current')
-          .select('*')
-          .order('rank', { ascending: true })
-          .limit(100);
-        if (err) throw err;
-        setEntries((data || []) as LeaderboardEntry[]);
+        const res = await withTimeout<any>(
+          (supabase.from('leaderboard_monthly_current').select('*').order('rank', { ascending: true }).limit(100) as any) as Promise<any>,
+          9000
+        );
+        if (res?.error) throw res.error;
+        setEntries(((res?.data || []) as any[]) as LeaderboardEntry[]);
       } else if (tab === 'allTime') {
-        const { data, error: err } = await supabase
-          .from('leaderboard_all_time')
-          .select('*')
-          .order('rank', { ascending: true })
-          .limit(100);
-        if (err) throw err;
-        setEntries((data || []) as LeaderboardEntry[]);
+        const res = await withTimeout<any>(
+          (supabase.from('leaderboard_all_time').select('*').order('rank', { ascending: true }).limit(100) as any) as Promise<any>,
+          9000
+        );
+        if (res?.error) throw res.error;
+        setEntries(((res?.data || []) as any[]) as LeaderboardEntry[]);
       } else if (tab === 'city') {
         if (!userCityId) {
           setEntries([]);
           setError('Set your city in your profile to see your local leaderboard.');
         } else {
-          const { data, error: err } = await supabase
-            .from('leaderboard_city_all_time')
-            .select('*')
-            .eq('city_id', userCityId)
-            .order('rank', { ascending: true })
-            .limit(100);
-          if (err) throw err;
-          setEntries((data || []) as LeaderboardEntry[]);
+          const res = await withTimeout<any>(
+            (supabase
+              .from('leaderboard_city_all_time')
+              .select('*')
+              .eq('city_id', userCityId)
+              .order('rank', { ascending: true })
+              .limit(100) as any) as Promise<any>,
+            9000
+          );
+          if (res?.error) throw res.error;
+          setEntries(((res?.data || []) as any[]) as LeaderboardEntry[]);
         }
       }
     } catch (e: any) {
       console.warn('Leaderboard fetch error:', e?.message || String(e));
-      setError('Could not load leaderboard.');
+      setError(
+        e?.message?.toLowerCase?.().includes('timed out')
+          ? 'Leaderboard is taking too long to load.'
+          : 'Could not load leaderboard.'
+      );
       setEntries([]);
     } finally {
       setLoading(false);
@@ -662,7 +517,7 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
   );
 });
 
-/* ---------------------- XP Progress (from context) --------------------- */
+/* ---------------------- XP Progress (kept, unchanged) --------------------- */
 /* Keeping your original component in the file, but it’s no longer rendered in TopBar. */
 
 type TopBarXpProgressProps = {
@@ -947,57 +802,88 @@ const TopBarXpProgress = memo(function TopBarXpProgress({
 type TopBarProps = {
   topOffset: number;
   navHeight: number;
+  onOpenUpgrade: () => void;
+  onOpenLeaderboard: () => void;
 };
 
-const TopBar = memo(function TopBar({ topOffset, navHeight }: TopBarProps) {
+const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpenLeaderboard }: TopBarProps) {
   const { width } = useWindowDimensions();
   const isWide = width >= 980;
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
 
-  const wrapperHeight = isWide ? navHeight : navHeight + 38;
+  const [offerCountdown, setOfferCountdown] = useState(() => getOfferRemaining());
+
+  useEffect(() => {
+    const tick = () => setOfferCountdown(getOfferRemaining());
+    tick();
+    const id = setInterval(tick, 60 * 1000); // minute ticks (no seconds)
+    return () => clearInterval(id);
+  }, []);
+
+  const bannerHeight = 38; // ✅ slightly taller + more “sale-y”
+  const wrapperHeight = bannerHeight + (isWide ? navHeight : navHeight + 38);
+
+  // ✅ No price in the bar, centered + bigger
+  const saleText = offerCountdown.expired
+    ? `NEW YEAR’S PRO SALE • OFFER ENDED`
+    : `NEW YEAR’S PRO SALE • ${offerCountdown.long}`; // "Ends Jan 25 • 13d 10h left"
 
   return (
-    <>
-      <View style={[styles.topBarWrapper, { height: wrapperHeight, top: topOffset }]}>
-        <View style={[styles.topBarInner, { height: navHeight }]}>
-          <BrandWordmark />
+    <View style={[styles.topBarWrapper, { height: wrapperHeight, top: topOffset }]}>
+      {/* ✅ New Year’s Sale bar ABOVE the top bar (centered text, bigger, no price) */}
+      <Pressable
+        onPress={onOpenUpgrade}
+        style={({ pressed }) => [styles.saleBanner, pressed ? { opacity: 0.94 } : null]}
+        hitSlop={6}
+      >
+        <View style={styles.saleDot} />
+        <View pointerEvents="none" style={styles.saleBannerCenterAbs}>
+          <Text style={styles.saleBannerText} numberOfLines={1}>
+            {saleText}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color="rgba(237,235,230,0.88)" />
+      </Pressable>
 
-          {isWide ? (
-            <>
-              <View style={styles.xpCenterSlot}>
-                <TopBarStreakProgress variant="wide" onOpenLeaderboard={() => setShowLeaderboard(true)} />
-              </View>
-              <View style={styles.rightTools}>
-                <TopBarVotesKicker />
-                <View style={{ width: 12 }} />
-                <View style={styles.settingsChip}>
-                  <SettingsButton absolute={false} />
-                </View>
-              </View>
-            </>
-          ) : (
-            <>
-              <View style={{ flex: 1 }} />
-              <View style={styles.rightTools}>
-                <TopBarVotesKicker />
-                <View style={{ width: 8 }} />
-                <View style={styles.settingsChip}>
-                  <SettingsButton absolute={false} />
-                </View>
-              </View>
-            </>
-          )}
+      {/* Top bar */}
+      <View style={[styles.topBarInner, { height: navHeight }]}>
+        {/* ✅ Bring back OVERLOOKED wordmark on the left */}
+        <BrandWordmark />
+
+        {/* ✅ TRUE centered streak (absolute center) */}
+        <View pointerEvents="box-none" style={styles.centerSlotAbs}>
+          <TopBarStreakProgress variant="wide" />
         </View>
 
-        {!isWide && (
-          <View style={styles.topBarInnerXpRow}>
-            <TopBarStreakProgress variant="compact" onOpenLeaderboard={() => setShowLeaderboard(true)} />
+        {/* Right tools */}
+        <View style={styles.rightTools}>
+          <Pressable
+            onPress={onOpenLeaderboard}
+            style={({ pressed }) => [styles.leaderboardBtn, pressed ? { opacity: 0.9 } : null]}
+            hitSlop={6}
+          >
+            <Ionicons name="trophy-outline" size={16} color={GOLD} />
+            <Text style={styles.leaderboardBtnText}>VIEW LEADERBOARD</Text>
+          </Pressable>
+
+          <View style={{ width: 10 }} />
+
+          <View style={styles.settingsChipSmall}>
+            <View style={{ transform: [{ scale: 0.9 }] }}>
+              <SettingsButton absolute={false} />
+            </View>
           </View>
-        )}
+        </View>
       </View>
 
-      <LeaderboardModal visible={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
-    </>
+      {/* Mobile streak row (centered) */}
+      {!isWide && (
+        <View style={styles.topBarInnerXpRow}>
+          <View style={{ alignItems: 'center' }}>
+            <TopBarStreakProgress variant="compact" />
+          </View>
+        </View>
+      )}
+    </View>
   );
 });
 
@@ -1028,6 +914,9 @@ export default function MainTabs() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+
   // ✅ Web-only: force body background so the browser never flashes white on reflow
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -1044,13 +933,18 @@ export default function MainTabs() {
   const NAV_HEIGHT = width >= 980 ? 56 : 46;
   const topOffset = width >= 980 ? 0 : Platform.OS === 'ios' ? Math.max((insets.top || 0) - 4, 0) : 0;
 
-  const contentTopPadding = NAV_HEIGHT + (width >= 980 ? 0 : 40);
+  // banner (38) + top bar (NAV_HEIGHT) + mobile streak row (40)
+  const contentTopPadding = NAV_HEIGHT + 38 + (width >= 980 ? 0 : 40);
 
   return (
     <SettingsModalProvider>
       <View style={{ flex: 1, backgroundColor: DARK_BG }}>
-        {/* ✅ Top bar renders ONCE and persists across tab changes */}
-        <TopBar topOffset={topOffset} navHeight={NAV_HEIGHT} />
+        <TopBar
+          topOffset={topOffset}
+          navHeight={NAV_HEIGHT}
+          onOpenUpgrade={() => setShowUpgrade(true)}
+          onOpenLeaderboard={() => setShowLeaderboard(true)}
+        />
 
         <SafeAreaView
           style={[styles.safeArea, { paddingTop: contentTopPadding }]}
@@ -1059,8 +953,6 @@ export default function MainTabs() {
           <Tab.Navigator
             screenOptions={({ route }) => ({
               headerShown: false,
-
-              // ✅ Prevent "white flash" between screens
               sceneContainerStyle: { backgroundColor: DARK_BG },
 
               tabBarActiveTintColor: GOLD,
@@ -1088,9 +980,9 @@ export default function MainTabs() {
 
               // ✅ Smoother switching
               lazy: true,
-              lazyPreloadDistance: 6, // preload all tabs
-              freezeOnBlur: true, // stop background work on inactive tabs
-              detachInactiveScreens: false, // prevent blank frames / flashes
+              lazyPreloadDistance: 6,
+              freezeOnBlur: true,
+              detachInactiveScreens: false,
               unmountOnBlur: false,
 
               tabBarIcon: ({ color }) => {
@@ -1150,6 +1042,10 @@ export default function MainTabs() {
         </SafeAreaView>
 
         <SettingsModal />
+
+        <LeaderboardModal visible={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
+
+        <UpgradeModal visible={showUpgrade} onClose={() => setShowUpgrade(false)} context={undefined} />
       </View>
     </SettingsModalProvider>
   );
@@ -1162,6 +1058,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: DARK_BG,
   },
+
   topBarWrapper: {
     position: 'absolute',
     left: 0,
@@ -1171,22 +1068,61 @@ const styles = StyleSheet.create({
     borderBottomColor: DIVIDER,
     zIndex: 20,
   },
+
+  /* ✅ New Year banner */
+  saleBanner: {
+    height: 38,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: OFFER_STRIP_BG,
+    borderBottomWidth: 1,
+    borderBottomColor: OFFER_STRIP_BORDER,
+  },
+  saleDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 99,
+    backgroundColor: OFFER_ACCENT,
+    opacity: 0.95,
+  },
+  // absolute center text (so it’s perfectly centered regardless of icons)
+  saleBannerCenterAbs: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 36, // leave room for dot + chevron
+  },
+  saleBannerText: {
+    fontSize: 14.5, // ✅ bigger
+    fontWeight: '900',
+    letterSpacing: 1.0,
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+    textTransform: 'uppercase',
+  },
+
   topBarInner: {
     width: '100%',
     maxWidth: 1200,
     alignSelf: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
+    position: 'relative',
   },
+
   topBarInnerXpRow: {
     width: '100%',
     maxWidth: 1200,
     alignSelf: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingTop: 6,
     paddingBottom: 6,
   },
+
   brandWrap: {
     paddingVertical: 6,
     paddingRight: 8,
@@ -1198,78 +1134,49 @@ const styles = StyleSheet.create({
     letterSpacing: 2.2,
     fontFamily: SYSTEM_SANS,
   },
-  rightTools: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  settingsChip: {
-    backgroundColor: '#2B2B2B',
-    borderRadius: 999,
-    padding: 6,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#3A3A3A',
-  },
 
-  /* Votes */
-  kickerRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  kickerLabel: {
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    color: TEXT_MUTED,
-    fontFamily: SYSTEM_SANS,
-  },
-  kickerDot: {
-    marginHorizontal: 6,
-    fontSize: 11,
-    fontWeight: '900',
-    color: TEXT_MUTED,
-    fontFamily: SYSTEM_SANS,
-  },
-  kickerNumber: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: TEXT_IVORY,
-    fontFamily: SYSTEM_SANS,
-  },
-  kickerTotal: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: TEXT_MUTED,
-    marginLeft: 2,
-    fontFamily: SYSTEM_SANS,
-  },
-
-  xpCenterSlot: {
-    flex: 1,
+  // ✅ absolute centered streak (truly centered even with right buttons)
+  centerSlotAbs: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 18,
+    pointerEvents: 'none',
   },
 
-  leaderboardLinkRow: {
-    marginBottom: 2,
-  },
-  leaderboardLinkRowWide: {
+  rightTools: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  leaderboardLinkRowCompact: {
-    alignItems: 'flex-start',
+
+  leaderboardBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(198,166,100,0.10)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(198,166,100,0.30)',
   },
-  leaderboardLinkText: {
-    fontSize: 9,
-    letterSpacing: 1.5,
-    fontWeight: '800',
+  leaderboardBtnText: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.2,
     color: GOLD,
     textTransform: 'uppercase',
-    opacity: 0.9,
     fontFamily: SYSTEM_SANS,
+  },
+
+  settingsChipSmall: {
+    backgroundColor: '#2B2B2B',
+    borderRadius: 999,
+    padding: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#3A3A3A',
   },
 
   /* ✅ STREAK styles */
@@ -1286,7 +1193,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: '100%',
     alignSelf: 'stretch',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   streakBarOuter: {
     width: '100%',
@@ -1337,6 +1244,24 @@ const styles = StyleSheet.create({
   },
 
   /* XP styles kept (unused in TopBar now but preserved) */
+  leaderboardLinkRow: {
+    marginBottom: 2,
+  },
+  leaderboardLinkRowWide: {
+    alignItems: 'center',
+  },
+  leaderboardLinkRowCompact: {
+    alignItems: 'flex-start',
+  },
+  leaderboardLinkText: {
+    fontSize: 9,
+    letterSpacing: 1.5,
+    fontWeight: '800',
+    color: GOLD,
+    textTransform: 'uppercase',
+    opacity: 0.9,
+    fontFamily: SYSTEM_SANS,
+  },
   xpWrap: { paddingVertical: 2 },
   xpWrapWide: {
     width: '100%',
