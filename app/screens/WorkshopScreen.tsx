@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { Video, ResizeMode } from 'expo-av';
+import { Audio, Video, ResizeMode } from 'expo-av';
 import { supabase, type UserTier } from '../lib/supabase';
 import { UpgradeModal } from '../../components/UpgradeModal';
 
@@ -36,9 +36,50 @@ const IS_WEB = Platform.OS === 'web';
 // ✅ TS-safe web-only style (not in StyleSheet because objectFit isn't ViewStyle)
 const WEB_VIDEO_FIT = IS_WEB ? ({ objectFit: 'contain' } as any) : undefined;
 
-// ✅ Starter LUT Pack preview image for the main list thumbnail slot
+/* ✅ Starter LUT Pack previews (thumbnail + video) */
 const STARTER_LUT_PACK_PREVIEW_IMAGE =
-  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/LUT%20PACK%20IMAGE%20PREVIEW/STARTER%20LUT%20PACK%20IMAGE_1.30.1.jpg';
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/STARTER_1.25.1.jpg';
+const STARTER_LUT_PACK_PREVIEW_VIDEO =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/STARTER00000000.mp4';
+
+/* ✅ Cinema LUTs assets */
+const CINEMA_LUTS_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/CINEMA%20LUTS.zip';
+const CINEMA_LUTS_PREVIEW_VIDEO =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/CINEMA00000000.mp4';
+const CINEMA_LUTS_PREVIEW_IMAGE =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/CINEMA_1.8.1.jpg';
+
+/* ✅ Breaking Bad LUTs assets */
+const BREAKING_BAD_LUTS_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/BREAKING%20BAD%20LUTS.zip';
+const BREAKING_BAD_LUTS_PREVIEW_VIDEO =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/BREAKING%20BAD%20VIDEO00000000.mp4';
+const BREAKING_BAD_LUTS_PREVIEW_IMAGE =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/BREAKING%20BAD%20IMAGE_1.31.1.jpg';
+
+/* ✅ Sound FX packs (provided) */
+const SWOOSHES_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/SWOOSHES.zip';
+const IMPACTS_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/IMPACTS.zip';
+const RISERS_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/RISERS.zip';
+const GUN_SHOTS_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/GUN%20SHOTS.zip';
+
+/* ✅ Sound FX previews (audio) */
+const SWOOSH_PREVIEW_MP3 =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/swoosh%20preview.mp3';
+const RISER_PREVIEW_MP3 =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/riser%20preview.mp3';
+const IMPACT_PREVIEW_MP3 =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/impactpreview.mp3';
+const GUN_PREVIEW_MP3 =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/gun%20preview.mp3';
+
+/* ✅ fixed card height so ALL cards are identical size */
+const WORKSHOP_CARD_HEIGHT = 150;
 
 /* ------------------------------- fonts --------------------------------- */
 const SYSTEM_SANS = Platform.select({
@@ -61,6 +102,10 @@ type WorkshopProduct = {
 
   // Optional: you can add later in Supabase with no code changes.
   preview_url?: string | null;
+
+  // ✅ local-only: use themed icons when you don’t have preview images yet
+  thumb_icon?: keyof typeof Ionicons.glyphMap | null;
+  thumb_label?: string | null;
 
   is_active: boolean;
   created_at: string;
@@ -129,11 +174,58 @@ const ShimmerThumb: React.FC<{ size: number }> = ({ size }) => {
   );
 };
 
+/* ------------------------ themed icon thumb ----------------------------- */
+const IconThumb: React.FC<{ icon: keyof typeof Ionicons.glyphMap; label?: string | null }> = ({
+  icon,
+  label,
+}) => {
+  return (
+    <View style={styles.iconThumb}>
+      <View style={styles.iconThumbInner}>
+        <Ionicons name={icon} size={26} color={GOLD} />
+      </View>
+      <Text style={styles.iconThumbLabel}>{label || 'AUDIO'}</Text>
+    </View>
+  );
+};
+
+/* ---------------------- FIX: rock-solid web thumbs --------------------- */
+/**
+ * RN-web's <Image> can sometimes "flash then disappear" when nested in animated/transformed parents.
+ * This uses a native <img> ONLY on web for the thumbnail slot (like we already do with <video>).
+ */
+const ThumbMedia: React.FC<{ uri: string }> = ({ uri }) => {
+  if (IS_WEB) {
+    return (
+      <img
+        src={uri}
+        style={
+          {
+            width: 76,
+            height: 76,
+            borderRadius: 12,
+            objectFit: 'cover',
+            display: 'block',
+          } as any
+        }
+        draggable={false}
+        alt=""
+      />
+    );
+  }
+
+  return <Image source={{ uri }} style={styles.thumb} resizeMode="cover" />;
+};
+
 /* ------------------------------- screen -------------------------------- */
 const WorkshopScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [products, setProducts] = useState<WorkshopProduct[]>([]);
+
+  // Split into categories
+  const [lutProducts, setLutProducts] = useState<WorkshopProduct[]>([]);
+  const [soundProducts, setSoundProducts] = useState<WorkshopProduct[]>([]);
+
   const [purchases, setPurchases] = useState<WorkshopPurchase[]>([]); // kept to avoid refactor risk
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
@@ -144,12 +236,18 @@ const WorkshopScreen: React.FC = () => {
   const [previewVisible, setPreviewVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<WorkshopProduct | null>(null);
 
-  // Inline video controls
+  // Inline video/audio controls
   const videoRef = useRef<Video | null>(null);
   const webVideoRef = useRef<HTMLVideoElement | null>(null);
 
+  const audioRef = useRef<Audio.Sound | null>(null);
+  const webAudioRef = useRef<HTMLAudioElement | null>(null);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
+
+  // Track current preview kind so play/mute works for video OR audio
+  const [previewKind, setPreviewKind] = useState<'none' | 'video' | 'audio' | 'image'>('none');
 
   // ✅ IMPORTANT: dynamic aspect ratio so previews never crop
   const [previewAspect, setPreviewAspect] = useState(16 / 9);
@@ -235,7 +333,150 @@ const WorkshopScreen: React.FC = () => {
       if (productErr) {
         console.warn('Workshop: products error:', productErr.message);
       } else if (productData) {
-        setProducts(productData as WorkshopProduct[]);
+        let fetched = (productData as WorkshopProduct[]) || [];
+
+        /* ✅ inject Cinema LUTs if it’s not yet in Supabase */
+        const hasCinemaAlready = fetched.some((p) => {
+          const slug = (p.slug || '').toLowerCase();
+          const name = (p.name || '').toLowerCase();
+          return slug === 'cinema-luts' || name === 'cinema luts' || name.includes('cinema luts');
+        });
+
+        const injectedCinema: WorkshopProduct = {
+          id: 'local-cinema-luts',
+          name: 'Cinema LUTs',
+          slug: 'cinema-luts',
+          description:
+            'A collection of 7 cinematic LUTs designed to instantly add rich tone and filmic contrast to your footage.',
+          price_cents: 0,
+          currency: 'GBP',
+          image_url: CINEMA_LUTS_PREVIEW_IMAGE,
+          file_url: CINEMA_LUTS_ZIP,
+          preview_url: CINEMA_LUTS_PREVIEW_VIDEO,
+          is_active: true,
+          created_at: new Date().toISOString(),
+        };
+
+        if (!hasCinemaAlready) fetched = [...fetched, injectedCinema];
+
+        /* ✅ inject Breaking Bad LUTs if it’s not yet in Supabase */
+        const hasBreakingBadAlready = fetched.some((p) => {
+          const slug = (p.slug || '').toLowerCase();
+          const name = (p.name || '').toLowerCase();
+          return (
+            slug === 'breaking-bad-luts' ||
+            name === 'breaking bad luts' ||
+            name.includes('breaking bad')
+          );
+        });
+
+        const injectedBreakingBad: WorkshopProduct = {
+          id: 'local-breaking-bad-luts',
+          name: 'Breaking Bad LUTs',
+          slug: 'breaking-bad-luts',
+          description: '7 LUTs inspired by Breaking Bad.',
+          price_cents: 0,
+          currency: 'GBP',
+          image_url: BREAKING_BAD_LUTS_PREVIEW_IMAGE,
+          file_url: BREAKING_BAD_LUTS_ZIP,
+          preview_url: BREAKING_BAD_LUTS_PREVIEW_VIDEO,
+          is_active: true,
+          created_at: new Date(Date.now() + 1).toISOString(),
+        };
+
+        if (!hasBreakingBadAlready) fetched = [...fetched, injectedBreakingBad];
+
+        // ✅ Map Starter LUT Pack if needed (same logic as before)
+        const mappedFetched = fetched.map((product) => {
+          const isStarter =
+            product.slug === 'starter-lut-pack' ||
+            product.slug === 'out-pack' ||
+            product.name.toLowerCase() === 'out pack';
+
+          if (!isStarter) return product;
+
+          return {
+            ...product,
+            name: 'STARTER LUT Pack',
+            slug: 'starter-lut-pack',
+            description:
+              'A compact pack of six clean, versatile starter LUTs designed to give your footage instant polish. Perfect for experimenting inside Overlooked and shaping your first cinematic cuts.',
+            file_url:
+              'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/avatars/STARTER.zip',
+            image_url: STARTER_LUT_PACK_PREVIEW_IMAGE,
+            preview_url: STARTER_LUT_PACK_PREVIEW_VIDEO,
+          };
+        });
+
+        // ✅ LUT section remains your fetched products
+        const nextLuts = mappedFetched;
+
+        // ✅ Sound FX section (injected packs) + ✅ AUDIO PREVIEW_URLS ADDED
+        const nextSoundFx: WorkshopProduct[] = [
+          {
+            id: 'local-swooshes-pack',
+            name: 'Swooshes Pack',
+            slug: 'swooshes-pack',
+            description: '6 cinematic swooshes.',
+            price_cents: 0,
+            currency: 'GBP',
+            image_url: null,
+            file_url: SWOOSHES_ZIP,
+            preview_url: SWOOSH_PREVIEW_MP3,
+            thumb_icon: 'swap-horizontal-outline',
+            thumb_label: 'SWOOSH',
+            is_active: true,
+            created_at: new Date(Date.now() + 2).toISOString(),
+          },
+          {
+            id: 'local-impacts-pack',
+            name: 'Impacts Pack',
+            slug: 'impacts-pack',
+            description: '6 cinematic impacts.',
+            price_cents: 0,
+            currency: 'GBP',
+            image_url: null,
+            file_url: IMPACTS_ZIP,
+            preview_url: IMPACT_PREVIEW_MP3,
+            thumb_icon: 'flash-outline',
+            thumb_label: 'IMPACT',
+            is_active: true,
+            created_at: new Date(Date.now() + 3).toISOString(),
+          },
+          {
+            id: 'local-risers-pack',
+            name: 'Risers Pack',
+            slug: 'risers-pack',
+            description: '6 cinematic risers ranging from sci-fi to horror.',
+            price_cents: 0,
+            currency: 'GBP',
+            image_url: null,
+            file_url: RISERS_ZIP,
+            preview_url: RISER_PREVIEW_MP3,
+            thumb_icon: 'trending-up-outline',
+            thumb_label: 'RISER',
+            is_active: true,
+            created_at: new Date(Date.now() + 4).toISOString(),
+          },
+          {
+            id: 'local-gun-shots-pack',
+            name: 'Gun Shots Pack',
+            slug: 'gun-shots-pack',
+            description: 'A variety of gunshots.',
+            price_cents: 0,
+            currency: 'GBP',
+            image_url: null,
+            file_url: GUN_SHOTS_ZIP,
+            preview_url: GUN_PREVIEW_MP3,
+            thumb_icon: 'volume-high-outline',
+            thumb_label: 'SHOTS',
+            is_active: true,
+            created_at: new Date(Date.now() + 5).toISOString(),
+          },
+        ];
+
+        setLutProducts(nextLuts);
+        setSoundProducts(nextSoundFx);
       }
     } catch (err: any) {
       console.warn('Workshop: unexpected error:', err?.message || err);
@@ -313,33 +554,17 @@ const WorkshopScreen: React.FC = () => {
     );
   };
 
-  /* -------------------------- preview modal ---------------------------- */
-  const openPreview = async (product: WorkshopProduct) => {
-    setSelectedProduct(product);
-    setPreviewVisible(true);
-    setIsPlaying(false);
-    setIsMuted(true);
-    setPreviewAspect(16 / 9); // reset each open (then we detect actual)
-  };
-
-  const closePreview = async () => {
-    try {
-      if (IS_WEB && webVideoRef.current) {
-        webVideoRef.current.pause();
-        webVideoRef.current.currentTime = 0;
-      } else if (videoRef.current) {
-        await videoRef.current.stopAsync();
-      }
-    } catch {}
-    setIsPlaying(false);
-    setIsMuted(true);
-    setPreviewVisible(false);
-    setSelectedProduct(null);
-  };
-
-  const getPreviewAsset = (product: WorkshopProduct) => {
-    const asset = product.preview_url || product.image_url;
-    return asset || null;
+  /* -------------------------- preview helpers --------------------------- */
+  const isAudio = (url: string) => {
+    const lower = url.toLowerCase();
+    return (
+      lower.endsWith('.mp3') ||
+      lower.endsWith('.m4a') ||
+      lower.endsWith('.wav') ||
+      lower.endsWith('.ogg') ||
+      lower.includes('preview.mp3') ||
+      lower.includes('preview')
+    );
   };
 
   const previewIsLikelyVideo = (url: string) => {
@@ -347,51 +572,273 @@ const WorkshopScreen: React.FC = () => {
     return lower.endsWith('.mp4') || lower.endsWith('.mov') || lower.includes('video');
   };
 
+  /* -------------------------- preview modal ---------------------------- */
+  const openPreview = async (product: WorkshopProduct) => {
+    // stop any previous audio cleanly
+    try {
+      if (audioRef.current) {
+        await audioRef.current.stopAsync();
+        await audioRef.current.unloadAsync();
+        audioRef.current = null;
+      }
+    } catch {}
+
+    setSelectedProduct(product);
+    setPreviewVisible(true);
+    setIsPlaying(false);
+    setIsMuted(true);
+
+    // default aspect
+    setPreviewAspect(16 / 9);
+
+    const asset = (product.preview_url || product.image_url) ?? null;
+    if (!asset) setPreviewKind('none');
+    else if (isAudio(asset)) {
+      setPreviewKind('audio');
+      setPreviewAspect(16 / 9); // keep consistent modal sizing
+    } else if (previewIsLikelyVideo(asset)) {
+      setPreviewKind('video');
+      setPreviewAspect(16 / 9);
+    } else {
+      setPreviewKind('image');
+    }
+  };
+
+  const closePreview = async () => {
+    try {
+      // stop web media
+      if (IS_WEB && webVideoRef.current) {
+        webVideoRef.current.pause();
+        webVideoRef.current.currentTime = 0;
+      }
+      if (IS_WEB && webAudioRef.current) {
+        webAudioRef.current.pause();
+        webAudioRef.current.currentTime = 0;
+      }
+
+      // stop native media
+      if (videoRef.current) {
+        await videoRef.current.stopAsync();
+      }
+      if (audioRef.current) {
+        await audioRef.current.stopAsync();
+        await audioRef.current.unloadAsync();
+        audioRef.current = null;
+      }
+    } catch {}
+
+    setIsPlaying(false);
+    setIsMuted(true);
+    setPreviewVisible(false);
+    setSelectedProduct(null);
+    setPreviewKind('none');
+  };
+
   const MODAL_MAX_W = Math.min(520, SCREEN_W - 24);
 
   const togglePlay = async () => {
     try {
+      const asset = selectedProduct ? (selectedProduct.preview_url || selectedProduct.image_url) : null;
+      if (!asset) return;
+
+      // ---------- WEB ----------
       if (IS_WEB) {
-        const el = webVideoRef.current;
-        if (!el) return;
-        if (!el.paused) {
-          el.pause();
+        if (previewKind === 'audio') {
+          const el = webAudioRef.current;
+          if (!el) return;
+          if (!el.paused) {
+            el.pause();
+            setIsPlaying(false);
+          } else {
+            await el.play().catch(() => {});
+            setIsPlaying(!el.paused);
+          }
+          return;
+        }
+
+        if (previewKind === 'video') {
+          const el = webVideoRef.current;
+          if (!el) return;
+          if (!el.paused) {
+            el.pause();
+            setIsPlaying(false);
+          } else {
+            await el.play().catch(() => {});
+            setIsPlaying(!el.paused);
+          }
+          return;
+        }
+
+        return;
+      }
+
+      // ---------- NATIVE ----------
+      if (previewKind === 'audio') {
+        // lazy-load audio
+        if (!audioRef.current) {
+          const created = await Audio.Sound.createAsync(
+            { uri: asset },
+            { shouldPlay: true, isMuted, volume: 1.0 },
+            (status) => {
+              if (!status.isLoaded) return;
+              setIsPlaying(!!status.isPlaying);
+              if (status.didJustFinish) setIsPlaying(false);
+            }
+          );
+          audioRef.current = created.sound;
+          setIsPlaying(true);
+          return;
+        }
+
+        // toggle play/pause
+        const st = await audioRef.current.getStatusAsync();
+        if (st.isLoaded && st.isPlaying) {
+          await audioRef.current.pauseAsync();
           setIsPlaying(false);
         } else {
-          await el.play().catch(() => {});
-          setIsPlaying(!el.paused);
+          await audioRef.current.playAsync();
+          setIsPlaying(true);
         }
         return;
       }
 
-      if (!videoRef.current) return;
-      if (isPlaying) {
-        await videoRef.current.pauseAsync();
-        setIsPlaying(false);
-      } else {
-        await videoRef.current.playAsync();
-        setIsPlaying(true);
+      // video
+      if (previewKind === 'video') {
+        if (!videoRef.current) return;
+        if (isPlaying) {
+          await videoRef.current.pauseAsync();
+          setIsPlaying(false);
+        } else {
+          await videoRef.current.playAsync();
+          setIsPlaying(true);
+        }
       }
     } catch {}
   };
 
   const toggleMute = async () => {
     try {
+      // ---------- WEB ----------
       if (IS_WEB) {
-        const el = webVideoRef.current;
-        if (!el) return;
         const next = !isMuted;
-        el.muted = next;
+
+        if (previewKind === 'audio') {
+          const el = webAudioRef.current;
+          if (!el) return;
+          el.muted = next;
+          setIsMuted(next);
+          return;
+        }
+
+        if (previewKind === 'video') {
+          const el = webVideoRef.current;
+          if (!el) return;
+          el.muted = next;
+          setIsMuted(next);
+          return;
+        }
+
+        return;
+      }
+
+      // ---------- NATIVE ----------
+      const next = !isMuted;
+
+      if (previewKind === 'audio') {
+        if (audioRef.current) {
+          await audioRef.current.setIsMutedAsync(next);
+        }
         setIsMuted(next);
         return;
       }
 
-      if (!videoRef.current) return;
-      const next = !isMuted;
-      await videoRef.current.setIsMutedAsync(next);
-      setIsMuted(next);
+      if (previewKind === 'video') {
+        if (!videoRef.current) return;
+        await videoRef.current.setIsMutedAsync(next);
+        setIsMuted(next);
+      }
     } catch {}
   };
+
+  const renderProductCard = (product: WorkshopProduct, opts?: { forceFullRow?: boolean }) => {
+    const access = hasAccess(product);
+    const scale = getCardScale(product.id);
+
+    const isBreakingBad = (product.slug || '').toLowerCase() === 'breaking-bad-luts';
+    const fullRow = opts?.forceFullRow || (columns === 2 && isBreakingBad ? true : false);
+
+    return (
+      <View
+        key={product.id}
+        style={[
+          styles.gridItem,
+          columns === 2 ? styles.gridItemTwoCol : styles.gridItemOneCol,
+          columns === 2 && fullRow ? styles.gridItemFullRow : null,
+        ]}
+      >
+        <AnimatedTouchableOpacity
+          style={[styles.card, { transform: [{ scale }] }]}
+          activeOpacity={0.92}
+          onPress={() => openPreview(product)}
+          onPressIn={() => animateCardScale(product.id, 0.985)}
+          onPressOut={() => animateCardScale(product.id, 1)}
+          {...(IS_WEB
+            ? ({
+                onMouseEnter: () => animateCardScale(product.id, 1.015),
+                onMouseLeave: () => animateCardScale(product.id, 1),
+              } as any)
+            : null)}
+        >
+          <View style={styles.thumbWrap}>
+            {product.image_url ? (
+              <ThumbMedia uri={product.image_url} />
+            ) : product.thumb_icon ? (
+              <IconThumb icon={product.thumb_icon} label={product.thumb_label} />
+            ) : (
+              <ShimmerThumb size={76} />
+            )}
+          </View>
+
+          <View style={styles.cardBody}>
+            <View>
+              <View style={styles.cardTitleRow}>
+                <Text style={styles.cardTitle} numberOfLines={1}>
+                  {product.name}
+                </Text>
+
+                <View style={styles.badgeProOnly}>
+                  <Ionicons name="sparkles-outline" size={12} color={GOLD} />
+                  <Text style={styles.badgeProOnlyText}>Pro only</Text>
+                </View>
+              </View>
+
+              {product.description ? (
+                <Text style={styles.cardDescription} numberOfLines={3}>
+                  {product.description}
+                </Text>
+              ) : null}
+
+              <View style={styles.metaRow}>
+                <Text style={styles.metaHint}>
+                  {access ? 'Tap to preview' : 'Preview available • unlock with Pro'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.cardBottomRow}>
+              {renderCTA(product)}
+              <View style={styles.previewChip}>
+                <Ionicons name="play-circle-outline" size={14} color={TEXT_IVORY} />
+                <Text style={styles.previewChipText}>Preview</Text>
+              </View>
+            </View>
+          </View>
+        </AnimatedTouchableOpacity>
+      </View>
+    );
+  };
+
+  const hasAnything = lutProducts.length > 0 || soundProducts.length > 0;
 
   /* ------------------------------ render ------------------------------- */
   return (
@@ -402,7 +849,7 @@ const WorkshopScreen: React.FC = () => {
         <Text style={styles.headerTitle}>Workshop</Text>
       </View>
 
-      {/* Hero intro (adds Friday note) */}
+      {/* Hero intro */}
       <View style={styles.hero}>
         <Text style={styles.heroTitle}>Tools for stronger work.</Text>
         <Text style={styles.heroSubtitle}>
@@ -425,7 +872,7 @@ const WorkshopScreen: React.FC = () => {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GOLD} />
           }
         >
-          {products.length === 0 && (
+          {!hasAnything && (
             <View style={styles.emptyState}>
               <Ionicons name="cube-outline" size={30} color={TEXT_MUTED} />
               <Text style={styles.emptyTitle}>Nothing in the crate yet</Text>
@@ -433,101 +880,37 @@ const WorkshopScreen: React.FC = () => {
             </View>
           )}
 
-          {products.map((product) => {
-            // Keep your mapping behavior (+ preserve preview_url explicitly)
-            const isStarter =
-              product.slug === 'starter-lut-pack' ||
-              product.slug === 'out-pack' ||
-              product.name.toLowerCase() === 'out pack';
-
-            const mappedProduct: WorkshopProduct = isStarter
-              ? {
-                  ...product,
-                  name: 'STARTER LUT Pack',
-                  slug: 'starter-lut-pack',
-                  description:
-                    'A compact pack of six clean, versatile starter LUTs designed to give your footage instant polish. Perfect for experimenting inside Overlooked and shaping your first cinematic cuts.',
-                  file_url:
-                    'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/avatars/STARTER.zip',
-                  preview_url: product.preview_url,
-
-                  // ✅ this is the change you asked for:
-                  // show your Supabase image in the preview slot (thumbnail area) on the main list card
-                  image_url: STARTER_LUT_PACK_PREVIEW_IMAGE,
-                }
-              : product;
-
-            const access = hasAccess(mappedProduct);
-            const scale = getCardScale(mappedProduct.id);
-
-            return (
-              <View
-                key={mappedProduct.id}
-                style={[
-                  styles.gridItem,
-                  columns === 2 ? styles.gridItemTwoCol : styles.gridItemOneCol,
-                ]}
-              >
-                <AnimatedTouchableOpacity
-                  style={[styles.card, { transform: [{ scale }] }]}
-                  activeOpacity={0.92}
-                  onPress={() => openPreview(mappedProduct)}
-                  onPressIn={() => animateCardScale(mappedProduct.id, 0.985)}
-                  onPressOut={() => animateCardScale(mappedProduct.id, 1)}
-                  // ✅ subtle hover zoom on web
-                  {...(IS_WEB
-                    ? ({
-                        onMouseEnter: () => animateCardScale(mappedProduct.id, 1.015),
-                        onMouseLeave: () => animateCardScale(mappedProduct.id, 1),
-                      } as any)
-                    : null)}
-                >
-                  <View style={styles.thumbWrap}>
-                    {mappedProduct.image_url ? (
-                      <Image source={{ uri: mappedProduct.image_url }} style={styles.thumb} />
-                    ) : (
-                      <ShimmerThumb size={76} />
-                    )}
-                  </View>
-
-                  <View style={styles.cardBody}>
-                    <View style={styles.cardTitleRow}>
-                      <Text style={styles.cardTitle} numberOfLines={1}>
-                        {mappedProduct.name}
-                      </Text>
-
-                      <View style={styles.badgeProOnly}>
-                        <Ionicons name="sparkles-outline" size={12} color={GOLD} />
-                        <Text style={styles.badgeProOnlyText}>Pro only</Text>
-                      </View>
-                    </View>
-
-                    {mappedProduct.description ? (
-                      <Text style={styles.cardDescription} numberOfLines={3}>
-                        {mappedProduct.description}
-                      </Text>
-                    ) : null}
-
-                    <View style={styles.metaRow}>
-                      <Text style={styles.metaHint}>
-                        {access ? 'Tap to preview' : 'Preview available • unlock with Pro'}
-                      </Text>
-                    </View>
-
-                    <View style={styles.cardBottomRow}>
-                      {renderCTA(mappedProduct)}
-                      <View style={styles.previewChip}>
-                        <Ionicons name="play-circle-outline" size={14} color={TEXT_IVORY} />
-                        <Text style={styles.previewChipText}>Preview</Text>
-                      </View>
-                    </View>
-                  </View>
-                </AnimatedTouchableOpacity>
+          {/* ------------------------------ LUT PACKS ------------------------------ */}
+          {lutProducts.length > 0 && (
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionHeaderLeft}>
+                <Ionicons name="color-filter-outline" size={16} color={GOLD} />
+                <Text style={styles.sectionHeaderTitle}>LUT Packs</Text>
               </View>
-            );
-          })}
+              <View style={styles.sectionHeaderPill}>
+                <Text style={styles.sectionHeaderPillText}>Color</Text>
+              </View>
+            </View>
+          )}
 
-          {products.length > 0 && (
+          {lutProducts.map((p) => renderProductCard(p))}
+
+          {/* --------------------------- SOUND EFFECTS ---------------------------- */}
+          {soundProducts.length > 0 && (
+            <View style={[styles.sectionHeaderRow, styles.sectionHeaderRowSpaced]}>
+              <View style={styles.sectionHeaderLeft}>
+                <Ionicons name="musical-notes-outline" size={16} color={GOLD} />
+                <Text style={styles.sectionHeaderTitle}>Sound Effects</Text>
+              </View>
+              <View style={styles.sectionHeaderPill}>
+                <Text style={styles.sectionHeaderPillText}>Audio</Text>
+              </View>
+            </View>
+          )}
+
+          {soundProducts.map((p) => renderProductCard(p, { forceFullRow: false }))}
+
+          {hasAnything && (
             <Text style={styles.comingSoonBig}>NEW TOOLS COMING EVERY FRIDAY.</Text>
           )}
         </ScrollView>
@@ -557,11 +940,10 @@ const WorkshopScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Preview area (INLINE VIDEO or IMAGE) */}
             <View style={[styles.previewArea, { aspectRatio: previewAspect }]}>
               {selectedProduct ? (
                 (() => {
-                  const asset = getPreviewAsset(selectedProduct);
+                  const asset = (selectedProduct.preview_url || selectedProduct.image_url) ?? null;
 
                   if (!asset) {
                     return (
@@ -569,17 +951,91 @@ const WorkshopScreen: React.FC = () => {
                         <Ionicons name="image-outline" size={24} color={GOLD} />
                         <Text style={styles.previewPlaceholderTitle}>Preview coming soon</Text>
                         <Text style={styles.previewPlaceholderText}>
-                          Upload a preview video to Supabase and set preview_url on the product.
+                          Upload a preview and set preview_url on the product.
                         </Text>
                       </View>
                     );
                   }
 
+                  // ✅ AUDIO PREVIEW (MP3)
+                  if (isAudio(asset)) {
+                    return (
+                      <View style={styles.audioWrap}>
+                        <View style={styles.audioTop}>
+                          <View style={styles.audioIconPill}>
+                            <Ionicons name="musical-notes-outline" size={18} color={GOLD} />
+                          </View>
+                          <Text style={styles.audioTitle} numberOfLines={2}>
+                            Audio preview
+                          </Text>
+                        </View>
+
+                        {IS_WEB ? (
+                          <audio
+                            ref={(el) => (webAudioRef.current = el)}
+                            src={asset}
+                            muted={isMuted}
+                            preload="metadata"
+                            controls={false}
+                            onPlay={() => setIsPlaying(true)}
+                            onPause={() => setIsPlaying(false)}
+                            onEnded={() => setIsPlaying(false)}
+                            style={{ display: 'none' } as any}
+                          />
+                        ) : null}
+
+                        <View style={styles.audioBarsRow}>
+                          {Array.from({ length: 22 }).map((_, i) => (
+                            <View
+                              key={i}
+                              style={[
+                                styles.audioBar,
+                                { height: 10 + ((i * 7) % 18) },
+                              ]}
+                            />
+                          ))}
+                        </View>
+
+                        <View style={styles.audioControls}>
+                          <TouchableOpacity
+                            onPress={togglePlay}
+                            activeOpacity={0.85}
+                            style={styles.videoControlButton}
+                          >
+                            <Ionicons
+                              name={isPlaying ? 'pause' : 'play'}
+                              size={18}
+                              color={TEXT_IVORY}
+                            />
+                            <Text style={styles.videoControlText}>
+                              {isPlaying ? 'Pause' : 'Play'}
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            onPress={toggleMute}
+                            activeOpacity={0.85}
+                            style={styles.videoControlButton}
+                          >
+                            <Ionicons
+                              name={isMuted ? 'volume-mute' : 'volume-high'}
+                              size={18}
+                              color={TEXT_IVORY}
+                            />
+                            <Text style={styles.videoControlText}>
+                              {isMuted ? 'Muted' : 'Sound'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  }
+
+                  // ✅ VIDEO PREVIEW
                   if (previewIsLikelyVideo(asset)) {
                     return (
                       <View style={styles.videoWrap}>
                         {IS_WEB ? (
-                          // ✅ Web: use native <video> to guarantee objectFit: contain and avoid expo-av cropping quirks
                           <video
                             ref={(el) => (webVideoRef.current = el)}
                             src={asset}
@@ -614,7 +1070,6 @@ const WorkshopScreen: React.FC = () => {
                           <Video
                             ref={(r) => (videoRef.current = r)}
                             source={{ uri: asset }}
-                            // ✅ No cropping: contain everywhere
                             style={[styles.video, WEB_VIDEO_FIT]}
                             resizeMode={ResizeMode.CONTAIN}
                             isLooping
@@ -637,7 +1092,6 @@ const WorkshopScreen: React.FC = () => {
                           />
                         )}
 
-                        {/* overlay controls */}
                         <View style={styles.videoControls}>
                           <TouchableOpacity
                             onPress={togglePlay}
@@ -673,18 +1127,16 @@ const WorkshopScreen: React.FC = () => {
                     );
                   }
 
-                  // Image preview
+                  // ✅ IMAGE PREVIEW
                   return <Image source={{ uri: asset }} style={styles.previewImage} />;
                 })()
               ) : null}
             </View>
 
-            {/* Description */}
             {!!selectedProduct?.description && (
               <Text style={styles.modalDescription}>{selectedProduct.description}</Text>
             )}
 
-            {/* Access pills only */}
             {selectedProduct && (
               <View style={styles.modalMetaRow}>
                 <View style={styles.modalMetaPill}>
@@ -705,7 +1157,6 @@ const WorkshopScreen: React.FC = () => {
               </View>
             )}
 
-            {/* Modal CTA */}
             {selectedProduct && (
               <View style={styles.modalActions}>
                 <TouchableOpacity
@@ -747,7 +1198,6 @@ const WorkshopScreen: React.FC = () => {
         </View>
       </Modal>
 
-      {/* Upgrade modal for Workshop context */}
       <UpgradeModal
         visible={upgradeVisible}
         onClose={() => setUpgradeVisible(false)}
@@ -768,10 +1218,7 @@ export default WorkshopScreen;
 
 /* -------------------------------- styles ------------------------------- */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: DARK_BG,
-  },
+  container: { flex: 1, backgroundColor: DARK_BG },
 
   header: {
     marginTop: 8,
@@ -818,11 +1265,7 @@ const styles = StyleSheet.create({
     color: TEXT_MUTED,
     fontFamily: SYSTEM_SANS,
   },
-  heroFriday: {
-    color: TEXT_IVORY,
-    fontWeight: '900',
-    letterSpacing: 0.2,
-  },
+  heroFriday: { color: TEXT_IVORY, fontWeight: '900', letterSpacing: 0.2 },
 
   loadingRow: {
     flexDirection: 'row',
@@ -832,35 +1275,57 @@ const styles = StyleSheet.create({
     gap: 8,
     justifyContent: 'center',
   },
-  loadingText: {
-    fontSize: 10,
-    color: TEXT_MUTED,
-    fontFamily: SYSTEM_SANS,
-  },
+  loadingText: { fontSize: 10, color: TEXT_MUTED, fontFamily: SYSTEM_SANS },
 
-  scroll: {
-    flex: 1,
-    marginTop: 10,
-  },
-  scrollContent: {
-    paddingHorizontal: 12,
-    paddingBottom: 64,
-  },
+  scroll: { flex: 1, marginTop: 10 },
+  scrollContent: { paddingHorizontal: 12, paddingBottom: 64 },
 
-  // web/desktop grid
   gridContent: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+    alignItems: 'stretch',
   },
-  gridItem: {
-    marginBottom: 12,
-  },
-  gridItemOneCol: {
+  gridItem: { marginBottom: 12 },
+  gridItemOneCol: { width: '100%' },
+  gridItemTwoCol: { width: '49%' },
+  gridItemFullRow: { width: '100%' },
+
+  /* --------------------------- section headers -------------------------- */
+  sectionHeaderRow: {
     width: '100%',
+    marginTop: 8,
+    marginBottom: 10,
+    paddingHorizontal: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  gridItemTwoCol: {
-    width: '49%',
+  sectionHeaderRowSpaced: { marginTop: 18 },
+  sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionHeaderTitle: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    letterSpacing: 1.0,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+  },
+  sectionHeaderPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#101010',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+  },
+  sectionHeaderPillText: {
+    fontSize: 8.5,
+    fontWeight: '900',
+    color: TEXT_MUTED,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    fontFamily: SYSTEM_SANS,
   },
 
   emptyState: {
@@ -897,19 +1362,49 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 7,
     width: '100%',
+    height: WORKSHOP_CARD_HEIGHT,
+    alignItems: 'stretch',
   },
 
-  thumbWrap: {
+  thumbWrap: { width: 76, marginRight: 10, justifyContent: 'center' },
+  thumb: { width: 76, height: 76, borderRadius: 12 },
+
+  /* ✅ themed icon thumb */
+  iconThumb: {
     width: 76,
-    marginRight: 10,
-  },
-  thumb: {
-    width: '100%',
     height: 76,
     borderRadius: 12,
+    backgroundColor: '#111111',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
+  iconThumbInner: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: '#0F0F0F',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+  iconThumbLabel: {
+    position: 'absolute',
+    bottom: 8,
+    fontSize: 8,
+    color: TEXT_MUTED,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    fontFamily: SYSTEM_SANS,
+  },
+
   thumbPlaceholder: {
-    width: '100%',
+    width: 76,
     height: 76,
     borderRadius: 12,
     backgroundColor: '#111111',
@@ -928,7 +1423,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.7,
     fontFamily: SYSTEM_SANS,
   },
-
   shimmerSweep: {
     position: 'absolute',
     width: '45%',
@@ -938,13 +1432,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
 
-  cardBody: { flex: 1 },
+  cardBody: { flex: 1, justifyContent: 'space-between' },
 
-  cardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardTitle: {
     flexShrink: 1,
     fontSize: 13,
@@ -983,16 +1473,8 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  metaHint: {
-    fontSize: 8.5,
-    color: TEXT_MUTED,
-    fontFamily: SYSTEM_SANS,
-  },
+  metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  metaHint: { fontSize: 8.5, color: TEXT_MUTED, fontFamily: SYSTEM_SANS },
 
   cardBottomRow: {
     marginTop: 8,
@@ -1029,11 +1511,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: GOLD,
   },
-  ctaButtonOutline: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: GOLD,
-  },
+  ctaButtonOutline: { backgroundColor: 'transparent', borderWidth: 1, borderColor: GOLD },
   ctaText: {
     fontSize: 9,
     fontWeight: '900',
@@ -1058,7 +1536,6 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 
-  /* ------------------------------ modal ------------------------------ */
   modalBackdrop: {
     position: 'absolute',
     top: 0,
@@ -1067,12 +1544,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.65)',
   },
-  modalCardWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
+  modalCardWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   modalCard: {
     borderRadius: 20,
     backgroundColor: DARK_ELEVATED,
@@ -1092,12 +1564,7 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 10,
   },
-  modalHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-  },
+  modalHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   modalTitle: {
     flex: 1,
     fontSize: 12,
@@ -1118,7 +1585,6 @@ const styles = StyleSheet.create({
     borderColor: '#2A2A2A',
   },
 
-  // ✅ changed: no fixed height; uses aspectRatio so videos don’t crop
   previewArea: {
     width: '100%',
     borderRadius: 16,
@@ -1127,21 +1593,53 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#2A2A2A',
   },
-  previewImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
+  previewImage: { width: '100%', height: '100%', resizeMode: 'cover' },
 
-  videoWrap: {
+  videoWrap: { flex: 1, backgroundColor: '#000' },
+  video: { width: '100%', height: '100%', backgroundColor: '#000' },
+
+  /* ✅ audio preview */
+  audioWrap: {
     flex: 1,
     backgroundColor: '#000',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    justifyContent: 'space-between',
   },
-  video: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#000',
+  audioTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  audioIconPill: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: '#0F0F0F',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  audioTitle: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+  },
+  audioBarsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 4,
+    justifyContent: 'center',
+    opacity: 0.9,
+    paddingVertical: 8,
+  },
+  audioBar: {
+    width: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(198,166,100,0.85)',
+  },
+  audioControls: { flexDirection: 'row', gap: 10 },
 
   videoControls: {
     position: 'absolute',
@@ -1204,12 +1702,7 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  modalMetaRow: {
-    marginTop: 10,
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
+  modalMetaRow: { marginTop: 10, flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   modalMetaPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1230,12 +1723,7 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  modalActions: {
-    marginTop: 12,
-    flexDirection: 'row',
-    gap: 10,
-    justifyContent: 'space-between',
-  },
+  modalActions: { marginTop: 12, flexDirection: 'row', gap: 10, justifyContent: 'space-between' },
   modalButton: {
     flex: 1,
     borderRadius: 999,
@@ -1245,11 +1733,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
-  modalButtonGhost: {
-    backgroundColor: '#101010',
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-  },
+  modalButtonGhost: { backgroundColor: '#101010', borderWidth: 1, borderColor: '#2A2A2A' },
   modalButtonGhostText: {
     color: TEXT_IVORY,
     fontWeight: '900',
@@ -1258,9 +1742,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.7,
     fontFamily: SYSTEM_SANS,
   },
-  modalButtonGold: {
-    backgroundColor: GOLD,
-  },
+  modalButtonGold: { backgroundColor: GOLD },
   modalButtonGoldText: {
     color: '#050505',
     fontWeight: '900',
