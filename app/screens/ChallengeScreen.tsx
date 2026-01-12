@@ -88,13 +88,21 @@ const Grain = ({ opacity = 0.06 }: { opacity?: number }) => (
 );
 
 /* ---------------- UX helpers ---------------- */
-function notify(title: string, message?: string) {
-  if (Platform.OS === "web") {
-    // @ts-ignore
-    window.alert(message ? `${title}\n\n${message}` : title);
-  } else {
-    Alert.alert(title, message);
-  }
+function notify(title: string, message?: string, setStatusFn?: (s: string) => void) {
+  const text = message ? `${title} — ${message}` : title;
+
+  // ✅ ALWAYS show something on-screen (works even if alerts are blocked)
+  if (setStatusFn) setStatusFn(text);
+
+  // Optional: also try alert
+  try {
+    if (Platform.OS === "web") {
+      // @ts-ignore
+      window.alert(message ? `${title}\n\n${message}` : title);
+    } else {
+      Alert.alert(title, message);
+    }
+  } catch {}
 }
 
 /**
@@ -674,6 +682,7 @@ export default function ChallengeScreen() {
   const [etaText, setEtaText] = useState("");
 
   const [upgradeVisible, setUpgradeVisible] = useState(false);
+  const [userTier, setUserTier] = useState<string | null>(null);
 
   const videoRef = useRef<Video>(null);
   const webDurationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -815,14 +824,36 @@ export default function ChallengeScreen() {
   };
 
   useEffect(() => {
-    (async () => {
-      try {
-        setChallenge(await fetchCurrentChallenge());
-      } catch {}
-      const { data } = await supabase.auth.getSession();
-      setSession(data.session);
-    })();
-  }, []);
+  (async () => {
+    try {
+      setChallenge(await fetchCurrentChallenge());
+    } catch {}
+
+    const { data } = await supabase.auth.getSession();
+    setSession(data.session);
+
+    // ✅ cache tier for instant Pro gating (web-safe)
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        const { data: profile } = await supabase
+          .from("users")
+          .select("tier")
+          .eq("id", user.id)
+          .single();
+
+        setUserTier(profile?.tier ?? null);
+      } else {
+        setUserTier(null);
+      }
+    } catch {
+      setUserTier(null);
+    }
+  })();
+}, []);
 
   useEffect(() => {
     if (!challenge) return;
@@ -948,125 +979,165 @@ export default function ChallengeScreen() {
     });
   };
 
-  const pickFile = async () => {
-    try {
-      setStatus("");
-      setDurationSec(null);
+const pickFile = async () => {
+  try {
+    // ✅ Always verify user fresh (session + tier can be stale on screen mount)
+    const {
+      data: { user },
+      error: uErr,
+    } = await supabase.auth.getUser();
 
-      setThumbUri(null);
-      setThumbAspect(16 / 9);
-      setThumbLoading(false);
-
-      // for clean UX, remove custom thumb when new file is picked
-      removeCustomThumbnail();
-
-      setPreviewVisible(false);
-      setPreviewLoading(false);
-      setPreviewError(null);
-      clearPreviewTimer();
-
-      setLocalUri(null);
-      setWebFile(null);
-      setProgressPct(0);
-      setEtaText("");
-
-      const acceptType = category === "music" ? ["audio/*", "video/*"] : ["video/*"];
-
-      const pick = await DocumentPicker.getDocumentAsync({
-        type: acceptType as any,
-        copyToCacheDirectory: true,
-      });
-      if (pick.canceled) return;
-
-      const asset: any = pick.assets?.[0];
-      if (!asset?.uri) {
-        notify("No file", "Please choose a file.");
-        return;
-      }
-
-      let bytes: number | null = null;
-
-      if (Platform.OS === "web" && asset.file) {
-        const f: File = asset.file;
-        bytes = typeof f.size === "number" ? f.size : null;
-
-        if (objectUrlRef.current) {
-          try {
-            URL.revokeObjectURL(objectUrlRef.current);
-          } catch {}
-        }
-        const objUrl = URL.createObjectURL(f);
-        objectUrlRef.current = objUrl;
-
-        setWebFile(f);
-        setLocalUri(objUrl);
-      } else {
-        if (typeof asset.size === "number") bytes = asset.size;
-        if (bytes == null) {
-          try {
-            const info = await FileSystem.getInfoAsync(asset.uri, { size: true } as any);
-            // @ts-ignore
-            if (info?.exists && typeof (info as any)?.size === "number") bytes = (info as any).size;
-          } catch {}
-        }
-
-        setWebFile(null);
-        setLocalUri(asset.uri);
-      }
-
-      setFileSizeBytes(bytes);
-
-      if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
-        notify(
-          "File too large",
-          `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`
-        );
-        resetSelectedFile();
-        return;
-      }
-
-      const shouldTryThumb = category !== "music";
-      if (shouldTryThumb) {
-        setThumbLoading(true);
-
-        if (Platform.OS === "web") {
-          const src = objectUrlRef.current ?? asset.uri;
-          const thumb = await captureFirstFrameWeb(src);
-
-          if (thumb?.dataUrl) {
-            setThumbUri(thumb.dataUrl);
-            setThumbAspect(thumb.aspect || 16 / 9);
-          } else {
-            setThumbUri(null);
-          }
-
-          setThumbLoading(false);
-        } else {
-          try {
-            const thumb = await VideoThumbnails.getThumbnailAsync(asset.uri, { time: 120 });
-            if (thumb?.uri) setThumbUri(thumb.uri);
-
-            // @ts-ignore
-            const w = (thumb as any)?.width;
-            // @ts-ignore
-            const h = (thumb as any)?.height;
-            if (typeof w === "number" && typeof h === "number" && w > 0 && h > 0) {
-              setThumbAspect(w / h);
-            }
-          } catch {
-            setThumbUri(null);
-          } finally {
-            setThumbLoading(false);
-          }
-        }
-      }
-
-      setStatus("Loaded file. Checking duration…");
-    } catch (e) {
-      console.warn("pickFile failed:", (e as any)?.message ?? e);
-      notify("Could not open picker", "Try again.");
+    if (uErr) {
+      notify("Please try again", "We couldn’t verify your account right now.");
+      return;
     }
-  };
+    if (!user) {
+      notify("Please sign in", "You must be logged in to submit.");
+      return;
+    }
+
+    // ✅ Don’t block Pro users due to userTier being null/not loaded yet
+    let tier = userTier;
+
+    if (!tier) {
+      const { data: profile, error: pErr } = await supabase
+        .from("users")
+        .select("tier")
+        .eq("id", user.id)
+        .single();
+
+      if (pErr) {
+        notify("Please try again", "We couldn’t verify your Pro status right now.");
+        return;
+      }
+
+      tier = profile?.tier ?? null;
+      setUserTier(tier);
+    }
+
+    if (tier !== "pro") {
+      setUpgradeVisible(true);
+      return;
+    }
+
+    // 🔽 existing code continues unchanged
+    setStatus("");
+    setDurationSec(null);
+
+    setThumbUri(null);
+    setThumbAspect(16 / 9);
+    setThumbLoading(false);
+
+    // for clean UX, remove custom thumb when new file is picked
+    removeCustomThumbnail();
+
+    setPreviewVisible(false);
+    setPreviewLoading(false);
+    setPreviewError(null);
+    clearPreviewTimer();
+
+    setLocalUri(null);
+    setWebFile(null);
+    setProgressPct(0);
+    setEtaText("");
+
+    const acceptType = category === "music" ? ["audio/*", "video/*"] : ["video/*"];
+
+    const pick = await DocumentPicker.getDocumentAsync({
+      type: acceptType as any,
+      copyToCacheDirectory: true,
+    });
+    if (pick.canceled) return;
+
+    const asset: any = pick.assets?.[0];
+    if (!asset?.uri) {
+      notify("No file", "Please choose a file.");
+      return;
+    }
+
+    let bytes: number | null = null;
+
+    if (Platform.OS === "web" && asset.file) {
+      const f: File = asset.file;
+      bytes = typeof f.size === "number" ? f.size : null;
+
+      if (objectUrlRef.current) {
+        try {
+          URL.revokeObjectURL(objectUrlRef.current);
+        } catch {}
+      }
+      const objUrl = URL.createObjectURL(f);
+      objectUrlRef.current = objUrl;
+
+      setWebFile(f);
+      setLocalUri(objUrl);
+    } else {
+      if (typeof asset.size === "number") bytes = asset.size;
+      if (bytes == null) {
+        try {
+          const info = await FileSystem.getInfoAsync(asset.uri, { size: true } as any);
+          // @ts-ignore
+          if (info?.exists && typeof (info as any)?.size === "number") bytes = (info as any).size;
+        } catch {}
+      }
+
+      setWebFile(null);
+      setLocalUri(asset.uri);
+    }
+
+    setFileSizeBytes(bytes);
+
+    if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
+      notify(
+        "File too large",
+        `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`
+      );
+      resetSelectedFile();
+      return;
+    }
+
+    const shouldTryThumb = category !== "music";
+    if (shouldTryThumb) {
+      setThumbLoading(true);
+
+      if (Platform.OS === "web") {
+        const src = objectUrlRef.current ?? asset.uri;
+        const thumb = await captureFirstFrameWeb(src);
+
+        if (thumb?.dataUrl) {
+          setThumbUri(thumb.dataUrl);
+          setThumbAspect(thumb.aspect || 16 / 9);
+        } else {
+          setThumbUri(null);
+        }
+
+        setThumbLoading(false);
+      } else {
+        try {
+          const thumb = await VideoThumbnails.getThumbnailAsync(asset.uri, { time: 120 });
+          if (thumb?.uri) setThumbUri(thumb.uri);
+
+          // @ts-ignore
+          const w = (thumb as any)?.width;
+          // @ts-ignore
+          const h = (thumb as any)?.height;
+          if (typeof w === "number" && typeof h === "number" && w > 0 && h > 0) {
+            setThumbAspect(w / h);
+          }
+        } catch {
+          setThumbUri(null);
+        } finally {
+          setThumbLoading(false);
+        }
+      }
+    }
+
+    setStatus("Loaded file. Checking duration…");
+  } catch (e) {
+    console.warn("pickFile failed:", (e as any)?.message ?? e);
+    notify("Could not open picker", "Try again.");
+  }
+};
 
   useEffect(() => {
     if (Platform.OS !== "web" || !localUri) return;
@@ -1182,16 +1253,42 @@ export default function ChallengeScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!agreed)
-      return notify("Agreement required", "You must agree to the rules before submitting.");
-    if (!session) return notify("Please sign in", "You must be logged in to submit.");
-    if (!title.trim() || !description.trim()) return notify("Please complete all fields.");
-    if (!localUri && !webFile) return notify("No file selected", "Pick a file first.");
+  if (!agreed)
+    return notify(
+      "Agreement required",
+      "You must agree to the rules before submitting.",
+      setStatus
+    );
 
-    // ✅ require tags for film
-    if (category === "film" && selectedTags.length === 0) {
-      return notify("Pick categories", "Choose at least 1 category (up to 3) for your film.");
-    }
+  if (!session)
+    return notify(
+      "Please sign in",
+      "You must be logged in to submit.",
+      setStatus
+    );
+
+  if (!title.trim() || !description.trim())
+    return notify(
+      "Please complete all fields.",
+      undefined,
+      setStatus
+    );
+
+  if (!localUri && !webFile)
+    return notify(
+      "No file selected",
+      "Pick a file first.",
+      setStatus
+    );
+
+  // ✅ require tags for film
+  if (category === "film" && selectedTags.length === 0) {
+    return notify(
+      "Pick categories",
+      "Choose at least 1 category (up to 3) for your film.",
+      setStatus
+    );
+  }
 
     if (fileSizeBytes != null && fileSizeBytes > MAX_UPLOAD_BYTES) {
       return notify(
@@ -1213,7 +1310,7 @@ export default function ChallengeScreen() {
         return;
       }
 
-      const BYPASS_LIMITS_FOR_TESTING = true;
+      const BYPASS_LIMITS_FOR_TESTING = false;
 
       if (!BYPASS_LIMITS_FOR_TESTING) {
         const { data, error } = await supabase.rpc("can_submit_this_month", {
@@ -1253,6 +1350,54 @@ export default function ChallengeScreen() {
     }
 
     setLoading(true);
+setStatus("Checking eligibility…");
+setProgressPct(0);
+setEtaText("");
+
+// ✅ Server preflight gate
+try {
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+
+  if (userErr) throw userErr;
+  if (!user) {
+    setLoading(false);
+    return notify("Please sign in", "You must be logged in to submit.", setStatus);
+  }
+
+  const { data, error } = await supabase.rpc("can_submit_this_month", {
+    p_user_id: user.id,
+  });
+
+  if (error) throw error;
+
+  const row = Array.isArray(data) ? data[0] : data;
+
+  if (!row?.allowed) {
+    setLoading(false);
+
+    if (row?.reason === "tier_too_low") {
+      setUpgradeVisible(true);
+      return notify("Upgrade required", "Submitting is available on Pro.", setStatus);
+    }
+
+    if (row?.reason === "no_submissions_left") {
+      return notify("Submission limit reached", "You’ve used all 2 submissions for this month.", setStatus);
+    }
+
+    return notify("Not allowed", "You can’t submit right now.", setStatus);
+  }
+} catch (err) {
+  console.warn("server preflight can_submit_this_month failed:", err);
+  setLoading(false);
+  return notify(
+    "Please try again",
+    "We couldn’t verify your submission limit just now. Try again in a moment.",
+    setStatus
+  );
+}
     setStatus("Uploading file…");
     setProgressPct(0);
     setEtaText("");
