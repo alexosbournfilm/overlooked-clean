@@ -2,6 +2,7 @@
 // ------------------------------------------------------------
 // FULL PAYWALL-FREE VERSION (UPDATED SIGN-IN LOGIC)
 // + ✅ Handles email-confirm deep links (PKCE exchange) on /signin
+// + ✅ Mobile-fit Sign In modal (scroll + maxHeight + keyboard safe)
 // ------------------------------------------------------------
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -23,7 +24,7 @@ import {
   Pressable,
   Image,
   UIManager,
-  ImageBackground,
+  ImageBackground, // kept (even if unused) to preserve your structure
 } from 'react-native';
 import * as Linking from 'expo-linking';
 import { useNavigation } from '@react-navigation/native';
@@ -220,7 +221,8 @@ function useHoverScale() {
 
 export default function SignInScreen() {
   const navigation = useNavigation<any>();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const isShort = height < 720; // tweak if you want (700–760 range)
   const insets = useSafeAreaInsets();
 
   const isWide = width >= 980;
@@ -913,103 +915,131 @@ export default function SignInScreen() {
           animationType="fade"
           onRequestClose={() => setShowSignIn(false)}
         >
-          <View style={styles.modalBackdrop}>
-            <View style={styles.authCard}>
-              <View style={styles.authHeader}>
-                <Text style={styles.authTitle}>WELCOME BACK</Text>
-                <Pressable onPress={() => setShowSignIn(false)} hitSlop={10}>
-                  <Ionicons name="close" size={20} color={T.sub} />
-                </Pressable>
-              </View>
-
-              <Text style={styles.subtitle}>Sign in to join this month’s journey.</Text>
-
-              <View style={[styles.inputWrap, focus === 'email' && styles.inputWrapFocused]}>
-                <Ionicons name="mail" size={16} color={focus === 'email' ? T.olive : T.mute} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Email"
-                  placeholderTextColor={T.mute}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  value={email}
-                  onChangeText={setEmail}
-                  returnKeyType="next"
-                  onFocus={() => setFocus('email')}
-                  onBlur={() => setFocus((prev) => (prev === 'email' ? null : prev))}
-                />
-              </View>
-
+          <View style={[styles.modalBackdrop, isShort && styles.modalBackdropShort]}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              style={{ width: '100%' }}
+            >
               <View
                 style={[
-                  styles.inputWrap,
-                  { marginTop: 12 },
-                  focus === 'password' && styles.inputWrapFocused,
+                  styles.authCard,
+                  {
+                    maxHeight: height - insets.top - insets.bottom - 28,
+                    padding: isShort ? 16 : 20,
+                  },
                 ]}
               >
-                <Ionicons
-                  name="lock-closed"
-                  size={16}
-                  color={focus === 'password' ? T.olive : T.mute}
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Password"
-                  placeholderTextColor={T.mute}
-                  secureTextEntry
-                  value={password}
-                  onChangeText={setPassword}
-                  returnKeyType="done"
-                  onSubmitEditing={handleSignIn}
-                  onFocus={() => setFocus('password')}
-                  onBlur={() => setFocus((prev) => (prev === 'password' ? null : prev))}
-                />
-              </View>
-
-              {/* Forgot Password */}
-              <TouchableOpacity
-                onPress={() => {
-                  setShowSignIn(false);
-                  navigation.navigate('ForgotPassword');
-                }}
-                style={{ marginTop: 8 }}
-              >
-                <Text
-                  style={{
-                    color: T.mute,
-                    fontSize: 13,
-                    textDecorationLine: 'underline',
-                  }}
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ paddingBottom: 14 }}
                 >
-                  Forgot password?
-                </Text>
-              </TouchableOpacity>
+                  <View style={styles.authHeader}>
+                    <Text style={[styles.authTitle, isShort && styles.authTitleShort]}>
+                      WELCOME BACK
+                    </Text>
+                    <Pressable onPress={() => setShowSignIn(false)} hitSlop={10}>
+                      <Ionicons name="close" size={20} color={T.sub} />
+                    </Pressable>
+                  </View>
 
-              <TouchableOpacity
-                style={[styles.button, loading && { opacity: 0.9 }]}
-                onPress={handleSignIn}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color={DARK_BG} />
-                ) : (
-                  <Text style={styles.buttonText}>Sign In</Text>
-                )}
-              </TouchableOpacity>
+                  <Text style={styles.subtitle}>Sign in to join this month’s journey.</Text>
 
-              <TouchableOpacity
-                onPress={() => {
-                  setShowSignIn(false);
-                  navigation.navigate('SignUp');
-                }}
-                style={{ marginTop: 16 }}
-              >
-                <Text style={styles.link}>
-                  New to OverLooked?{' '}
-                  <Text style={{ textDecorationLine: 'underline' }}>Create an account</Text>
-                </Text>
-              </TouchableOpacity>
-            </View>
+                  <View
+                    style={[
+                      styles.inputWrap,
+                      // responsive padding (cannot use isShort inside StyleSheet)
+                      { paddingVertical: Platform.OS === 'web' ? 12 : isShort ? 9 : 10 },
+                      focus === 'email' && styles.inputWrapFocused,
+                    ]}
+                  >
+                    <Ionicons name="mail" size={16} color={focus === 'email' ? T.olive : T.mute} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Email"
+                      placeholderTextColor={T.mute}
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                      value={email}
+                      onChangeText={setEmail}
+                      returnKeyType="next"
+                      onFocus={() => setFocus('email')}
+                      onBlur={() => setFocus((prev) => (prev === 'email' ? null : prev))}
+                    />
+                  </View>
+
+                  <View
+                    style={[
+                      styles.inputWrap,
+                      { marginTop: 12, paddingVertical: Platform.OS === 'web' ? 12 : isShort ? 9 : 10 },
+                      focus === 'password' && styles.inputWrapFocused,
+                    ]}
+                  >
+                    <Ionicons
+                      name="lock-closed"
+                      size={16}
+                      color={focus === 'password' ? T.olive : T.mute}
+                    />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Password"
+                      placeholderTextColor={T.mute}
+                      secureTextEntry
+                      value={password}
+                      onChangeText={setPassword}
+                      returnKeyType="done"
+                      onSubmitEditing={handleSignIn}
+                      onFocus={() => setFocus('password')}
+                      onBlur={() => setFocus((prev) => (prev === 'password' ? null : prev))}
+                    />
+                  </View>
+
+                  {/* Forgot Password */}
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowSignIn(false);
+                      navigation.navigate('ForgotPassword');
+                    }}
+                    style={{ marginTop: 8 }}
+                  >
+                    <Text
+                      style={{
+                        color: T.mute,
+                        fontSize: 13,
+                        textDecorationLine: 'underline',
+                      }}
+                    >
+                      Forgot password?
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.button, loading && { opacity: 0.9 }]}
+                    onPress={handleSignIn}
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <ActivityIndicator color={DARK_BG} />
+                    ) : (
+                      <Text style={styles.buttonText}>Sign In</Text>
+                    )}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowSignIn(false);
+                      navigation.navigate('SignUp');
+                    }}
+                    style={{ marginTop: 16 }}
+                  >
+                    <Text style={styles.link}>
+                      New to OverLooked?{' '}
+                      <Text style={{ textDecorationLine: 'underline' }}>Create an account</Text>
+                    </Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+            </KeyboardAvoidingView>
           </View>
         </Modal>
 
@@ -1502,6 +1532,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 18,
   },
+  modalBackdropShort: {
+    justifyContent: 'center',
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
 
   /* Auth card */
   authCard: {
@@ -1525,6 +1560,10 @@ const styles = StyleSheet.create({
     letterSpacing: 6.5,
     fontFamily: SYSTEM_SANS,
   },
+  authTitleShort: {
+    fontSize: 16,
+    letterSpacing: 3.5,
+  },
   subtitle: {
     marginTop: 8,
     marginBottom: 14,
@@ -1542,7 +1581,7 @@ const styles = StyleSheet.create({
     borderColor: T.border,
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'web' ? 12 : 10,
+    paddingVertical: 10, // responsive version is applied inline in JSX
     backgroundColor: '#0C0C0C',
   },
   inputWrapFocused: {
