@@ -86,7 +86,7 @@ const SYSTEM_SANS = Platform.select({
 
 // Countdown to Jan 25, 2026 (end of day local time)
 function getOfferRemaining() {
-  const end = new Date(2026, 0, 25, 23, 59, 59);
+  const end = new Date(2026, 0, 31, 23, 59, 59); // Jan 31, 2026
   const now = new Date();
   const ms = end.getTime() - now.getTime();
 
@@ -99,7 +99,7 @@ function getOfferRemaining() {
   const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
 
   const short = days > 0 ? `${days}d ${hours}h left` : `${hours}h left`;
-  const long = `Ends Jan 25 • ${short}`;
+  const long = `Ends Jan 31 • ${short}`;
 
   return { expired: false, short, long };
 }
@@ -168,10 +168,10 @@ export default function PaywallScreen() {
   }, [selectedPlan]);
 
   const selectedSubLabel = useMemo(() => {
-    if (selectedPlan === 'lifetime') return 'Selected: £25 lifetime';
-    if (selectedPlan === 'yearly') return 'Selected: £49.99 / year';
-    return 'Selected: £4.99 / month';
-  }, [selectedPlan]);
+  if (selectedPlan === 'lifetime') return 'Selected: £24.99 lifetime';
+  if (selectedPlan === 'yearly') return 'Selected: £49.99 / year';
+  return 'Selected: £4.99 / month';
+}, [selectedPlan]);
 
   const selectedPlanPayload = useMemo(() => {
     if (selectedPlan === 'lifetime') {
@@ -493,7 +493,7 @@ export default function PaywallScreen() {
         <View style={styles.offerStrip}>
           <View style={{ flex: 1, minWidth: 160 }}>
             <Text style={styles.offerStripKicker}>NEW YEAR’S OFFER</Text>
-            <Text style={styles.offerStripTitle}>£25 Lifetime</Text>
+            <Text style={styles.offerStripTitle}>£24.99 Lifetime</Text>
           </View>
 
           <View style={{ alignItems: 'flex-end', justifyContent: 'center', gap: 6 }}>
@@ -520,11 +520,11 @@ export default function PaywallScreen() {
               <Text style={[styles.planKicker, styles.planKickerHero]}>LIFETIME</Text>
               <View style={styles.planPriceRow}>
                 <Text style={styles.planCurrency}>£</Text>
-                <Text style={styles.planPriceHero}>25</Text>
+                <Text style={styles.planPriceHero}>24.99</Text>
               </View>
               <Text style={styles.planSubHero}>
-                {offerCountdown.expired ? 'Offer ended' : 'Ends Jan 25'}
-              </Text>
+  {offerCountdown.expired ? 'Offer ended' : 'Ends Jan 31'}
+</Text>
             </TouchableOpacity>
 
             {/* Yearly */}

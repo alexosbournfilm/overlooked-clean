@@ -66,7 +66,7 @@ const SYSTEM_SANS = Platform.select({
 /* ------------------------------- helpers ------------------------------- */
 
 function getOfferRemaining() {
-  const end = new Date(2026, 0, 25, 23, 59, 59);
+    const end = new Date(2026, 0, 31, 23, 59, 59); // Jan 31, 2026
   const now = new Date();
   const ms = end.getTime() - now.getTime();
 
@@ -79,7 +79,7 @@ function getOfferRemaining() {
   const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
 
   const short = days > 0 ? `${days}d ${hours}h left` : `${hours}h left`;
-  const long = `Ends Jan 25 • ${short}`;
+  const long = `Ends Jan 31 • ${short}`;
 
   return { expired: false, short, long };
 }
