@@ -66,7 +66,7 @@ const SYSTEM_SANS = Platform.select({
 /* ------------------------------- helpers ------------------------------- */
 
 function getOfferRemaining() {
-    const end = new Date(2026, 0, 31, 23, 59, 59); // Jan 31, 2026
+  const end = new Date(2026, 0, 31, 23, 59, 59); // Jan 31, 2026
   const now = new Date();
   const ms = end.getTime() - now.getTime();
 
@@ -158,25 +158,14 @@ const HoverPress = memo(function HoverPress({
 });
 
 /* ------------------------ Smooth Tab Transitions ----------------------- */
-/**
- * PERF: This component was doing a JS-driven opacity animation on WEB
- * (useNativeDriver:false) every time a tab/screen focused, which can make
- * tab switching feel heavy.
- *
- * We keep the same visual effect, but:
- * - On WEB: we set the scrim and clear it immediately (no timing animation).
- * - On NATIVE: we still run the animation, but only after interactions.
- */
 const TabTransition = memo(function TabTransition({ children }: { children: React.ReactNode }) {
   const scrimOpacity = useRef(new Animated.Value(0)).current;
 
   useFocusEffect(
     useCallback(() => {
-      // initial scrim
       scrimOpacity.setValue(Platform.OS === 'web' ? 0.12 : 0.18);
 
       if (Platform.OS === 'web') {
-        // ✅ PERF: avoid JS animation on web. Clear next tick.
         const id = setTimeout(() => {
           try {
             scrimOpacity.setValue(0);
@@ -227,10 +216,12 @@ const TabTransition = memo(function TabTransition({ children }: { children: Reac
 
 /* --------------------------- Top Bar elements -------------------------- */
 
-function BrandWordmark() {
+function BrandWordmark({ compact }: { compact?: boolean }) {
   return (
     <View style={styles.brandWrap}>
-      <Text style={styles.brandTitle}>OVERLOOKED</Text>
+      <Text style={[styles.brandTitle, compact && styles.brandTitleCompact]} numberOfLines={1}>
+        OVERLOOKED
+      </Text>
     </View>
   );
 }
@@ -277,16 +268,8 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({ variant }: Top
     outputRange: ['0%', '100%'],
   });
 
-  // ✨ shimmer sweep (web only)
   const shimmerX = useRef(new Animated.Value(0)).current;
 
-  /**
-   * PERF: Keep the shimmer, but don’t let it run forever in the background
-   * when it’s not useful.
-   * - Only run it while this component is mounted (it is), but also
-   * - Defer start until after interactions to keep tab switches snappy.
-   * (No logic change; purely scheduling.)
-   */
   useEffect(() => {
     if (Platform.OS !== 'web') return;
 
@@ -334,11 +317,7 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({ variant }: Top
     <View style={[styles.streakWrap, isWide ? styles.streakWrapWide : styles.streakWrapCompact]}>
       <View style={[styles.streakBarOuter, isWide && styles.streakBarOuterWide]}>
         <Animated.View style={[styles.streakBarFill, { width: widthInterpolated }]} />
-
-        {/* ✨ glass highlight */}
         <View pointerEvents="none" style={styles.streakGlass} />
-
-        {/* ✨ shimmer sweep (web only) */}
         {Platform.OS === 'web' && (
           <Animated.View
             pointerEvents="none"
@@ -351,9 +330,7 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({ variant }: Top
           />
         )}
 
-        {/* ✅ True-centering overlay */}
         <View style={styles.streakBarOverlay}>
-          {/* Left + Right row */}
           <View style={styles.streakSidesRow}>
             <View style={styles.streakLeftGroup}>
               <Text style={styles.streakBarLeft}>STREAK</Text>
@@ -362,7 +339,6 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({ variant }: Top
             <Text style={styles.streakBarRight}>Year {yearLabel}</Text>
           </View>
 
-          {/* Center absolute: always perfectly centered */}
           <View pointerEvents="none" style={styles.streakCenterAbs}>
             <Text style={styles.streakBarCenter} numberOfLines={1}>
               {loading ? '—' : `${displayStreak}/${targetMonths}`}
@@ -400,6 +376,11 @@ type LeaderboardModalProps = {
 
 const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: LeaderboardModalProps) {
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+
+  const isPhone = width < 420;
+  const isShort = height < 740;
 
   const [activeTab, setActiveTab] = useState<LeaderboardTab>('monthly');
   const [loading, setLoading] = useState(false);
@@ -617,10 +598,23 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
     );
   };
 
+  const cardMaxHeight = Math.max(320, height - (insets.top + insets.bottom) - (isShort ? 28 : 52));
+  const overlayPadV = Math.max(14, (insets.top || 0) > 0 ? 14 : 18);
+
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.lbOverlay}>
-        <View style={styles.lbCard}>
+      <View style={[styles.lbOverlay, { paddingTop: overlayPadV, paddingBottom: overlayPadV + Math.max(insets.bottom, 0) }]}>
+        <View
+          style={[
+            styles.lbCard,
+            {
+              width: '100%',
+              maxWidth: isPhone ? 520 : 620,
+              maxHeight: cardMaxHeight,
+              alignSelf: 'center',
+            },
+          ]}
+        >
           <View style={styles.lbHeader}>
             <Text style={styles.lbTitle}>Leaderboard</Text>
             <Pressable onPress={onClose} hitSlop={10} style={styles.lbCloseBtn}>
@@ -674,7 +668,13 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
             )}
 
             {!loading && !error && entries.length > 0 && (
-              <ScrollView style={styles.lbScroll} contentContainerStyle={styles.lbScrollContent}>
+              <ScrollView
+                style={styles.lbScroll}
+                contentContainerStyle={styles.lbScrollContent}
+                showsVerticalScrollIndicator={false}
+                bounces={false}
+                overScrollMode="never"
+              >
                 {entries.map(renderRow)}
               </ScrollView>
             )}
@@ -695,6 +695,11 @@ type TopBarXpProgressProps = {
 const TopBarXpProgress = memo(function TopBarXpProgress({ variant, onOpenLeaderboard }: TopBarXpProgressProps) {
   const gamification = useGamification();
   const { loading, xp, level, levelTitle, currentLevelMinXp, nextLevelMinXp, progress } = gamification;
+
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const isPhone = width < 420;
+  const isShort = height < 740;
 
   const [uid, setUid] = useState<string | null>(null);
 
@@ -900,6 +905,9 @@ const TopBarXpProgress = memo(function TopBarXpProgress({ variant, onOpenLeaderb
 
   const nextLevelLabel = isMax ? 'MAX' : `Lv ${(level || 1) + 1}`;
 
+  const levelOverlayPadV = Math.max(14, (insets.top || 0) > 0 ? 14 : 18);
+  const levelCardMaxWidth = isPhone ? 320 : 420;
+
   return (
     <>
       <View style={[styles.xpWrap, isWide ? styles.xpWrapWide : styles.xpWrapCompact]}>
@@ -946,8 +954,27 @@ const TopBarXpProgress = memo(function TopBarXpProgress({ variant, onOpenLeaderb
       </View>
 
       <Modal visible={showLevelModal} transparent animationType="none">
-        <Animated.View style={[styles.levelModalOverlay, { opacity: modalOpacity }]}>
-          <Animated.View style={[styles.levelModalCard, { transform: [{ scale: modalScale }] }]}>
+        <View
+          style={[
+            styles.levelModalOverlay,
+            {
+              paddingTop: levelOverlayPadV,
+              paddingBottom: levelOverlayPadV + Math.max(insets.bottom, 0),
+              paddingHorizontal: 16,
+            },
+          ]}
+        >
+          <Animated.View
+            style={[
+              styles.levelModalCard,
+              {
+                transform: [{ scale: modalScale }],
+                opacity: modalOpacity,
+                width: '100%',
+                maxWidth: levelCardMaxWidth,
+              },
+            ]}
+          >
             <Text style={styles.levelModalKicker}>LEVEL UP</Text>
             <Text style={styles.levelModalLevel}>
               Lv {lvlFrom} ➜ <Text style={{ color: GOLD }}>Lv {lvlTo}</Text>
@@ -955,7 +982,7 @@ const TopBarXpProgress = memo(function TopBarXpProgress({ variant, onOpenLeaderb
             <Text style={styles.levelModalTitle}>{lvlTitleText}</Text>
             <Text style={styles.levelModalHint}>Keep creating. Keep getting seen.</Text>
           </Animated.View>
-        </Animated.View>
+        </View>
       </Modal>
     </>
   );
@@ -973,6 +1000,8 @@ type TopBarProps = {
 const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpenLeaderboard }: TopBarProps) {
   const { width } = useWindowDimensions();
   const isWide = width >= 980;
+  const isPhone = width < 420;
+  const isTiny = width < 360;
 
   const [offerCountdown, setOfferCountdown] = useState(() => getOfferRemaining());
 
@@ -990,6 +1019,16 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
     ? `NEW YEAR’S PRO SALE • OFFER ENDED`
     : `NEW YEAR’S PRO SALE • ${offerCountdown.long}`;
 
+  // ✅ This was the #1 cause of horizontal overflow on mobile:
+  // centerSlotAbs had a fixed paddingHorizontal: 220 which pushes content wider than the viewport.
+  // Now it scales down on small screens so nothing can overflow.
+  const centerPad = useMemo(() => {
+    if (isWide) return 220;
+    if (isPhone) return isTiny ? 86 : 110;
+    // “in between” sizes
+    return Math.max(120, Math.min(170, Math.floor(width * 0.28)));
+  }, [isWide, isPhone, isTiny, width]);
+
   return (
     <View style={[styles.topBarWrapper, { height: wrapperHeight, top: topOffset }]}>
       <HoverPress onPress={onOpenUpgrade} style={styles.saleBanner} hitSlop={6} accessibilityLabel="Open upgrade">
@@ -1006,37 +1045,38 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
 
       <View style={[styles.topBarInner, { height: navHeight }]}>
         <HoverPress style={{ borderRadius: 10 }} accessibilityLabel="Overlooked">
-          <BrandWordmark />
+          <BrandWordmark compact={isTiny} />
         </HoverPress>
 
-        <View pointerEvents="box-none" style={styles.centerSlotAbs}>
+        <View pointerEvents="box-none" style={[styles.centerSlotAbs, { paddingHorizontal: centerPad }]}>
+          {/* On small screens we keep the streak centered but not over-wide */}
           <HoverPress
             accessibilityLabel="Streak"
             style={{
               borderRadius: 999,
               width: '100%',
-              maxWidth: 600, // ✅ make it long
-              alignSelf: 'center', // ✅ ensures it actually takes the width
+              maxWidth: isWide ? 600 : isTiny ? 280 : 360,
+              alignSelf: 'center',
             }}
           >
-            <TopBarStreakProgress variant="wide" />
+            <TopBarStreakProgress variant={isWide ? 'wide' : 'compact'} />
           </HoverPress>
         </View>
 
         <View style={styles.rightTools}>
-          {/* ... unchanged ... */}
           <HoverPress onPress={onOpenLeaderboard} hitSlop={6} accessibilityLabel="View leaderboard">
-            <View style={styles.leaderboardBtn}>
+            <View style={[styles.leaderboardBtn, (isPhone || isTiny) && styles.leaderboardBtnCompact]}>
               <Ionicons name="trophy-outline" size={16} color={GOLD} />
-              <Text style={styles.leaderboardBtnText}>VIEW LEADERBOARD</Text>
+              {/* ✅ Hide text on tiny screens to prevent overlap/cropping */}
+              {!isPhone && !isTiny && <Text style={styles.leaderboardBtnText}>VIEW LEADERBOARD</Text>}
             </View>
           </HoverPress>
 
-          <View style={{ width: 10 }} />
+          <View style={{ width: isTiny ? 6 : 10 }} />
 
           <HoverPress disabled>
             <View style={styles.settingsChipSmall}>
-              <View style={{ transform: [{ scale: 0.9 }] }}>
+              <View style={{ transform: [{ scale: isTiny ? 0.82 : 0.9 }] }}>
                 <SettingsButton absolute={false} />
               </View>
             </View>
@@ -1052,7 +1092,7 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
               style={{
                 borderRadius: 999,
                 width: '100%',
-                maxWidth: 520, // ✅ still wide on mobile
+                maxWidth: isTiny ? 320 : 520,
                 alignSelf: 'center',
               }}
             >
@@ -1124,7 +1164,7 @@ const TabBarButton = memo(function TabBarButton(props: any) {
       }}
       onPressIn={() => to(0.97, 0, 90)}
       onPressOut={() => to(1.0, 0, 140)}
-      style={[props.style, { flex: 1 }]}
+      style={[props.style, { flex: 1, overflow: 'hidden' }]}
     >
       <Animated.View
         style={{
@@ -1146,16 +1186,30 @@ export default function MainTabs() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
+  const isTiny = width < 360;
+  const isPhone = width < 420;
+
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
+  // ✅ HARD STOP horizontal scrolling on web/mobile-web
   useEffect(() => {
     if (Platform.OS === 'web') {
       try {
         // @ts-ignore
-        if (typeof document !== 'undefined' && document?.body) {
+        if (typeof document !== 'undefined') {
           // @ts-ignore
           document.body.style.backgroundColor = DARK_BG;
+          // @ts-ignore
+          document.documentElement.style.backgroundColor = DARK_BG;
+
+          // @ts-ignore
+          document.body.style.overflowX = 'hidden';
+          // @ts-ignore
+          document.documentElement.style.overflowX = 'hidden';
+
+          // @ts-ignore
+          document.body.style.margin = '0';
         }
       } catch {}
     }
@@ -1167,101 +1221,114 @@ export default function MainTabs() {
   const contentTopPadding = NAV_HEIGHT + 38 + (width >= 980 ? 0 : 40);
   const TABBAR_HEIGHT = 56;
 
-  /**
-   * PERF: screenOptions was being recreated as a new function every render.
-   * That can cause extra work across the navigator tree.
-   *
-   * We keep the exact same options, but we memoize the factory function.
-   * No logic change; just stability.
-   */
   const screenOptions = useCallback(
-  ({ route }: any): BottomTabNavigationOptions =>
-    ({
-      headerShown: false,
-      sceneContainerStyle: { backgroundColor: DARK_BG },
+    ({ route }: any): BottomTabNavigationOptions =>
+      ({
+        headerShown: false,
+        sceneContainerStyle: { backgroundColor: DARK_BG },
 
-      tabBarActiveTintColor: GOLD,
-      tabBarInactiveTintColor: TEXT_MUTED,
-      tabBarShowLabel: false,
+        tabBarActiveTintColor: GOLD,
+        tabBarInactiveTintColor: TEXT_MUTED,
+        tabBarShowLabel: false,
 
-      tabBarStyle: {
-        backgroundColor: DARK_ELEVATED,
-        borderTopWidth: 0,
-        height: TABBAR_HEIGHT,
-        paddingTop: 6,
-        paddingBottom: Platform.OS === 'ios' ? 12 : 8,
-        shadowColor: '#000',
-        shadowOpacity: 0.3,
-        shadowOffset: { width: 0, height: -4 },
-        shadowRadius: 6,
-        elevation: 10,
-      },
+        tabBarStyle: {
+          backgroundColor: DARK_ELEVATED,
+          borderTopWidth: 0,
+          height: TABBAR_HEIGHT,
+          paddingTop: 6,
+          paddingBottom: Platform.OS === 'ios' ? 12 : 8,
+          shadowColor: '#000',
+          shadowOpacity: 0.3,
+          shadowOffset: { width: 0, height: -4 },
+          shadowRadius: 6,
+          elevation: 10,
+          overflow: 'hidden', // ✅ prevents any pill overflow from painting outside
+        },
 
-      tabBarItemStyle: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 0,
-      },
+        tabBarItemStyle: {
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingVertical: 0,
+          minWidth: 0,
+        },
 
-      lazy: true,
-lazyPreloadDistance: 1,
-detachInactiveScreens: Platform.OS !== 'web',
-freezeOnBlur: Platform.OS !== 'web',
-unmountOnBlur: false,
+        lazy: true,
+        lazyPreloadDistance: 1,
+        detachInactiveScreens: Platform.OS !== 'web',
+        freezeOnBlur: Platform.OS !== 'web',
+        unmountOnBlur: false,
 
-      tabBarButton: (props: any) => <TabBarButton {...props} />,
+        tabBarButton: (props: any) => <TabBarButton {...props} />,
 
-      tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => {
-        let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
-        let label = route.name;
+        tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => {
+          let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
+          let label = route.name;
 
-        switch (route.name) {
-          case 'Featured':
-            icon = 'star-outline';
-            label = 'Featured';
-            break;
-          case 'Jobs':
-            icon = 'briefcase-outline';
-            label = 'Jobs';
-            break;
-          case 'Challenge':
-            icon = 'trophy-outline';
-            label = 'Challenge';
-            break;
-          case 'Workshop':
-            icon = 'cube-outline';
-            label = 'Workshop';
-            break;
-          case 'Location':
-            icon = 'location-outline';
-            label = 'Location';
-            break;
-          case 'Chats':
-            icon = 'chatbubble-ellipses-outline';
-            label = 'Chats';
-            break;
-          case 'Profile':
-            icon = 'person-outline';
-            label = 'Profile';
-            break;
-        }
+          switch (route.name) {
+            case 'Featured':
+              icon = 'star-outline';
+              label = 'Featured';
+              break;
+            case 'Jobs':
+              icon = 'briefcase-outline';
+              label = 'Jobs';
+              break;
+            case 'Challenge':
+              icon = 'trophy-outline';
+              label = 'Challenge';
+              break;
+            case 'Workshop':
+              icon = 'cube-outline';
+              label = 'Workshop';
+              break;
+            case 'Location':
+              icon = 'location-outline';
+              label = 'Location';
+              break;
+            case 'Chats':
+              icon = 'chatbubble-ellipses-outline';
+              label = 'Chats';
+              break;
+            case 'Profile':
+              icon = 'person-outline';
+              label = 'Profile';
+              break;
+          }
 
-        return (
-          <View style={[styles.tabPill, focused && styles.tabPillActive]}>
-            <Ionicons name={icon} size={18} color={color} />
-            <Text style={[styles.tabPillText, { color }, focused && { color: GOLD }]} numberOfLines={1}>
-              {label.toUpperCase()}
-            </Text>
-          </View>
-        );
-      },
-    } as BottomTabNavigationOptions),
-  [TABBAR_HEIGHT]
-);
+          const showLabel = !isTiny; // ✅ on tiny phones, icon-only avoids overlap
+
+          return (
+            <View
+              style={[
+                styles.tabPill,
+                focused && styles.tabPillActive,
+                (isPhone || isTiny) && styles.tabPillCompact,
+              ]}
+            >
+              <Ionicons name={icon} size={isTiny ? 18 : 18} color={color} />
+              {showLabel && (
+                <Text
+                  style={[
+                    styles.tabPillText,
+                    (isPhone || isTiny) && styles.tabPillTextCompact,
+                    { color },
+                    focused && { color: GOLD },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {label.toUpperCase()}
+                </Text>
+              )}
+            </View>
+          );
+        },
+      } as BottomTabNavigationOptions),
+    [TABBAR_HEIGHT, isTiny, isPhone]
+  );
 
   return (
     <SettingsModalProvider>
-      <View style={{ flex: 1, backgroundColor: DARK_BG }}>
+      <View style={{ flex: 1, backgroundColor: DARK_BG, overflow: 'hidden' }}>
         <TopBar
           topOffset={topOffset}
           navHeight={NAV_HEIGHT}
@@ -1269,7 +1336,10 @@ unmountOnBlur: false,
           onOpenLeaderboard={() => setShowLeaderboard(true)}
         />
 
-        <SafeAreaView style={[styles.safeArea, { paddingTop: contentTopPadding }]} edges={['left', 'right', 'bottom']}>
+        <SafeAreaView
+          style={[styles.safeArea, { paddingTop: contentTopPadding }]}
+          edges={['left', 'right', 'bottom']}
+        >
           <Tab.Navigator screenOptions={screenOptions}>
             <Tab.Screen name="Featured" component={FeaturedWrapped} />
             <Tab.Screen name="Jobs" component={JobsWrapped} />
@@ -1325,6 +1395,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.06)',
+    maxWidth: '100%',
+    overflow: 'hidden',
+  },
+  tabPillCompact: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 5,
   },
   tabPillActive: {
     backgroundColor: 'rgba(198,166,100,0.10)',
@@ -1338,6 +1415,10 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
     lineHeight: 12,
+  },
+  tabPillTextCompact: {
+    fontSize: 9,
+    letterSpacing: 0.6,
   },
 
   topBarWrapper: {
@@ -1395,6 +1476,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     position: 'relative',
+    overflow: 'hidden',
   },
 
   topBarInnerXpRow: {
@@ -1404,11 +1486,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 6,
     paddingBottom: 6,
+    overflow: 'hidden',
   },
 
   brandWrap: {
     paddingVertical: 6,
     paddingRight: 8,
+    maxWidth: 160,
   },
   brandTitle: {
     fontSize: 18,
@@ -1417,6 +1501,10 @@ const styles = StyleSheet.create({
     letterSpacing: 2.2,
     fontFamily: SYSTEM_SANS,
   },
+  brandTitleCompact: {
+    fontSize: 16.5,
+    letterSpacing: 1.7,
+  },
 
   centerSlotAbs: {
     position: 'absolute',
@@ -1424,13 +1512,13 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 220, // ✅ prevents overlap, gives streak real room
   },
 
   rightTools: {
     marginLeft: 'auto',
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
   },
 
   leaderboardBtn: {
@@ -1443,6 +1531,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(198,166,100,0.10)',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(198,166,100,0.30)',
+  },
+  leaderboardBtnCompact: {
+    paddingHorizontal: 10,
+    gap: 0,
   },
   leaderboardBtnText: {
     fontSize: 10,
@@ -1461,11 +1553,11 @@ const styles = StyleSheet.create({
     borderColor: '#3A3A3A',
   },
 
-  /* ------------------ STREAK (MORE SPACED + LONGER + PREMIUM) ------------------ */
+  /* ------------------ STREAK ------------------ */
   streakWrap: { paddingVertical: 2 },
   streakWrapWide: {
     width: '100%',
-    maxWidth: 2000, // try 900–1100
+    maxWidth: 2000,
     alignItems: 'center',
     alignSelf: 'center',
   },
@@ -1513,14 +1605,12 @@ const styles = StyleSheet.create({
     opacity: 0.20,
   },
 
-  // ✅ Overlay is now true-centering
   streakBarOverlay: {
     flex: 1,
     position: 'relative',
     paddingHorizontal: 18,
   },
 
-  // Left & right live in a normal row
   streakSidesRow: {
     flex: 1,
     flexDirection: 'row',
@@ -1542,7 +1632,6 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  // ✅ Absolute centered text container
   streakCenterAbs: {
     position: 'absolute',
     left: 0,
@@ -1712,10 +1801,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.9)',
     justifyContent: 'center',
+    alignItems: 'center', // ✅ true centering
     paddingHorizontal: 16,
   },
   lbCard: {
-    maxHeight: '82%',
     borderRadius: 18,
     backgroundColor: '#050505',
     borderWidth: 1,
@@ -1768,7 +1857,7 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
   lbTabTextActive: { color: '#050505' },
-  lbBody: { flex: 1, marginTop: 4 },
+  lbBody: { flex: 1, marginTop: 4, minHeight: 180 },
   lbLoadingWrap: { alignItems: 'center', paddingVertical: 18 },
   lbLoadingText: { marginTop: 6, fontSize: 9, color: TEXT_MUTED, fontFamily: SYSTEM_SANS },
   lbEmptyWrap: { alignItems: 'center', paddingVertical: 14, paddingHorizontal: 10 },
@@ -1811,7 +1900,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   lbAvatarFallbackText: { fontSize: 10, fontWeight: '800', color: GOLD, fontFamily: SYSTEM_SANS },
-  lbInfo: { flex: 1 },
+  lbInfo: { flex: 1, minWidth: 0 },
   lbName: { fontSize: 11, fontWeight: '800', color: TEXT_IVORY, fontFamily: SYSTEM_SANS },
   lbSub: { fontSize: 8, color: TEXT_MUTED, marginTop: 1, fontFamily: SYSTEM_SANS },
   lbSubCity: { fontSize: 7, color: TEXT_MUTED, marginTop: 1, fontFamily: SYSTEM_SANS },
