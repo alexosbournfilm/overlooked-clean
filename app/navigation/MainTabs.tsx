@@ -346,19 +346,35 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
           />
         )}
 
+        {/* ✅ CHANGED: tighten text + reserve center space so nothing overlaps */}
         <View style={[styles.streakBarOverlay, compactUI && { paddingHorizontal: 10 }]}>
           <View style={styles.streakSidesRow}>
             <View style={styles.streakLeftGroup}>
-              <Text style={[styles.streakBarLeft, compactUI && { fontSize: 8.5, letterSpacing: 0.9 }]}>
+              <Text
+                style={[
+                  styles.streakBarLeft,
+                  compactUI && { fontSize: 8, letterSpacing: 0.75 },
+                ]}
+              >
                 STREAK
               </Text>
             </View>
 
-            <Text style={[styles.streakBarRight, compactUI && { fontSize: 8.5 }]}>Year {yearLabel}</Text>
+            <Text style={[styles.streakBarRight, compactUI && { fontSize: 8 }]}>Year {yearLabel}</Text>
           </View>
 
-          <View pointerEvents="none" style={styles.streakCenterAbs}>
-            <Text style={[styles.streakBarCenter, compactUI && { fontSize: 8.5 }]} numberOfLines={1}>
+          <View
+            pointerEvents="none"
+            style={[
+              styles.streakCenterAbs,
+              // ✅ more padding on compact so center text can't collide with STREAK / Year
+              compactUI && { paddingHorizontal: 64 },
+            ]}
+          >
+            <Text
+              style={[styles.streakBarCenter, compactUI && { fontSize: 8 }]}
+              numberOfLines={1}
+            >
               {loading ? '—' : `${displayStreak}/${targetMonths}`}
             </Text>
           </View>
@@ -690,17 +706,292 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
   );
 });
 
+/* ---------------------- XP Progress (kept, unchanged) --------------------- */
+
+type TopBarXpProgressProps = {
+  variant: 'wide' | 'compact';
+  onOpenLeaderboard?: () => void;
+};
+
+const TopBarXpProgress = memo(function TopBarXpProgress({ variant, onOpenLeaderboard }: TopBarXpProgressProps) {
+  const gamification = useGamification();
+  const { loading, xp, level, levelTitle, currentLevelMinXp, nextLevelMinXp, progress } = gamification;
+
+  const [uid, setUid] = useState<string | null>(null);
+
+  const refreshGamification: (() => Promise<void> | void) | null =
+    (gamification as any).refresh || (gamification as any).reload || (gamification as any).refetch || null;
+
+  const [ready, setReady] = useState(false);
+  const [hydratedForUser, setHydratedForUser] = useState(false);
+
+  const lastXpRef = useRef(0);
+  const lastLevelRef = useRef(1);
+
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
+  const [gainLabel, setGainLabel] = useState<string | null>(null);
+  const gainOpacity = useRef(new Animated.Value(0)).current;
+  const gainTranslate = useRef(new Animated.Value(0)).current;
+
+  const [showLevelModal, setShowLevelModal] = useState(false);
+  const [lvlFrom, setLvlFrom] = useState(1);
+  const [lvlTo, setLvlTo] = useState(1);
+  const [lvlTitleText, setLvlTitleText] = useState('');
+  const modalOpacity = useRef(new Animated.Value(0)).current;
+  const modalScale = useRef(new Animated.Value(0.9)).current;
+
+  const isWide = variant === 'wide';
+
+  const animateProgressTo = (pct: number) => {
+    Animated.timing(progressAnim, {
+      toValue: pct,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  };
+
+  const triggerGain = (delta: number) => {
+    if (delta <= 0) return;
+    const label = `+${delta} XP`;
+    setGainLabel(label);
+    gainOpacity.setValue(0);
+    gainTranslate.setValue(0);
+
+    Animated.parallel([
+      Animated.timing(gainOpacity, {
+        toValue: 1,
+        duration: 140,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(gainTranslate, {
+        toValue: -14,
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      Animated.timing(gainOpacity, {
+        toValue: 0,
+        duration: 260,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start(() => setGainLabel(null));
+    });
+  };
+
+  const triggerLevelUp = (from: number, to: number, newTitle: string) => {
+    if (to <= from) return;
+
+    setLvlFrom(from);
+    setLvlTo(to);
+    setLvlTitleText(newTitle);
+    setShowLevelModal(true);
+
+    modalOpacity.setValue(0);
+    modalScale.setValue(0.9);
+
+    Animated.parallel([
+      Animated.timing(modalOpacity, {
+        toValue: 1,
+        duration: 220,
+        useNativeDriver: true,
+      }),
+      Animated.timing(modalScale, {
+        toValue: 1,
+        duration: 260,
+        easing: Easing.out(Easing.back(1.4)),
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setTimeout(() => {
+        Animated.timing(modalOpacity, {
+          toValue: 0,
+          duration: 260,
+          useNativeDriver: true,
+        }).start(() => setShowLevelModal(false));
+      }, 1100);
+    });
+  };
+
+  useEffect(() => {
+    let mounted = true;
+
+    const bootstrap = async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        const nextUid = data?.user?.id ?? null;
+        if (mounted) setUid(nextUid);
+      } catch {
+        if (mounted) setUid(null);
+      }
+    };
+
+    bootstrap();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      const nextUid = session?.user?.id ?? null;
+      setUid(nextUid);
+    });
+
+    const subObj = (sub as any)?.subscription ?? (sub as any) ?? null;
+
+    return () => {
+      mounted = false;
+      try {
+        subObj?.unsubscribe?.();
+      } catch {}
+    };
+  }, []);
+
+  useEffect(() => {
+    setReady(false);
+    setHydratedForUser(false);
+
+    setShowLevelModal(false);
+    setGainLabel(null);
+
+    lastXpRef.current = 0;
+    lastLevelRef.current = 1;
+
+    progressAnim.setValue(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
+
+  useEffect(() => {
+    if (typeof refreshGamification === 'function') {
+      Promise.resolve(refreshGamification()).catch((err) =>
+        console.warn('Gamification refresh failed:', (err as any)?.message)
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+
+    if (!ready) {
+      lastXpRef.current = xp || 0;
+      lastLevelRef.current = level || 1;
+      progressAnim.setValue(progress || 0);
+      setReady(true);
+      setHydratedForUser(false);
+      return;
+    }
+
+    if (!hydratedForUser) {
+      lastXpRef.current = xp || 0;
+      lastLevelRef.current = level || 1;
+      animateProgressTo(progress || 0);
+      setHydratedForUser(true);
+      return;
+    }
+
+    const prevXp = lastXpRef.current;
+    const prevLvl = lastLevelRef.current;
+    const newXp = xp || 0;
+    const newLvl = level || 1;
+
+    const delta = newXp - prevXp;
+    if (delta > 0) triggerGain(delta);
+
+    if (newLvl > prevLvl) {
+      const lt = levelTitle || 'Background Pixel';
+      triggerLevelUp(prevLvl, newLvl, lt);
+    }
+
+    lastXpRef.current = newXp;
+    lastLevelRef.current = newLvl;
+    animateProgressTo(progress || 0);
+  }, [loading, xp, level, progress, levelTitle, ready, hydratedForUser, progressAnim]);
+
+  if (loading || !ready) return null;
+
+  const isMax = !nextLevelMinXp || nextLevelMinXp <= currentLevelMinXp || (level || 1) >= 50;
+
+  const gained = Math.max(0, (xp || 0) - currentLevelMinXp);
+  const span = Math.max(1, (nextLevelMinXp || currentLevelMinXp) - currentLevelMinXp);
+
+  const widthInterpolated = progressAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['10%', '100%'],
+  });
+
+  const nextLevelLabel = isMax ? 'MAX' : `Lv ${(level || 1) + 1}`;
+
+  return (
+    <>
+      <View style={[styles.xpWrap, isWide ? styles.xpWrapWide : styles.xpWrapCompact]}>
+        {onOpenLeaderboard && (
+          <View
+            style={[
+              styles.leaderboardLinkRow,
+              isWide ? styles.leaderboardLinkRowWide : styles.leaderboardLinkRowCompact,
+            ]}
+          >
+            <Pressable onPress={onOpenLeaderboard} hitSlop={6}>
+              <Text style={styles.leaderboardLinkText}>VIEW LEADERBOARD</Text>
+            </Pressable>
+          </View>
+        )}
+
+        <View style={[styles.xpBarOuter, isWide && styles.xpBarOuterWide]}>
+          <Animated.View style={[styles.xpBarFill, { width: widthInterpolated }]} />
+          <View style={styles.xpBarOverlay}>
+            <Text style={styles.xpBarLevelLeft}>Lv {level || 1}</Text>
+
+            <Text style={styles.xpBarXpText} numberOfLines={1}>
+              {isMax ? `${xp || 0} XP` : `${gained}/${span} XP`}
+            </Text>
+
+            <Text style={styles.xpBarLevelRight}>{nextLevelLabel}</Text>
+          </View>
+        </View>
+
+        {gainLabel && (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.xpGainBubble,
+              {
+                opacity: gainOpacity,
+                transform: [{ translateY: gainTranslate }],
+              },
+            ]}
+          >
+            <Text style={styles.xpGainText}>{gainLabel}</Text>
+          </Animated.View>
+        )}
+      </View>
+
+      <Modal visible={showLevelModal} transparent animationType="none">
+        <Animated.View style={[styles.levelModalOverlay, { opacity: modalOpacity }]}>
+          <Animated.View style={[styles.levelModalCard, { transform: [{ scale: modalScale }] }]}>
+            <Text style={styles.levelModalKicker}>LEVEL UP</Text>
+            <Text style={styles.levelModalLevel}>
+              Lv {lvlFrom} ➜ <Text style={{ color: GOLD }}>Lv {lvlTo}</Text>
+            </Text>
+            <Text style={styles.levelModalTitle}>{lvlTitleText}</Text>
+            <Text style={styles.levelModalHint}>Keep creating. Keep getting seen.</Text>
+          </Animated.View>
+        </Animated.View>
+      </Modal>
+    </>
+  );
+});
+
 /* --------------------------- Composed Top Bar -------------------------- */
 
 type TopBarProps = {
   topOffset: number;
   navHeight: number;
-  bannerHeight: number;
   onOpenUpgrade: () => void;
   onOpenLeaderboard: () => void;
 };
 
-const TopBar = memo(function TopBar({ topOffset, navHeight, bannerHeight, onOpenUpgrade, onOpenLeaderboard }: TopBarProps) {
+const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpenLeaderboard }: TopBarProps) {
   const { width } = useWindowDimensions();
   const isWide = width >= 980;
   const isPhone = width < 420;
@@ -715,17 +1006,14 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, bannerHeight, onOpen
     return () => clearInterval(id);
   }, []);
 
-  // ✅ Top bar is now SHORTER: banner + single nav row (no extra streak row)
-  const wrapperHeight = bannerHeight + navHeight;
+  const bannerHeight = isPhone ? 22 : 34;
+  const wrapperHeight = bannerHeight + navHeight + (isWide ? 0 : 30);
 
   const saleText = offerCountdown.expired
     ? `NEW YEAR’S PRO SALE • OFFER ENDED`
     : `NEW YEAR’S PRO SALE • ${offerCountdown.long}`;
 
-  // ✅ Keep streak in the SAME row, but squeeze safely so it never overlaps tools
-  const compactUI = true;
-  const centerSidePad = isWide ? 240 : isTiny ? 112 : isPhone ? 128 : 160;
-  const streakMaxWidth = isWide ? 640 : isTiny ? 240 : isPhone ? 280 : 360;
+  const compactUI = !isWide;
 
   return (
     <View style={[styles.topBarWrapper, { height: wrapperHeight, top: topOffset }]}>
@@ -755,39 +1043,63 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, bannerHeight, onOpen
 
       <View style={[styles.topBarInner, { height: navHeight, paddingHorizontal: isPhone ? 10 : 14 }]}>
         <HoverPress style={{ borderRadius: 10 }} accessibilityLabel="Overlooked">
-          <BrandWordmark compact />
+          <BrandWordmark compact={compactUI} />
         </HoverPress>
 
-        <View pointerEvents="box-none" style={[styles.centerSlotAbs, { paddingHorizontal: centerSidePad }]}>
-          <HoverPress
-            accessibilityLabel="Streak"
-            style={{
-              borderRadius: 999,
-              width: '100%',
-              maxWidth: streakMaxWidth,
-              alignSelf: 'center',
-            }}
-          >
-            <TopBarStreakProgress variant="wide" compactUI={compactUI} />
-          </HoverPress>
-        </View>
+        {isWide && (
+          <View pointerEvents="box-none" style={[styles.centerSlotAbs, { paddingHorizontal: 220 }]}>
+            <HoverPress
+              accessibilityLabel="Streak"
+              style={{
+                borderRadius: 999,
+                width: '100%',
+                maxWidth: 600,
+                alignSelf: 'center',
+              }}
+            >
+              <TopBarStreakProgress variant="wide" compactUI={compactUI} />
+            </HoverPress>
+          </View>
+        )}
 
         <View style={[styles.rightTools, { gap: isPhone ? 6 : 10 }]}>
           <HoverPress onPress={onOpenLeaderboard} hitSlop={6} accessibilityLabel="View leaderboard">
-            <View style={[styles.leaderboardBtn, styles.leaderboardBtnCompactOnlyIcon, isPhone && styles.leaderboardBtnPhone]}>
+            <View style={[styles.leaderboardBtn, isPhone && styles.leaderboardBtnPhone, compactUI && styles.leaderboardBtnCompact]}>
               <Ionicons name="trophy-outline" size={isPhone ? 15 : 16} color={GOLD} />
+              {!isPhone && (
+                <Text style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]} numberOfLines={1}>
+                  LEADERBOARD
+                </Text>
+              )}
             </View>
           </HoverPress>
 
           <HoverPress disabled>
-            <View style={[styles.settingsChipSmall, isPhone && styles.settingsChipSmallPhone, styles.settingsChipSmallCompact]}>
-              <View style={{ transform: [{ scale: isPhone ? 0.56 : 0.72 }] }}>
+            <View style={[styles.settingsChipSmall, isPhone && styles.settingsChipSmallPhone, compactUI && styles.settingsChipSmallCompact]}>
+              <View style={{ transform: [{ scale: isPhone ? 0.58 : compactUI ? 0.74 : 0.9 }] }}>
                 <SettingsButton absolute={false} />
               </View>
             </View>
           </HoverPress>
         </View>
       </View>
+
+      {!isWide && (
+        <View style={[styles.topBarInnerStreakRow, { paddingHorizontal: isPhone ? 10 : 14 }]}>
+          <HoverPress
+            accessibilityLabel="Streak"
+            style={{
+              borderRadius: 999,
+              width: '100%',
+              // ✅ CHANGED: slightly longer on mobile
+              maxWidth: isPhone ? 420 : 520,
+              alignSelf: 'center',
+            }}
+          >
+            <TopBarStreakProgress variant="compact" compactUI />
+          </HoverPress>
+        </View>
+      )}
     </View>
   );
 });
@@ -879,7 +1191,6 @@ export default function MainTabs() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
-  // ✅ Hard-disable horizontal scrolling on WEB (mobile browser included)
   useEffect(() => {
     if (Platform.OS === 'web') {
       try {
@@ -900,14 +1211,10 @@ export default function MainTabs() {
     }
   }, []);
 
-  // ✅ Shorter top bar sizing
-  const NAV_HEIGHT = width >= 980 ? 52 : isPhone ? 40 : 44;
-  const BANNER_HEIGHT = isPhone ? 24 : 32;
-
+  const NAV_HEIGHT = width >= 980 ? 56 : isPhone ? 40 : 44;
   const topOffset = width >= 980 ? 0 : Platform.OS === 'ios' ? Math.max((insets.top || 0) - 4, 0) : 0;
 
-  // ✅ Only banner + nav now (no extra row)
-  const contentTopPadding = BANNER_HEIGHT + NAV_HEIGHT;
+  const contentTopPadding = (isPhone ? 22 : 34) + NAV_HEIGHT + (width >= 980 ? 0 : 30);
 
   const TABBAR_HEIGHT = isPhone ? 54 : 56;
 
@@ -925,7 +1232,7 @@ export default function MainTabs() {
           backgroundColor: DARK_ELEVATED,
           borderTopWidth: 0,
           height: TABBAR_HEIGHT,
-          paddingTop: isTiny ? 6 : 7,
+          paddingTop: isTiny ? 5 : 6,
           paddingBottom: Platform.OS === 'ios' ? (isPhone ? 10 : 12) : 8,
           shadowColor: '#000',
           shadowOpacity: 0.3,
@@ -948,34 +1255,42 @@ export default function MainTabs() {
 
         tabBarButton: (props: any) => <TabBarButton {...props} />,
 
-        // ✅ Icons ONLY everywhere (no names, no pills)
         tabBarIcon: ({ color }: { color: string; focused: boolean }) => {
           let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
+          let label = route.name;
 
           switch (route.name) {
             case 'Featured':
               icon = 'star-outline';
+              label = 'Featured';
               break;
             case 'Jobs':
               icon = 'briefcase-outline';
+              label = 'Jobs';
               break;
             case 'Challenge':
               icon = 'trophy-outline';
+              label = 'Challenge';
               break;
             case 'Workshop':
               icon = 'cube-outline';
+              label = 'Workshop';
               break;
             case 'Location':
               icon = 'location-outline';
+              label = 'Location';
               break;
             case 'Chats':
               icon = 'chatbubble-ellipses-outline';
+              label = 'Chats';
               break;
             case 'Profile':
               icon = 'person-outline';
+              label = 'Profile';
               break;
           }
 
+          // ✅ CHANGED: icons ONLY everywhere (no labels, no pills)
           return (
             <View style={styles.tabIconOnly}>
               <Ionicons name={icon} size={isTiny ? 20 : 22} color={color} />
@@ -992,12 +1307,14 @@ export default function MainTabs() {
         <TopBar
           topOffset={topOffset}
           navHeight={NAV_HEIGHT}
-          bannerHeight={BANNER_HEIGHT}
           onOpenUpgrade={() => setShowUpgrade(true)}
           onOpenLeaderboard={() => setShowLeaderboard(true)}
         />
 
-        <SafeAreaView style={[styles.safeArea, { paddingTop: contentTopPadding }]} edges={['left', 'right', 'bottom']}>
+        <SafeAreaView
+          style={[styles.safeArea, { paddingTop: contentTopPadding }]}
+          edges={['left', 'right', 'bottom']}
+        >
           <Tab.Navigator screenOptions={screenOptions}>
             <Tab.Screen name="Featured" component={FeaturedWrapped} />
             <Tab.Screen name="Jobs" component={JobsWrapped} />
@@ -1042,6 +1359,7 @@ const styles = StyleSheet.create({
     backgroundColor: DARK_BG,
   },
 
+  /* ✅ icons only tab */
   tabIconOnly: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1107,6 +1425,14 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
 
+  topBarInnerStreakRow: {
+    width: '100%',
+    maxWidth: 1200,
+    alignSelf: 'center',
+    paddingTop: 4,
+    paddingBottom: 6,
+  },
+
   brandWrap: {
     paddingVertical: 4,
     paddingRight: 8,
@@ -1149,16 +1475,32 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(198,166,100,0.30)',
     maxWidth: 150,
   },
-  leaderboardBtnCompactOnlyIcon: {
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    maxWidth: 44,
-  },
   leaderboardBtnPhone: {
     paddingVertical: 4,
     paddingHorizontal: 8,
+    gap: 0,
+    maxWidth: 44,
     backgroundColor: 'transparent',
     borderColor: 'transparent',
+  },
+  leaderboardBtnCompact: {
+    paddingVertical: 6,
+    paddingHorizontal: 9,
+    gap: 6,
+    maxWidth: 120,
+  },
+  leaderboardBtnText: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    color: GOLD,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+    flexShrink: 1,
+  },
+  leaderboardBtnTextCompact: {
+    fontSize: 8.5,
+    letterSpacing: 0.9,
   },
 
   settingsChipSmall: {
@@ -1174,7 +1516,7 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   settingsChipSmallCompact: {
-    padding: 2,
+    padding: 2.5,
   },
 
   /* ------------------ STREAK ------------------ */
@@ -1193,7 +1535,7 @@ const styles = StyleSheet.create({
   },
   streakBarOuter: {
     width: '100%',
-    height: 26,
+    height: 28,
     borderRadius: 999,
     backgroundColor: '#1F1F1F',
     overflow: 'hidden',
@@ -1235,7 +1577,7 @@ const styles = StyleSheet.create({
   streakBarOverlay: {
     flex: 1,
     position: 'relative',
-    paddingHorizontal: 14,
+    paddingHorizontal: 18,
   },
 
   streakSidesRow: {
@@ -1267,7 +1609,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 18,
   },
 
   streakBarCenter: {
@@ -1288,7 +1630,145 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  /* Leaderboard modal styles (unchanged) */
+  leaderboardLinkRow: { marginBottom: 1 },
+  leaderboardLinkRowWide: { alignItems: 'center' },
+  leaderboardLinkRowCompact: { alignItems: 'flex-start' },
+  leaderboardLinkText: {
+    fontSize: 8,
+    letterSpacing: 1.2,
+    fontWeight: '800',
+    color: GOLD,
+    textTransform: 'uppercase',
+    opacity: 0.86,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  xpWrap: { paddingVertical: 2 },
+  xpWrapWide: {
+    width: '100%',
+    maxWidth: 520,
+    alignItems: 'center',
+    alignSelf: 'center',
+  },
+  xpWrapCompact: {
+    width: '100%',
+    maxWidth: '100%',
+    alignSelf: 'stretch',
+    alignItems: 'flex-start',
+  },
+  xpBarOuter: {
+    marginTop: 0,
+    width: '100%',
+    height: 12,
+    borderRadius: 999,
+    backgroundColor: '#222222',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  xpBarOuterWide: { width: '100%' },
+  xpBarFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: 999,
+    backgroundColor: GOLD,
+  },
+  xpBarOverlay: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    justifyContent: 'space-between',
+  },
+  xpBarLevelLeft: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+  },
+  xpBarLevelRight: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: TEXT_MUTED,
+    fontFamily: SYSTEM_SANS,
+  },
+  xpBarXpText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#0D0D0D',
+    fontFamily: SYSTEM_SANS,
+  },
+  xpGainBubble: {
+    position: 'absolute',
+    right: 0,
+    top: -2,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: '#202020',
+    borderWidth: 1,
+    borderColor: GOLD,
+  },
+  xpGainText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: GOLD,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  levelModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.94)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  levelModalCard: {
+    paddingVertical: 22,
+    paddingHorizontal: 26,
+    borderRadius: 18,
+    backgroundColor: '#050505',
+    borderWidth: 1,
+    borderColor: GOLD,
+    alignItems: 'center',
+    maxWidth: 520,
+    width: '100%',
+  },
+  levelModalKicker: {
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 2,
+    color: GOLD,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+    fontFamily: SYSTEM_SANS,
+  },
+  levelModalLevel: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    marginBottom: 4,
+    fontFamily: SYSTEM_SANS,
+  },
+  levelModalTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: TEXT_IVORY,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginBottom: 4,
+    fontFamily: SYSTEM_SANS,
+  },
+  levelModalHint: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: TEXT_MUTED,
+    marginTop: 2,
+    fontFamily: SYSTEM_SANS,
+  },
+
   lbOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.9)',
