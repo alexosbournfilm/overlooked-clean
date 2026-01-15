@@ -47,6 +47,18 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
    ✅ "FILM FESTIVAL 2026" is no longer in a pill — now epic text
    ✅ Removed the “Top 2 highest voted films…Rome…” pill entirely
  ────────────────────────────────────────────────────────────
+   CONTENT UPDATES (per your latest message)
+ ────────────────────────────────────────────────────────────
+   ✅ Monthly Film Challenge info now mentions:
+      - Top 2 highest-voted films each month screen at Overlooked Film Festival 2026
+      - July in Rome (exact date TBC)
+   ✅ “What is OverLooked?” now mentions the movement:
+      - networking, collaboration, filming, visibility, awards accessible
+   ✅ Added new info cards at the bottom:
+      - How do I apply for the festival?
+      - Bi-weekly livestreams reacting/reviewing random submissions (spotlight all levels)
+      - Workshop tools updated every Friday
+ ────────────────────────────────────────────────────────────
 */
 
 // --- THEME --------------------------------------------------
@@ -76,7 +88,6 @@ const T = {
 const Grain = () => null;
 
 // --- Typing animation text ---------------------------------
-// ✅ Removed the Rome/top-2 screening line per request
 const MANIFESTO_LINES = [
   'Meet your crew this month. Make a film together.',
   'No gatekeepers. Just collaborators, jobs, and a deadline.',
@@ -143,10 +154,10 @@ const FEATURES: Feature[] = [
   {
     key: 'festival',
     title: 'Monthly Film Challenge',
-    subtitle: 'Make something. Submit it.',
+    subtitle: 'Top 2 screen in Rome (July)',
     icon: 'trophy',
     detail:
-      'Upload a 1–15 minute film each month and climb the leaderboard. New theme every month — built for momentum.',
+      'Upload a 1–15 minute film each month and climb the leaderboard. The top 2 highest-voted films every month will be screened at the Overlooked Film Festival 2026 this July in Rome (exact date yet to be decided).',
     cta: 'See this month',
     route: 'Featured',
   },
@@ -169,6 +180,27 @@ const EXTRA_FAQS = [
   {
     title: 'Can I vote more than once?',
     body: 'You can vote once per film, and not on your own submissions.',
+  },
+
+  // ✅ NEW — Festival application / how it works (community voting)
+  {
+    title: 'How do I apply for the festival?',
+    body:
+      'You don’t apply in the traditional way — the community decides. Each month, films are ranked by votes from real users. The top 2 highest-voted films each month will be screened at the Overlooked Film Festival 2026 in July in Rome (exact date TBC). No judges — it’s the community we build.',
+  },
+
+  // ✅ NEW — Livestreams spotlighting all levels (random picks)
+  {
+    title: 'Live streams (bi-weekly reactions & reviews)',
+    body:
+      'Every two weeks we go live reacting to and reviewing OverLooked film submissions picked at random — not just the highest-voted films. We give spotlight to all levels of filmmakers.',
+  },
+
+  // ✅ NEW — Workshop tools updated weekly
+  {
+    title: 'Workshop (tools updated every Friday)',
+    body:
+      'The Workshop is where you’ll find filmmaking tools and editing tools to level up. It updates every Friday with new tools to help improve your filmmaking journey.',
   },
 ];
 
@@ -648,7 +680,6 @@ export default function SignInScreen() {
           bounces={false}
           overScrollMode="never"
           showsVerticalScrollIndicator={false}
-          // ✅ RN-web safety (some browsers treat content as pannable if overflow exists)
           directionalLockEnabled
         >
           <View
@@ -711,8 +742,6 @@ export default function SignInScreen() {
                 >
                   Meet collaborators, make a film each month, get seen by the community.
                 </Text>
-
-                {/* ✅ Removed the Rome/top-2 “pill” entirely per request */}
 
                 <View style={[styles.manifestoWrap, !isWide && { marginTop: 10 }]}>
                   <Text
@@ -835,7 +864,9 @@ export default function SignInScreen() {
                 {aboutOpen && (
                   <View style={styles.aboutBody}>
                     <Text style={styles.aboutLead}>
-                      OverLooked is a home for indie filmmaking — meet collaborators and submit films every month.
+                      OverLooked is a home for indie filmmaking — and a movement to make networking,
+                      collaboration, filming, visibility, and awards more accessible. Meet collaborators,
+                      build real momentum, and let the community decide what rises.
                     </Text>
                   </View>
                 )}
@@ -921,7 +952,6 @@ export default function SignInScreen() {
                 style={[
                   styles.authCard,
                   {
-                    // ✅ Smaller + always centered on mobile
                     width: maxModalWidth(460),
                     maxHeight: modalMaxHeight,
                     alignSelf: 'center',
@@ -1050,7 +1080,6 @@ export default function SignInScreen() {
               style={[
                 styles.modalCard,
                 {
-                  // ✅ Smaller + centered on mobile + never off-screen
                   width: maxModalWidth(560),
                   maxHeight: modalMaxHeight,
                   alignSelf: 'center',
@@ -1077,7 +1106,6 @@ export default function SignInScreen() {
 
                         <Text style={styles.modalDetail}>{active.detail}</Text>
 
-                        {/* ✅ buttons never overflow on mobile */}
                         <View
                           style={[
                             styles.modalButtonsRow,
@@ -1226,7 +1254,6 @@ const styles = StyleSheet.create({
     letterSpacing: 3.2,
     fontFamily: SYSTEM_SANS,
     textTransform: 'uppercase',
-    // subtle “epic” glow
     textShadowColor: 'rgba(198,166,100,0.35)',
     textShadowOffset: { width: 0, height: 10 },
     textShadowRadius: 18,
