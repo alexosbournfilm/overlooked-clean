@@ -1204,10 +1204,10 @@ export default function MainTabs() {
       },
 
       lazy: true,
-      lazyPreloadDistance: 1,
-      detachInactiveScreens: true,
-      freezeOnBlur: Platform.OS !== 'web',
-      unmountOnBlur: false,
+lazyPreloadDistance: 1,
+detachInactiveScreens: Platform.OS !== 'web',
+freezeOnBlur: Platform.OS !== 'web',
+unmountOnBlur: false,
 
       tabBarButton: (props: any) => <TabBarButton {...props} />,
 
