@@ -650,7 +650,7 @@ export default function ChallengeScreen() {
   const [countdown, setCountdown] = useState("");
   const [session, setSession] = useState<Session | null>(null);
 
-  const [category, setCategory] = useState<Category>("film");
+  const [category] = useState<Category>("film");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [agreed, setAgreed] = useState(false);
@@ -898,12 +898,6 @@ export default function ChallengeScreen() {
       clearInterval(refresh);
     };
   }, [challenge]);
-
-  useEffect(() => {
-    resetSelectedFile();
-    setSelectedTags([]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category]);
 
   useEffect(() => {
     return () => {
@@ -1734,15 +1728,8 @@ try {
 
 <View style={styles.hypeCard}>
   <View style={styles.hypeHeaderRow}>
-    <Text style={styles.hypeTitle}>WHY UPLOAD MONTHLY</Text>
-
-    <View style={styles.streakBadge}>
-      <Text style={styles.streakBadgeLabel}>STREAK</Text>
-      <Text style={styles.streakBadgeValue}>
-        {streakLoading ? "…" : String(streak)}
-      </Text>
-    </View>
-  </View>
+  <Text style={styles.hypeTitle}>WHY UPLOAD MONTHLY</Text>
+</View>
 
   <Text style={styles.hypeBody}>
     Most film students make only a handful of films across three years. Progress comes faster when
@@ -1766,25 +1753,6 @@ try {
   </Text>
 </View>
   
-                  <View style={styles.segmentWrap}>
-                    {(["film", "acting", "music"] as Category[]).map((c) => {
-                      const active = category === c;
-                      const label = c === "film" ? "Film" : c === "acting" ? "Acting" : "Music";
-                      return (
-                        <TouchableOpacity
-                          key={c}
-                          onPress={() => setCategory(c)}
-                          activeOpacity={0.92}
-                          style={[styles.segment, active && styles.segmentActive]}
-                        >
-                          <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                            {label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-
                   <View style={styles.xpBanner}>
                     <Text style={styles.xpLine}>
                       Submit this month to earn{" "}

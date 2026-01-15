@@ -33,13 +33,11 @@ import { SettingsModalProvider } from '../context/SettingsModalContext';
 import SettingsButton from '../../components/SettingsButton';
 import SettingsModal from '../../components/SettingsModal';
 
-// ✅ NEW: streak hook
 import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 
 // NOTE: keeping this import because your file already has it.
 import { useGamification } from '../context/GamificationContext';
 
-// ✅ FIX: correct import path (MainTabs is in app/navigation; UpgradeModal is in app/components)
 import { UpgradeModal } from '../../components/UpgradeModal';
 
 const Tab = createBottomTabNavigator();
@@ -52,7 +50,6 @@ const TEXT_MUTED = '#A7A6A2';
 const DIVIDER = '#2A2A2A';
 const GOLD = '#C6A664';
 
-// Pro sale (match your UpgradeModal vibe)
 const OFFER_ACCENT = '#2ED47A';
 const OFFER_STRIP_BG = 'rgba(46,212,122,0.12)';
 const OFFER_STRIP_BORDER = 'rgba(46,212,122,0.20)';
@@ -67,7 +64,6 @@ const SYSTEM_SANS = Platform.select({
 
 /* ------------------------------- helpers ------------------------------- */
 
-// Countdown to Jan 25, 2026 (end of day local time)
 function getOfferRemaining() {
   const end = new Date(2026, 0, 25, 23, 59, 59);
   const now = new Date();
@@ -102,23 +98,74 @@ function withTimeout<T>(promise: Promise<T>, ms = 9000): Promise<T> {
   });
 }
 
+/* ----------------------- Smooth Hover / Press ----------------------- */
+
+const HoverPress = memo(function HoverPress({
+  children,
+  style,
+  onPress,
+  disabled,
+  hitSlop,
+  accessibilityLabel,
+}: {
+  children: React.ReactNode;
+  style?: any;
+  onPress?: () => void;
+  disabled?: boolean;
+  hitSlop?: any;
+  accessibilityLabel?: string;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const lift = useRef(new Animated.Value(0)).current;
+
+  const to = (s: number, y: number, dur: number) => {
+    Animated.parallel([
+      Animated.timing(scale, {
+        toValue: s,
+        duration: dur,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(lift, {
+        toValue: y,
+        duration: dur,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  return (
+    <Pressable
+      accessibilityLabel={accessibilityLabel}
+      disabled={disabled}
+      hitSlop={hitSlop}
+      onPress={onPress}
+      onHoverIn={() => {
+        if (Platform.OS === 'web') to(1.03, -1.5, 140);
+      }}
+      onHoverOut={() => {
+        if (Platform.OS === 'web') to(1.0, 0, 160);
+      }}
+      onPressIn={() => to(0.98, 0, 90)}
+      onPressOut={() => to(1.0, 0, 140)}
+      style={style}
+    >
+      <Animated.View style={{ transform: [{ translateY: lift }, { scale }] }}>{children}</Animated.View>
+    </Pressable>
+  );
+});
+
 /* ------------------------ Smooth Tab Transitions ----------------------- */
-/**
- * ✅ Fix flashing/glitching:
- * - On web: avoid InteractionManager + native-driver opacity timing (common flicker culprit)
- * - Keep scrim subtle (not 0→1 hard flash)
- * - Only animate opacity on native; on web, do a small JS-driven fade
- */
+
 const TabTransition = memo(function TabTransition({ children }: { children: React.ReactNode }) {
   const scrimOpacity = useRef(new Animated.Value(0)).current;
 
   useFocusEffect(
     React.useCallback(() => {
-      // Start subtle, not full black (prevents “flash”)
-      scrimOpacity.setValue(Platform.OS === 'web' ? 0.15 : 0.22);
+      scrimOpacity.setValue(Platform.OS === 'web' ? 0.12 : 0.18);
 
       if (Platform.OS === 'web') {
-        // Web: small JS fade (no InteractionManager, no native driver)
         Animated.timing(scrimOpacity, {
           toValue: 0,
           duration: 180,
@@ -167,34 +214,34 @@ const TabTransition = memo(function TabTransition({ children }: { children: Reac
 
 function BrandWordmark() {
   return (
-    <View style={styles.brandWrap} pointerEvents="none">
+    <View style={styles.brandWrap}>
       <Text style={styles.brandTitle}>OVERLOOKED</Text>
     </View>
   );
 }
 
-/* ---------------------- ✅ STREAK Progress Bar --------------------- */
+/* ---------------------- STREAK Progress Bar --------------------- */
 
 type TopBarStreakProgressProps = {
   variant: 'wide' | 'compact';
 };
 
-const TopBarStreakProgress = memo(function TopBarStreakProgress({
-  variant,
-}: TopBarStreakProgressProps) {
+const TopBarStreakProgress = memo(function TopBarStreakProgress({ variant }: TopBarStreakProgressProps) {
   const isWide = variant === 'wide';
 
   const { streak, loading } = useMonthlyStreak();
-
   const progressAnim = useRef(new Animated.Value(0)).current;
 
-  const { targetMonths, yearLabel, pct } = useMemo(() => {
+  const { targetMonths, yearLabel, pct, displayStreak } = useMemo(() => {
     const safe = Math.max(0, Number(streak || 0));
-    const target = (Math.floor(safe / 12) + 1) * 12;
-    const year = Math.max(1, Math.floor(target / 12));
-    const fraction = target > 0 ? Math.min(1, safe / target) : 0;
+    const target = 12;
+
+    const year = safe <= 0 ? 1 : Math.floor((safe - 1) / 12) + 1;
+    const withinYear = safe <= 0 ? 0 : ((safe - 1) % 12) + 1;
+    const fraction = target > 0 ? Math.min(1, withinYear / target) : 0;
 
     return {
+      displayStreak: withinYear,
       targetMonths: target,
       yearLabel: year,
       pct: fraction,
@@ -202,32 +249,91 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
   }, [streak]);
 
   useEffect(() => {
-    if (loading) return;
+    // Even if loading is true, we might already have a cached streak displayed.
+    // So only animate when pct changes meaningfully; no need to block on loading.
     Animated.timing(progressAnim, {
       toValue: pct,
       duration: 260,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     }).start();
-  }, [loading, pct, progressAnim]);
+  }, [pct, progressAnim]);
 
   const widthInterpolated = progressAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['0%', '100%'],
   });
 
+  // ✨ shimmer sweep (web only)
+  const shimmerX = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    shimmerX.setValue(0);
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerX, {
+          toValue: 1,
+          duration: 1400,
+          easing: Easing.inOut(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.delay(900),
+      ])
+    );
+
+    loop.start();
+    return () => {
+      try {
+        loop.stop();
+      } catch {}
+    };
+  }, [shimmerX]);
+
+  const shimmerTranslate = shimmerX.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-320, 760],
+  });
+
   return (
     <View style={[styles.streakWrap, isWide ? styles.streakWrapWide : styles.streakWrapCompact]}>
       <View style={[styles.streakBarOuter, isWide && styles.streakBarOuterWide]}>
         <Animated.View style={[styles.streakBarFill, { width: widthInterpolated }]} />
+
+        {/* ✨ glass highlight */}
+        <View pointerEvents="none" style={styles.streakGlass} />
+
+        {/* ✨ shimmer sweep (web only) */}
+        {Platform.OS === 'web' && (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.streakShimmer,
+              {
+                transform: [{ translateX: shimmerTranslate }, { skewX: '-18deg' }],
+              },
+            ]}
+          />
+        )}
+
+        {/* ✅ True-centering overlay */}
         <View style={styles.streakBarOverlay}>
-          <Text style={styles.streakBarLeft}>STREAK</Text>
+          {/* Left + Right row */}
+          <View style={styles.streakSidesRow}>
+            <View style={styles.streakLeftGroup}>
+              <Text style={styles.streakBarLeft}>STREAK</Text>
+            </View>
 
-          <Text style={styles.streakBarCenter} numberOfLines={1}>
-            {loading ? '—' : `${Math.max(0, streak)} / ${targetMonths}`}
-          </Text>
+            <Text style={styles.streakBarRight}>Year {yearLabel}</Text>
+          </View>
 
-          <Text style={styles.streakBarRight}>Year {yearLabel}</Text>
+          {/* Center absolute: always perfectly centered */}
+          <View pointerEvents="none" style={styles.streakCenterAbs}>
+            <Text style={styles.streakBarCenter} numberOfLines={1}>
+              {loading ? '—' : `${displayStreak}/${targetMonths}`}
+            </Text>
+          </View>
         </View>
       </View>
     </View>
@@ -269,6 +375,19 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
   const [userCityId, setUserCityId] = useState<number | null>(null);
   const [userCityName, setUserCityName] = useState<string | null>(null);
 
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const safeSet = (fn: () => void) => {
+    if (!mountedRef.current) return;
+    fn();
+  };
+
   const handlePressEntry = (entry: LeaderboardEntry) => {
     navigation.navigate('Profile', { userId: entry.user_id });
     onClose();
@@ -276,6 +395,8 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
 
   useEffect(() => {
     if (!visible) return;
+
+    let cancelled = false;
 
     (async () => {
       try {
@@ -288,6 +409,8 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
           8000
         );
 
+        if (cancelled) return;
+
         const userRow = res?.data as any;
         const userErr = res?.error as any;
 
@@ -297,28 +420,41 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
         }
 
         if (userRow?.city_id != null) {
-          setUserCityId(userRow.city_id as number);
+          safeSet(() => setUserCityId(userRow.city_id as number));
 
           const cityRes = await withTimeout<any>(
             (supabase.from('cities').select('name').eq('id', userRow.city_id).maybeSingle() as any) as Promise<any>,
             8000
           );
 
+          if (cancelled) return;
+
           const cityRow = cityRes?.data as any;
-          if (cityRow?.name) setUserCityName(cityRow.name);
+          if (cityRow?.name) safeSet(() => setUserCityName(cityRow.name));
+        } else {
+          safeSet(() => {
+            setUserCityId(null);
+            setUserCityName(null);
+          });
         }
       } catch (e: any) {
-        console.warn('Error bootstrapping leaderboard city:', e?.message || String(e));
+        if (!cancelled) console.warn('Error bootstrapping leaderboard city:', e?.message || String(e));
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [visible]);
 
   const load = async (tabOverride?: LeaderboardTab) => {
     if (!visible) return;
 
     const tab = tabOverride || activeTab;
-    setLoading(true);
-    setError(null);
+    safeSet(() => {
+      setLoading(true);
+      setError(null);
+    });
 
     try {
       if (tab === 'monthly') {
@@ -327,18 +463,20 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
           9000
         );
         if (res?.error) throw res.error;
-        setEntries(((res?.data || []) as any[]) as LeaderboardEntry[]);
+        safeSet(() => setEntries(((res?.data || []) as any[]) as LeaderboardEntry[]));
       } else if (tab === 'allTime') {
         const res = await withTimeout<any>(
           (supabase.from('leaderboard_all_time').select('*').order('rank', { ascending: true }).limit(100) as any) as Promise<any>,
           9000
         );
         if (res?.error) throw res.error;
-        setEntries(((res?.data || []) as any[]) as LeaderboardEntry[]);
+        safeSet(() => setEntries(((res?.data || []) as any[]) as LeaderboardEntry[]));
       } else if (tab === 'city') {
         if (!userCityId) {
-          setEntries([]);
-          setError('Set your city in your profile to see your local leaderboard.');
+          safeSet(() => {
+            setEntries([]);
+            setError('Set your city in your profile to see your local leaderboard.');
+          });
         } else {
           const res = await withTimeout<any>(
             (supabase
@@ -350,19 +488,21 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
             9000
           );
           if (res?.error) throw res.error;
-          setEntries(((res?.data || []) as any[]) as LeaderboardEntry[]);
+          safeSet(() => setEntries(((res?.data || []) as any[]) as LeaderboardEntry[]));
         }
       }
     } catch (e: any) {
       console.warn('Leaderboard fetch error:', e?.message || String(e));
-      setError(
-        e?.message?.toLowerCase?.().includes('timed out')
-          ? 'Leaderboard is taking too long to load.'
-          : 'Could not load leaderboard.'
-      );
-      setEntries([]);
+      safeSet(() => {
+        setError(
+          e?.message?.toLowerCase?.().includes('timed out')
+            ? 'Leaderboard is taking too long to load.'
+            : 'Could not load leaderboard.'
+        );
+        setEntries([]);
+      });
     } finally {
-      setLoading(false);
+      safeSet(() => setLoading(false));
     }
   };
 
@@ -459,27 +599,21 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
               onPress={() => setActiveTab('monthly')}
               style={[styles.lbTab, activeTab === 'monthly' && styles.lbTabActive]}
             >
-              <Text style={[styles.lbTabText, activeTab === 'monthly' && styles.lbTabTextActive]}>
-                This Month
-              </Text>
+              <Text style={[styles.lbTabText, activeTab === 'monthly' && styles.lbTabTextActive]}>This Month</Text>
             </Pressable>
 
             <Pressable
               onPress={() => setActiveTab('allTime')}
               style={[styles.lbTab, activeTab === 'allTime' && styles.lbTabActive]}
             >
-              <Text style={[styles.lbTabText, activeTab === 'allTime' && styles.lbTabTextActive]}>
-                All Time
-              </Text>
+              <Text style={[styles.lbTabText, activeTab === 'allTime' && styles.lbTabTextActive]}>All Time</Text>
             </Pressable>
 
             <Pressable
               onPress={() => setActiveTab('city')}
               style={[styles.lbTab, activeTab === 'city' && styles.lbTabActive]}
             >
-              <Text style={[styles.lbTabText, activeTab === 'city' && styles.lbTabTextActive]}>
-                My City
-              </Text>
+              <Text style={[styles.lbTabText, activeTab === 'city' && styles.lbTabTextActive]}>My City</Text>
             </Pressable>
           </View>
 
@@ -518,17 +652,13 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
 });
 
 /* ---------------------- XP Progress (kept, unchanged) --------------------- */
-/* Keeping your original component in the file, but it’s no longer rendered in TopBar. */
 
 type TopBarXpProgressProps = {
   variant: 'wide' | 'compact';
   onOpenLeaderboard?: () => void;
 };
 
-const TopBarXpProgress = memo(function TopBarXpProgress({
-  variant,
-  onOpenLeaderboard,
-}: TopBarXpProgressProps) {
+const TopBarXpProgress = memo(function TopBarXpProgress({ variant, onOpenLeaderboard }: TopBarXpProgressProps) {
   const gamification = useGamification();
   const { loading, xp, level, levelTitle, currentLevelMinXp, nextLevelMinXp, progress } = gamification;
 
@@ -815,71 +945,85 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
   useEffect(() => {
     const tick = () => setOfferCountdown(getOfferRemaining());
     tick();
-    const id = setInterval(tick, 60 * 1000); // minute ticks (no seconds)
+    const id = setInterval(tick, 60 * 1000);
     return () => clearInterval(id);
   }, []);
 
-  const bannerHeight = 38; // ✅ slightly taller + more “sale-y”
+  const bannerHeight = 38;
   const wrapperHeight = bannerHeight + (isWide ? navHeight : navHeight + 38);
 
-  // ✅ No price in the bar, centered + bigger
   const saleText = offerCountdown.expired
     ? `NEW YEAR’S PRO SALE • OFFER ENDED`
-    : `NEW YEAR’S PRO SALE • ${offerCountdown.long}`; // "Ends Jan 25 • 13d 10h left"
+    : `NEW YEAR’S PRO SALE • ${offerCountdown.long}`;
 
   return (
     <View style={[styles.topBarWrapper, { height: wrapperHeight, top: topOffset }]}>
-      {/* ✅ New Year’s Sale bar ABOVE the top bar (centered text, bigger, no price) */}
-      <Pressable
-        onPress={onOpenUpgrade}
-        style={({ pressed }) => [styles.saleBanner, pressed ? { opacity: 0.94 } : null]}
-        hitSlop={6}
-      >
-        <View style={styles.saleDot} />
-        <View pointerEvents="none" style={styles.saleBannerCenterAbs}>
-          <Text style={styles.saleBannerText} numberOfLines={1}>
-            {saleText}
-          </Text>
+      <HoverPress onPress={onOpenUpgrade} style={styles.saleBanner} hitSlop={6} accessibilityLabel="Open upgrade">
+        <View style={styles.saleBannerInner}>
+          <View style={styles.saleDot} />
+          <View pointerEvents="none" style={styles.saleBannerCenterAbs}>
+            <Text style={styles.saleBannerText} numberOfLines={1}>
+              {saleText}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="rgba(237,235,230,0.88)" />
         </View>
-        <Ionicons name="chevron-forward" size={16} color="rgba(237,235,230,0.88)" />
-      </Pressable>
+      </HoverPress>
 
-      {/* Top bar */}
       <View style={[styles.topBarInner, { height: navHeight }]}>
-        {/* ✅ Bring back OVERLOOKED wordmark on the left */}
-        <BrandWordmark />
+        <HoverPress style={{ borderRadius: 10 }} accessibilityLabel="Overlooked">
+          <BrandWordmark />
+        </HoverPress>
 
-        {/* ✅ TRUE centered streak (absolute center) */}
         <View pointerEvents="box-none" style={styles.centerSlotAbs}>
-          <TopBarStreakProgress variant="wide" />
-        </View>
+  <HoverPress
+    accessibilityLabel="Streak"
+    style={{
+      borderRadius: 999,
+      width: '100%',
+      maxWidth: 600,      // ✅ make it long
+      alignSelf: 'center', // ✅ ensures it actually takes the width
+    }}
+  >
+    <TopBarStreakProgress variant="wide" />
+  </HoverPress>
+</View>
 
-        {/* Right tools */}
         <View style={styles.rightTools}>
-          <Pressable
-            onPress={onOpenLeaderboard}
-            style={({ pressed }) => [styles.leaderboardBtn, pressed ? { opacity: 0.9 } : null]}
-            hitSlop={6}
-          >
-            <Ionicons name="trophy-outline" size={16} color={GOLD} />
-            <Text style={styles.leaderboardBtnText}>VIEW LEADERBOARD</Text>
-          </Pressable>
+          {/* ... unchanged ... */}
+          <HoverPress onPress={onOpenLeaderboard} hitSlop={6} accessibilityLabel="View leaderboard">
+            <View style={styles.leaderboardBtn}>
+              <Ionicons name="trophy-outline" size={16} color={GOLD} />
+              <Text style={styles.leaderboardBtnText}>VIEW LEADERBOARD</Text>
+            </View>
+          </HoverPress>
 
           <View style={{ width: 10 }} />
 
-          <View style={styles.settingsChipSmall}>
-            <View style={{ transform: [{ scale: 0.9 }] }}>
-              <SettingsButton absolute={false} />
+          <HoverPress disabled>
+            <View style={styles.settingsChipSmall}>
+              <View style={{ transform: [{ scale: 0.9 }] }}>
+                <SettingsButton absolute={false} />
+              </View>
             </View>
-          </View>
+          </HoverPress>
         </View>
       </View>
 
-      {/* Mobile streak row (centered) */}
       {!isWide && (
         <View style={styles.topBarInnerXpRow}>
           <View style={{ alignItems: 'center' }}>
-            <TopBarStreakProgress variant="compact" />
+            <HoverPress
+  accessibilityLabel="Streak"
+  style={{
+    borderRadius: 999,
+    width: '100%',
+    maxWidth: 520,      // ✅ still wide on mobile
+    alignSelf: 'center',
+  }}
+>
+  <TopBarStreakProgress variant="compact" />
+</HoverPress>
           </View>
         </View>
       )}
@@ -887,7 +1031,7 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
   );
 });
 
-/* ---------------------- ✅ Screen wrapper (NO TopBar) --------------------- */
+/* ---------------------- Screen wrapper --------------------- */
 
 function withTabTransition(Component: React.ComponentType<any>) {
   const Wrapped = function Wrapped(props: any) {
@@ -908,6 +1052,60 @@ const ProfileWrapped = withTabTransition(ProfileScreen);
 const WorkshopWrapped = withTabTransition(WorkshopScreen);
 const ChatsWrapped = withTabTransition(ChatsStack);
 
+/* ------------------------ Animated Tab Bar Button --------------------- */
+
+const TabBarButton = memo(function TabBarButton(props: any) {
+  const { children, onPress, accessibilityState } = props;
+  const selected = !!accessibilityState?.selected;
+
+  const scale = useRef(new Animated.Value(1)).current;
+  const lift = useRef(new Animated.Value(0)).current;
+
+  const to = (s: number, y: number, dur: number) => {
+    Animated.parallel([
+      Animated.timing(scale, {
+        toValue: s,
+        duration: dur,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(lift, {
+        toValue: y,
+        duration: dur,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  return (
+    <Pressable
+      {...props}
+      onPress={onPress}
+      onHoverIn={() => {
+        if (Platform.OS === 'web') to(1.06, -2, 130);
+      }}
+      onHoverOut={() => {
+        if (Platform.OS === 'web') to(1.0, 0, 150);
+      }}
+      onPressIn={() => to(0.97, 0, 90)}
+      onPressOut={() => to(1.0, 0, 140)}
+      style={[props.style, { flex: 1 }]}
+    >
+      <Animated.View
+        style={{
+          transform: [{ translateY: lift }, { scale }],
+          opacity: selected ? 1 : 0.96,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {children}
+      </Animated.View>
+    </Pressable>
+  );
+});
+
 /* --------------------------------- Tabs -------------------------------- */
 
 export default function MainTabs() {
@@ -917,7 +1115,6 @@ export default function MainTabs() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
-  // ✅ Web-only: force body background so the browser never flashes white on reflow
   useEffect(() => {
     if (Platform.OS === 'web') {
       try {
@@ -933,8 +1130,8 @@ export default function MainTabs() {
   const NAV_HEIGHT = width >= 980 ? 56 : 46;
   const topOffset = width >= 980 ? 0 : Platform.OS === 'ios' ? Math.max((insets.top || 0) - 4, 0) : 0;
 
-  // banner (38) + top bar (NAV_HEIGHT) + mobile streak row (40)
   const contentTopPadding = NAV_HEIGHT + 38 + (width >= 980 ? 0 : 40);
+  const TABBAR_HEIGHT = 56;
 
   return (
     <SettingsModalProvider>
@@ -946,10 +1143,7 @@ export default function MainTabs() {
           onOpenLeaderboard={() => setShowLeaderboard(true)}
         />
 
-        <SafeAreaView
-          style={[styles.safeArea, { paddingTop: contentTopPadding }]}
-          edges={['left', 'right', 'bottom']}
-        >
+        <SafeAreaView style={[styles.safeArea, { paddingTop: contentTopPadding }]} edges={['left', 'right', 'bottom']}>
           <Tab.Navigator
             screenOptions={({ route }) => ({
               headerShown: false,
@@ -957,60 +1151,79 @@ export default function MainTabs() {
 
               tabBarActiveTintColor: GOLD,
               tabBarInactiveTintColor: TEXT_MUTED,
+
+              tabBarShowLabel: false,
+
               tabBarStyle: {
                 backgroundColor: DARK_ELEVATED,
                 borderTopWidth: 0,
-                height: 52,
-                paddingTop: 4,
-                paddingBottom: Platform.OS === 'ios' ? 10 : 6,
+                height: TABBAR_HEIGHT,
+                paddingTop: 6,
+                paddingBottom: Platform.OS === 'ios' ? 12 : 8,
                 shadowColor: '#000',
                 shadowOpacity: 0.3,
                 shadowOffset: { width: 0, height: -4 },
                 shadowRadius: 6,
                 elevation: 10,
               },
-              tabBarLabelStyle: {
-                fontSize: 10,
-                letterSpacing: 0.7,
-                textTransform: 'uppercase',
-                fontWeight: '800',
-                fontFamily: SYSTEM_SANS,
-              },
-              tabBarItemStyle: { paddingVertical: 0 },
 
-              // ✅ Smoother switching
+              tabBarItemStyle: {
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingVertical: 0,
+              },
+
               lazy: true,
-              lazyPreloadDistance: 6,
-              freezeOnBlur: true,
-              detachInactiveScreens: false,
+              lazyPreloadDistance: 1,
+              detachInactiveScreens: true,
+              freezeOnBlur: Platform.OS !== 'web',
               unmountOnBlur: false,
 
-              tabBarIcon: ({ color }) => {
+              tabBarButton: (props) => <TabBarButton {...props} />,
+
+              tabBarIcon: ({ color, focused }) => {
                 let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
+                let label = route.name;
+
                 switch (route.name) {
                   case 'Featured':
                     icon = 'star-outline';
+                    label = 'Featured';
                     break;
                   case 'Jobs':
                     icon = 'briefcase-outline';
+                    label = 'Jobs';
                     break;
                   case 'Challenge':
                     icon = 'trophy-outline';
+                    label = 'Challenge';
                     break;
                   case 'Workshop':
                     icon = 'cube-outline';
+                    label = 'Workshop';
                     break;
                   case 'Location':
                     icon = 'location-outline';
+                    label = 'Location';
                     break;
                   case 'Chats':
                     icon = 'chatbubble-ellipses-outline';
+                    label = 'Chats';
                     break;
                   case 'Profile':
                     icon = 'person-outline';
+                    label = 'Profile';
                     break;
                 }
-                return <Ionicons name={icon} size={20} color={color} />;
+
+                return (
+                  <View style={[styles.tabPill, focused && styles.tabPillActive]}>
+                    <Ionicons name={icon} size={18} color={color} />
+                    <Text style={[styles.tabPillText, { color }, focused && { color: GOLD }]} numberOfLines={1}>
+                      {label.toUpperCase()}
+                    </Text>
+                  </View>
+                );
               },
             })}
           >
@@ -1042,9 +1255,7 @@ export default function MainTabs() {
         </SafeAreaView>
 
         <SettingsModal />
-
         <LeaderboardModal visible={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
-
         <UpgradeModal visible={showUpgrade} onClose={() => setShowUpgrade(false)} context={undefined} />
       </View>
     </SettingsModalProvider>
@@ -1059,6 +1270,32 @@ const styles = StyleSheet.create({
     backgroundColor: DARK_BG,
   },
 
+  tabPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'transparent',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  tabPillActive: {
+    backgroundColor: 'rgba(198,166,100,0.10)',
+    borderColor: 'rgba(198,166,100,0.28)',
+  },
+  tabPillText: {
+    fontSize: 10,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+    ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
+    lineHeight: 12,
+  },
+
   topBarWrapper: {
     position: 'absolute',
     left: 0,
@@ -1069,15 +1306,18 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
 
-  /* ✅ New Year banner */
   saleBanner: {
+    height: 38,
+    paddingHorizontal: 0,
+    backgroundColor: OFFER_STRIP_BG,
+    borderBottomWidth: 1,
+    borderBottomColor: OFFER_STRIP_BORDER,
+  },
+  saleBannerInner: {
     height: 38,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: OFFER_STRIP_BG,
-    borderBottomWidth: 1,
-    borderBottomColor: OFFER_STRIP_BORDER,
   },
   saleDot: {
     width: 9,
@@ -1086,17 +1326,16 @@ const styles = StyleSheet.create({
     backgroundColor: OFFER_ACCENT,
     opacity: 0.95,
   },
-  // absolute center text (so it’s perfectly centered regardless of icons)
   saleBannerCenterAbs: {
     position: 'absolute',
     left: 0,
     right: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 36, // leave room for dot + chevron
+    paddingHorizontal: 36,
   },
   saleBannerText: {
-    fontSize: 14.5, // ✅ bigger
+    fontSize: 14.5,
     fontWeight: '900',
     letterSpacing: 1.0,
     color: TEXT_IVORY,
@@ -1135,15 +1374,14 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  // ✅ absolute centered streak (truly centered even with right buttons)
   centerSlotAbs: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    pointerEvents: 'none',
-  },
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingHorizontal: 220, // ✅ prevents overlap, gives streak real room
+},
 
   rightTools: {
     marginLeft: 'auto',
@@ -1179,16 +1417,14 @@ const styles = StyleSheet.create({
     borderColor: '#3A3A3A',
   },
 
-  /* ✅ STREAK styles */
-  streakWrap: {
-    paddingVertical: 2,
-  },
+  /* ------------------ STREAK (MORE SPACED + LONGER + PREMIUM) ------------------ */
+  streakWrap: { paddingVertical: 2 },
   streakWrapWide: {
-    width: '100%',
-    maxWidth: 520,
-    alignItems: 'center',
-    alignSelf: 'center',
-  },
+  width: '100%',
+  maxWidth: 2000, // try 900–1100
+  alignItems: 'center',
+  alignSelf: 'center',
+},
   streakWrapCompact: {
     width: '100%',
     maxWidth: '100%',
@@ -1197,16 +1433,14 @@ const styles = StyleSheet.create({
   },
   streakBarOuter: {
     width: '100%',
-    height: 14,
+    height: 28,
     borderRadius: 999,
     backgroundColor: '#1F1F1F',
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#333333',
   },
-  streakBarOuterWide: {
-    width: '100%',
-  },
+  streakBarOuterWide: { width: '100%' },
   streakBarFill: {
     position: 'absolute',
     left: 0,
@@ -1215,44 +1449,89 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: GOLD,
   },
+
+  streakGlass: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: '55%',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    opacity: 0.20,
+  },
+
+  streakShimmer: {
+    position: 'absolute',
+    top: -8,
+    bottom: -8,
+    width: 140,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    opacity: 0.20,
+  },
+
+  // ✅ Overlay is now true-centering
   streakBarOverlay: {
+    flex: 1,
+    position: 'relative',
+    paddingHorizontal: 18,
+  },
+
+  // Left & right live in a normal row
+  streakSidesRow: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    justifyContent: 'space-between',
   },
+
+  streakLeftGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
   streakBarLeft: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '900',
     color: TEXT_IVORY,
-    letterSpacing: 1.1,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
   },
+
+  // ✅ Absolute centered text container
+  streakCenterAbs: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+
   streakBarCenter: {
+    textAlign: 'center',
     fontSize: 10,
     fontWeight: '900',
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
+    opacity: 0.92,
   },
+
   streakBarRight: {
-    fontSize: 9,
+    marginLeft: 'auto',
+    textAlign: 'right',
+    fontSize: 10,
     fontWeight: '900',
     color: TEXT_MUTED,
     fontFamily: SYSTEM_SANS,
   },
 
-  /* XP styles kept (unused in TopBar now but preserved) */
-  leaderboardLinkRow: {
-    marginBottom: 2,
-  },
-  leaderboardLinkRowWide: {
-    alignItems: 'center',
-  },
-  leaderboardLinkRowCompact: {
-    alignItems: 'flex-start',
-  },
+  /* XP styles preserved (unchanged) */
+  leaderboardLinkRow: { marginBottom: 2 },
+  leaderboardLinkRowWide: { alignItems: 'center' },
+  leaderboardLinkRowCompact: { alignItems: 'flex-start' },
   leaderboardLinkText: {
     fontSize: 9,
     letterSpacing: 1.5,
@@ -1385,7 +1664,6 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  /* Leaderboard modal */
   lbOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.9)',
@@ -1436,9 +1714,7 @@ const styles = StyleSheet.create({
     marginVertical: 2,
     backgroundColor: '#111111',
   },
-  lbTabActive: {
-    backgroundColor: GOLD,
-  },
+  lbTabActive: { backgroundColor: GOLD },
   lbTabText: {
     fontSize: 9,
     fontWeight: '700',
@@ -1447,40 +1723,14 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     fontFamily: SYSTEM_SANS,
   },
-  lbTabTextActive: {
-    color: '#050505',
-  },
-  lbBody: {
-    flex: 1,
-    marginTop: 4,
-  },
-  lbLoadingWrap: {
-    alignItems: 'center',
-    paddingVertical: 18,
-  },
-  lbLoadingText: {
-    marginTop: 6,
-    fontSize: 9,
-    color: TEXT_MUTED,
-    fontFamily: SYSTEM_SANS,
-  },
-  lbEmptyWrap: {
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 10,
-  },
-  lbEmptyText: {
-    fontSize: 9,
-    color: TEXT_MUTED,
-    textAlign: 'center',
-    fontFamily: SYSTEM_SANS,
-  },
-  lbScroll: {
-    flex: 1,
-  },
-  lbScrollContent: {
-    paddingBottom: 4,
-  },
+  lbTabTextActive: { color: '#050505' },
+  lbBody: { flex: 1, marginTop: 4 },
+  lbLoadingWrap: { alignItems: 'center', paddingVertical: 18 },
+  lbLoadingText: { marginTop: 6, fontSize: 9, color: TEXT_MUTED, fontFamily: SYSTEM_SANS },
+  lbEmptyWrap: { alignItems: 'center', paddingVertical: 14, paddingHorizontal: 10 },
+  lbEmptyText: { fontSize: 9, color: TEXT_MUTED, textAlign: 'center', fontFamily: SYSTEM_SANS },
+  lbScroll: { flex: 1 },
+  lbScrollContent: { paddingBottom: 4 },
   lbRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1492,30 +1742,11 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#222222',
   },
-  lbRowTop: {
-    borderColor: GOLD,
-    backgroundColor: '#141414',
-  },
-  lbRankWrap: {
-    width: 26,
-    alignItems: 'center',
-  },
-  lbRankText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: TEXT_MUTED,
-    fontFamily: SYSTEM_SANS,
-  },
-  lbRankTextTop: {
-    color: GOLD,
-  },
-  lbCrownDot: {
-    marginTop: 1,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: GOLD,
-  },
+  lbRowTop: { borderColor: GOLD, backgroundColor: '#141414' },
+  lbRankWrap: { width: 26, alignItems: 'center' },
+  lbRankText: { fontSize: 12, fontWeight: '900', color: TEXT_MUTED, fontFamily: SYSTEM_SANS },
+  lbRankTextTop: { color: GOLD },
+  lbCrownDot: { marginTop: 1, width: 6, height: 6, borderRadius: 3, backgroundColor: GOLD },
   lbAvatarWrap: {
     width: 32,
     height: 32,
@@ -1526,11 +1757,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  lbAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-  },
+  lbAvatar: { width: 32, height: 32, borderRadius: 16 },
   lbAvatarFallback: {
     width: 28,
     height: 28,
@@ -1539,46 +1766,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  lbAvatarFallbackText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: GOLD,
-    fontFamily: SYSTEM_SANS,
-  },
-  lbInfo: {
-    flex: 1,
-  },
-  lbName: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: TEXT_IVORY,
-    fontFamily: SYSTEM_SANS,
-  },
-  lbSub: {
-    fontSize: 8,
-    color: TEXT_MUTED,
-    marginTop: 1,
-    fontFamily: SYSTEM_SANS,
-  },
-  lbSubCity: {
-    fontSize: 7,
-    color: TEXT_MUTED,
-    marginTop: 1,
-    fontFamily: SYSTEM_SANS,
-  },
-  lbXpWrap: {
-    alignItems: 'flex-end',
-    marginLeft: 6,
-  },
-  lbXpValue: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: GOLD,
-    fontFamily: SYSTEM_SANS,
-  },
-  lbXpLabel: {
-    fontSize: 7,
-    color: TEXT_MUTED,
-    fontFamily: SYSTEM_SANS,
-  },
+  lbAvatarFallbackText: { fontSize: 10, fontWeight: '800', color: GOLD, fontFamily: SYSTEM_SANS },
+  lbInfo: { flex: 1 },
+  lbName: { fontSize: 11, fontWeight: '800', color: TEXT_IVORY, fontFamily: SYSTEM_SANS },
+  lbSub: { fontSize: 8, color: TEXT_MUTED, marginTop: 1, fontFamily: SYSTEM_SANS },
+  lbSubCity: { fontSize: 7, color: TEXT_MUTED, marginTop: 1, fontFamily: SYSTEM_SANS },
+  lbXpWrap: { alignItems: 'flex-end', marginLeft: 6 },
+  lbXpValue: { fontSize: 11, fontWeight: '900', color: GOLD, fontFamily: SYSTEM_SANS },
+  lbXpLabel: { fontSize: 7, color: TEXT_MUTED, fontFamily: SYSTEM_SANS },
 });

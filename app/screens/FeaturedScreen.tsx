@@ -41,8 +41,6 @@ const SYSTEM_SANS = Platform.select({
   default: undefined,
 });
 
-
-
 /* ------------------------------------------------------------------
    CINEMATIC NOIR — Simple • Clean • High Contrast
    ------------------------------------------------------------------ */
@@ -78,7 +76,7 @@ const FONT_OBLIVION =
   }) || 'Avenir Next';
 
 type SortKey = 'newest' | 'oldest' | 'mostvoted' | 'leastvoted';
-type Category = 'film' | 'acting' | 'music';
+type Category = 'film';
 
 const TOP_BAR_OFFSET = Platform.OS === 'web' ? 76 : 8;
 const BOTTOM_TAB_H = Platform.OS === 'web' ? 64 : 64;
@@ -311,7 +309,7 @@ const IconCorners = () => (
       style={{
         position: 'absolute',
         left: 0,
-       top: 0,
+        top: 0,
         width: 2,
         height: 8,
         backgroundColor: '#fff',
@@ -507,9 +505,9 @@ function HostedVideoInline({
       try {
         const url = await signStoragePath(storagePath, 180);
         if (alive) {
-  setPosterReady(false);
-  setSrc(url);
-}
+          setPosterReady(false);
+          setSrc(url);
+        }
       } catch (e) {
         console.warn('[HostedVideoInline] sign failed', e);
       }
@@ -581,9 +579,9 @@ function HostedVideoInline({
   useEffect(() => {
     (async () => {
       if (autoPlay && (Platform.OS !== 'web' || posterReady)) {
-  await play(true);
-} else {
-  await pause();
+        await play(true);
+      } else {
+        await pause();
         if (Platform.OS === 'web') {
           if (htmlRef.current) {
             htmlRef.current.muted = true;
@@ -651,10 +649,7 @@ function HostedVideoInline({
   }) => {
     if (Platform.OS === 'web') return;
     try {
-      if (
-        fullscreenUpdate ===
-        VideoFullscreenUpdate.PLAYER_WILL_PRESENT
-      ) {
+      if (fullscreenUpdate === VideoFullscreenUpdate.PLAYER_WILL_PRESENT) {
         await pauseAllExcept(playerId);
         await ref.current?.setIsMutedAsync(false);
         setMuted(false);
@@ -667,13 +662,13 @@ function HostedVideoInline({
   };
 
   const onWebLoadedMeta = () => {
-  const el = htmlRef.current!;
-  updateAspectFromDims(el.videoWidth, el.videoHeight);
-  setDuration(el.duration || 0);
-  el.controls = false;
-  setPosterReady(true);
-  fadeIn();
-};
+    const el = htmlRef.current!;
+    updateAspectFromDims(el.videoWidth, el.videoHeight);
+    setDuration(el.duration || 0);
+    el.controls = false;
+    setPosterReady(true);
+    fadeIn();
+  };
 
   const onWebTimeUpdate = () => {
     const el = htmlRef.current!;
@@ -748,10 +743,7 @@ function HostedVideoInline({
     const rect = el.getBoundingClientRect
       ? el.getBoundingClientRect()
       : { left: 0, width: 1 };
-    const ratio = Math.max(
-      0,
-      Math.min(1, (clientX - rect.left) / rect.width)
-    );
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     const d = duration || 0;
     if (Platform.OS === 'web' && htmlRef.current) {
       htmlRef.current.currentTime = ratio * d;
@@ -791,12 +783,7 @@ function HostedVideoInline({
         alignSelf: 'center',
       }}
     >
-      <Animated.View
-        style={[
-          StyleSheet.absoluteFillObject,
-          { opacity, zIndex: 0 },
-        ]}
-      >
+      <Animated.View style={[StyleSheet.absoluteFillObject, { opacity, zIndex: 0 }]}>
         {Platform.OS === 'web' ? (
           <WebVideo
             ref={htmlRef}
@@ -837,13 +824,8 @@ function HostedVideoInline({
             isMuted={muted}
             useNativeControls={false}
             usePoster
-            posterSource={
-              posterUri ? { uri: posterUri } : undefined
-            }
-            posterStyle={[
-              StyleSheet.absoluteFillObject,
-              { borderRadius: RADIUS_XL },
-            ]}
+            posterSource={posterUri ? { uri: posterUri } : undefined}
+            posterStyle={[StyleSheet.absoluteFillObject, { borderRadius: RADIUS_XL }]}
             onLoad={handleLoad}
             onReadyForDisplay={handleReadyForDisplay}
             onFullscreenUpdate={handleFsUpdate}
@@ -881,10 +863,7 @@ function HostedVideoInline({
             style={[
               styles.progressFill,
               {
-                width: `${Math.max(
-                  0,
-                  Math.min(100, progress * 100)
-                )}%`,
+                width: `${Math.max(0, Math.min(100, progress * 100))}%`,
               },
             ]}
           />
@@ -905,9 +884,7 @@ function HostedVideoInline({
         activeOpacity={0.9}
       >
         <IconSpeaker muted={muted} />
-        <Text style={styles.soundText}>
-          {muted ? 'Sound Off' : 'Sound On'}
-        </Text>
+        <Text style={styles.soundText}>{muted ? 'Sound Off' : 'Sound On'}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -933,10 +910,10 @@ function HostedAudioInline({
     (async () => {
       try {
         const url = await signStoragePath(storagePath, 180);
-       if (alive) {
-  setPosterReady(false);
-  setSrc(url);
-}
+        if (alive) {
+          setPosterReady(false);
+          setSrc(url);
+        }
       } catch (e) {
         console.warn('[HostedAudioInline] sign failed', e);
       }
@@ -952,9 +929,9 @@ function HostedAudioInline({
       pause: async () => {
         try {
           if (Platform.OS === 'web') {
-            const el = document.getElementById(
-              `audio-${playerId}`
-            ) as HTMLAudioElement | null;
+            const el = document.getElementById(`audio-${playerId}`) as
+              | HTMLAudioElement
+              | null;
             el?.pause();
           } else {
             await soundRef.current?.pauseAsync();
@@ -1002,9 +979,9 @@ function HostedAudioInline({
       if (!src) return;
 
       if (Platform.OS === 'web') {
-        const el = document.getElementById(
-          `audio-${playerId}`
-        ) as HTMLAudioElement | null;
+        const el = document.getElementById(`audio-${playerId}`) as
+          | HTMLAudioElement
+          | null;
         if (!el) return;
         try {
           if (autoPlay) await el.play();
@@ -1026,12 +1003,7 @@ function HostedAudioInline({
   return (
     <View style={styles.audioWrap}>
       {Platform.OS === 'web' ? (
-        <audio
-          id={`audio-${playerId}`}
-          src={src || undefined}
-          controls
-          style={{ width: '100%' }}
-        />
+        <audio id={`audio-${playerId}`} src={src || undefined} controls style={{ width: '100%' }} />
       ) : (
         <Text style={styles.audioHint}>Playing audio…</Text>
       )}
@@ -1052,16 +1024,9 @@ function normalizeRow(
 } {
   const maybe = row?.users as any;
   const user =
-    maybe == null
-      ? undefined
-      : Array.isArray(maybe)
-      ? (maybe[0] as any)
-      : (maybe as any);
+    maybe == null ? undefined : Array.isArray(maybe) ? (maybe[0] as any) : (maybe as any);
 
-  const desc =
-    (row as any).description ??
-    (row as any).word ??
-    null;
+  const desc = (row as any).description ?? (row as any).word ?? null;
 
   const picked = pickSmallestVariant(row);
 
@@ -1075,8 +1040,7 @@ function normalizeRow(
       : undefined,
     description: desc,
     storage_path: picked.path ?? row.storage_path ?? null,
-    thumbnail_url:
-      picked.thumb ?? row.thumbnail_url ?? null,
+    thumbnail_url: picked.thumb ?? row.thumbnail_url ?? null,
     media_kind: row.media_kind ?? null,
     mime_type: row.mime_type ?? null,
     category: (row.category as Category | null) ?? null,
@@ -1085,13 +1049,9 @@ function normalizeRow(
 
 function normalizeIsoRange(start: string, end: string) {
   const mkStart = (s: string) =>
-    /^\d{4}-\d{2}-\d{2}$/.test(s)
-      ? `${s}T00:00:00.000Z`
-      : new Date(s).toISOString();
+    /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T00:00:00.000Z` : new Date(s).toISOString();
   const mkEnd = (s: string) =>
-    /^\d{4}-\d{2}-\d{2}$/.test(s)
-      ? `${s}T23:59:59.999Z`
-      : new Date(s).toISOString();
+    /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T23:59:59.999Z` : new Date(s).toISOString();
   return {
     startIso: mkStart(start),
     endIso: mkEnd(end),
@@ -1149,127 +1109,85 @@ async function fetchChallengesForFeatured() {
     previous: previous ?? null,
   };
 }
+
 /* 🔥 Count votes in current month for cap enforcement */
-async function countUserVotesInRange(
-  uid: string,
-  range: { start: string; end: string }
-) {
+async function countUserVotesInRange(uid: string, range: { start: string; end: string }) {
   try {
-    const { startIso, endIso } = normalizeIsoRange(
-      range.start,
-      range.end
-    );
+    const { startIso, endIso } = normalizeIsoRange(range.start, range.end);
 
     const attempt = async (tsCol: 'created_at' | 'voted_at') =>
       supabase
         .from('user_votes')
-        .select('user_id', {
-          count: 'exact',
-          head: true,
-        })
+        .select('user_id', { count: 'exact', head: true })
         .eq('user_id', uid)
         .gte(tsCol, startIso)
         .lt(tsCol, endIso);
 
-    let { count, error } = await attempt(
-      'created_at'
-    );
+    let { count, error } = await attempt('created_at');
 
     if (error) {
       const retry = await attempt('voted_at');
       count = retry.count ?? 0;
       if (retry.error) {
-        console.warn(
-          'Failed to count monthly votes (Featured):',
-          retry.error.message
-        );
+        console.warn('Failed to count monthly votes (Featured):', retry.error.message);
         return 0;
       }
     }
 
     return count ?? 0;
   } catch (e: any) {
-    console.warn(
-      'Failed to count monthly votes (Featured):',
-      e?.message || String(e)
-    );
+    console.warn('Failed to count monthly votes (Featured):', e?.message || String(e));
     return 0;
   }
 }
 
-/* ---------------- Category Tabs ---------------- */
-const categoriesOrdered: Category[] = [
-  'film',
-  'acting',
-  'music',
+/* -------------------- Film category tags (match ChallengeScreen) -------------------- */
+const FILM_TAGS: string[] = [
+  // Originals (kept)
+  'Drama',
+  'Comedy',
+  'Thriller',
+  'Horror',
+  'Sci-Fi',
+  'Romance',
+  'Action',
+  'Mystery',
+  'Crime',
+  'Fantasy',
+  'Coming-of-Age',
+  'Experimental',
+  'Documentary-Style',
+  'No-Dialogue',
+  'One-Take',
+  'Found Footage',
+  'Slow Cinema',
+  'Satire',
+  'Neo-Noir',
+  'Musical',
+
+  // ✅ New (acting + narrative + tone)
+  'Tragedy',
+  'Monologue',
+  'Character Study',
+  'Dialogue-Driven',
+  'Dramedy',
+  'Dark Comedy',
+  'Psychological',
+  'Suspense',
+  'Period Piece',
+  'Social Realism',
+  'Rom-Com',
+  'Heist',
+  'War',
+  'Western',
+  'Supernatural',
+  'Animation-Style',
+  'Silent Film',
+  'Improvised',
+  'Voiceover',
+  'Two-Hander',
+  'Single Location',
 ];
-
-const FILM_KEYWORDS: string[] = [
-  // ✅ Paste the exact 20 words from ChallengeScreen here
-];
-
-
-const labelFor = (c: Category) =>
-  c === 'film'
-    ? 'FILMS'
-    : c === 'acting'
-    ? 'ACTING'
-    : 'MUSIC';
-
-function CategoryTabs({
-  value,
-  onChange,
-  width,
-}: {
-  value: Category;
-  onChange: (c: Category) => void;
-  width: number;
-}) {
-  const pageW = Math.min(
-    1120,
-    Math.max(
-      320,
-      width - (Platform.OS === 'web' ? 56 : 20)
-    )
-  );
-  return (
-    <View
-      style={{
-        width: pageW,
-        alignSelf: 'center',
-        paddingTop: 2,
-      }}
-    >
-      <View style={styles.catRow}>
-        {categoriesOrdered.map((c) => {
-          const active = value === c;
-          return (
-            <TouchableOpacity
-              key={c}
-              onPress={() => onChange(c)}
-              activeOpacity={0.9}
-              style={styles.catTap}
-            >
-              <Text
-                style={[
-                  styles.catText,
-                  active && styles.catTextActive,
-                ]}
-              >
-                {labelFor(c)}
-              </Text>
-              {active ? (
-                <View style={styles.catUnderline} />
-              ) : (
-                <View style={{ height: 3 }} />
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
 
 /* ---------------- Memoized Header Controls ---------------- */
 type HeaderControlsProps = {
@@ -1278,8 +1196,7 @@ type HeaderControlsProps = {
   setSort: (k: SortKey) => void;
   searchText: string;
   setSearchText: (s: string) => void;
-  selectedKeywords: string[];
-setSelectedKeywords: React.Dispatch<React.SetStateAction<string[]>>;
+  isSearching?: boolean;
   compact?: boolean;
 };
 
@@ -1290,10 +1207,11 @@ const HeaderControls = React.memo(
     setSort,
     searchText,
     setSearchText,
-    selectedKeywords,
-    setSelectedKeywords,
+    isSearching = false,
     compact = false,
   }: HeaderControlsProps) => {
+    const [focused, setFocused] = useState(false);
+
     const filters: { key: SortKey; label: string }[] = [
       { key: 'newest', label: 'Newest' },
       { key: 'mostvoted', label: 'Top Voted' },
@@ -1301,95 +1219,81 @@ const HeaderControls = React.memo(
       { key: 'oldest', label: 'Oldest' },
     ];
 
+    const raw = searchText ?? '';
+    const q = raw.trim();
+
     return (
       <View style={{ width: '100%', alignItems: 'center' }}>
-       {/* --- Search Bar --- */}
-<View
-  style={{
-    width: '100%',
-    maxWidth: 620,
-    backgroundColor: '#0F0F0F',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#1A1A1A',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-  }}
->
-  <TextInput
-    placeholder="Search"
-    placeholderTextColor="#777"
-    value={searchText}
-    onChangeText={setSearchText}
-    style={{
-      flex: 1,
-      color: '#fff',
-      fontSize: 15,
-      fontWeight: '600',
-      fontFamily: SYSTEM_SANS,
-      letterSpacing: 0.3,
-    }}
-  />
-</View>
-
-{/* --- Keyword Chips (match Challenge keywords) --- */}
-{category === 'film' ? (
-  <View
-    style={{
-      width: '100%',
-      maxWidth: 650,
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      justifyContent: 'center',
-      gap: 8,
-      marginBottom: 12,
-    }}
-  >
-    {FILM_KEYWORDS.map((w) => {
-      const active = selectedKeywords.includes(w);
-
-      return (
-        <TouchableOpacity
-          key={w}
-          activeOpacity={0.9}
-          onPress={() => {
-            setSelectedKeywords((prev) => {
-              if (prev.includes(w)) return prev.filter((x) => x !== w);
-              if (prev.length >= 3) return prev; // ✅ max 3
-              return [...prev, w];
-            });
-          }}
+        {/* --- Search Bar --- */}
+        <View
           style={{
-            paddingVertical: 8,
-            paddingHorizontal: 14,
-            borderRadius: 999,
+            width: '100%',
+            maxWidth: 620,
+            backgroundColor: '#0F0F0F',
+            borderRadius: 14,
             borderWidth: 1,
-            borderColor: active ? GOLD : '#2A2A2A',
-            backgroundColor: active ? '#1A1A1A' : '#0C0C0C',
+            borderColor: focused ? GOLD : '#1A1A1A',
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            marginBottom: 8,
+            flexDirection: 'row',
+            alignItems: 'center',
           }}
         >
-          <Text
+          <TextInput
+            placeholder="Search film name…"
+            placeholderTextColor="rgba(237,235,230,0.45)"
+            value={searchText}
+            onChangeText={(txt) => {
+              setSearchText(txt);
+            }}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            selectionColor={GOLD}
+            cursorColor={GOLD}
             style={{
-              color: active ? GOLD : '#DDD',
-              fontSize: 12,
+              flex: 1,
+              color: '#EDEBE6',
+              fontSize: 14,
               fontFamily: SYSTEM_SANS,
               fontWeight: '800',
-              letterSpacing: 0.5,
-              textTransform: 'uppercase',
+              letterSpacing: 0.2,
+              // @ts-ignore
+              outlineStyle: 'none',
+            }}
+          />
+        </View>
+
+        {/* ✅ Searching Indicator */}
+        {category === 'film' && isSearching && q.length > 0 ? (
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 620,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              marginBottom: 10,
             }}
           >
-            {w}
-          </Text>
-        </TouchableOpacity>
-      );
-    })}
-  </View>
-) : null}
+            <ActivityIndicator size="small" color={GOLD} />
+            <Text
+              style={{
+                color: 'rgba(237,235,230,0.72)',
+                fontSize: 12,
+                fontFamily: SYSTEM_SANS,
+                fontWeight: '800',
+                letterSpacing: 0.6,
+                textTransform: 'uppercase',
+              }}
+            >
+              Searching for film…
+            </Text>
+          </View>
+        ) : null}
 
-        {/* --- Slick Filter Chips (Horizontal Scroll) --- */}
+        {/* --- Sort Chips --- */}
         <View
           style={{
             flexDirection: 'row',
@@ -1443,8 +1347,7 @@ const FeaturedScreen = () => {
     useWindowDimensions();
   const isNarrow = winW < 480;
 
-  const [category, setCategory] =
-    useState<Category>('film');
+  const category: Category = 'film';
   const [loading, setLoading] =
     useState(true);
   const [winner, setWinner] =
@@ -1478,7 +1381,31 @@ const FeaturedScreen = () => {
     useState('');
   const [sort, setSort] =
     useState<SortKey>('newest');
-    const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
+
+      const [isSearching, setIsSearching] = useState(false);
+  const searchDebounceRef = useRef<any>(null);
+
+  // ✅ ADD THIS useEffect RIGHT BELOW YOUR STATES (still inside the component)
+  useEffect(() => {
+    if (category !== 'film') return;
+
+    const q = searchText.trim();
+    if (!q) {
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setIsSearching(false);
+    }, 450);
+
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [searchText, category]);
 
   const [currentUserId, setCurrentUserId] =
     useState<string | null>(null);
@@ -1576,27 +1503,26 @@ const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
 
   // Fetch content when filters change
   useEffect(() => {
-    (async () => {
-      const { data: auth } =
-        await supabase.auth.getUser();
-      const uid = auth?.user?.id ?? null;
-      setCurrentUserId(uid);
-      await fetchContent(uid, category, searchQ, selectedKeywords);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sort, searchQ, category]);
+  (async () => {
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth?.user?.id ?? null;
+    setCurrentUserId(uid);
+    await fetchContent(uid, category, searchQ);
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [sort, searchQ]);
+
 
   // Also refresh when screen refocuses (keeps votes / submissions live)
   useFocusEffect(
-    useCallback(() => {
-      (async () => {
-        const { data: auth } =
-          await supabase.auth.getUser();
-        const uid = auth?.user?.id ?? null;
-        await fetchContent(uid, category, searchQ, selectedKeywords);
-      })();
-    }, [category, sort, searchQ])
-  );
+  useCallback(() => {
+    (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth?.user?.id ?? null;
+      await fetchContent(uid, category, searchQ);
+    })();
+  }, [sort, searchQ])
+);
 
   const baseCols =
     'id, user_id, title, votes, submitted_at, is_winner, users ( id, full_name ), video_id, storage_path, video_path, media_kind, mime_type, duration_seconds, category';
@@ -1690,7 +1616,7 @@ const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
       supabase
         .from('submissions')
         .select(sel)
-        .eq('category', cat)
+        .eq('category', 'film')
     );
 
     if (range) {
@@ -1704,12 +1630,14 @@ const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
         .lt('submitted_at', endIso);
     }
 
-    if (searchTextQ.trim()) {
-      query = query.ilike(
-        'title',
-        `%${searchTextQ.trim()}%`
-      );
-    }
+    const trimmed = searchTextQ.trim();
+if (trimmed) {
+  query = query.ilike('title', `%${trimmed}%`);
+}
+
+// if it looks like a tag, DON'T title-filter in SQL.
+// Tag filtering happens client-side via selectedKeywords (or Enter-to-apply tag in HeaderControls).
+
 
     let res = await query;
 
@@ -1723,7 +1651,7 @@ const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
         supabase
           .from('submissions')
           .select(sel2)
-          .eq('category', cat)
+          .eq('category', 'film')
       );
       if (range) {
         const { startIso, endIso } =
@@ -1767,24 +1695,25 @@ const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
     return res;
   };
 
-  const fetchContent = async (
+const fetchContent = async (
   uid: string | null,
   cat: Category,
-  searchTextQ: string,
-  keywords: string[]
+  searchTextQ: string
 ) => {
-    setLoading(true);
 
+  setLoading(true);
+
+  try {
     const challenges = await fetchChallengesForFeatured();
 
-const range = challenges.current
-  ? {
-      start: challenges.current.month_start,
-      end: challenges.current.month_end,
-    }
-  : undefined;
+    const range = challenges.current
+      ? {
+          start: challenges.current.month_start,
+          end: challenges.current.month_end,
+        }
+      : undefined;
 
-currentRangeRef.current = range ?? null;
+    currentRangeRef.current = range ?? null;
 
     // Winner
     let winnerData:
@@ -1799,80 +1728,56 @@ currentRangeRef.current = range ?? null;
       | null = null;
 
     // Winner must come from PREVIOUS month (not current month)
-if (challenges.previous?.winner_submission_id) {
-  const { data: w } = await fetchWinnerSafe(
-    challenges.previous.winner_submission_id,
-    cat
-  );
+    if (challenges.previous?.winner_submission_id) {
+      const { data: w } = await fetchWinnerSafe(
+        challenges.previous.winner_submission_id,
+        cat
+      );
 
-  winnerData = w ? normalizeRow(w as RawSubmission) : null;
+      winnerData = w ? normalizeRow(w as RawSubmission) : null;
 
-  if (winnerData && winnerData.category !== cat) {
-    winnerData = null;
-  }
+      if (winnerData && winnerData.category !== cat) {
+        winnerData = null;
+      }
 
-  if ((winnerData as any)?.storage_path) {
-    signStoragePath((winnerData as any).storage_path!, 180).catch(() => {});
-  }
-}
+      if ((winnerData as any)?.storage_path) {
+        signStoragePath((winnerData as any).storage_path!, 180).catch(() => {});
+      }
+    }
 
     // Submissions
-    const resp = await fetchSubsSafe(
-      sort,
-      searchTextQ,
-      range,
-      cat
-    );
-    const subs = (resp?.data ||
-      []) as RawSubmission[];
-    const normalized =
-      subs.map(normalizeRow);
+    const resp = await fetchSubsSafe(sort, searchTextQ, range, cat);
+    const subs = (resp?.data || []) as RawSubmission[];
+    const normalized = subs.map(normalizeRow);
 
-      // ✅ Load comment counts for the list we’re about to render
-fetchCommentCounts(normalized.map((s) => s.id));
+    // ✅ Load comment counts for the list we’re about to render
+    fetchCommentCounts(normalized.map((s) => s.id));
 
-      let filtered = normalized;
+    let filtered = normalized;
 
-if (selectedKeywords.length && cat === 'film') {
-  const kws = selectedKeywords.map((k) => k.toLowerCase());
-  filtered = filtered.filter((s) => {
-    const hay = `${(s.title ?? '')} ${(s.description ?? '')} ${(s as any).word ?? ''}`.toLowerCase();
-    return kws.some((k) => hay.includes(k));
-  });
-}
-
-setSubmissions(filtered);
+    // ✅ Set state once (avoid duplicate setSubmissions)
+    setWinner(winnerData);
+    setSubmissions(filtered);
 
     // Preload first few
-    normalized
-      .slice(0, 10)
-      .forEach((s) => {
-        if (s.storage_path)
-          signStoragePath(
-            s.storage_path,
-            180
-          ).catch(() => {});
-      });
+    normalized.slice(0, 10).forEach((s) => {
+      if (s.storage_path) {
+        signStoragePath(s.storage_path, 180).catch(() => {});
+      }
+    });
 
     // Fetch current user's existing votes for these submissions
     if (uid && normalized.length) {
-      const ids = normalized.map(
-        (s) => s.id
-      );
-      const { data: myVotes } =
-        await supabase
-          .from('user_votes')
-          .select('submission_id')
-          .eq('user_id', uid)
-          .in('submission_id', ids);
+      const ids = normalized.map((s) => s.id);
+      const { data: myVotes } = await supabase
+        .from('user_votes')
+        .select('submission_id')
+        .eq('user_id', uid)
+        .in('submission_id', ids);
 
-      const votedSet =
-        new Set<string>(
-          (myVotes || []).map(
-            (r) =>
-              r.submission_id as string
-          )
-        );
+      const votedSet = new Set<string>(
+        (myVotes || []).map((r) => r.submission_id as string)
+      );
       setVotedIds(votedSet);
     } else {
       setVotedIds(new Set());
@@ -1880,36 +1785,35 @@ setSubmissions(filtered);
 
     // 🔥 Recompute monthly vote usage for cap
     if (uid && range) {
-      const used =
-        await countUserVotesInRange(
-          uid,
-          range
-        );
+      const used = await countUserVotesInRange(uid, range);
       setMonthlyVotesUsed(used);
     } else {
       setMonthlyVotesUsed(0);
     }
 
-    setWinner(winnerData);
-    setSubmissions(normalized);
-    setLoading(false);
-
     // Pick initial active media
     const firstPlayable = winnerData?.storage_path
       ? `winner-${winnerData.id}`
       : normalized.find(
-          (r) =>
-            !!r.storage_path &&
-            r.media_kind !==
-              'file_audio'
+          (r) => !!r.storage_path && r.media_kind !== 'file_audio'
         )?.id ?? null;
 
-    setActiveId((prev) =>
-      prev ?? (firstPlayable as string | null)
-    );
+    setActiveId((prev) => prev ?? (firstPlayable as string | null));
 
     layoutMap.current.clear();
-  };
+  } catch (e: any) {
+    console.warn('fetchContent error:', e?.message || e);
+
+    // Fail safe: never get stuck on a loader
+    setWinner(null);
+    setSubmissions([]);
+    setVotedIds(new Set());
+    setMonthlyVotesUsed(0);
+  } finally {
+    // ✅ This fixes your infinite loading when results are empty
+    setLoading(false);
+  }
+};
 
   const goToProfile = (user?: {
     id: string;
@@ -1926,6 +1830,36 @@ setSubmissions(filtered);
       }
     );
   };
+
+  const getFilmTags = (s: any): string[] => {
+  // Supports multiple schema styles safely
+  const arr =
+    (Array.isArray(s?.tags) && s.tags) ||
+    (Array.isArray(s?.keywords) && s.keywords) ||
+    [];
+
+  const trioFromFields = [s?.tag1, s?.tag2, s?.tag3].filter(Boolean);
+
+  const tags = (arr.length ? arr : trioFromFields)
+    .map((t: any) => String(t).trim())
+    .filter(Boolean);
+
+  return tags.slice(0, 3);
+};
+
+const matchesAnyKeyword = (s: any, keywords: string[]) => {
+  if (!keywords.length) return true;
+
+  const kws = keywords.map((k) => k.trim().toLowerCase()).filter(Boolean);
+  if (!kws.length) return true;
+
+  const tags = getFilmTags(s).map((t) => t.toLowerCase());
+  const hay = `${s?.title ?? ''} ${s?.description ?? ''} ${(s as any)?.word ?? ''}`.toLowerCase();
+
+  // match keywords against tags OR text
+  return kws.some((k) => tags.includes(k) || hay.includes(k));
+};
+
 
   const renderVoteArea = (
     s: Submission & {
@@ -2779,117 +2713,83 @@ const postComment = async () => {
   );
 
   const headerElement = useMemo(
-    () => (
-      <View style={{ alignItems: 'center' }}>
-        <View
-          style={[
-            styles.subHeaderWrap,
-            {
-              width: cardW,
-              marginBottom: isNarrow ? 6 : 2,
-            },
-          ]}
-          onLayout={() => {
-            layoutMap.current.set(
-              'category-header',
-              {
-                y: 0,
-                h: 0,
-                playable: false,
-              }
-            );
-          }}
-        >
-          <CategoryTabs
-            value={category}
-            onChange={(c) => {
-  setCategory(c);
-  setSearchText('');
-  setSearchQ('');
-  setSelectedKeywords([]);
-}}
-            width={winW}
-          />
-        </View>
+  () => (
+    <View style={{ alignItems: 'center' }}>
+      {winner
+        ? renderCard(
+            `winner-${winner.id}`,
+            winner,
+            activeId === `winner-${winner.id}`,
+            true
+          )
+        : null}
 
-        {winner
-          ? renderCard(
-              `winner-${winner.id}`,
-              winner,
-              activeId === `winner-${winner.id}`,
-              true
-            )
-          : null}
+      <View
+        style={{
+          height: isNarrow ? 12 : 10,
+        }}
+      />
 
-        <View
-          style={{
-            height: isNarrow ? 12 : 10,
-          }}
-        />
-
-        <View
-          style={[
-            styles.subHeaderWrap,
-            {
-              width: cardW,
-              marginTop: 4,
-            },
-          ]}
-          onLayout={() => {
-            layoutMap.current.set(
-              'submissions-header',
-              {
-                y: 0,
-                h: 0,
-                playable: false,
-              }
-            );
-          }}
-        >
-          <HeaderControls
+      <View
+        style={[
+          styles.subHeaderWrap,
+          {
+            width: cardW,
+            marginTop: 4,
+          },
+        ]}
+        onLayout={() => {
+          layoutMap.current.set('submissions-header', {
+            y: 0,
+            h: 0,
+            playable: false,
+          });
+        }}
+      >
+        <HeaderControls
   compact={isNarrow}
   category={category}
   sort={sort}
   setSort={setSort}
   searchText={searchText}
   setSearchText={setSearchText}
-  selectedKeywords={selectedKeywords}
-  setSelectedKeywords={setSelectedKeywords}
+  isSearching={isSearching}
 />
-        </View>
       </View>
-    ),
-    [
-      cardW,
-      category,
-      sort,
-      searchText,
-      winner,
-      activeId,
-      winW,
-      isNarrow,
-    ]
+    </View>
+  ),
+  [
+    cardW,
+    category,
+    sort,
+    searchText,
+    winner,
+    activeId,
+    winW,
+    isNarrow,
+    isSearching, // ✅ ADD THIS
+  ]
+);
+
+const renderSubmissionItem = ({
+  item,
+}: {
+  item: Submission & {
+    description?: string | null;
+    storage_path?: string | null;
+    thumbnail_url?: string | null;
+    media_kind?: RawSubmission['media_kind'];
+    category?: Category | null;
+  };
+}) =>
+  renderCard(
+    item.id,
+    item,
+    activeId === item.id,
+    false
   );
 
-  const renderSubmissionItem = ({
-    item,
-  }: {
-    item: Submission & {
-      description?: string | null;
-      storage_path?: string | null;
-      thumbnail_url?: string | null;
-      media_kind?: RawSubmission['media_kind'];
-      category?: Category | null;
-    };
-  }) =>
-    renderCard(
-      item.id,
-      item,
-      activeId === item.id,
-      false
-    );
-
-  return (
+return (
   <View style={styles.container}>
     <LinearGradient
       colors={[T.heroBurgundy1, T.heroBurgundy2, T.bg]}
