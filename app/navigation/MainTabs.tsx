@@ -990,17 +990,13 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
     return () => clearInterval(id);
   }, []);
 
-  // ✅ smaller banner on mobile + smaller sale text
   const bannerHeight = isPhone ? 22 : 34;
-
-  // ✅ clean top bar: only show center streak on wide; on mobile it's in its own row (no overlap)
   const wrapperHeight = bannerHeight + navHeight + (isWide ? 0 : 30);
 
   const saleText = offerCountdown.expired
     ? `NEW YEAR’S PRO SALE • OFFER ENDED`
     : `NEW YEAR’S PRO SALE • ${offerCountdown.long}`;
 
-  // ✅ mobile gets more room by not reserving space for a centered element in the nav row
   const compactUI = !isWide;
 
   return (
@@ -1034,8 +1030,6 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
           <BrandWordmark compact={compactUI} />
         </HoverPress>
 
-        {/* ✅ Only render the centered streak bar on wide screens.
-            On mobile it lives in the row below to avoid collisions/overlap. */}
         {isWide && (
           <View pointerEvents="box-none" style={[styles.centerSlotAbs, { paddingHorizontal: 220 }]}>
             <HoverPress
@@ -1053,11 +1047,9 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
         )}
 
         <View style={[styles.rightTools, { gap: isPhone ? 6 : 10 }]}>
-          {/* ✅ Smaller "leaderboard" control on mobile to prevent overlap */}
           <HoverPress onPress={onOpenLeaderboard} hitSlop={6} accessibilityLabel="View leaderboard">
             <View style={[styles.leaderboardBtn, isPhone && styles.leaderboardBtnPhone, compactUI && styles.leaderboardBtnCompact]}>
               <Ionicons name="trophy-outline" size={isPhone ? 15 : 16} color={GOLD} />
-              {/* keep text off on tiny phones so nothing collides */}
               {!isPhone && (
                 <Text style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]} numberOfLines={1}>
                   LEADERBOARD
@@ -1066,7 +1058,6 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
             </View>
           </HoverPress>
 
-          {/* ✅ Settings button WAY smaller on mobile + no big pill */}
           <HoverPress disabled>
             <View style={[styles.settingsChipSmall, isPhone && styles.settingsChipSmallPhone, compactUI && styles.settingsChipSmallCompact]}>
               <View style={{ transform: [{ scale: isPhone ? 0.58 : compactUI ? 0.74 : 0.9 }] }}>
@@ -1077,7 +1068,6 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
         </View>
       </View>
 
-      {/* ✅ Mobile-only streak row (smaller, no overlap) */}
       {!isWide && (
         <View style={[styles.topBarInnerStreakRow, { paddingHorizontal: isPhone ? 10 : 14 }]}>
           <HoverPress
@@ -1184,7 +1174,6 @@ export default function MainTabs() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
-  // ✅ Hard-disable horizontal scrolling on WEB (mobile browser included)
   useEffect(() => {
     if (Platform.OS === 'web') {
       try {
@@ -1205,12 +1194,9 @@ export default function MainTabs() {
     }
   }, []);
 
-  // ✅ slightly smaller nav height on phone to prevent collisions
   const NAV_HEIGHT = width >= 980 ? 56 : isPhone ? 40 : 44;
-
   const topOffset = width >= 980 ? 0 : Platform.OS === 'ios' ? Math.max((insets.top || 0) - 4, 0) : 0;
 
-  // TopBar is: banner + nav + (compact streak row)
   const contentTopPadding = (isPhone ? 22 : 34) + NAV_HEIGHT + (width >= 980 ? 0 : 30);
 
   const TABBAR_HEIGHT = isPhone ? 54 : 56;
@@ -1287,49 +1273,21 @@ export default function MainTabs() {
               break;
           }
 
-          // ✅ MOBILE: remove pills around icons completely (clean bottom bar)
+          // ✅ MOBILE: icons ONLY (no pills, no labels)
           if (Platform.OS !== 'web' && isPhone) {
             return (
-              <View style={styles.tabIconClean}>
-                <Ionicons name={icon} size={isTiny ? 18 : 20} color={color} />
-                <Text
-                  style={[
-                    styles.tabLabelClean,
-                    { color },
-                    isTiny && { fontSize: 8, letterSpacing: 0.4 },
-                  ]}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                >
-                  {label.toUpperCase()}
-                </Text>
+              <View style={styles.tabIconOnly}>
+                <Ionicons name={icon} size={isTiny ? 20 : 22} color={color} />
               </View>
             );
           }
 
-          // ✅ WEB / larger widths: keep your existing pill look
-          const pillPadH = isTiny ? 7 : isPhone ? 8 : 10;
-          const pillPadV = isTiny ? 6 : 7;
-          const pillGap = isTiny ? 4 : 6;
-
+          // ✅ DESKTOP / WEB: icons + names (no pills)
           return (
-            <View
-              style={[
-                styles.tabPill,
-                { paddingHorizontal: pillPadH, paddingVertical: pillPadV, gap: pillGap, maxWidth: '100%' },
-              ]}
-            >
-              <Ionicons name={icon} size={isTiny ? 16 : 18} color={color} />
-              <Text
-                style={[
-                  styles.tabPillText,
-                  { color },
-                  isPhone && { fontSize: isTiny ? 8 : 9, letterSpacing: isTiny ? 0.4 : 0.55 },
-                ]}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {label.toUpperCase()}
+            <View style={styles.tabDesktopRow}>
+              <Ionicons name={icon} size={18} color={color} />
+              <Text style={[styles.tabDesktopLabel, { color }]} numberOfLines={1}>
+                {label}
               </Text>
             </View>
           );
@@ -1340,7 +1298,6 @@ export default function MainTabs() {
 
   return (
     <SettingsModalProvider>
-      {/* ✅ overflow hidden stops any sneaky horizontal “drag” on web layouts */}
       <View style={{ flex: 1, backgroundColor: DARK_BG, overflow: 'hidden' }}>
         <TopBar
           topOffset={topOffset}
@@ -1397,42 +1354,25 @@ const styles = StyleSheet.create({
     backgroundColor: DARK_BG,
   },
 
-  /* ✅ Clean mobile tab icons (no pills) */
-  tabIconClean: {
+  /* ✅ Mobile tab icons only */
+  tabIconOnly: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
-    paddingVertical: 0,
-  },
-  tabLabelClean: {
-    fontSize: 9,
-    letterSpacing: 0.55,
-    textTransform: 'uppercase',
-    fontWeight: '900',
-    fontFamily: SYSTEM_SANS,
-    ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
-    lineHeight: 11,
   },
 
-  tabPill: {
+  /* ✅ Desktop/web tab row: icon + label */
+  tabDesktopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 999,
-    backgroundColor: 'transparent',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.06)',
+    gap: 8,
+    paddingHorizontal: 10,
   },
-  tabPillText: {
-    fontSize: 10,
-    letterSpacing: 0.7,
-    textTransform: 'uppercase',
+  tabDesktopLabel: {
+    fontSize: 11,
     fontWeight: '900',
+    letterSpacing: 0.6,
     fontFamily: SYSTEM_SANS,
-    ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
-    lineHeight: 12,
-    flexShrink: 1,
-    maxWidth: 86,
   },
 
   topBarWrapper: {
@@ -1477,7 +1417,6 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     textTransform: 'uppercase',
   },
-  // ✅ smaller pro sale text on phones so it never collides
   saleBannerTextCompact: {
     fontSize: 10.2,
     letterSpacing: 0.5,
@@ -1496,7 +1435,6 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
 
-  // ✅ new dedicated mobile streak row
   topBarInnerStreakRow: {
     width: '100%',
     maxWidth: 1200,
@@ -1547,7 +1485,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(198,166,100,0.30)',
     maxWidth: 150,
   },
-  // ✅ make it tiny on phone (icon-only feel)
   leaderboardBtnPhone: {
     paddingVertical: 4,
     paddingHorizontal: 8,
@@ -1583,7 +1520,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#3A3A3A',
   },
-  // ✅ phone: remove the big chip/pill completely
   settingsChipSmallPhone: {
     backgroundColor: 'transparent',
     borderColor: 'transparent',
@@ -1704,7 +1640,6 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  /* ✅ VIEW leaderboard (xp section) smaller so it never clashes */
   leaderboardLinkRow: { marginBottom: 1 },
   leaderboardLinkRowWide: { alignItems: 'center' },
   leaderboardLinkRowCompact: { alignItems: 'flex-start' },
