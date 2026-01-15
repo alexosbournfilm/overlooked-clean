@@ -915,7 +915,7 @@ const TopBarXpProgress = memo(function TopBarXpProgress({ variant, onOpenLeaderb
               isWide ? styles.leaderboardLinkRowWide : styles.leaderboardLinkRowCompact,
             ]}
           >
-            <Pressable onPress={onOpenLeaderboard} hitSlop={8}>
+            <Pressable onPress={onOpenLeaderboard} hitSlop={6}>
               <Text style={styles.leaderboardLinkText}>VIEW LEADERBOARD</Text>
             </Pressable>
           </View>
@@ -990,17 +990,17 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
     return () => clearInterval(id);
   }, []);
 
-  const bannerHeight = isPhone ? 30 : 38;
-  const wrapperHeight = bannerHeight + (isWide ? navHeight : navHeight + 34);
+  // ✅ smaller banner on mobile + smaller sale text
+  const bannerHeight = isPhone ? 22 : 34;
+
+  // ✅ clean top bar: only show center streak on wide; on mobile it's in its own row (no overlap)
+  const wrapperHeight = bannerHeight + navHeight + (isWide ? 0 : 30);
 
   const saleText = offerCountdown.expired
     ? `NEW YEAR’S PRO SALE • OFFER ENDED`
     : `NEW YEAR’S PRO SALE • ${offerCountdown.long}`;
 
-  // ✅ Critical: reduce absolute center padding so it NEVER forces horizontal overflow
-  const centerSidePad = isWide ? 220 : isTiny ? 92 : isPhone ? 112 : 140;
-
-  // ✅ Compact sizing on mobile so nothing overlaps
+  // ✅ mobile gets more room by not reserving space for a centered element in the nav row
   const compactUI = !isWide;
 
   return (
@@ -1012,13 +1012,20 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
         accessibilityLabel="Open upgrade"
       >
         <View style={[styles.saleBannerInner, { height: bannerHeight, paddingHorizontal: isPhone ? 10 : 14 }]}>
-          <View style={[styles.saleDot, isPhone && { width: 7, height: 7 }]} />
-          <View pointerEvents="none" style={[styles.saleBannerCenterAbs, { paddingHorizontal: isPhone ? 26 : 36 }]}>
-            <Text style={[styles.saleBannerText, isPhone && styles.saleBannerTextCompact]} numberOfLines={1}>
+          <View style={[styles.saleDot, isPhone && { width: 6, height: 6 }]} />
+          <View pointerEvents="none" style={[styles.saleBannerCenterAbs, { paddingHorizontal: isPhone ? 24 : 36 }]}>
+            <Text
+              style={[
+                styles.saleBannerText,
+                isPhone && styles.saleBannerTextCompact,
+                isTiny && styles.saleBannerTextTiny,
+              ]}
+              numberOfLines={1}
+            >
               {saleText}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={isPhone ? 14 : 16} color="rgba(237,235,230,0.88)" />
+          <Ionicons name="chevron-forward" size={isPhone ? 13 : 16} color="rgba(237,235,230,0.88)" />
         </View>
       </HoverPress>
 
@@ -1027,42 +1034,42 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
           <BrandWordmark compact={compactUI} />
         </HoverPress>
 
-        <View
-          pointerEvents="box-none"
-          style={[styles.centerSlotAbs, { paddingHorizontal: centerSidePad }]}
-        >
-          <HoverPress
-            accessibilityLabel="Streak"
-            style={{
-              borderRadius: 999,
-              width: '100%',
-              maxWidth: isWide ? 600 : isPhone ? 360 : 420,
-              alignSelf: 'center',
-            }}
-          >
-            <TopBarStreakProgress variant="wide" compactUI={compactUI} />
-          </HoverPress>
-        </View>
+        {/* ✅ Only render the centered streak bar on wide screens.
+            On mobile it lives in the row below to avoid collisions/overlap. */}
+        {isWide && (
+          <View pointerEvents="box-none" style={[styles.centerSlotAbs, { paddingHorizontal: 220 }]}>
+            <HoverPress
+              accessibilityLabel="Streak"
+              style={{
+                borderRadius: 999,
+                width: '100%',
+                maxWidth: 600,
+                alignSelf: 'center',
+              }}
+            >
+              <TopBarStreakProgress variant="wide" compactUI={compactUI} />
+            </HoverPress>
+          </View>
+        )}
 
         <View style={[styles.rightTools, { gap: isPhone ? 6 : 10 }]}>
+          {/* ✅ Smaller "leaderboard" control on mobile to prevent overlap */}
           <HoverPress onPress={onOpenLeaderboard} hitSlop={6} accessibilityLabel="View leaderboard">
-            <View style={[styles.leaderboardBtn, compactUI && styles.leaderboardBtnCompact]}>
-              <Ionicons name="trophy-outline" size={compactUI ? 14 : 16} color={GOLD} />
-              {/* ✅ On tiny phones: keep it, but allow it to truncate instead of pushing width */}
-              {!isTiny && (
-                <Text
-                  style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]}
-                  numberOfLines={1}
-                >
+            <View style={[styles.leaderboardBtn, isPhone && styles.leaderboardBtnPhone, compactUI && styles.leaderboardBtnCompact]}>
+              <Ionicons name="trophy-outline" size={isPhone ? 15 : 16} color={GOLD} />
+              {/* keep text off on tiny phones so nothing collides */}
+              {!isPhone && (
+                <Text style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]} numberOfLines={1}>
                   LEADERBOARD
                 </Text>
               )}
             </View>
           </HoverPress>
 
+          {/* ✅ Settings button WAY smaller on mobile + no big pill */}
           <HoverPress disabled>
-            <View style={[styles.settingsChipSmall, compactUI && styles.settingsChipSmallCompact]}>
-              <View style={{ transform: [{ scale: compactUI ? 0.78 : 0.9 }] }}>
+            <View style={[styles.settingsChipSmall, isPhone && styles.settingsChipSmallPhone, compactUI && styles.settingsChipSmallCompact]}>
+              <View style={{ transform: [{ scale: isPhone ? 0.58 : compactUI ? 0.74 : 0.9 }] }}>
                 <SettingsButton absolute={false} />
               </View>
             </View>
@@ -1070,21 +1077,20 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
         </View>
       </View>
 
+      {/* ✅ Mobile-only streak row (smaller, no overlap) */}
       {!isWide && (
-        <View style={[styles.topBarInnerXpRow, { paddingHorizontal: isPhone ? 10 : 14 }]}>
-          <View style={{ alignItems: 'center' }}>
-            <HoverPress
-              accessibilityLabel="Streak"
-              style={{
-                borderRadius: 999,
-                width: '100%',
-                maxWidth: isPhone ? 360 : 520,
-                alignSelf: 'center',
-              }}
-            >
-              <TopBarStreakProgress variant="compact" compactUI />
-            </HoverPress>
-          </View>
+        <View style={[styles.topBarInnerStreakRow, { paddingHorizontal: isPhone ? 10 : 14 }]}>
+          <HoverPress
+            accessibilityLabel="Streak"
+            style={{
+              borderRadius: 999,
+              width: '100%',
+              maxWidth: isPhone ? 380 : 520,
+              alignSelf: 'center',
+            }}
+          >
+            <TopBarStreakProgress variant="compact" compactUI />
+          </HoverPress>
         </View>
       )}
     </View>
@@ -1199,11 +1205,13 @@ export default function MainTabs() {
     }
   }, []);
 
-  const NAV_HEIGHT = width >= 980 ? 56 : isPhone ? 44 : 46;
+  // ✅ slightly smaller nav height on phone to prevent collisions
+  const NAV_HEIGHT = width >= 980 ? 56 : isPhone ? 40 : 44;
+
   const topOffset = width >= 980 ? 0 : Platform.OS === 'ios' ? Math.max((insets.top || 0) - 4, 0) : 0;
 
   // TopBar is: banner + nav + (compact streak row)
-  const contentTopPadding = (isPhone ? 30 : 38) + NAV_HEIGHT + (width >= 980 ? 0 : 34);
+  const contentTopPadding = (isPhone ? 22 : 34) + NAV_HEIGHT + (width >= 980 ? 0 : 30);
 
   const TABBAR_HEIGHT = isPhone ? 54 : 56;
 
@@ -1244,7 +1252,7 @@ export default function MainTabs() {
 
         tabBarButton: (props: any) => <TabBarButton {...props} />,
 
-        tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => {
+        tabBarIcon: ({ color }: { color: string; focused: boolean }) => {
           let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
           let label = route.name;
 
@@ -1279,7 +1287,27 @@ export default function MainTabs() {
               break;
           }
 
-          // ✅ Keep labels on mobile, but make them SMALL and non-overflowing
+          // ✅ MOBILE: remove pills around icons completely (clean bottom bar)
+          if (Platform.OS !== 'web' && isPhone) {
+            return (
+              <View style={styles.tabIconClean}>
+                <Ionicons name={icon} size={isTiny ? 18 : 20} color={color} />
+                <Text
+                  style={[
+                    styles.tabLabelClean,
+                    { color },
+                    isTiny && { fontSize: 8, letterSpacing: 0.4 },
+                  ]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {label.toUpperCase()}
+                </Text>
+              </View>
+            );
+          }
+
+          // ✅ WEB / larger widths: keep your existing pill look
           const pillPadH = isTiny ? 7 : isPhone ? 8 : 10;
           const pillPadV = isTiny ? 6 : 7;
           const pillGap = isTiny ? 4 : 6;
@@ -1289,7 +1317,6 @@ export default function MainTabs() {
               style={[
                 styles.tabPill,
                 { paddingHorizontal: pillPadH, paddingVertical: pillPadV, gap: pillGap, maxWidth: '100%' },
-                focused && styles.tabPillActive,
               ]}
             >
               <Ionicons name={icon} size={isTiny ? 16 : 18} color={color} />
@@ -1297,7 +1324,6 @@ export default function MainTabs() {
                 style={[
                   styles.tabPillText,
                   { color },
-                  focused && { color: GOLD },
                   isPhone && { fontSize: isTiny ? 8 : 9, letterSpacing: isTiny ? 0.4 : 0.55 },
                 ]}
                 numberOfLines={1}
@@ -1355,7 +1381,6 @@ export default function MainTabs() {
           </Tab.Navigator>
         </SafeAreaView>
 
-        {/* These are external components; we keep them, but everything around them is now centered + constrained */}
         <SettingsModal />
         <LeaderboardModal visible={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
         <UpgradeModal visible={showUpgrade} onClose={() => setShowUpgrade(false)} context={undefined} />
@@ -1372,6 +1397,23 @@ const styles = StyleSheet.create({
     backgroundColor: DARK_BG,
   },
 
+  /* ✅ Clean mobile tab icons (no pills) */
+  tabIconClean: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    paddingVertical: 0,
+  },
+  tabLabelClean: {
+    fontSize: 9,
+    letterSpacing: 0.55,
+    textTransform: 'uppercase',
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+    ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
+    lineHeight: 11,
+  },
+
   tabPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1380,10 +1422,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.06)',
-  },
-  tabPillActive: {
-    backgroundColor: 'rgba(198,166,100,0.10)',
-    borderColor: 'rgba(198,166,100,0.28)',
   },
   tabPillText: {
     fontSize: 10,
@@ -1394,7 +1432,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
     lineHeight: 12,
     flexShrink: 1,
-    maxWidth: 86, // ✅ prevents label from pushing layout sideways
+    maxWidth: 86,
   },
 
   topBarWrapper: {
@@ -1439,9 +1477,14 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     textTransform: 'uppercase',
   },
+  // ✅ smaller pro sale text on phones so it never collides
   saleBannerTextCompact: {
-    fontSize: 11.5,
-    letterSpacing: 0.6,
+    fontSize: 10.2,
+    letterSpacing: 0.5,
+  },
+  saleBannerTextTiny: {
+    fontSize: 9.4,
+    letterSpacing: 0.35,
   },
 
   topBarInner: {
@@ -1453,16 +1496,17 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
 
-  topBarInnerXpRow: {
+  // ✅ new dedicated mobile streak row
+  topBarInnerStreakRow: {
     width: '100%',
     maxWidth: 1200,
     alignSelf: 'center',
-    paddingTop: 6,
+    paddingTop: 4,
     paddingBottom: 6,
   },
 
   brandWrap: {
-    paddingVertical: 6,
+    paddingVertical: 4,
     paddingRight: 8,
   },
   brandTitle: {
@@ -1503,6 +1547,15 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(198,166,100,0.30)',
     maxWidth: 150,
   },
+  // ✅ make it tiny on phone (icon-only feel)
+  leaderboardBtnPhone: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    gap: 0,
+    maxWidth: 44,
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+  },
   leaderboardBtnCompact: {
     paddingVertical: 6,
     paddingHorizontal: 9,
@@ -1529,6 +1582,12 @@ const styles = StyleSheet.create({
     padding: 4,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#3A3A3A',
+  },
+  // ✅ phone: remove the big chip/pill completely
+  settingsChipSmallPhone: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+    padding: 0,
   },
   settingsChipSmallCompact: {
     padding: 2.5,
@@ -1559,7 +1618,7 @@ const styles = StyleSheet.create({
   },
   streakBarOuterWide: { width: '100%' },
   streakBarOuterCompactUI: {
-    height: 22,
+    height: 20,
   },
   streakBarFill: {
     position: 'absolute',
@@ -1645,19 +1704,20 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  /* XP styles preserved (unchanged) */
-  leaderboardLinkRow: { marginBottom: 2 },
+  /* ✅ VIEW leaderboard (xp section) smaller so it never clashes */
+  leaderboardLinkRow: { marginBottom: 1 },
   leaderboardLinkRowWide: { alignItems: 'center' },
   leaderboardLinkRowCompact: { alignItems: 'flex-start' },
   leaderboardLinkText: {
-    fontSize: 9,
-    letterSpacing: 1.5,
+    fontSize: 8,
+    letterSpacing: 1.2,
     fontWeight: '800',
     color: GOLD,
     textTransform: 'uppercase',
-    opacity: 0.9,
+    opacity: 0.86,
     fontFamily: SYSTEM_SANS,
   },
+
   xpWrap: { paddingVertical: 2 },
   xpWrapWide: {
     width: '100%',
