@@ -82,7 +82,7 @@ const MANIFESTO_LINES = [
   'No gatekeepers. Just collaborators, jobs, and a deadline.',
   'Post a job. Apply to one. Start filming.',
   'Submit your film to the monthly challenge.',
-  'Get seen by the community — and maybe win cash.',
+  'Top 2 films each month screen in Rome at the Overlooked 2026 Film Festival.',
   'The industry makes you wait. We say don’t.',
 ];
 
@@ -147,9 +147,10 @@ const FEATURES: Feature[] = [
   {
     key: 'festival',
     title: 'Monthly Film Challenge',
-    subtitle: 'Submit & get seen',
+    subtitle: 'Top 2 screen in Rome',
     icon: 'trophy',
-    detail: 'Submit a YouTube film each month. Get voted, get featured, get seen.',
+    detail:
+      'Upload your film directly each month (up to 3GB). The top 2 highest-voted films will screen at the official Overlooked 2026 Film Festival in Rome.',
     cta: 'See this month',
     route: 'Featured',
   },
@@ -159,19 +160,19 @@ const FEATURES: Feature[] = [
 const EXTRA_FAQS = [
   {
     title: 'How do I join my city chat?',
-    body: 'Go to the Location page. Search your city and tap “Join City Chat”.',
+    body: 'Go to Location, search your city, then tap “Join City Chat”.',
   },
   {
     title: 'What counts as a valid submission?',
-    body: 'A 1–15 min YouTube film made for this month. No copyrighted music.',
+    body: 'A 1–15 min film made for this month, uploaded directly (max 3GB). Avoid copyrighted music.',
   },
   {
     title: 'How do jobs work?',
-    body: 'Apply to a job and your profile is sent automatically to the poster.',
+    body: 'Apply to a job and your profile is attached automatically for the poster.',
   },
   {
     title: 'Can I vote more than once?',
-    body: 'You can vote once per film, but not on your own submissions.',
+    body: 'You can vote once per film, and not on your own submissions.',
   },
 ];
 
@@ -224,7 +225,12 @@ export default function SignInScreen() {
 
   const isWide = width >= 980;
   const isPhone = width < 420;
-  const NAV_HEIGHT = isWide ? 56 : 48;
+  const isNarrowNav = width < 520;
+  const isTinyNav = width < 360;
+
+  // Mobile nav was getting cramped/overflowing.
+  // This is layout-only: slightly taller bar on narrow widths to allow wrapping without overlap.
+  const NAV_HEIGHT = isWide ? 56 : isNarrowNav ? 98 : 48;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -526,27 +532,58 @@ export default function SignInScreen() {
           <View
             style={[
               styles.topBarInner,
-              width < 420 && { paddingHorizontal: 12, height: NAV_HEIGHT },
+              isNarrowNav && styles.topBarInnerNarrow,
+              isTinyNav && styles.topBarInnerTiny,
+              width < 420 && { paddingHorizontal: 12 },
+              { height: NAV_HEIGHT },
             ]}
           >
-            <Pressable onPress={() => navigation.navigate('Featured')} style={styles.brandWrap}>
-              <Animated.Text
+            <View style={[styles.brandCluster, isNarrowNav && styles.brandClusterNarrow]}>
+              <Pressable
+                onPress={() => navigation.navigate('Featured')}
+                style={[styles.brandWrap, isNarrowNav && styles.brandWrapNarrow]}
+              >
+                <Animated.Text
+                  style={[
+                    styles.brandTitle,
+                    isNarrowNav && styles.brandTitleNarrow,
+                    { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
+                  ]}
+                >
+                  OVERLOOKED
+                </Animated.Text>
+              </Pressable>
+
+              {/* ✅ Top bar festival mention (information-only) */}
+              <View style={[styles.festivalChipTop, isNarrowNav && styles.festivalChipTopNarrow]}>
+                <Ionicons name="film-outline" size={14} color={T.olive} />
+                <Text style={[styles.festivalChipTopText, isTinyNav && styles.festivalChipTopTextTiny]}>
+                  Film Festival 2026
+                </Text>
+              </View>
+            </View>
+
+            <View style={[styles.actionsRow, isNarrowNav && styles.actionsRowNarrow]}>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('SignUp')}
                 style={[
-                  styles.brandTitle,
-                  { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
+                  styles.primaryChip,
+                  isNarrowNav && styles.primaryChipNarrow,
+                  isTinyNav && styles.primaryChipTiny,
                 ]}
               >
-                OVERLOOKED
-              </Animated.Text>
-            </Pressable>
-
-            <View style={styles.actionsRow}>
-              <TouchableOpacity onPress={() => navigation.navigate('SignUp')} style={styles.primaryChip}>
-                <Text style={styles.primaryChipText}>Create an account</Text>
+                <Text style={[styles.primaryChipText, isTinyNav && styles.primaryChipTextTiny]}>
+                  Create an account
+                </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={() => setShowSignIn(true)} style={styles.textAction}>
-                <Text style={styles.textActionText}>Sign in</Text>
+              <TouchableOpacity
+                onPress={() => setShowSignIn(true)}
+                style={[styles.textAction, isNarrowNav && styles.textActionNarrow]}
+              >
+                <Text style={[styles.textActionText, isTinyNav && styles.textActionTextTiny]}>
+                  Sign in
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -625,7 +662,15 @@ export default function SignInScreen() {
                   Meet collaborators, make a film each month, get seen by the community.
                 </Text>
 
-                <View style={[styles.manifestoWrap, !isWide && { marginTop: 8 }]}>
+                {/* Small, clean highlight (no clutter) */}
+                <View style={[styles.festivalPill, !isWide && { alignSelf: 'center' }]}>
+                  <Ionicons name="film-outline" size={14} color={T.olive} />
+                  <Text style={styles.festivalPillText}>
+                    Top 2 highest-voted films each month screen in Rome — Overlooked 2026 Film Festival.
+                  </Text>
+                </View>
+
+                <View style={[styles.manifestoWrap, !isWide && { marginTop: 10 }]}>
                   <Text
                     numberOfLines={2}
                     style={[
@@ -705,7 +750,9 @@ export default function SignInScreen() {
                           <Text style={styles.featureTitle} numberOfLines={1}>
                             {f.title}
                           </Text>
-                          <Text style={[styles.featureSubtitle]}>{f.subtitle}</Text>
+                          <Text style={[styles.featureSubtitle]} numberOfLines={1}>
+                            {f.subtitle}
+                          </Text>
                         </View>
 
                         <Ionicons
@@ -745,8 +792,7 @@ export default function SignInScreen() {
                 {aboutOpen && (
                   <View style={styles.aboutBody}>
                     <Text style={styles.aboutLead}>
-                      OverLooked is a home for indie filmmaking — a place to meet collaborators
-                      and submit films every month.
+                      OverLooked is a home for indie filmmaking — meet collaborators and submit films every month.
                     </Text>
                   </View>
                 )}
@@ -774,8 +820,7 @@ export default function SignInScreen() {
                 {whyOpen && (
                   <View style={{ paddingHorizontal: 18, paddingBottom: 16 }}>
                     <Text style={styles.whyText}>
-                      Deadlines create momentum. A monthly challenge gives focus,
-                      accountability, and real progress.
+                      Deadlines create momentum. One month is enough to plan, shoot, edit, and publish.
                     </Text>
                   </View>
                 )}
@@ -981,7 +1026,7 @@ export default function SignInScreen() {
 }
 
 // ------------------------------------------------------------
-// STYLES — UNCHANGED
+// STYLES — UNCHANGED (only layout additions for mobile nav + festival mentions)
 // ------------------------------------------------------------
 
 const CARD_RADIUS = 16;
@@ -1027,7 +1072,6 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   topBarInner: {
-    height: '100%',
     width: '100%',
     maxWidth: 1200,
     alignSelf: 'center',
@@ -1042,7 +1086,35 @@ const styles = StyleSheet.create({
     WebkitBackdropFilter: 'saturate(120%) blur(8px)',
   },
 
+  // ✅ Mobile/nav fixes (layout-only)
+  topBarInnerNarrow: {
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'stretch',
+    gap: 10,
+    paddingTop: 10,
+    paddingBottom: 10,
+  },
+  topBarInnerTiny: {
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+
+  brandCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minWidth: 0,
+  },
+  brandClusterNarrow: {
+    alignSelf: 'center',
+  },
+
   brandWrap: { paddingVertical: 4, paddingRight: 8 },
+  brandWrapNarrow: {
+    alignSelf: 'center',
+    paddingRight: 0,
+  },
   brandTitle: {
     fontSize: 18,
     fontWeight: '900',
@@ -1050,8 +1122,46 @@ const styles = StyleSheet.create({
     letterSpacing: 2.2,
     fontFamily: SYSTEM_SANS,
   },
+  brandTitleNarrow: {
+    fontSize: 17,
+    letterSpacing: 2,
+  },
+
+  // ✅ Top bar festival chip
+  festivalChipTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: T.border,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  festivalChipTopNarrow: {
+    marginLeft: 0,
+  },
+  festivalChipTopText: {
+    color: T.sub,
+    fontSize: 12.5,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    fontFamily: SYSTEM_SANS,
+    textTransform: 'uppercase',
+  },
+  festivalChipTopTextTiny: {
+    fontSize: 12,
+    letterSpacing: 0.4,
+  },
 
   actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  actionsRowNarrow: {
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+
   primaryChip: {
     backgroundColor: GOLD,
     paddingVertical: 8,
@@ -1062,6 +1172,14 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 8 },
   },
+  primaryChipNarrow: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  primaryChipTiny: {
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+  },
   primaryChipText: {
     color: DARK_BG,
     fontSize: 13,
@@ -1070,12 +1188,23 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     textTransform: 'uppercase',
   },
+  primaryChipTextTiny: {
+    fontSize: 12.5,
+    letterSpacing: 1.05,
+  },
 
   textAction: { paddingVertical: 8, paddingHorizontal: 10, borderRadius: 999 },
+  textActionNarrow: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
   textActionText: {
     color: TEXT_IVORY,
     fontWeight: '800',
     fontFamily: SYSTEM_SANS,
+  },
+  textActionTextTiny: {
+    fontSize: 13,
   },
 
   scrollBody: { paddingHorizontal: 28, paddingBottom: 64 },
@@ -1109,6 +1238,30 @@ const styles = StyleSheet.create({
     color: T.sub,
     fontFamily: SYSTEM_SANS,
   },
+
+  // ✅ simple highlight (low clutter)
+  festivalPill: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: T.border,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    maxWidth: 680,
+  },
+  festivalPillText: {
+    flex: 1,
+    color: T.sub,
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: SYSTEM_SANS,
+  },
+
   manifestoWrap: { marginTop: 12 },
   manifestoText: {
     textAlign: 'left',
