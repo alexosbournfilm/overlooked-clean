@@ -29,9 +29,8 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
-// NOTE: we keep this import so your file structure stays the same,
-// but we intentionally DO NOT call resetToMain() anymore because it can silently fail
-// if it resets to a route that doesn't exist in your RootStack.
+
+// NOTE: kept for your file structure stability
 import { resetToMain } from '../navigation/navigationRef';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -40,9 +39,13 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 /*
  ────────────────────────────────────────────────────────────
-   ALL THEME + UI CODE IS UNCHANGED
+   UI FIXES APPLIED (per your screenshots)
  ────────────────────────────────────────────────────────────
-   Only auth/deep-link handling + sign-in logic updated.
+   ✅ Sign-in modal + feature/info modals are smaller + perfectly centered on mobile
+   ✅ Modals never fall off-screen (maxHeight + internal scroll)
+   ✅ No sideways scrolling / horizontal “white space” on mobile (RN + RN-web)
+   ✅ "FILM FESTIVAL 2026" is no longer in a pill — now epic text
+   ✅ Removed the “Top 2 highest voted films…Rome…” pill entirely
  ────────────────────────────────────────────────────────────
 */
 
@@ -69,19 +72,16 @@ const T = {
   border: '#2E2E2E',
 };
 
-const GRAIN_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAIElEQVQYV2P8//8/AzGAiYGB4T8mGJgYhBmMCEwMDAwA1wQq1i3gN8QAAAAASUVORK5CYII=';
-
 // --- REMOVE GRAIN COMPLETELY (safe for all platforms) ---
 const Grain = () => null;
 
 // --- Typing animation text ---------------------------------
+// ✅ Removed the Rome/top-2 screening line per request
 const MANIFESTO_LINES = [
   'Meet your crew this month. Make a film together.',
   'No gatekeepers. Just collaborators, jobs, and a deadline.',
   'Post a job. Apply to one. Start filming.',
   'Submit your film to the monthly challenge.',
-  'Top 2 films each month screen in Rome at the Overlooked 2026 Film Festival.',
   'The industry makes you wait. We say don’t.',
 ];
 
@@ -94,9 +94,6 @@ const DELETE_MIN_MS = 20;
 const DELETE_MAX_MS = 60;
 const WORD_PAUSE_MS = 140;
 const PUNCT_PAUSE_MS = 220;
-const RANDOM_PAUSE_CHANCE = 0.14;
-const RANDOM_PAUSE_MIN = 100;
-const RANDOM_PAUSE_MAX = 320;
 const HOLD_FULL_MS = 5500;
 const HOLD_EMPTY_MS = 280;
 const CARET_BLINK_MS = 530;
@@ -146,10 +143,10 @@ const FEATURES: Feature[] = [
   {
     key: 'festival',
     title: 'Monthly Film Challenge',
-    subtitle: 'Top 2 screen in Rome',
+    subtitle: 'Make something. Submit it.',
     icon: 'trophy',
     detail:
-      'Upload your film directly each month (up to 3GB). The top 2 highest-voted films will screen at the official Overlooked 2026 Film Festival in Rome.',
+      'Upload a 1–15 minute film each month and climb the leaderboard. New theme every month — built for momentum.',
     cta: 'See this month',
     route: 'Featured',
   },
@@ -163,7 +160,7 @@ const EXTRA_FAQS = [
   },
   {
     title: 'What counts as a valid submission?',
-    body: 'A 1–15 min film made for this month, uploaded directly (max 3GB). Avoid copyrighted music.',
+    body: 'A 1–15 min film made for this month. Avoid copyrighted music.',
   },
   {
     title: 'How do jobs work?',
@@ -227,11 +224,10 @@ export default function SignInScreen() {
   const isNarrowNav = width < 520;
   const isTinyNav = width < 360;
 
-  // ✅ Used only in JSX styles (not inside StyleSheet)
+  // Helps “short phones” fit modals properly
   const isShort = height < 720;
 
   // Mobile nav was getting cramped/overflowing.
-  // Layout-only: a taller bar on narrow widths to prevent overlap.
   const NAV_HEIGHT = isWide ? 56 : isNarrowNav ? 108 : 48;
 
   const [email, setEmail] = useState('');
@@ -272,7 +268,6 @@ export default function SignInScreen() {
   };
 
   const finishPostAuthRedirect = async () => {
-    // Decide CreateProfile vs MainTabs based on whether a users row exists
     const { data: u } = await supabase.auth.getUser();
     const userId = u?.user?.id;
 
@@ -297,15 +292,11 @@ export default function SignInScreen() {
 
     navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
 
-    // keep import stable
     void resetToMain;
   };
 
-  // ✅ Handle email-confirm deep link / PKCE exchange on this screen.
-  // This is important because your confirmation emails redirect to /signin.
   const handleAuthDeepLink = async (url: string) => {
     try {
-      // PKCE exchange flow (Supabase confirmation links often include ?code=...)
       if (url && url.includes('code=')) {
         const { error } = await supabase.auth.exchangeCodeForSession(url);
 
@@ -318,7 +309,6 @@ export default function SignInScreen() {
           return;
         }
 
-        // Clean URL on web so refresh doesn’t re-run exchange
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
@@ -331,19 +321,16 @@ export default function SignInScreen() {
     }
   };
 
-  // ✅ Listen for initial URL + runtime deep links
   useEffect(() => {
     let unsub: (() => void) | undefined;
 
     const init = async () => {
-      // 1) If already signed in (e.g., session restored), route appropriately
       const { data: sessionData } = await supabase.auth.getSession();
       if (sessionData?.session?.user) {
         await finishPostAuthRedirect();
         return;
       }
 
-      // 2) If this screen receives a deep link with code=..., exchange it
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         await handleAuthDeepLink(window.location.href);
       } else {
@@ -351,7 +338,6 @@ export default function SignInScreen() {
         if (initial) await handleAuthDeepLink(initial);
       }
 
-      // 3) Subscribe for future deep links
       const sub = Linking.addEventListener('url', (event) => {
         void handleAuthDeepLink(event.url);
       });
@@ -367,13 +353,11 @@ export default function SignInScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // caret blink
   useEffect(() => {
     const id = setInterval(() => setCaretVisible((v) => !v), CARET_BLINK_MS);
     return () => clearInterval(id);
   }, []);
 
-  // tagline fade
   useEffect(() => {
     Animated.parallel([
       Animated.timing(titleOpacity, {
@@ -391,7 +375,6 @@ export default function SignInScreen() {
     ]).start();
   }, []);
 
-  // typing effect
   useEffect(() => {
     let mounted = true;
     let timer: any;
@@ -404,8 +387,7 @@ export default function SignInScreen() {
       const last = typed.slice(-1);
       if (last === ' ') d += WORD_PAUSE_MS;
       if (['.', ',', '!', '?', ';', ':'].includes(last)) d += PUNCT_PAUSE_MS;
-      if (Math.random() < RANDOM_PAUSE_CHANCE)
-        d += rand(RANDOM_PAUSE_MIN, RANDOM_PAUSE_MAX);
+      if (Math.random() < 0.14) d += rand(100, 320);
       return d;
     };
 
@@ -457,9 +439,6 @@ export default function SignInScreen() {
     };
   }, [displayText, isDeleting, fullLine]);
 
-  // ============================================================
-  //      ✅ SIGN IN — CONFIRM CHECK + ROUTING
-  // ============================================================
   const handleSignIn = async () => {
     const trimmedEmail = email.trim();
 
@@ -469,7 +448,6 @@ export default function SignInScreen() {
     }
 
     if (loading) return;
-
     setLoading(true);
 
     try {
@@ -499,10 +477,8 @@ export default function SignInScreen() {
       }
 
       setShowSignIn(false);
-
       await finishPostAuthRedirect();
 
-      // keep import stable
       void resetToMain;
     } catch (err: any) {
       console.log('SignIn exception:', err);
@@ -511,10 +487,25 @@ export default function SignInScreen() {
       setLoading(false);
     }
   };
-  // ============================================================
+
+  // ✅ Modal sizing helpers (prevents falling out of frame)
+  const MODAL_SIDE_PAD = isPhone ? 14 : 18;
+  const maxModalWidth = (cap: number) => Math.min(cap, Math.max(260, width - MODAL_SIDE_PAD * 2));
+  const modalMaxHeight = Math.max(260, height - insets.top - insets.bottom - 24);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+    <SafeAreaView
+      style={[
+        { flex: 1, backgroundColor: T.bg },
+        // ✅ Prevent horizontal scroll / white space on RN-web (mobile browser)
+        Platform.OS === 'web'
+          ? ({
+              minHeight: '100vh',
+              overflowX: 'hidden',
+            } as any)
+          : ({ overflow: 'hidden' } as any),
+      ]}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
@@ -538,9 +529,10 @@ export default function SignInScreen() {
               isTinyNav && styles.topBarInnerTiny,
               width < 420 && { paddingHorizontal: 12 },
               { height: NAV_HEIGHT },
+              // ✅ ensure no accidental horizontal overflow
+              Platform.OS === 'web' ? ({ overflowX: 'hidden' } as any) : null,
             ]}
           >
-            {/* Wide layout: brand left, actions right, festival centered (absolute) */}
             {!isNarrowNav && (
               <>
                 <Pressable onPress={() => navigation.navigate('Featured')} style={styles.brandWrap}>
@@ -554,11 +546,10 @@ export default function SignInScreen() {
                   </Animated.Text>
                 </Pressable>
 
+                {/* ✅ EPIC TEXT (no pill) */}
                 <View style={styles.festivalCenterWrap} pointerEvents="none">
-                  <View style={styles.festivalCenterChip}>
-                    <Ionicons name="film-outline" size={16} color={T.olive} />
-                    <Text style={styles.festivalCenterText}>FILM FESTIVAL 2026</Text>
-                  </View>
+                  <Text style={styles.festivalEpicText}>FILM FESTIVAL 2026</Text>
+                  <View style={styles.festivalEpicUnderline} />
                 </View>
 
                 <View style={styles.actionsRow}>
@@ -576,7 +567,6 @@ export default function SignInScreen() {
               </>
             )}
 
-            {/* Narrow layout: stacked rows, festival centered + bigger */}
             {isNarrowNav && (
               <>
                 <View style={styles.navRowTop}>
@@ -596,11 +586,10 @@ export default function SignInScreen() {
                   </Pressable>
                 </View>
 
-                <View style={styles.navRowMid}>
-                  <View style={styles.festivalCenterChipNarrow}>
-                    <Ionicons name="film-outline" size={18} color={T.olive} />
-                    <Text style={styles.festivalCenterTextNarrow}>FILM FESTIVAL 2026</Text>
-                  </View>
+                {/* ✅ EPIC TEXT (no pill) */}
+                <View style={styles.navRowMid} pointerEvents="none">
+                  <Text style={styles.festivalEpicTextNarrow}>FILM FESTIVAL 2026</Text>
+                  <View style={styles.festivalEpicUnderlineNarrow} />
                 </View>
 
                 <View style={styles.navRowBottom}>
@@ -613,12 +602,7 @@ export default function SignInScreen() {
                         isTinyNav && styles.primaryChipTiny,
                       ]}
                     >
-                      <Text
-                        style={[
-                          styles.primaryChipText,
-                          isTinyNav && styles.primaryChipTextTiny,
-                        ]}
-                      >
+                      <Text style={[styles.primaryChipText, isTinyNav && styles.primaryChipTextTiny]}>
                         Create an account
                       </Text>
                     </TouchableOpacity>
@@ -640,15 +624,32 @@ export default function SignInScreen() {
 
         {/* ---------------- MAIN SCROLL ---------------- */}
         <ScrollView
+          style={[
+            { flex: 1, backgroundColor: T.bg },
+            // ✅ Stop web overscroll revealing white + prevent horizontal scroll on mobile web
+            Platform.OS === 'web'
+              ? ({ overscrollBehavior: 'none', overflowX: 'hidden' } as any)
+              : null,
+          ]}
           contentContainerStyle={[
             styles.scrollBody,
             {
+              backgroundColor: T.bg,
               paddingTop: NAV_HEIGHT + insets.top + 18,
               paddingHorizontal: width < 420 ? 16 : 28,
               paddingBottom: 64 + Math.max(insets.bottom, 0),
-            },
+              minHeight: Math.max(0, height - (NAV_HEIGHT + insets.top)),
+              // ✅ hard clamp to avoid any child causing sideways scroll
+              width: '100%',
+              overflow: 'hidden',
+            } as any,
           ]}
           keyboardShouldPersistTaps="handled"
+          bounces={false}
+          overScrollMode="never"
+          showsVerticalScrollIndicator={false}
+          // ✅ RN-web safety (some browsers treat content as pannable if overflow exists)
+          directionalLockEnabled
         >
           <View
             style={[
@@ -711,14 +712,7 @@ export default function SignInScreen() {
                   Meet collaborators, make a film each month, get seen by the community.
                 </Text>
 
-                {/* Small, clean highlight (no clutter) */}
-                <View style={[styles.festivalPill, !isWide && { alignSelf: 'center' }]}>
-                  <Ionicons name="film-outline" size={14} color={T.olive} />
-                  <Text style={styles.festivalPillText}>
-                    Top 2 highest-voted films each month screen in Rome — Overlooked 2026 Film
-                    Festival.
-                  </Text>
-                </View>
+                {/* ✅ Removed the Rome/top-2 “pill” entirely per request */}
 
                 <View style={[styles.manifestoWrap, !isWide && { marginTop: 10 }]}>
                   <Text
@@ -820,7 +814,6 @@ export default function SignInScreen() {
 
             {/* --- EXPANDED CARDS (About, Why, FAQ) --- */}
             <View style={[styles.fullWidthRow, !isWide && { marginTop: 4 }]}>
-              {/* WHAT IS OVERLOOKED */}
               <View style={[styles.collapsibleCard, styles.fullCard]}>
                 <Pressable onPress={() => setAboutOpen((v) => !v)}>
                   <View style={styles.collapsibleHeaderPressFull}>
@@ -842,14 +835,12 @@ export default function SignInScreen() {
                 {aboutOpen && (
                   <View style={styles.aboutBody}>
                     <Text style={styles.aboutLead}>
-                      OverLooked is a home for indie filmmaking — meet collaborators and submit films
-                      every month.
+                      OverLooked is a home for indie filmmaking — meet collaborators and submit films every month.
                     </Text>
                   </View>
                 )}
               </View>
 
-              {/* WHY MONTHLY */}
               <View style={[styles.collapsibleCard, styles.fullCard]}>
                 <Pressable onPress={() => setWhyOpen((v) => !v)}>
                   <View style={styles.collapsibleHeaderPressFull}>
@@ -871,14 +862,12 @@ export default function SignInScreen() {
                 {whyOpen && (
                   <View style={{ paddingHorizontal: 18, paddingBottom: 16 }}>
                     <Text style={styles.whyText}>
-                      Deadlines create momentum. One month is enough to plan, shoot, edit, and
-                      publish.
+                      Deadlines create momentum. One month is enough to plan, shoot, edit, and publish.
                     </Text>
                   </View>
                 )}
               </View>
 
-              {/* FAQs */}
               {EXTRA_FAQS.map((q, i) => {
                 const open = openFaqs.includes(i);
                 return (
@@ -926,24 +915,25 @@ export default function SignInScreen() {
           <View style={[styles.modalBackdrop, isShort && styles.modalBackdropShort]}>
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              style={{ width: '100%' }}
+              style={{ width: '100%', alignItems: 'center' }}
             >
               <View
                 style={[
                   styles.authCard,
-                  styles.centerCard,
                   {
-                    // ✅ hard limit to avoid off-screen / clipping
-                    maxHeight: height - insets.top - insets.bottom - 28,
+                    // ✅ Smaller + always centered on mobile
+                    width: maxModalWidth(460),
+                    maxHeight: modalMaxHeight,
+                    alignSelf: 'center',
                     padding: isShort ? 16 : 20,
-                    width: isPhone ? '92%' : '100%',
                   },
                 ]}
               >
-                {/* ✅ EVERYTHING stays inside one ScrollView so nothing escapes the card */}
                 <ScrollView
                   keyboardShouldPersistTaps="handled"
                   showsVerticalScrollIndicator={false}
+                  bounces={false}
+                  overScrollMode="never"
                   contentContainerStyle={{ paddingBottom: 14 }}
                 >
                   <View style={styles.authHeader}>
@@ -976,7 +966,7 @@ export default function SignInScreen() {
                   <View
                     style={[
                       styles.inputWrap,
-                      styles.inputWrapSpacing,
+                      { marginTop: 12 },
                       focus === 'password' && styles.inputWrapFocused,
                     ]}
                   >
@@ -999,7 +989,6 @@ export default function SignInScreen() {
                     />
                   </View>
 
-                  {/* Forgot Password */}
                   <TouchableOpacity
                     onPress={() => {
                       setShowSignIn(false);
@@ -1012,6 +1001,7 @@ export default function SignInScreen() {
                         color: T.mute,
                         fontSize: 13,
                         textDecorationLine: 'underline',
+                        fontFamily: SYSTEM_SANS,
                       }}
                     >
                       Forgot password?
@@ -1055,59 +1045,68 @@ export default function SignInScreen() {
           animationType="fade"
           onRequestClose={() => setActiveFeature(null)}
         >
-          <View style={[styles.modalBackdrop, isShort && styles.modalBackdropShort]}>
+          <View style={styles.modalBackdrop}>
             <View
               style={[
                 styles.modalCard,
-                styles.centerCard,
                 {
-                  width: isPhone ? '92%' : '100%',
-                  maxHeight: height - insets.top - insets.bottom - 40,
-                  padding: isShort ? 16 : 18,
+                  // ✅ Smaller + centered on mobile + never off-screen
+                  width: maxModalWidth(560),
+                  maxHeight: modalMaxHeight,
+                  alignSelf: 'center',
                 },
               ]}
             >
-              {activeFeature &&
-                (() => {
-                  const active = FEATURES.find((f) => f.key === activeFeature)!;
-                  return (
-                    <ScrollView
-                      showsVerticalScrollIndicator={false}
-                      keyboardShouldPersistTaps="handled"
-                      contentContainerStyle={{ paddingBottom: 12 }}
-                    >
-                      <View style={styles.modalHeader}>
-                        <View style={styles.featureIconWrap}>
-                          <Ionicons name={active.icon} size={18} color={T.olive} />
+              <ScrollView
+                bounces={false}
+                overScrollMode="never"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 6 }}
+              >
+                {activeFeature &&
+                  (() => {
+                    const active = FEATURES.find((f) => f.key === activeFeature)!;
+                    return (
+                      <>
+                        <View style={styles.modalHeader}>
+                          <View style={styles.featureIconWrap}>
+                            <Ionicons name={active.icon} size={18} color={T.olive} />
+                          </View>
+                          <Text style={styles.modalTitle}>{active.title}</Text>
                         </View>
-                        <Text style={styles.modalTitle}>{active.title}</Text>
-                      </View>
 
-                      <Text style={styles.modalDetail}>{active.detail}</Text>
+                        <Text style={styles.modalDetail}>{active.detail}</Text>
 
-                      <View style={styles.modalButtonsRow}>
-                        <TouchableOpacity
-                          style={styles.modalSecondary}
-                          onPress={() => setActiveFeature(null)}
+                        {/* ✅ buttons never overflow on mobile */}
+                        <View
+                          style={[
+                            styles.modalButtonsRow,
+                            isPhone && { flexDirection: 'column', alignItems: 'stretch' },
+                          ]}
                         >
-                          <Text style={styles.modalSecondaryText}>Close</Text>
-                        </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.modalSecondary, isPhone && { width: '100%' }]}
+                            onPress={() => setActiveFeature(null)}
+                          >
+                            <Text style={styles.modalSecondaryText}>Close</Text>
+                          </TouchableOpacity>
 
-                        <TouchableOpacity
-                          style={styles.modalPrimary}
-                          onPress={async () => {
-                            setActiveFeature(null);
-                            const { data } = await supabase.auth.getUser();
-                            if (!data?.user) navigation.navigate('SignUp');
-                            else navigation.navigate(active.route);
-                          }}
-                        >
-                          <Text style={styles.modalPrimaryText}>{active.cta}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </ScrollView>
-                  );
-                })()}
+                          <TouchableOpacity
+                            style={[styles.modalPrimary, isPhone && { width: '100%' }]}
+                            onPress={async () => {
+                              setActiveFeature(null);
+                              const { data } = await supabase.auth.getUser();
+                              if (!data?.user) navigation.navigate('SignUp');
+                              else navigation.navigate(active.route);
+                            }}
+                          >
+                            <Text style={styles.modalPrimaryText}>{active.cta}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </>
+                    );
+                  })()}
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -1117,7 +1116,7 @@ export default function SignInScreen() {
 }
 
 // ------------------------------------------------------------
-// STYLES — UNCHANGED (only layout additions for centered festival + mobile nav)
+// STYLES
 // ------------------------------------------------------------
 
 const CARD_RADIUS = 16;
@@ -1131,21 +1130,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: T.bg,
   },
-
-  // ✅ extra modal safety (keeps center & prevents edge clipping)
-  modalBackdropShort: {
-    justifyContent: 'center',
-    paddingTop: 12,
-    paddingBottom: 12,
-  },
-  authTitleShort: {
-    fontSize: 16,
-    letterSpacing: 3.5,
-  },
-  centerCard: {
-    alignSelf: 'center',
-  },
-
   radialGlowTop: {
     position: 'absolute',
     top: -140,
@@ -1193,7 +1177,6 @@ const styles = StyleSheet.create({
     WebkitBackdropFilter: 'saturate(120%) blur(8px)',
   },
 
-  // ✅ Mobile/nav fixes (layout-only)
   topBarInnerNarrow: {
     flexDirection: 'column',
     justifyContent: 'center',
@@ -1225,7 +1208,6 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
 
-  // ✅ Centered festival (wide) - bigger + centered
   festivalCenterWrap: {
     position: 'absolute',
     left: 0,
@@ -1233,47 +1215,49 @@ const styles = StyleSheet.create({
     top: '50%',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -18,
-  },
-  festivalCenterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: T.border,
-    backgroundColor: 'rgba(255,255,255,0.035)',
-  },
-  festivalCenterText: {
-    color: T.sub,
-    fontSize: 14.5,
-    fontWeight: '900',
-    letterSpacing: 1.4,
-    fontFamily: SYSTEM_SANS,
-    textTransform: 'uppercase',
+    marginTop: -20,
   },
 
-  // ✅ Centered festival (narrow) - bigger + centered
-  festivalCenterChipNarrow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: T.border,
-    backgroundColor: 'rgba(255,255,255,0.035)',
-  },
-  festivalCenterTextNarrow: {
-    color: T.sub,
-    fontSize: 15,
+  // ✅ EPIC TEXT (no pill)
+  festivalEpicText: {
+    color: T.text,
+    fontSize: 15.5,
     fontWeight: '900',
-    letterSpacing: 1.6,
+    letterSpacing: 3.2,
     fontFamily: SYSTEM_SANS,
     textTransform: 'uppercase',
+    // subtle “epic” glow
+    textShadowColor: 'rgba(198,166,100,0.35)',
+    textShadowOffset: { width: 0, height: 10 },
+    textShadowRadius: 18,
+  },
+  festivalEpicUnderline: {
+    marginTop: 6,
+    width: 120,
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(198,166,100,0.75)',
+    opacity: 0.95,
+  },
+
+  festivalEpicTextNarrow: {
+    color: T.text,
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 3.4,
+    fontFamily: SYSTEM_SANS,
+    textTransform: 'uppercase',
+    textShadowColor: 'rgba(198,166,100,0.35)',
+    textShadowOffset: { width: 0, height: 10 },
+    textShadowRadius: 18,
+  },
+  festivalEpicUnderlineNarrow: {
+    marginTop: 6,
+    width: 130,
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(198,166,100,0.75)',
+    opacity: 0.95,
   },
 
   actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -1295,14 +1279,8 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 8 },
   },
-  primaryChipNarrow: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  primaryChipTiny: {
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-  },
+  primaryChipNarrow: { paddingVertical: 8, paddingHorizontal: 12 },
+  primaryChipTiny: { paddingVertical: 7, paddingHorizontal: 10 },
   primaryChipText: {
     color: DARK_BG,
     fontSize: 13,
@@ -1311,24 +1289,12 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     textTransform: 'uppercase',
   },
-  primaryChipTextTiny: {
-    fontSize: 12.5,
-    letterSpacing: 1.05,
-  },
+  primaryChipTextTiny: { fontSize: 12.5, letterSpacing: 1.05 },
 
   textAction: { paddingVertical: 8, paddingHorizontal: 10, borderRadius: 999 },
-  textActionNarrow: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  textActionText: {
-    color: TEXT_IVORY,
-    fontWeight: '800',
-    fontFamily: SYSTEM_SANS,
-  },
-  textActionTextTiny: {
-    fontSize: 13,
-  },
+  textActionNarrow: { paddingVertical: 8, paddingHorizontal: 12 },
+  textActionText: { color: TEXT_IVORY, fontWeight: '800', fontFamily: SYSTEM_SANS },
+  textActionTextTiny: { fontSize: 13 },
 
   scrollBody: { paddingHorizontal: 28, paddingBottom: 64 },
 
@@ -1362,29 +1328,6 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  // ✅ simple highlight (low clutter)
-  festivalPill: {
-    marginTop: 10,
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: T.border,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    maxWidth: 680,
-  },
-  festivalPillText: {
-    flex: 1,
-    color: T.sub,
-    fontSize: 13,
-    lineHeight: 18,
-    fontFamily: SYSTEM_SANS,
-  },
-
   manifestoWrap: { marginTop: 12 },
   manifestoText: {
     textAlign: 'left',
@@ -1407,10 +1350,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     backgroundColor: '#111',
   },
-  heroOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.38)',
-  },
+  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.38)' },
 
   cardCol: { flexGrow: 1, flexBasis: 420, maxWidth: 500 },
 
@@ -1453,12 +1393,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: T.border,
   },
-  featureNumberText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: T.text,
-    fontFamily: SYSTEM_SANS,
-  },
+  featureNumberText: { fontSize: 12, fontWeight: '800', color: T.text, fontFamily: SYSTEM_SANS },
   featureIconWrap: {
     width: 38,
     height: 38,
@@ -1469,24 +1404,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: T.border,
   },
-  featureTitle: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: T.text,
-    fontFamily: SYSTEM_SANS,
-  },
-  featureSubtitle: {
-    fontSize: 12.5,
-    color: T.sub,
-    fontFamily: SYSTEM_SANS,
-  },
+  featureTitle: { fontSize: 15, fontWeight: '900', color: T.text, fontFamily: SYSTEM_SANS },
+  featureSubtitle: { fontSize: 12.5, color: T.sub, fontFamily: SYSTEM_SANS },
 
-  fullWidthRow: {
-    width: '100%',
-    flexBasis: '100%',
-    gap: 16,
-    marginTop: 8,
-  },
+  fullWidthRow: { width: '100%', flexBasis: '100%', gap: 16, marginTop: 8 },
 
   collapsibleCard: {
     backgroundColor: T.card,
@@ -1548,7 +1469,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontFamily: SYSTEM_SANS,
   },
-
   whyText: {
     color: T.sub,
     fontSize: 14,
@@ -1566,21 +1486,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 18,
   },
+  modalBackdropShort: {
+    justifyContent: 'center',
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
 
   /* Auth card */
   authCard: {
-    maxWidth: 460,
     backgroundColor: T.card2,
     borderRadius: 18,
     padding: 20,
     borderWidth: 1,
     borderColor: T.border,
   },
-  authHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+  authHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   authTitle: {
     fontSize: 18,
     fontWeight: '900',
@@ -1588,6 +1508,8 @@ const styles = StyleSheet.create({
     letterSpacing: 6.5,
     fontFamily: SYSTEM_SANS,
   },
+  authTitleShort: { fontSize: 16, letterSpacing: 3.5 },
+
   subtitle: {
     marginTop: 8,
     marginBottom: 14,
@@ -1608,7 +1530,6 @@ const styles = StyleSheet.create({
     paddingVertical: Platform.OS === 'web' ? 12 : 10,
     backgroundColor: '#0C0C0C',
   },
-  inputWrapSpacing: { marginTop: 12 },
   inputWrapFocused: {
     borderColor: T.olive,
     shadowColor: T.olive,
@@ -1644,27 +1565,16 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  link: {
-    textAlign: 'center',
-    color: T.text,
-    fontWeight: '800',
-    fontFamily: SYSTEM_SANS,
-  },
+  link: { textAlign: 'center', color: T.text, fontWeight: '800', fontFamily: SYSTEM_SANS },
 
   modalCard: {
-    maxWidth: 560,
     backgroundColor: T.card2,
     borderRadius: CARD_RADIUS,
     padding: 18,
     borderWidth: 1,
     borderColor: T.border,
   },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 8,
-  },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
   modalTitle: {
     fontSize: 18,
     fontWeight: '900',
@@ -1680,12 +1590,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontFamily: SYSTEM_SANS,
   },
-  modalButtonsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    justifyContent: 'flex-end',
-    marginTop: 16,
-  },
+  modalButtonsRow: { flexDirection: 'row', gap: 10, justifyContent: 'flex-end', marginTop: 16 },
   modalSecondary: {
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -1708,10 +1613,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: T.accent,
   },
-  modalPrimaryText: {
-    color: DARK_BG,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-    fontFamily: SYSTEM_SANS,
-  },
+  modalPrimaryText: { color: DARK_BG, fontWeight: '900', letterSpacing: 1.2, fontFamily: SYSTEM_SANS },
 });
