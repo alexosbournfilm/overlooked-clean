@@ -13,16 +13,14 @@
     "splash": {
       "image": "./app/assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0D0D0D"
     },
 
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.yourname.overlooked",
       "infoPlist": {
-        "CFBundleURLTypes": [
-          { "CFBundleURLSchemes": ["overlooked"] }
-        ],
+        "CFBundleURLTypes": [{ "CFBundleURLSchemes": ["overlooked"] }],
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library for profile uploads."
       },
       "associatedDomains": [
@@ -36,7 +34,7 @@
       "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./app/assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0D0D0D"
       },
       "intentFilters": [
         {
@@ -58,11 +56,11 @@
       "shortName": "Overlooked",
       "favicon": "./favicon.png",
 
-      "display": "browser",         
-      "pwa": false,                  
+      "display": "browser",
+      "pwa": false,
 
-      "themeColor": "#ffffff",
-      "backgroundColor": "#ffffff",
+      "themeColor": "#0D0D0D",
+      "backgroundColor": "#0D0D0D",
       "startUrl": "/",
       "scope": "/",
       "lang": "en",
