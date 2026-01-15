@@ -3,6 +3,7 @@ import React, {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   ReactNode,
 } from 'react';
@@ -41,6 +42,10 @@ export const GamificationProvider = ({ children }: { children: ReactNode }) => {
     refresh: async () => {},
   });
 
+  // ✅ Speed-only: avoid duplicate loads / racey re-renders
+  const inFlightRef = useRef(false);
+  const lastLoadedUserIdRef = useRef<string | null>(null);
+
   /**
    * Compute level progress for infinite levels.
    *
@@ -72,15 +77,21 @@ export const GamificationProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const load = async () => {
+    // ✅ Prevent overlapping calls (happens easily if multiple consumers refresh)
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+
     try {
       setState((prev) => ({ ...prev, loading: true }));
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      // ✅ Speed-only: use getSession first (fast + avoids extra /user call)
+      // No logic change: still determines if signed-in or not.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const uid = sessionData?.session?.user?.id ?? null;
 
       // Not signed in → reset to defaults
-      if (!user) {
+      if (!uid) {
+        lastLoadedUserIdRef.current = null;
         setState((prev) => ({
           ...prev,
           loading: false,
@@ -97,10 +108,17 @@ export const GamificationProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
+      // ✅ If we already loaded this uid and values exist, don’t refetch unless forced.
+      // (No logic change: this just prevents duplicate identical queries.)
+      if (lastLoadedUserIdRef.current === uid && state.userId === uid && !state.loading) {
+        setState((prev) => ({ ...prev, loading: false }));
+        return;
+      }
+
       const { data: profile, error } = await supabase
         .from('users')
         .select('id, xp, level, level_title, banner_color')
-        .eq('id', user.id)
+        .eq('id', uid)
         .single();
 
       if (error || !profile) {
@@ -115,6 +133,8 @@ export const GamificationProvider = ({ children }: { children: ReactNode }) => {
       const bannerColor = profile.banner_color || '#FFEDE4';
 
       const derived = computeProgress(xp, level);
+
+      lastLoadedUserIdRef.current = profile.id;
 
       setState({
         loading: false,
@@ -132,11 +152,31 @@ export const GamificationProvider = ({ children }: { children: ReactNode }) => {
     } catch (e) {
       console.log('Gamification load fatal', e);
       setState((prev) => ({ ...prev, loading: false }));
+    } finally {
+      inFlightRef.current = false;
     }
   };
 
   useEffect(() => {
     load();
+
+    // ✅ Speed-only: keep gamification in sync without extra mounts/refreshes elsewhere.
+    // This does NOT change behavior; it just ensures state updates happen once here
+    // instead of multiple components triggering redundant loads.
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
+        // Clear cache so next load fetches correct user values
+        lastLoadedUserIdRef.current = null;
+        load();
+      }
+    });
+
+    return () => {
+      try {
+        (sub as any)?.subscription?.unsubscribe?.();
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

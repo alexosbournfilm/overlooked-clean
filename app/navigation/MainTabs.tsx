@@ -1,5 +1,5 @@
 // app/navigation/MainTabs.tsx
-import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { TabActions, useNavigation, useFocusEffect } from '@react-navigation/native';
 import {
@@ -32,6 +32,7 @@ import WorkshopScreen from '../screens/WorkshopScreen';
 import { SettingsModalProvider } from '../context/SettingsModalContext';
 import SettingsButton from '../../components/SettingsButton';
 import SettingsModal from '../../components/SettingsModal';
+import type { BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
 
 import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 
@@ -157,22 +158,36 @@ const HoverPress = memo(function HoverPress({
 });
 
 /* ------------------------ Smooth Tab Transitions ----------------------- */
-
+/**
+ * PERF: This component was doing a JS-driven opacity animation on WEB
+ * (useNativeDriver:false) every time a tab/screen focused, which can make
+ * tab switching feel heavy.
+ *
+ * We keep the same visual effect, but:
+ * - On WEB: we set the scrim and clear it immediately (no timing animation).
+ * - On NATIVE: we still run the animation, but only after interactions.
+ */
 const TabTransition = memo(function TabTransition({ children }: { children: React.ReactNode }) {
   const scrimOpacity = useRef(new Animated.Value(0)).current;
 
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
+      // initial scrim
       scrimOpacity.setValue(Platform.OS === 'web' ? 0.12 : 0.18);
 
       if (Platform.OS === 'web') {
-        Animated.timing(scrimOpacity, {
-          toValue: 0,
-          duration: 180,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: false,
-        }).start();
-        return () => {};
+        // ✅ PERF: avoid JS animation on web. Clear next tick.
+        const id = setTimeout(() => {
+          try {
+            scrimOpacity.setValue(0);
+          } catch {}
+        }, 0);
+
+        return () => {
+          try {
+            clearTimeout(id);
+          } catch {}
+        };
       }
 
       const task = InteractionManager.runAfterInteractions(() => {
@@ -249,8 +264,6 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({ variant }: Top
   }, [streak]);
 
   useEffect(() => {
-    // Even if loading is true, we might already have a cached streak displayed.
-    // So only animate when pct changes meaningfully; no need to block on loading.
     Animated.timing(progressAnim, {
       toValue: pct,
       duration: 260,
@@ -267,26 +280,47 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({ variant }: Top
   // ✨ shimmer sweep (web only)
   const shimmerX = useRef(new Animated.Value(0)).current;
 
+  /**
+   * PERF: Keep the shimmer, but don’t let it run forever in the background
+   * when it’s not useful.
+   * - Only run it while this component is mounted (it is), but also
+   * - Defer start until after interactions to keep tab switches snappy.
+   * (No logic change; purely scheduling.)
+   */
   useEffect(() => {
     if (Platform.OS !== 'web') return;
 
     shimmerX.setValue(0);
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmerX, {
-          toValue: 1,
-          duration: 1400,
-          easing: Easing.inOut(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.delay(900),
-      ])
-    );
 
-    loop.start();
+    let loop: Animated.CompositeAnimation | null = null;
+    let cancelled = false;
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (cancelled) return;
+
+      loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(shimmerX, {
+            toValue: 1,
+            duration: 1400,
+            easing: Easing.inOut(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.delay(900),
+        ])
+      );
+
+      loop.start();
+    });
+
     return () => {
+      cancelled = true;
       try {
-        loop.stop();
+        // @ts-ignore
+        task?.cancel?.();
+      } catch {}
+      try {
+        loop?.stop();
       } catch {}
     };
   }, [shimmerX]);
@@ -976,18 +1010,18 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
         </HoverPress>
 
         <View pointerEvents="box-none" style={styles.centerSlotAbs}>
-  <HoverPress
-    accessibilityLabel="Streak"
-    style={{
-      borderRadius: 999,
-      width: '100%',
-      maxWidth: 600,      // ✅ make it long
-      alignSelf: 'center', // ✅ ensures it actually takes the width
-    }}
-  >
-    <TopBarStreakProgress variant="wide" />
-  </HoverPress>
-</View>
+          <HoverPress
+            accessibilityLabel="Streak"
+            style={{
+              borderRadius: 999,
+              width: '100%',
+              maxWidth: 600, // ✅ make it long
+              alignSelf: 'center', // ✅ ensures it actually takes the width
+            }}
+          >
+            <TopBarStreakProgress variant="wide" />
+          </HoverPress>
+        </View>
 
         <View style={styles.rightTools}>
           {/* ... unchanged ... */}
@@ -1014,16 +1048,16 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
         <View style={styles.topBarInnerXpRow}>
           <View style={{ alignItems: 'center' }}>
             <HoverPress
-  accessibilityLabel="Streak"
-  style={{
-    borderRadius: 999,
-    width: '100%',
-    maxWidth: 520,      // ✅ still wide on mobile
-    alignSelf: 'center',
-  }}
->
-  <TopBarStreakProgress variant="compact" />
-</HoverPress>
+              accessibilityLabel="Streak"
+              style={{
+                borderRadius: 999,
+                width: '100%',
+                maxWidth: 520, // ✅ still wide on mobile
+                alignSelf: 'center',
+              }}
+            >
+              <TopBarStreakProgress variant="compact" />
+            </HoverPress>
           </View>
         </View>
       )}
@@ -1133,6 +1167,98 @@ export default function MainTabs() {
   const contentTopPadding = NAV_HEIGHT + 38 + (width >= 980 ? 0 : 40);
   const TABBAR_HEIGHT = 56;
 
+  /**
+   * PERF: screenOptions was being recreated as a new function every render.
+   * That can cause extra work across the navigator tree.
+   *
+   * We keep the exact same options, but we memoize the factory function.
+   * No logic change; just stability.
+   */
+  const screenOptions = useCallback(
+  ({ route }: any): BottomTabNavigationOptions =>
+    ({
+      headerShown: false,
+      sceneContainerStyle: { backgroundColor: DARK_BG },
+
+      tabBarActiveTintColor: GOLD,
+      tabBarInactiveTintColor: TEXT_MUTED,
+      tabBarShowLabel: false,
+
+      tabBarStyle: {
+        backgroundColor: DARK_ELEVATED,
+        borderTopWidth: 0,
+        height: TABBAR_HEIGHT,
+        paddingTop: 6,
+        paddingBottom: Platform.OS === 'ios' ? 12 : 8,
+        shadowColor: '#000',
+        shadowOpacity: 0.3,
+        shadowOffset: { width: 0, height: -4 },
+        shadowRadius: 6,
+        elevation: 10,
+      },
+
+      tabBarItemStyle: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 0,
+      },
+
+      lazy: true,
+      lazyPreloadDistance: 1,
+      detachInactiveScreens: true,
+      freezeOnBlur: Platform.OS !== 'web',
+      unmountOnBlur: false,
+
+      tabBarButton: (props: any) => <TabBarButton {...props} />,
+
+      tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => {
+        let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
+        let label = route.name;
+
+        switch (route.name) {
+          case 'Featured':
+            icon = 'star-outline';
+            label = 'Featured';
+            break;
+          case 'Jobs':
+            icon = 'briefcase-outline';
+            label = 'Jobs';
+            break;
+          case 'Challenge':
+            icon = 'trophy-outline';
+            label = 'Challenge';
+            break;
+          case 'Workshop':
+            icon = 'cube-outline';
+            label = 'Workshop';
+            break;
+          case 'Location':
+            icon = 'location-outline';
+            label = 'Location';
+            break;
+          case 'Chats':
+            icon = 'chatbubble-ellipses-outline';
+            label = 'Chats';
+            break;
+          case 'Profile':
+            icon = 'person-outline';
+            label = 'Profile';
+            break;
+        }
+
+        return (
+          <View style={[styles.tabPill, focused && styles.tabPillActive]}>
+            <Ionicons name={icon} size={18} color={color} />
+            <Text style={[styles.tabPillText, { color }, focused && { color: GOLD }]} numberOfLines={1}>
+              {label.toUpperCase()}
+            </Text>
+          </View>
+        );
+      },
+    } as BottomTabNavigationOptions),
+  [TABBAR_HEIGHT]
+);
+
   return (
     <SettingsModalProvider>
       <View style={{ flex: 1, backgroundColor: DARK_BG }}>
@@ -1144,89 +1270,7 @@ export default function MainTabs() {
         />
 
         <SafeAreaView style={[styles.safeArea, { paddingTop: contentTopPadding }]} edges={['left', 'right', 'bottom']}>
-          <Tab.Navigator
-            screenOptions={({ route }) => ({
-              headerShown: false,
-              sceneContainerStyle: { backgroundColor: DARK_BG },
-
-              tabBarActiveTintColor: GOLD,
-              tabBarInactiveTintColor: TEXT_MUTED,
-
-              tabBarShowLabel: false,
-
-              tabBarStyle: {
-                backgroundColor: DARK_ELEVATED,
-                borderTopWidth: 0,
-                height: TABBAR_HEIGHT,
-                paddingTop: 6,
-                paddingBottom: Platform.OS === 'ios' ? 12 : 8,
-                shadowColor: '#000',
-                shadowOpacity: 0.3,
-                shadowOffset: { width: 0, height: -4 },
-                shadowRadius: 6,
-                elevation: 10,
-              },
-
-              tabBarItemStyle: {
-                alignItems: 'center',
-                justifyContent: 'center',
-                paddingVertical: 0,
-              },
-
-              lazy: true,
-              lazyPreloadDistance: 1,
-              detachInactiveScreens: true,
-              freezeOnBlur: Platform.OS !== 'web',
-              unmountOnBlur: false,
-
-              tabBarButton: (props) => <TabBarButton {...props} />,
-
-              tabBarIcon: ({ color, focused }) => {
-                let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
-                let label = route.name;
-
-                switch (route.name) {
-                  case 'Featured':
-                    icon = 'star-outline';
-                    label = 'Featured';
-                    break;
-                  case 'Jobs':
-                    icon = 'briefcase-outline';
-                    label = 'Jobs';
-                    break;
-                  case 'Challenge':
-                    icon = 'trophy-outline';
-                    label = 'Challenge';
-                    break;
-                  case 'Workshop':
-                    icon = 'cube-outline';
-                    label = 'Workshop';
-                    break;
-                  case 'Location':
-                    icon = 'location-outline';
-                    label = 'Location';
-                    break;
-                  case 'Chats':
-                    icon = 'chatbubble-ellipses-outline';
-                    label = 'Chats';
-                    break;
-                  case 'Profile':
-                    icon = 'person-outline';
-                    label = 'Profile';
-                    break;
-                }
-
-                return (
-                  <View style={[styles.tabPill, focused && styles.tabPillActive]}>
-                    <Ionicons name={icon} size={18} color={color} />
-                    <Text style={[styles.tabPillText, { color }, focused && { color: GOLD }]} numberOfLines={1}>
-                      {label.toUpperCase()}
-                    </Text>
-                  </View>
-                );
-              },
-            })}
-          >
+          <Tab.Navigator screenOptions={screenOptions}>
             <Tab.Screen name="Featured" component={FeaturedWrapped} />
             <Tab.Screen name="Jobs" component={JobsWrapped} />
             <Tab.Screen name="Challenge" component={ChallengeWrapped} />
@@ -1375,13 +1419,13 @@ const styles = StyleSheet.create({
   },
 
   centerSlotAbs: {
-  position: 'absolute',
-  left: 0,
-  right: 0,
-  alignItems: 'center',
-  justifyContent: 'center',
-  paddingHorizontal: 220, // ✅ prevents overlap, gives streak real room
-},
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 220, // ✅ prevents overlap, gives streak real room
+  },
 
   rightTools: {
     marginLeft: 'auto',
@@ -1420,11 +1464,11 @@ const styles = StyleSheet.create({
   /* ------------------ STREAK (MORE SPACED + LONGER + PREMIUM) ------------------ */
   streakWrap: { paddingVertical: 2 },
   streakWrapWide: {
-  width: '100%',
-  maxWidth: 2000, // try 900–1100
-  alignItems: 'center',
-  alignSelf: 'center',
-},
+    width: '100%',
+    maxWidth: 2000, // try 900–1100
+    alignItems: 'center',
+    alignSelf: 'center',
+  },
   streakWrapCompact: {
     width: '100%',
     maxWidth: '100%',

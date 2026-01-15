@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Platform } from "react-native";
@@ -73,12 +74,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<MinimalProfile | null>(null);
 
+  // ✅ Speed-only: prevent redundant profile fetches + prevent stale overwrites
+  const inFlightProfileForRef = useRef<string | null>(null);
+  const lastLoadedProfileForRef = useRef<string | null>(null);
+
   async function loadProfile(uid: string) {
+    // If we already loaded this uid and profile is present, don't refetch.
+    // (No logic change: profile values stay the same; this only avoids duplicate calls.)
+    if (lastLoadedProfileForRef.current === uid && profile?.id === uid) {
+      return;
+    }
+
+    // If a fetch for this same uid is already in progress, don't start another.
+    if (inFlightProfileForRef.current === uid) {
+      return;
+    }
+
+    inFlightProfileForRef.current = uid;
+
     const { data } = await supabase
       .from("users")
       .select("id, full_name, main_role_id, city_id")
       .eq("id", uid)
       .maybeSingle();
+
+    // Mark request complete (even if data is null)
+    inFlightProfileForRef.current = null;
 
     if (!data) {
       setProfile({
@@ -87,6 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         main_role_id: null,
         city_id: null,
       });
+      lastLoadedProfileForRef.current = uid;
       return;
     }
 
@@ -96,10 +118,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       main_role_id: data.main_role_id,
       city_id: data.city_id,
     });
+    lastLoadedProfileForRef.current = data.id;
   }
 
   const refreshProfile = async () => {
-    if (userId) await loadProfile(userId);
+    if (userId) {
+      // Force refresh even if same uid (explicit refresh)
+      lastLoadedProfileForRef.current = null;
+      await loadProfile(userId);
+    }
   };
 
   /* ------------------------------------------------------------------
@@ -120,8 +147,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
 
       setUserId(uid);
-      if (uid) await loadProfile(uid);
-      else setProfile(null);
+
+      if (uid) {
+        await loadProfile(uid);
+      } else {
+        setProfile(null);
+        lastLoadedProfileForRef.current = null;
+        inFlightProfileForRef.current = null;
+      }
 
       setReady(true);
     };
@@ -209,8 +242,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const uid = session?.user?.id ?? null;
         setUserId(uid);
 
-        if (uid) await loadProfile(uid);
-        else setProfile(null);
+        if (uid) {
+          await loadProfile(uid);
+        } else {
+          setProfile(null);
+          lastLoadedProfileForRef.current = null;
+          inFlightProfileForRef.current = null;
+        }
       }
     );
 
@@ -218,6 +256,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       listener?.subscription?.unsubscribe?.();
       mounted = false;
     };
+    // NOTE: loadProfile references profile state; we intentionally keep deps empty
+    // to preserve original behavior and avoid re-subscribing to auth events.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ------------------------------------------------------------------

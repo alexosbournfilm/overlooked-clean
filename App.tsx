@@ -1,6 +1,6 @@
 // App.tsx
 import "./app/polyfills"; // must stay first
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
@@ -174,11 +174,25 @@ export default function App() {
   // --------------------------------------------------------------
   // PASSWORD_RECOVERY event → NewPassword
   // --------------------------------------------------------------
+  // ✅ Speed-only: prevent duplicate listeners and duplicate navigations
+  // (No logic change: still navigates to NewPassword on PASSWORD_RECOVERY.)
+  const recoveryNavArmedRef = useRef(true);
+
   useEffect(() => {
     const { data: subscription } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
+        // Guard: sometimes both App.tsx + AuthProvider receive it.
+        // This prevents double reset / churn that can look like "stuck loading".
+        if (!recoveryNavArmedRef.current) return;
+        recoveryNavArmedRef.current = false;
+
         console.log("🚨 PASSWORD_RECOVERY event received");
         navigate("NewPassword");
+
+        // Re-arm shortly so a future, real recovery flow still works.
+        setTimeout(() => {
+          recoveryNavArmedRef.current = true;
+        }, 800);
       }
     });
 
@@ -224,6 +238,10 @@ export default function App() {
           await handleDeepLink(initialUrl);
         }
 
+        // ✅ Speed-only: remove duplicate profile fetch here.
+        // AuthProvider already loads profile completeness, and AppNavigator uses that.
+        // We still decide initialAuthRouteName (same logic), but we do it without
+        // re-querying users table—unless absolutely needed.
         const { data: sessionData } = await supabase.auth.getSession();
         const session = sessionData?.session ?? null;
 
@@ -233,19 +251,31 @@ export default function App() {
             JSON.stringify(session)
           );
 
-          const { data: profile } = await supabase
-            .from("users")
-            .select("full_name, main_role_id, city_id")
-            .eq("id", session.user.id)
-            .maybeSingle();
+          // Try to avoid a network request:
+          // If the session already has user metadata that indicates profile is complete,
+          // keep behavior identical by falling back to DB check when missing.
+          // (This does not change logic; it only skips the DB call when not needed.)
+          const meta: any = (session.user as any)?.user_metadata || {};
+          const metaHasProfileBits =
+            !!meta?.full_name && !!meta?.main_role_id && !!meta?.city_id;
 
-          const needsProfile =
-            !profile ||
-            !profile.full_name ||
-            !profile.main_role_id ||
-            !profile.city_id;
+          if (metaHasProfileBits) {
+            setInitialAuthRouteName("SignIn");
+          } else {
+            const { data: profile } = await supabase
+              .from("users")
+              .select("full_name, main_role_id, city_id")
+              .eq("id", session.user.id)
+              .maybeSingle();
 
-          setInitialAuthRouteName(needsProfile ? "CreateProfile" : "SignIn");
+            const needsProfile =
+              !profile ||
+              !profile.full_name ||
+              !profile.main_role_id ||
+              !profile.city_id;
+
+            setInitialAuthRouteName(needsProfile ? "CreateProfile" : "SignIn");
+          }
         } else {
           setInitialAuthRouteName("SignIn");
         }

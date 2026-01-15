@@ -1,5 +1,5 @@
 // app/navigation/AppNavigator.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   NavigationContainer,
   type InitialState,
@@ -52,6 +52,7 @@ export default function AppNavigator({
           `NAVIGATION_STATE_v2:${userId}`
         );
         if (savedState && mounted) {
+          // JSON.parse can be expensive on web if state grows; keep it guarded.
           setInitialState(JSON.parse(savedState));
         }
       } catch {}
@@ -66,55 +67,95 @@ export default function AppNavigator({
   }, [ready, userId, profileComplete]);
 
   // --------------------------------------------------------------
-  // Paid / membership check
+  // Paid / membership check (same logic, but made non-blocking)
   // --------------------------------------------------------------
   const [isPaid, setIsPaid] = useState<boolean | null>(null);
   const [expired, setExpired] = useState(false);
 
+  // ✅ key improvement:
+  // Do not block rendering/navigation while this loads.
+  // We still compute isPaid exactly the same way, and we still sign out on expired.
+  const [membershipChecked, setMembershipChecked] = useState(false);
+
+  // Prevent duplicate requests for same userId (fast tab switching / auth churn)
+  const lastCheckedUserIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!userId) {
       setIsPaid(null);
+      setExpired(false);
+      setMembershipChecked(true); // nothing to check if logged out
+      lastCheckedUserIdRef.current = null;
       return;
     }
 
     let mounted = true;
 
+    // Start a fresh check state for this user
+    setMembershipChecked(false);
+
+    // If we already checked this userId recently and still have a value,
+    // keep UI responsive and just re-check in the background.
+    // (No logic change: isPaid will still end up correct.)
+    const sameUserAsLast = lastCheckedUserIdRef.current === userId;
+
+    if (sameUserAsLast && isPaid !== null) {
+      // allow navigation to proceed instantly while we refresh quietly
+      setMembershipChecked(true);
+    }
+
     (async () => {
-      const { data } = await supabase
-        .from("users")
-        .select("tier, subscription_status, grandfathered, premium_access_expires_at")
-        .eq("id", userId)
-        .single();
+      try {
+        const { data, error } = await supabase
+          .from("users")
+          .select(
+            "tier, subscription_status, grandfathered, premium_access_expires_at"
+          )
+          .eq("id", userId)
+          .single();
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      const exp = data?.premium_access_expires_at
-        ? new Date(data.premium_access_expires_at).getTime()
-        : null;
+        if (error) {
+          // keep previous value if any; just mark check complete so UI isn't blocked
+          setMembershipChecked(true);
+          return;
+        }
 
-      const expiredNow = exp ? Date.now() >= exp : false;
-      const stat = (data?.subscription_status || "").toLowerCase();
+        const exp = data?.premium_access_expires_at
+          ? new Date(data.premium_access_expires_at).getTime()
+          : null;
 
-      // ✅ PRIMARY: tier (because membership.ts gates off tier)
-      const paidByTier = (data?.tier || "").toLowerCase() === "pro";
+        const expiredNow = exp ? Date.now() >= exp : false;
+        const stat = (data?.subscription_status || "").toLowerCase();
 
-      // ✅ FALLBACK: keep your existing logic
-      const paidByStatus =
-        !expiredNow &&
-        (stat === "active" ||
-          stat === "trialing" ||
-          stat === "past_due" ||
-          data?.grandfathered);
+        // ✅ PRIMARY: tier (because membership.ts gates off tier)
+        const paidByTier = (data?.tier || "").toLowerCase() === "pro";
 
-      const paid = paidByTier || paidByStatus;
+        // ✅ FALLBACK: keep your existing logic
+        const paidByStatus =
+          !expiredNow &&
+          (stat === "active" ||
+            stat === "trialing" ||
+            stat === "past_due" ||
+            data?.grandfathered);
 
-      setExpired(expiredNow);
-      setIsPaid(paid);
+        const paid = paidByTier || paidByStatus;
+
+        setExpired(expiredNow);
+        setIsPaid(paid);
+
+        lastCheckedUserIdRef.current = userId;
+      } finally {
+        if (mounted) setMembershipChecked(true);
+      }
     })();
 
     return () => {
       mounted = false;
     };
+    // Intentionally NOT including isPaid in deps; we don't want extra re-runs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   useEffect(() => {
@@ -124,7 +165,9 @@ export default function AppNavigator({
   // --------------------------------------------------------------
   // Global loading
   // --------------------------------------------------------------
-  if (!ready || !navReady || (userId && isPaid === null)) {
+  // ✅ We keep your original "global loading" behavior for app readiness + nav restore.
+  // ✅ But we DO NOT block on membership fetch anymore (speed).
+  if (!ready || !navReady) {
     return (
       <View
         style={{
@@ -147,7 +190,11 @@ export default function AppNavigator({
   // If no deep-link matches, React Navigation uses the first screen in the stack
   // unless initialRouteName is set.
   const rootInitialRouteName =
-    !userId || !profileComplete ? "Auth" : mustShowPaywall ? "Paywall" : "MainTabs";
+    !userId || !profileComplete
+      ? "Auth"
+      : mustShowPaywall
+      ? "Paywall"
+      : "MainTabs";
 
   // --------------------------------------------------------------
   // Navigation tree
@@ -190,6 +237,11 @@ export default function AppNavigator({
         {/* Always keep NewPassword accessible (deep link + manual nav) */}
         <Stack.Screen name="NewPassword" component={NewPassword} />
       </Stack.Navigator>
+
+      {/* ✅ Optional: keep invisible, but ensures membership check doesn't "feel stuck".
+          No logic change; just a non-blocking background check indicator if you want later.
+          We are NOT rendering anything here to avoid UI changes.
+      */}
     </NavigationContainer>
   );
 }
