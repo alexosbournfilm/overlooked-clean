@@ -2,7 +2,6 @@
 // ------------------------------------------------------------
 // FULL PAYWALL-FREE VERSION (UPDATED SIGN-IN LOGIC)
 // + ✅ Handles email-confirm deep links (PKCE exchange) on /signin
-// + ✅ Mobile-fit Sign In modal (scroll + maxHeight + keyboard safe)
 // ------------------------------------------------------------
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -24,7 +23,6 @@ import {
   Pressable,
   Image,
   UIManager,
-  ImageBackground, // kept (even if unused) to preserve your structure
 } from 'react-native';
 import * as Linking from 'expo-linking';
 import { useNavigation } from '@react-navigation/native';
@@ -70,9 +68,6 @@ const T = {
   olive: GOLD,
   border: '#2E2E2E',
 };
-
-const GRAIN_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAIElEQVQYV2P8//8/AzGAiYGB4T8mGJgYhBmMCEwMDAwA1wQq1i3gN8QAAAAASUVORK5CYII=';
 
 // --- REMOVE GRAIN COMPLETELY (safe for all platforms) ---
 const Grain = () => null;
@@ -222,13 +217,15 @@ function useHoverScale() {
 export default function SignInScreen() {
   const navigation = useNavigation<any>();
   const { width, height } = useWindowDimensions();
-  const isShort = height < 720; // tweak if you want (700–760 range)
   const insets = useSafeAreaInsets();
 
   const isWide = width >= 980;
   const isPhone = width < 420;
   const isNarrowNav = width < 520;
   const isTinyNav = width < 360;
+
+  // This is only used for slightly tighter spacing on *short* screens.
+  const isShort = height < 720;
 
   // Mobile nav was getting cramped/overflowing.
   // Layout-only: a taller bar on narrow widths to prevent overlap.
@@ -404,8 +401,7 @@ export default function SignInScreen() {
       const last = typed.slice(-1);
       if (last === ' ') d += WORD_PAUSE_MS;
       if (['.', ',', '!', '?', ';', ':'].includes(last)) d += PUNCT_PAUSE_MS;
-      if (Math.random() < RANDOM_PAUSE_CHANCE)
-        d += rand(RANDOM_PAUSE_MIN, RANDOM_PAUSE_MAX);
+      if (Math.random() < RANDOM_PAUSE_CHANCE) d += rand(RANDOM_PAUSE_MIN, RANDOM_PAUSE_MAX);
       return d;
     };
 
@@ -908,7 +904,7 @@ export default function SignInScreen() {
           </View>
         </ScrollView>
 
-        {/* SIGN-IN MODAL */}
+        {/* SIGN-IN MODAL ✅ FIXED */}
         <Modal
           transparent
           visible={showSignIn}
@@ -924,6 +920,7 @@ export default function SignInScreen() {
                 style={[
                   styles.authCard,
                   {
+                    alignSelf: 'center',
                     maxHeight: height - insets.top - insets.bottom - 28,
                     padding: isShort ? 16 : 20,
                   },
@@ -945,14 +942,7 @@ export default function SignInScreen() {
 
                   <Text style={styles.subtitle}>Sign in to join this month’s journey.</Text>
 
-                  <View
-                    style={[
-                      styles.inputWrap,
-                      // responsive padding (cannot use isShort inside StyleSheet)
-                      { paddingVertical: Platform.OS === 'web' ? 12 : isShort ? 9 : 10 },
-                      focus === 'email' && styles.inputWrapFocused,
-                    ]}
-                  >
+                  <View style={[styles.inputWrap, focus === 'email' && styles.inputWrapFocused]}>
                     <Ionicons name="mail" size={16} color={focus === 'email' ? T.olive : T.mute} />
                     <TextInput
                       style={styles.input}
@@ -971,7 +961,7 @@ export default function SignInScreen() {
                   <View
                     style={[
                       styles.inputWrap,
-                      { marginTop: 12, paddingVertical: Platform.OS === 'web' ? 12 : isShort ? 9 : 10 },
+                      { marginTop: 12 },
                       focus === 'password' && styles.inputWrapFocused,
                     ]}
                   >
@@ -1092,6 +1082,8 @@ export default function SignInScreen() {
             </View>
           </View>
         </Modal>
+
+        <Grain />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -1112,6 +1104,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: T.bg,
   },
+
   radialGlowTop: {
     position: 'absolute',
     top: -140,
@@ -1159,7 +1152,6 @@ const styles = StyleSheet.create({
     WebkitBackdropFilter: 'saturate(120%) blur(8px)',
   },
 
-  // ✅ Mobile/nav fixes (layout-only)
   topBarInnerNarrow: {
     flexDirection: 'column',
     justifyContent: 'center',
@@ -1191,7 +1183,6 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
 
-  // ✅ Centered festival (wide) - bigger + centered
   festivalCenterWrap: {
     position: 'absolute',
     left: 0,
@@ -1221,7 +1212,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
-  // ✅ Centered festival (narrow) - bigger + centered
   festivalCenterChipNarrow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1328,7 +1318,6 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  // ✅ simple highlight (low clutter)
   festivalPill: {
     marginTop: 10,
     alignSelf: 'flex-start',
@@ -1581,7 +1570,7 @@ const styles = StyleSheet.create({
     borderColor: T.border,
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 10, // responsive version is applied inline in JSX
+    paddingVertical: Platform.OS === 'web' ? 12 : 10,
     backgroundColor: '#0C0C0C',
   },
   inputWrapFocused: {
