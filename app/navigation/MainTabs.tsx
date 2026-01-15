@@ -158,6 +158,11 @@ const HoverPress = memo(function HoverPress({
 });
 
 /* ------------------------ Smooth Tab Transitions ----------------------- */
+/**
+ * PERF: Keep the same visual effect, but:
+ * - On WEB: no JS timing animation
+ * - On NATIVE: still animate after interactions
+ */
 const TabTransition = memo(function TabTransition({ children }: { children: React.ReactNode }) {
   const scrimOpacity = useRef(new Animated.Value(0)).current;
 
@@ -198,7 +203,7 @@ const TabTransition = memo(function TabTransition({ children }: { children: Reac
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: DARK_BG }}>
+    <View style={{ flex: 1, backgroundColor: DARK_BG, overflow: 'hidden' }}>
       {children}
       <Animated.View
         pointerEvents="none"
@@ -219,9 +224,7 @@ const TabTransition = memo(function TabTransition({ children }: { children: Reac
 function BrandWordmark({ compact }: { compact?: boolean }) {
   return (
     <View style={styles.brandWrap}>
-      <Text style={[styles.brandTitle, compact && styles.brandTitleCompact]} numberOfLines={1}>
-        OVERLOOKED
-      </Text>
+      <Text style={[styles.brandTitle, compact && styles.brandTitleCompact]}>OVERLOOKED</Text>
     </View>
   );
 }
@@ -230,9 +233,13 @@ function BrandWordmark({ compact }: { compact?: boolean }) {
 
 type TopBarStreakProgressProps = {
   variant: 'wide' | 'compact';
+  compactUI?: boolean;
 };
 
-const TopBarStreakProgress = memo(function TopBarStreakProgress({ variant }: TopBarStreakProgressProps) {
+const TopBarStreakProgress = memo(function TopBarStreakProgress({
+  variant,
+  compactUI,
+}: TopBarStreakProgressProps) {
   const isWide = variant === 'wide';
 
   const { streak, loading } = useMonthlyStreak();
@@ -268,6 +275,7 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({ variant }: Top
     outputRange: ['0%', '100%'],
   });
 
+  // ✨ shimmer sweep (web only)
   const shimmerX = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -315,9 +323,17 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({ variant }: Top
 
   return (
     <View style={[styles.streakWrap, isWide ? styles.streakWrapWide : styles.streakWrapCompact]}>
-      <View style={[styles.streakBarOuter, isWide && styles.streakBarOuterWide]}>
+      <View
+        style={[
+          styles.streakBarOuter,
+          isWide && styles.streakBarOuterWide,
+          compactUI && styles.streakBarOuterCompactUI,
+        ]}
+      >
         <Animated.View style={[styles.streakBarFill, { width: widthInterpolated }]} />
+
         <View pointerEvents="none" style={styles.streakGlass} />
+
         {Platform.OS === 'web' && (
           <Animated.View
             pointerEvents="none"
@@ -330,17 +346,19 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({ variant }: Top
           />
         )}
 
-        <View style={styles.streakBarOverlay}>
+        <View style={[styles.streakBarOverlay, compactUI && { paddingHorizontal: 12 }]}>
           <View style={styles.streakSidesRow}>
             <View style={styles.streakLeftGroup}>
-              <Text style={styles.streakBarLeft}>STREAK</Text>
+              <Text style={[styles.streakBarLeft, compactUI && { fontSize: 9, letterSpacing: 1.0 }]}>
+                STREAK
+              </Text>
             </View>
 
-            <Text style={styles.streakBarRight}>Year {yearLabel}</Text>
+            <Text style={[styles.streakBarRight, compactUI && { fontSize: 9 }]}>Year {yearLabel}</Text>
           </View>
 
           <View pointerEvents="none" style={styles.streakCenterAbs}>
-            <Text style={styles.streakBarCenter} numberOfLines={1}>
+            <Text style={[styles.streakBarCenter, compactUI && { fontSize: 9 }]} numberOfLines={1}>
               {loading ? '—' : `${displayStreak}/${targetMonths}`}
             </Text>
           </View>
@@ -376,11 +394,11 @@ type LeaderboardModalProps = {
 
 const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: LeaderboardModalProps) {
   const navigation = useNavigation<any>();
-  const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
 
   const isPhone = width < 420;
-  const isShort = height < 740;
+  const maxCardWidth = isPhone ? Math.min(width - 24, 520) : 520;
+  const maxCardHeight = Math.min(height - 84, height * 0.82);
 
   const [activeTab, setActiveTab] = useState<LeaderboardTab>('monthly');
   const [loading, setLoading] = useState(false);
@@ -598,23 +616,10 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
     );
   };
 
-  const cardMaxHeight = Math.max(320, height - (insets.top + insets.bottom) - (isShort ? 28 : 52));
-  const overlayPadV = Math.max(14, (insets.top || 0) > 0 ? 14 : 18);
-
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={[styles.lbOverlay, { paddingTop: overlayPadV, paddingBottom: overlayPadV + Math.max(insets.bottom, 0) }]}>
-        <View
-          style={[
-            styles.lbCard,
-            {
-              width: '100%',
-              maxWidth: isPhone ? 520 : 620,
-              maxHeight: cardMaxHeight,
-              alignSelf: 'center',
-            },
-          ]}
-        >
+      <View style={styles.lbOverlay}>
+        <View style={[styles.lbCard, { width: '100%', maxWidth: maxCardWidth, maxHeight: maxCardHeight, alignSelf: 'center' }]}>
           <View style={styles.lbHeader}>
             <Text style={styles.lbTitle}>Leaderboard</Text>
             <Pressable onPress={onClose} hitSlop={10} style={styles.lbCloseBtn}>
@@ -671,9 +676,9 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
               <ScrollView
                 style={styles.lbScroll}
                 contentContainerStyle={styles.lbScrollContent}
-                showsVerticalScrollIndicator={false}
                 bounces={false}
                 overScrollMode="never"
+                showsVerticalScrollIndicator={false}
               >
                 {entries.map(renderRow)}
               </ScrollView>
@@ -695,11 +700,6 @@ type TopBarXpProgressProps = {
 const TopBarXpProgress = memo(function TopBarXpProgress({ variant, onOpenLeaderboard }: TopBarXpProgressProps) {
   const gamification = useGamification();
   const { loading, xp, level, levelTitle, currentLevelMinXp, nextLevelMinXp, progress } = gamification;
-
-  const { width, height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const isPhone = width < 420;
-  const isShort = height < 740;
 
   const [uid, setUid] = useState<string | null>(null);
 
@@ -905,9 +905,6 @@ const TopBarXpProgress = memo(function TopBarXpProgress({ variant, onOpenLeaderb
 
   const nextLevelLabel = isMax ? 'MAX' : `Lv ${(level || 1) + 1}`;
 
-  const levelOverlayPadV = Math.max(14, (insets.top || 0) > 0 ? 14 : 18);
-  const levelCardMaxWidth = isPhone ? 320 : 420;
-
   return (
     <>
       <View style={[styles.xpWrap, isWide ? styles.xpWrapWide : styles.xpWrapCompact]}>
@@ -954,27 +951,8 @@ const TopBarXpProgress = memo(function TopBarXpProgress({ variant, onOpenLeaderb
       </View>
 
       <Modal visible={showLevelModal} transparent animationType="none">
-        <View
-          style={[
-            styles.levelModalOverlay,
-            {
-              paddingTop: levelOverlayPadV,
-              paddingBottom: levelOverlayPadV + Math.max(insets.bottom, 0),
-              paddingHorizontal: 16,
-            },
-          ]}
-        >
-          <Animated.View
-            style={[
-              styles.levelModalCard,
-              {
-                transform: [{ scale: modalScale }],
-                opacity: modalOpacity,
-                width: '100%',
-                maxWidth: levelCardMaxWidth,
-              },
-            ]}
-          >
+        <Animated.View style={[styles.levelModalOverlay, { opacity: modalOpacity }]}>
+          <Animated.View style={[styles.levelModalCard, { transform: [{ scale: modalScale }] }]}>
             <Text style={styles.levelModalKicker}>LEVEL UP</Text>
             <Text style={styles.levelModalLevel}>
               Lv {lvlFrom} ➜ <Text style={{ color: GOLD }}>Lv {lvlTo}</Text>
@@ -982,7 +960,7 @@ const TopBarXpProgress = memo(function TopBarXpProgress({ variant, onOpenLeaderb
             <Text style={styles.levelModalTitle}>{lvlTitleText}</Text>
             <Text style={styles.levelModalHint}>Keep creating. Keep getting seen.</Text>
           </Animated.View>
-        </View>
+        </Animated.View>
       </Modal>
     </>
   );
@@ -1012,71 +990,79 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
     return () => clearInterval(id);
   }, []);
 
-  const bannerHeight = 38;
-  const wrapperHeight = bannerHeight + (isWide ? navHeight : navHeight + 38);
+  const bannerHeight = isPhone ? 30 : 38;
+  const wrapperHeight = bannerHeight + (isWide ? navHeight : navHeight + 34);
 
   const saleText = offerCountdown.expired
     ? `NEW YEAR’S PRO SALE • OFFER ENDED`
     : `NEW YEAR’S PRO SALE • ${offerCountdown.long}`;
 
-  // ✅ This was the #1 cause of horizontal overflow on mobile:
-  // centerSlotAbs had a fixed paddingHorizontal: 220 which pushes content wider than the viewport.
-  // Now it scales down on small screens so nothing can overflow.
-  const centerPad = useMemo(() => {
-    if (isWide) return 220;
-    if (isPhone) return isTiny ? 86 : 110;
-    // “in between” sizes
-    return Math.max(120, Math.min(170, Math.floor(width * 0.28)));
-  }, [isWide, isPhone, isTiny, width]);
+  // ✅ Critical: reduce absolute center padding so it NEVER forces horizontal overflow
+  const centerSidePad = isWide ? 220 : isTiny ? 92 : isPhone ? 112 : 140;
+
+  // ✅ Compact sizing on mobile so nothing overlaps
+  const compactUI = !isWide;
 
   return (
     <View style={[styles.topBarWrapper, { height: wrapperHeight, top: topOffset }]}>
-      <HoverPress onPress={onOpenUpgrade} style={styles.saleBanner} hitSlop={6} accessibilityLabel="Open upgrade">
-        <View style={styles.saleBannerInner}>
-          <View style={styles.saleDot} />
-          <View pointerEvents="none" style={styles.saleBannerCenterAbs}>
-            <Text style={styles.saleBannerText} numberOfLines={1}>
+      <HoverPress
+        onPress={onOpenUpgrade}
+        style={[styles.saleBanner, { height: bannerHeight }]}
+        hitSlop={6}
+        accessibilityLabel="Open upgrade"
+      >
+        <View style={[styles.saleBannerInner, { height: bannerHeight, paddingHorizontal: isPhone ? 10 : 14 }]}>
+          <View style={[styles.saleDot, isPhone && { width: 7, height: 7 }]} />
+          <View pointerEvents="none" style={[styles.saleBannerCenterAbs, { paddingHorizontal: isPhone ? 26 : 36 }]}>
+            <Text style={[styles.saleBannerText, isPhone && styles.saleBannerTextCompact]} numberOfLines={1}>
               {saleText}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={16} color="rgba(237,235,230,0.88)" />
+          <Ionicons name="chevron-forward" size={isPhone ? 14 : 16} color="rgba(237,235,230,0.88)" />
         </View>
       </HoverPress>
 
-      <View style={[styles.topBarInner, { height: navHeight }]}>
+      <View style={[styles.topBarInner, { height: navHeight, paddingHorizontal: isPhone ? 10 : 14 }]}>
         <HoverPress style={{ borderRadius: 10 }} accessibilityLabel="Overlooked">
-          <BrandWordmark compact={isTiny} />
+          <BrandWordmark compact={compactUI} />
         </HoverPress>
 
-        <View pointerEvents="box-none" style={[styles.centerSlotAbs, { paddingHorizontal: centerPad }]}>
-          {/* On small screens we keep the streak centered but not over-wide */}
+        <View
+          pointerEvents="box-none"
+          style={[styles.centerSlotAbs, { paddingHorizontal: centerSidePad }]}
+        >
           <HoverPress
             accessibilityLabel="Streak"
             style={{
               borderRadius: 999,
               width: '100%',
-              maxWidth: isWide ? 600 : isTiny ? 280 : 360,
+              maxWidth: isWide ? 600 : isPhone ? 360 : 420,
               alignSelf: 'center',
             }}
           >
-            <TopBarStreakProgress variant={isWide ? 'wide' : 'compact'} />
+            <TopBarStreakProgress variant="wide" compactUI={compactUI} />
           </HoverPress>
         </View>
 
-        <View style={styles.rightTools}>
+        <View style={[styles.rightTools, { gap: isPhone ? 6 : 10 }]}>
           <HoverPress onPress={onOpenLeaderboard} hitSlop={6} accessibilityLabel="View leaderboard">
-            <View style={[styles.leaderboardBtn, (isPhone || isTiny) && styles.leaderboardBtnCompact]}>
-              <Ionicons name="trophy-outline" size={16} color={GOLD} />
-              {/* ✅ Hide text on tiny screens to prevent overlap/cropping */}
-              {!isPhone && !isTiny && <Text style={styles.leaderboardBtnText}>VIEW LEADERBOARD</Text>}
+            <View style={[styles.leaderboardBtn, compactUI && styles.leaderboardBtnCompact]}>
+              <Ionicons name="trophy-outline" size={compactUI ? 14 : 16} color={GOLD} />
+              {/* ✅ On tiny phones: keep it, but allow it to truncate instead of pushing width */}
+              {!isTiny && (
+                <Text
+                  style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]}
+                  numberOfLines={1}
+                >
+                  LEADERBOARD
+                </Text>
+              )}
             </View>
           </HoverPress>
 
-          <View style={{ width: isTiny ? 6 : 10 }} />
-
           <HoverPress disabled>
-            <View style={styles.settingsChipSmall}>
-              <View style={{ transform: [{ scale: isTiny ? 0.82 : 0.9 }] }}>
+            <View style={[styles.settingsChipSmall, compactUI && styles.settingsChipSmallCompact]}>
+              <View style={{ transform: [{ scale: compactUI ? 0.78 : 0.9 }] }}>
                 <SettingsButton absolute={false} />
               </View>
             </View>
@@ -1085,18 +1071,18 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
       </View>
 
       {!isWide && (
-        <View style={styles.topBarInnerXpRow}>
+        <View style={[styles.topBarInnerXpRow, { paddingHorizontal: isPhone ? 10 : 14 }]}>
           <View style={{ alignItems: 'center' }}>
             <HoverPress
               accessibilityLabel="Streak"
               style={{
                 borderRadius: 999,
                 width: '100%',
-                maxWidth: isTiny ? 320 : 520,
+                maxWidth: isPhone ? 360 : 520,
                 alignSelf: 'center',
               }}
             >
-              <TopBarStreakProgress variant="compact" />
+              <TopBarStreakProgress variant="compact" compactUI />
             </HoverPress>
           </View>
         </View>
@@ -1164,7 +1150,7 @@ const TabBarButton = memo(function TabBarButton(props: any) {
       }}
       onPressIn={() => to(0.97, 0, 90)}
       onPressOut={() => to(1.0, 0, 140)}
-      style={[props.style, { flex: 1, overflow: 'hidden' }]}
+      style={[props.style, { flex: 1 }]}
     >
       <Animated.View
         style={{
@@ -1186,40 +1172,40 @@ export default function MainTabs() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
-  const isTiny = width < 360;
   const isPhone = width < 420;
+  const isTiny = width < 360;
 
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
-  // ✅ HARD STOP horizontal scrolling on web/mobile-web
+  // ✅ Hard-disable horizontal scrolling on WEB (mobile browser included)
   useEffect(() => {
     if (Platform.OS === 'web') {
       try {
         // @ts-ignore
         if (typeof document !== 'undefined') {
           // @ts-ignore
-          document.body.style.backgroundColor = DARK_BG;
-          // @ts-ignore
           document.documentElement.style.backgroundColor = DARK_BG;
-
+          // @ts-ignore
+          document.documentElement.style.overflowX = 'hidden';
+          // @ts-ignore
+          document.body.style.backgroundColor = DARK_BG;
           // @ts-ignore
           document.body.style.overflowX = 'hidden';
           // @ts-ignore
-          document.documentElement.style.overflowX = 'hidden';
-
-          // @ts-ignore
-          document.body.style.margin = '0';
+          document.body.style.maxWidth = '100vw';
         }
       } catch {}
     }
   }, []);
 
-  const NAV_HEIGHT = width >= 980 ? 56 : 46;
+  const NAV_HEIGHT = width >= 980 ? 56 : isPhone ? 44 : 46;
   const topOffset = width >= 980 ? 0 : Platform.OS === 'ios' ? Math.max((insets.top || 0) - 4, 0) : 0;
 
-  const contentTopPadding = NAV_HEIGHT + 38 + (width >= 980 ? 0 : 40);
-  const TABBAR_HEIGHT = 56;
+  // TopBar is: banner + nav + (compact streak row)
+  const contentTopPadding = (isPhone ? 30 : 38) + NAV_HEIGHT + (width >= 980 ? 0 : 34);
+
+  const TABBAR_HEIGHT = isPhone ? 54 : 56;
 
   const screenOptions = useCallback(
     ({ route }: any): BottomTabNavigationOptions =>
@@ -1235,21 +1221,19 @@ export default function MainTabs() {
           backgroundColor: DARK_ELEVATED,
           borderTopWidth: 0,
           height: TABBAR_HEIGHT,
-          paddingTop: 6,
-          paddingBottom: Platform.OS === 'ios' ? 12 : 8,
+          paddingTop: isTiny ? 5 : 6,
+          paddingBottom: Platform.OS === 'ios' ? (isPhone ? 10 : 12) : 8,
           shadowColor: '#000',
           shadowOpacity: 0.3,
           shadowOffset: { width: 0, height: -4 },
           shadowRadius: 6,
           elevation: 10,
-          overflow: 'hidden', // ✅ prevents any pill overflow from painting outside
         },
 
         tabBarItemStyle: {
           alignItems: 'center',
           justifyContent: 'center',
           paddingVertical: 0,
-          minWidth: 0,
         },
 
         lazy: true,
@@ -1295,39 +1279,42 @@ export default function MainTabs() {
               break;
           }
 
-          const showLabel = !isTiny; // ✅ on tiny phones, icon-only avoids overlap
+          // ✅ Keep labels on mobile, but make them SMALL and non-overflowing
+          const pillPadH = isTiny ? 7 : isPhone ? 8 : 10;
+          const pillPadV = isTiny ? 6 : 7;
+          const pillGap = isTiny ? 4 : 6;
 
           return (
             <View
               style={[
                 styles.tabPill,
+                { paddingHorizontal: pillPadH, paddingVertical: pillPadV, gap: pillGap, maxWidth: '100%' },
                 focused && styles.tabPillActive,
-                (isPhone || isTiny) && styles.tabPillCompact,
               ]}
             >
-              <Ionicons name={icon} size={isTiny ? 18 : 18} color={color} />
-              {showLabel && (
-                <Text
-                  style={[
-                    styles.tabPillText,
-                    (isPhone || isTiny) && styles.tabPillTextCompact,
-                    { color },
-                    focused && { color: GOLD },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {label.toUpperCase()}
-                </Text>
-              )}
+              <Ionicons name={icon} size={isTiny ? 16 : 18} color={color} />
+              <Text
+                style={[
+                  styles.tabPillText,
+                  { color },
+                  focused && { color: GOLD },
+                  isPhone && { fontSize: isTiny ? 8 : 9, letterSpacing: isTiny ? 0.4 : 0.55 },
+                ]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {label.toUpperCase()}
+              </Text>
             </View>
           );
         },
       } as BottomTabNavigationOptions),
-    [TABBAR_HEIGHT, isTiny, isPhone]
+    [TABBAR_HEIGHT, isPhone, isTiny]
   );
 
   return (
     <SettingsModalProvider>
+      {/* ✅ overflow hidden stops any sneaky horizontal “drag” on web layouts */}
       <View style={{ flex: 1, backgroundColor: DARK_BG, overflow: 'hidden' }}>
         <TopBar
           topOffset={topOffset}
@@ -1368,6 +1355,7 @@ export default function MainTabs() {
           </Tab.Navigator>
         </SafeAreaView>
 
+        {/* These are external components; we keep them, but everything around them is now centered + constrained */}
         <SettingsModal />
         <LeaderboardModal visible={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
         <UpgradeModal visible={showUpgrade} onClose={() => setShowUpgrade(false)} context={undefined} />
@@ -1388,20 +1376,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
     borderRadius: 999,
     backgroundColor: 'transparent',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.06)',
-    maxWidth: '100%',
-    overflow: 'hidden',
-  },
-  tabPillCompact: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    gap: 5,
   },
   tabPillActive: {
     backgroundColor: 'rgba(198,166,100,0.10)',
@@ -1415,10 +1393,8 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     ...(Platform.OS === 'android' ? { includeFontPadding: false } : null),
     lineHeight: 12,
-  },
-  tabPillTextCompact: {
-    fontSize: 9,
-    letterSpacing: 0.6,
+    flexShrink: 1,
+    maxWidth: 86, // ✅ prevents label from pushing layout sideways
   },
 
   topBarWrapper: {
@@ -1432,15 +1408,12 @@ const styles = StyleSheet.create({
   },
 
   saleBanner: {
-    height: 38,
     paddingHorizontal: 0,
     backgroundColor: OFFER_STRIP_BG,
     borderBottomWidth: 1,
     borderBottomColor: OFFER_STRIP_BORDER,
   },
   saleBannerInner: {
-    height: 38,
-    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -1457,7 +1430,6 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 36,
   },
   saleBannerText: {
     fontSize: 14.5,
@@ -1467,32 +1439,31 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     textTransform: 'uppercase',
   },
+  saleBannerTextCompact: {
+    fontSize: 11.5,
+    letterSpacing: 0.6,
+  },
 
   topBarInner: {
     width: '100%',
     maxWidth: 1200,
     alignSelf: 'center',
-    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     position: 'relative',
-    overflow: 'hidden',
   },
 
   topBarInnerXpRow: {
     width: '100%',
     maxWidth: 1200,
     alignSelf: 'center',
-    paddingHorizontal: 14,
     paddingTop: 6,
     paddingBottom: 6,
-    overflow: 'hidden',
   },
 
   brandWrap: {
     paddingVertical: 6,
     paddingRight: 8,
-    maxWidth: 160,
   },
   brandTitle: {
     fontSize: 18,
@@ -1502,8 +1473,8 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
   brandTitleCompact: {
-    fontSize: 16.5,
-    letterSpacing: 1.7,
+    fontSize: 13,
+    letterSpacing: 1.4,
   },
 
   centerSlotAbs: {
@@ -1518,7 +1489,6 @@ const styles = StyleSheet.create({
     marginLeft: 'auto',
     flexDirection: 'row',
     alignItems: 'center',
-    flexShrink: 0,
   },
 
   leaderboardBtn: {
@@ -1531,10 +1501,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(198,166,100,0.10)',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(198,166,100,0.30)',
+    maxWidth: 150,
   },
   leaderboardBtnCompact: {
-    paddingHorizontal: 10,
-    gap: 0,
+    paddingVertical: 6,
+    paddingHorizontal: 9,
+    gap: 6,
+    maxWidth: 120,
   },
   leaderboardBtnText: {
     fontSize: 10,
@@ -1543,6 +1516,11 @@ const styles = StyleSheet.create({
     color: GOLD,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
+    flexShrink: 1,
+  },
+  leaderboardBtnTextCompact: {
+    fontSize: 8.5,
+    letterSpacing: 0.9,
   },
 
   settingsChipSmall: {
@@ -1552,9 +1530,12 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#3A3A3A',
   },
+  settingsChipSmallCompact: {
+    padding: 2.5,
+  },
 
   /* ------------------ STREAK ------------------ */
-  streakWrap: { paddingVertical: 2 },
+  streakWrap: { paddingVertical: 2, width: '100%' },
   streakWrapWide: {
     width: '100%',
     maxWidth: 2000,
@@ -1577,6 +1558,9 @@ const styles = StyleSheet.create({
     borderColor: '#333333',
   },
   streakBarOuterWide: { width: '100%' },
+  streakBarOuterCompactUI: {
+    height: 22,
+  },
   streakBarFill: {
     position: 'absolute',
     left: 0,
@@ -1754,6 +1738,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.94)',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 16,
   },
   levelModalCard: {
     paddingVertical: 22,
@@ -1763,6 +1748,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: GOLD,
     alignItems: 'center',
+    maxWidth: 520,
+    width: '100%',
   },
   levelModalKicker: {
     fontSize: 13,
@@ -1801,7 +1788,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.9)',
     justifyContent: 'center',
-    alignItems: 'center', // ✅ true centering
+    alignItems: 'center',
     paddingHorizontal: 16,
   },
   lbCard: {
@@ -1857,7 +1844,7 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
   lbTabTextActive: { color: '#050505' },
-  lbBody: { flex: 1, marginTop: 4, minHeight: 180 },
+  lbBody: { flex: 1, marginTop: 4 },
   lbLoadingWrap: { alignItems: 'center', paddingVertical: 18 },
   lbLoadingText: { marginTop: 6, fontSize: 9, color: TEXT_MUTED, fontFamily: SYSTEM_SANS },
   lbEmptyWrap: { alignItems: 'center', paddingVertical: 14, paddingHorizontal: 10 },
