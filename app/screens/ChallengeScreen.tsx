@@ -1726,6 +1726,35 @@ try {
 
                   <Text style={styles.heroExplainer}>{explainer}</Text>
 
+                  <View style={styles.impactCard}>
+  <Text style={styles.impactTitle}>OVERLOOKED IS A MOVEMENT</Text>
+
+  <Text style={styles.impactBody}>
+    Making filmmaking, networking, and screening available to all.
+  </Text>
+
+  <Text style={styles.impactSteps}>
+    Join. Submit. Vote. Get voted. Win a slot at the Overlooked Film Festival 2026.
+  </Text>
+
+  <View style={styles.impactDivider} />
+
+  <Text style={styles.impactHighlightTitle}>🎬 FILM FESTIVAL 2026 — ROME</Text>
+  <Text style={styles.impactBody}>
+    The <Text style={styles.impactStrong}>Top 2 highest-voted films</Text> will be screened at the first in-person
+    Overlooked Film Festival in <Text style={styles.impactStrong}>Rome</Text> in <Text style={styles.impactStrong}>July 2026</Text>.
+    Exact date to be decided.
+  </Text>
+
+  <View style={styles.impactDivider} />
+
+  <Text style={styles.impactHighlightTitle}>🔴 EVERY OTHER THURSDAY — LIVE REVIEWS</Text>
+  <Text style={styles.impactBody}>
+    Submitted films are selected at random to be watched and reviewed every other Thursday on the Overlooked YouTube channel during livestreams.
+  </Text>
+</View>
+
+
 <View style={styles.hypeCard}>
   <View style={styles.hypeHeaderRow}>
   <Text style={styles.hypeTitle}>WHY UPLOAD MONTHLY</Text>
@@ -2449,6 +2478,64 @@ const styles = StyleSheet.create({
     borderBottomColor: "#1F1F1F",
     backgroundColor: "#0E0E0E",
   },
+  impactCard: {
+  marginTop: 12,
+  borderRadius: 16,
+  borderWidth: 1,
+  borderColor: "rgba(198,166,100,0.28)",
+  backgroundColor: "rgba(198,166,100,0.07)",
+  padding: 14,
+},
+
+impactTitle: {
+  fontSize: 12,
+  fontWeight: "900",
+  letterSpacing: 2.0,
+  color: T.text,
+  textTransform: "uppercase",
+  fontFamily: SYSTEM_SANS,
+  marginBottom: 8,
+},
+
+impactBody: {
+  fontSize: 13,
+  color: "#D7D7D7",
+  lineHeight: 19,
+  fontFamily: SYSTEM_SANS,
+  marginBottom: 8,
+},
+
+impactSteps: {
+  fontSize: 13,
+  color: T.text,
+  lineHeight: 19,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: "900",
+  marginBottom: 8,
+},
+
+impactDivider: {
+  height: 1,
+  backgroundColor: "rgba(255,255,255,0.10)",
+  marginVertical: 10,
+},
+
+impactHighlightTitle: {
+  fontSize: 11,
+  fontWeight: "900",
+  letterSpacing: 1.4,
+  color: T.text,
+  textTransform: "uppercase",
+  fontFamily: SYSTEM_SANS,
+  marginBottom: 6,
+},
+
+impactStrong: {
+  color: T.text,
+  fontWeight: "900",
+  fontFamily: SYSTEM_SANS,
+},
+
   hypeCard: {
     marginTop: 12,
     borderRadius: 16,
