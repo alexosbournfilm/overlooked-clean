@@ -229,8 +229,8 @@ export default function SignInScreen() {
   const isTinyNav = width < 360;
 
   // Mobile nav was getting cramped/overflowing.
-  // This is layout-only: slightly taller bar on narrow widths to allow wrapping without overlap.
-  const NAV_HEIGHT = isWide ? 56 : isNarrowNav ? 98 : 48;
+  // Layout-only: a taller bar on narrow widths to prevent overlap.
+  const NAV_HEIGHT = isWide ? 56 : isNarrowNav ? 108 : 48;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -538,54 +538,96 @@ export default function SignInScreen() {
               { height: NAV_HEIGHT },
             ]}
           >
-            <View style={[styles.brandCluster, isNarrowNav && styles.brandClusterNarrow]}>
-              <Pressable
-                onPress={() => navigation.navigate('Featured')}
-                style={[styles.brandWrap, isNarrowNav && styles.brandWrapNarrow]}
-              >
-                <Animated.Text
-                  style={[
-                    styles.brandTitle,
-                    isNarrowNav && styles.brandTitleNarrow,
-                    { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
-                  ]}
-                >
-                  OVERLOOKED
-                </Animated.Text>
-              </Pressable>
+            {/* Wide layout: brand left, actions right, festival centered (absolute) */}
+            {!isNarrowNav && (
+              <>
+                <Pressable onPress={() => navigation.navigate('Featured')} style={styles.brandWrap}>
+                  <Animated.Text
+                    style={[
+                      styles.brandTitle,
+                      { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
+                    ]}
+                  >
+                    OVERLOOKED
+                  </Animated.Text>
+                </Pressable>
 
-              {/* ✅ Top bar festival mention (information-only) */}
-              <View style={[styles.festivalChipTop, isNarrowNav && styles.festivalChipTopNarrow]}>
-                <Ionicons name="film-outline" size={14} color={T.olive} />
-                <Text style={[styles.festivalChipTopText, isTinyNav && styles.festivalChipTopTextTiny]}>
-                  Film Festival 2026
-                </Text>
-              </View>
-            </View>
+                <View style={styles.festivalCenterWrap} pointerEvents="none">
+                  <View style={styles.festivalCenterChip}>
+                    <Ionicons name="film-outline" size={16} color={T.olive} />
+                    <Text style={styles.festivalCenterText}>FILM FESTIVAL 2026</Text>
+                  </View>
+                </View>
 
-            <View style={[styles.actionsRow, isNarrowNav && styles.actionsRowNarrow]}>
-              <TouchableOpacity
-                onPress={() => navigation.navigate('SignUp')}
-                style={[
-                  styles.primaryChip,
-                  isNarrowNav && styles.primaryChipNarrow,
-                  isTinyNav && styles.primaryChipTiny,
-                ]}
-              >
-                <Text style={[styles.primaryChipText, isTinyNav && styles.primaryChipTextTiny]}>
-                  Create an account
-                </Text>
-              </TouchableOpacity>
+                <View style={styles.actionsRow}>
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate('SignUp')}
+                    style={styles.primaryChip}
+                  >
+                    <Text style={styles.primaryChipText}>Create an account</Text>
+                  </TouchableOpacity>
 
-              <TouchableOpacity
-                onPress={() => setShowSignIn(true)}
-                style={[styles.textAction, isNarrowNav && styles.textActionNarrow]}
-              >
-                <Text style={[styles.textActionText, isTinyNav && styles.textActionTextTiny]}>
-                  Sign in
-                </Text>
-              </TouchableOpacity>
-            </View>
+                  <TouchableOpacity onPress={() => setShowSignIn(true)} style={styles.textAction}>
+                    <Text style={styles.textActionText}>Sign in</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+
+            {/* Narrow layout: stacked rows, festival centered + bigger */}
+            {isNarrowNav && (
+              <>
+                <View style={styles.navRowTop}>
+                  <Pressable
+                    onPress={() => navigation.navigate('Featured')}
+                    style={styles.brandWrapNarrow}
+                  >
+                    <Animated.Text
+                      style={[
+                        styles.brandTitle,
+                        styles.brandTitleNarrow,
+                        { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
+                      ]}
+                    >
+                      OVERLOOKED
+                    </Animated.Text>
+                  </Pressable>
+                </View>
+
+                <View style={styles.navRowMid}>
+                  <View style={styles.festivalCenterChipNarrow}>
+                    <Ionicons name="film-outline" size={18} color={T.olive} />
+                    <Text style={styles.festivalCenterTextNarrow}>FILM FESTIVAL 2026</Text>
+                  </View>
+                </View>
+
+                <View style={styles.navRowBottom}>
+                  <View style={styles.actionsRowNarrow}>
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate('SignUp')}
+                      style={[
+                        styles.primaryChip,
+                        styles.primaryChipNarrow,
+                        isTinyNav && styles.primaryChipTiny,
+                      ]}
+                    >
+                      <Text style={[styles.primaryChipText, isTinyNav && styles.primaryChipTextTiny]}>
+                        Create an account
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => setShowSignIn(true)}
+                      style={[styles.textAction, styles.textActionNarrow]}
+                    >
+                      <Text style={[styles.textActionText, isTinyNav && styles.textActionTextTiny]}>
+                        Sign in
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </>
+            )}
           </View>
         </View>
 
@@ -1026,7 +1068,7 @@ export default function SignInScreen() {
 }
 
 // ------------------------------------------------------------
-// STYLES — UNCHANGED (only layout additions for mobile nav + festival mentions)
+// STYLES — UNCHANGED (only layout additions for centered festival + mobile nav)
 // ------------------------------------------------------------
 
 const CARD_RADIUS = 16;
@@ -1080,6 +1122,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
+    position: 'relative',
     // @ts-ignore — web-only blur
     backdropFilter: 'saturate(120%) blur(8px)',
     // @ts-ignore
@@ -1091,7 +1134,7 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'stretch',
-    gap: 10,
+    gap: 8,
     paddingTop: 10,
     paddingBottom: 10,
   },
@@ -1100,21 +1143,12 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
 
-  brandCluster: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    minWidth: 0,
-  },
-  brandClusterNarrow: {
-    alignSelf: 'center',
-  },
+  navRowTop: { alignItems: 'center', justifyContent: 'center' },
+  navRowMid: { alignItems: 'center', justifyContent: 'center' },
+  navRowBottom: { alignItems: 'center', justifyContent: 'center' },
 
   brandWrap: { paddingVertical: 4, paddingRight: 8 },
-  brandWrapNarrow: {
-    alignSelf: 'center',
-    paddingRight: 0,
-  },
+  brandWrapNarrow: { paddingVertical: 0 },
   brandTitle: {
     fontSize: 18,
     fontWeight: '900',
@@ -1127,36 +1161,61 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
 
-  // ✅ Top bar festival chip
-  festivalChipTop: {
+  // ✅ Centered festival (wide) - bigger + centered
+  festivalCenterWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '50%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -18,
+  },
+  festivalCenterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: T.border,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(255,255,255,0.035)',
   },
-  festivalChipTopNarrow: {
-    marginLeft: 0,
-  },
-  festivalChipTopText: {
+  festivalCenterText: {
     color: T.sub,
-    fontSize: 12.5,
-    fontWeight: '800',
-    letterSpacing: 0.6,
+    fontSize: 14.5,
+    fontWeight: '900',
+    letterSpacing: 1.4,
     fontFamily: SYSTEM_SANS,
     textTransform: 'uppercase',
   },
-  festivalChipTopTextTiny: {
-    fontSize: 12,
-    letterSpacing: 0.4,
+
+  // ✅ Centered festival (narrow) - bigger + centered
+  festivalCenterChipNarrow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: T.border,
+    backgroundColor: 'rgba(255,255,255,0.035)',
+  },
+  festivalCenterTextNarrow: {
+    color: T.sub,
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 1.6,
+    fontFamily: SYSTEM_SANS,
+    textTransform: 'uppercase',
   },
 
   actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   actionsRowNarrow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
     flexWrap: 'wrap',
     gap: 10,
