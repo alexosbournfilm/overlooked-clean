@@ -2472,13 +2472,15 @@ const FeaturedScreen = () => {
     const name = (s as any)?.users?.full_name;
     const userObj = (s as any)?.users;
 
-    // ✅ Mobile-safe sizes, cinematic on web
-    const isWeb = Platform.OS === 'web';
+    // ✅ IMPORTANT: web-on-phone should behave like mobile.
+// Platform.OS === 'web' is still true in a phone browser.
+const isCompactHero = winW < 520;       // phone / narrow web
+const isTinyHero = winW < 380;          // very small phones
 
-const heroKickerSize = isWeb ? 14 : 11;
-const heroTitleSize = isWeb ? 52 : isSmallMobile ? 20 : 24;
-const heroTitleLine = isWeb ? 58 : isSmallMobile ? 24 : 28;
-const heroBylineSize = isWeb ? 16 : 12;
+const heroKickerSize = isCompactHero ? 10 : 14;
+const heroTitleSize = isTinyHero ? 22 : isCompactHero ? 26 : 52;
+const heroTitleLine = isTinyHero ? 26 : isCompactHero ? 30 : 58;
+const heroBylineSize = isTinyHero ? 11 : isCompactHero ? 12 : 16;
 
     return (
       <View
@@ -2489,7 +2491,17 @@ const heroBylineSize = isWeb ? 16 : 12;
           style={styles.heroOverlayInner}
           pointerEvents="none"
         >
-          <Text style={[styles.heroKicker, { fontSize: heroKickerSize }]}>
+         <Text
+  style={[
+    styles.heroKicker,
+    {
+      fontSize: heroKickerSize,
+      marginBottom: isCompactHero ? 4 : 6,
+      letterSpacing: isCompactHero ? 0.6 : 0.8,
+    },
+  ]}
+>
+
             LAST MONTH’S WINNER
           </Text>
           <Text
@@ -2498,7 +2510,8 @@ const heroBylineSize = isWeb ? 16 : 12;
     {
       fontSize: heroTitleSize,
       lineHeight: heroTitleLine,
-      maxWidth: Platform.OS === 'web' ? '85%' : '92%',
+      maxWidth: isCompactHero ? '92%' : '85%',
+      letterSpacing: isCompactHero ? 0.6 : 0.9,
     },
   ]}
   numberOfLines={2}
@@ -2513,7 +2526,15 @@ const heroBylineSize = isWeb ? 16 : 12;
             activeOpacity={0.9}
             style={styles.heroBylineTap}
           >
-            <Text style={[styles.heroByline, { fontSize: heroBylineSize }]}>
+            <Text
+  style={[
+    styles.heroByline,
+    {
+      fontSize: heroBylineSize,
+      marginTop: isCompactHero ? 2 : 4,
+    },
+  ]}
+>
               by {name}
             </Text>
           </TouchableOpacity>
@@ -2974,7 +2995,20 @@ const heroBylineSize = isWeb ? 16 : 12;
 
 const RADIUS_XL = 18;
 /* ──────────────────────────────────────────────────────────── */
+/**
+ * ✅ IMPORTANT NOTE
+ * Your “mobile” screenshots are coming from a PHONE BROWSER, so Platform.OS === 'web'
+ * even on a tiny screen. Using IS_WEB alone will always make the hero text huge.
+ *
+ * Solution: keep IS_WEB, but also detect NARROW WEB and use compact hero text there.
+ */
 const IS_WEB = Platform.OS === 'web';
+const IS_NARROW_WEB = IS_WEB && typeof window !== 'undefined' && window.innerWidth < 520;
+const IS_TINY_WEB = IS_WEB && typeof window !== 'undefined' && window.innerWidth < 380;
+
+// Use these for the hero overlay sizing ONLY
+const HERO_COMPACT = !IS_WEB || IS_NARROW_WEB;
+const HERO_TINY = !IS_WEB ? false : IS_TINY_WEB;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: T.bg },
@@ -3134,37 +3168,53 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     pointerEvents: 'none',
-    paddingBottom: Platform.OS === 'web' ? 36 : 20,
+
+    // ✅ was pushing text down too much, made it feel huge on phone-web
+    paddingBottom: HERO_COMPACT ? 14 : 36,
   },
+
+  /**
+   * ✅ HERO TEXT: now compact on:
+   * - native mobile
+   * - web-on-phone (narrow web)
+   */
   heroKicker: {
     color: '#ffffffdd',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    letterSpacing: IS_WEB ? 1.0 : 0.7,
-    fontSize: IS_WEB ? 16 : 12,
+    letterSpacing: HERO_COMPACT ? 0.6 : 1.0,
+    fontSize: HERO_COMPACT ? 10 : 16,
     textTransform: 'uppercase',
-    marginBottom: IS_WEB ? 8 : 6,
+    marginBottom: HERO_COMPACT ? 4 : 8,
     textAlign: 'center',
+    maxWidth: HERO_COMPACT ? '92%' : '85%',
   },
+
   heroTitle: {
     color: '#fff',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    letterSpacing: IS_WEB ? 1.4 : 0.8,
-    fontSize: IS_WEB ? 56 : 34,
-    lineHeight: IS_WEB ? 62 : 38,
-    marginBottom: IS_WEB ? 6 : 4,
+    letterSpacing: HERO_COMPACT ? 0.6 : 1.4,
+
+    // ✅ key fix: reduce giant title on phone-web
+    fontSize: HERO_TINY ? 22 : HERO_COMPACT ? 26 : 56,
+    lineHeight: HERO_TINY ? 26 : HERO_COMPACT ? 30 : 62,
+
+    marginBottom: HERO_COMPACT ? 2 : 6,
     textTransform: 'uppercase',
     textAlign: 'center',
+    maxWidth: HERO_COMPACT ? '92%' : '85%',
   },
-  heroBylineTap: { marginTop: IS_WEB ? 6 : 4 },
+
+  heroBylineTap: { marginTop: HERO_COMPACT ? 2 : 6 },
   heroByline: {
     color: GOLD,
     fontFamily: SYSTEM_SANS,
     fontWeight: '700',
-    letterSpacing: IS_WEB ? 0.5 : 0.3,
-    fontSize: IS_WEB ? 18 : 13,
+    letterSpacing: HERO_COMPACT ? 0.25 : 0.5,
+    fontSize: HERO_TINY ? 11 : HERO_COMPACT ? 12 : 18,
     textAlign: 'center',
+    maxWidth: HERO_COMPACT ? '92%' : '85%',
   },
 
   commentBtn: {
