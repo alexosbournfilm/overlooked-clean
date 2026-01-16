@@ -2473,10 +2473,12 @@ const FeaturedScreen = () => {
     const userObj = (s as any)?.users;
 
     // ✅ Mobile-safe sizes, cinematic on web
-    const heroKickerSize = Platform.OS === 'web' ? 16 : (isSmallMobile ? 12 : isNarrow ? 13 : 14);
-    const heroTitleSize = Platform.OS === 'web' ? 56 : (isSmallMobile ? 28 : isNarrow ? 34 : 40);
-    const heroTitleLine = Platform.OS === 'web' ? 62 : (isSmallMobile ? 32 : isNarrow ? 38 : 44);
-    const heroBylineSize = Platform.OS === 'web' ? 18 : (isSmallMobile ? 12 : isNarrow ? 13 : 14);
+    const isWeb = Platform.OS === 'web';
+
+const heroKickerSize = isWeb ? 14 : 11;
+const heroTitleSize = isWeb ? 52 : isSmallMobile ? 20 : 24;
+const heroTitleLine = isWeb ? 58 : isSmallMobile ? 24 : 28;
+const heroBylineSize = isWeb ? 16 : 12;
 
     return (
       <View
@@ -2491,12 +2493,17 @@ const FeaturedScreen = () => {
             LAST MONTH’S WINNER
           </Text>
           <Text
-            style={[
-              styles.heroTitle,
-              { fontSize: heroTitleSize, lineHeight: heroTitleLine },
-            ]}
-            numberOfLines={2}
-          >
+  style={[
+    styles.heroTitle,
+    {
+      fontSize: heroTitleSize,
+      lineHeight: heroTitleLine,
+      maxWidth: Platform.OS === 'web' ? '85%' : '92%',
+    },
+  ]}
+  numberOfLines={2}
+  ellipsizeMode="tail"
+>
             {s.title}
           </Text>
         </View>
@@ -3127,6 +3134,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     pointerEvents: 'none',
+    paddingBottom: Platform.OS === 'web' ? 36 : 20,
   },
   heroKicker: {
     color: '#ffffffdd',
