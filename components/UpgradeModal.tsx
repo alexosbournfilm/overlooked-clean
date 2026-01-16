@@ -9,6 +9,9 @@ import {
   Platform,
   Pressable,
   ActivityIndicator,
+  ScrollView,
+  useWindowDimensions,
+  SafeAreaView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { type UserTier } from '../app/lib/supabase';
@@ -43,7 +46,6 @@ const HAIRLINE = 'rgba(255,255,255,0.09)';
 const HAIRLINE_2 = 'rgba(255,255,255,0.06)';
 
 const GOLD = '#C6A664';
-const GOLD_SOFT_2 = 'rgba(198,166,100,0.08)';
 
 // ✅ Premium offer styling (calm, not neon)
 const OFFER_ACCENT = '#2ED47A';
@@ -102,6 +104,11 @@ export const UpgradeModal: React.FC<Props> = ({
   onSelectPro,
 }) => {
   const nav = useNavigation<any>();
+  const { width, height } = useWindowDimensions();
+
+  // ✅ Mobile responsiveness switches
+  const isMobile = width < 520;
+  const isTiny = width < 360;
 
   const [selectedTier, setSelectedTier] = useState<UserTier>('pro');
   const [currentTier, setCurrentTier] = useState<UserTier | null>(null);
@@ -183,7 +190,6 @@ export const UpgradeModal: React.FC<Props> = ({
 
   const currentTierLabel = currentTier ? HUMAN_TIER_LONG[currentTier] : 'Free';
   const isProDisabled = currentTier === 'pro';
-  const offerActive = !offerCountdown.expired;
 
   const endDateLabel = periodEndIso ? formatEndDate(periodEndIso) : null;
 
@@ -242,7 +248,7 @@ export const UpgradeModal: React.FC<Props> = ({
       }
 
       // ✅ IMPORTANT: cancel in Stripe (so next payment does NOT happen)
-      const { data: fnData, error: fnError } = await supabase.functions.invoke('cancel-subscription', {
+      const { error: fnError } = await supabase.functions.invoke('cancel-subscription', {
         body: {},
       });
       if (fnError) throw fnError;
@@ -292,180 +298,192 @@ export const UpgradeModal: React.FC<Props> = ({
       ? 'Opening checkout…'
       : 'See Pro plans';
 
+  // ✅ Make the modal fit on mobile: clamp height + scroll content
+  const cardMaxHeight = Math.min(height * 0.92, 760);
+
   return (
     <>
       <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-        <View style={styles.backdrop}>
-          <View style={styles.card}>
-            {/* Header */}
-            <View style={styles.header}>
-              <View style={{ flex: 1, minWidth: 240 }}>
-                <Text style={styles.kicker}>UPGRADE</Text>
-                <Text style={styles.title}>{title}</Text>
-                <Text style={styles.subtitle}>{subtitle}</Text>
+        <SafeAreaView style={styles.backdrop}>
+          <View style={[styles.card, { maxHeight: cardMaxHeight }, isMobile && styles.cardMobile]}>
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={styles.cardScrollContent}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              {/* Header */}
+              <View style={styles.header}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.kicker}>UPGRADE</Text>
+                  <Text style={styles.title}>{title}</Text>
+                  <Text style={styles.subtitle}>{subtitle}</Text>
+                </View>
               </View>
-            </View>
 
-            {currentTier && (
-              <Text style={styles.currentTierText}>
-                Current plan: <Text style={styles.currentTierName}>{currentTierLabel}</Text>
-                {currentTier === 'pro' && cancelAtPeriodEnd && endDateLabel ? (
-                  <Text style={{ color: TEXT_MUTED }}>{`  •  Cancels ${endDateLabel}`}</Text>
-                ) : null}
-              </Text>
-            )}
+              {currentTier && (
+                <Text style={styles.currentTierText}>
+                  Current plan: <Text style={styles.currentTierName}>{currentTierLabel}</Text>
+                  {currentTier === 'pro' && cancelAtPeriodEnd && endDateLabel ? (
+                    <Text style={{ color: TEXT_MUTED }}>{`  •  Cancels ${endDateLabel}`}</Text>
+                  ) : null}
+                </Text>
+              )}
 
-            {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
+              {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
-            <View style={styles.tiersRow}>
-              {/* Free */}
-              <TouchableOpacity
-                activeOpacity={0.9}
-                onPress={() => {
-                  setErrorText(null);
+              <View style={[styles.tiersRow, isMobile && styles.tiersRowMobile]}>
+                {/* Free */}
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => {
+                    setErrorText(null);
 
-                  if (currentTier === 'pro') {
+                    if (currentTier === 'pro') {
+                      setSelectedTier('free');
+                      openDowngradeConfirm();
+                      return;
+                    }
+
                     setSelectedTier('free');
-                    openDowngradeConfirm();
-                    return;
-                  }
+                  }}
+                  style={[
+                    styles.tierCard,
+                    styles.freeCard,
+                    isMobile && styles.tierCardMobile,
+                    selectedTier === 'free' && styles.tierCardSelected,
+                    currentTier === 'free' && styles.tierCardCurrentFree,
+                  ]}
+                >
+                  <Text style={styles.freeSmallLabel}>Free</Text>
 
-                  setSelectedTier('free');
-                }}
-                style={[
-                  styles.tierCard,
-                  styles.freeCard,
-                  selectedTier === 'free' && styles.tierCardSelected,
-                  currentTier === 'free' && styles.tierCardCurrentFree,
-                ]}
-              >
-                <Text style={styles.freeSmallLabel}>Free</Text>
+                  <Text style={styles.tierNameFree}>Free</Text>
+                  <Text style={styles.tierTaglineMuted}>Browse, connect, collaborate</Text>
 
-                <Text style={styles.tierNameFree}>Free</Text>
-                <Text style={styles.tierTaglineMuted}>Browse, connect, collaborate</Text>
-
-                <View style={styles.priceRow}>
-                  <Text style={styles.priceMain}>FREE</Text>
-                  <Text style={styles.priceSub}>forever</Text>
-                </View>
-
-                <View style={styles.dividerSoft} />
-
-                <View style={styles.featureList}>
-                  <Text style={styles.featureItemMuted}>✓ Discover and connect with filmmakers worldwide</Text>
-                  <Text style={styles.featureItemMuted}>✓ Browse profiles and message other creatives</Text>
-                  <Text style={styles.featureItemMuted}>✓ Join city-based group chats and find local crews</Text>
-                  <Text style={styles.featureItemMuted}>✓ Apply for free jobs and post your own gigs</Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* Pro */}
-              <TouchableOpacity
-                activeOpacity={0.92}
-                onPress={() => {
-                  setErrorText(null);
-                  setSelectedTier('pro');
-                }}
-                style={[
-                  styles.tierCard,
-                  styles.proCard,
-                  selectedTier === 'pro' && styles.tierCardSelectedPro,
-                  currentTier === 'pro' && styles.tierCardCurrentPro,
-                ]}
-              >
-                <View style={styles.offerStrip}>
-                  <View style={styles.offerStripLeft}>
-                    <Text style={styles.offerStripKicker}>NEW YEAR’S OFFER</Text>
-                    <Text style={styles.offerStripTitle}>£24.99 Lifetime</Text>
+                  <View style={styles.priceRow}>
+                    <Text style={styles.priceMain}>FREE</Text>
+                    <Text style={styles.priceSub}>forever</Text>
                   </View>
 
-                  <View style={styles.offerStripRight}>
-                    <View style={styles.offerDot} />
-                    <Text style={styles.offerStripMeta}>
-                      {offerCountdown.expired ? 'Offer ended' : offerCountdown.long}
-                    </Text>
+                  <View style={styles.dividerSoft} />
+
+                  <View style={styles.featureList}>
+                    <Text style={styles.featureItemMuted}>✓ Discover and connect with filmmakers worldwide</Text>
+                    <Text style={styles.featureItemMuted}>✓ Browse profiles and message other creatives</Text>
+                    <Text style={styles.featureItemMuted}>✓ Join city-based group chats and find local crews</Text>
+                    <Text style={styles.featureItemMuted}>✓ Apply for free jobs and post your own gigs</Text>
                   </View>
-                </View>
+                </TouchableOpacity>
 
-                <Text style={styles.tierName}>Pro</Text>
-                <Text style={styles.tierTagline}>Submit, apply, unlock everything</Text>
+                {/* Pro */}
+                <TouchableOpacity
+                  activeOpacity={0.92}
+                  onPress={() => {
+                    setErrorText(null);
+                    setSelectedTier('pro');
+                  }}
+                  style={[
+                    styles.tierCard,
+                    styles.proCard,
+                    isMobile && styles.tierCardMobile,
+                    selectedTier === 'pro' && styles.tierCardSelectedPro,
+                    currentTier === 'pro' && styles.tierCardCurrentPro,
+                  ]}
+                >
+                  <View style={[styles.offerStrip, isMobile && styles.offerStripMobile]}>
+                    <View style={styles.offerStripLeft}>
+                      <Text style={styles.offerStripKicker}>NEW YEAR’S OFFER</Text>
+                      <Text style={styles.offerStripTitle}>£24.99 Lifetime</Text>
+                    </View>
 
-                <View style={styles.plansArea}>
-                  <View style={styles.planRow}>
-                    <View style={[styles.planTile, styles.planTileHero]}>
-                      <Text style={[styles.planKicker, styles.planKickerHero]}>LIFETIME</Text>
-
-                      <View style={styles.planPriceRow}>
-                        <Text style={styles.planCurrency}>£</Text>
-                        <Text style={styles.planPriceHero}>24.99</Text>
-                      </View>
-
-                      <Text style={styles.planSubHero}>
-                        {offerCountdown.expired ? 'Offer ended' : 'Ends Jan 31'}
+                    <View style={[styles.offerStripRight, isMobile && styles.offerStripRightMobile]}>
+                      <View style={styles.offerDot} />
+                      <Text style={styles.offerStripMeta}>
+                        {offerCountdown.expired ? 'Offer ended' : offerCountdown.long}
                       </Text>
                     </View>
+                  </View>
 
-                    <View style={[styles.planTile, styles.planTileSecondary]}>
-                      <Text style={styles.planKicker}>YEARLY</Text>
-                      <View style={styles.planPriceRow}>
-                        <Text style={styles.planCurrency}>£</Text>
-                        <Text style={styles.planPrice}>49.99</Text>
-                      </View>
-                      <Text style={styles.planSub}>Cancel anytime</Text>
-                    </View>
+                  <Text style={styles.tierName}>Pro</Text>
+                  <Text style={styles.tierTagline}>Submit, apply, unlock everything</Text>
 
-                    <View style={[styles.planTile, styles.planTileSecondary]}>
-                      <Text style={styles.planKicker}>MONTHLY</Text>
-                      <View style={styles.planPriceRow}>
-                        <Text style={styles.planCurrency}>£</Text>
-                        <Text style={styles.planPrice}>4.99</Text>
+                  <View style={styles.plansArea}>
+                    <View style={[styles.planRow, isMobile && styles.planRowMobile]}>
+                      <View style={[styles.planTile, styles.planTileHero, isTiny && styles.planTileTiny]}>
+                        <Text style={[styles.planKicker, styles.planKickerHero]}>LIFETIME</Text>
+
+                        <View style={styles.planPriceRow}>
+                          <Text style={styles.planCurrency}>£</Text>
+                          <Text style={styles.planPriceHero}>24.99</Text>
+                        </View>
+
+                        <Text style={styles.planSubHero}>
+                          {offerCountdown.expired ? 'Offer ended' : 'Ends Jan 31'}
+                        </Text>
                       </View>
-                      <Text style={styles.planSub}>Cancel anytime</Text>
+
+                      <View style={[styles.planTile, styles.planTileSecondary, isTiny && styles.planTileTiny]}>
+                        <Text style={styles.planKicker}>YEARLY</Text>
+                        <View style={styles.planPriceRow}>
+                          <Text style={styles.planCurrency}>£</Text>
+                          <Text style={styles.planPrice}>49.99</Text>
+                        </View>
+                        <Text style={styles.planSub}>Cancel anytime</Text>
+                      </View>
+
+                      <View style={[styles.planTile, styles.planTileSecondary, isTiny && styles.planTileTiny]}>
+                        <Text style={styles.planKicker}>MONTHLY</Text>
+                        <View style={styles.planPriceRow}>
+                          <Text style={styles.planCurrency}>£</Text>
+                          <Text style={styles.planPrice}>4.99</Text>
+                        </View>
+                        <Text style={styles.planSub}>Cancel anytime</Text>
+                      </View>
                     </View>
                   </View>
-                </View>
 
-                <View style={styles.dividerUltraSoft} />
+                  <View style={styles.dividerUltraSoft} />
 
-                <View style={styles.featureList}>
-                  <Text style={styles.featureItem}>✓ Submit films to the Monthly Film Challenge</Text>
-                  <Text style={styles.featureItem}>✓ Apply for all paid jobs</Text>
-                  <Text style={styles.featureItem}>✓ Full access to Workshop tools & downloads</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
+                  <View style={styles.featureList}>
+                    <Text style={styles.featureItem}>✓ Submit films to the Monthly Film Challenge</Text>
+                    <Text style={styles.featureItem}>✓ Apply for all paid jobs</Text>
+                    <Text style={styles.featureItem}>✓ Full access to Workshop tools & downloads</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
 
-            {/* CTA */}
-            <TouchableOpacity
-              style={[
-                styles.buttonBase,
-                styles.proButton,
-                (selectedTier !== 'pro' || isProDisabled || upgrading) && styles.buttonDisabled,
-              ]}
-              onPress={
-                selectedTier !== 'pro' || isProDisabled || upgrading ? undefined : doUpgradeToPro
-              }
-              activeOpacity={selectedTier !== 'pro' || isProDisabled || upgrading ? 1 : 0.92}
-            >
-              <Text
+              {/* CTA */}
+              <TouchableOpacity
                 style={[
-                  styles.buttonText,
-                  (selectedTier !== 'pro' || isProDisabled || upgrading) && styles.buttonTextDisabled,
+                  styles.buttonBase,
+                  styles.proButton,
+                  (selectedTier !== 'pro' || isProDisabled || upgrading) && styles.buttonDisabled,
                 ]}
+                onPress={
+                  selectedTier !== 'pro' || isProDisabled || upgrading ? undefined : doUpgradeToPro
+                }
+                activeOpacity={selectedTier !== 'pro' || isProDisabled || upgrading ? 1 : 0.92}
               >
-                {ctaLabel}
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.buttonText,
+                    (selectedTier !== 'pro' || isProDisabled || upgrading) && styles.buttonTextDisabled,
+                  ]}
+                >
+                  {ctaLabel}
+                </Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={onClose}
-              style={styles.laterButton}
-              disabled={upgrading || downgrading}
-            >
-              <Text style={styles.laterText}>Maybe later</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onClose}
+                style={styles.laterButton}
+                disabled={upgrading || downgrading}
+              >
+                <Text style={styles.laterText}>Maybe later</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       {/* Downgrade confirmation */}
@@ -475,64 +493,73 @@ export const UpgradeModal: React.FC<Props> = ({
         animationType="fade"
         onRequestClose={() => (downgrading ? null : setDowngradeConfirmVisible(false))}
       >
-        <View style={styles.backdrop}>
-          <View style={styles.confirmCard}>
-            <Text style={styles.confirmTitle}>Cancel renewal?</Text>
+        <SafeAreaView style={styles.backdrop}>
+          <View style={[styles.confirmCard, { maxHeight: Math.min(height * 0.9, 620) }, isMobile && styles.confirmCardMobile]}>
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={styles.confirmScrollContent}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              <Text style={styles.confirmTitle}>Cancel renewal?</Text>
 
-            <Text style={styles.confirmSub}>
-              Your Pro subscription will be cancelled so you won’t be charged again.
-              {endDateLabel ? ` You’ll keep Pro until ${endDateLabel}, then switch to Free.` : ` You’ll keep Pro until the end of your current billing period.`}
-            </Text>
+              <Text style={styles.confirmSub}>
+                Your Pro subscription will be cancelled so you won’t be charged again.
+                {endDateLabel
+                  ? ` You’ll keep Pro until ${endDateLabel}, then switch to Free.`
+                  : ` You’ll keep Pro until the end of your current billing period.`}
+              </Text>
 
-            <View style={styles.confirmList}>
-              <Text style={styles.confirmItem}>After Pro ends, you’ll lose access to:</Text>
-              {downgradeLossBullets.map((t, idx) => (
-                <Text key={`${idx}-${t}`} style={styles.confirmItem}>
-                  • {t}
-                </Text>
-              ))}
-            </View>
-
-            {downgradeConfirmError ? (
-              <Text style={styles.errorText}>{downgradeConfirmError}</Text>
-            ) : null}
-
-            <View style={styles.confirmButtonsRow}>
-              <Pressable
-                disabled={downgrading}
-                onPress={() => setDowngradeConfirmVisible(false)}
-                style={({ pressed }) => [
-                  styles.confirmBtn,
-                  styles.confirmBtnGhost,
-                  pressed && !downgrading ? { opacity: 0.9 } : null,
-                  downgrading ? { opacity: 0.5 } : null,
-                ]}
-              >
-                <Text style={styles.confirmBtnGhostText}>Keep Pro</Text>
-              </Pressable>
-
-              <Pressable
-                disabled={downgrading}
-                onPress={doDowngradeToFree}
-                style={({ pressed }) => [
-                  styles.confirmBtn,
-                  styles.confirmBtnDanger,
-                  pressed && !downgrading ? { opacity: 0.9 } : null,
-                  downgrading ? { opacity: 0.7 } : null,
-                ]}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  {downgrading ? <ActivityIndicator size="small" color="#0B0B0B" /> : null}
-                  <Text style={styles.confirmBtnDangerText}>
-                    {downgrading ? 'Cancelling…' : 'Cancel renewal'}
+              <View style={styles.confirmList}>
+                <Text style={styles.confirmItem}>After Pro ends, you’ll lose access to:</Text>
+                {downgradeLossBullets.map((t, idx) => (
+                  <Text key={`${idx}-${t}`} style={styles.confirmItem}>
+                    • {t}
                   </Text>
-                </View>
-              </Pressable>
-            </View>
+                ))}
+              </View>
 
-            <Text style={styles.confirmFoot}>Tip: you can re-subscribe any time.</Text>
+              {downgradeConfirmError ? (
+                <Text style={styles.errorText}>{downgradeConfirmError}</Text>
+              ) : null}
+
+              <View style={styles.confirmButtonsRow}>
+                <Pressable
+                  disabled={downgrading}
+                  onPress={() => setDowngradeConfirmVisible(false)}
+                  style={({ pressed }) => [
+                    styles.confirmBtn,
+                    styles.confirmBtnGhost,
+                    pressed && !downgrading ? { opacity: 0.9 } : null,
+                    downgrading ? { opacity: 0.5 } : null,
+                  ]}
+                >
+                  <Text style={styles.confirmBtnGhostText}>Keep Pro</Text>
+                </Pressable>
+
+                <Pressable
+                  disabled={downgrading}
+                  onPress={doDowngradeToFree}
+                  style={({ pressed }) => [
+                    styles.confirmBtn,
+                    styles.confirmBtnDanger,
+                    pressed && !downgrading ? { opacity: 0.9 } : null,
+                    downgrading ? { opacity: 0.7 } : null,
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {downgrading ? <ActivityIndicator size="small" color="#0B0B0B" /> : null}
+                    <Text style={styles.confirmBtnDangerText}>
+                      {downgrading ? 'Cancelling…' : 'Cancel renewal'}
+                    </Text>
+                  </View>
+                </Pressable>
+              </View>
+
+              <Text style={styles.confirmFoot}>Tip: you can re-subscribe any time.</Text>
+            </ScrollView>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
     </>
   );
@@ -553,11 +580,22 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 920,
     borderRadius: 22,
-    paddingVertical: 18,
-    paddingHorizontal: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     backgroundColor: DARK_ELEVATED,
     borderWidth: 1,
     borderColor: HAIRLINE,
+  },
+
+  // ✅ Mobile: slightly tighter + ensures the scroll area feels intentional
+  cardMobile: {
+    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+
+  cardScrollContent: {
+    paddingBottom: 8,
   },
 
   header: {
@@ -623,6 +661,12 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
 
+  // ✅ Mobile: stack cards vertically so nothing gets squashed
+  tiersRowMobile: {
+    flexDirection: 'column',
+    flexWrap: 'nowrap',
+  },
+
   tierCard: {
     flex: 1,
     minWidth: 280,
@@ -632,6 +676,15 @@ const styles = StyleSheet.create({
     backgroundColor: SURFACE,
     borderWidth: 1,
     borderColor: HAIRLINE_2,
+  },
+
+  // ✅ Mobile: remove minWidth so it fits perfectly, and tighten padding
+  tierCardMobile: {
+    minWidth: 0,
+    width: '100%',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 18,
   },
 
   freeCard: {
@@ -770,6 +823,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
 
+  // ✅ Mobile: allow it to breathe + wrap cleanly instead of squeezing
+  offerStripMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+
   offerStripLeft: {
     flex: 1,
     minWidth: 140,
@@ -796,6 +856,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'center',
     gap: 6,
+  },
+
+  offerStripRightMobile: {
+    alignItems: 'flex-start',
   },
 
   offerDot: {
@@ -825,6 +889,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
+  // ✅ Mobile: keep as row but allow narrower tiles to wrap nicely; Tiny devices stack.
+  planRowMobile: {
+    flexWrap: 'wrap',
+  },
+
   planTile: {
     flex: 1,
     borderRadius: 16,
@@ -832,6 +901,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: 0,
+    minWidth: 96,
+  },
+
+  planTileTiny: {
+    minWidth: '100%' as any, // forces stack on very small screens
   },
 
   planTileHero: {
@@ -927,14 +1001,6 @@ const styles = StyleSheet.create({
     color: TEXT_MUTED,
   },
 
-  ctaMicro: {
-    marginTop: 8,
-    textAlign: 'center',
-    fontSize: 11.5,
-    color: 'rgba(237,235,230,0.55)',
-    fontFamily: SYSTEM_SANS,
-  },
-
   laterButton: {
     marginTop: 10,
     paddingVertical: 6,
@@ -953,11 +1019,21 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 620,
     borderRadius: 20,
-    paddingVertical: 18,
-    paddingHorizontal: 18,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     backgroundColor: DARK_ELEVATED,
     borderWidth: 1,
     borderColor: HAIRLINE,
+  },
+
+  confirmCardMobile: {
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+  },
+
+  confirmScrollContent: {
+    paddingBottom: 8,
   },
 
   confirmTitle: {
