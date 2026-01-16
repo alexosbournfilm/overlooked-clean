@@ -3040,7 +3040,14 @@ const renderHero = () => {
               {/* ✅ DESKTOP ONLY: counts stay here (UPDATED: centered + tighter) */}
               {!isMobileLike && (
                 <View style={{ marginTop: 14, alignItems: "center", justifyContent: "center" }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 18 }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 18,
+                    }}
+                  >
                     <TouchableOpacity
                       onPress={() => setConnectionsModalVisible(true)}
                       style={{ alignItems: "center", minWidth: 92, paddingVertical: 4 }}
@@ -3217,143 +3224,146 @@ const renderHero = () => {
               </View>
             </View>
           ) : null}
-
-         {/* ✅ Mobile: put edit card BEFORE About (inside hero) */}
-{isMobileLike ? (
-  <View style={{ width: "100%", marginTop: 12 }}>
-    {renderEditProfileCard()}
-  </View>
-) : null}
-
-{/* ✅ About + Streaks (single compact card) */}
-{(bio?.trim()?.length || sideRoles.length || isOwnProfile || streakLoading || (Number(streak || 0) > 0)) ? (
-  <View style={[styles.aboutCard, { marginTop: 12 }]}>
-    <Text style={styles.aboutTitle}>About</Text>
-
-    {/* ✅ Streaks live INSIDE About */}
-    <View style={{ marginTop: 10 }}>
-      {(() => {
-        const s = streakLoading ? 0 : Math.max(0, Number(streak || 0));
-        const fullYears = Math.floor(s / 12);
-        const remainder = s % 12;
-        const yearsToShow = Math.max(1, fullYears + 1);
-
-        return Array.from({ length: yearsToShow }).map((_, idx) => {
-          const yearNumber = idx + 1;
-          const isCompletedYear = yearNumber <= fullYears;
-          const monthsThisYear = isCompletedYear ? 12 : remainder;
-          const pct = streakLoading ? 0 : Math.min((monthsThisYear / 12) * 100, 100);
-
-          return (
-            <View key={`year-${yearNumber}`} style={{ marginTop: idx === 0 ? 0 : 12 }}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginBottom: 6,
-                  flexWrap: "wrap",
-                  rowGap: 6,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 11,
-                    color: COLORS.textSecondary,
-                    letterSpacing: 1.4,
-                    fontFamily: FONT_OBLIVION,
-                  }}
-                >
-                  Filmmaking streak
-                </Text>
-
-                <Text
-                  style={{
-                    fontSize: 11,
-                    color: COLORS.textSecondary,
-                    letterSpacing: 1.4,
-                    fontFamily: FONT_OBLIVION,
-                    opacity: 0.9,
-                    marginLeft: 8,
-                  }}
-                >
-                  • Year {yearNumber}
-                </Text>
-
-                {isCompletedYear ? (
-                  <View
-                    style={{
-                      marginLeft: 10,
-                      paddingHorizontal: 10,
-                      paddingVertical: 4,
-                      borderRadius: 999,
-                      backgroundColor: "rgba(198,166,100,0.18)",
-                      borderWidth: 1,
-                      borderColor: "rgba(198,166,100,0.35)",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 9,
-                        color: "#C6A664",
-                        letterSpacing: 1.2,
-                        fontFamily: FONT_OBLIVION,
-                      }}
-                    >
-                      COMPLETED
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-
-              <View style={block.progressRail}>
-                <View style={[block.progressFill, { width: `${pct}%` }]} />
-              </View>
-
-              <Text
-                style={{
-                  marginTop: 6,
-                  fontSize: 12,
-                  color: COLORS.textPrimary,
-                  fontFamily: FONT_OBLIVION,
-                  textAlign: "center",
-                }}
-              >
-                {streakLoading ? "—" : `${monthsThisYear} / 12 months`}
-              </Text>
-            </View>
-          );
-        });
-      })()}
-    </View>
-
-    {/* ✅ Subtle divider so streak feels “attached” */}
-    <View
-      style={{
-        height: 1,
-        backgroundColor: COLORS.border,
-        opacity: 0.7,
-        marginTop: 12,
-        marginBottom: 10,
-      }}
-    />
-
-    {/* ✅ Bio */}
-    <Text style={[styles.aboutBody, isMobileLike ? { lineHeight: 18 } : null]}>
-      {bio || "—"}
-    </Text>
-
-    {!!sideRoles.length && (
-      <Text style={[styles.aboutBody, { marginTop: 8, fontStyle: "italic" }]}>
-        <Text style={{ fontWeight: "900" }}>Side roles: </Text>
-        {sideRoles.join(", ")}
-      </Text>
-    )}
-  </View>
-) : null}
-
         </View>
       </View>
+
+      {/* ✅ MOVE DOWN: Mobile edit card + About/Streaks BELOW the hero image grid (creates that “gap” placement) */}
+      {isMobileLike ? (
+        <View style={{ width: "100%", marginTop: 12 }}>
+          {renderEditProfileCard()}
+
+          {/* ✅ About + Streaks (single compact card) */}
+          {(bio?.trim()?.length ||
+            sideRoles.length ||
+            isOwnProfile ||
+            streakLoading ||
+            Number(streak || 0) > 0) ? (
+            <View style={[styles.aboutCard, { marginTop: 12 }]}>
+              <Text style={styles.aboutTitle}>About</Text>
+
+              {/* ✅ Streaks live INSIDE About */}
+              <View style={{ marginTop: 10 }}>
+                {(() => {
+                  const s = streakLoading ? 0 : Math.max(0, Number(streak || 0));
+                  const fullYears = Math.floor(s / 12);
+                  const remainder = s % 12;
+                  const yearsToShow = Math.max(1, fullYears + 1);
+
+                  return Array.from({ length: yearsToShow }).map((_, idx) => {
+                    const yearNumber = idx + 1;
+                    const isCompletedYear = yearNumber <= fullYears;
+                    const monthsThisYear = isCompletedYear ? 12 : remainder;
+                    const pct = streakLoading ? 0 : Math.min((monthsThisYear / 12) * 100, 100);
+
+                    return (
+                      <View key={`year-${yearNumber}`} style={{ marginTop: idx === 0 ? 0 : 12 }}>
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            marginBottom: 6,
+                            flexWrap: "wrap",
+                            rowGap: 6,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              color: COLORS.textSecondary,
+                              letterSpacing: 1.4,
+                              fontFamily: FONT_OBLIVION,
+                            }}
+                          >
+                            Filmmaking streak
+                          </Text>
+
+                          <Text
+                            style={{
+                              fontSize: 11,
+                              color: COLORS.textSecondary,
+                              letterSpacing: 1.4,
+                              fontFamily: FONT_OBLIVION,
+                              opacity: 0.9,
+                              marginLeft: 8,
+                            }}
+                          >
+                            • Year {yearNumber}
+                          </Text>
+
+                          {isCompletedYear ? (
+                            <View
+                              style={{
+                                marginLeft: 10,
+                                paddingHorizontal: 10,
+                                paddingVertical: 4,
+                                borderRadius: 999,
+                                backgroundColor: "rgba(198,166,100,0.18)",
+                                borderWidth: 1,
+                                borderColor: "rgba(198,166,100,0.35)",
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 9,
+                                  color: "#C6A664",
+                                  letterSpacing: 1.2,
+                                  fontFamily: FONT_OBLIVION,
+                                }}
+                              >
+                                COMPLETED
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+
+                        <View style={block.progressRail}>
+                          <View style={[block.progressFill, { width: `${pct}%` }]} />
+                        </View>
+
+                        <Text
+                          style={{
+                            marginTop: 6,
+                            fontSize: 12,
+                            color: COLORS.textPrimary,
+                            fontFamily: FONT_OBLIVION,
+                            textAlign: "center",
+                          }}
+                        >
+                          {streakLoading ? "—" : `${monthsThisYear} / 12 months`}
+                        </Text>
+                      </View>
+                    );
+                  });
+                })()}
+              </View>
+
+              {/* ✅ Subtle divider so streak feels “attached” */}
+              <View
+                style={{
+                  height: 1,
+                  backgroundColor: COLORS.border,
+                  opacity: 0.7,
+                  marginTop: 12,
+                  marginBottom: 10,
+                }}
+              />
+
+              {/* ✅ Bio */}
+              <Text style={[styles.aboutBody, isMobileLike ? { lineHeight: 18 } : null]}>
+                {bio || "—"}
+              </Text>
+
+              {!!sideRoles.length && (
+                <Text style={[styles.aboutBody, { marginTop: 8, fontStyle: "italic" }]}>
+                  <Text style={{ fontWeight: "900" }}>Side roles: </Text>
+                  {sideRoles.join(", ")}
+                </Text>
+              )}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 };
