@@ -2739,91 +2739,6 @@ const renderEditProfileCard = () => {
         )}
       </View>
 
-      const renderStreakBarInline = () => {
-  const s = streakLoading ? 0 : Math.max(0, Number(streak || 0));
-
-  const fullYears = Math.floor(s / 12);
-  const remainder = s % 12;
-
-  const yearNumber = Math.max(1, fullYears + 1);
-  const monthsThisYear = fullYears >= yearNumber ? 12 : remainder;
-
-  const pct = streakLoading ? 0 : Math.min((monthsThisYear / 12) * 100, 100);
-
-  return (
-    <View
-      style={{
-        marginTop: 12,
-        backgroundColor: COLORS.cardAlt,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        borderRadius: 14,
-        paddingVertical: 12,
-        paddingHorizontal: 14,
-        width: "100%",
-      }}
-    >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 8,
-        }}
-      >
-        <View
-          style={{
-            paddingHorizontal: 12,
-            paddingVertical: 6,
-            borderRadius: 999,
-            backgroundColor: "rgba(198,166,100,0.18)",
-            borderWidth: 1,
-            borderColor: "rgba(198,166,100,0.35)",
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 10,
-              color: "#C6A664",
-              letterSpacing: 1.4,
-              fontFamily: FONT_OBLIVION,
-              fontWeight: "900",
-            }}
-          >
-            STREAK
-          </Text>
-        </View>
-
-        <Text
-          style={{
-            fontSize: 11,
-            color: COLORS.textSecondary,
-            letterSpacing: 1.2,
-            fontFamily: FONT_OBLIVION,
-          }}
-        >
-          {streakLoading ? "—" : `${monthsThisYear}/12`}
-        </Text>
-
-        <Text
-          style={{
-            fontSize: 11,
-            color: COLORS.textSecondary,
-            letterSpacing: 1.2,
-            fontFamily: FONT_OBLIVION,
-          }}
-        >
-          Year {yearNumber}
-        </Text>
-      </View>
-
-      <View style={block.progressRail}>
-        <View style={[block.progressFill, { width: `${pct}%` }]} />
-      </View>
-    </View>
-  );
-};
-
       {/* Support button */}
       {!isOwnProfile && profile && currentUserId && (
         <View style={{ marginTop: 12 }}>
@@ -3303,138 +3218,140 @@ const renderHero = () => {
             </View>
           ) : null}
 
-          {/* Filmmaking streak (Year-by-year) */}
-          <View style={{ marginTop: isMobileLike ? 10 : 12 }}>
-            {(() => {
-              const s = streakLoading ? 0 : Math.max(0, Number(streak || 0));
+         {/* ✅ Mobile: put edit card BEFORE About (inside hero) */}
+{isMobileLike ? (
+  <View style={{ width: "100%", marginTop: 12 }}>
+    {renderEditProfileCard()}
+  </View>
+) : null}
 
-              // Full years completed (12 months each)
-              const fullYears = Math.floor(s / 12);
+{/* ✅ About + Streaks (single compact card) */}
+{(bio?.trim()?.length || sideRoles.length || isOwnProfile || streakLoading || (Number(streak || 0) > 0)) ? (
+  <View style={[styles.aboutCard, { marginTop: 12 }]}>
+    <Text style={styles.aboutTitle}>About</Text>
 
-              // Months into the current year (0..11)
-              const remainder = s % 12;
+    {/* ✅ Streaks live INSIDE About */}
+    <View style={{ marginTop: 10 }}>
+      {(() => {
+        const s = streakLoading ? 0 : Math.max(0, Number(streak || 0));
+        const fullYears = Math.floor(s / 12);
+        const remainder = s % 12;
+        const yearsToShow = Math.max(1, fullYears + 1);
 
-              // Always show the current “building” year.
-              // If s === 12 exactly -> Year 1 full + Year 2 starts at 0/12
-              const yearsToShow = Math.max(1, fullYears + 1);
+        return Array.from({ length: yearsToShow }).map((_, idx) => {
+          const yearNumber = idx + 1;
+          const isCompletedYear = yearNumber <= fullYears;
+          const monthsThisYear = isCompletedYear ? 12 : remainder;
+          const pct = streakLoading ? 0 : Math.min((monthsThisYear / 12) * 100, 100);
 
-              return Array.from({ length: yearsToShow }).map((_, idx) => {
-                const yearNumber = idx + 1;
+          return (
+            <View key={`year-${yearNumber}`} style={{ marginTop: idx === 0 ? 0 : 12 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: 6,
+                  flexWrap: "wrap",
+                  rowGap: 6,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: COLORS.textSecondary,
+                    letterSpacing: 1.4,
+                    fontFamily: FONT_OBLIVION,
+                  }}
+                >
+                  Filmmaking streak
+                </Text>
 
-                const isCompletedYear = yearNumber <= fullYears;
-                const monthsThisYear = isCompletedYear ? 12 : remainder;
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: COLORS.textSecondary,
+                    letterSpacing: 1.4,
+                    fontFamily: FONT_OBLIVION,
+                    opacity: 0.9,
+                    marginLeft: 8,
+                  }}
+                >
+                  • Year {yearNumber}
+                </Text>
 
-                const pct = streakLoading ? 0 : Math.min((monthsThisYear / 12) * 100, 100);
-
-                return (
-                  <View key={`year-${yearNumber}`} style={{ marginTop: idx === 0 ? 0 : 12 }}>
-                    {/* Filmmaking streak • Year X (same line) */}
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        marginBottom: 6,
-                        paddingHorizontal: isMobileLike ? 10 : 0,
-                        flexWrap: "wrap",
-                        rowGap: 6,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          color: COLORS.textSecondary,
-                          letterSpacing: 1.4,
-                          fontFamily: FONT_OBLIVION,
-                        }}
-                      >
-                        Filmmaking streak
-                      </Text>
-
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          color: COLORS.textSecondary,
-                          letterSpacing: 1.4,
-                          fontFamily: FONT_OBLIVION,
-                          opacity: 0.9,
-                          marginLeft: 8,
-                        }}
-                      >
-                        • Year {yearNumber}
-                      </Text>
-
-                      {isCompletedYear ? (
-                        <View
-                          style={{
-                            marginLeft: 10,
-                            paddingHorizontal: 10,
-                            paddingVertical: 4,
-                            borderRadius: 999,
-                            backgroundColor: "rgba(198,166,100,0.18)",
-                            borderWidth: 1,
-                            borderColor: "rgba(198,166,100,0.35)",
-                          }}
-                        >
-                          <Text
-                            style={{
-                              fontSize: 9,
-                              color: "#C6A664",
-                              letterSpacing: 1.2,
-                              fontFamily: FONT_OBLIVION,
-                            }}
-                          >
-                            COMPLETED
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-
-                    <View style={block.progressRail}>
-                      <View style={[block.progressFill, { width: `${pct}%` }]} />
-                    </View>
-
+                {isCompletedYear ? (
+                  <View
+                    style={{
+                      marginLeft: 10,
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
+                      borderRadius: 999,
+                      backgroundColor: "rgba(198,166,100,0.18)",
+                      borderWidth: 1,
+                      borderColor: "rgba(198,166,100,0.35)",
+                    }}
+                  >
                     <Text
                       style={{
-                        marginTop: 6,
-                        fontSize: 12,
-                        color: COLORS.textPrimary,
+                        fontSize: 9,
+                        color: "#C6A664",
+                        letterSpacing: 1.2,
                         fontFamily: FONT_OBLIVION,
-                        textAlign: "center",
                       }}
                     >
-                      {streakLoading ? "—" : `${monthsThisYear} / 12 months`}
+                      COMPLETED
                     </Text>
                   </View>
-                );
-              });
-            })()}
-          </View>
+                ) : null}
+              </View>
 
-          
-          {/* ✅ Mobile: put edit card BEFORE About (inside hero) */}
-          {isMobileLike ? (
-            <View style={{ width: "100%", marginTop: 12 }}>
-              {renderEditProfileCard()}
-            </View>
-          ) : null}
+              <View style={block.progressRail}>
+                <View style={[block.progressFill, { width: `${pct}%` }]} />
+              </View>
 
-          {/* About (now sits between Edit Profile and Showreel on mobile) */}
-          {(bio?.trim()?.length || sideRoles.length || isOwnProfile) ? (
-            <View style={[styles.aboutCard, { marginTop: 12 }]}>
-              <Text style={styles.aboutTitle}>About</Text>
-              <Text style={[styles.aboutBody, isMobileLike ? { lineHeight: 18 } : null]}>
-                {bio || "—"}
+              <Text
+                style={{
+                  marginTop: 6,
+                  fontSize: 12,
+                  color: COLORS.textPrimary,
+                  fontFamily: FONT_OBLIVION,
+                  textAlign: "center",
+                }}
+              >
+                {streakLoading ? "—" : `${monthsThisYear} / 12 months`}
               </Text>
-
-              {!!sideRoles.length && (
-                <Text style={[styles.aboutBody, { marginTop: 8, fontStyle: "italic" }]}>
-                  <Text style={{ fontWeight: "900" }}>Side roles: </Text>
-                  {sideRoles.join(", ")}
-                </Text>
-              )}
             </View>
-          ) : null}
+          );
+        });
+      })()}
+    </View>
+
+    {/* ✅ Subtle divider so streak feels “attached” */}
+    <View
+      style={{
+        height: 1,
+        backgroundColor: COLORS.border,
+        opacity: 0.7,
+        marginTop: 12,
+        marginBottom: 10,
+      }}
+    />
+
+    {/* ✅ Bio */}
+    <Text style={[styles.aboutBody, isMobileLike ? { lineHeight: 18 } : null]}>
+      {bio || "—"}
+    </Text>
+
+    {!!sideRoles.length && (
+      <Text style={[styles.aboutBody, { marginTop: 8, fontStyle: "italic" }]}>
+        <Text style={{ fontWeight: "900" }}>Side roles: </Text>
+        {sideRoles.join(", ")}
+      </Text>
+    )}
+  </View>
+) : null}
+
         </View>
       </View>
     </View>
