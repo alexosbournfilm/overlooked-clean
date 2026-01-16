@@ -2703,6 +2703,113 @@ export default function ProfileScreen() {
     }
   };
 /* ---------- RENDERERS ---------- */
+
+// ✅ Must be OUTSIDE renderHero so it can be used anywhere (including MAIN RENDER if needed)
+const renderEditProfileCard = () => {
+  const level = displayLevel || 1;
+  const xp = displayXp || 0;
+  const ringColor = getRingColorForLevel(level);
+  const title = (displayTitle || defaultTitle).toUpperCase();
+
+  return (
+    <View style={[styles.infoCard, { marginTop: 12 }]}>
+      {/* Buttons */}
+      <View style={[styles.infoButtons, { marginTop: 0 }]}>
+        {isOwnProfile ? (
+          <TouchableOpacity
+            style={styles.btnPrimary}
+            onPress={() => setShowEditModal(true)}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.btnPrimaryText}>Edit Profile</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.btnPrimary}
+            onPress={startOneToOneChat}
+            disabled={startingChat}
+            activeOpacity={0.85}
+          >
+            {startingChat ? (
+              <ActivityIndicator color="#000" />
+            ) : (
+              <Text style={styles.btnPrimaryText}>Message</Text>
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Support button */}
+      {!isOwnProfile && profile && currentUserId && (
+        <View style={{ marginTop: 12 }}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={async () => {
+              const targetIdToSupport = profile?.id;
+              if (!targetIdToSupport) return;
+
+              if (isSupporting) {
+                const { error } = await unsupportUser(targetIdToSupport);
+                if (!error) {
+                  setIsSupporting(false);
+                  setSupportersCount((n) => Math.max(0, n - 1));
+                }
+              } else {
+                const { error } = await supportUser(targetIdToSupport);
+                if (!error) {
+                  setIsSupporting(true);
+                  setSupportersCount((n) => n + 1);
+                }
+              }
+            }}
+            style={[
+              {
+                paddingVertical: 12,
+                paddingHorizontal: 22,
+                borderRadius: 999,
+                alignItems: "center",
+                justifyContent: "center",
+                shadowColor: "#000",
+                shadowOpacity: 0.15,
+                shadowRadius: 6,
+                shadowOffset: { width: 0, height: 3 },
+                elevation: 3,
+                width: "100%",
+              },
+              isSupporting
+                ? { backgroundColor: "#1C1C1C", borderWidth: 1, borderColor: "#444" }
+                : { backgroundColor: COLORS.primary },
+            ]}
+          >
+            <Text
+              style={{
+                fontSize: 16,
+                fontWeight: "800",
+                color: isSupporting ? "#F7DFA6" : "#000",
+                letterSpacing: 0.5,
+              }}
+            >
+              {isSupporting ? "Supporting" : "Support"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Gamification */}
+      <View style={{ marginTop: 10, alignItems: "center" }}>
+        <Text style={[styles.gamifyTitle, { color: ringColor }]} numberOfLines={1}>
+          {title}
+        </Text>
+        <View style={styles.gamifyRow}>
+          <Text style={styles.gamifyLevel}>Lv {level}</Text>
+          <View style={styles.gamifyDot} />
+          <Text style={styles.gamifyXp}>{xp} XP</Text>
+        </View>
+      </View>
+    </View>
+  );
+};
+
 const renderHero = () => {
   const avatarUrl = image || profile?.avatar_url || null;
   const heroBg = avatarUrl ? addBuster(avatarUrl) : null;
@@ -2743,12 +2850,12 @@ const renderHero = () => {
       >
         {/* LEFT SIDE */}
         <View
-  style={[
-    styles.heroLeft,
-    isMobileLike ? styles.heroLeftMobile : styles.heroLeftDesktop,
-    isMobileLike ? { width: "100%", flex: 0 } : null, // ✅ key line
-  ]}
->
+          style={[
+            styles.heroLeft,
+            isMobileLike ? styles.heroLeftMobile : styles.heroLeftDesktop,
+            isMobileLike ? { width: "100%", flex: 0 } : null, // ✅ key line
+          ]}
+        >
           <ImageBackground
             source={heroBg ? { uri: heroBg } : undefined}
             style={[
@@ -2786,7 +2893,12 @@ const renderHero = () => {
                     styles.heroMeta,
                     isMobileLike
                       ? { fontSize: 12, marginTop: 8, letterSpacing: 1.2, lineHeight: 16 }
-                      : null,
+                      : {
+                          fontSize: 16, // ✅ bigger on web
+                          letterSpacing: 3, // ✅ more cinematic
+                          marginBottom: 6,
+                          opacity: 0.95,
+                        },
                   ]}
                   numberOfLines={1}
                 >
@@ -2797,7 +2909,7 @@ const renderHero = () => {
                   style={[
                     styles.heroMeta,
                     isMobileLike
-                      ? { fontSize: 12, marginTop: 8, letterSpacing: 1.2, lineHeight: 16 }
+                      ? { fontSize: 16, marginTop: 8, letterSpacing: 1.2, lineHeight: 16 }
                       : null,
                   ]}
                   numberOfLines={2}
@@ -2925,62 +3037,64 @@ const renderHero = () => {
                 </View>
               </View>
 
-              {/* ✅ DESKTOP ONLY: counts stay here */}
+              {/* ✅ DESKTOP ONLY: counts stay here (UPDATED: centered + tighter) */}
               {!isMobileLike && (
-                <View style={{ flexDirection: "row", gap: 26 }}>
-                  <TouchableOpacity
-                    onPress={() => setConnectionsModalVisible(true)}
-                    style={{ alignItems: "center", minWidth: 92 }}
-                    activeOpacity={0.85}
-                  >
-                    <Text
-                      style={{
-                        color: COLORS.textPrimary,
-                        fontWeight: "900",
-                        fontFamily: FONT_OBLIVION,
-                        letterSpacing: 1,
-                        fontSize: 16, // a bit larger on desktop
-                      }}
+                <View style={{ marginTop: 14, alignItems: "center", justifyContent: "center" }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 18 }}>
+                    <TouchableOpacity
+                      onPress={() => setConnectionsModalVisible(true)}
+                      style={{ alignItems: "center", minWidth: 92, paddingVertical: 4 }}
+                      activeOpacity={0.85}
                     >
-                      {supportersCount}
-                    </Text>
-                    <Text
-                      style={{
-                        color: COLORS.textSecondary,
-                        fontSize: 13,
-                        fontFamily: FONT_OBLIVION,
-                      }}
-                    >
-                      Supporters
-                    </Text>
-                  </TouchableOpacity>
+                      <Text
+                        style={{
+                          color: COLORS.textPrimary,
+                          fontWeight: "900",
+                          fontFamily: FONT_OBLIVION,
+                          letterSpacing: 1,
+                          fontSize: 14, // ✅ slightly smaller so it sits nicely under the name
+                        }}
+                      >
+                        {supportersCount}
+                      </Text>
+                      <Text
+                        style={{
+                          color: COLORS.textSecondary,
+                          fontSize: 12,
+                          fontFamily: FONT_OBLIVION,
+                        }}
+                      >
+                        Supporters
+                      </Text>
+                    </TouchableOpacity>
 
-                  <TouchableOpacity
-                    onPress={() => setConnectionsModalVisible(true)}
-                    style={{ alignItems: "center", minWidth: 92 }}
-                    activeOpacity={0.85}
-                  >
-                    <Text
-                      style={{
-                        color: COLORS.textPrimary,
-                        fontWeight: "900",
-                        fontFamily: FONT_OBLIVION,
-                        letterSpacing: 1,
-                        fontSize: 16,
-                      }}
+                    <TouchableOpacity
+                      onPress={() => setConnectionsModalVisible(true)}
+                      style={{ alignItems: "center", minWidth: 92, paddingVertical: 4 }}
+                      activeOpacity={0.85}
                     >
-                      {supportingCount}
-                    </Text>
-                    <Text
-                      style={{
-                        color: COLORS.textSecondary,
-                        fontSize: 13,
-                        fontFamily: FONT_OBLIVION,
-                      }}
-                    >
-                      Supporting
-                    </Text>
-                  </TouchableOpacity>
+                      <Text
+                        style={{
+                          color: COLORS.textPrimary,
+                          fontWeight: "900",
+                          fontFamily: FONT_OBLIVION,
+                          letterSpacing: 1,
+                          fontSize: 14,
+                        }}
+                      >
+                        {supportingCount}
+                      </Text>
+                      <Text
+                        style={{
+                          color: COLORS.textSecondary,
+                          fontSize: 12,
+                          fontFamily: FONT_OBLIVION,
+                        }}
+                      >
+                        Supporting
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               )}
             </View>
@@ -2989,118 +3103,120 @@ const renderHero = () => {
 
         {/* RIGHT SIDE */}
         <View
-  style={[
-    styles.heroRight,
-    isMobileLike ? { marginTop: 0, width: "100%", flex: 0 } : null, // ✅ key line
-  ]}
->
-          <View
-            style={[
-              styles.infoCard,
-              // ✅ Slightly more breathing room on compact phones / mobile-web
-              isMobileLike ? { paddingHorizontal: 14, paddingVertical: 14 } : null,
-            ]}
-          >
-            {/* Buttons */}
-            <View style={[styles.infoButtons, isMobileLike ? { marginTop: 0 } : null]}>
-              {isOwnProfile ? (
-                <TouchableOpacity
-                  style={styles.btnPrimary}
-                  onPress={() => setShowEditModal(true)}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.btnPrimaryText}>Edit Profile</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={styles.btnPrimary}
-                  onPress={startOneToOneChat}
-                  disabled={startingChat}
-                  activeOpacity={0.85}
-                >
-                  {startingChat ? (
-                    <ActivityIndicator color="#000" />
-                  ) : (
-                    <Text style={styles.btnPrimaryText}>Message</Text>
-                  )}
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Support button */}
-            {!isOwnProfile && profile && currentUserId && (
-              <View style={{ marginTop: isMobileLike ? 10 : 12 }}>
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  onPress={async () => {
-                    const targetIdToSupport = profile?.id; // ✅ always correct
-                    if (!targetIdToSupport) return;
-
-                    if (isSupporting) {
-                      const { error } = await unsupportUser(targetIdToSupport);
-                      if (!error) {
-                        setIsSupporting(false);
-                        setSupportersCount((n) => Math.max(0, n - 1));
-                      }
-                    } else {
-                      const { error } = await supportUser(targetIdToSupport);
-                      if (!error) {
-                        setIsSupporting(true);
-                        setSupportersCount((n) => n + 1);
-                      }
-                    }
-                  }}
-                  style={[
-                    {
-                      paddingVertical: isMobileLike ? 11 : 12,
-                      paddingHorizontal: isMobileLike ? 18 : 22,
-                      borderRadius: 999,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      shadowColor: "#000",
-                      shadowOpacity: 0.15,
-                      shadowRadius: 6,
-                      shadowOffset: { width: 0, height: 3 },
-                      elevation: 3,
-                      width: "100%",
-                    },
-                    isSupporting
-                      ? {
-                          backgroundColor: "#1C1C1C",
-                          borderWidth: 1,
-                          borderColor: "#444",
-                        }
-                      : {
-                          backgroundColor: COLORS.primary,
-                        },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      fontSize: 16,
-                      fontWeight: "800",
-                      color: isSupporting ? "#F7DFA6" : "#000",
-                      letterSpacing: 0.5,
-                    }}
+          style={[
+            styles.heroRight,
+            isMobileLike ? { marginTop: 0, width: "100%", flex: 0 } : null, // ✅ key line
+          ]}
+        >
+          {/* ✅ Desktop: show edit card at top (like before) */}
+          {!isMobileLike ? (
+            <View
+              style={[
+                styles.infoCard,
+                isMobileLike ? { paddingHorizontal: 14, paddingVertical: 14 } : null,
+              ]}
+            >
+              {/* Buttons */}
+              <View style={[styles.infoButtons, isMobileLike ? { marginTop: 0 } : null]}>
+                {isOwnProfile ? (
+                  <TouchableOpacity
+                    style={styles.btnPrimary}
+                    onPress={() => setShowEditModal(true)}
+                    activeOpacity={0.85}
                   >
-                    {isSupporting ? "Supporting" : "Support"}
-                  </Text>
-                </TouchableOpacity>
+                    <Text style={styles.btnPrimaryText}>Edit Profile</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.btnPrimary}
+                    onPress={startOneToOneChat}
+                    disabled={startingChat}
+                    activeOpacity={0.85}
+                  >
+                    {startingChat ? (
+                      <ActivityIndicator color="#000" />
+                    ) : (
+                      <Text style={styles.btnPrimaryText}>Message</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
               </View>
-            )}
 
-            {/* Gamification */}
-            <View style={[styles.gamifyWrap, isMobileLike ? { marginTop: 12 } : null]}>
-              <Text style={[styles.gamifyTitle, { color: ringColor }]} numberOfLines={1}>
-                {title}
-              </Text>
-              <View style={styles.gamifyRow}>
-                <Text style={styles.gamifyLevel}>Lv {level}</Text>
-                <View style={styles.gamifyDot} />
-                <Text style={styles.gamifyXp}>{xp} XP</Text>
+              {/* Support button */}
+              {!isOwnProfile && profile && currentUserId && (
+                <View style={{ marginTop: isMobileLike ? 10 : 12 }}>
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={async () => {
+                      const targetIdToSupport = profile?.id; // ✅ always correct
+                      if (!targetIdToSupport) return;
+
+                      if (isSupporting) {
+                        const { error } = await unsupportUser(targetIdToSupport);
+                        if (!error) {
+                          setIsSupporting(false);
+                          setSupportersCount((n) => Math.max(0, n - 1));
+                        }
+                      } else {
+                        const { error } = await supportUser(targetIdToSupport);
+                        if (!error) {
+                          setIsSupporting(true);
+                          setSupportersCount((n) => n + 1);
+                        }
+                      }
+                    }}
+                    style={[
+                      {
+                        paddingVertical: isMobileLike ? 11 : 12,
+                        paddingHorizontal: isMobileLike ? 18 : 22,
+                        borderRadius: 999,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        shadowColor: "#000",
+                        shadowOpacity: 0.15,
+                        shadowRadius: 6,
+                        shadowOffset: { width: 0, height: 3 },
+                        elevation: 3,
+                        width: "100%",
+                      },
+                      isSupporting
+                        ? {
+                            backgroundColor: "#1C1C1C",
+                            borderWidth: 1,
+                            borderColor: "#444",
+                          }
+                        : {
+                            backgroundColor: COLORS.primary,
+                          },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 16,
+                        fontWeight: "800",
+                        color: isSupporting ? "#F7DFA6" : "#000",
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      {isSupporting ? "Supporting" : "Support"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Gamification */}
+              <View style={[styles.gamifyWrap, isMobileLike ? { marginTop: 12 } : null]}>
+                <Text style={[styles.gamifyTitle, { color: ringColor }]} numberOfLines={1}>
+                  {title}
+                </Text>
+                <View style={styles.gamifyRow}>
+                  <Text style={styles.gamifyLevel}>Lv {level}</Text>
+                  <View style={styles.gamifyDot} />
+                  <Text style={styles.gamifyXp}>{xp} XP</Text>
+                </View>
               </View>
             </View>
-          </View>
+          ) : null}
 
           {/* Filmmaking streak (Year-by-year) */}
           <View style={{ marginTop: isMobileLike ? 10 : 12 }}>
@@ -3223,6 +3339,13 @@ const renderHero = () => {
                   {sideRoles.join(", ")}
                 </Text>
               )}
+            </View>
+          ) : null}
+
+          {/* ✅ Mobile: put edit card AFTER About (inside hero) */}
+          {isMobileLike ? (
+            <View style={{ width: "100%", marginTop: 12 }}>
+              {renderEditProfileCard()}
             </View>
           ) : null}
         </View>
@@ -3877,7 +4000,15 @@ return (
           }}
         >
           {renderHero()}
-          {renderFeaturedFilm()}
+
+{/* ✅ Mobile + mobile-web: put Edit Profile card AFTER About (inside hero) but BEFORE Showreel */}
+{isMobileLike ? (
+  <View style={{ width: "100%", marginTop: 12 }}>
+    {renderEditProfileCard()}
+  </View>
+) : null}
+
+{renderFeaturedFilm()}
           {renderEditorialPortfolio()}
           {renderSubmissionsSection()}
         </View>
