@@ -2739,6 +2739,91 @@ const renderEditProfileCard = () => {
         )}
       </View>
 
+      const renderStreakBarInline = () => {
+  const s = streakLoading ? 0 : Math.max(0, Number(streak || 0));
+
+  const fullYears = Math.floor(s / 12);
+  const remainder = s % 12;
+
+  const yearNumber = Math.max(1, fullYears + 1);
+  const monthsThisYear = fullYears >= yearNumber ? 12 : remainder;
+
+  const pct = streakLoading ? 0 : Math.min((monthsThisYear / 12) * 100, 100);
+
+  return (
+    <View
+      style={{
+        marginTop: 12,
+        backgroundColor: COLORS.cardAlt,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        borderRadius: 14,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        width: "100%",
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 8,
+        }}
+      >
+        <View
+          style={{
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderRadius: 999,
+            backgroundColor: "rgba(198,166,100,0.18)",
+            borderWidth: 1,
+            borderColor: "rgba(198,166,100,0.35)",
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 10,
+              color: "#C6A664",
+              letterSpacing: 1.4,
+              fontFamily: FONT_OBLIVION,
+              fontWeight: "900",
+            }}
+          >
+            STREAK
+          </Text>
+        </View>
+
+        <Text
+          style={{
+            fontSize: 11,
+            color: COLORS.textSecondary,
+            letterSpacing: 1.2,
+            fontFamily: FONT_OBLIVION,
+          }}
+        >
+          {streakLoading ? "—" : `${monthsThisYear}/12`}
+        </Text>
+
+        <Text
+          style={{
+            fontSize: 11,
+            color: COLORS.textSecondary,
+            letterSpacing: 1.2,
+            fontFamily: FONT_OBLIVION,
+          }}
+        >
+          Year {yearNumber}
+        </Text>
+      </View>
+
+      <View style={block.progressRail}>
+        <View style={[block.progressFill, { width: `${pct}%` }]} />
+      </View>
+    </View>
+  );
+};
+
       {/* Support button */}
       {!isOwnProfile && profile && currentUserId && (
         <View style={{ marginTop: 12 }}>
@@ -3326,21 +3411,7 @@ const renderHero = () => {
             })()}
           </View>
 
-          {/* About */}
-          {(bio?.trim()?.length || sideRoles.length || isOwnProfile) ? (
-            <View style={[styles.aboutCard, isMobileLike ? { marginTop: 10 } : null]}>
-              <Text style={styles.aboutTitle}>About</Text>
-              <Text style={[styles.aboutBody, isMobileLike ? { lineHeight: 18 } : null]}>
-                {bio || "—"}
-              </Text>
-              {!!sideRoles.length && (
-                <Text style={[styles.aboutBody, { marginTop: 8, fontStyle: "italic" }]}>
-                  <Text style={{ fontWeight: "900" }}>Side roles: </Text>
-                  {sideRoles.join(", ")}
-                </Text>
-              )}
-            </View>
-          ) : null}
+          
           {/* ✅ Mobile: put edit card BEFORE About (inside hero) */}
           {isMobileLike ? (
             <View style={{ width: "100%", marginTop: 12 }}>
