@@ -43,9 +43,6 @@ import * as FileSystem from "expo-file-system";
 import { Buffer } from "buffer";
 import { useMonthlyStreak } from "../lib/useMonthlyStreak";
 
-
-
-
 /* ---------- Noir palette ---------- */
 const GOLD = '#C6A664';
 const COLORS = {
@@ -71,9 +68,15 @@ const FONT_OBLIVION =
 
 /* ---------- layout constants ---------- */
 const PAGE_MAX = 1160;
+
+// ✅ Slightly roomier on phones + “mobile web” (better breathing room)
 const SIDE_PAD_DESKTOP = 20;
-const SIDE_PAD_MOBILE = 14;
-const GRID_GAP = 16;
+const SIDE_PAD_MOBILE = 16;
+
+// ✅ Mobile spacing was feeling tight; 14 reads cleaner while still premium
+const GRID_GAP = 14;
+
+// ✅ Cap widths remain the same (but you’ll use responsive maxW later)
 const SHOWREEL_MAX_W = 760;
 const SHOWREEL_MAX_W_MOBILE = 600;
 
@@ -348,11 +351,11 @@ function ShowreelVideoInline({
   const progressRef = useRef<View>(null);
 
   // Comments (submission modal)
-const [comments, setComments] = useState<SubmissionCommentRow[]>([]);
-const [loadingComments, setLoadingComments] = useState(false);
-const [commentText, setCommentText] = useState("");
-const [sendingComment, setSendingComment] = useState(false);
-const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+  const [comments, setComments] = useState<SubmissionCommentRow[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [sendingComment, setSendingComment] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
 
   // ✅ Track fullscreen so we can swap COVER -> CONTAIN (no crop)
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -823,7 +826,6 @@ interface SubmissionCommentRow {
   } | null;
 }
 
-
 interface ShowreelRow {
   id: string;
   user_id: string;
@@ -896,8 +898,28 @@ export default function ProfileScreen() {
   const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+
+  // Responsive flags
   const isMobile = width < 768;
-  const horizontalPad = isMobile ? SIDE_PAD_MOBILE : SIDE_PAD_DESKTOP;
+
+  // Treat narrow web viewports like mobile
+  const isMobileLike =
+    isMobile || (Platform.OS === 'web' && width < 520);
+
+  // Extra-compact phones / very narrow web
+  const isCompact = width < 380;
+
+  // ✅ Horizontal padding tuned for: phone, small phone, and “mobile web”
+  const horizontalPad = isMobileLike
+    ? (isCompact ? 12 : SIDE_PAD_MOBILE)
+    : SIDE_PAD_DESKTOP;
+
+  // ✅ Use a slightly tighter content max on mobile-web so it feels like a true mobile layout
+ const pageMaxEffective = isMobileLike ? Math.min(PAGE_MAX, 760) : PAGE_MAX;
+
+  // ✅ A little extra bottom breathing room on mobile (esp. Safari / notches)
+  const bottomPad = (isMobileLike ? 52 : 40) + Math.max(insets.bottom, 10);
+
   const { refreshProfile } = useAuth();
   const savingRef = useRef(false);
 
@@ -921,9 +943,9 @@ export default function ProfileScreen() {
     }, [refreshStreak])
   );
 
-// ✅ single source of truth for which profile should load
-const targetIdParam: string | null =
-  route.params?.userId ?? route.params?.user?.id ?? null;
+  // ✅ single source of truth for which profile should load
+  const targetIdParam: string | null =
+    route.params?.userId ?? route.params?.user?.id ?? null;
 
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [mainRoleName, setMainRoleName] = useState('');
@@ -981,13 +1003,13 @@ const targetIdParam: string | null =
   const [loadingPortfolio, setLoadingPortfolio] = useState(false);
 
   // Submissions (monthly films)
-const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
-const [loadingSubmissions, setLoadingSubmissions] = useState(false);
-const [submissionModalOpen, setSubmissionModalOpen] = useState(false);
-const [thumbUploading, setThumbUploading] = useState(false);
-const [thumbError, setThumbError] = useState<string | null>(null);
-const [activeSubmission, setActiveSubmission] = useState<SubmissionRow | null>(null);
-const [thumbUploadingId, setThumbUploadingId] = useState<string | null>(null);
+  const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+  const [submissionModalOpen, setSubmissionModalOpen] = useState(false);
+  const [thumbUploading, setThumbUploading] = useState(false);
+  const [thumbError, setThumbError] = useState<string | null>(null);
+  const [activeSubmission, setActiveSubmission] = useState<SubmissionRow | null>(null);
+  const [thumbUploadingId, setThumbUploadingId] = useState<string | null>(null);
 
   // audio
   const soundRef = useRef<Audio.Sound | null>(null);
@@ -995,15 +1017,13 @@ const [thumbUploadingId, setThumbUploadingId] = useState<string | null>(null);
 
   // image viewer
   const [imageViewerUrls, setImageViewerUrls] = useState<string[]>([]);
+
   // Connections (followers / following)
-const [supportersCount, setSupportersCount] = useState(0); // people supporting YOU
-const [supportingCount, setSupportingCount] = useState(0); // people YOU support
-const [isSupporting, setIsSupporting] = useState(false);   // whether YOU support THIS profile
-const [connectionsModalVisible, setConnectionsModalVisible] = useState(false);
-const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
-
-
+  const [supportersCount, setSupportersCount] = useState(0); // people supporting YOU
+  const [supportingCount, setSupportingCount] = useState(0); // people YOU support
+  const [isSupporting, setIsSupporting] = useState(false);   // whether YOU support THIS profile
+  const [connectionsModalVisible, setConnectionsModalVisible] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const [imageViewerIndex, setImageViewerIndex] = useState<number | null>(null);
 
@@ -1083,179 +1103,177 @@ const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     fetchCreativeRoles();
   }, []);
 
-/* ---------- profile loader with job wiring ---------- */
-const fetchProfile = useCallback(async () => {
-  if (savingRef.current) return;
+  /* ---------- profile loader with job wiring ---------- */
+  const fetchProfile = useCallback(async () => {
+    if (savingRef.current) return;
 
-  setIsLoading(true);
-  try {
-    // 1) GET AUTH USER
-    const {
-      data: { user: authUser },
-      error: authErr,
-    } = await supabase.auth.getUser();
-
-    // If auth isn't ready yet → STOP here
-    if (authErr || !authUser || !authUser.id) {
-      console.log("Auth not ready yet — delaying profile load...");
-      return; // <-- IMPORTANT: no setIsLoading(false) here anymore
-    }
-
-    // Auth is valid now
-    setCurrentUserId(authUser.id);
-
-    const targetId = targetIdParam ?? authUser.id;
-    const own = !viewedUserId || viewedUserId === authUser.id;
-    setIsOwnProfile(own);
-
-    // 2) LOAD PROFILE DATA
-    const { data, error: userError } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", targetId)
-      .maybeSingle();
-
-    if (userError || !data) {
-      Alert.alert("Error loading profile");
-      return;
-    }
-
-    const pd = data as ProfileData;
-    setProfile(pd);
-
-    // 3) SUPPORT SYSTEM (only run when authUser.id EXISTS)
+    setIsLoading(true);
     try {
-      const { count: supportersRaw } = await supabase
-        .from("user_supports")
-        .select("supported_id", { count: "exact", head: true })
-        .eq("supported_id", targetId);
+      // 1) GET AUTH USER
+      const {
+        data: { user: authUser },
+        error: authErr,
+      } = await supabase.auth.getUser();
 
-      setSupportersCount(supportersRaw ?? 0);
+      // If auth isn't ready yet → STOP here
+      if (authErr || !authUser || !authUser.id) {
+        console.log("Auth not ready yet — delaying profile load...");
+        return; // <-- IMPORTANT: no setIsLoading(false) here anymore
+      }
 
-      const { count: supportingRaw } = await supabase
-        .from("user_supports")
-        .select("supporter_id", { count: "exact", head: true })
-        .eq("supporter_id", targetId);
+      // Auth is valid now
+      setCurrentUserId(authUser.id);
 
-      setSupportingCount(supportingRaw ?? 0);
+      const targetId = targetIdParam ?? authUser.id;
+      const own = !viewedUserId || viewedUserId === authUser.id;
+      setIsOwnProfile(own);
 
-      if (!own) {
-        const { count: supportCheck } = await supabase
+      // 2) LOAD PROFILE DATA
+      const { data, error: userError } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", targetId)
+        .maybeSingle();
+
+      if (userError || !data) {
+        Alert.alert("Error loading profile");
+        return;
+      }
+
+      const pd = data as ProfileData;
+      setProfile(pd);
+
+      // 3) SUPPORT SYSTEM (only run when authUser.id EXISTS)
+      try {
+        const { count: supportersRaw } = await supabase
           .from("user_supports")
           .select("supported_id", { count: "exact", head: true })
-          .eq("supporter_id", authUser.id)
           .eq("supported_id", targetId);
 
-        setIsSupporting((supportCheck ?? 0) > 0);
-      } else {
-        setIsSupporting(false);
+        setSupportersCount(supportersRaw ?? 0);
+
+        const { count: supportingRaw } = await supabase
+          .from("user_supports")
+          .select("supporter_id", { count: "exact", head: true })
+          .eq("supporter_id", targetId);
+
+        setSupportingCount(supportingRaw ?? 0);
+
+        if (!own) {
+          const { count: supportCheck } = await supabase
+            .from("user_supports")
+            .select("supported_id", { count: "exact", head: true })
+            .eq("supporter_id", authUser.id)
+            .eq("supported_id", targetId);
+
+          setIsSupporting((supportCheck ?? 0) > 0);
+        } else {
+          setIsSupporting(false);
+        }
+      } catch (e) {
+        console.log("Support load error:", e);
       }
-    } catch (e) {
-      console.log("Support load error:", e);
-    }
 
-    // 4) REMAINING PROFILE LOGIC (unchanged)
-    setFullName(pd.full_name || "");
-    setMainRole(
-      typeof pd.main_role_id === "number"
-        ? pd.main_role_id
-        : pd.main_role_id != null
-        ? Number(pd.main_role_id) || null
-        : null
-    );
-    setSideRoles(Array.isArray(pd.side_roles) ? (pd.side_roles as string[]).filter(Boolean) : []);
-    setCityId(
-      typeof pd.city_id === "number"
-        ? pd.city_id
-        : pd.city_id != null
-        ? Number(pd.city_id) || null
-        : null
-    );
-    setImage(pd.avatar_url || null);
-    setBio(pd.bio ?? "");
+      // 4) REMAINING PROFILE LOGIC (unchanged)
+      setFullName(pd.full_name || "");
+      setMainRole(
+        typeof pd.main_role_id === "number"
+          ? pd.main_role_id
+          : pd.main_role_id != null
+          ? Number(pd.main_role_id) || null
+          : null
+      );
+      setSideRoles(Array.isArray(pd.side_roles) ? (pd.side_roles as string[]).filter(Boolean) : []);
+      setCityId(
+        typeof pd.city_id === "number"
+          ? pd.city_id
+          : pd.city_id != null
+          ? Number(pd.city_id) || null
+          : null
+      );
+      setImage(pd.avatar_url || null);
+      setBio(pd.bio ?? "");
 
-    const existing = (pd.portfolio_url || "").trim();
-    if (existing) {
-      if (looksLikeYouTube(existing)) {
+      const existing = (pd.portfolio_url || "").trim();
+      if (existing) {
+        if (looksLikeYouTube(existing)) {
+          setPortfolioChoice("youtube");
+          setPortfolioUrl(existing);
+          setMp4MainUrl("");
+          setMp4MainName("");
+        } else if (looksLikeVideo(existing) || existing.startsWith("http")) {
+          setPortfolioChoice("mp4");
+          setMp4MainUrl(`${existing}${ts()}`);
+          setMp4MainName(existing.split("/").pop() || "Showreel");
+          setPortfolioUrl("");
+        } else {
+          setPortfolioChoice("youtube");
+          setPortfolioUrl(existing);
+        }
+      } else {
         setPortfolioChoice("youtube");
-        setPortfolioUrl(existing);
+        setPortfolioUrl("");
         setMp4MainUrl("");
         setMp4MainName("");
-      } else if (looksLikeVideo(existing) || existing.startsWith("http")) {
-        setPortfolioChoice("mp4");
-        setMp4MainUrl(`${existing}${ts()}`);
-        setMp4MainName(existing.split("/").pop() || "Showreel");
-        setPortfolioUrl("");
-      } else {
-        setPortfolioChoice("youtube");
-        setPortfolioUrl(existing);
       }
-    } else {
-      setPortfolioChoice("youtube");
-      setPortfolioUrl("");
-      setMp4MainUrl("");
-      setMp4MainName("");
+
+      if (pd.main_role_id != null) {
+        const { data: roleData } = await supabase
+          .from("creative_roles")
+          .select("name")
+          .eq("id", Number(pd.main_role_id))
+          .maybeSingle<{ name: string }>();
+        setMainRoleName(roleData?.name ?? "");
+      } else {
+        setMainRoleName("");
+      }
+
+      if (pd.city_id != null) {
+        const { data: cityData } = await supabase
+          .from("cities")
+          .select("name, country_code")
+          .eq("id", Number(pd.city_id))
+          .maybeSingle<{ name?: string; country_code?: string }>();
+        const label = cityData?.name ?? "";
+        setCityName(
+          label ? (cityData?.country_code ? `${label}, ${cityData.country_code}` : label) : ""
+        );
+      } else {
+        setCityName("");
+      }
+
+      await loadGamificationMeta(pd);
+
+      if (targetId) {
+        await Promise.all([
+          fetchPortfolioItems(targetId),
+          fetchShowreelList(targetId),
+          fetchUserSubmissions(targetId),
+        ]);
+      }
+
+      if (own) {
+        await fetchMyJobsWithApplicants(authUser.id);
+        setUserJobs([]);
+        setLoadingUserJobs(false);
+        setAlreadyAppliedJobIds([]);
+      } else {
+        setMyJobs([]);
+        await fetchUserJobs(targetId, authUser.id);
+      }
+    } catch (e) {
+      console.log("fetchProfile fatal:", e);
+    } finally {
+      setIsLoading(false);
     }
-
-    if (pd.main_role_id != null) {
-      const { data: roleData } = await supabase
-        .from("creative_roles")
-        .select("name")
-        .eq("id", Number(pd.main_role_id))
-        .maybeSingle<{ name: string }>();
-      setMainRoleName(roleData?.name ?? "");
-    } else {
-      setMainRoleName("");
-    }
-
-    if (pd.city_id != null) {
-      const { data: cityData } = await supabase
-        .from("cities")
-        .select("name, country_code")
-        .eq("id", Number(pd.city_id))
-        .maybeSingle<{ name?: string; country_code?: string }>();
-      const label = cityData?.name ?? "";
-      setCityName(
-        label ? (cityData?.country_code ? `${label}, ${cityData.country_code}` : label) : ""
-      );
-    } else {
-      setCityName("");
-    }
-
-    await loadGamificationMeta(pd);
-
-    if (targetId) {
-      await Promise.all([
-        fetchPortfolioItems(targetId),
-        fetchShowreelList(targetId),
-        fetchUserSubmissions(targetId),
-      ]);
-    }
-
-    if (own) {
-      await fetchMyJobsWithApplicants(authUser.id);
-      setUserJobs([]);
-      setLoadingUserJobs(false);
-      setAlreadyAppliedJobIds([]);
-    } else {
-      setMyJobs([]);
-      await fetchUserJobs(targetId, authUser.id);
-    }
-  } catch (e) {
-    console.log("fetchProfile fatal:", e);
-  } finally {
-    setIsLoading(false);
-  }
-}, [targetIdParam, loadGamificationMeta]);
-
+  }, [targetIdParam, loadGamificationMeta]);
 
   useFocusEffect(
     useCallback(() => {
       fetchProfile();
     }, [fetchProfile])
   );
-
-  /* ---------- user_showreels CRUD ---------- */
+    /* ---------- user_showreels CRUD ---------- */
 
   const fetchShowreelList = async (userId: string) => {
     const { data, error } = await supabase
@@ -1419,126 +1437,125 @@ const fetchProfile = useCallback(async () => {
   };
 
   const fetchUserSubmissions = async (userId: string) => {
-  try {
-    setLoadingSubmissions(true);
-    
+    try {
+      setLoadingSubmissions(true);
 
-    const targetUserId = userId || viewedUserId;
-    if (!targetUserId) {
-      setSubmissions([]);
-      return;
-    }
+      const targetUserId = userId || viewedUserId;
+      if (!targetUserId) {
+        setSubmissions([]);
+        return;
+      }
 
-    const { data, error } = await supabase
-      .from("submissions")
-      .select("*") // <-- STOP GUESSING. PULL EVERYTHING.
-      .eq("user_id", targetUserId)
-      .order("submitted_at", { ascending: false });
+      const { data, error } = await supabase
+        .from("submissions")
+        .select("*") // <-- STOP GUESSING. PULL EVERYTHING.
+        .eq("user_id", targetUserId)
+        .order("submitted_at", { ascending: false });
 
-    if (error) {
-      console.warn("fetchUserSubmissions error:", error.message);
-      setSubmissions([]);
-      return;
-    }
+      if (error) {
+        console.warn("fetchUserSubmissions error:", error.message);
+        setSubmissions([]);
+        return;
+      }
 
-    const rows = (data || []) as any[];
+      const rows = (data || []) as any[];
 
-    // 🔥 PROOF LOG: look at ONE mp4 row in the console and you’ll know instantly what column is used.
-    if (rows.length) {
-      console.log("[SUBMISSIONS raw sample]", rows[0]);
-    }
+      // 🔥 PROOF LOG: look at ONE mp4 row in the console and you’ll know instantly what column is used.
+      if (rows.length) {
+        console.log("[SUBMISSIONS raw sample]", rows[0]);
+      }
 
-    const stripQuery = (u: string) => (u ? u.split("?")[0] : u);
+      const stripQuery = (u: string) => (u ? u.split("?")[0] : u);
 
-    const pathFromPublicUrl = (u: string) => {
-      const clean = stripQuery(u);
-      const m = clean.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
-      if (!m) return null;
-      return { bucket: m[1], path: m[2] };
-    };
+      const pathFromPublicUrl = (u: string) => {
+        const clean = stripQuery(u);
+        const m = clean.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
+        if (!m) return null;
+        return { bucket: m[1], path: m[2] };
+      };
 
-    const pickVideoField = (s: any) => {
-      // try ALL common names (because your DB may not match what we think)
-      return (
-        s.video_url ||
-        s.video_path ||
-        s.file_url ||
-        s.file_path ||
-        s.mp4_url ||
-        s.mp4_path ||
-        s.storage_url ||
-        s.storage_path ||
-        s.url ||
-        s.path ||
-        ""
-      ).toString().trim();
-    };
+      const pickVideoField = (s: any) => {
+        // try ALL common names (because your DB may not match what we think)
+        return (
+          s.video_url ||
+          s.video_path ||
+          s.file_url ||
+          s.file_path ||
+          s.mp4_url ||
+          s.mp4_path ||
+          s.storage_url ||
+          s.storage_path ||
+          s.url ||
+          s.path ||
+          ""
+        ).toString().trim();
+      };
 
-    const withPlayableUrls: SubmissionRow[] = await Promise.all(
-      rows.map(async (s) => {
-        const raw = pickVideoField(s);
+      const withPlayableUrls: SubmissionRow[] = await Promise.all(
+        rows.map(async (s) => {
+          const raw = pickVideoField(s);
 
-        // If nothing exists, this is the REAL problem (upload didn’t store a reference)
-        if (!raw) return s as SubmissionRow;
+          // If nothing exists, this is the REAL problem (upload didn’t store a reference)
+          if (!raw) return s as SubmissionRow;
 
-        // If already http(s):
-        if (/^https?:\/\//i.test(raw)) {
-          const pub = pathFromPublicUrl(raw);
+          // If already http(s):
+          if (/^https?:\/\//i.test(raw)) {
+            const pub = pathFromPublicUrl(raw);
 
-          // Not a supabase public object url → just use directly
-          if (!pub) {
+            // Not a supabase public object url → just use directly
+            if (!pub) {
+              return { ...(s as SubmissionRow), video_url: stripQuery(raw) };
+            }
+
+            // Supabase public url → sign for reliable access
+            const { data: signed, error: signErr } = await supabase.storage
+              .from(pub.bucket)
+              .createSignedUrl(pub.path, 60 * 60);
+
+            if (!signErr && signed?.signedUrl) {
+              return { ...(s as SubmissionRow), video_url: signed.signedUrl };
+            }
+
+            console.warn("[SIGN FAIL public url]", raw, signErr?.message || "");
             return { ...(s as SubmissionRow), video_url: stripQuery(raw) };
           }
 
-          // Supabase public url → sign for reliable access
-          const { data: signed, error: signErr } = await supabase.storage
-            .from(pub.bucket)
-            .createSignedUrl(pub.path, 60 * 60);
+          // Otherwise raw is a storage path
+          const cleanPath = stripQuery(raw);
 
-          if (!signErr && signed?.signedUrl) {
-            return { ...(s as SubmissionRow), video_url: signed.signedUrl };
+          // Try films
+          const { data: signedFilms, error: signErrFilms } = await supabase.storage
+            .from("films")
+            .createSignedUrl(cleanPath, 60 * 60);
+
+          if (!signErrFilms && signedFilms?.signedUrl) {
+            return { ...(s as SubmissionRow), video_url: signedFilms.signedUrl };
           }
 
-          console.warn("[SIGN FAIL public url]", raw, signErr?.message || "");
-          return { ...(s as SubmissionRow), video_url: stripQuery(raw) };
-        }
+          // Fallback portfolios
+          const { data: signedPort, error: signErrPort } = await supabase.storage
+            .from("portfolios")
+            .createSignedUrl(cleanPath, 60 * 60);
 
-        // Otherwise raw is a storage path
-        const cleanPath = stripQuery(raw);
+          if (!signErrPort && signedPort?.signedUrl) {
+            return { ...(s as SubmissionRow), video_url: signedPort.signedUrl };
+          }
 
-        // Try films
-        const { data: signedFilms, error: signErrFilms } = await supabase.storage
-          .from("films")
-          .createSignedUrl(cleanPath, 60 * 60);
+          console.warn(
+            "[SIGN FAIL path]",
+            cleanPath,
+            signErrFilms?.message || signErrPort?.message || ""
+          );
 
-        if (!signErrFilms && signedFilms?.signedUrl) {
-          return { ...(s as SubmissionRow), video_url: signedFilms.signedUrl };
-        }
+          return s as SubmissionRow;
+        })
+      );
 
-        // Fallback portfolios
-        const { data: signedPort, error: signErrPort } = await supabase.storage
-          .from("portfolios")
-          .createSignedUrl(cleanPath, 60 * 60);
-
-        if (!signErrPort && signedPort?.signedUrl) {
-          return { ...(s as SubmissionRow), video_url: signedPort.signedUrl };
-        }
-
-        console.warn(
-          "[SIGN FAIL path]",
-          cleanPath,
-          signErrFilms?.message || signErrPort?.message || ""
-        );
-
-        return s as SubmissionRow;
-      })
-    );
-
-    setSubmissions(withPlayableUrls);
-  } finally {
-    setLoadingSubmissions(false);
-  }
-};
+      setSubmissions(withPlayableUrls);
+    } finally {
+      setLoadingSubmissions(false);
+    }
+  };
 
   /* ---------- My Jobs with applicants (own profile) ---------- */
   const fetchMyJobsWithApplicants = async (ownerId: string) => {
@@ -1578,45 +1595,45 @@ const fetchProfile = useCallback(async () => {
 
       for (const j of jobsData || []) {
         const { data: apps, error: appsErr } = await supabase
-  .from('applications')
-  .select(
-    `
-    id,
-    applied_at,
-    user:users!applications_applicant_id_fkey (
-      id,
-      full_name,
-      avatar_url,
-      xp,
-      level,
-      title,
-      banner_color
-    )
-  `
-  )
-  .eq('job_id', (j as any).id)
-  .order('applied_at', { ascending: false });
+          .from('applications')
+          .select(
+            `
+            id,
+            applied_at,
+            user:users!applications_applicant_id_fkey (
+              id,
+              full_name,
+              avatar_url,
+              xp,
+              level,
+              title,
+              banner_color
+            )
+          `
+          )
+          .eq('job_id', (j as any).id)
+          .order('applied_at', { ascending: false });
 
-if (appsErr) {
-  console.error('fetchMyJobsWithApplicants applicationsErr', appsErr);
-}
-
-const applicants: JobApplicant[] =
-  (apps || []).map((a: any) => ({
-    id: String(a.id),
-    applied_at: a.applied_at,
-    user: a.user
-      ? {
-          id: a.user.id,
-          full_name: a.user.full_name,
-          avatar_url: a.user.avatar_url,
-          xp: a.user.xp,
-          level: a.user.level,
-          title: a.user.title,
-          banner_color: a.user.banner_color,
+        if (appsErr) {
+          console.error('fetchMyJobsWithApplicants applicationsErr', appsErr);
         }
-      : null,
-  })) ?? [];
+
+        const applicants: JobApplicant[] =
+          (apps || []).map((a: any) => ({
+            id: String(a.id),
+            applied_at: a.applied_at,
+            user: a.user
+              ? {
+                  id: a.user.id,
+                  full_name: a.user.full_name,
+                  avatar_url: a.user.avatar_url,
+                  xp: a.user.xp,
+                  level: a.user.level,
+                  title: a.user.title,
+                  banner_color: a.user.banner_color,
+                }
+              : null,
+          })) ?? [];
 
         const roleJoin = (j as any).creative_roles;
         const cityJoin = (j as any).cities;
@@ -1887,7 +1904,9 @@ const applicants: JobApplicant[] =
       } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      // ✅ Spacing-friendly: keep object path deterministic and readable
       const path = `user_${user.id}/${Date.now()}_${sanitizeFileName(fileName)}`;
+
       const response = await fetch(localUri);
       const blob = await response.blob();
 
@@ -2093,7 +2112,7 @@ const applicants: JobApplicant[] =
     }
   };
 
-  /* ---------- save profile ---------- */
+   /* ---------- save profile ---------- */
 
   
 
@@ -2758,27 +2777,49 @@ const renderHero = () => {
   const title = (displayTitle || defaultTitle).toUpperCase();
   const ringColor = getRingColorForLevel(level);
 
-  return (
-    <View style={[styles.heroWrap, { paddingTop: isMobile ? 8 : 18 }]}>
-  <View
-    style={[
-      styles.heroGrid,
-      { flexDirection: isMobile ? 'column' : 'row' },
-    ]}
-  >
+  // ✅ Better mobile + mobile-web spacing: clamp hero width + consistent side padding
+  const heroPad = isMobileLike ? 14 : 20;
+  const heroMaxW = isMobileLike ? 720 : PAGE_MAX;
 
+  return (
+    <View
+      style={[
+        styles.heroWrap,
+        {
+          paddingTop: isMobileLike ? 8 : 18,
+          paddingHorizontal: heroPad,
+          alignSelf: "center",
+          width: "100%",
+          maxWidth: heroMaxW,
+        },
+      ]}
+    >
+      <View
+        style={[
+          styles.heroGrid,
+          {
+            flexDirection: isMobileLike ? "column" : "row",
+            gap: isMobileLike ? 12 : 18,
+            alignItems: "stretch",
+          },
+        ]}
+      >
         {/* LEFT SIDE */}
         <View
           style={[
             styles.heroLeft,
-            isMobile ? styles.heroLeftMobile : styles.heroLeftDesktop,
+            isMobileLike ? styles.heroLeftMobile : styles.heroLeftDesktop,
+            // ✅ Make sure it fills properly on mobile-web
+            isMobileLike ? { width: "100%" } : null,
           ]}
         >
           <ImageBackground
             source={heroBg ? { uri: heroBg } : undefined}
             style={[
               styles.heroImage,
-              isMobile ? styles.heroImageMobile : styles.heroImageDesktop,
+              isMobileLike ? styles.heroImageMobile : styles.heroImageDesktop,
+              // ✅ Avoid weird stretching on web-mobile
+              isMobileLike ? { width: "100%" } : null,
             ]}
             imageStyle={[styles.heroImageInner, { backgroundColor: bannerColor }]}
           >
@@ -2793,14 +2834,13 @@ const renderHero = () => {
 
             {/* ✔ ROLE + NAME BLOCK */}
             {!!mainRoleName && (
-              <View style={styles.roleWrap}>
+              <View style={[styles.roleWrap, isMobileLike ? { paddingHorizontal: 14 } : null]}>
                 <Text
                   style={[
-                    styles.heroRoleThin,
-                    isMobile ? { fontSize: 28, letterSpacing: 1.5 } : null,
+                    styles.heroMeta,
+                    isMobileLike ? { fontSize: 12, marginTop: 8, letterSpacing: 1.2, lineHeight: 16 } : null,
                   ]}
                   numberOfLines={1}
-                  adjustsFontSizeToFit
                 >
                   {mainRoleName.toUpperCase()}
                 </Text>
@@ -2808,9 +2848,7 @@ const renderHero = () => {
                 <Text
                   style={[
                     styles.heroMeta,
-                    isMobile
-                      ? { fontSize: 12, marginTop: 6, letterSpacing: 1.2 }
-                      : null,
+                    isMobileLike ? { fontSize: 12, marginTop: 8, letterSpacing: 1.2, lineHeight: 16 } : null,
                   ]}
                   numberOfLines={2}
                 >
@@ -2820,19 +2858,22 @@ const renderHero = () => {
               </View>
             )}
 
-            {/* ✔ NOW the Connections Row is OUTSIDE the conditional block */}
+            {/* ✔ Connections Row */}
             <View
               style={{
-                marginTop: 14,
+                marginTop: isMobileLike ? 16 : 14,
+                paddingHorizontal: isMobileLike ? 14 : 0,
                 flexDirection: "row",
-                justifyContent: "center",
-                gap: 26,
+                justifyContent: "space-evenly",
+                alignItems: "center",
+                gap: isMobileLike ? 18 : 26,
               }}
             >
               {/* Supporters */}
               <TouchableOpacity
                 onPress={() => setConnectionsModalVisible(true)}
-                style={{ alignItems: "center" }}
+                style={{ alignItems: "center", minWidth: 96, paddingVertical: isMobileLike ? 8 : 6 }}
+                activeOpacity={0.85}
               >
                 <Text
                   style={{
@@ -2859,7 +2900,8 @@ const renderHero = () => {
               {/* Supporting */}
               <TouchableOpacity
                 onPress={() => setConnectionsModalVisible(true)}
-                style={{ alignItems: "center" }}
+                style={{ alignItems: "center", minWidth: 96, paddingVertical: isMobileLike ? 8 : 6 }}
+                activeOpacity={0.85}
               >
                 <Text
                   style={{
@@ -2884,11 +2926,11 @@ const renderHero = () => {
               </TouchableOpacity>
             </View>
 
-            {/* ✔ AVATAR SECTION — now correctly placed */}
+            {/* ✔ AVATAR SECTION */}
             <View
               style={[
                 styles.avatarRingWrapper,
-                isMobile ? { bottom: 14, left: 18 } : { bottom: 24, left: 24 },
+                isMobileLike ? { bottom: 10, left: 14 } : { bottom: 24, left: 24 }
               ]}
             >
               <LinearGradient
@@ -2901,7 +2943,7 @@ const renderHero = () => {
                 end={{ x: 1, y: 1 }}
                 style={[styles.avatarRing, { borderColor: ringColor }]}
               >
-                <View style={styles.avatarInner}>
+                <View style={[styles.avatarInner, isCompact && styles.avatarInnerCompact]}>
                   {avatarUrl ? (
                     <Image
                       source={{ uri: addBuster(avatarUrl) || avatarUrl }}
@@ -2930,15 +2972,26 @@ const renderHero = () => {
         </View>
 
         {/* RIGHT SIDE */}
-        <View style={[styles.heroRight, isMobile ? { marginTop: 12 } : null]}>
-          <View style={styles.infoCard}>
-
+        <View
+          style={[
+            styles.heroRight,
+            isMobileLike ? { marginTop: 0, width: "100%" } : null,
+          ]}
+        >
+          <View
+            style={[
+              styles.infoCard,
+              // ✅ Slightly more breathing room on compact phones / mobile-web
+              isMobileLike ? { paddingHorizontal: 14, paddingVertical: 14 } : null,
+            ]}
+          >
             {/* Buttons */}
-            <View style={styles.infoButtons}>
+            <View style={[styles.infoButtons, isMobileLike ? { marginTop: 2 } : null]}>
               {isOwnProfile ? (
                 <TouchableOpacity
                   style={styles.btnPrimary}
                   onPress={() => setShowEditModal(true)}
+                  activeOpacity={0.85}
                 >
                   <Text style={styles.btnPrimaryText}>Edit Profile</Text>
                 </TouchableOpacity>
@@ -2947,6 +3000,7 @@ const renderHero = () => {
                   style={styles.btnPrimary}
                   onPress={startOneToOneChat}
                   disabled={startingChat}
+                  activeOpacity={0.85}
                 >
                   {startingChat ? (
                     <ActivityIndicator color="#000" />
@@ -2959,7 +3013,7 @@ const renderHero = () => {
 
            {/* Support button */}
 {!isOwnProfile && profile && currentUserId && (
-  <View style={{ marginTop: 12 }}>
+  <View style={{ marginTop: isMobileLike ? 10 : 12 }}>
     <TouchableOpacity
       activeOpacity={0.85}
       onPress={async () => {
@@ -2982,8 +3036,8 @@ const renderHero = () => {
 }}
       style={[
         {
-          paddingVertical: 12,
-          paddingHorizontal: 22,
+          paddingVertical: isMobileLike ? 11 : 12,
+          paddingHorizontal: isMobileLike ? 18 : 22,
           borderRadius: 999,
           alignItems: "center",
           justifyContent: "center",
@@ -2992,6 +3046,7 @@ const renderHero = () => {
           shadowRadius: 6,
           shadowOffset: { width: 0, height: 3 },
           elevation: 3,
+          width: "100%",
         },
 
         // === SUPPORTING STATE ===
@@ -3024,7 +3079,7 @@ const renderHero = () => {
 
 
             {/* Gamification */}
-            <View style={styles.gamifyWrap}>
+            <View style={[styles.gamifyWrap, isMobileLike ? { marginTop: 12 } : null]}>
               <Text
                 style={[styles.gamifyTitle, { color: ringColor }]}
                 numberOfLines={1}
@@ -3040,7 +3095,7 @@ const renderHero = () => {
           </View>
 
 {/* Filmmaking streak (Year-by-year) */}
-<View style={{ marginTop: 12 }}>
+<View style={{ marginTop: isMobileLike ? 10 : 12 }}>
   {(() => {
     const s = streakLoading ? 0 : Math.max(0, Number(streak || 0));
 
@@ -3071,6 +3126,9 @@ const renderHero = () => {
               alignItems: "center",
               justifyContent: "center",
               marginBottom: 6,
+              paddingHorizontal: isMobileLike ? 10 : 0,
+              flexWrap: "wrap",
+              rowGap: 6,
             }}
           >
             <Text
@@ -3148,11 +3206,11 @@ const renderHero = () => {
           {/* About */}
           {(bio?.trim()?.length || sideRoles.length || isOwnProfile) ? (
             <View
-              style={[styles.aboutCard, isMobile ? { marginTop: 10 } : null]}
+              style={[styles.aboutCard, isMobileLike ? { marginTop: 10 } : null]}
             >
               <Text style={styles.aboutTitle}>About</Text>
               <Text
-                style={[styles.aboutBody, isMobile ? { lineHeight: 18 } : null]}
+                style={[styles.aboutBody, isMobileLike ? { lineHeight: 18 } : null]}
               >
                 {bio || "—"}
               </Text>
@@ -3175,407 +3233,383 @@ const renderHero = () => {
   );
 };
 
-  const renderFeaturedFilm = () => {
-    const fromDbRaw = (profile?.portfolio_url || '').trim();
+ const renderFeaturedFilm = () => {
+  const fromDbRaw = (profile?.portfolio_url || '').trim();
 
-    const primaryRow = showreels.find((r) => r.is_primary);
-    // Prefer explicit MP4 from primary row (file_path is signed later)
-    const primaryPathOrUrl =
-      (primaryRow && (primaryRow.file_path || primaryRow.url)) ||
-      fromDbRaw ||
-      mp4MainUrl ||
-      portfolioUrl;
+  const primaryRow = showreels.find((r) => r.is_primary);
 
-    if (!primaryPathOrUrl) return null;
+  // ✅ Decide the featured source ONCE (prevents a typed YouTube link from overriding a primary MP4)
+  // Priority: primary showreel (url first, then file_path) → users.portfolio_url → mp4MainUrl → portfolioUrl
+  const featuredSrc =
+    (primaryRow?.url || primaryRow?.file_path || '')?.trim() ||
+    fromDbRaw ||
+    (mp4MainUrl || '')?.trim() ||
+    (portfolioUrl || '')?.trim() ||
+    '';
 
-    const isYoutube = looksLikeYouTube(portfolioUrl || primaryPathOrUrl);
-    const ytId = extractYoutubeId(portfolioUrl || primaryPathOrUrl);
+  if (!featuredSrc) return null;
 
-    const isVideo =
-      !isYoutube &&
-      (looksLikeVideo(primaryPathOrUrl) ||
-        looksLikeVideo(mp4MainUrl) ||
-        !!primaryRow);
+  // ✅ Detect based ONLY on featuredSrc (not portfolioUrl || something)
+  const isYoutube = looksLikeYouTube(featuredSrc);
+  const ytId = isYoutube ? extractYoutubeId(featuredSrc) : null;
 
-    const maxW = isMobile ? SHOWREEL_MAX_W_MOBILE : SHOWREEL_MAX_W;
+  const isVideo =
+    !isYoutube &&
+    (looksLikeVideo(featuredSrc) || looksLikeVideo(mp4MainUrl) || !!primaryRow);
 
-    return (
-      <View style={[block.section, { alignItems: 'center' }]}>
-        <Text style={block.sectionTitleCentered}>Showreel</Text>
+  const maxW = isMobile ? SHOWREEL_MAX_W_MOBILE : SHOWREEL_MAX_W;
 
+  return (
+    <View style={[block.section, { alignItems: 'center' }]}>
+      <Text style={block.sectionTitleCentered}>Showreel</Text>
+
+      <View
+        style={[
+          block.mediaCard,
+          {
+            width: '100%',
+            maxWidth: maxW,
+            alignSelf: 'center',
+            padding: isYoutube || isVideo ? 0 : 12,
+          },
+        ]}
+      >
+        {isYoutube && ytId ? (
+          <View style={[block.videoWrap, { maxWidth: maxW }]}>
+            <YoutubePlayer
+              key={ytId}
+              height={isMobile ? 220 : 420}
+              width={maxW}
+              videoId={ytId}
+              play={false}
+              webViewStyle={{ backgroundColor: '#000' }}
+              webViewProps={{
+                allowsInlineMediaPlayback: true,
+                mediaPlaybackRequiresUserAction: false,
+              }}
+            />
+          </View>
+        ) : isVideo ? (
+          <ShowreelVideoInline
+            playerId="profile_showreel_primary"
+            filePathOrUrl={featuredSrc}
+            width={maxW}
+            autoPlay={false}
+          />
+        ) : (
+          <Text style={[block.muted, { padding: 12, textAlign: 'center' }]}>
+            Unsupported portfolio URL.
+          </Text>
+        )}
+      </View>
+
+      {/* Extra showreels */}
+      {showreels.filter((r) => !r.is_primary).length > 0 && (
+        <View
+          style={{
+            width: '100%',
+            maxWidth: maxW,
+            alignSelf: 'center',
+            marginTop: 14,
+          }}
+        >
+          <Text style={block.h3Centered}>More Showreels</Text>
+          {showreels
+            .filter((r) => !r.is_primary)
+            .map((r) => (
+              <View
+                key={r.id}
+                style={[block.mediaCard, { marginBottom: 10, paddingBottom: 8 }]}
+              >
+                <ShowreelVideoInline
+                  playerId={`sr_${r.id}`}
+                  filePathOrUrl={r.file_path || r.url}
+                  width={maxW}
+                  autoPlay={false}
+                />
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingHorizontal: 10,
+                    paddingTop: 6,
+                    gap: 8,
+                  }}
+                >
+                  <Text
+                    style={[block.mediaRowTitle, { flex: 1 }]}
+                    numberOfLines={1}
+                  >
+                    {r.title || 'Showreel'}
+                  </Text>
+
+                  {isOwnProfile && (
+                    <>
+                      <TouchableOpacity
+                        onPress={() => setPrimaryShowreel(r)}
+                        style={block.rowBtn}
+                      >
+                        <Text style={block.rowBtnText}>Set Primary</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => deleteShowreel(r)}
+                        style={block.rowBtnGhost}
+                      >
+                        <Text style={block.rowBtnGhostText}>Delete</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              </View>
+            ))}
+        </View>
+      )}
+
+      {/* Manage Showreels (owner only) */}
+      {isOwnProfile && (
+        <View
+          style={{
+            width: '100%',
+            maxWidth: maxW,
+            alignSelf: 'center',
+            marginTop: 12,
+          }}
+        >
+          <View style={[block.mediaCard, { padding: 12 }]}>
+            <Text style={block.h3Centered}>Manage Showreels</Text>
+
+            <TouchableOpacity
+              onPress={uploadAnotherShowreel}
+              style={[styles.primaryBtn, { marginTop: 6 }]}
+              disabled={srUploading}
+            >
+              {srUploading ? (
+                <ActivityIndicator color="#000" />
+              ) : (
+                <Text style={styles.primaryBtnText}>
+                  Upload another showreel (MP4)
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            {srUploading && (
+              <View style={{ marginTop: 10, alignItems: 'center' }}>
+                {!!srStatus && (
+                  <Text style={[block.muted, { marginBottom: 6 }]}>{srStatus}</Text>
+                )}
+                <View style={block.progressRail}>
+                  <View style={[block.progressFill, { width: `${srProgress}%` }]} />
+                </View>
+                <Text style={[block.muted, { marginTop: 6 }]}>{srProgress}%</Text>
+              </View>
+            )}
+
+            {showreels.find((r) => r.is_primary) ? (
+              <Text style={[block.muted, { marginTop: 10, textAlign: 'center' }]}>
+                Current primary is the one featured above.
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      )}
+    </View>
+  );
+};
+
+const AudioTile = ({ item }: { item: PortfolioItem }) => (
+  <View style={block.mediaRowCard}>
+    <View style={block.mediaIcon}>
+      <Ionicons
+        name="musical-notes-outline"
+        size={20}
+        color={COLORS.textSecondary}
+      />
+    </View>
+
+    <View style={{ flex: 1 }}>
+      <Text style={block.mediaRowTitle} numberOfLines={1}>
+        {item.title ?? 'Audio'}
+      </Text>
+      <View style={block.progressRail}>
         <View
           style={[
-            block.mediaCard,
-            {
-              width: '100%',
-              maxWidth: maxW,
-              alignSelf: 'center',
-              padding: isYoutube || isVideo ? 0 : 12,
-            },
+            block.progressFill,
+            { width: playingId === item.id ? '35%' : '0%' },
           ]}
-        >
-          {isYoutube && ytId ? (
-            <View style={[block.videoWrap, { maxWidth: maxW }]}>
+        />
+      </View>
+    </View>
+
+    <TouchableOpacity onPress={() => togglePlayAudio(item)} style={block.rowBtn}>
+      <Text style={block.rowBtnText}>
+        {playingId === item.id ? 'Pause' : 'Play'}
+      </Text>
+    </TouchableOpacity>
+
+    {isOwnProfile && (
+      <TouchableOpacity
+        onPress={() => deletePortfolioItem(item.id)}
+        style={block.rowBtnGhost}
+      >
+        <Text style={block.rowBtnGhostText}>Delete</Text>
+      </TouchableOpacity>
+    )}
+  </View>
+);
+
+const PdfTile = ({ item }: { item: PortfolioItem }) => (
+  <View style={block.mediaRowCard}>
+    <View style={block.mediaIcon}>
+      <Ionicons
+        name="document-text-outline"
+        size={20}
+        color={COLORS.textSecondary}
+      />
+    </View>
+
+    <Text style={[block.mediaRowTitle, { flex: 1 }]} numberOfLines={1}>
+      {item.title ?? 'PDF'}
+    </Text>
+
+    <TouchableOpacity onPress={() => Linking.openURL(item.url)} style={block.rowBtn}>
+      <Text style={block.rowBtnText}>Open</Text>
+    </TouchableOpacity>
+
+    {isOwnProfile && (
+      <TouchableOpacity
+        onPress={() => deletePortfolioItem(item.id)}
+        style={block.rowBtnGhost}
+      >
+        <Text style={block.rowBtnGhostText}>Delete</Text>
+      </TouchableOpacity>
+    )}
+  </View>
+);
+
+const renderEditorialPortfolio = () => {
+  if (loadingPortfolio) {
+    return (
+      <View style={block.section}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+  if (!portfolioItems.length) return null;
+
+  const dedupMap = new Map<string, PortfolioItem>();
+  portfolioItems.forEach((p) => {
+    const key = `${p.type}:${p.url}`;
+    if (!dedupMap.has(key)) dedupMap.set(key, p);
+  });
+  const unique = Array.from(dedupMap.values());
+
+  const imgs = unique.filter((p) => p.type === 'image');
+  const auds = unique.filter((p) => p.type === 'audio');
+  const pdfs = unique.filter((p) => p.type === 'pdf');
+  const yts = unique.filter((p) => p.type === 'youtube');
+
+  const cols = isMobile ? 2 : 3;
+  const usable = Math.min(width, PAGE_MAX) - horizontalPad * 2;
+  const tileW = Math.floor((usable - GRID_GAP * (cols - 1)) / cols);
+
+  const imgUrls = imgs.map((i) => i.url);
+
+  const openImageViewer = (url: string) => {
+    const startIndex = imgUrls.indexOf(url);
+    setImageViewerUrls(imgUrls);
+    setImageViewerIndex(startIndex >= 0 ? startIndex : 0);
+  };
+
+  return (
+    <>
+      {imgs.length > 0 && (
+        <View style={block.section}>
+          <Text style={block.sectionTitleCentered}>Portfolio</Text>
+          <View style={[block.grid, { marginHorizontal: -4 }]}>
+            {imgs.map((item) => (
+              <View key={item.id} style={[block.tile, { width: tileW, margin: 4 }]}>
+                <View style={block.tileFrame}>
+                  <Pressable onPress={() => openImageViewer(item.url)} style={{ flex: 1 }}>
+                    <Image
+                      source={{ uri: item.url }}
+                      style={{ width: '100%', height: '100%' }}
+                      resizeMode="cover"
+                    />
+                  </Pressable>
+
+                  {isOwnProfile && (
+                    <TouchableOpacity
+                      style={block.closeDot}
+                      onPress={() => deletePortfolioItem(item.id)}
+                      accessibilityLabel="Delete"
+                    >
+                      <Ionicons name="close" size={14} color="#000" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {auds.length > 0 && (
+        <View style={block.section}>
+          <Text style={block.h3Centered}>Audio</Text>
+          <View style={{ gap: 10 }}>
+            {auds.map((item) => (
+              <AudioTile key={item.id} item={item} />
+            ))}
+          </View>
+        </View>
+      )}
+
+      {pdfs.length > 0 && (
+        <View style={block.section}>
+          <Text style={block.h3Centered}>PDF</Text>
+          <View style={{ gap: 10 }}>
+            {pdfs.map((item) => (
+              <PdfTile key={item.id} item={item} />
+            ))}
+          </View>
+        </View>
+      )}
+
+      {yts.length > 0 && (
+        <View style={block.section}>
+          <Text style={block.h3Centered}>YouTube</Text>
+          {yts.map((item) => (
+            <View key={item.id} style={block.youtubeWrap}>
               <YoutubePlayer
-                key={ytId}
-                height={isMobile ? 220 : 420}
-                width={maxW}
-                videoId={ytId}
-                play={false}
+                key={extractYoutubeId(item.url) || item.id}
+                height={isMobile ? 180 : 260}
+                width={Math.min(SHOWREEL_MAX_W, usable)}
+                videoId={extractYoutubeId(item.url) || undefined}
                 webViewStyle={{ backgroundColor: '#000' }}
                 webViewProps={{
                   allowsInlineMediaPlayback: true,
                   mediaPlaybackRequiresUserAction: false,
                 }}
               />
-            </View>
-          ) : isVideo ? (
-            <ShowreelVideoInline
-              playerId="profile_showreel_primary"
-              filePathOrUrl={primaryPathOrUrl}
-              width={maxW}
-              autoPlay={false}
-            />
-          ) : (
-            <Text style={[block.muted, { padding: 12, textAlign: 'center' }]}>
-              Unsupported portfolio URL.
-            </Text>
-          )}
-        </View>
-
-        {/* Extra showreels */}
-        {showreels.filter((r) => !r.is_primary).length > 0 && (
-          <View
-            style={{
-              width: '100%',
-              maxWidth: maxW,
-              alignSelf: 'center',
-              marginTop: 14,
-            }}
-          >
-            <Text style={block.h3Centered}>More Showreels</Text>
-            {showreels
-              .filter((r) => !r.is_primary)
-              .map((r) => (
-                <View
-                  key={r.id}
-                  style={[
-                    block.mediaCard,
-                    { marginBottom: 10, paddingBottom: 8 },
-                  ]}
+              {isOwnProfile && (
+                <TouchableOpacity
+                  onPress={() => deletePortfolioItem(item.id)}
+                  style={block.ytDelete}
                 >
-                  <ShowreelVideoInline
-                    playerId={`sr_${r.id}`}
-                    filePathOrUrl={r.file_path || r.url}
-                    width={maxW}
-                    autoPlay={false}
-                  />
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      paddingHorizontal: 10,
-                      paddingTop: 6,
-                      gap: 8,
-                    }}
-                  >
-                    <Text
-                      style={[block.mediaRowTitle, { flex: 1 }]}
-                      numberOfLines={1}
-                    >
-                      {r.title || 'Showreel'}
-                    </Text>
-                    {isOwnProfile && (
-                      <>
-                        <TouchableOpacity
-                          onPress={() => setPrimaryShowreel(r)}
-                          style={block.rowBtn}
-                        >
-                          <Text style={block.rowBtnText}>Set Primary</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => deleteShowreel(r)}
-                          style={block.rowBtnGhost}
-                        >
-                          <Text style={block.rowBtnGhostText}>Delete</Text>
-                        </TouchableOpacity>
-                      </>
-                    )}
-                  </View>
-                </View>
-              ))}
-          </View>
-        )}
-
-        {/* Manage Showreels (owner only) */}
-        {isOwnProfile && (
-          <View
-            style={{
-              width: '100%',
-              maxWidth: maxW,
-              alignSelf: 'center',
-              marginTop: 12,
-            }}
-          >
-            <View style={[block.mediaCard, { padding: 12 }]}>
-              <Text style={block.h3Centered}>Manage Showreels</Text>
-              <TouchableOpacity
-                onPress={uploadAnotherShowreel}
-                style={[styles.primaryBtn, { marginTop: 6 }]}
-                disabled={srUploading}
-              >
-                {srUploading ? (
-                  <ActivityIndicator color="#000" />
-                ) : (
-                  <Text style={styles.primaryBtnText}>
-                    Upload another showreel (MP4)
-                  </Text>
-                )}
-              </TouchableOpacity>
-
-              {srUploading && (
-                <View style={{ marginTop: 10, alignItems: 'center' }}>
-                  {!!srStatus && (
-                    <Text style={[block.muted, { marginBottom: 6 }]}>
-                      {srStatus}
-                    </Text>
-                  )}
-                  <View style={block.progressRail}>
-                    <View
-                      style={[
-                        block.progressFill,
-                        { width: `${srProgress}%` },
-                      ]}
-                    />
-                  </View>
-                  <Text style={[block.muted, { marginTop: 6 }]}>
-                    {srProgress}%
-                  </Text>
-                </View>
+                  <Text style={block.rowBtnGhostText}>Delete</Text>
+                </TouchableOpacity>
               )}
-
-              {showreels.find((r) => r.is_primary) ? (
-                <Text
-                  style={[
-                    block.muted,
-                    { marginTop: 10, textAlign: 'center' },
-                  ]}
-                >
-                  Current primary is the one featured above.
-                </Text>
-              ) : null}
             </View>
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  const AudioTile = ({ item }: { item: PortfolioItem }) => (
-    <View style={block.mediaRowCard}>
-      <View style={block.mediaIcon}>
-        <Ionicons
-          name="musical-notes-outline"
-          size={20}
-          color={COLORS.textSecondary}
-        />
-      </View>
-
-      <View style={{ flex: 1 }}>
-        <Text style={block.mediaRowTitle} numberOfLines={1}>
-          {item.title ?? 'Audio'}
-        </Text>
-        <View style={block.progressRail}>
-          <View
-            style={[
-              block.progressFill,
-              { width: playingId === item.id ? '35%' : '0%' },
-            ]}
-          />
+          ))}
         </View>
-      </View>
-
-      <TouchableOpacity
-        onPress={() => togglePlayAudio(item)}
-        style={block.rowBtn}
-      >
-        <Text style={block.rowBtnText}>
-          {playingId === item.id ? 'Pause' : 'Play'}
-        </Text>
-      </TouchableOpacity>
-
-      {isOwnProfile && (
-        <TouchableOpacity
-          onPress={() => deletePortfolioItem(item.id)}
-          style={block.rowBtnGhost}
-        >
-          <Text style={block.rowBtnGhostText}>Delete</Text>
-        </TouchableOpacity>
       )}
-    </View>
+    </>
   );
+};
 
-  const PdfTile = ({ item }: { item: PortfolioItem }) => (
-    <View style={block.mediaRowCard}>
-      <View style={block.mediaIcon}>
-        <Ionicons
-          name="document-text-outline"
-          size={20}
-          color={COLORS.textSecondary}
-        />
-      </View>
-
-      <Text style={[block.mediaRowTitle, { flex: 1 }]} numberOfLines={1}>
-        {item.title ?? 'PDF'}
-      </Text>
-
-      <TouchableOpacity
-        onPress={() => Linking.openURL(item.url)}
-        style={block.rowBtn}
-      >
-        <Text style={block.rowBtnText}>Open</Text>
-      </TouchableOpacity>
-
-      {isOwnProfile && (
-        <TouchableOpacity
-          onPress={() => deletePortfolioItem(item.id)}
-          style={block.rowBtnGhost}
-        >
-          <Text style={block.rowBtnGhostText}>Delete</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-
-  const renderEditorialPortfolio = () => {
-    if (loadingPortfolio) {
-      return (
-        <View style={block.section}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-        </View>
-      );
-    }
-    if (!portfolioItems.length) return null;
-
-    const dedupMap = new Map<string, PortfolioItem>();
-    portfolioItems.forEach((p) => {
-      const key = `${p.type}:${p.url}`;
-      if (!dedupMap.has(key)) dedupMap.set(key, p);
-    });
-    const unique = Array.from(dedupMap.values());
-
-    const imgs = unique.filter((p) => p.type === 'image');
-    const auds = unique.filter((p) => p.type === 'audio');
-    const pdfs = unique.filter((p) => p.type === 'pdf');
-    const yts = unique.filter((p) => p.type === 'youtube');
-
-    const cols = isMobile ? 2 : 3;
-    const usable = Math.min(width, PAGE_MAX) - horizontalPad * 2;
-    const tileW = Math.floor((usable - GRID_GAP * (cols - 1)) / cols);
-
-    const imgUrls = imgs.map((i) => i.url);
-
-    const openImageViewer = (url: string) => {
-      const startIndex = imgUrls.indexOf(url);
-      setImageViewerUrls(imgUrls);
-      setImageViewerIndex(startIndex >= 0 ? startIndex : 0);
-    };
-
-    return (
-      <>
-        {imgs.length > 0 && (
-          <View style={block.section}>
-            <Text style={block.sectionTitleCentered}>Portfolio</Text>
-            <View style={[block.grid, { marginHorizontal: -4 }]}>
-              {imgs.map((item) => (
-                <View
-                  key={item.id}
-                  style={[block.tile, { width: tileW, margin: 4 }]}
-                >
-                  <View style={block.tileFrame}>
-                    <Pressable
-                      onPress={() => openImageViewer(item.url)}
-                      style={{ flex: 1 }}
-                    >
-                      <Image
-                        source={{ uri: item.url }}
-                        style={{ width: '100%', height: '100%' }}
-                        resizeMode="cover"
-                      />
-                    </Pressable>
-
-                    {isOwnProfile && (
-                      <TouchableOpacity
-                        style={block.closeDot}
-                        onPress={() => deletePortfolioItem(item.id)}
-                        accessibilityLabel="Delete"
-                      >
-                        <Ionicons name="close" size={14} color="#000" />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {auds.length > 0 && (
-          <View style={block.section}>
-            <Text style={block.h3Centered}>Audio</Text>
-            <View style={{ gap: 10 }}>
-              {auds.map((item) => (
-                <AudioTile key={item.id} item={item} />
-              ))}
-            </View>
-          </View>
-        )}
-
-        {pdfs.length > 0 && (
-          <View style={block.section}>
-            <Text style={block.h3Centered}>PDF</Text>
-            <View style={{ gap: 10 }}>
-              {pdfs.map((item) => (
-                <PdfTile key={item.id} item={item} />
-              ))}
-            </View>
-          </View>
-        )}
-
-        {yts.length > 0 && (
-          <View style={block.section}>
-            <Text style={block.h3Centered}>YouTube</Text>
-            {yts.map((item) => (
-              <View key={item.id} style={block.youtubeWrap}>
-                <YoutubePlayer
-                  key={extractYoutubeId(item.url) || item.id}
-                  height={isMobile ? 180 : 260}
-                  width={Math.min(SHOWREEL_MAX_W, usable)}
-                  videoId={extractYoutubeId(item.url) || undefined}
-                  webViewStyle={{ backgroundColor: '#000' }}
-                  webViewProps={{
-                    allowsInlineMediaPlayback: true,
-                    mediaPlaybackRequiresUserAction: false,
-                  }}
-                />
-                {isOwnProfile && (
-                  <TouchableOpacity
-                    onPress={() => deletePortfolioItem(item.id)}
-                    style={block.ytDelete}
-                  >
-                    <Text style={block.rowBtnGhostText}>Delete</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
-      </>
-    );
-  };
-
- const renderSubmissionsSection = () => {
+const renderSubmissionsSection = () => {
   if (loadingSubmissions) {
     return (
       <View style={block.section}>
@@ -3587,7 +3621,7 @@ const renderHero = () => {
 
   if (!submissions.length) return null;
 
-  const cols = isMobile ? 2 : 4;
+  const cols = isCompact ? 2 : isMobileLike ? 2 : width < 1100 ? 3 : 4;
   const usable = Math.min(width, PAGE_MAX) - horizontalPad * 2;
   const tileW = Math.floor((usable - GRID_GAP * (cols - 1)) / cols);
   const tileH = Math.floor(tileW * (9 / 16));
@@ -3619,25 +3653,25 @@ const renderHero = () => {
                 style={{
                   height: tileH,
                   borderRadius: 12,
-                  overflow: "hidden",
+                  overflow: 'hidden',
                   borderWidth: 1,
                   borderColor: COLORS.border,
-                  backgroundColor: "#000",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  backgroundColor: '#000',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               >
                 {/* Thumbnail */}
                 {yt ? (
                   <Image
                     source={{ uri: yt }}
-                    style={{ width: "100%", height: "100%" }}
+                    style={{ width: '100%', height: '100%' }}
                     resizeMode="cover"
                   />
                 ) : mp4Thumb ? (
                   <Image
                     source={{ uri: mp4Thumb }}
-                    style={{ width: "100%", height: "100%" }}
+                    style={{ width: '100%', height: '100%' }}
                     resizeMode="cover"
                   />
                 ) : (
@@ -3659,23 +3693,23 @@ const renderHero = () => {
                 {/* overlay */}
                 <View
                   style={{
-                    position: "absolute",
+                    position: 'absolute',
                     left: 0,
                     right: 0,
                     bottom: 0,
                     padding: 10,
-                    backgroundColor: "rgba(0,0,0,0.55)",
+                    backgroundColor: 'rgba(0,0,0,0.55)',
                   }}
                 >
                   <Text
                     style={{
                       color: COLORS.textPrimary,
                       fontFamily: FONT_OBLIVION,
-                      fontWeight: "800",
+                      fontWeight: '800',
                     }}
                     numberOfLines={1}
                   >
-                    {s.title || "Untitled"}
+                    {s.title || 'Untitled'}
                   </Text>
 
                   {!!s.word && (
@@ -3710,8 +3744,8 @@ const renderHero = () => {
         <View
           style={{
             flex: 1,
-            backgroundColor: "#000000EE",
-            justifyContent: "center",
+            backgroundColor: '#000000EE',
+            justifyContent: 'center',
             padding: 14,
           }}
         >
@@ -3729,7 +3763,7 @@ const renderHero = () => {
               borderRadius: 16,
               borderWidth: 1,
               borderColor: COLORS.border,
-              overflow: "hidden",
+              overflow: 'hidden',
               padding: 12,
             }}
           >
@@ -3737,47 +3771,39 @@ const renderHero = () => {
               style={{
                 color: COLORS.textPrimary,
                 fontFamily: FONT_OBLIVION,
-                fontWeight: "900",
+                fontWeight: '900',
                 marginBottom: 8,
               }}
             >
-              {activeSubmission?.title || "Untitled"}
+              {activeSubmission?.title || 'Untitled'}
             </Text>
 
-            {/* ✅ Give the media a predictable 16:9 box (matches Featured behavior) */}
-            <View
-              style={{
-                width: "100%",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
+            {/* ✅ Give the media a predictable 16:9 box */}
+            <View style={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}>
               <View
                 style={{
                   width: modalMediaW,
                   height: modalMediaH,
-                  backgroundColor: "#000",
+                  backgroundColor: '#000',
                   borderRadius: 14,
-                  overflow: "hidden",
+                  overflow: 'hidden',
                 }}
               >
                 {activeSubmission ? (
                   activeSubmission.youtube_url ? (
                     <YoutubePlayer
-                      height={modalMediaH} // ✅ always a number
-                      width={modalMediaW}  // ✅ always a number
+                      height={modalMediaH}
+                      width={modalMediaW}
                       videoId={extractYoutubeId(activeSubmission.youtube_url) || undefined}
                       play={false}
-                      webViewStyle={{ backgroundColor: "#000" }}
+                      webViewStyle={{ backgroundColor: '#000' }}
                       webViewProps={{
                         allowsInlineMediaPlayback: true,
                         mediaPlaybackRequiresUserAction: false,
-                        // @ts-ignore (some platforms expose this)
+                        // @ts-ignore
                         allowsFullscreenVideo: true,
                       }}
-                      initialPlayerParams={{
-                        rel: false,
-                      }}
+                      initialPlayerParams={{ rel: false }}
                     />
                   ) : activeSubmission.video_url || activeSubmission.video_path ? (
                     <ShowreelVideoInline
@@ -3785,13 +3811,13 @@ const renderHero = () => {
                       filePathOrUrl={activeSubmission.video_url || activeSubmission.video_path!}
                       width={modalMediaW}
                       autoPlay={false}
-                      // NOTE: the fullscreen crop fix MUST be done inside ShowreelVideoInline:
+                      // NOTE: crop fix must be inside ShowreelVideoInline:
                       // - native: ResizeMode.CONTAIN
                       // - web: objectFit: 'contain'
                     />
                   ) : (
-                    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                      <Text style={[block.muted, { textAlign: "center" }]}>
+                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={[block.muted, { textAlign: 'center' }]}>
                         No video found for this submission.
                       </Text>
                     </View>
@@ -3803,10 +3829,7 @@ const renderHero = () => {
             {isOwnProfile && activeSubmission && (
               <TouchableOpacity
                 onPress={() => deleteSubmission(activeSubmission)}
-                style={[
-                  styles.ghostBtn,
-                  { borderColor: COLORS.danger, marginTop: 12 },
-                ]}
+                style={[styles.ghostBtn, { borderColor: COLORS.danger, marginTop: 12 }]}
               >
                 <Text style={[styles.ghostBtnText, { color: COLORS.danger }]}>
                   Delete submission
@@ -3829,885 +3852,703 @@ const renderHero = () => {
     </View>
   );
 };
-  /* ---------- MAIN RENDER ---------- */
 
-  if (isLoading) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: COLORS.background,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
-  }
+/* ---------- MAIN RENDER ---------- */
 
-  if (!profile) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: COLORS.background,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Text style={{ color: COLORS.textSecondary }}>Profile not found.</Text>
-      </View>
-    );
-  }
-
+if (isLoading) {
   return (
-    <>
-      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
-        <ScrollView
-          style={{ flex: 1, backgroundColor: COLORS.background }}
-          contentContainerStyle={{
-            alignItems: 'center',
-            paddingBottom: 40 + Math.max(insets.bottom, 8),
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: COLORS.background,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <ActivityIndicator size="large" color={COLORS.primary} />
+    </View>
+  );
+}
+
+if (!profile) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: COLORS.background,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Text style={{ color: COLORS.textSecondary }}>Profile not found.</Text>
+    </View>
+  );
+}
+
+return (
+  <>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: COLORS.background }}
+        contentContainerStyle={{
+          alignItems: 'center',
+          paddingBottom: 40 + Math.max(insets.bottom, 8),
+        }}
+      >
+        <View
+          style={{
+            width: '100%',
+            maxWidth: PAGE_MAX,
+            paddingHorizontal: horizontalPad,
           }}
         >
-          <View
-            style={{
-              width: '100%',
-              maxWidth: PAGE_MAX,
-              paddingHorizontal: horizontalPad,
-            }}
-          >
-                       {renderHero()}
-            {renderFeaturedFilm()}
-            {renderEditorialPortfolio()}
-            {renderSubmissionsSection()}
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-
-      {/* Fullscreen image viewer */}
-      <Modal
-        visible={imageViewerIndex !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setImageViewerIndex(null)}
-      >
-        <View style={block.viewerOverlay}>
-          <Pressable
-            style={StyleSheet.absoluteFillObject}
-            onPress={() => setImageViewerIndex(null)}
-          />
-          {imageViewerIndex !== null && (
-            <>
-              <Image
-                source={{
-                  uri: imageViewerUrls[imageViewerIndex],
-                }}
-                style={block.viewerImage}
-                resizeMode="contain"
-              />
-              <View style={block.viewerCloseHint}>
-                <Text style={block.viewerHintText}>
-                  Tap outside to close
-                </Text>
-              </View>
-
-              {imageViewerIndex > 0 && (
-                <TouchableOpacity
-                  style={[navStyles.arrow, navStyles.left]}
-                  onPress={() =>
-                    setImageViewerIndex((i) =>
-                      i! > 0 ? i! - 1 : i,
-                    )
-                  }
-                >
-                  <Ionicons
-                    name="chevron-back"
-                    size={28}
-                    color="#FFF"
-                  />
-                </TouchableOpacity>
-              )}
-              {imageViewerIndex <
-                imageViewerUrls.length - 1 && (
-                <TouchableOpacity
-                  style={[navStyles.arrow, navStyles.right]}
-                  onPress={() =>
-                    setImageViewerIndex((i) =>
-                      i! <
-                      imageViewerUrls.length -
-                        1
-                        ? i! + 1
-                        : i,
-                    )
-                  }
-                >
-                  <Ionicons
-                    name="chevron-forward"
-                    size={28}
-                    color="#FFF"
-                  />
-                </TouchableOpacity>
-              )}
-            </>
-          )}
+          {renderHero()}
+          {renderFeaturedFilm()}
+          {renderEditorialPortfolio()}
+          {renderSubmissionsSection()}
         </View>
-      </Modal>
+      </ScrollView>
+    </SafeAreaView>
 
-      {/* Edit Profile Modal */}
-      <Modal
-        visible={showEditModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowEditModal(false)}
+    {/* Fullscreen image viewer */}
+    <Modal
+      visible={imageViewerIndex !== null}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setImageViewerIndex(null)}
+    >
+      <View style={block.viewerOverlay}>
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
+          onPress={() => setImageViewerIndex(null)}
+        />
+        {imageViewerIndex !== null && (
+          <>
+            <Image
+              source={{ uri: imageViewerUrls[imageViewerIndex] }}
+              style={block.viewerImage}
+              resizeMode="contain"
+            />
+            <View style={block.viewerCloseHint}>
+              <Text style={block.viewerHintText}>Tap outside to close</Text>
+            </View>
+
+            {imageViewerIndex > 0 && (
+              <TouchableOpacity
+                style={[navStyles.arrow, navStyles.left]}
+                onPress={() => setImageViewerIndex((i) => (i! > 0 ? i! - 1 : i))}
+              >
+                <Ionicons name="chevron-back" size={28} color="#FFF" />
+              </TouchableOpacity>
+            )}
+
+            {imageViewerIndex < imageViewerUrls.length - 1 && (
+              <TouchableOpacity
+                style={[navStyles.arrow, navStyles.right]}
+                onPress={() =>
+                  setImageViewerIndex((i) =>
+                    i! < imageViewerUrls.length - 1 ? i! + 1 : i
+                  )
+                }
+              >
+                <Ionicons name="chevron-forward" size={28} color="#FFF" />
+              </TouchableOpacity>
+            )}
+          </>
+        )}
+      </View>
+    </Modal>
+
+    {/* Edit Profile Modal */}
+    <Modal
+      visible={showEditModal}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowEditModal(false)}
+    >
+      <KeyboardAvoidingView
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Edit Profile</Text>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>Edit Profile</Text>
 
-            <ScrollView
-              style={{ flex: 1, width: '100%' }}
-              contentContainerStyle={{ paddingBottom: 32 }}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              {/* Profile picture (own profile only) */}
-              {isOwnProfile && (
-                <View style={[styles.field, { marginTop: 8 }]}>
-                  <Text style={styles.fieldLabel}>Profile picture</Text>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 10,
-                    }}
-                  >
-                    {image || profile.avatar_url ? (
-                      <Image
-                        source={{
-                          uri:
-                            addBuster(
-                              image || profile.avatar_url || '',
-                            ) || '',
-                        }}
-                        style={{
-                          width: 42,
-                          height: 42,
-                          borderRadius: 21,
-                          backgroundColor: '#111',
-                          borderWidth: 1,
-                          borderColor: COLORS.border,
-                        }}
-                      />
-                    ) : (
-                      <View
-                        style={{
-                          width: 42,
-                          height: 42,
-                          borderRadius: 21,
-                          backgroundColor: '#111',
-                          borderWidth: 1,
-                          borderColor: COLORS.border,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Ionicons
-                          name="person-outline"
-                          size={18}
-                          color={COLORS.textSecondary}
-                        />
-                      </View>
-                    )}
-
-                    <TouchableOpacity
-                      style={styles.pillBtn}
-                      onPress={pickImage}
-                      disabled={uploading}
-                    >
-                      <Text style={styles.pillText}>
-                        {uploading
-                          ? 'Uploading...'
-                          : 'Change profile picture'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-
-              {/* Full name */}
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Name</Text>
-                <TextInput
-                  value={fullName}
-                  onChangeText={setFullName}
-                  style={styles.input}
-                  placeholder="Your name"
-                  placeholderTextColor={COLORS.textSecondary}
-                />
-              </View>
-
-              {/* City */}
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>City</Text>
-                <TouchableOpacity
-                  style={styles.pickerBtn}
-                  onPress={() => {
-                    setCityOpen(true);
-                    fetchCities(citySearch || '');
-                  }}
-                >
-                  <Text style={styles.pickerBtnText}>
-                    {cityName || 'Search city'}
-                  </Text>
-                  <Ionicons
-                    name="chevron-down"
-                    size={16}
-                    color={COLORS.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              {/* Main role */}
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Main role</Text>
-                <TouchableOpacity
-                  style={styles.pickerBtn}
-                  onPress={() => {
-                    setRoleSearchModalVisible(true);
-                    setRoleSearchTerm('');
-                    setRoleSearchItems([]);
-                  }}
-                >
-                  <Text style={styles.pickerBtnText}>
-                    {mainRoleName || 'Search role'}
-                  </Text>
-                  <Ionicons
-                    name="search"
-                    size={16}
-                    color={COLORS.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              {/* Side roles */}
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Side roles</Text>
-                <TouchableOpacity
-                  style={styles.pickerBtn}
-                  onPress={() => {
-                    setSideRoleModalVisible(true);
-                    setRoleSearchTerm('');
-                    setRoleSearchItems([]);
-                  }}
-                >
-                  <Text style={styles.pickerBtnText}>
-                    {sideRoles.length
-                      ? sideRoles.join(', ')
-                      : 'Add side roles'}
-                  </Text>
-                  <Ionicons
-                    name="add"
-                    size={16}
-                    color={COLORS.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              {/* Bio */}
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>About</Text>
-                <TextInput
-                  value={bio}
-                  onChangeText={setBio}
-                  style={[styles.input, styles.multiline]}
-                  placeholder="Tell people who you are, what you’re drawn to, and what you’re looking for."
-                  placeholderTextColor={COLORS.textSecondary}
-                  multiline
-                />
-              </View>
-
-              {/* Showreel selection */}
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>Featured Showreel</Text>
-                <View style={styles.segmentWrap}>
-                  <TouchableOpacity
-                    style={[
-                      styles.segmentBtn,
-                      portfolioChoice === 'youtube' &&
-                        styles.segmentActive,
-                    ]}
-                    onPress={() => setPortfolioChoice('youtube')}
-                  >
-                    <Text
-                      style={[
-                        styles.segmentText,
-                        portfolioChoice === 'youtube' &&
-                          styles.segmentTextActive,
-                      ]}
-                    >
-                      YouTube link
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.segmentBtn,
-                      portfolioChoice === 'mp4' &&
-                        styles.segmentActive,
-                    ]}
-                    onPress={() => setPortfolioChoice('mp4')}
-                  >
-                    <Text
-                      style={[
-                        styles.segmentText,
-                        portfolioChoice === 'mp4' &&
-                          styles.segmentTextActive,
-                      ]}
-                    >
-                      Upload MP4
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {portfolioChoice === 'youtube' ? (
-                  <View style={{ marginTop: 8 }}>
-                    <TextInput
-                      value={portfolioUrl}
-                      onChangeText={setPortfolioUrl}
-                      style={styles.input}
-                      placeholder="Paste YouTube link"
-                      placeholderTextColor={COLORS.textSecondary}
-                      autoCapitalize="none"
-                      autoCorrect={false}
+          <ScrollView
+            style={{ flex: 1, width: '100%' }}
+            contentContainerStyle={{ paddingBottom: 32 }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Profile picture (own profile only) */}
+            {isOwnProfile && (
+              <View style={[styles.field, { marginTop: 8 }]}>
+                <Text style={styles.fieldLabel}>Profile picture</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  {image || profile.avatar_url ? (
+                    <Image
+                      source={{ uri: addBuster(image || profile.avatar_url || '') || '' }}
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: 21,
+                        backgroundColor: '#111',
+                        borderWidth: 1,
+                        borderColor: COLORS.border,
+                      }}
                     />
-                    {!!portfolioUrl &&
-                      !looksLikeYouTube(portfolioUrl) && (
-                        <Text style={styles.validationText}>
-                          That link doesn’t look like YouTube.
-                        </Text>
-                      )}
-                  </View>
-                ) : (
-                  <View style={{ marginTop: 8 }}>
-                    {mp4MainUrl ? (
-                      <>
-                        <Text
-                          style={[
-                            styles.fieldLabel,
-                            { marginBottom: 4 },
-                          ]}
-                        >
-                          Current file
-                        </Text>
-                        <Text
-                          style={[
-                            block.muted,
-                            { marginBottom: 6 },
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {mp4MainName || 'Showreel video'}
-                        </Text>
-                      </>
-                    ) : (
-                      <Text
-                        style={[
-                          block.muted,
-                          { marginBottom: 6 },
-                        ]}
-                      >
-                        Upload a high-quality MP4/MOV/WebM up to 1GB.
-                      </Text>
-                    )}
-
-                    <TouchableOpacity
-                      style={styles.primaryBtn}
-                      onPress={uploadMainMP4}
-                      disabled={mp4MainUploading}
+                  ) : (
+                    <View
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: 21,
+                        backgroundColor: '#111',
+                        borderWidth: 1,
+                        borderColor: COLORS.border,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
                     >
-                      {mp4MainUploading ? (
-                        <ActivityIndicator color="#000" />
-                      ) : (
-                        <Text style={styles.primaryBtnText}>
-                          {mp4MainUrl
-                            ? 'Replace video'
-                            : 'Upload video'}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
+                      <Ionicons
+                        name="person-outline"
+                        size={18}
+                        color={COLORS.textSecondary}
+                      />
+                    </View>
+                  )}
 
-                    {mp4MainUploading && (
-                      <View
-                        style={{
-                          marginTop: 8,
-                          alignItems: 'center',
-                        }}
-                      >
-                        {!!mp4Status && (
-                          <Text
-                            style={[
-                              block.muted,
-                              { marginBottom: 4 },
-                            ]}
-                          >
-                            {mp4Status}
-                          </Text>
-                        )}
-                        <View style={block.progressRail}>
-                          <View
-                            style={[
-                              block.progressFill,
-                              { width: `${mp4Progress}%` },
-                            ]}
-                          />
-                        </View>
-                        <Text
-                          style={[
-                            block.muted,
-                            { marginTop: 4 },
-                          ]}
-                        >
-                          {mp4Progress}%
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-              </View>
-
-              {/* Extra portfolio uploads */}
-              <View style={styles.field}>
-                <Text style={styles.fieldLabel}>
-                  Add supporting work
-                </Text>
-                <View style={styles.uploadRow}>
                   <TouchableOpacity
                     style={styles.pillBtn}
-                    onPress={uploadPortfolioImage}
+                    onPress={pickImage}
+                    disabled={uploading}
                   >
-                    <Text style={styles.pillText}>+ Image</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.pillBtn}
-                    onPress={uploadPortfolioPDF}
-                  >
-                    <Text style={styles.pillText}>+ PDF</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.pillBtn}
-                    onPress={uploadPortfolioMP3}
-                  >
-                    <Text style={styles.pillText}>+ Audio</Text>
+                    <Text style={styles.pillText}>
+                      {uploading ? 'Uploading...' : 'Change profile picture'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
+            )}
 
-              {/* Actions */}
-              <View
-                style={{
-                  flexDirection: 'row',
-                  gap: 10,
-                  marginTop: 18,
-                  marginBottom: 6,
+            {/* Full name */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Name</Text>
+              <TextInput
+                value={fullName}
+                onChangeText={setFullName}
+                style={styles.input}
+                placeholder="Your name"
+                placeholderTextColor={COLORS.textSecondary}
+              />
+            </View>
+
+            {/* City */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>City</Text>
+              <TouchableOpacity
+                style={styles.pickerBtn}
+                onPress={() => {
+                  setCityOpen(true);
+                  fetchCities(citySearch || '');
                 }}
               >
+                <Text style={styles.pickerBtnText}>{cityName || 'Search city'}</Text>
+                <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Main role */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Main role</Text>
+              <TouchableOpacity
+                style={styles.pickerBtn}
+                onPress={() => {
+                  setRoleSearchModalVisible(true);
+                  setRoleSearchTerm('');
+                  setRoleSearchItems([]);
+                }}
+              >
+                <Text style={styles.pickerBtnText}>{mainRoleName || 'Search role'}</Text>
+                <Ionicons name="search" size={16} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Side roles */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Side roles</Text>
+              <TouchableOpacity
+                style={styles.pickerBtn}
+                onPress={() => {
+                  setSideRoleModalVisible(true);
+                  setRoleSearchTerm('');
+                  setRoleSearchItems([]);
+                }}
+              >
+                <Text style={styles.pickerBtnText}>
+                  {sideRoles.length ? sideRoles.join(', ') : 'Add side roles'}
+                </Text>
+                <Ionicons name="add" size={16} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Bio */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>About</Text>
+              <TextInput
+                value={bio}
+                onChangeText={setBio}
+                style={[styles.input, styles.multiline]}
+                placeholder="Tell people who you are, what you’re drawn to, and what you’re looking for."
+                placeholderTextColor={COLORS.textSecondary}
+                multiline
+              />
+            </View>
+
+            {/* Showreel selection */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Featured Showreel</Text>
+              <View style={styles.segmentWrap}>
                 <TouchableOpacity
-                  style={[styles.ghostBtn, { flex: 1 }]}
-                  onPress={() => setShowEditModal(false)}
-                  disabled={uploading}
+                  style={[
+                    styles.segmentBtn,
+                    portfolioChoice === 'youtube' && styles.segmentActive,
+                  ]}
+                  onPress={() => setPortfolioChoice('youtube')}
                 >
-                  <Text style={styles.ghostBtnText}>
-                    Cancel
+                  <Text
+                    style={[
+                      styles.segmentText,
+                      portfolioChoice === 'youtube' && styles.segmentTextActive,
+                    ]}
+                  >
+                    YouTube link
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[
-                    styles.primaryBtn,
-                    {
-                      flex: 1,
-                      opacity:
-                        !isDirty || uploading ? 0.6 : 1,
-                    },
+                    styles.segmentBtn,
+                    portfolioChoice === 'mp4' && styles.segmentActive,
                   ]}
-                  disabled={!isDirty || uploading}
-                  onPress={saveProfile}
+                  onPress={() => setPortfolioChoice('mp4')}
                 >
-                  {uploading ? (
-                    <ActivityIndicator color="#000" />
-                  ) : (
-                    <Text style={styles.primaryBtnText}>
-                      Save
-                    </Text>
-                  )}
+                  <Text
+                    style={[
+                      styles.segmentText,
+                      portfolioChoice === 'mp4' && styles.segmentTextActive,
+                    ]}
+                  >
+                    Upload MP4
+                  </Text>
                 </TouchableOpacity>
               </View>
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
 
-      {/* City search modal */}
-<Modal
-  visible={cityOpen}
-  transparent
-  animationType="fade"
-  onRequestClose={() => setCityOpen(false)}
->
-  <View style={centered.overlay}>
-    <View style={centered.card}>
-      <Text style={centered.title}>Select City</Text>
+              {portfolioChoice === 'youtube' ? (
+                <View style={{ marginTop: 8 }}>
+                  <TextInput
+                    value={portfolioUrl}
+                    onChangeText={setPortfolioUrl}
+                    style={styles.input}
+                    placeholder="Paste YouTube link"
+                    placeholderTextColor={COLORS.textSecondary}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  {!!portfolioUrl && !looksLikeYouTube(portfolioUrl) && (
+                    <Text style={styles.validationText}>
+                      That link doesn’t look like YouTube.
+                    </Text>
+                  )}
+                </View>
+              ) : (
+                <View style={{ marginTop: 8 }}>
+                  {mp4MainUrl ? (
+                    <>
+                      <Text style={[styles.fieldLabel, { marginBottom: 4 }]}>
+                        Current file
+                      </Text>
+                      <Text style={[block.muted, { marginBottom: 6 }]} numberOfLines={1}>
+                        {mp4MainName || 'Showreel video'}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={[block.muted, { marginBottom: 6 }]}>
+                      Upload a high-quality MP4/MOV/WebM up to 1GB.
+                    </Text>
+                  )}
 
-      {/* Search input */}
-      <TextInput
-        value={citySearch}
-        onChangeText={(t) => {
-          setCitySearch(t);
-          fetchCities(t);
-        }}
-        placeholder="Search city"
-        placeholderTextColor={COLORS.textSecondary}
-        style={styles.input}
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
+                  <TouchableOpacity
+                    style={styles.primaryBtn}
+                    onPress={uploadMainMP4}
+                    disabled={mp4MainUploading}
+                  >
+                    {mp4MainUploading ? (
+                      <ActivityIndicator color="#000" />
+                    ) : (
+                      <Text style={styles.primaryBtnText}>
+                        {mp4MainUrl ? 'Replace video' : 'Upload video'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
 
-      {/* Results */}
-      <ScrollView style={{ maxHeight: 300, marginTop: 8 }}>
-        {cityItems.length === 0 ? (
-          <Text style={block.muted}>Type to search cities.</Text>
-        ) : (
-          cityItems.map((c) => {
-            const label = `${c.name}, ${c.country_code}`;
-            const isSelected = Number(cityId) === Number(c.value);
-            return (
+                  {mp4MainUploading && (
+                    <View style={{ marginTop: 8, alignItems: 'center' }}>
+                      {!!mp4Status && (
+                        <Text style={[block.muted, { marginBottom: 4 }]}>{mp4Status}</Text>
+                      )}
+                      <View style={block.progressRail}>
+                        <View
+                          style={[block.progressFill, { width: `${mp4Progress}%` }]}
+                        />
+                      </View>
+                      <Text style={[block.muted, { marginTop: 4 }]}>{mp4Progress}%</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+
+            {/* Extra portfolio uploads */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Add supporting work</Text>
+              <View style={styles.uploadRow}>
+                <TouchableOpacity style={styles.pillBtn} onPress={uploadPortfolioImage}>
+                  <Text style={styles.pillText}>+ Image</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.pillBtn} onPress={uploadPortfolioPDF}>
+                  <Text style={styles.pillText}>+ PDF</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.pillBtn} onPress={uploadPortfolioMP3}>
+                  <Text style={styles.pillText}>+ Audio</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Actions */}
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18, marginBottom: 6 }}>
               <TouchableOpacity
-                key={c.value}
-                style={[
-                  block.row,
-                  { backgroundColor: isSelected ? '#111' : 'transparent' },
-                ]}
-                onPress={() => {
-                  setCityId(c.value);
-                  setCityName(label);
-                  setCityOpen(false);
-                }}
+                style={[styles.ghostBtn, { flex: 1 }]}
+                onPress={() => setShowEditModal(false)}
+                disabled={uploading}
               >
-                <Text style={{ color: COLORS.textPrimary, fontFamily: FONT_OBLIVION }}>
-                  {label}
-                </Text>
-                {isSelected && (
-                  <Ionicons name="checkmark" size={18} color={COLORS.primary} />
+                <Text style={styles.ghostBtnText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.primaryBtn,
+                  { flex: 1, opacity: !isDirty || uploading ? 0.6 : 1 },
+                ]}
+                disabled={!isDirty || uploading}
+                onPress={saveProfile}
+              >
+                {uploading ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={styles.primaryBtnText}>Save</Text>
                 )}
               </TouchableOpacity>
-            );
-          })
-        )}
-      </ScrollView>
+            </View>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
 
-      <TouchableOpacity
-        style={[styles.ghostBtn, { marginTop: 10 }]}
-        onPress={() => setCityOpen(false)}
-      >
-        <Text style={styles.ghostBtnText}>Close</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-</Modal>
+    {/* City search modal */}
+    <Modal
+      visible={cityOpen}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setCityOpen(false)}
+    >
+      <View style={centered.overlay}>
+        <View style={centered.card}>
+          <Text style={centered.title}>Select City</Text>
 
-      {/* Main role search modal */}
-      <Modal
-        visible={roleSearchModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() =>
-          setRoleSearchModalVisible(false)
-        }
-      >
-        <View style={centered.overlay}>
-          <View style={centered.card}>
-            <Text style={centered.title}>
-              Select Main Role
-            </Text>
-            <TextInput
-              value={roleSearchTerm}
-              onChangeText={(t) => {
-                setRoleSearchTerm(t);
-                fetchSearchRoles(t);
-              }}
-              placeholder="Search roles"
-              placeholderTextColor={COLORS.textSecondary}
-              style={styles.input}
-            />
-            <ScrollView
-              style={{ maxHeight: 260, marginTop: 8 }}
-            >
-              {searchingRoles && (
-                <ActivityIndicator
-                  color={COLORS.primary}
-                />
-              )}
-              {!searchingRoles &&
-                roleSearchItems.map((r) => (
+          <TextInput
+            value={citySearch}
+            onChangeText={(t) => {
+              setCitySearch(t);
+              fetchCities(t);
+            }}
+            placeholder="Search city"
+            placeholderTextColor={COLORS.textSecondary}
+            style={styles.input}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <ScrollView style={{ maxHeight: 300, marginTop: 8 }}>
+            {cityItems.length === 0 ? (
+              <Text style={block.muted}>Type to search cities.</Text>
+            ) : (
+              cityItems.map((c) => {
+                const label = `${c.name}, ${c.country_code}`;
+                const isSelected = Number(cityId) === Number(c.value);
+                return (
                   <TouchableOpacity
-                    key={r.value}
-                    style={block.row}
+                    key={c.value}
+                    style={[
+                      block.row,
+                      { backgroundColor: isSelected ? '#111' : 'transparent' },
+                    ]}
                     onPress={() => {
-                      setMainRole(r.value);
-                      setMainRoleName(r.label);
-                      setRoleSearchModalVisible(false);
+                      setCityId(c.value);
+                      setCityName(label);
+                      setCityOpen(false);
                     }}
                   >
-                    <Text
-                      style={{
-                        color: COLORS.textPrimary,
-                        fontFamily: FONT_OBLIVION,
-                      }}
-                    >
+                    <Text style={{ color: COLORS.textPrimary, fontFamily: FONT_OBLIVION }}>
+                      {label}
+                    </Text>
+                    {isSelected && (
+                      <Ionicons name="checkmark" size={18} color={COLORS.primary} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </ScrollView>
+
+          <TouchableOpacity
+            style={[styles.ghostBtn, { marginTop: 10 }]}
+            onPress={() => setCityOpen(false)}
+          >
+            <Text style={styles.ghostBtnText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+
+    {/* Main role search modal */}
+    <Modal
+      visible={roleSearchModalVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setRoleSearchModalVisible(false)}
+    >
+      <View style={centered.overlay}>
+        <View style={centered.card}>
+          <Text style={centered.title}>Select Main Role</Text>
+          <TextInput
+            value={roleSearchTerm}
+            onChangeText={(t) => {
+              setRoleSearchTerm(t);
+              fetchSearchRoles(t);
+            }}
+            placeholder="Search roles"
+            placeholderTextColor={COLORS.textSecondary}
+            style={styles.input}
+          />
+          <ScrollView style={{ maxHeight: 260, marginTop: 8 }}>
+            {searchingRoles && <ActivityIndicator color={COLORS.primary} />}
+
+            {!searchingRoles &&
+              roleSearchItems.map((r) => (
+                <TouchableOpacity
+                  key={r.value}
+                  style={block.row}
+                  onPress={() => {
+                    setMainRole(r.value);
+                    setMainRoleName(r.label);
+                    setRoleSearchModalVisible(false);
+                  }}
+                >
+                  <Text style={{ color: COLORS.textPrimary, fontFamily: FONT_OBLIVION }}>
+                    {r.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+
+            {!searchingRoles && !roleSearchItems.length && (
+              <Text style={block.muted}>Type to search roles.</Text>
+            )}
+          </ScrollView>
+          <TouchableOpacity
+            style={[styles.ghostBtn, { marginTop: 10 }]}
+            onPress={() => setRoleSearchModalVisible(false)}
+          >
+            <Text style={styles.ghostBtnText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+
+    {/* Side roles modal */}
+    <Modal
+      visible={sideRoleModalVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setSideRoleModalVisible(false)}
+    >
+      <View style={centered.overlay}>
+        <View style={centered.card}>
+          <Text style={centered.title}>Add Side Roles</Text>
+          <TextInput
+            value={roleSearchTerm}
+            onChangeText={(t) => {
+              setRoleSearchTerm(t);
+              fetchSearchRoles(t);
+            }}
+            placeholder="Search roles"
+            placeholderTextColor={COLORS.textSecondary}
+            style={styles.input}
+          />
+          <ScrollView style={{ maxHeight: 260, marginTop: 8 }}>
+            {searchingRoles && <ActivityIndicator color={COLORS.primary} />}
+
+            {!searchingRoles &&
+              roleSearchItems.map((r) => {
+                const isSelected = sideRoles.includes(r.label);
+                return (
+                  <TouchableOpacity
+                    key={r.value}
+                    style={[
+                      block.row,
+                      { backgroundColor: isSelected ? '#111' : 'transparent' },
+                    ]}
+                    onPress={() => {
+                      setSideRoles((prev) =>
+                        isSelected ? prev.filter((x) => x !== r.label) : [...prev, r.label]
+                      );
+                    }}
+                  >
+                    <Text style={{ color: COLORS.textPrimary, fontFamily: FONT_OBLIVION }}>
                       {r.label}
                     </Text>
+                    {isSelected && (
+                      <Ionicons name="checkmark" size={18} color={COLORS.primary} />
+                    )}
                   </TouchableOpacity>
-                ))}
-              {!searchingRoles &&
-                !roleSearchItems.length && (
-                  <Text style={block.muted}>
-                    Type to search roles.
-                  </Text>
-                )}
-            </ScrollView>
-            <TouchableOpacity
-              style={[styles.ghostBtn, { marginTop: 10 }]}
-              onPress={() =>
-                setRoleSearchModalVisible(false)
-              }
-            >
-              <Text style={styles.ghostBtnText}>
-                Close
-              </Text>
-            </TouchableOpacity>
-          </View>
+                );
+              })}
+
+            {!searchingRoles && !roleSearchItems.length && (
+              <Text style={block.muted}>Type to search roles.</Text>
+            )}
+          </ScrollView>
+
+          <TouchableOpacity
+            style={[styles.primaryBtn, { marginTop: 10 }]}
+            onPress={() => setSideRoleModalVisible(false)}
+          >
+            <Text style={styles.primaryBtnText}>Done</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+      </View>
+    </Modal>
 
-      {/* Side roles modal */}
-      <Modal
-        visible={sideRoleModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() =>
-          setSideRoleModalVisible(false)
-        }
-      >
-        <View style={centered.overlay}>
-          <View style={centered.card}>
-            <Text style={centered.title}>
-              Add Side Roles
-            </Text>
-            <TextInput
-              value={roleSearchTerm}
-              onChangeText={(t) => {
-                setRoleSearchTerm(t);
-                fetchSearchRoles(t);
-              }}
-              placeholder="Search roles"
-              placeholderTextColor={COLORS.textSecondary}
-              style={styles.input}
-            />
-            <ScrollView
-              style={{ maxHeight: 260, marginTop: 8 }}
-            >
-              {searchingRoles && (
-                <ActivityIndicator
-                  color={COLORS.primary}
-                />
-              )}
-              {!searchingRoles &&
-                roleSearchItems.map((r) => {
-                  const isSelected =
-                    sideRoles.includes(r.label);
-                  return (
-                    <TouchableOpacity
-                      key={r.value}
-                      style={[
-                        block.row,
-                        {
-                          backgroundColor: isSelected
-                            ? '#111'
-                            : 'transparent',
-                        },
-                      ]}
-                      onPress={() => {
-                        setSideRoles((prev) =>
-                          isSelected
-                            ? prev.filter(
-                                (x) => x !== r.label,
-                              )
-                            : [...prev, r.label],
-                        );
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: COLORS.textPrimary,
-                          fontFamily:
-                            FONT_OBLIVION,
-                        }}
-                      >
-                        {r.label}
-                      </Text>
-                      {isSelected && (
-                        <Ionicons
-                          name="checkmark"
-                          size={18}
-                          color={COLORS.primary}
-                        />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              {!searchingRoles &&
-                !roleSearchItems.length && (
-                  <Text style={block.muted}>
-                    Type to search roles.
-                  </Text>
-                )}
-            </ScrollView>
-            <TouchableOpacity
-              style={[styles.primaryBtn, { marginTop: 10 }]}
-              onPress={() =>
-                setSideRoleModalVisible(false)
-              }
-            >
-              <Text style={styles.primaryBtnText}>
-                Done
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-       
+    {/* Avatar cropper */}
+    <AvatarCropper
+      visible={cropperOpen}
+      imageUri={cropSource || undefined}
+      onCancel={() => {
+        setCropperOpen(false);
+        setCropSource(null);
+      }}
+      onCropped={handleAvatarCropped}
+      fullName={fullName || profile?.full_name || ''}
+      mainRoleName={mainRoleName || ''}
+      cityName={cityName || ''}
+      level={displayLevel}
+    />
 
-      {/* Avatar cropper */}
-
-            <AvatarCropper
-        visible={cropperOpen}
-        imageUri={cropSource || undefined}
-        onCancel={() => {
-          setCropperOpen(false);
-          setCropSource(null);
-        }}
-        onCropped={handleAvatarCropped}
-        fullName={fullName || profile?.full_name || ''}
-        mainRoleName={mainRoleName || ''}
-        cityName={cityName || ''}
-        level={displayLevel}
-      />
-
-      {/* Supporters / Supporting Modal */}
-<ConnectionsModal
-  visible={connectionsModalVisible}
-  onClose={() => setConnectionsModalVisible(false)}
-
-  /* Make sure modal knows whose list we are viewing */
-  userId={(viewedUserId || currentUserId) ?? ""}
-
-  /* Pass proper owner name for "Supports you" vs "Supports Alex" */
-  profileOwnerName={
-    viewedUserId && viewedUserId !== currentUserId
-      ? profile?.full_name || "This user"
-      : "You"
-  }
-
-  /* Handle tapping another user inside modal */
-  onSelectUser={(id) => {
-    setConnectionsModalVisible(false);
-
-    // Navigate to their profile
-    navigation.navigate("Profile", { userId: id });
-  }}
-/>
-    </>
-  );
+    {/* Supporters / Supporting Modal */}
+    <ConnectionsModal
+      visible={connectionsModalVisible}
+      onClose={() => setConnectionsModalVisible(false)}
+      userId={(viewedUserId || currentUserId) ?? ''}
+      profileOwnerName={
+        viewedUserId && viewedUserId !== currentUserId
+          ? profile?.full_name || 'This user'
+          : 'You'
+      }
+      onSelectUser={(id) => {
+        setConnectionsModalVisible(false);
+        navigation.navigate('Profile', { userId: id });
+      }}
+    />
+  </>
+);
 }
-
 /* ======================= STYLES ======================= */
 const styles = StyleSheet.create({
-  heroWrap: { paddingTop: 18, paddingBottom: 8 },
-  heroGrid: { flexDirection: 'row', gap: GRID_GAP },
+  heroWrap: { paddingTop: 14, paddingBottom: 10 },
+  heroGrid: { flexDirection: "row", gap: GRID_GAP },
   heroLeft: { flex: 2 },
-  heroLeftMobile: { width: '100%' },
+  heroLeftMobile: { width: "100%" },
   heroLeftDesktop: { minHeight: 420 },
   heroRight: { flex: 1, gap: GRID_GAP },
 
   heroImage: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
+    borderRadius: 14,
+    overflow: "hidden",
+    justifyContent: "flex-end",
   },
   heroImageMobile: {
-    width: '100%',
-    aspectRatio: 16 / 7,
+    width: "100%",
+    aspectRatio: 16 / 9,
+    minHeight: 230,
   },
   heroImageDesktop: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
     minHeight: 420,
   },
-  heroImageInner: { resizeMode: 'cover', opacity: 0.98 },
+  heroImageInner: { resizeMode: "cover", opacity: 0.98 },
   heroGradient: { ...StyleSheet.absoluteFillObject },
 
   roleWrap: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
   },
 
   heroRoleThin: {
     color: COLORS.textPrimary,
     fontFamily: FONT_OBLIVION,
-    fontSize: 48,
+    fontSize: 46,
     letterSpacing: 2.5,
-    fontWeight: '400',
-    textAlign: 'center',
-    textTransform: 'uppercase',
+    fontWeight: "400",
+    textAlign: "center",
+    textTransform: "uppercase",
   },
   heroMeta: {
     marginTop: 10,
     color: COLORS.textSecondary,
     fontFamily: FONT_OBLIVION,
-    letterSpacing: 2.5,
-    fontSize: 13,
-    textAlign: 'center',
+    letterSpacing: 2.2,
+    fontSize: 12,
+    textAlign: "center",
   },
 
   infoCard: {
     backgroundColor: COLORS.cardAlt,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 14,
   },
   infoButtons: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
-    justifyContent: 'center',
+    justifyContent: "center",
+    marginBottom: 6,
   },
   btnPrimary: {
     backgroundColor: COLORS.primary,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.primary,
+    minWidth: 140,
+    alignItems: "center",
   },
   btnPrimaryText: {
-    color: '#000',
-    fontWeight: '900',
+    color: "#000",
+    fontWeight: "900",
     letterSpacing: 1,
     fontFamily: FONT_OBLIVION,
   },
@@ -4716,12 +4557,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.cardAlt,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 14,
   },
   aboutTitle: {
     color: COLORS.textPrimary,
-    fontWeight: '900',
+    fontWeight: "900",
     letterSpacing: 3,
     marginBottom: 6,
     fontFamily: FONT_OBLIVION,
@@ -4734,68 +4575,75 @@ const styles = StyleSheet.create({
   },
 
   avatarRingWrapper: {
-    position: 'absolute',
-    alignItems: 'center',
+    position: "absolute",
+    alignItems: "center",
   },
   avatarRing: {
     padding: 3,
     borderRadius: 999,
     borderWidth: 2,
   },
+
+  // ✅ No isCompact inside StyleSheet
   avatarInner: {
     width: 80,
     height: 80,
     borderRadius: 999,
-    backgroundColor: '#000',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
+    backgroundColor: "#000",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
   },
+  avatarInnerCompact: {
+    width: 64,
+    height: 64,
+  },
+
   avatarImage: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
     borderRadius: 999,
   },
   avatarFallback: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   levelPill: {
     marginTop: 6,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    alignSelf: 'center',
+    alignSelf: "center",
   },
   levelPillText: {
     fontSize: 11,
-    fontWeight: '900',
-    color: '#000',
+    fontWeight: "900",
+    color: "#000",
     letterSpacing: 1,
     fontFamily: FONT_OBLIVION,
   },
 
   gamifyWrap: {
     marginTop: 10,
-    alignItems: 'center',
+    alignItems: "center",
   },
   gamifyTitle: {
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: "800",
     letterSpacing: 1.4,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     fontFamily: FONT_OBLIVION,
   },
   gamifyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginTop: 4,
     gap: 6,
   },
   gamifyLevel: {
     color: COLORS.textPrimary,
-    fontWeight: '800',
+    fontWeight: "800",
     fontSize: 13,
     fontFamily: FONT_OBLIVION,
   },
@@ -4813,17 +4661,18 @@ const styles = StyleSheet.create({
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: '#000000CC',
-    justifyContent: 'flex-end',
+    backgroundColor: "#000000CC",
+    justifyContent: "flex-end",
+    paddingHorizontal: 10, // ✅ helps mobile-web breathing room
   },
   modalContainer: {
     backgroundColor: COLORS.cardAlt,
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
-    padding: 18,
-    maxHeight: '92%',
-    width: '100%',
-    alignSelf: 'center',
+    padding: 16,
+    maxHeight: "92%",
+    width: "100%",
+    alignSelf: "center",
     borderWidth: 1,
     borderColor: COLORS.border,
   },
@@ -4832,14 +4681,14 @@ const styles = StyleSheet.create({
     height: 5,
     borderRadius: 3,
     backgroundColor: COLORS.border,
-    alignSelf: 'center',
-    marginBottom: 12,
+    alignSelf: "center",
+    marginBottom: 10,
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: '900',
+    fontWeight: "900",
     color: COLORS.textPrimary,
-    textAlign: 'center',
+    textAlign: "center",
     letterSpacing: 1,
     fontFamily: FONT_CINZEL,
   },
@@ -4847,7 +4696,7 @@ const styles = StyleSheet.create({
   field: { marginTop: 12 },
   fieldLabel: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: "800",
     color: COLORS.textSecondary,
     marginBottom: 6,
     marginLeft: 2,
@@ -4857,12 +4706,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: 12,
-    padding: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     color: COLORS.textPrimary,
-    backgroundColor: '#0C0C0C',
+    backgroundColor: "#0C0C0C",
     fontFamily: FONT_OBLIVION,
   },
-  multiline: { minHeight: 96 },
+  multiline: { minHeight: 100 },
 
   pickerBtn: {
     borderWidth: 1,
@@ -4870,10 +4720,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    backgroundColor: '#0C0C0C',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    backgroundColor: "#0C0C0C",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   pickerBtnText: {
     color: COLORS.textSecondary,
@@ -4881,23 +4731,23 @@ const styles = StyleSheet.create({
   },
 
   segmentWrap: {
-    flexDirection: 'row',
-    backgroundColor: '#0C0C0C',
+    flexDirection: "row",
+    backgroundColor: "#0C0C0C",
     borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginTop: 6,
   },
   segmentBtn: {
     flex: 1,
     paddingVertical: 10,
-    alignItems: 'center',
+    alignItems: "center",
   },
-  segmentActive: { backgroundColor: '#151515' },
+  segmentActive: { backgroundColor: "#151515" },
   segmentText: {
     color: COLORS.textSecondary,
-    fontWeight: '700',
+    fontWeight: "700",
     fontFamily: FONT_OBLIVION,
   },
   segmentTextActive: {
@@ -4911,31 +4761,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 12,
-    alignItems: 'center',
+    alignItems: "center",
   },
   primaryBtnText: {
-    color: '#000',
-    fontWeight: '900',
+    color: "#000",
+    fontWeight: "900",
     letterSpacing: 1,
     fontFamily: FONT_OBLIVION,
   },
   ghostBtn: {
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
     borderColor: COLORS.border,
     borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 12,
-    alignItems: 'center',
+    alignItems: "center",
   },
   ghostBtnText: {
     color: COLORS.textPrimary,
-    fontWeight: '800',
+    fontWeight: "800",
     fontFamily: FONT_OBLIVION,
   },
 
   uploadRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
     marginTop: 8,
   },
@@ -4945,11 +4795,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: COLORS.border,
+    backgroundColor: "#0C0C0C",
   },
   pillText: {
     color: COLORS.textPrimary,
     fontFamily: FONT_OBLIVION,
-    fontWeight: '700',
+    fontWeight: "700",
   },
 
   validationText: {
@@ -4961,15 +4812,15 @@ const styles = StyleSheet.create({
 });
 
 const block = StyleSheet.create({
-  section: { marginTop: 22 },
+  section: { marginTop: 20 },
 
   h3Centered: {
     color: COLORS.textPrimary,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: "800",
     marginBottom: 8,
     letterSpacing: 2,
-    textAlign: 'center',
+    textAlign: "center",
     fontFamily: FONT_OBLIVION,
   },
   muted: {
@@ -4980,97 +4831,97 @@ const block = StyleSheet.create({
   mutedCentered: {
     color: COLORS.textSecondary,
     fontSize: 13,
-    textAlign: 'center',
+    textAlign: "center",
     fontFamily: FONT_OBLIVION,
   },
 
   sectionTitleCentered: {
     color: COLORS.textPrimary,
     fontSize: 18,
-    fontWeight: '900',
+    fontWeight: "900",
     letterSpacing: 3,
     marginBottom: 10,
-    textAlign: 'center',
+    textAlign: "center",
     fontFamily: FONT_OBLIVION,
   },
 
   mediaCard: {
-    backgroundColor: '#000',
-    borderRadius: 12,
-    overflow: 'hidden',
+    backgroundColor: "#000",
+    borderRadius: 14,
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: COLORS.border,
   },
 
   videoWrap: {
-    width: '100%',
-    alignSelf: 'center',
-    backgroundColor: '#000',
-    justifyContent: 'center',
+    width: "100%",
+    alignSelf: "center",
+    backgroundColor: "#000",
+    justifyContent: "center",
   },
 
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  grid: { flexDirection: "row", flexWrap: "wrap" },
   tile: { paddingBottom: 6 },
   tileFrame: {
-    width: '100%',
+    width: "100%",
     aspectRatio: 4 / 5,
-    backgroundColor: '#000',
-    borderRadius: 8,
-    overflow: 'hidden',
+    backgroundColor: "#000",
+    borderRadius: 10,
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: COLORS.border,
-    position: 'relative',
+    position: "relative",
   },
   closeDot: {
-    position: 'absolute',
+    position: "absolute",
     top: 8,
     right: 8,
     backgroundColor: COLORS.primary,
     width: 26,
     height: 26,
     borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: COLORS.primary,
   },
 
   mediaRowCard: {
     backgroundColor: COLORS.cardAlt,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
     padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   mediaIcon: {
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: '#0C0C0C',
+    backgroundColor: "#0C0C0C",
     borderWidth: 1,
     borderColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   mediaRowTitle: {
     color: COLORS.textPrimary,
-    fontWeight: '800',
+    fontWeight: "800",
     fontFamily: FONT_OBLIVION,
   },
   progressRail: {
     height: 4,
-    backgroundColor: '#0F0F0F',
+    backgroundColor: "#0F0F0F",
     borderRadius: 999,
     marginTop: 8,
     borderWidth: 1,
-    borderColor: '#ffffff10',
-    overflow: 'hidden',
+    borderColor: "#ffffff10",
+    overflow: "hidden",
   },
   progressFill: {
-    height: '100%',
+    height: "100%",
     backgroundColor: COLORS.primary,
   },
 
@@ -5078,29 +4929,29 @@ const block = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
 
   jobCard: {
     marginTop: 12,
     paddingVertical: 12,
     paddingHorizontal: 10,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.cardAlt,
   },
   jobHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
 
   rowTitle: {
     color: COLORS.textPrimary,
-    fontWeight: '800',
+    fontWeight: "800",
     flexShrink: 1,
     marginRight: 12,
     fontFamily: FONT_OBLIVION,
@@ -5109,13 +4960,13 @@ const block = StyleSheet.create({
     backgroundColor: COLORS.primary,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: COLORS.primary,
   },
   rowBtnText: {
-    color: '#000',
-    fontWeight: '900',
+    color: "#000",
+    fontWeight: "900",
     fontFamily: FONT_OBLIVION,
   },
   rowBtnGhost: {
@@ -5123,25 +4974,26 @@ const block = StyleSheet.create({
     borderColor: COLORS.border,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 8,
+    borderRadius: 10,
     marginLeft: 6,
+    backgroundColor: "#0C0C0C",
   },
   rowBtnGhostText: {
     color: COLORS.textPrimary,
-    fontWeight: '800',
+    fontWeight: "800",
     fontFamily: FONT_OBLIVION,
   },
 
   youtubeWrap: {
-    backgroundColor: '#000',
-    borderRadius: 12,
-    overflow: 'hidden',
+    backgroundColor: "#000",
+    borderRadius: 14,
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: COLORS.border,
     marginBottom: 12,
   },
   ytDelete: {
-    position: 'absolute',
+    position: "absolute",
     top: 10,
     right: 10,
     borderWidth: 1,
@@ -5149,28 +5001,28 @@ const block = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 999,
-    backgroundColor: '#0D0D0D',
+    backgroundColor: "#0D0D0D",
   },
 
   viewerOverlay: {
     flex: 1,
-    backgroundColor: '#000000EE',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#000000EE",
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 12,
   },
-  viewerImage: { width: '100%', height: '85%' },
+  viewerImage: { width: "100%", height: "85%" },
   viewerCloseHint: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 24,
     paddingVertical: 6,
     paddingHorizontal: 12,
-    backgroundColor: '#ffffff22',
+    backgroundColor: "#ffffff22",
     borderRadius: 999,
   },
   viewerHintText: {
-    color: '#fff',
-    fontWeight: '800',
+    color: "#fff",
+    fontWeight: "800",
     fontFamily: FONT_OBLIVION,
   },
 
@@ -5184,17 +5036,17 @@ const block = StyleSheet.create({
     fontFamily: FONT_OBLIVION,
   },
   applicantsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
   },
   applicantPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: '#111',
+    backgroundColor: "#111",
     borderWidth: 1,
     borderColor: COLORS.border,
     maxWidth: 180,
@@ -5204,14 +5056,14 @@ const block = StyleSheet.create({
     height: 22,
     borderRadius: 11,
     borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 6,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   applicantAvatarImage: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
     borderRadius: 11,
   },
   applicantName: {
@@ -5231,13 +5083,13 @@ const block = StyleSheet.create({
 const centered = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: '#000000CC',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#000000CC",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 18,
   },
   card: {
-    width: '100%',
+    width: "100%",
     maxWidth: 520,
     backgroundColor: COLORS.cardAlt,
     borderRadius: 18,
@@ -5247,9 +5099,9 @@ const centered = StyleSheet.create({
   },
   title: {
     color: COLORS.textPrimary,
-    fontWeight: '900',
+    fontWeight: "900",
     fontSize: 16,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 6,
     fontFamily: FONT_OBLIVION,
   },
@@ -5257,8 +5109,8 @@ const centered = StyleSheet.create({
 
 const navStyles = StyleSheet.create({
   arrow: {
-    position: 'absolute',
-    top: '48%',
+    position: "absolute",
+    top: "48%",
     paddingVertical: 12,
     paddingHorizontal: 8,
   },
@@ -5268,59 +5120,60 @@ const navStyles = StyleSheet.create({
 
 const stylesShowreel = StyleSheet.create({
   progressHit: {
-    position: 'absolute',
+    position: "absolute",
     left: 10,
     right: 60,
     bottom: 10,
     height: 16,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   progressTrack: {
     height: 3,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    overflow: 'hidden',
+    backgroundColor: "rgba(255,255,255,0.18)",
+    overflow: "hidden",
   },
   progressFill: {
-    height: '100%',
+    height: "100%",
     borderRadius: 999,
     backgroundColor: GOLD,
   },
   fsButton: {
-    position: 'absolute',
+    position: "absolute",
     right: 10,
     bottom: 10,
     width: 16,
     height: 16,
     borderRadius: 3,
     borderWidth: 1,
-    borderColor: '#ffffffaa',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "#ffffffaa",
+    alignItems: "center",
+    justifyContent: "center",
   },
   cornerBox: {
     width: 10,
     height: 10,
     borderTopWidth: 1,
     borderRightWidth: 1,
-    borderColor: '#ffffffaa',
+    borderColor: "#ffffffaa",
   },
   soundBtn: {
-    position: 'absolute',
+    position: "absolute",
     left: 10,
     top: 10,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    backgroundColor: '#00000088',
+    backgroundColor: "#00000088",
     borderRadius: 999,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   soundText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 9,
-    fontWeight: '700',
-    textTransform: 'uppercase',
+    fontWeight: "700",
+    textTransform: "uppercase",
   },
 });
+
