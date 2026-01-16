@@ -3206,16 +3206,20 @@ const styles = StyleSheet.create({
     maxWidth: HERO_COMPACT ? '92%' : '85%',
   },
 
-  heroBylineTap: { marginTop: HERO_COMPACT ? 2 : 6 },
-  heroByline: {
-    color: GOLD,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '700',
-    letterSpacing: HERO_COMPACT ? 0.25 : 0.5,
-    fontSize: HERO_TINY ? 11 : HERO_COMPACT ? 12 : 18,
-    textAlign: 'center',
-    maxWidth: HERO_COMPACT ? '92%' : '85%',
-  },
+  heroBylineTap: {
+  marginTop: HERO_COMPACT ? 2 : 6,
+  alignSelf: 'center',
+  maxWidth: HERO_COMPACT ? '92%' : '85%',
+},
+
+heroByline: {
+  color: GOLD,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  letterSpacing: HERO_COMPACT ? 0.25 : 0.5,
+  fontSize: HERO_TINY ? 11 : HERO_COMPACT ? 12 : 18,
+  textAlign: 'center',
+},
 
   commentBtn: {
     marginTop: IS_WEB ? 10 : 8,
