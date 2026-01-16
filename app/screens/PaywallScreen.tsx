@@ -9,6 +9,9 @@ import {
   Platform,
   AppState,
   AppStateStatus,
+  ScrollView,
+  SafeAreaView,
+  useWindowDimensions,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
@@ -118,6 +121,10 @@ function extractInvokeError(err: any): string {
 export default function PaywallScreen() {
   const nav = useNavigation<any>();
   const isFocused = useIsFocused();
+  const { width, height } = useWindowDimensions();
+
+  const isMobile = width < 520;
+  const isTiny = width < 360;
 
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -168,10 +175,10 @@ export default function PaywallScreen() {
   }, [selectedPlan]);
 
   const selectedSubLabel = useMemo(() => {
-  if (selectedPlan === 'lifetime') return 'Selected: £24.99 lifetime';
-  if (selectedPlan === 'yearly') return 'Selected: £49.99 / year';
-  return 'Selected: £4.99 / month';
-}, [selectedPlan]);
+    if (selectedPlan === 'lifetime') return 'Selected: £24.99 lifetime';
+    if (selectedPlan === 'yearly') return 'Selected: £49.99 / year';
+    return 'Selected: £4.99 / month';
+  }, [selectedPlan]);
 
   const selectedPlanPayload = useMemo(() => {
     if (selectedPlan === 'lifetime') {
@@ -432,178 +439,199 @@ export default function PaywallScreen() {
     );
   }, [nav]);
 
+  // ✅ Paywall-fit: clamp height so CTA/benefits never push off-screen
+  const cardMaxHeight = Math.min(height * 0.92, 760);
+
   if (gateChecking) {
     return (
-      <View style={styles.container}>
-        <View style={[styles.card, { alignItems: 'center' }]}>
+      <SafeAreaView style={styles.container}>
+        <View style={[styles.card, { alignItems: 'center', maxHeight: cardMaxHeight }, styles.cardMobileClamp]}>
           <ActivityIndicator color={GOLD} />
           <Text style={{ marginTop: 10, color: TEXT_MUTED, fontFamily: SYSTEM_SANS }}>
             Loading…
           </Text>
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   // ✅ If already pro (or pro until date), don’t show checkout tiles
   if (alreadyPro) {
     const endLabel = proEndsIso ? formatEndDate(proEndsIso) : null;
+
     return (
-      <View style={styles.container}>
-        <View style={styles.card}>
-          <Text style={styles.kicker}>PRO</Text>
-          <Text style={styles.title}>You already have Pro</Text>
-
-          <Text style={styles.subtitle}>
-            {cancelAtPeriodEnd && endLabel
-              ? `Your subscription is set to cancel. You’ll keep Pro until ${endLabel}.`
-              : 'You’re currently on Pro. No need to upgrade again.'}
-          </Text>
-
-          <TouchableOpacity
-            onPress={enterFeatured}
-            style={[styles.buttonBase, styles.proButton]}
-            activeOpacity={0.9}
+      <SafeAreaView style={styles.container}>
+        <View style={[styles.card, { maxHeight: cardMaxHeight }, isMobile && styles.cardMobile]}>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={styles.cardScrollContent}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
           >
-            <Text style={styles.buttonText}>Go to app</Text>
-          </TouchableOpacity>
+            <Text style={styles.kicker}>PRO</Text>
+            <Text style={styles.title}>You already have Pro</Text>
 
-          <TouchableOpacity
-            style={styles.backLink}
-            onPress={handleBack}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.backText}>Back</Text>
-          </TouchableOpacity>
+            <Text style={styles.subtitle}>
+              {cancelAtPeriodEnd && endLabel
+                ? `Your subscription is set to cancel. You’ll keep Pro until ${endLabel}.`
+                : 'You’re currently on Pro. No need to upgrade again.'}
+            </Text>
+
+            <TouchableOpacity
+              onPress={enterFeatured}
+              style={[styles.buttonBase, styles.proButton]}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.buttonText}>Go to app</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.backLink}
+              onPress={handleBack}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.kicker}>UPGRADE</Text>
-        <Text style={styles.title}>Upgrade to Pro</Text>
-        <Text style={styles.subtitle}>
-          Submit films to the Monthly Film Challenge, apply for paid jobs, and unlock Workshop tools.
-        </Text>
-
-        {/* Offer strip */}
-        <View style={styles.offerStrip}>
-          <View style={{ flex: 1, minWidth: 160 }}>
-            <Text style={styles.offerStripKicker}>NEW YEAR’S OFFER</Text>
-            <Text style={styles.offerStripTitle}>£24.99 Lifetime</Text>
-          </View>
-
-          <View style={{ alignItems: 'flex-end', justifyContent: 'center', gap: 6 }}>
-            <View style={styles.offerDot} />
-            <Text style={styles.offerStripMeta}>
-              {offerCountdown.expired ? 'Offer ended' : offerCountdown.long}
-            </Text>
-          </View>
-        </View>
-
-        {/* Plan tiles */}
-        <View style={styles.plansArea}>
-          <View style={styles.planRow}>
-            {/* Lifetime */}
-            <TouchableOpacity
-              activeOpacity={0.92}
-              onPress={() => setSelectedPlan('lifetime')}
-              style={[
-                styles.planTile,
-                styles.planTileHero,
-                selectedPlan === 'lifetime' ? styles.tileSelected : null,
-              ]}
-            >
-              <Text style={[styles.planKicker, styles.planKickerHero]}>LIFETIME</Text>
-              <View style={styles.planPriceRow}>
-                <Text style={styles.planCurrency}>£</Text>
-                <Text style={styles.planPriceHero}>24.99</Text>
-              </View>
-              <Text style={styles.planSubHero}>
-  {offerCountdown.expired ? 'Offer ended' : 'Ends Jan 31'}
-</Text>
-            </TouchableOpacity>
-
-            {/* Yearly */}
-            <TouchableOpacity
-              activeOpacity={0.92}
-              onPress={() => setSelectedPlan('yearly')}
-              style={[
-                styles.planTile,
-                styles.planTileSecondary,
-                selectedPlan === 'yearly' ? styles.tileSelected : null,
-              ]}
-            >
-              <Text style={styles.planKicker}>YEARLY</Text>
-              <View style={styles.planPriceRow}>
-                <Text style={styles.planCurrency}>£</Text>
-                <Text style={styles.planPrice}>49.99</Text>
-              </View>
-              <Text style={styles.planSub}>Cancel anytime</Text>
-            </TouchableOpacity>
-
-            {/* Monthly */}
-            <TouchableOpacity
-              activeOpacity={0.92}
-              onPress={() => setSelectedPlan('monthly')}
-              style={[
-                styles.planTile,
-                styles.planTileSecondary,
-                selectedPlan === 'monthly' ? styles.tileSelected : null,
-              ]}
-            >
-              <Text style={styles.planKicker}>MONTHLY</Text>
-              <View style={styles.planPriceRow}>
-                <Text style={styles.planCurrency}>£</Text>
-                <Text style={styles.planPrice}>4.99</Text>
-              </View>
-              <Text style={styles.planSub}>Cancel anytime</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* CTA */}
-        <TouchableOpacity
-          onPress={openCheckout}
-          style={[styles.buttonBase, styles.proButton, submitting && styles.buttonDisabled]}
-          disabled={submitting}
-          activeOpacity={submitting ? 1 : 0.9}
+    <SafeAreaView style={styles.container}>
+      <View style={[styles.card, { maxHeight: cardMaxHeight }, isMobile && styles.cardMobile]}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.cardScrollContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
         >
-          {submitting ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <ActivityIndicator color="#0B0B0B" />
-              <Text style={styles.buttonText}>Opening checkout…</Text>
+          <Text style={styles.kicker}>UPGRADE</Text>
+          <Text style={styles.title}>Upgrade to Pro</Text>
+          <Text style={styles.subtitle}>
+            Submit films to the Monthly Film Challenge, apply for paid jobs, and unlock Workshop tools.
+          </Text>
+
+          {/* Offer strip */}
+          <View style={[styles.offerStrip, isMobile && styles.offerStripMobile]}>
+            <View style={{ flex: 1, minWidth: 160 }}>
+              <Text style={styles.offerStripKicker}>NEW YEAR’S OFFER</Text>
+              <Text style={styles.offerStripTitle}>£24.99 Lifetime</Text>
             </View>
-          ) : (
-            <Text style={styles.buttonText}>{planLabel}</Text>
-          )}
-        </TouchableOpacity>
 
-        <Text style={styles.selectedText}>{selectedSubLabel}</Text>
+            <View style={[styles.offerStripRight, isMobile && styles.offerStripRightMobile]}>
+              <View style={styles.offerDot} />
+              <Text style={styles.offerStripMeta}>
+                {offerCountdown.expired ? 'Offer ended' : offerCountdown.long}
+              </Text>
+            </View>
+          </View>
 
-        <View style={styles.divider} />
+          {/* Plan tiles */}
+          <View style={styles.plansArea}>
+            <View style={[styles.planRow, isMobile && styles.planRowMobile, isTiny && styles.planRowTiny]}>
+              {/* Lifetime */}
+              <TouchableOpacity
+                activeOpacity={0.92}
+                onPress={() => setSelectedPlan('lifetime')}
+                style={[
+                  styles.planTile,
+                  styles.planTileHero,
+                  selectedPlan === 'lifetime' ? styles.tileSelected : null,
+                  isTiny ? styles.planTileTinyStack : null,
+                ]}
+              >
+                <Text style={[styles.planKicker, styles.planKickerHero]}>LIFETIME</Text>
+                <View style={styles.planPriceRow}>
+                  <Text style={styles.planCurrency}>£</Text>
+                  <Text style={styles.planPriceHero}>24.99</Text>
+                </View>
+                <Text style={styles.planSubHero}>
+                  {offerCountdown.expired ? 'Offer ended' : 'Ends Jan 31'}
+                </Text>
+              </TouchableOpacity>
 
-        <View style={styles.benefits}>
-          <Text style={styles.benefitItem}>✓ Submit films to the Monthly Film Challenge</Text>
-          <Text style={styles.benefitItem}>✓ Apply for all paid jobs</Text>
-          <Text style={styles.benefitItem}>✓ Full access to Workshop tools & downloads</Text>
-        </View>
+              {/* Yearly */}
+              <TouchableOpacity
+                activeOpacity={0.92}
+                onPress={() => setSelectedPlan('yearly')}
+                style={[
+                  styles.planTile,
+                  styles.planTileSecondary,
+                  selectedPlan === 'yearly' ? styles.tileSelected : null,
+                  isTiny ? styles.planTileTinyStack : null,
+                ]}
+              >
+                <Text style={styles.planKicker}>YEARLY</Text>
+                <View style={styles.planPriceRow}>
+                  <Text style={styles.planCurrency}>£</Text>
+                  <Text style={styles.planPrice}>49.99</Text>
+                </View>
+                <Text style={styles.planSub}>Cancel anytime</Text>
+              </TouchableOpacity>
 
-        {!!message && <Text style={styles.errorText}>{message}</Text>}
+              {/* Monthly */}
+              <TouchableOpacity
+                activeOpacity={0.92}
+                onPress={() => setSelectedPlan('monthly')}
+                style={[
+                  styles.planTile,
+                  styles.planTileSecondary,
+                  selectedPlan === 'monthly' ? styles.tileSelected : null,
+                  isTiny ? styles.planTileTinyStack : null,
+                ]}
+              >
+                <Text style={styles.planKicker}>MONTHLY</Text>
+                <View style={styles.planPriceRow}>
+                  <Text style={styles.planCurrency}>£</Text>
+                  <Text style={styles.planPrice}>4.99</Text>
+                </View>
+                <Text style={styles.planSub}>Cancel anytime</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
-        <TouchableOpacity
-          style={styles.backLink}
-          onPress={handleBack}
-          disabled={submitting}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.backText}>Maybe later</Text>
-        </TouchableOpacity>
+          {/* CTA */}
+          <TouchableOpacity
+            onPress={openCheckout}
+            style={[styles.buttonBase, styles.proButton, submitting && styles.buttonDisabled]}
+            disabled={submitting}
+            activeOpacity={submitting ? 1 : 0.9}
+          >
+            {submitting ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <ActivityIndicator color="#0B0B0B" />
+                <Text style={styles.buttonText}>Opening checkout…</Text>
+              </View>
+            ) : (
+              <Text style={styles.buttonText}>{planLabel}</Text>
+            )}
+          </TouchableOpacity>
+
+          <Text style={styles.selectedText}>{selectedSubLabel}</Text>
+
+          <View style={styles.divider} />
+
+          <View style={styles.benefits}>
+            <Text style={styles.benefitItem}>✓ Submit films to the Monthly Film Challenge</Text>
+            <Text style={styles.benefitItem}>✓ Apply for all paid jobs</Text>
+            <Text style={styles.benefitItem}>✓ Full access to Workshop tools & downloads</Text>
+          </View>
+
+          {!!message && <Text style={styles.errorText}>{message}</Text>}
+
+          <TouchableOpacity
+            style={styles.backLink}
+            onPress={handleBack}
+            disabled={submitting}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.backText}>Maybe later</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -620,11 +648,27 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 920,
     borderRadius: 24,
-    paddingVertical: 22,
-    paddingHorizontal: 20,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
     backgroundColor: DARK_ELEVATED,
     borderWidth: 1,
     borderColor: HAIRLINE,
+  },
+
+  // ✅ Slightly tighter on mobile
+  cardMobile: {
+    borderRadius: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+  },
+
+  // used in the loading card too
+  cardMobileClamp: {
+    width: '100%',
+  },
+
+  cardScrollContent: {
+    paddingBottom: 10,
   },
 
   kicker: {
@@ -665,6 +709,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
+  },
+
+  // ✅ Mobile: stack the right side under the title so it doesn’t squeeze
+  offerStripMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+
+  offerStripRight: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 6,
+  },
+
+  offerStripRightMobile: {
+    alignItems: 'flex-start',
   },
 
   offerStripKicker: {
@@ -712,6 +773,16 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
 
+  // ✅ Mobile: allow nicer wrapping; on most phones you’ll get 1-2 tiles per row naturally
+  planRowMobile: {
+    flexWrap: 'wrap',
+  },
+
+  // ✅ Tiny phones: force stack so nothing is cramped
+  planRowTiny: {
+    flexDirection: 'column',
+  },
+
   planTile: {
     flex: 1,
     minWidth: 200,
@@ -721,6 +792,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: 1,
     borderColor: 'transparent',
+  },
+
+  // ✅ When stacking on tiny screens
+  planTileTinyStack: {
+    minWidth: '100%' as any,
   },
 
   planTileHero: {
