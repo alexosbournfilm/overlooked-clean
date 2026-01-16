@@ -3341,11 +3341,27 @@ const renderHero = () => {
               )}
             </View>
           ) : null}
-
-          {/* ✅ Mobile: put edit card AFTER About (inside hero) */}
+          {/* ✅ Mobile: put edit card BEFORE About (inside hero) */}
           {isMobileLike ? (
             <View style={{ width: "100%", marginTop: 12 }}>
               {renderEditProfileCard()}
+            </View>
+          ) : null}
+
+          {/* About (now sits between Edit Profile and Showreel on mobile) */}
+          {(bio?.trim()?.length || sideRoles.length || isOwnProfile) ? (
+            <View style={[styles.aboutCard, { marginTop: 12 }]}>
+              <Text style={styles.aboutTitle}>About</Text>
+              <Text style={[styles.aboutBody, isMobileLike ? { lineHeight: 18 } : null]}>
+                {bio || "—"}
+              </Text>
+
+              {!!sideRoles.length && (
+                <Text style={[styles.aboutBody, { marginTop: 8, fontStyle: "italic" }]}>
+                  <Text style={{ fontWeight: "900" }}>Side roles: </Text>
+                  {sideRoles.join(", ")}
+                </Text>
+              )}
             </View>
           ) : null}
         </View>
@@ -4588,15 +4604,13 @@ const styles = StyleSheet.create({
 
   // ✅ NEW: bottom bar inside hero image (avatar + counts) so nothing overlaps text
   heroBottomBar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 12,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
+  position: "relative", // ✅ critical
+  paddingHorizontal: 14,
+  paddingTop: 6,
+  flexDirection: "row",
+  alignItems: "flex-end",
+  justifyContent: "space-between",
+},
 
   infoCard: {
     backgroundColor: COLORS.cardAlt,
