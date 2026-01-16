@@ -3958,8 +3958,8 @@ if (isLoading) {
       style={{
         flex: 1,
         backgroundColor: COLORS.background,
-        alignItems: 'center',
-        justifyContent: 'center',
+        alignItems: "center",
+        justifyContent: "center",
       }}
     >
       <ActivityIndicator size="large" color={COLORS.primary} />
@@ -3973,8 +3973,8 @@ if (!profile) {
       style={{
         flex: 1,
         backgroundColor: COLORS.background,
-        alignItems: 'center',
-        justifyContent: 'center',
+        alignItems: "center",
+        justifyContent: "center",
       }}
     >
       <Text style={{ color: COLORS.textSecondary }}>Profile not found.</Text>
@@ -3988,27 +3988,20 @@ return (
       <ScrollView
         style={{ flex: 1, backgroundColor: COLORS.background }}
         contentContainerStyle={{
-          alignItems: 'center',
+          alignItems: "center",
           paddingBottom: 40 + Math.max(insets.bottom, 8),
         }}
       >
         <View
           style={{
-            width: '100%',
+            width: "100%",
             maxWidth: PAGE_MAX,
             paddingHorizontal: horizontalPad,
           }}
         >
           {renderHero()}
 
-{/* ✅ Mobile + mobile-web: put Edit Profile card AFTER About (inside hero) but BEFORE Showreel */}
-{isMobileLike ? (
-  <View style={{ width: "100%", marginTop: 12 }}>
-    {renderEditProfileCard()}
-  </View>
-) : null}
-
-{renderFeaturedFilm()}
+          {renderFeaturedFilm()}
           {renderEditorialPortfolio()}
           {renderSubmissionsSection()}
         </View>
@@ -4073,14 +4066,14 @@ return (
     >
       <KeyboardAvoidingView
         style={styles.modalOverlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>Edit Profile</Text>
 
           <ScrollView
-            style={{ flex: 1, width: '100%' }}
+            style={{ flex: 1, width: "100%" }}
             contentContainerStyle={{ paddingBottom: 32 }}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
@@ -4089,15 +4082,15 @@ return (
             {isOwnProfile && (
               <View style={[styles.field, { marginTop: 8 }]}>
                 <Text style={styles.fieldLabel}>Profile picture</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                   {image || profile.avatar_url ? (
                     <Image
-                      source={{ uri: addBuster(image || profile.avatar_url || '') || '' }}
+                      source={{ uri: addBuster(image || profile.avatar_url || "") || "" }}
                       style={{
                         width: 42,
                         height: 42,
                         borderRadius: 21,
-                        backgroundColor: '#111',
+                        backgroundColor: "#111",
                         borderWidth: 1,
                         borderColor: COLORS.border,
                       }}
@@ -4108,18 +4101,14 @@ return (
                         width: 42,
                         height: 42,
                         borderRadius: 21,
-                        backgroundColor: '#111',
+                        backgroundColor: "#111",
                         borderWidth: 1,
                         borderColor: COLORS.border,
-                        alignItems: 'center',
-                        justifyContent: 'center',
+                        alignItems: "center",
+                        justifyContent: "center",
                       }}
                     >
-                      <Ionicons
-                        name="person-outline"
-                        size={18}
-                        color={COLORS.textSecondary}
-                      />
+                      <Ionicons name="person-outline" size={18} color={COLORS.textSecondary} />
                     </View>
                   )}
 
@@ -4129,7 +4118,7 @@ return (
                     disabled={uploading}
                   >
                     <Text style={styles.pillText}>
-                      {uploading ? 'Uploading...' : 'Change profile picture'}
+                      {uploading ? "Uploading..." : "Change profile picture"}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -4155,10 +4144,10 @@ return (
                 style={styles.pickerBtn}
                 onPress={() => {
                   setCityOpen(true);
-                  fetchCities(citySearch || '');
+                  fetchCities(citySearch || "");
                 }}
               >
-                <Text style={styles.pickerBtnText}>{cityName || 'Search city'}</Text>
+                <Text style={styles.pickerBtnText}>{cityName || "Search city"}</Text>
                 <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -4170,11 +4159,11 @@ return (
                 style={styles.pickerBtn}
                 onPress={() => {
                   setRoleSearchModalVisible(true);
-                  setRoleSearchTerm('');
+                  setRoleSearchTerm("");
                   setRoleSearchItems([]);
                 }}
               >
-                <Text style={styles.pickerBtnText}>{mainRoleName || 'Search role'}</Text>
+                <Text style={styles.pickerBtnText}>{mainRoleName || "Search role"}</Text>
                 <Ionicons name="search" size={16} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -4186,12 +4175,12 @@ return (
                 style={styles.pickerBtn}
                 onPress={() => {
                   setSideRoleModalVisible(true);
-                  setRoleSearchTerm('');
+                  setRoleSearchTerm("");
                   setRoleSearchItems([]);
                 }}
               >
                 <Text style={styles.pickerBtnText}>
-                  {sideRoles.length ? sideRoles.join(', ') : 'Add side roles'}
+                  {sideRoles.length ? sideRoles.join(", ") : "Add side roles"}
                 </Text>
                 <Ionicons name="add" size={16} color={COLORS.textSecondary} />
               </TouchableOpacity>
@@ -4215,32 +4204,26 @@ return (
               <Text style={styles.fieldLabel}>Featured Showreel</Text>
               <View style={styles.segmentWrap}>
                 <TouchableOpacity
-                  style={[
-                    styles.segmentBtn,
-                    portfolioChoice === 'youtube' && styles.segmentActive,
-                  ]}
-                  onPress={() => setPortfolioChoice('youtube')}
+                  style={[styles.segmentBtn, portfolioChoice === "youtube" && styles.segmentActive]}
+                  onPress={() => setPortfolioChoice("youtube")}
                 >
                   <Text
                     style={[
                       styles.segmentText,
-                      portfolioChoice === 'youtube' && styles.segmentTextActive,
+                      portfolioChoice === "youtube" && styles.segmentTextActive,
                     ]}
                   >
                     YouTube link
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[
-                    styles.segmentBtn,
-                    portfolioChoice === 'mp4' && styles.segmentActive,
-                  ]}
-                  onPress={() => setPortfolioChoice('mp4')}
+                  style={[styles.segmentBtn, portfolioChoice === "mp4" && styles.segmentActive]}
+                  onPress={() => setPortfolioChoice("mp4")}
                 >
                   <Text
                     style={[
                       styles.segmentText,
-                      portfolioChoice === 'mp4' && styles.segmentTextActive,
+                      portfolioChoice === "mp4" && styles.segmentTextActive,
                     ]}
                   >
                     Upload MP4
@@ -4248,7 +4231,7 @@ return (
                 </TouchableOpacity>
               </View>
 
-              {portfolioChoice === 'youtube' ? (
+              {portfolioChoice === "youtube" ? (
                 <View style={{ marginTop: 8 }}>
                   <TextInput
                     value={portfolioUrl}
@@ -4260,20 +4243,16 @@ return (
                     autoCorrect={false}
                   />
                   {!!portfolioUrl && !looksLikeYouTube(portfolioUrl) && (
-                    <Text style={styles.validationText}>
-                      That link doesn’t look like YouTube.
-                    </Text>
+                    <Text style={styles.validationText}>That link doesn’t look like YouTube.</Text>
                   )}
                 </View>
               ) : (
                 <View style={{ marginTop: 8 }}>
                   {mp4MainUrl ? (
                     <>
-                      <Text style={[styles.fieldLabel, { marginBottom: 4 }]}>
-                        Current file
-                      </Text>
+                      <Text style={[styles.fieldLabel, { marginBottom: 4 }]}>Current file</Text>
                       <Text style={[block.muted, { marginBottom: 6 }]} numberOfLines={1}>
-                        {mp4MainName || 'Showreel video'}
+                        {mp4MainName || "Showreel video"}
                       </Text>
                     </>
                   ) : (
@@ -4291,20 +4270,18 @@ return (
                       <ActivityIndicator color="#000" />
                     ) : (
                       <Text style={styles.primaryBtnText}>
-                        {mp4MainUrl ? 'Replace video' : 'Upload video'}
+                        {mp4MainUrl ? "Replace video" : "Upload video"}
                       </Text>
                     )}
                   </TouchableOpacity>
 
                   {mp4MainUploading && (
-                    <View style={{ marginTop: 8, alignItems: 'center' }}>
+                    <View style={{ marginTop: 8, alignItems: "center" }}>
                       {!!mp4Status && (
                         <Text style={[block.muted, { marginBottom: 4 }]}>{mp4Status}</Text>
                       )}
                       <View style={block.progressRail}>
-                        <View
-                          style={[block.progressFill, { width: `${mp4Progress}%` }]}
-                        />
+                        <View style={[block.progressFill, { width: `${mp4Progress}%` }]} />
                       </View>
                       <Text style={[block.muted, { marginTop: 4 }]}>{mp4Progress}%</Text>
                     </View>
@@ -4330,7 +4307,7 @@ return (
             </View>
 
             {/* Actions */}
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 18, marginBottom: 6 }}>
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 18, marginBottom: 6 }}>
               <TouchableOpacity
                 style={[styles.ghostBtn, { flex: 1 }]}
                 onPress={() => setShowEditModal(false)}
@@ -4340,10 +4317,7 @@ return (
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[
-                  styles.primaryBtn,
-                  { flex: 1, opacity: !isDirty || uploading ? 0.6 : 1 },
-                ]}
+                style={[styles.primaryBtn, { flex: 1, opacity: !isDirty || uploading ? 0.6 : 1 }]}
                 disabled={!isDirty || uploading}
                 onPress={saveProfile}
               >
@@ -4395,7 +4369,7 @@ return (
                     key={c.value}
                     style={[
                       block.row,
-                      { backgroundColor: isSelected ? '#111' : 'transparent' },
+                      { backgroundColor: isSelected ? "#111" : "transparent" },
                     ]}
                     onPress={() => {
                       setCityId(c.value);
@@ -4406,19 +4380,14 @@ return (
                     <Text style={{ color: COLORS.textPrimary, fontFamily: FONT_OBLIVION }}>
                       {label}
                     </Text>
-                    {isSelected && (
-                      <Ionicons name="checkmark" size={18} color={COLORS.primary} />
-                    )}
+                    {isSelected && <Ionicons name="checkmark" size={18} color={COLORS.primary} />}
                   </TouchableOpacity>
                 );
               })
             )}
           </ScrollView>
 
-          <TouchableOpacity
-            style={[styles.ghostBtn, { marginTop: 10 }]}
-            onPress={() => setCityOpen(false)}
-          >
+          <TouchableOpacity style={[styles.ghostBtn, { marginTop: 10 }]} onPress={() => setCityOpen(false)}>
             <Text style={styles.ghostBtnText}>Close</Text>
           </TouchableOpacity>
         </View>
@@ -4465,14 +4434,9 @@ return (
                 </TouchableOpacity>
               ))}
 
-            {!searchingRoles && !roleSearchItems.length && (
-              <Text style={block.muted}>Type to search roles.</Text>
-            )}
+            {!searchingRoles && !roleSearchItems.length && <Text style={block.muted}>Type to search roles.</Text>}
           </ScrollView>
-          <TouchableOpacity
-            style={[styles.ghostBtn, { marginTop: 10 }]}
-            onPress={() => setRoleSearchModalVisible(false)}
-          >
+          <TouchableOpacity style={[styles.ghostBtn, { marginTop: 10 }]} onPress={() => setRoleSearchModalVisible(false)}>
             <Text style={styles.ghostBtnText}>Close</Text>
           </TouchableOpacity>
         </View>
@@ -4510,7 +4474,7 @@ return (
                     key={r.value}
                     style={[
                       block.row,
-                      { backgroundColor: isSelected ? '#111' : 'transparent' },
+                      { backgroundColor: isSelected ? "#111" : "transparent" },
                     ]}
                     onPress={() => {
                       setSideRoles((prev) =>
@@ -4521,22 +4485,15 @@ return (
                     <Text style={{ color: COLORS.textPrimary, fontFamily: FONT_OBLIVION }}>
                       {r.label}
                     </Text>
-                    {isSelected && (
-                      <Ionicons name="checkmark" size={18} color={COLORS.primary} />
-                    )}
+                    {isSelected && <Ionicons name="checkmark" size={18} color={COLORS.primary} />}
                   </TouchableOpacity>
                 );
               })}
 
-            {!searchingRoles && !roleSearchItems.length && (
-              <Text style={block.muted}>Type to search roles.</Text>
-            )}
+            {!searchingRoles && !roleSearchItems.length && <Text style={block.muted}>Type to search roles.</Text>}
           </ScrollView>
 
-          <TouchableOpacity
-            style={[styles.primaryBtn, { marginTop: 10 }]}
-            onPress={() => setSideRoleModalVisible(false)}
-          >
+          <TouchableOpacity style={[styles.primaryBtn, { marginTop: 10 }]} onPress={() => setSideRoleModalVisible(false)}>
             <Text style={styles.primaryBtnText}>Done</Text>
           </TouchableOpacity>
         </View>
@@ -4552,9 +4509,9 @@ return (
         setCropSource(null);
       }}
       onCropped={handleAvatarCropped}
-      fullName={fullName || profile?.full_name || ''}
-      mainRoleName={mainRoleName || ''}
-      cityName={cityName || ''}
+      fullName={fullName || profile?.full_name || ""}
+      mainRoleName={mainRoleName || ""}
+      cityName={cityName || ""}
       level={displayLevel}
     />
 
@@ -4562,15 +4519,15 @@ return (
     <ConnectionsModal
       visible={connectionsModalVisible}
       onClose={() => setConnectionsModalVisible(false)}
-      userId={(viewedUserId || currentUserId) ?? ''}
+      userId={(viewedUserId || currentUserId) ?? ""}
       profileOwnerName={
         viewedUserId && viewedUserId !== currentUserId
-          ? profile?.full_name || 'This user'
-          : 'You'
+          ? profile?.full_name || "This user"
+          : "You"
       }
       onSelectUser={(id) => {
         setConnectionsModalVisible(false);
-        navigation.navigate('Profile', { userId: id });
+        navigation.navigate("Profile", { userId: id });
       }}
     />
   </>
