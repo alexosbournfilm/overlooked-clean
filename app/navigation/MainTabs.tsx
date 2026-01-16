@@ -16,6 +16,8 @@ import {
   Image,
   ActivityIndicator,
   InteractionManager,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -1191,6 +1193,52 @@ export default function MainTabs() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
+  // ✅ FIX: manage Supabase auth refresh with app lifecycle so backgrounding doesn't break session
+  useEffect(() => {
+    // Start immediately on mount
+    try {
+      supabase.auth.startAutoRefresh();
+    } catch {}
+
+    // Native: pause refresh when app backgrounds; resume when active
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      try {
+        if (state === 'active') {
+          supabase.auth.startAutoRefresh();
+        } else {
+          supabase.auth.stopAutoRefresh();
+        }
+      } catch {}
+    });
+
+    return () => {
+      try {
+        sub.remove();
+      } catch {}
+      try {
+        supabase.auth.stopAutoRefresh();
+      } catch {}
+    };
+  }, []);
+
+  // ✅ Web: pause refresh when tab hidden; resume when visible
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    const onVisibility = () => {
+      try {
+        if (document.visibilityState === 'visible') {
+          supabase.auth.startAutoRefresh();
+        } else {
+          supabase.auth.stopAutoRefresh();
+        }
+      } catch {}
+    };
+
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
   useEffect(() => {
     if (Platform.OS === 'web') {
       try {
@@ -1290,7 +1338,7 @@ export default function MainTabs() {
               break;
           }
 
-          // ✅ CHANGED: icons ONLY everywhere (no labels, no pills)
+          // ✅ icons ONLY everywhere (no labels, no pills)
           return (
             <View style={styles.tabIconOnly}>
               <Ionicons name={icon} size={isTiny ? 20 : 22} color={color} />

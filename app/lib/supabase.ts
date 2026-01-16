@@ -40,7 +40,6 @@ const envKey = (SUPABASE_ANON_KEY_ENV || "").trim();
 export const SUPABASE_ENV_OK = Boolean(envUrl && envKey);
 
 // Always resolve to something non-empty to avoid crashing to a blank screen.
-// If env is missing in prod, we still run, but we scream loudly in console.
 export const SUPABASE_URL = SUPABASE_ENV_OK ? envUrl : sanitizeUrl(FALLBACK_URL);
 export const SUPABASE_ANON_KEY = SUPABASE_ENV_OK ? envKey : FALLBACK_ANON_KEY;
 
@@ -53,6 +52,31 @@ if (!SUPABASE_ENV_OK) {
 }
 
 // =======================
+// ⚡ SPEED: only detect session in URL when it’s actually present
+// =======================
+function shouldDetectSessionInUrl() {
+  if (!isWeb) return false;
+
+  try {
+    const hash = window.location.hash || "";
+    const search = window.location.search || "";
+
+    // Supabase redirects commonly include:
+    // - access_token in hash (implicit)
+    // - code in query (PKCE)
+    // - type=signup / type=recovery / etc
+    return (
+      hash.includes("access_token=") ||
+      hash.includes("refresh_token=") ||
+      search.includes("code=") ||
+      search.includes("type=")
+    );
+  } catch {
+    return false;
+  }
+}
+
+// =======================
 // 🧠 CLIENT INITIALIZATION
 // =======================
 
@@ -60,12 +84,20 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: isWeb
     ? {
         persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
+
+        // ✅ IMPORTANT: we manage refresh ourselves in MainTabs (AppState / visibility)
+        // This avoids extra timers + work.
+        autoRefreshToken: false,
+
+        // ✅ SPEED: only parse URL when a redirect param exists
+        detectSessionInUrl: shouldDetectSessionInUrl(),
       }
     : {
         persistSession: true,
-        autoRefreshToken: true,
+
+        // ✅ IMPORTANT: we manage refresh ourselves in MainTabs (AppState)
+        autoRefreshToken: false,
+
         detectSessionInUrl: false,
         storage: AsyncStorage,
         storageKey: "overlooked.supabase.auth",
@@ -77,15 +109,10 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
-// On native, starting auto-refresh is OK; on web it can be redundant.
-// Keep it simple:
-if (!isWeb) {
-  try {
-    supabase.auth.startAutoRefresh();
-  } catch (e) {
-    console.warn("[supabase] startAutoRefresh error", e);
-  }
-}
+// ❗️IMPORTANT CHANGE:
+// Do NOT call supabase.auth.startAutoRefresh() here.
+// On native, backgrounding pauses timers; starting/stopping refresh should be handled
+// at the app lifecycle level (AppState / visibility change) inside MainTabs or App root.
 
 // Handy constants for functions
 export const FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`;
