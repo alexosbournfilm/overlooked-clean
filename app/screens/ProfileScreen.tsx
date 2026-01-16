@@ -358,7 +358,7 @@ function ShowreelVideoInline({
   const [sendingComment, setSendingComment] = useState(false);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
 
-  // ✅ Track fullscreen so we can swap COVER -> CONTAIN (no crop)
+  // ✅ Still keep this for your fullscreen logic + audio behavior
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const clampedW = Math.min(width, SHOWREEL_MAX_W);
@@ -447,7 +447,6 @@ function ShowreelVideoInline({
         }
         el.controls = false;
         await el.play().catch(async () => {
-          // fallback: muted autoplay
           el.muted = true;
           setMuted(true);
           try {
@@ -529,12 +528,7 @@ function ShowreelVideoInline({
     fadeIn();
   };
 
-  // ✅ Toggle fullscreen state on native, so we switch to CONTAIN (no crop)
-  const onExpoFullscreen = async ({
-    fullscreenUpdate,
-  }: {
-    fullscreenUpdate: number;
-  }) => {
+  const onExpoFullscreen = async ({ fullscreenUpdate }: { fullscreenUpdate: number }) => {
     if (Platform.OS === 'web') return;
 
     if (fullscreenUpdate === VideoFullscreenUpdate.PLAYER_WILL_PRESENT) {
@@ -575,7 +569,6 @@ function ShowreelVideoInline({
     }
   };
 
-  // ✅ Fullscreen tracking on web
   useEffect(() => {
     if (Platform.OS !== 'web') return;
 
@@ -614,12 +607,10 @@ function ShowreelVideoInline({
         const el = htmlRef.current as any;
         if (el?.requestFullscreen) {
           await el.requestFullscreen();
-          // fullscreenchange listener will set state, but this helps instantly
           setIsFullscreen(true);
         }
       } else {
         (expoRef.current as any)?.presentFullscreenPlayer?.();
-        // native events will toggle state
       }
     } catch (e) {
       console.warn('enterFullscreen error', e);
@@ -642,14 +633,11 @@ function ShowreelVideoInline({
     } catch {}
   };
 
-  // simple progress scrubbing (click/tap)
   const onProgressPress = async (evt: any) => {
     try {
       if (!progressRef.current || !duration) return;
       const node: any = progressRef.current;
-      const rect = node.getBoundingClientRect
-        ? node.getBoundingClientRect()
-        : { left: 0, width: 1 };
+      const rect = node.getBoundingClientRect ? node.getBoundingClientRect() : { left: 0, width: 1 };
 
       const clientX =
         evt.nativeEvent?.locationX != null
@@ -690,8 +678,8 @@ function ShowreelVideoInline({
             style={{
               width: '100%',
               height: '100%',
-              // ✅ Inline = cover, Fullscreen = contain (no crop)
-              objectFit: isFullscreen ? 'contain' : 'cover',
+              // ✅ ALWAYS FIT (no crop), like Submissions
+              objectFit: 'contain',
               objectPosition: 'center center',
               display: 'block',
               background: '#000',
@@ -714,8 +702,8 @@ function ShowreelVideoInline({
             ref={expoRef}
             source={src ? { uri: src } : undefined}
             style={StyleSheet.absoluteFillObject}
-            // ✅ Inline = cover, Fullscreen = contain (no crop)
-            resizeMode={isFullscreen ? ResizeMode.CONTAIN : ResizeMode.COVER}
+            // ✅ ALWAYS FIT (no crop), like Submissions
+            resizeMode={ResizeMode.CONTAIN}
             isLooping
             shouldPlay={autoPlay}
             isMuted={muted}
@@ -728,13 +716,10 @@ function ShowreelVideoInline({
         )}
       </Animated.View>
 
-      {/* Grain + overlay */}
       <Grain opacity={0.05} />
 
-      {/* Click surface */}
       <Pressable style={StyleSheet.absoluteFillObject} onPress={onSurfacePress} />
 
-      {/* Progress bar */}
       <Pressable ref={progressRef} onPress={onProgressPress} style={stylesShowreel.progressHit}>
         <View style={stylesShowreel.progressTrack}>
           <View
@@ -746,12 +731,10 @@ function ShowreelVideoInline({
         </View>
       </Pressable>
 
-      {/* Fullscreen button */}
       <TouchableOpacity onPress={enterFullscreen} style={stylesShowreel.fsButton} activeOpacity={0.9}>
         <View style={stylesShowreel.cornerBox} />
       </TouchableOpacity>
 
-      {/* Sound button */}
       <TouchableOpacity onPress={toggleMute} style={stylesShowreel.soundBtn} activeOpacity={0.9}>
         <Ionicons
           name={muted ? 'volume-mute-outline' : 'volume-high-outline'}
@@ -763,7 +746,6 @@ function ShowreelVideoInline({
     </View>
   );
 }
-
 /* ---------- types ---------- */
 interface ProfileData {
   id: string;
