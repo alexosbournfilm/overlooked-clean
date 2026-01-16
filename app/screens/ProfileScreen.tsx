@@ -2760,7 +2760,12 @@ const renderHero = () => {
 
   return (
     <View style={[styles.heroWrap, { paddingTop: isMobile ? 8 : 18 }]}>
-      <View style={[styles.heroGrid, { flexDirection: isMobile ? "column" : "row" }]}>
+  <View
+    style={[
+      styles.heroGrid,
+      { flexDirection: isMobile ? 'column' : 'row' },
+    ]}
+  >
 
         {/* LEFT SIDE */}
         <View

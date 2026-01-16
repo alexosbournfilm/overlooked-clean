@@ -78,11 +78,11 @@ const FONT_OBLIVION =
 type SortKey = 'newest' | 'oldest' | 'mostvoted' | 'leastvoted';
 type Category = 'film';
 
-const TOP_BAR_OFFSET = Platform.OS === 'web' ? 76 : 8;
+const TOP_BAR_OFFSET = Platform.OS === 'web' ? 76 : 16;
 const BOTTOM_TAB_H = Platform.OS === 'web' ? 64 : 64;
 
 /** Bring content higher */
-const CONTENT_TOP_PAD = Platform.OS === 'web' ? 22 : 6;
+const CONTENT_TOP_PAD = Platform.OS === 'web' ? 22 : 14;
 
 /* 🔥 Gamification constants */
 const VOTES_PER_MONTH = 10;
@@ -1197,7 +1197,7 @@ type HeaderControlsProps = {
   searchText: string;
   setSearchText: (s: string) => void;
   isSearching?: boolean;
-  compact?: boolean;
+  compact?: boolean; // pass compact={isNarrow} from FeaturedScreen
 };
 
 const HeaderControls = React.memo(
@@ -1222,6 +1222,20 @@ const HeaderControls = React.memo(
     const raw = searchText ?? '';
     const q = raw.trim();
 
+    // ✅ compact sizing tokens (mobile)
+    const R = compact ? 12 : 14;
+    const padH = compact ? 12 : 14;
+    const padV = compact ? 8 : 10;
+    const inputSize = compact ? 13 : 14;
+
+    const chipPadV = compact ? 7 : 8;
+    const chipPadH = compact ? 14 : 18;
+    const chipFont = compact ? 12 : 13;
+    const chipTrack = compact ? 0.3 : 0.6;
+
+    const hintFont = compact ? 11 : 12;
+    const hintTrack = compact ? 0.4 : 0.6;
+
     return (
       <View style={{ width: '100%', alignItems: 'center' }}>
         {/* --- Search Bar --- */}
@@ -1230,12 +1244,12 @@ const HeaderControls = React.memo(
             width: '100%',
             maxWidth: 620,
             backgroundColor: '#0F0F0F',
-            borderRadius: 14,
+            borderRadius: R,
             borderWidth: 1,
             borderColor: focused ? GOLD : '#1A1A1A',
-            paddingHorizontal: 14,
-            paddingVertical: 10,
-            marginBottom: 8,
+            paddingHorizontal: padH,
+            paddingVertical: padV,
+            marginBottom: compact ? 6 : 8,
             flexDirection: 'row',
             alignItems: 'center',
           }}
@@ -1244,9 +1258,7 @@ const HeaderControls = React.memo(
             placeholder="Search film name…"
             placeholderTextColor="rgba(237,235,230,0.45)"
             value={searchText}
-            onChangeText={(txt) => {
-              setSearchText(txt);
-            }}
+            onChangeText={(txt) => setSearchText(txt)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             selectionColor={GOLD}
@@ -1254,9 +1266,9 @@ const HeaderControls = React.memo(
             style={{
               flex: 1,
               color: '#EDEBE6',
-              fontSize: 14,
+              fontSize: inputSize,
               fontFamily: SYSTEM_SANS,
-              fontWeight: '800',
+              fontWeight: Platform.OS === 'android' ? '700' : '800',
               letterSpacing: 0.2,
               // @ts-ignore
               outlineStyle: 'none',
@@ -1274,17 +1286,17 @@ const HeaderControls = React.memo(
               alignItems: 'center',
               justifyContent: 'center',
               gap: 10,
-              marginBottom: 10,
+              marginBottom: compact ? 8 : 10,
             }}
           >
             <ActivityIndicator size="small" color={GOLD} />
             <Text
               style={{
                 color: 'rgba(237,235,230,0.72)',
-                fontSize: 12,
+                fontSize: hintFont,
                 fontFamily: SYSTEM_SANS,
                 fontWeight: '800',
-                letterSpacing: 0.6,
+                letterSpacing: hintTrack,
                 textTransform: 'uppercase',
               }}
             >
@@ -1300,7 +1312,7 @@ const HeaderControls = React.memo(
             maxWidth: 650,
             flexWrap: 'wrap',
             justifyContent: 'center',
-            gap: 8,
+            gap: compact ? 6 : 8,
           }}
         >
           {filters.map((f) => {
@@ -1311,8 +1323,8 @@ const HeaderControls = React.memo(
                 activeOpacity={0.9}
                 onPress={() => setSort(f.key)}
                 style={{
-                  paddingVertical: 8,
-                  paddingHorizontal: 18,
+                  paddingVertical: chipPadV,
+                  paddingHorizontal: chipPadH,
                   borderRadius: 999,
                   borderWidth: 1,
                   borderColor: active ? GOLD : '#2A2A2A',
@@ -1322,10 +1334,10 @@ const HeaderControls = React.memo(
                 <Text
                   style={{
                     color: active ? GOLD : '#DDD',
-                    fontSize: 13,
+                    fontSize: chipFont,
                     fontFamily: SYSTEM_SANS,
                     fontWeight: '800',
-                    letterSpacing: 0.6,
+                    letterSpacing: chipTrack,
                     textTransform: 'uppercase',
                   }}
                 >
@@ -1339,13 +1351,24 @@ const HeaderControls = React.memo(
     );
   }
 );
-
 /* ---------------- screen ---------------- */
 const FeaturedScreen = () => {
   const navigation = useNavigation<any>();
   const { width: winW, height: winH } =
     useWindowDimensions();
   const isNarrow = winW < 480;
+
+  const isMobile = Platform.OS !== 'web';
+  const isSmallMobile = isMobile && winW < 380;
+
+  const S = {
+    h1: isSmallMobile ? 18 : isNarrow ? 20 : 22,
+    h2: isSmallMobile ? 14 : isNarrow ? 15 : 16,
+    body: isSmallMobile ? 12 : isNarrow ? 13 : 14,
+    chip: isSmallMobile ? 11 : isNarrow ? 12 : 13,
+    pad: isSmallMobile ? 10 : isNarrow ? 12 : 14,
+    padSm: isSmallMobile ? 8 : isNarrow ? 10 : 12,
+  };
 
   const category: Category = 'film';
   const [loading, setLoading] =
@@ -1382,7 +1405,7 @@ const FeaturedScreen = () => {
   const [sort, setSort] =
     useState<SortKey>('newest');
 
-      const [isSearching, setIsSearching] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const searchDebounceRef = useRef<any>(null);
 
   // ✅ ADD THIS useEffect RIGHT BELOW YOUR STATES (still inside the component)
@@ -1423,27 +1446,26 @@ const FeaturedScreen = () => {
   const [activeId, setActiveId] =
     useState<string | null>(null);
 
-    type CommentRow = {
-  id: string;
-  submission_id: string;
-  user_id: string;
-  comment: string;
-  created_at: string;
-  users?: {
+  type CommentRow = {
     id: string;
-    full_name: string;
-    avatar_url?: string | null;
-  } | null;
-};
+    submission_id: string;
+    user_id: string;
+    comment: string;
+    created_at: string;
+    users?: {
+      id: string;
+      full_name: string;
+      avatar_url?: string | null;
+    } | null;
+  };
 
-const [commentsOpen, setCommentsOpen] = useState(false);
-const [commentsFor, setCommentsFor] = useState<Submission | null>(null);
-const [commentsLoading, setCommentsLoading] = useState(false);
-const [comments, setComments] = useState<CommentRow[]>([]);
-const [commentText, setCommentText] = useState('');
-const [commentPosting, setCommentPosting] = useState(false);
-const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
-
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentsFor, setCommentsFor] = useState<Submission | null>(null);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [comments, setComments] = useState<CommentRow[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [commentPosting, setCommentPosting] = useState(false);
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
 
   const layoutMap = useRef(
     new Map<
@@ -1503,26 +1525,25 @@ const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
 
   // Fetch content when filters change
   useEffect(() => {
-  (async () => {
-    const { data: auth } = await supabase.auth.getUser();
-    const uid = auth?.user?.id ?? null;
-    setCurrentUserId(uid);
-    await fetchContent(uid, category, searchQ);
-  })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [sort, searchQ]);
-
-
-  // Also refresh when screen refocuses (keeps votes / submissions live)
-  useFocusEffect(
-  useCallback(() => {
     (async () => {
       const { data: auth } = await supabase.auth.getUser();
       const uid = auth?.user?.id ?? null;
+      setCurrentUserId(uid);
       await fetchContent(uid, category, searchQ);
     })();
-  }, [sort, searchQ])
-);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sort, searchQ]);
+
+  // Also refresh when screen refocuses (keeps votes / submissions live)
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        const { data: auth } = await supabase.auth.getUser();
+        const uid = auth?.user?.id ?? null;
+        await fetchContent(uid, category, searchQ);
+      })();
+    }, [sort, searchQ])
+  );
 
   const baseCols =
     'id, user_id, title, votes, submitted_at, is_winner, users ( id, full_name ), video_id, storage_path, video_path, media_kind, mime_type, duration_seconds, category';
@@ -1631,13 +1652,12 @@ const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
     }
 
     const trimmed = searchTextQ.trim();
-if (trimmed) {
-  query = query.ilike('title', `%${trimmed}%`);
-}
+    if (trimmed) {
+      query = query.ilike('title', `%${trimmed}%`);
+    }
 
-// if it looks like a tag, DON'T title-filter in SQL.
-// Tag filtering happens client-side via selectedKeywords (or Enter-to-apply tag in HeaderControls).
-
+    // if it looks like a tag, DON'T title-filter in SQL.
+    // Tag filtering happens client-side via selectedKeywords (or Enter-to-apply tag in HeaderControls).
 
     let res = await query;
 
@@ -1695,125 +1715,125 @@ if (trimmed) {
     return res;
   };
 
-const fetchContent = async (
-  uid: string | null,
-  cat: Category,
-  searchTextQ: string
-) => {
+  const fetchContent = async (
+    uid: string | null,
+    cat: Category,
+    searchTextQ: string
+  ) => {
 
-  setLoading(true);
+    setLoading(true);
 
-  try {
-    const challenges = await fetchChallengesForFeatured();
+    try {
+      const challenges = await fetchChallengesForFeatured();
 
-    const range = challenges.current
-      ? {
-          start: challenges.current.month_start,
-          end: challenges.current.month_end,
+      const range = challenges.current
+        ? {
+            start: challenges.current.month_start,
+            end: challenges.current.month_end,
+          }
+        : undefined;
+
+      currentRangeRef.current = range ?? null;
+
+      // Winner
+      let winnerData:
+        | (Submission & {
+            description?: string | null;
+            storage_path?: string | null;
+            thumbnail_url?: string | null;
+            media_kind?: RawSubmission['media_kind'];
+            mime_type?: string | null;
+            category?: Category | null;
+          })
+        | null = null;
+
+      // Winner must come from PREVIOUS month (not current month)
+      if (challenges.previous?.winner_submission_id) {
+        const { data: w } = await fetchWinnerSafe(
+          challenges.previous.winner_submission_id,
+          cat
+        );
+
+        winnerData = w ? normalizeRow(w as RawSubmission) : null;
+
+        if (winnerData && winnerData.category !== cat) {
+          winnerData = null;
         }
-      : undefined;
 
-    currentRangeRef.current = range ?? null;
-
-    // Winner
-    let winnerData:
-      | (Submission & {
-          description?: string | null;
-          storage_path?: string | null;
-          thumbnail_url?: string | null;
-          media_kind?: RawSubmission['media_kind'];
-          mime_type?: string | null;
-          category?: Category | null;
-        })
-      | null = null;
-
-    // Winner must come from PREVIOUS month (not current month)
-    if (challenges.previous?.winner_submission_id) {
-      const { data: w } = await fetchWinnerSafe(
-        challenges.previous.winner_submission_id,
-        cat
-      );
-
-      winnerData = w ? normalizeRow(w as RawSubmission) : null;
-
-      if (winnerData && winnerData.category !== cat) {
-        winnerData = null;
+        if ((winnerData as any)?.storage_path) {
+          signStoragePath((winnerData as any).storage_path!, 180).catch(() => {});
+        }
       }
 
-      if ((winnerData as any)?.storage_path) {
-        signStoragePath((winnerData as any).storage_path!, 180).catch(() => {});
+      // Submissions
+      const resp = await fetchSubsSafe(sort, searchTextQ, range, cat);
+      const subs = (resp?.data || []) as RawSubmission[];
+      const normalized = subs.map(normalizeRow);
+
+      // ✅ Load comment counts for the list we’re about to render
+      fetchCommentCounts(normalized.map((s) => s.id));
+
+      let filtered = normalized;
+
+      // ✅ Set state once (avoid duplicate setSubmissions)
+      setWinner(winnerData);
+      setSubmissions(filtered);
+
+      // Preload first few
+      normalized.slice(0, 10).forEach((s) => {
+        if (s.storage_path) {
+          signStoragePath(s.storage_path, 180).catch(() => {});
+        }
+      });
+
+      // Fetch current user's existing votes for these submissions
+      if (uid && normalized.length) {
+        const ids = normalized.map((s) => s.id);
+        const { data: myVotes } = await supabase
+          .from('user_votes')
+          .select('submission_id')
+          .eq('user_id', uid)
+          .in('submission_id', ids);
+
+        const votedSet = new Set<string>(
+          (myVotes || []).map((r) => r.submission_id as string)
+        );
+        setVotedIds(votedSet);
+      } else {
+        setVotedIds(new Set());
       }
-    }
 
-    // Submissions
-    const resp = await fetchSubsSafe(sort, searchTextQ, range, cat);
-    const subs = (resp?.data || []) as RawSubmission[];
-    const normalized = subs.map(normalizeRow);
-
-    // ✅ Load comment counts for the list we’re about to render
-    fetchCommentCounts(normalized.map((s) => s.id));
-
-    let filtered = normalized;
-
-    // ✅ Set state once (avoid duplicate setSubmissions)
-    setWinner(winnerData);
-    setSubmissions(filtered);
-
-    // Preload first few
-    normalized.slice(0, 10).forEach((s) => {
-      if (s.storage_path) {
-        signStoragePath(s.storage_path, 180).catch(() => {});
+      // 🔥 Recompute monthly vote usage for cap
+      if (uid && range) {
+        const used = await countUserVotesInRange(uid, range);
+        setMonthlyVotesUsed(used);
+      } else {
+        setMonthlyVotesUsed(0);
       }
-    });
 
-    // Fetch current user's existing votes for these submissions
-    if (uid && normalized.length) {
-      const ids = normalized.map((s) => s.id);
-      const { data: myVotes } = await supabase
-        .from('user_votes')
-        .select('submission_id')
-        .eq('user_id', uid)
-        .in('submission_id', ids);
+      // Pick initial active media
+      const firstPlayable = winnerData?.storage_path
+        ? `winner-${winnerData.id}`
+        : normalized.find(
+            (r) => !!r.storage_path && r.media_kind !== 'file_audio'
+          )?.id ?? null;
 
-      const votedSet = new Set<string>(
-        (myVotes || []).map((r) => r.submission_id as string)
-      );
-      setVotedIds(votedSet);
-    } else {
+      setActiveId((prev) => prev ?? (firstPlayable as string | null));
+
+      layoutMap.current.clear();
+    } catch (e: any) {
+      console.warn('fetchContent error:', e?.message || e);
+
+      // Fail safe: never get stuck on a loader
+      setWinner(null);
+      setSubmissions([]);
       setVotedIds(new Set());
-    }
-
-    // 🔥 Recompute monthly vote usage for cap
-    if (uid && range) {
-      const used = await countUserVotesInRange(uid, range);
-      setMonthlyVotesUsed(used);
-    } else {
       setMonthlyVotesUsed(0);
+    } finally {
+      // ✅ This fixes your infinite loading when results are empty
+      setLoading(false);
     }
-
-    // Pick initial active media
-    const firstPlayable = winnerData?.storage_path
-      ? `winner-${winnerData.id}`
-      : normalized.find(
-          (r) => !!r.storage_path && r.media_kind !== 'file_audio'
-        )?.id ?? null;
-
-    setActiveId((prev) => prev ?? (firstPlayable as string | null));
-
-    layoutMap.current.clear();
-  } catch (e: any) {
-    console.warn('fetchContent error:', e?.message || e);
-
-    // Fail safe: never get stuck on a loader
-    setWinner(null);
-    setSubmissions([]);
-    setVotedIds(new Set());
-    setMonthlyVotesUsed(0);
-  } finally {
-    // ✅ This fixes your infinite loading when results are empty
-    setLoading(false);
-  }
-};
+  };
 
   const goToProfile = (user?: {
     id: string;
@@ -1832,34 +1852,33 @@ const fetchContent = async (
   };
 
   const getFilmTags = (s: any): string[] => {
-  // Supports multiple schema styles safely
-  const arr =
-    (Array.isArray(s?.tags) && s.tags) ||
-    (Array.isArray(s?.keywords) && s.keywords) ||
-    [];
+    // Supports multiple schema styles safely
+    const arr =
+      (Array.isArray(s?.tags) && s.tags) ||
+      (Array.isArray(s?.keywords) && s.keywords) ||
+      [];
 
-  const trioFromFields = [s?.tag1, s?.tag2, s?.tag3].filter(Boolean);
+    const trioFromFields = [s?.tag1, s?.tag2, s?.tag3].filter(Boolean);
 
-  const tags = (arr.length ? arr : trioFromFields)
-    .map((t: any) => String(t).trim())
-    .filter(Boolean);
+    const tags = (arr.length ? arr : trioFromFields)
+      .map((t: any) => String(t).trim())
+      .filter(Boolean);
 
-  return tags.slice(0, 3);
-};
+    return tags.slice(0, 3);
+  };
 
-const matchesAnyKeyword = (s: any, keywords: string[]) => {
-  if (!keywords.length) return true;
+  const matchesAnyKeyword = (s: any, keywords: string[]) => {
+    if (!keywords.length) return true;
 
-  const kws = keywords.map((k) => k.trim().toLowerCase()).filter(Boolean);
-  if (!kws.length) return true;
+    const kws = keywords.map((k) => k.trim().toLowerCase()).filter(Boolean);
+    if (!kws.length) return true;
 
-  const tags = getFilmTags(s).map((t) => t.toLowerCase());
-  const hay = `${s?.title ?? ''} ${s?.description ?? ''} ${(s as any)?.word ?? ''}`.toLowerCase();
+    const tags = getFilmTags(s).map((t) => t.toLowerCase());
+    const hay = `${s?.title ?? ''} ${s?.description ?? ''} ${(s as any)?.word ?? ''}`.toLowerCase();
 
-  // match keywords against tags OR text
-  return kws.some((k) => tags.includes(k) || hay.includes(k));
-};
-
+    // match keywords against tags OR text
+    return kws.some((k) => tags.includes(k) || hay.includes(k));
+  };
 
   const renderVoteArea = (
     s: Submission & {
@@ -1938,116 +1957,115 @@ const matchesAnyKeyword = (s: any, keywords: string[]) => {
   };
 
   const openComments = async (s: Submission) => {
-  setCommentsFor(s);
-  setCommentsOpen(true);
-  setCommentText('');
-  await fetchComments(s.id);
-};
-
-const closeComments = () => {
-  setCommentsOpen(false);
-  setCommentsFor(null);
-  setComments([]);
-  setCommentText('');
-};
-
-const fetchCommentCounts = async (submissionIds: string[]) => {
-  if (!submissionIds.length) return;
-
-  // NOTE: This does one lightweight count query per submission id.
-  // It’s simple + reliable, and fine unless you have hundreds on screen.
-  try {
-    const results = await Promise.all(
-      submissionIds.map(async (id) => {
-        const { count, error } = await supabase
-          .from('submission_comments')
-          .select('id', { count: 'exact', head: true })
-          .eq('submission_id', id);
-
-        if (error) return [id, 0] as const;
-        return [id, count ?? 0] as const;
-      })
-    );
-
-    setCommentCounts((prev) => {
-      const next = { ...prev };
-      for (const [id, c] of results) next[id] = c;
-      return next;
-    });
-  } catch (e) {
-    console.warn('fetchCommentCounts error:', e);
-  }
-};
-
-const fetchComments = async (submissionId: string) => {
-  setCommentsLoading(true);
-  try {
-    const { data, error } = await supabase
-      .from('submission_comments')
-      .select(`
-        id,
-        submission_id,
-        user_id,
-        comment,
-        created_at,
-        users:user_id ( id, full_name, avatar_url )
-      `)
-      .eq('submission_id', submissionId)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    setComments((data as any) || []);
-    setCommentCounts((prev) => ({
-  ...prev,
-  [submissionId]: (data as any)?.length ?? 0,
-}));
-  } catch (e: any) {
-    console.warn('fetchComments error:', e?.message || e);
-    setComments([]);
-  } finally {
-    setCommentsLoading(false);
-  }
-};
-
-const postComment = async () => {
-  const uid = currentUserId || gamUserId || null;
-  if (!uid || !commentsFor) {
-    Alert.alert('Please sign in', 'You need to be signed in to comment.');
-    return;
-  }
-
-  const text = commentText.trim();
-  if (!text) return;
-
-  if (commentPosting) return;
-  setCommentPosting(true);
-
-  try {
-    const { error } = await supabase.from('submission_comments').insert([
-      {
-        submission_id: commentsFor.id,
-        user_id: uid,
-        comment: text,
-      },
-    ]);
-
-    if (error) throw error;
-
-    setCommentCounts((prev) => ({
-  ...prev,
-  [commentsFor.id]: (prev[commentsFor.id] ?? 0) + 1,
-}));
-
+    setCommentsFor(s);
+    setCommentsOpen(true);
     setCommentText('');
-    await fetchComments(commentsFor.id);
-  } catch (e: any) {
-    console.warn('postComment error:', e?.message || e);
-    Alert.alert('Comment failed', 'Please try again.');
-  } finally {
-    setCommentPosting(false);
-  }
-};
+    await fetchComments(s.id);
+  };
 
+  const closeComments = () => {
+    setCommentsOpen(false);
+    setCommentsFor(null);
+    setComments([]);
+    setCommentText('');
+  };
+
+  const fetchCommentCounts = async (submissionIds: string[]) => {
+    if (!submissionIds.length) return;
+
+    // NOTE: This does one lightweight count query per submission id.
+    // It’s simple + reliable, and fine unless you have hundreds on screen.
+    try {
+      const results = await Promise.all(
+        submissionIds.map(async (id) => {
+          const { count, error } = await supabase
+            .from('submission_comments')
+            .select('id', { count: 'exact', head: true })
+            .eq('submission_id', id);
+
+          if (error) return [id, 0] as const;
+          return [id, count ?? 0] as const;
+        })
+      );
+
+      setCommentCounts((prev) => {
+        const next = { ...prev };
+        for (const [id, c] of results) next[id] = c;
+        return next;
+      });
+    } catch (e) {
+      console.warn('fetchCommentCounts error:', e);
+    }
+  };
+
+  const fetchComments = async (submissionId: string) => {
+    setCommentsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('submission_comments')
+        .select(`
+          id,
+          submission_id,
+          user_id,
+          comment,
+          created_at,
+          users:user_id ( id, full_name, avatar_url )
+        `)
+        .eq('submission_id', submissionId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setComments((data as any) || []);
+      setCommentCounts((prev) => ({
+        ...prev,
+        [submissionId]: (data as any)?.length ?? 0,
+      }));
+    } catch (e: any) {
+      console.warn('fetchComments error:', e?.message || e);
+      setComments([]);
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  const postComment = async () => {
+    const uid = currentUserId || gamUserId || null;
+    if (!uid || !commentsFor) {
+      Alert.alert('Please sign in', 'You need to be signed in to comment.');
+      return;
+    }
+
+    const text = commentText.trim();
+    if (!text) return;
+
+    if (commentPosting) return;
+    setCommentPosting(true);
+
+    try {
+      const { error } = await supabase.from('submission_comments').insert([
+        {
+          submission_id: commentsFor.id,
+          user_id: uid,
+          comment: text,
+        },
+      ]);
+
+      if (error) throw error;
+
+      setCommentCounts((prev) => ({
+        ...prev,
+        [commentsFor.id]: (prev[commentsFor.id] ?? 0) + 1,
+      }));
+
+      setCommentText('');
+      await fetchComments(commentsFor.id);
+    } catch (e: any) {
+      console.warn('postComment error:', e?.message || e);
+      Alert.alert('Comment failed', 'Please try again.');
+    } finally {
+      setCommentPosting(false);
+    }
+  };
 
   const toggleVote = async (
     s: Submission & {
@@ -2179,7 +2197,7 @@ const postComment = async () => {
         setMonthlyVotesUsed(
           (n) => n + 1
         );
-            // 🔥 Award XP for a successful new vote
+        // 🔥 Award XP for a successful new vote
         try {
           await giveXp(
             uid,
@@ -2202,9 +2220,7 @@ const postComment = async () => {
     }
   };
 
-
   // Ensure only activeId plays
-    // Ensure only activeId plays
   useEffect(() => {
     (async () => {
       if (activeId) {
@@ -2456,6 +2472,12 @@ const postComment = async () => {
     const name = (s as any)?.users?.full_name;
     const userObj = (s as any)?.users;
 
+    // ✅ Mobile-safe sizes, cinematic on web
+    const heroKickerSize = Platform.OS === 'web' ? 16 : (isSmallMobile ? 12 : isNarrow ? 13 : 14);
+    const heroTitleSize = Platform.OS === 'web' ? 56 : (isSmallMobile ? 28 : isNarrow ? 34 : 40);
+    const heroTitleLine = Platform.OS === 'web' ? 62 : (isSmallMobile ? 32 : isNarrow ? 38 : 44);
+    const heroBylineSize = Platform.OS === 'web' ? 18 : (isSmallMobile ? 12 : isNarrow ? 13 : 14);
+
     return (
       <View
         style={styles.heroOverlay}
@@ -2465,11 +2487,14 @@ const postComment = async () => {
           style={styles.heroOverlayInner}
           pointerEvents="none"
         >
-          <Text style={styles.heroKicker}>
+          <Text style={[styles.heroKicker, { fontSize: heroKickerSize }]}>
             LAST MONTH’S WINNER
           </Text>
           <Text
-            style={styles.heroTitle}
+            style={[
+              styles.heroTitle,
+              { fontSize: heroTitleSize, lineHeight: heroTitleLine },
+            ]}
             numberOfLines={2}
           >
             {s.title}
@@ -2481,7 +2506,9 @@ const postComment = async () => {
             activeOpacity={0.9}
             style={styles.heroBylineTap}
           >
-            <Text style={styles.heroByline}>by {name}</Text>
+            <Text style={[styles.heroByline, { fontSize: heroBylineSize }]}>
+              by {name}
+            </Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -2612,21 +2639,21 @@ const postComment = async () => {
                     )}
 
                     <View style={styles.actionsRow}>
-  {renderVoteArea(s)}
+                      {renderVoteArea(s)}
 
-  <TouchableOpacity
-  onPress={() => {
-    console.log('COMMENTS PRESSED', s.id);
-    openComments(s);
-  }}
-  activeOpacity={0.9}
-  style={styles.commentBtn}
->
-  <Text style={styles.commentBtnText}>
-  COMMENTS ({commentCounts[s.id] ?? 0})
-</Text>
-</TouchableOpacity>
-</View>
+                      <TouchableOpacity
+                        onPress={() => {
+                          console.log('COMMENTS PRESSED', s.id);
+                          openComments(s);
+                        }}
+                        activeOpacity={0.9}
+                        style={styles.commentBtn}
+                      >
+                        <Text style={styles.commentBtnText}>
+                          COMMENTS ({commentCounts[s.id] ?? 0})
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
 
                     {currentUserId &&
                     (s as any).user_id === currentUserId ? (
@@ -2709,233 +2736,239 @@ const postComment = async () => {
       deleteBusy,
       currentUserId,
       availableHForMedia,
+      commentCounts,
+      commentsOpen,
+      activeId,
+      isNarrow,
+      isSmallMobile,
     ]
   );
 
   const headerElement = useMemo(
-  () => (
-    <View style={{ alignItems: 'center' }}>
-      {winner
-        ? renderCard(
-            `winner-${winner.id}`,
-            winner,
-            activeId === `winner-${winner.id}`,
-            true
-          )
-        : null}
+    () => (
+      <View style={{ alignItems: 'center' }}>
+        {winner
+          ? renderCard(
+              `winner-${winner.id}`,
+              winner,
+              activeId === `winner-${winner.id}`,
+              true
+            )
+          : null}
 
-      <View
-        style={{
-          height: isNarrow ? 12 : 10,
-        }}
-      />
-
-      <View
-        style={[
-          styles.subHeaderWrap,
-          {
-            width: cardW,
-            marginTop: 4,
-          },
-        ]}
-        onLayout={() => {
-          layoutMap.current.set('submissions-header', {
-            y: 0,
-            h: 0,
-            playable: false,
-          });
-        }}
-      >
-        <HeaderControls
-  compact={isNarrow}
-  category={category}
-  sort={sort}
-  setSort={setSort}
-  searchText={searchText}
-  setSearchText={setSearchText}
-  isSearching={isSearching}
-/>
-      </View>
-    </View>
-  ),
-  [
-    cardW,
-    category,
-    sort,
-    searchText,
-    winner,
-    activeId,
-    winW,
-    isNarrow,
-    isSearching, // ✅ ADD THIS
-  ]
-);
-
-const renderSubmissionItem = ({
-  item,
-}: {
-  item: Submission & {
-    description?: string | null;
-    storage_path?: string | null;
-    thumbnail_url?: string | null;
-    media_kind?: RawSubmission['media_kind'];
-    category?: Category | null;
-  };
-}) =>
-  renderCard(
-    item.id,
-    item,
-    activeId === item.id,
-    false
-  );
-
-return (
-  <View style={styles.container}>
-    <LinearGradient
-      colors={[T.heroBurgundy1, T.heroBurgundy2, T.bg]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0, y: 0.75 }}
-      style={StyleSheet.absoluteFillObject}
-    />
-    <Grain opacity={0.05} />
-
-    {loading && submissions.length === 0 ? (
-      <ActivityIndicator
-        style={{ marginTop: CONTENT_TOP_PAD + 8 }}
-        color={T.accent}
-      />
-    ) : (
-      <FlatList
-        data={submissions}
-        renderItem={renderSubmissionItem}
-        keyExtractor={(item) => item.id}
-        ListHeaderComponent={headerElement}
-        ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
-        contentContainerStyle={[
-          styles.listContent,
-          {
-            paddingTop: CONTENT_TOP_PAD,
-            paddingBottom: BOTTOM_TAB_H + 8,
-          },
-        ]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="always"
-        keyboardDismissMode="none"
-        removeClippedSubviews={Platform.OS !== 'web'}
-        windowSize={5}
-        initialNumToRender={3}
-        maxToRenderPerBatch={4}
-        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
-        onEndReachedThreshold={0.4}
-        onScroll={onScrollImmediate}
-        onMomentumScrollEnd={onMomentumEnd}
-        scrollEventThrottle={16}
-        onContentSizeChange={() => ensureActiveByCenter(lastOffsetY.current)}
-        onLayout={() => ensureActiveByCenter(lastOffsetY.current)}
-      />
-    )}
-
-    {/* ---------------- Comments Modal ---------------- */}
-    {commentsOpen && (
-      <View style={styles.commentsOverlay}>
-        <Pressable
-          style={StyleSheet.absoluteFillObject}
-          onPress={closeComments}
+        <View
+          style={{
+            height: isNarrow ? 12 : 10,
+          }}
         />
 
-        <View style={styles.commentsSheet}>
-          <View style={styles.commentsHeader}>
-            <Text style={styles.commentsTitle}>Comments</Text>
-            <TouchableOpacity onPress={closeComments} activeOpacity={0.9}>
-              <Text style={styles.commentsClose}>Close</Text>
-            </TouchableOpacity>
-          </View>
+        <View
+          style={[
+            styles.subHeaderWrap,
+            {
+              width: cardW,
+              marginTop: 4,
+            },
+          ]}
+          onLayout={() => {
+            layoutMap.current.set('submissions-header', {
+              y: 0,
+              h: 0,
+              playable: false,
+            });
+          }}
+        >
+          <HeaderControls
+            compact={isNarrow}
+            category={category}
+            sort={sort}
+            setSort={setSort}
+            searchText={searchText}
+            setSearchText={setSearchText}
+            isSearching={isSearching}
+          />
+        </View>
+      </View>
+    ),
+    [
+      cardW,
+      category,
+      sort,
+      searchText,
+      winner,
+      activeId,
+      winW,
+      isNarrow,
+      isSearching, // ✅ ADD THIS
+      commentCounts,
+    ]
+  );
 
-          {/* ✅ Fill modal height properly */}
-          <View style={{ flex: 1 }}>
-            {commentsLoading ? (
-              <ActivityIndicator color={T.accent} style={{ padding: 14 }} />
-            ) : (
-              <FlatList
-                data={comments}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={{ paddingBottom: 12 }}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="always"
-                renderItem={({ item }) => {
-                  const u = item.users;
-                  return (
-                    <View style={styles.commentRow}>
-                      <TouchableOpacity
-                        onPress={() =>
-                          u && goToProfile({ id: u.id, full_name: u.full_name })
-                        }
-                        activeOpacity={0.9}
-                        style={styles.commentAvatarTap}
-                      >
-                        <Image
-                          source={{
-                            uri: u?.avatar_url || 'https://picsum.photos/80/80',
-                          }}
-                          style={styles.commentAvatar}
-                        />
-                      </TouchableOpacity>
+  const renderSubmissionItem = ({
+    item,
+  }: {
+    item: Submission & {
+      description?: string | null;
+      storage_path?: string | null;
+      thumbnail_url?: string | null;
+      media_kind?: RawSubmission['media_kind'];
+      category?: Category | null;
+    };
+  }) =>
+    renderCard(
+      item.id,
+      item,
+      activeId === item.id,
+      false
+    );
 
-                      <View style={{ flex: 1 }}>
+  return (
+    <View style={styles.container}>
+      <LinearGradient
+        colors={[T.heroBurgundy1, T.heroBurgundy2, T.bg]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 0.75 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <Grain opacity={0.05} />
+
+      {loading && submissions.length === 0 ? (
+        <ActivityIndicator
+          style={{ marginTop: CONTENT_TOP_PAD + 8 }}
+          color={T.accent}
+        />
+      ) : (
+        <FlatList
+          data={submissions}
+          renderItem={renderSubmissionItem}
+          keyExtractor={(item) => item.id}
+          ListHeaderComponent={headerElement}
+          ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
+          contentContainerStyle={[
+            styles.listContent,
+            {
+              paddingTop: CONTENT_TOP_PAD,
+              paddingBottom: BOTTOM_TAB_H + 8,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="always"
+          keyboardDismissMode="none"
+          removeClippedSubviews={Platform.OS !== 'web'}
+          windowSize={5}
+          initialNumToRender={3}
+          maxToRenderPerBatch={4}
+          viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
+          onEndReachedThreshold={0.4}
+          onScroll={onScrollImmediate}
+          onMomentumScrollEnd={onMomentumEnd}
+          scrollEventThrottle={16}
+          onContentSizeChange={() => ensureActiveByCenter(lastOffsetY.current)}
+          onLayout={() => ensureActiveByCenter(lastOffsetY.current)}
+        />
+      )}
+
+      {/* ---------------- Comments Modal ---------------- */}
+      {commentsOpen && (
+        <View style={styles.commentsOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={closeComments}
+          />
+
+          <View style={styles.commentsSheet}>
+            <View style={styles.commentsHeader}>
+              <Text style={styles.commentsTitle}>Comments</Text>
+              <TouchableOpacity onPress={closeComments} activeOpacity={0.9}>
+                <Text style={styles.commentsClose}>Close</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* ✅ Fill modal height properly */}
+            <View style={{ flex: 1 }}>
+              {commentsLoading ? (
+                <ActivityIndicator color={T.accent} style={{ padding: 14 }} />
+              ) : (
+                <FlatList
+                  data={comments}
+                  keyExtractor={(item) => item.id}
+                  contentContainerStyle={{ paddingBottom: 12 }}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="always"
+                  renderItem={({ item }) => {
+                    const u = item.users;
+                    return (
+                      <View style={styles.commentRow}>
                         <TouchableOpacity
                           onPress={() =>
                             u && goToProfile({ id: u.id, full_name: u.full_name })
                           }
                           activeOpacity={0.9}
+                          style={styles.commentAvatarTap}
                         >
-                          <Text style={styles.commentName}>
-                            {u?.full_name || 'Unknown'}
-                          </Text>
+                          <Image
+                            source={{
+                              uri: u?.avatar_url || 'https://picsum.photos/80/80',
+                            }}
+                            style={styles.commentAvatar}
+                          />
                         </TouchableOpacity>
 
-                        <Text style={styles.commentText}>{item.comment}</Text>
-                      </View>
-                    </View>
-                  );
-                }}
-              />
-            )}
-          </View>
+                        <View style={{ flex: 1 }}>
+                          <TouchableOpacity
+                            onPress={() =>
+                              u && goToProfile({ id: u.id, full_name: u.full_name })
+                            }
+                            activeOpacity={0.9}
+                          >
+                            <Text style={styles.commentName}>
+                              {u?.full_name || 'Unknown'}
+                            </Text>
+                          </TouchableOpacity>
 
-          <View style={styles.commentComposer}>
-            <TextInput
-              value={commentText}
-              onChangeText={setCommentText}
-              placeholder="Add a comment…"
-              placeholderTextColor="#777"
-              style={styles.commentInput}
-              multiline
-            />
-            <TouchableOpacity
-              onPress={postComment}
-              disabled={commentPosting || !commentText.trim()}
-              activeOpacity={0.9}
-              style={[
-                styles.commentSendBtn,
-                (commentPosting || !commentText.trim()) && { opacity: 0.5 },
-              ]}
-            >
-              <Text style={styles.commentSendText}>
-                {commentPosting ? '…' : 'Post'}
-              </Text>
-            </TouchableOpacity>
+                          <Text style={styles.commentText}>{item.comment}</Text>
+                        </View>
+                      </View>
+                    );
+                  }}
+                />
+              )}
+            </View>
+
+            <View style={styles.commentComposer}>
+              <TextInput
+                value={commentText}
+                onChangeText={setCommentText}
+                placeholder="Add a comment…"
+                placeholderTextColor="#777"
+                style={styles.commentInput}
+                multiline
+              />
+              <TouchableOpacity
+                onPress={postComment}
+                disabled={commentPosting || !commentText.trim()}
+                activeOpacity={0.9}
+                style={[
+                  styles.commentSendBtn,
+                  (commentPosting || !commentText.trim()) && { opacity: 0.5 },
+                ]}
+              >
+                <Text style={styles.commentSendText}>
+                  {commentPosting ? '…' : 'Post'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
-    )}
-  </View>
-);
+      )}
+    </View>
+  );
 };
 
 const RADIUS_XL = 18;
-
-
 /* ──────────────────────────────────────────────────────────── */
+const IS_WEB = Platform.OS === 'web';
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: T.bg },
   listContent: { paddingHorizontal: 16 },
@@ -2975,15 +3008,15 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontFamily: SYSTEM_SANS,
     fontWeight: '800',
-    letterSpacing: 1.2,
+    letterSpacing: IS_WEB ? 1.2 : 1.0,
     textTransform: 'uppercase',
-    fontSize: 13,
+    fontSize: IS_WEB ? 13 : 12,
   },
   catTextActive: { color: GOLD },
   catUnderline: {
     marginTop: 6,
     height: 3,
-    width: 42,
+    width: IS_WEB ? 42 : 38,
     backgroundColor: GOLD,
     borderRadius: 2,
   },
@@ -2999,14 +3032,14 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingLeft: 12,
     paddingRight: 12,
-    paddingVertical: 10,
+    paddingVertical: IS_WEB ? 10 : 9,
     borderWidth: 1,
     borderColor: '#1F1F1F',
-    fontSize: 14,
+    fontSize: IS_WEB ? 14 : 13,
     color: T.text,
     minWidth: 220,
     fontFamily: SYSTEM_SANS,
-    letterSpacing: 0.5,
+    letterSpacing: IS_WEB ? 0.5 : 0.4,
     fontWeight: '600',
   },
 
@@ -3025,7 +3058,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontFamily: SYSTEM_SANS,
     fontWeight: '800',
-    letterSpacing: 1,
+    letterSpacing: IS_WEB ? 1 : 0.8,
     textTransform: 'uppercase',
     fontSize: 10,
   },
@@ -3081,13 +3114,13 @@ const styles = StyleSheet.create({
 
   heroOverlay: {
     position: 'absolute',
-    left: 16,
-    right: 16,
+    left: IS_WEB ? 16 : 14,
+    right: IS_WEB ? 16 : 14,
     top: 0,
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: IS_WEB ? 12 : 10,
     zIndex: 10,
   },
   heroOverlayInner: {
@@ -3099,190 +3132,190 @@ const styles = StyleSheet.create({
     color: '#ffffffdd',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    letterSpacing: 1.0,
-    fontSize: 16,
+    letterSpacing: IS_WEB ? 1.0 : 0.7,
+    fontSize: IS_WEB ? 16 : 12,
     textTransform: 'uppercase',
-    marginBottom: 8,
+    marginBottom: IS_WEB ? 8 : 6,
     textAlign: 'center',
   },
   heroTitle: {
     color: '#fff',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    letterSpacing: 1.4,
-    fontSize: 56,
-    lineHeight: 62,
-    marginBottom: 6,
+    letterSpacing: IS_WEB ? 1.4 : 0.8,
+    fontSize: IS_WEB ? 56 : 34,
+    lineHeight: IS_WEB ? 62 : 38,
+    marginBottom: IS_WEB ? 6 : 4,
     textTransform: 'uppercase',
     textAlign: 'center',
   },
-  heroBylineTap: { marginTop: 6 },
+  heroBylineTap: { marginTop: IS_WEB ? 6 : 4 },
   heroByline: {
     color: GOLD,
     fontFamily: SYSTEM_SANS,
     fontWeight: '700',
-    letterSpacing: 0.5,
-    fontSize: 18,
+    letterSpacing: IS_WEB ? 0.5 : 0.3,
+    fontSize: IS_WEB ? 18 : 13,
     textAlign: 'center',
   },
 
-commentBtn: {
-  marginTop: 10,
-  alignSelf: 'flex-start',
-  paddingVertical: 8,
-  paddingHorizontal: 14,
-  borderRadius: 999,
-  borderWidth: 1,
-  borderColor: '#2A2A2A',
-  backgroundColor: '#0C0C0C',
-},
+  commentBtn: {
+    marginTop: IS_WEB ? 10 : 8,
+    alignSelf: 'flex-start',
+    paddingVertical: IS_WEB ? 8 : 7,
+    paddingHorizontal: IS_WEB ? 14 : 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    backgroundColor: '#0C0C0C',
+  },
 
-commentBtnText: {
-  color: '#DDD',
-  fontSize: 13,
-  fontWeight: '800',
-  letterSpacing: 0.6,
-  textTransform: 'uppercase',
-},
+  commentBtnText: {
+    color: '#DDD',
+    fontSize: IS_WEB ? 13 : 12,
+    fontWeight: '800',
+    letterSpacing: IS_WEB ? 0.6 : 0.3,
+    textTransform: 'uppercase',
+  },
 
-commentsOverlay: {
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  justifyContent: 'center',
-  alignItems: 'center',
-  backgroundColor: 'rgba(0,0,0,0.65)',
-  zIndex: 999999,
-  elevation: 999999,
-},
+  commentsOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    zIndex: 999999,
+    elevation: 999999,
+  },
 
-commentsSheet: {
-  width: '92%',
-  maxWidth: 720,              // looks great on web
-  maxHeight: '80%',           // big, but not fullscreen
-  backgroundColor: '#0B0B0B',
-  borderRadius: 20,
-  borderWidth: 1,
-  borderColor: '#1A1A1A',
-  overflow: 'hidden',
-  elevation: 20,              // Android depth
-  shadowColor: '#000',
-  shadowOpacity: 0.4,
-  shadowRadius: 20,
-  shadowOffset: { width: 0, height: 12 },
-},
+  commentsSheet: {
+    width: '92%',
+    maxWidth: 720,
+    maxHeight: '80%',
+    backgroundColor: '#0B0B0B',
+    borderRadius: IS_WEB ? 20 : 18,
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+    overflow: 'hidden',
+    elevation: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
+  },
 
-commentsHeader: {
-  paddingHorizontal: 18,
-  paddingTop: 18,
-  paddingBottom: 14,
-  borderBottomWidth: 1,
-  borderBottomColor: '#151515',
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-},
+  commentsHeader: {
+    paddingHorizontal: IS_WEB ? 18 : 16,
+    paddingTop: IS_WEB ? 18 : 16,
+    paddingBottom: IS_WEB ? 14 : 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#151515',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
 
-commentsTitle: {
-  color: '#fff',
-  fontSize: 16,
-  fontWeight: '900',
-  letterSpacing: 0.6,
-},
+  commentsTitle: {
+    color: '#fff',
+    fontSize: IS_WEB ? 16 : 15,
+    fontWeight: '900',
+    letterSpacing: IS_WEB ? 0.6 : 0.5,
+  },
 
-commentsClose: {
-  color: GOLD,
-  fontSize: 13,
-  fontWeight: '900',
-  letterSpacing: 0.5,
-  textTransform: 'uppercase',
-},
+  commentsClose: {
+    color: GOLD,
+    fontSize: IS_WEB ? 13 : 12,
+    fontWeight: '900',
+    letterSpacing: IS_WEB ? 0.5 : 0.4,
+    textTransform: 'uppercase',
+  },
 
-commentRow: {
-  flexDirection: 'row',
-  gap: 12,
-  paddingHorizontal: 16,
-  paddingVertical: 12,
-  borderBottomWidth: 1,
-  borderBottomColor: '#121212',
-},
+  commentRow: {
+    flexDirection: 'row',
+    gap: IS_WEB ? 12 : 10,
+    paddingHorizontal: IS_WEB ? 16 : 14,
+    paddingVertical: IS_WEB ? 12 : 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#121212',
+  },
 
-commentAvatarTap: {
-  width: 38,
-  height: 38,
-  borderRadius: 999,
-  overflow: 'hidden',
-  borderWidth: 1,
-  borderColor: '#222',
-},
+  commentAvatarTap: {
+    width: IS_WEB ? 38 : 34,
+    height: IS_WEB ? 38 : 34,
+    borderRadius: 999,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#222',
+  },
 
-commentAvatar: {
-  width: '100%',
-  height: '100%',
-},
+  commentAvatar: {
+    width: '100%',
+    height: '100%',
+  },
 
-commentName: {
-  color: '#fff',
-  fontWeight: '900',
-  fontSize: 13,
-  letterSpacing: 0.2,
-  marginBottom: 2,
-},
+  commentName: {
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: IS_WEB ? 13 : 12,
+    letterSpacing: 0.2,
+    marginBottom: 2,
+  },
 
-commentText: {
-  color: '#DADADA',
-  fontSize: 13,
-  lineHeight: 18,
-},
+  commentText: {
+    color: '#DADADA',
+    fontSize: IS_WEB ? 13 : 12,
+    lineHeight: IS_WEB ? 18 : 17,
+  },
 
-commentComposer: {
-  borderTopWidth: 1,
-  borderTopColor: '#151515',
-  paddingHorizontal: 16,
-  paddingVertical: 14,
-  flexDirection: 'row',
-  alignItems: 'flex-end',
-  gap: 10,
-},
+  commentComposer: {
+    borderTopWidth: 1,
+    borderTopColor: '#151515',
+    paddingHorizontal: IS_WEB ? 16 : 14,
+    paddingVertical: IS_WEB ? 14 : 12,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 10,
+  },
 
-commentInput: {
-  flex: 1,
-  minHeight: 42,
-  maxHeight: 90,
-  color: '#fff',
-  backgroundColor: '#0F0F0F',
-  borderWidth: 1,
-  borderColor: '#1F1F1F',
-  borderRadius: 14,
-  paddingHorizontal: 12,
-  paddingVertical: 10,
-  fontSize: 14,
-  fontWeight: '700',
-},
+  commentInput: {
+    flex: 1,
+    minHeight: IS_WEB ? 42 : 40,
+    maxHeight: IS_WEB ? 90 : 88,
+    color: '#fff',
+    backgroundColor: '#0F0F0F',
+    borderWidth: 1,
+    borderColor: '#1F1F1F',
+    borderRadius: IS_WEB ? 14 : 12,
+    paddingHorizontal: 12,
+    paddingVertical: IS_WEB ? 10 : 9,
+    fontSize: IS_WEB ? 14 : 13,
+    fontWeight: '700',
+  },
 
-commentSendBtn: {
-  paddingVertical: 10,
-  paddingHorizontal: 14,
-  borderRadius: 14,
-  backgroundColor: GOLD,
-},
+  commentSendBtn: {
+    paddingVertical: IS_WEB ? 10 : 9,
+    paddingHorizontal: IS_WEB ? 14 : 12,
+    borderRadius: IS_WEB ? 14 : 12,
+    backgroundColor: GOLD,
+  },
 
-commentSendText: {
-  color: '#000',
-  fontWeight: '900',
-  fontSize: 13,
-  letterSpacing: 0.6,
-  textTransform: 'uppercase',
-},
+  commentSendText: {
+    color: '#000',
+    fontWeight: '900',
+    fontSize: IS_WEB ? 13 : 12,
+    letterSpacing: IS_WEB ? 0.6 : 0.4,
+    textTransform: 'uppercase',
+  },
 
   content: {
     alignItems: 'center',
     width: '100%',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 14,
+    paddingHorizontal: IS_WEB ? 16 : 14,
+    paddingTop: IS_WEB ? 12 : 10,
+    paddingBottom: IS_WEB ? 14 : 12,
   },
 
   titleWrap: {
@@ -3290,31 +3323,31 @@ commentSendText: {
     width: '100%',
   },
   title: {
-    fontSize: 20,
+    fontSize: IS_WEB ? 20 : 16,
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     color: T.text,
-    letterSpacing: 1.2,
+    letterSpacing: IS_WEB ? 1.2 : 0.7,
     textTransform: 'uppercase',
     textAlign: 'center',
   },
 
   byline: {
-    fontSize: 14,
+    fontSize: IS_WEB ? 14 : 12,
     color: GOLD,
-    marginBottom: 8,
-    letterSpacing: 0.5,
+    marginBottom: IS_WEB ? 8 : 6,
+    letterSpacing: IS_WEB ? 0.5 : 0.3,
     textAlign: 'center',
     fontFamily: SYSTEM_SANS,
     fontWeight: '700',
   },
   description: {
-    fontSize: 15,
+    fontSize: IS_WEB ? 15 : 13,
     color: '#EDEDED',
-    letterSpacing: 0.2,
-    marginBottom: 12,
+    letterSpacing: IS_WEB ? 0.2 : 0.15,
+    marginBottom: IS_WEB ? 12 : 10,
     width: '100%',
-    lineHeight: 22,
+    lineHeight: IS_WEB ? 22 : 18,
     textAlign: 'center',
     fontFamily: SYSTEM_SANS,
     fontWeight: '400',
@@ -3330,7 +3363,7 @@ commentSendText: {
     left: 0,
     right: 0,
     bottom: 0,
-    height: 24,
+    height: IS_WEB ? 24 : 22,
   },
   progressTrack: {
     position: 'absolute',
@@ -3360,8 +3393,8 @@ commentSendText: {
     paddingHorizontal: 2,
   },
   votePremiumBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingVertical: IS_WEB ? 8 : 7,
+    paddingHorizontal: IS_WEB ? 14 : 12,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: '#ffffff22',
@@ -3374,8 +3407,8 @@ commentSendText: {
   votePremiumBtnText: {
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    letterSpacing: 0.5,
-    fontSize: 13,
+    letterSpacing: IS_WEB ? 0.5 : 0.35,
+    fontSize: IS_WEB ? 13 : 12,
     color: '#FFFFFF',
     textTransform: 'uppercase',
   },
@@ -3391,12 +3424,12 @@ commentSendText: {
   votePremiumCount: {
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    fontSize: 18,
+    fontSize: IS_WEB ? 18 : 16,
     color: '#FFFFFF',
   },
   votePremiumCountLabel: {
     fontFamily: SYSTEM_SANS,
-    fontSize: 12,
+    fontSize: IS_WEB ? 12 : 11,
     fontWeight: '800',
     color: '#E0E0E0',
     textTransform: 'lowercase',
@@ -3404,7 +3437,7 @@ commentSendText: {
   },
   votePremiumNote: {
     fontFamily: SYSTEM_SANS,
-    fontSize: 12,
+    fontSize: IS_WEB ? 12 : 11,
     color: T.mute,
     fontWeight: '800',
   },
@@ -3434,8 +3467,8 @@ commentSendText: {
     left: 10,
     backgroundColor: 'rgba(0,0,0,0.65)',
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: IS_WEB ? 10 : 8,
+    paddingVertical: IS_WEB ? 8 : 6,
     borderWidth: 1,
     borderColor: '#ffffff24',
     flexDirection: 'row',
@@ -3448,27 +3481,26 @@ commentSendText: {
     right: 10,
     backgroundColor: 'rgba(0,0,0,0.65)',
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: IS_WEB ? 12 : 10,
+    paddingVertical: IS_WEB ? 8 : 6,
     borderWidth: 1,
     borderColor: '#ffffff24',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: IS_WEB ? 8 : 6,
   },
   soundText: {
     fontFamily: SYSTEM_SANS,
-    fontSize: 12,
+    fontSize: IS_WEB ? 12 : 10,
     color: '#fff',
     fontWeight: '900',
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    letterSpacing: IS_WEB ? 0.4 : 0.25,
   },
 
   audioWrap: {
     width: '100%',
     borderRadius: 10,
-    
     borderWidth: 1,
     borderColor: '#ffffff14',
     backgroundColor: T.card2,
@@ -3481,6 +3513,5 @@ commentSendText: {
     fontWeight: '800',
   },
 });
-
 
 export default FeaturedScreen;
