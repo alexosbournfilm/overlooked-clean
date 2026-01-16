@@ -295,6 +295,10 @@ export default function SignInScreen() {
   const [caretVisible, setCaretVisible] = useState(true);
   const [focus, setFocus] = useState<'email' | 'password' | null>(null);
 
+  // ✅ NEW: prevent double-running redirects (common cause of flashes)
+  const didFinishRedirectRef = useRef(false);
+  const deepLinkHandledRef = useRef<string | null>(null);
+
   const showError = (title: string, message: string) => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       try {
@@ -305,7 +309,20 @@ export default function SignInScreen() {
     Alert.alert(title, message);
   };
 
+  /**
+   * ✅ IMPORTANT CHANGE (flash fix):
+   * SignInScreen should NOT reset navigation to MainTabs/CreateProfile.
+   * AppNavigator owns switching between Auth/Main based on useAuth().
+   *
+   * This function now only:
+   * - checks if a profile exists
+   * - (optionally) navigates to CreateProfile INSIDE Auth stack
+   * - otherwise does NOTHING and lets AppNavigator swap trees.
+   */
   const finishPostAuthRedirect = async () => {
+    if (didFinishRedirectRef.current) return;
+    didFinishRedirectRef.current = true;
+
     const { data: u } = await supabase.auth.getUser();
     const userId = u?.user?.id;
 
@@ -323,37 +340,44 @@ export default function SignInScreen() {
       return;
     }
 
+    // If the user has no profile row, ensure they land on CreateProfile (AuthStack screen)
     if (!profile) {
-      navigation.reset({ index: 0, routes: [{ name: 'CreateProfile' }] });
+      try {
+        navigation.navigate('CreateProfile');
+      } catch {}
       return;
     }
 
-    navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
-
-    void resetToMain;
+    // ✅ If profile exists: DO NOTHING.
+    // AppNavigator will render MainTabs automatically once useAuth() updates.
+    // (Keeping this no-op for stability)
   };
 
   const handleAuthDeepLink = async (url: string) => {
     try {
-      if (url && url.includes('code=')) {
-        const { error } = await supabase.auth.exchangeCodeForSession(url);
+      if (!url || !url.includes('code=')) return;
 
-        if (error) {
-          console.log('exchangeCodeForSession error:', error);
-          showError(
-            'Email Confirmation',
-            'Could not finish email confirmation. Please open the newest confirmation email link again.'
-          );
-          return;
-        }
+      // ✅ Deduplicate same deep link (prevents double exchange + flicker)
+      if (deepLinkHandledRef.current === url) return;
+      deepLinkHandledRef.current = url;
 
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          const clean = window.location.origin + window.location.pathname;
-          window.history.replaceState({}, document.title, clean);
-        }
+      const { error } = await supabase.auth.exchangeCodeForSession(url);
 
-        await finishPostAuthRedirect();
+      if (error) {
+        console.log('exchangeCodeForSession error:', error);
+        showError(
+          'Email Confirmation',
+          'Could not finish email confirmation. Please open the newest confirmation email link again.'
+        );
+        return;
       }
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        const clean = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, clean);
+      }
+
+      await finishPostAuthRedirect();
     } catch (e) {
       console.log('handleAuthDeepLink exception:', e);
     }
@@ -361,31 +385,41 @@ export default function SignInScreen() {
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
+    let mounted = true;
 
     const init = async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (sessionData?.session?.user) {
-        await finishPostAuthRedirect();
-        return;
+      // ✅ If there's already a session, don't hard-reset navigation.
+      // Just make sure CreateProfile is reachable if needed.
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!mounted) return;
+
+        if (sessionData?.session?.user) {
+          await finishPostAuthRedirect();
+          return;
+        }
+
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          await handleAuthDeepLink(window.location.href);
+        } else {
+          const initial = await Linking.getInitialURL();
+          if (initial) await handleAuthDeepLink(initial);
+        }
+
+        const sub = Linking.addEventListener('url', (event) => {
+          void handleAuthDeepLink(event.url);
+        });
+
+        unsub = () => sub.remove();
+      } catch (e) {
+        console.log('SignIn init error:', e);
       }
-
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        await handleAuthDeepLink(window.location.href);
-      } else {
-        const initial = await Linking.getInitialURL();
-        if (initial) await handleAuthDeepLink(initial);
-      }
-
-      const sub = Linking.addEventListener('url', (event) => {
-        void handleAuthDeepLink(event.url);
-      });
-
-      unsub = () => sub.remove();
     };
 
     init();
 
     return () => {
+      mounted = false;
       if (unsub) unsub();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -489,6 +523,9 @@ export default function SignInScreen() {
     setLoading(true);
 
     try {
+      // ✅ reset redirect guard for a fresh login attempt
+      didFinishRedirectRef.current = false;
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email: trimmedEmail,
         password,
@@ -515,8 +552,12 @@ export default function SignInScreen() {
       }
 
       setShowSignIn(false);
+
+      // ✅ IMPORTANT: no navigation.reset() here.
+      // Let AppNavigator switch trees; we only route to CreateProfile if needed.
       await finishPostAuthRedirect();
 
+      // keep your import stable (no-op)
       void resetToMain;
     } catch (err: any) {
       console.log('SignIn exception:', err);
@@ -1148,7 +1189,6 @@ export default function SignInScreen() {
     </SafeAreaView>
   );
 }
-
 // ------------------------------------------------------------
 // STYLES
 // ------------------------------------------------------------

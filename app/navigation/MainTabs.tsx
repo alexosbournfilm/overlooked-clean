@@ -1,7 +1,8 @@
 // app/navigation/MainTabs.tsx
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { TabActions, useNavigation, useFocusEffect } from '@react-navigation/native';
+import { TabActions, useNavigation } from '@react-navigation/native';
+import type { BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
 import {
   StyleSheet,
   View,
@@ -16,6 +17,8 @@ import {
   Image,
   ActivityIndicator,
   InteractionManager,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,7 +35,6 @@ import WorkshopScreen from '../screens/WorkshopScreen';
 import { SettingsModalProvider } from '../context/SettingsModalContext';
 import SettingsButton from '../../components/SettingsButton';
 import SettingsModal from '../../components/SettingsModal';
-import type { BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
 
 import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 
@@ -154,68 +156,6 @@ const HoverPress = memo(function HoverPress({
     >
       <Animated.View style={{ transform: [{ translateY: lift }, { scale }] }}>{children}</Animated.View>
     </Pressable>
-  );
-});
-
-/* ------------------------ Smooth Tab Transitions ----------------------- */
-/**
- * PERF: Keep the same visual effect, but:
- * - On WEB: no JS timing animation
- * - On NATIVE: still animate after interactions
- */
-const TabTransition = memo(function TabTransition({ children }: { children: React.ReactNode }) {
-  const scrimOpacity = useRef(new Animated.Value(0)).current;
-
-  useFocusEffect(
-    useCallback(() => {
-      scrimOpacity.setValue(Platform.OS === 'web' ? 0.12 : 0.18);
-
-      if (Platform.OS === 'web') {
-        const id = setTimeout(() => {
-          try {
-            scrimOpacity.setValue(0);
-          } catch {}
-        }, 0);
-
-        return () => {
-          try {
-            clearTimeout(id);
-          } catch {}
-        };
-      }
-
-      const task = InteractionManager.runAfterInteractions(() => {
-        Animated.timing(scrimOpacity, {
-          toValue: 0,
-          duration: 220,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }).start();
-      });
-
-      return () => {
-        try {
-          // @ts-ignore
-          task?.cancel?.();
-        } catch {}
-      };
-    }, [scrimOpacity])
-  );
-
-  return (
-    <View style={{ flex: 1, backgroundColor: DARK_BG, overflow: 'hidden' }}>
-      {children}
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          StyleSheet.absoluteFillObject,
-          {
-            backgroundColor: DARK_BG,
-            opacity: scrimOpacity,
-          },
-        ]}
-      />
-    </View>
   );
 });
 
@@ -346,7 +286,6 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
           />
         )}
 
-        {/* ✅ CHANGED: tighten text + reserve center space so nothing overlaps */}
         <View style={[styles.streakBarOverlay, compactUI && { paddingHorizontal: 10 }]}>
           <View style={styles.streakSidesRow}>
             <View style={styles.streakLeftGroup}>
@@ -367,14 +306,10 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
             pointerEvents="none"
             style={[
               styles.streakCenterAbs,
-              // ✅ more padding on compact so center text can't collide with STREAK / Year
               compactUI && { paddingHorizontal: 64 },
             ]}
           >
-            <Text
-              style={[styles.streakBarCenter, compactUI && { fontSize: 8 }]}
-              numberOfLines={1}
-            >
+            <Text style={[styles.streakBarCenter, compactUI && { fontSize: 8 }]} numberOfLines={1}>
               {loading ? '—' : `${displayStreak}/${targetMonths}`}
             </Text>
           </View>
@@ -635,7 +570,12 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={styles.lbOverlay}>
-        <View style={[styles.lbCard, { width: '100%', maxWidth: maxCardWidth, maxHeight: maxCardHeight, alignSelf: 'center' }]}>
+        <View
+          style={[
+            styles.lbCard,
+            { width: '100%', maxWidth: maxCardWidth, maxHeight: maxCardHeight, alignSelf: 'center' },
+          ]}
+        >
           <View style={styles.lbHeader}>
             <Text style={styles.lbTitle}>Leaderboard</Text>
             <Pressable onPress={onClose} hitSlop={10} style={styles.lbCloseBtn}>
@@ -1064,10 +1004,19 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
 
         <View style={[styles.rightTools, { gap: isPhone ? 6 : 10 }]}>
           <HoverPress onPress={onOpenLeaderboard} hitSlop={6} accessibilityLabel="View leaderboard">
-            <View style={[styles.leaderboardBtn, isPhone && styles.leaderboardBtnPhone, compactUI && styles.leaderboardBtnCompact]}>
+            <View
+              style={[
+                styles.leaderboardBtn,
+                isPhone && styles.leaderboardBtnPhone,
+                compactUI && styles.leaderboardBtnCompact,
+              ]}
+            >
               <Ionicons name="trophy-outline" size={isPhone ? 15 : 16} color={GOLD} />
               {!isPhone && (
-                <Text style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]} numberOfLines={1}>
+                <Text
+                  style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]}
+                  numberOfLines={1}
+                >
                   LEADERBOARD
                 </Text>
               )}
@@ -1075,7 +1024,13 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
           </HoverPress>
 
           <HoverPress disabled>
-            <View style={[styles.settingsChipSmall, isPhone && styles.settingsChipSmallPhone, compactUI && styles.settingsChipSmallCompact]}>
+            <View
+              style={[
+                styles.settingsChipSmall,
+                isPhone && styles.settingsChipSmallPhone,
+                compactUI && styles.settingsChipSmallCompact,
+              ]}
+            >
               <View style={{ transform: [{ scale: isPhone ? 0.58 : compactUI ? 0.74 : 0.9 }] }}>
                 <SettingsButton absolute={false} />
               </View>
@@ -1091,7 +1046,6 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
             style={{
               borderRadius: 999,
               width: '100%',
-              // ✅ CHANGED: slightly longer on mobile
               maxWidth: isPhone ? 420 : 520,
               alignSelf: 'center',
             }}
@@ -1105,25 +1059,17 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
 });
 
 /* ---------------------- Screen wrapper --------------------- */
-
-function withTabTransition(Component: React.ComponentType<any>) {
-  const Wrapped = function Wrapped(props: any) {
-    return (
-      <TabTransition>
-        <Component {...props} />
-      </TabTransition>
-    );
-  };
-  return Wrapped;
-}
-
-const FeaturedWrapped = withTabTransition(FeaturedScreen);
-const JobsWrapped = withTabTransition(JobsScreen);
-const ChallengeWrapped = withTabTransition(ChallengeScreen);
-const LocationWrapped = withTabTransition(LocationScreen);
-const ProfileWrapped = withTabTransition(ProfileScreen);
-const WorkshopWrapped = withTabTransition(WorkshopScreen);
-const ChatsWrapped = withTabTransition(ChatsStack);
+/**
+ * ✅ SPEED: remove TabTransition / wrapper animation work entirely.
+ * This makes screen switching as fast as possible.
+ */
+const FeaturedWrapped = FeaturedScreen;
+const JobsWrapped = JobsScreen;
+const ChallengeWrapped = ChallengeScreen;
+const LocationWrapped = LocationScreen;
+const ProfileWrapped = ProfileScreen;
+const WorkshopWrapped = WorkshopScreen;
+const ChatsWrapped = ChatsStack;
 
 /* ------------------------ Animated Tab Bar Button --------------------- */
 
@@ -1191,6 +1137,76 @@ export default function MainTabs() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
+  // ✅ Web background / foreground + native background / foreground fix:
+  // This is what prevents “click off → come back → infinite loading”.
+  const lastResumeAt = useRef(0);
+
+  const resumeWarmAuth = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastResumeAt.current < 800) return; // throttle
+    lastResumeAt.current = now;
+
+    try {
+      // Warm session immediately (prevents screens racing auth)
+      await supabase.auth.getSession();
+    } catch {}
+
+    try {
+      supabase.auth.startAutoRefresh();
+    } catch {}
+  }, []);
+
+  const pauseAuth = useCallback(() => {
+    try {
+      supabase.auth.stopAutoRefresh();
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    // Start immediately on mount
+    resumeWarmAuth();
+
+    // Native lifecycle
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') resumeWarmAuth();
+      else pauseAuth();
+    });
+
+    return () => {
+      try {
+        sub.remove();
+      } catch {}
+      pauseAuth();
+    };
+  }, [pauseAuth, resumeWarmAuth]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    const onVisibility = () => {
+      try {
+        if (document.visibilityState === 'visible') resumeWarmAuth();
+        else pauseAuth();
+      } catch {}
+    };
+
+    const onFocus = () => resumeWarmAuth();
+    const onBlur = () => pauseAuth();
+
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('blur', onBlur);
+
+    // Run once
+    onVisibility();
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [pauseAuth, resumeWarmAuth]);
+
   useEffect(() => {
     if (Platform.OS === 'web') {
       try {
@@ -1247,6 +1263,8 @@ export default function MainTabs() {
           paddingVertical: 0,
         },
 
+        // ✅ PERF: keep screens mounted for instant switching.
+        // still lazy-load the first time so initial boot is lighter.
         lazy: true,
         lazyPreloadDistance: 1,
         detachInactiveScreens: Platform.OS !== 'web',
@@ -1257,40 +1275,31 @@ export default function MainTabs() {
 
         tabBarIcon: ({ color }: { color: string; focused: boolean }) => {
           let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
-          let label = route.name;
 
           switch (route.name) {
             case 'Featured':
               icon = 'star-outline';
-              label = 'Featured';
               break;
             case 'Jobs':
               icon = 'briefcase-outline';
-              label = 'Jobs';
               break;
             case 'Challenge':
               icon = 'trophy-outline';
-              label = 'Challenge';
               break;
             case 'Workshop':
               icon = 'cube-outline';
-              label = 'Workshop';
               break;
             case 'Location':
               icon = 'location-outline';
-              label = 'Location';
               break;
             case 'Chats':
               icon = 'chatbubble-ellipses-outline';
-              label = 'Chats';
               break;
             case 'Profile':
               icon = 'person-outline';
-              label = 'Profile';
               break;
           }
 
-          // ✅ CHANGED: icons ONLY everywhere (no labels, no pills)
           return (
             <View style={styles.tabIconOnly}>
               <Ionicons name={icon} size={isTiny ? 20 : 22} color={color} />
@@ -1311,10 +1320,7 @@ export default function MainTabs() {
           onOpenLeaderboard={() => setShowLeaderboard(true)}
         />
 
-        <SafeAreaView
-          style={[styles.safeArea, { paddingTop: contentTopPadding }]}
-          edges={['left', 'right', 'bottom']}
-        >
+        <SafeAreaView style={[styles.safeArea, { paddingTop: contentTopPadding }]} edges={['left', 'right', 'bottom']}>
           <Tab.Navigator screenOptions={screenOptions}>
             <Tab.Screen name="Featured" component={FeaturedWrapped} />
             <Tab.Screen name="Jobs" component={JobsWrapped} />
