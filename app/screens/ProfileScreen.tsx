@@ -2820,18 +2820,9 @@ const renderHero = () => {
   const title = (displayTitle || defaultTitle).toUpperCase();
   const ringColor = getRingColorForLevel(level);
 
-  /**
-   * ✅ MOBILE FIX:
-   * Your MAIN RENDER already wraps everything in:
-   *   <View style={{ width:"100%", maxWidth: PAGE_MAX, paddingHorizontal: horizontalPad }}>
-   * renderHero was adding *another* paddingHorizontal + maxWidth clamp,
-   * which makes the hero look “too narrow” / squashed on mobile.
-   *
-   * So: renderHero should NOT add its own side padding/maxWidth.
-   * It should be full-width inside the parent container.
-   */
-  const heroPad = 0; // ✅ was 14/20
-  const heroMaxW: any = "100%"; // ✅ was 720/PAGE_MAX
+  // ✅ Better mobile + mobile-web spacing: clamp hero width + consistent side padding
+  const heroPad = isMobileLike ? 14 : 20;
+  const heroMaxW = isMobileLike ? 720 : PAGE_MAX;
 
   return (
     <View
@@ -2839,8 +2830,8 @@ const renderHero = () => {
         styles.heroWrap,
         {
           paddingTop: isMobileLike ? 8 : 18,
-          paddingHorizontal: heroPad, // ✅ now 0 (parent controls padding)
-          alignSelf: "stretch",
+          paddingHorizontal: heroPad,
+          alignSelf: "center",
           width: "100%",
           maxWidth: heroMaxW,
         },
@@ -2851,9 +2842,9 @@ const renderHero = () => {
           styles.heroGrid,
           {
             flexDirection: isMobileLike ? "column" : "row",
+            // ✅ smaller gap between image and edit card on mobile/mobile-web
             gap: isMobileLike ? 8 : 18,
             alignItems: "stretch",
-            width: "100%",
           },
         ]}
       >
@@ -2862,7 +2853,7 @@ const renderHero = () => {
           style={[
             styles.heroLeft,
             isMobileLike ? styles.heroLeftMobile : styles.heroLeftDesktop,
-            { width: "100%" }, // ✅ always full width inside container
+            isMobileLike ? { width: "100%", flex: 0 } : null, // ✅ key line
           ]}
         >
           <ImageBackground
@@ -2870,7 +2861,9 @@ const renderHero = () => {
             style={[
               styles.heroImage,
               isMobileLike ? styles.heroImageMobile : styles.heroImageDesktop,
-              { width: "100%", alignSelf: "stretch" }, // ✅ ensure true full width
+              // ✅ Avoid weird stretching on web-mobile
+              isMobileLike ? { width: "100%" } : null,
+              // ✅ ensures the bottom bar takes up real space (prevents overlap issues)
               { paddingBottom: isMobileLike ? 12 : 16 },
             ]}
             imageStyle={[styles.heroImageInner, { backgroundColor: bannerColor }]}
@@ -2889,6 +2882,7 @@ const renderHero = () => {
               <View
                 style={[
                   styles.roleWrap,
+                  // ✅ keep clear space for avatar bottom bar
                   isMobileLike
                     ? { paddingHorizontal: 14, paddingBottom: 96 }
                     : { paddingBottom: 98 },
@@ -2900,8 +2894,8 @@ const renderHero = () => {
                     isMobileLike
                       ? { fontSize: 12, marginTop: 8, letterSpacing: 1.2, lineHeight: 16 }
                       : {
-                          fontSize: 16,
-                          letterSpacing: 3,
+                          fontSize: 16, // ✅ bigger on web
+                          letterSpacing: 3, // ✅ more cinematic
                           marginBottom: 6,
                           opacity: 0.95,
                         },
@@ -2932,6 +2926,7 @@ const renderHero = () => {
                         flexDirection: "row",
                         alignItems: "center",
                         justifyContent: "center",
+                        // ✅ closer spacing on mobile
                         gap: 14,
                       }}
                     >
@@ -2998,6 +2993,7 @@ const renderHero = () => {
             <View
               style={[
                 styles.heroBottomBar,
+                // ✅ NOT absolute here — prevents the next sections overlapping
                 {
                   position: "relative",
                   left: undefined,
@@ -3041,17 +3037,10 @@ const renderHero = () => {
                 </View>
               </View>
 
-              {/* ✅ DESKTOP ONLY: counts stay here */}
+              {/* ✅ DESKTOP ONLY: counts stay here (UPDATED: centered + tighter) */}
               {!isMobileLike && (
                 <View style={{ marginTop: 14, alignItems: "center", justifyContent: "center" }}>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 18,
-                    }}
-                  >
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 18 }}>
                     <TouchableOpacity
                       onPress={() => setConnectionsModalVisible(true)}
                       style={{ alignItems: "center", minWidth: 92, paddingVertical: 4 }}
@@ -3063,7 +3052,7 @@ const renderHero = () => {
                           fontWeight: "900",
                           fontFamily: FONT_OBLIVION,
                           letterSpacing: 1,
-                          fontSize: 14,
+                          fontSize: 14, // ✅ slightly smaller so it sits nicely under the name
                         }}
                       >
                         {supportersCount}
@@ -3116,14 +3105,19 @@ const renderHero = () => {
         <View
           style={[
             styles.heroRight,
-            isMobileLike ? { marginTop: 0, width: "100%", flex: 0 } : null,
+            isMobileLike ? { marginTop: 0, width: "100%", flex: 0 } : null, // ✅ key line
           ]}
         >
           {/* ✅ Desktop: show edit card at top (like before) */}
           {!isMobileLike ? (
-            <View style={[styles.infoCard]}>
+            <View
+              style={[
+                styles.infoCard,
+                isMobileLike ? { paddingHorizontal: 14, paddingVertical: 14 } : null,
+              ]}
+            >
               {/* Buttons */}
-              <View style={[styles.infoButtons]}>
+              <View style={[styles.infoButtons, isMobileLike ? { marginTop: 0 } : null]}>
                 {isOwnProfile ? (
                   <TouchableOpacity
                     style={styles.btnPrimary}
@@ -3150,11 +3144,11 @@ const renderHero = () => {
 
               {/* Support button */}
               {!isOwnProfile && profile && currentUserId && (
-                <View style={{ marginTop: 12 }}>
+                <View style={{ marginTop: isMobileLike ? 10 : 12 }}>
                   <TouchableOpacity
                     activeOpacity={0.85}
                     onPress={async () => {
-                      const targetIdToSupport = profile?.id;
+                      const targetIdToSupport = profile?.id; // ✅ always correct
                       if (!targetIdToSupport) return;
 
                       if (isSupporting) {
@@ -3173,8 +3167,8 @@ const renderHero = () => {
                     }}
                     style={[
                       {
-                        paddingVertical: 12,
-                        paddingHorizontal: 22,
+                        paddingVertical: isMobileLike ? 11 : 12,
+                        paddingHorizontal: isMobileLike ? 18 : 22,
                         borderRadius: 999,
                         alignItems: "center",
                         justifyContent: "center",
@@ -3186,8 +3180,14 @@ const renderHero = () => {
                         width: "100%",
                       },
                       isSupporting
-                        ? { backgroundColor: "#1C1C1C", borderWidth: 1, borderColor: "#444" }
-                        : { backgroundColor: COLORS.primary },
+                        ? {
+                            backgroundColor: "#1C1C1C",
+                            borderWidth: 1,
+                            borderColor: "#444",
+                          }
+                        : {
+                            backgroundColor: COLORS.primary,
+                          },
                     ]}
                   >
                     <Text
@@ -3205,7 +3205,7 @@ const renderHero = () => {
               )}
 
               {/* Gamification */}
-              <View style={[styles.gamifyWrap, { marginTop: 12 }]}>
+              <View style={[styles.gamifyWrap, isMobileLike ? { marginTop: 12 } : null]}>
                 <Text style={[styles.gamifyTitle, { color: ringColor }]} numberOfLines={1}>
                   {title}
                 </Text>
@@ -3223,8 +3223,14 @@ const renderHero = () => {
             {(() => {
               const s = streakLoading ? 0 : Math.max(0, Number(streak || 0));
 
+              // Full years completed (12 months each)
               const fullYears = Math.floor(s / 12);
+
+              // Months into the current year (0..11)
               const remainder = s % 12;
+
+              // Always show the current “building” year.
+              // If s === 12 exactly -> Year 1 full + Year 2 starts at 0/12
               const yearsToShow = Math.max(1, fullYears + 1);
 
               return Array.from({ length: yearsToShow }).map((_, idx) => {
@@ -3237,6 +3243,7 @@ const renderHero = () => {
 
                 return (
                   <View key={`year-${yearNumber}`} style={{ marginTop: idx === 0 ? 0 : 12 }}>
+                    {/* Filmmaking streak • Year X (same line) */}
                     <View
                       style={{
                         flexDirection: "row",
@@ -3319,6 +3326,21 @@ const renderHero = () => {
             })()}
           </View>
 
+          {/* About */}
+          {(bio?.trim()?.length || sideRoles.length || isOwnProfile) ? (
+            <View style={[styles.aboutCard, isMobileLike ? { marginTop: 10 } : null]}>
+              <Text style={styles.aboutTitle}>About</Text>
+              <Text style={[styles.aboutBody, isMobileLike ? { lineHeight: 18 } : null]}>
+                {bio || "—"}
+              </Text>
+              {!!sideRoles.length && (
+                <Text style={[styles.aboutBody, { marginTop: 8, fontStyle: "italic" }]}>
+                  <Text style={{ fontWeight: "900" }}>Side roles: </Text>
+                  {sideRoles.join(", ")}
+                </Text>
+              )}
+            </View>
+          ) : null}
           {/* ✅ Mobile: put edit card BEFORE About (inside hero) */}
           {isMobileLike ? (
             <View style={{ width: "100%", marginTop: 12 }}>
@@ -3326,7 +3348,7 @@ const renderHero = () => {
             </View>
           ) : null}
 
-          {/* About (single instance) */}
+          {/* About (now sits between Edit Profile and Showreel on mobile) */}
           {(bio?.trim()?.length || sideRoles.length || isOwnProfile) ? (
             <View style={[styles.aboutCard, { marginTop: 12 }]}>
               <Text style={styles.aboutTitle}>About</Text>
@@ -3353,7 +3375,8 @@ const renderFeaturedFilm = () => {
 
   const primaryRow = showreels.find((r) => r.is_primary);
 
-  // ✅ Decide the featured source ONCE
+  // ✅ Decide the featured source ONCE (prevents a typed YouTube link from overriding a primary MP4)
+  // Priority: primary showreel (url first, then file_path) → users.portfolio_url → mp4MainUrl → portfolioUrl
   const featuredSrc =
     (primaryRow?.url || primaryRow?.file_path || "")?.trim() ||
     fromDbRaw ||
@@ -3363,6 +3386,7 @@ const renderFeaturedFilm = () => {
 
   if (!featuredSrc) return null;
 
+  // ✅ Detect based ONLY on featuredSrc (not portfolioUrl || something)
   const isYoutube = looksLikeYouTube(featuredSrc);
   const ytId = isYoutube ? extractYoutubeId(featuredSrc) : null;
 
@@ -3418,20 +3442,28 @@ const renderFeaturedFilm = () => {
 
       {/* Extra showreels */}
       {showreels.filter((r) => !r.is_primary).length > 0 && (
-        <View style={{ width: "100%", maxWidth: maxW, alignSelf: "center", marginTop: 14 }}>
+        <View
+          style={{
+            width: "100%",
+            maxWidth: maxW,
+            alignSelf: "center",
+            marginTop: 14,
+          }}
+        >
           <Text style={block.h3Centered}>More Showreels</Text>
-
           {showreels
             .filter((r) => !r.is_primary)
             .map((r) => (
-              <View key={r.id} style={[block.mediaCard, { marginBottom: 10, paddingBottom: 8 }]}>
+              <View
+                key={r.id}
+                style={[block.mediaCard, { marginBottom: 10, paddingBottom: 8 }]}
+              >
                 <ShowreelVideoInline
                   playerId={`sr_${r.id}`}
                   filePathOrUrl={r.file_path || r.url}
                   width={maxW}
                   autoPlay={false}
                 />
-
                 <View
                   style={{
                     flexDirection: "row",
@@ -3465,7 +3497,14 @@ const renderFeaturedFilm = () => {
 
       {/* Manage Showreels (owner only) */}
       {isOwnProfile && (
-        <View style={{ width: "100%", maxWidth: maxW, alignSelf: "center", marginTop: 12 }}>
+        <View
+          style={{
+            width: "100%",
+            maxWidth: maxW,
+            alignSelf: "center",
+            marginTop: 12,
+          }}
+        >
           <View style={[block.mediaCard, { padding: 12 }]}>
             <Text style={block.h3Centered}>Manage Showreels</Text>
 
@@ -3483,7 +3522,9 @@ const renderFeaturedFilm = () => {
 
             {srUploading && (
               <View style={{ marginTop: 10, alignItems: "center" }}>
-                {!!srStatus && <Text style={[block.muted, { marginBottom: 6 }]}>{srStatus}</Text>}
+                {!!srStatus && (
+                  <Text style={[block.muted, { marginBottom: 6 }]}>{srStatus}</Text>
+                )}
                 <View style={block.progressRail}>
                   <View style={[block.progressFill, { width: `${srProgress}%` }]} />
                 </View>
@@ -3503,18 +3544,428 @@ const renderFeaturedFilm = () => {
   );
 };
 
-/**
- * ✅ TEMP IMPLEMENTATIONS (so your file compiles without breaking UI)
- * Keep these here (above MAIN RENDER) until you paste your real sections back in.
- * Returning null is fine — it won’t render anything, but it also won’t crash.
- */
+const AudioTile = ({ item }: { item: PortfolioItem }) => (
+  <View style={block.mediaRowCard}>
+    <View style={block.mediaIcon}>
+      <Ionicons name="musical-notes-outline" size={20} color={COLORS.textSecondary} />
+    </View>
+
+    <View style={{ flex: 1 }}>
+      <Text style={block.mediaRowTitle} numberOfLines={1}>
+        {item.title ?? "Audio"}
+      </Text>
+      <View style={block.progressRail}>
+        <View
+          style={[block.progressFill, { width: playingId === item.id ? "35%" : "0%" }]}
+        />
+      </View>
+    </View>
+
+    <TouchableOpacity onPress={() => togglePlayAudio(item)} style={block.rowBtn}>
+      <Text style={block.rowBtnText}>{playingId === item.id ? "Pause" : "Play"}</Text>
+    </TouchableOpacity>
+
+    {isOwnProfile && (
+      <TouchableOpacity onPress={() => deletePortfolioItem(item.id)} style={block.rowBtnGhost}>
+        <Text style={block.rowBtnGhostText}>Delete</Text>
+      </TouchableOpacity>
+    )}
+  </View>
+);
+
+const PdfTile = ({ item }: { item: PortfolioItem }) => (
+  <View style={block.mediaRowCard}>
+    <View style={block.mediaIcon}>
+      <Ionicons name="document-text-outline" size={20} color={COLORS.textSecondary} />
+    </View>
+
+    <Text style={[block.mediaRowTitle, { flex: 1 }]} numberOfLines={1}>
+      {item.title ?? "PDF"}
+    </Text>
+
+    <TouchableOpacity onPress={() => Linking.openURL(item.url)} style={block.rowBtn}>
+      <Text style={block.rowBtnText}>Open</Text>
+    </TouchableOpacity>
+
+    {isOwnProfile && (
+      <TouchableOpacity onPress={() => deletePortfolioItem(item.id)} style={block.rowBtnGhost}>
+        <Text style={block.rowBtnGhostText}>Delete</Text>
+      </TouchableOpacity>
+    )}
+  </View>
+);
+
 const renderEditorialPortfolio = () => {
-  return null;
+  if (loadingPortfolio) {
+    return (
+      <View style={block.section}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+  if (!portfolioItems.length) return null;
+
+  const dedupMap = new Map<string, PortfolioItem>();
+  portfolioItems.forEach((p) => {
+    const key = `${p.type}:${p.url}`;
+    if (!dedupMap.has(key)) dedupMap.set(key, p);
+  });
+  const unique = Array.from(dedupMap.values());
+
+  const imgs = unique.filter((p) => p.type === "image");
+  const auds = unique.filter((p) => p.type === "audio");
+  const pdfs = unique.filter((p) => p.type === "pdf");
+  const yts = unique.filter((p) => p.type === "youtube");
+
+  const cols = isMobile ? 2 : 3;
+  const usable = Math.min(width, PAGE_MAX) - horizontalPad * 2;
+  const tileW = Math.floor((usable - GRID_GAP * (cols - 1)) / cols);
+
+  const imgUrls = imgs.map((i) => i.url);
+
+  const openImageViewer = (url: string) => {
+    const startIndex = imgUrls.indexOf(url);
+    setImageViewerUrls(imgUrls);
+    setImageViewerIndex(startIndex >= 0 ? startIndex : 0);
+  };
+
+  return (
+    <>
+      {imgs.length > 0 && (
+        <View style={block.section}>
+          <Text style={block.sectionTitleCentered}>Portfolio</Text>
+          <View style={[block.grid, { marginHorizontal: -4 }]}>
+            {imgs.map((item) => (
+              <View key={item.id} style={[block.tile, { width: tileW, margin: 4 }]}>
+                <View style={block.tileFrame}>
+                  <Pressable onPress={() => openImageViewer(item.url)} style={{ flex: 1 }}>
+                    <Image
+                      source={{ uri: item.url }}
+                      style={{ width: "100%", height: "100%" }}
+                      resizeMode="cover"
+                    />
+                  </Pressable>
+
+                  {isOwnProfile && (
+                    <TouchableOpacity
+                      style={block.closeDot}
+                      onPress={() => deletePortfolioItem(item.id)}
+                      accessibilityLabel="Delete"
+                    >
+                      <Ionicons name="close" size={14} color="#000" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {auds.length > 0 && (
+        <View style={block.section}>
+          <Text style={block.h3Centered}>Audio</Text>
+          <View style={{ gap: 10 }}>
+            {auds.map((item) => (
+              <AudioTile key={item.id} item={item} />
+            ))}
+          </View>
+        </View>
+      )}
+
+      {pdfs.length > 0 && (
+        <View style={block.section}>
+          <Text style={block.h3Centered}>PDF</Text>
+          <View style={{ gap: 10 }}>
+            {pdfs.map((item) => (
+              <PdfTile key={item.id} item={item} />
+            ))}
+          </View>
+        </View>
+      )}
+
+      {yts.length > 0 && (
+        <View style={block.section}>
+          <Text style={block.h3Centered}>YouTube</Text>
+          {yts.map((item) => (
+            <View key={item.id} style={block.youtubeWrap}>
+              <YoutubePlayer
+                key={extractYoutubeId(item.url) || item.id}
+                height={isMobile ? 180 : 260}
+                width={Math.min(SHOWREEL_MAX_W, usable)}
+                videoId={extractYoutubeId(item.url) || undefined}
+                webViewStyle={{ backgroundColor: "#000" }}
+                webViewProps={{
+                  allowsInlineMediaPlayback: true,
+                  mediaPlaybackRequiresUserAction: false,
+                }}
+              />
+              {isOwnProfile && (
+                <TouchableOpacity onPress={() => deletePortfolioItem(item.id)} style={block.ytDelete}>
+                  <Text style={block.rowBtnGhostText}>Delete</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ))}
+        </View>
+      )}
+    </>
+  );
 };
 
 const renderSubmissionsSection = () => {
-  return null;
+  if (loadingSubmissions) {
+    return (
+      <View style={block.section}>
+        <Text style={block.sectionTitleCentered}>Submissions</Text>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (!submissions.length) return null;
+
+  const cols = isCompact ? 2 : isMobileLike ? 2 : width < 1100 ? 3 : 4;
+  const usable = Math.min(width, PAGE_MAX) - horizontalPad * 2;
+  const tileW = Math.floor((usable - GRID_GAP * (cols - 1)) / cols);
+  const tileH = Math.floor(tileW * (9 / 16));
+
+  // Modal media sizing (always numeric → avoids TS error)
+  const modalMaxW = Math.min(Math.min(width, PAGE_MAX) - horizontalPad * 2, 760);
+  const modalMediaW = Math.max(280, Math.floor(modalMaxW));
+  const modalMediaH = Math.floor(modalMediaW * (9 / 16));
+
+  return (
+    <View style={block.section}>
+      <Text style={block.sectionTitleCentered}>Submissions</Text>
+
+      <View style={[block.grid, { gap: GRID_GAP }]}>
+        {submissions.map((s) => {
+          const yt = s.youtube_url ? ytThumb(s.youtube_url) : null;
+          const mp4Thumb = s.thumbnail_url ? addBuster(s.thumbnail_url) : null;
+
+          return (
+            <Pressable
+              key={s.id}
+              onPress={() => {
+                setActiveSubmission(s);
+                setSubmissionModalOpen(true);
+              }}
+              style={{ width: tileW }}
+            >
+              <View
+                style={{
+                  height: tileH,
+                  borderRadius: 12,
+                  overflow: "hidden",
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                  backgroundColor: "#000",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {/* Thumbnail */}
+                {yt ? (
+                  <Image source={{ uri: yt }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                ) : mp4Thumb ? (
+                  <Image source={{ uri: mp4Thumb }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                ) : (
+                  <>
+                    <Ionicons name="videocam" size={28} color={COLORS.textSecondary} />
+                    <Text
+                      style={{
+                        marginTop: 6,
+                        color: COLORS.textSecondary,
+                        fontFamily: FONT_OBLIVION,
+                        fontSize: 11,
+                      }}
+                    >
+                      MP4 submission
+                    </Text>
+                  </>
+                )}
+
+                {/* overlay */}
+                <View
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    padding: 10,
+                    backgroundColor: "rgba(0,0,0,0.55)",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: COLORS.textPrimary,
+                      fontFamily: FONT_OBLIVION,
+                      fontWeight: "800",
+                    }}
+                    numberOfLines={1}
+                  >
+                    {s.title || "Untitled"}
+                  </Text>
+
+                  {!!s.word && (
+                    <Text
+                      style={{
+                        color: COLORS.textSecondary,
+                        fontFamily: FONT_OBLIVION,
+                        fontSize: 12,
+                      }}
+                      numberOfLines={1}
+                    >
+                      “{s.word}”
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {/* Playback modal */}
+      <Modal
+        visible={submissionModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setSubmissionModalOpen(false);
+          setActiveSubmission(null);
+        }}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "#000000EE",
+            justifyContent: "center",
+            padding: 14,
+          }}
+        >
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => {
+              setSubmissionModalOpen(false);
+              setActiveSubmission(null);
+            }}
+          />
+
+          <View
+            style={{
+              backgroundColor: COLORS.cardAlt,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: COLORS.border,
+              overflow: "hidden",
+              padding: 12,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.textPrimary,
+                fontFamily: FONT_OBLIVION,
+                fontWeight: "900",
+                marginBottom: 8,
+              }}
+            >
+              {activeSubmission?.title || "Untitled"}
+            </Text>
+
+            {/* ✅ Give the media a predictable 16:9 box */}
+            <View style={{ width: "100%", alignItems: "center", justifyContent: "center" }}>
+              <View
+                style={{
+                  width: modalMediaW,
+                  height: modalMediaH,
+                  backgroundColor: "#000",
+                  borderRadius: 14,
+                  overflow: "hidden",
+                }}
+              >
+                {activeSubmission ? (
+                  activeSubmission.youtube_url ? (
+                    <YoutubePlayer
+                      height={modalMediaH}
+                      width={modalMediaW}
+                      videoId={extractYoutubeId(activeSubmission.youtube_url) || undefined}
+                      play={false}
+                      webViewStyle={{ backgroundColor: "#000" }}
+                      webViewProps={{
+                        allowsInlineMediaPlayback: true,
+                        mediaPlaybackRequiresUserAction: false,
+                        // @ts-ignore
+                        allowsFullscreenVideo: true,
+                      }}
+                      initialPlayerParams={{ rel: false }}
+                    />
+                  ) : activeSubmission.video_url || activeSubmission.video_path ? (
+                    <ShowreelVideoInline
+                      playerId={`submission_${activeSubmission.id}`}
+                      filePathOrUrl={activeSubmission.video_url || activeSubmission.video_path!}
+                      width={modalMediaW}
+                      autoPlay={false}
+                    />
+                  ) : (
+                    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                      <Text style={[block.muted, { textAlign: "center" }]}>
+                        No video found for this submission.
+                      </Text>
+                    </View>
+                  )
+                ) : null}
+              </View>
+            </View>
+
+            {/* ✅ OWNER TOOLS: change thumbnail only for MP4 submissions (not YouTube) */}
+            {isOwnProfile && activeSubmission && !activeSubmission.youtube_url && (
+              <TouchableOpacity
+                onPress={() => changeSubmissionThumbnail(activeSubmission)}
+                disabled={thumbUploadingId === activeSubmission.id}
+                style={[
+                  styles.primaryBtn,
+                  {
+                    marginTop: 12,
+                    opacity: thumbUploadingId === activeSubmission.id ? 0.75 : 1,
+                  },
+                ]}
+                activeOpacity={0.85}
+              >
+                {thumbUploadingId === activeSubmission.id ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={styles.primaryBtnText}>Change thumbnail</Text>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {isOwnProfile && activeSubmission && (
+              <TouchableOpacity
+                onPress={() => deleteSubmission(activeSubmission)}
+                style={[styles.ghostBtn, { borderColor: COLORS.danger, marginTop: 12 }]}
+              >
+                <Text style={[styles.ghostBtnText, { color: COLORS.danger }]}>Delete submission</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              onPress={() => {
+                setSubmissionModalOpen(false);
+                setActiveSubmission(null);
+              }}
+              style={[styles.ghostBtn, { marginTop: 12 }]}
+            >
+              <Text style={styles.ghostBtnText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
 };
+
 /* ---------- MAIN RENDER ---------- */
 
 if (isLoading) {
@@ -3553,22 +4004,15 @@ return (
       <ScrollView
         style={{ flex: 1, backgroundColor: COLORS.background }}
         contentContainerStyle={{
-          // ✅ IMPORTANT: don’t center everything on mobile-web (causes boxed/squashed hero)
-          alignItems: "stretch",
+          alignItems: "center",
           paddingBottom: 40 + Math.max(insets.bottom, 8),
         }}
       >
         <View
           style={{
             width: "100%",
-            alignSelf: "center",
-
-            // ✅ Desktop gets the clamp. Mobile gets full width.
-            maxWidth: isMobileLike ? "100%" : PAGE_MAX,
-
-            // ✅ On mobile, keep padding simple and consistent.
-            // If you want tighter/wider, change 14.
-            paddingHorizontal: isMobileLike ? 14 : horizontalPad,
+            maxWidth: PAGE_MAX,
+            paddingHorizontal: horizontalPad,
           }}
         >
           {renderHero()}
@@ -3650,7 +4094,256 @@ return (
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            {/* ... your existing edit modal content unchanged ... */}
+            {/* Profile picture (own profile only) */}
+            {isOwnProfile && (
+              <View style={[styles.field, { marginTop: 8 }]}>
+                <Text style={styles.fieldLabel}>Profile picture</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  {image || profile.avatar_url ? (
+                    <Image
+                      source={{ uri: addBuster(image || profile.avatar_url || "") || "" }}
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: 21,
+                        backgroundColor: "#111",
+                        borderWidth: 1,
+                        borderColor: COLORS.border,
+                      }}
+                    />
+                  ) : (
+                    <View
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: 21,
+                        backgroundColor: "#111",
+                        borderWidth: 1,
+                        borderColor: COLORS.border,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Ionicons name="person-outline" size={18} color={COLORS.textSecondary} />
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.pillBtn}
+                    onPress={pickImage}
+                    disabled={uploading}
+                  >
+                    <Text style={styles.pillText}>
+                      {uploading ? "Uploading..." : "Change profile picture"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* Full name */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Name</Text>
+              <TextInput
+                value={fullName}
+                onChangeText={setFullName}
+                style={styles.input}
+                placeholder="Your name"
+                placeholderTextColor={COLORS.textSecondary}
+              />
+            </View>
+
+            {/* City */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>City</Text>
+              <TouchableOpacity
+                style={styles.pickerBtn}
+                onPress={() => {
+                  setCityOpen(true);
+                  fetchCities(citySearch || "");
+                }}
+              >
+                <Text style={styles.pickerBtnText}>{cityName || "Search city"}</Text>
+                <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Main role */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Main role</Text>
+              <TouchableOpacity
+                style={styles.pickerBtn}
+                onPress={() => {
+                  setRoleSearchModalVisible(true);
+                  setRoleSearchTerm("");
+                  setRoleSearchItems([]);
+                }}
+              >
+                <Text style={styles.pickerBtnText}>{mainRoleName || "Search role"}</Text>
+                <Ionicons name="search" size={16} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Side roles */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Side roles</Text>
+              <TouchableOpacity
+                style={styles.pickerBtn}
+                onPress={() => {
+                  setSideRoleModalVisible(true);
+                  setRoleSearchTerm("");
+                  setRoleSearchItems([]);
+                }}
+              >
+                <Text style={styles.pickerBtnText}>
+                  {sideRoles.length ? sideRoles.join(", ") : "Add side roles"}
+                </Text>
+                <Ionicons name="add" size={16} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Bio */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>About</Text>
+              <TextInput
+                value={bio}
+                onChangeText={setBio}
+                style={[styles.input, styles.multiline]}
+                placeholder="Tell people who you are, what you’re drawn to, and what you’re looking for."
+                placeholderTextColor={COLORS.textSecondary}
+                multiline
+              />
+            </View>
+
+            {/* Showreel selection */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Featured Showreel</Text>
+              <View style={styles.segmentWrap}>
+                <TouchableOpacity
+                  style={[styles.segmentBtn, portfolioChoice === "youtube" && styles.segmentActive]}
+                  onPress={() => setPortfolioChoice("youtube")}
+                >
+                  <Text
+                    style={[
+                      styles.segmentText,
+                      portfolioChoice === "youtube" && styles.segmentTextActive,
+                    ]}
+                  >
+                    YouTube link
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.segmentBtn, portfolioChoice === "mp4" && styles.segmentActive]}
+                  onPress={() => setPortfolioChoice("mp4")}
+                >
+                  <Text
+                    style={[
+                      styles.segmentText,
+                      portfolioChoice === "mp4" && styles.segmentTextActive,
+                    ]}
+                  >
+                    Upload MP4
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {portfolioChoice === "youtube" ? (
+                <View style={{ marginTop: 8 }}>
+                  <TextInput
+                    value={portfolioUrl}
+                    onChangeText={setPortfolioUrl}
+                    style={styles.input}
+                    placeholder="Paste YouTube link"
+                    placeholderTextColor={COLORS.textSecondary}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  {!!portfolioUrl && !looksLikeYouTube(portfolioUrl) && (
+                    <Text style={styles.validationText}>That link doesn’t look like YouTube.</Text>
+                  )}
+                </View>
+              ) : (
+                <View style={{ marginTop: 8 }}>
+                  {mp4MainUrl ? (
+                    <>
+                      <Text style={[styles.fieldLabel, { marginBottom: 4 }]}>Current file</Text>
+                      <Text style={[block.muted, { marginBottom: 6 }]} numberOfLines={1}>
+                        {mp4MainName || "Showreel video"}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={[block.muted, { marginBottom: 6 }]}>
+                      Upload a high-quality MP4/MOV/WebM up to 1GB.
+                    </Text>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.primaryBtn}
+                    onPress={uploadMainMP4}
+                    disabled={mp4MainUploading}
+                  >
+                    {mp4MainUploading ? (
+                      <ActivityIndicator color="#000" />
+                    ) : (
+                      <Text style={styles.primaryBtnText}>
+                        {mp4MainUrl ? "Replace video" : "Upload video"}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+
+                  {mp4MainUploading && (
+                    <View style={{ marginTop: 8, alignItems: "center" }}>
+                      {!!mp4Status && (
+                        <Text style={[block.muted, { marginBottom: 4 }]}>{mp4Status}</Text>
+                      )}
+                      <View style={block.progressRail}>
+                        <View style={[block.progressFill, { width: `${mp4Progress}%` }]} />
+                      </View>
+                      <Text style={[block.muted, { marginTop: 4 }]}>{mp4Progress}%</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+
+            {/* Extra portfolio uploads */}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Add supporting work</Text>
+              <View style={styles.uploadRow}>
+                <TouchableOpacity style={styles.pillBtn} onPress={uploadPortfolioImage}>
+                  <Text style={styles.pillText}>+ Image</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.pillBtn} onPress={uploadPortfolioPDF}>
+                  <Text style={styles.pillText}>+ PDF</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.pillBtn} onPress={uploadPortfolioMP3}>
+                  <Text style={styles.pillText}>+ Audio</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Actions */}
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 18, marginBottom: 6 }}>
+              <TouchableOpacity
+                style={[styles.ghostBtn, { flex: 1 }]}
+                onPress={() => setShowEditModal(false)}
+                disabled={uploading}
+              >
+                <Text style={styles.ghostBtnText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.primaryBtn, { flex: 1, opacity: !isDirty || uploading ? 0.6 : 1 }]}
+                disabled={!isDirty || uploading}
+                onPress={saveProfile}
+              >
+                {uploading ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={styles.primaryBtnText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
