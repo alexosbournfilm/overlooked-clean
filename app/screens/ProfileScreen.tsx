@@ -2743,13 +2743,12 @@ const renderHero = () => {
       >
         {/* LEFT SIDE */}
         <View
-          style={[
-            styles.heroLeft,
-            isMobileLike ? styles.heroLeftMobile : styles.heroLeftDesktop,
-            // ✅ Make sure it fills properly on mobile-web
-            isMobileLike ? { width: "100%" } : null,
-          ]}
-        >
+  style={[
+    styles.heroLeft,
+    isMobileLike ? styles.heroLeftMobile : styles.heroLeftDesktop,
+    isMobileLike ? { width: "100%", flex: 0 } : null, // ✅ key line
+  ]}
+>
           <ImageBackground
             source={heroBg ? { uri: heroBg } : undefined}
             style={[
@@ -2990,12 +2989,11 @@ const renderHero = () => {
 
         {/* RIGHT SIDE */}
         <View
-          style={[
-            styles.heroRight,
-            // ✅ reduce perceived "gap" on mobile: keep it tight
-            isMobileLike ? { marginTop: 0, width: "100%" } : null,
-          ]}
-        >
+  style={[
+    styles.heroRight,
+    isMobileLike ? { marginTop: 0, width: "100%", flex: 0 } : null, // ✅ key line
+  ]}
+>
           <View
             style={[
               styles.infoCard,
