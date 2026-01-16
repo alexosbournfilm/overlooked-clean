@@ -275,6 +275,7 @@ function injectWebVideoCSS() {
 }
 injectWebVideoCSS();
 
+
 /* Signed URL cache just for showreels */
 const showreelSignedUrlCache = new Map<string, { url: string; exp: number }>();
 const showreelInflight = new Map<string, Promise<string>>();
@@ -681,6 +682,7 @@ function ShowreelVideoInline({
     >
       <Animated.View style={[StyleSheet.absoluteFillObject, { opacity }]}>
         {Platform.OS === 'web' ? (
+          // @ts-ignore
           <WebVideo
             ref={htmlRef}
             src={src || undefined}
@@ -915,7 +917,7 @@ export default function ProfileScreen() {
     : SIDE_PAD_DESKTOP;
 
   // ✅ Use a slightly tighter content max on mobile-web so it feels like a true mobile layout
- const pageMaxEffective = isMobileLike ? Math.min(PAGE_MAX, 760) : PAGE_MAX;
+  const pageMaxEffective = isMobileLike ? Math.min(PAGE_MAX, 760) : PAGE_MAX;
 
   // ✅ A little extra bottom breathing room on mobile (esp. Safari / notches)
   const bottomPad = (isMobileLike ? 52 : 40) + Math.max(insets.bottom, 10);
@@ -1273,7 +1275,7 @@ export default function ProfileScreen() {
       fetchProfile();
     }, [fetchProfile])
   );
-    /* ---------- user_showreels CRUD ---------- */
+     /* ---------- user_showreels CRUD ---------- */
 
   const fetchShowreelList = async (userId: string) => {
     const { data, error } = await supabase
@@ -2068,8 +2070,7 @@ export default function ProfileScreen() {
       setTimeout(() => setMp4Status(''), 1500);
     }
   };
-
-  /* ---------- audio controls ---------- */
+    /* ---------- audio controls ---------- */
 
   const togglePlayAudio = async (item: PortfolioItem) => {
     if (playingId === item.id) {
@@ -2112,193 +2113,134 @@ export default function ProfileScreen() {
     }
   };
 
-   /* ---------- save profile ---------- */
-
-  
+  /* ---------- save profile ---------- */
 
   const deleteSubmission = async (submission: SubmissionRow) => {
-  try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    if (!user) {
-      Alert.alert('Sign in required', 'Please sign in to delete submissions.');
-      return;
-    }
-
-    const stripQuery = (u: string) => (u ? u.split('?')[0] : u);
-
-    const pathFromPublicUrl = (u: string) => {
-      const clean = stripQuery(u);
-      const m = clean.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
-      if (!m) return null;
-      return { bucket: m[1], path: m[2] };
-    };
-
-    const pickVideoField = (s: any) => {
-      return (
-        s.video_path ||
-        s.video_url ||
-        s.file_path ||
-        s.file_url ||
-        s.mp4_path ||
-        s.mp4_url ||
-        s.storage_path ||
-        s.storage_url ||
-        s.url ||
-        s.path ||
-        ''
-      )
-        .toString()
-        .trim();
-    };
-
-    const changeSubmissionThumbnail = async (submission: any) => {
-  try {
-    setThumbError(null);
-    setThumbUploading(true);
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new Error("Not authenticated");
-
-    const pick = await DocumentPicker.getDocumentAsync({
-      type: ["image/*"] as any,
-      copyToCacheDirectory: true,
-      multiple: false,
-    });
-
-    if (pick.canceled) {
-  setThumbUploading(false);
-  return;
-}
-
-    const asset: any = pick.assets?.[0];
-    if (!asset?.uri && !asset?.file) throw new Error("No image selected");
-
-    // 1) upload to storage
-    const { publicUrl } = await uploadSubmissionThumbToStorage({
-      userId: user.id,
-      submissionId: submission.id,
-      asset,
-      bucket: "thumbnails",
-    });
-
-    // 2) write to DB
-    const { error: updErr } = await supabase
-      .from("submissions")
-      .update({ thumbnail_url: publicUrl })
-      .eq("id", submission.id);
-
-    if (updErr) throw updErr;
-
-    // 3) update local UI immediately
-    setSubmissions((prev) =>
-      prev.map((s: any) => (s.id === submission.id ? { ...s, thumbnail_url: publicUrl } : s))
-    );
-
-    // Also update active modal submission if open
-    setActiveSubmission((prev: any) => (prev?.id === submission.id ? { ...prev, thumbnail_url: publicUrl } : prev));
-
-    Alert.alert("Thumbnail updated", "Your film thumbnail has been updated.");
-  } catch (e: any) {
-    console.error("changeSubmissionThumbnail error:", e);
-    setThumbError(e?.message ?? "Could not update thumbnail.");
-    Alert.alert("Thumbnail failed", e?.message ?? "Could not update thumbnail.");
-  } finally {
-    setThumbUploading(false);
-  }
-};
-
-    const performDelete = async () => {
-      const prevSubs = submissions;
-
-      // Optimistic UI (instant feedback)
-      setSubmissions((p) => p.filter((row) => row.id !== submission.id));
-      setSubmissionModalOpen(false);
-      setActiveSubmission(null);
-
-      try {
-        // 1) Delete on the server (RPC should delete votes/comments + submission)
-const { error: delErr } = await supabase.rpc('delete_submission', {
-  p_submission_id: submission.id,
-});
-
-if (delErr) throw delErr;
-
-// 2) Storage cleanup AFTER DB delete (never blocks delete if it fails)
-try {
-  const raw = pickVideoField(submission as any);
-
-  // only cleanup storage for NON-youtube
-  if (!(submission as any).youtube_url && raw) {
-    if (/^https?:\/\//i.test(raw)) {
-      const pub = pathFromPublicUrl(raw);
-      if (pub?.bucket && pub?.path) {
-        await supabase.storage.from(pub.bucket).remove([pub.path]);
+      if (!user) {
+        Alert.alert('Sign in required', 'Please sign in to delete submissions.');
+        return;
       }
-    } else {
-      const cleanPath = stripQuery(raw);
 
-      // try films first, then portfolios
-      const resFilms = await supabase.storage.from('films').remove([cleanPath]);
-      if (resFilms?.error) {
-        await supabase.storage.from('portfolios').remove([cleanPath]);
+      const stripQuery = (u: string) => (u ? u.split('?')[0] : u);
+
+      const pathFromPublicUrl = (u: string) => {
+        const clean = stripQuery(u);
+        const m = clean.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
+        if (!m) return null;
+        return { bucket: m[1], path: m[2] };
+      };
+
+      const pickVideoField = (s: any) => {
+        return (
+          s.video_path ||
+          s.video_url ||
+          s.file_path ||
+          s.file_url ||
+          s.mp4_path ||
+          s.mp4_url ||
+          s.storage_path ||
+          s.storage_url ||
+          s.url ||
+          s.path ||
+          ''
+        )
+          .toString()
+          .trim();
+      };
+
+      const performDelete = async () => {
+        const prevSubs = submissions;
+
+        // Optimistic UI (instant feedback)
+        setSubmissions((p) => p.filter((row) => row.id !== submission.id));
+        setSubmissionModalOpen(false);
+        setActiveSubmission(null);
+
+        try {
+          // 1) Delete on the server (RPC should delete votes/comments + submission)
+          const { error: delErr } = await supabase.rpc('delete_submission', {
+            p_submission_id: submission.id,
+          });
+
+          if (delErr) throw delErr;
+
+          // 2) Storage cleanup AFTER DB delete (never blocks delete if it fails)
+          try {
+            const raw = pickVideoField(submission as any);
+
+            // only cleanup storage for NON-youtube
+            if (!(submission as any).youtube_url && raw) {
+              if (/^https?:\/\//i.test(raw)) {
+                const pub = pathFromPublicUrl(raw);
+                if (pub?.bucket && pub?.path) {
+                  await supabase.storage.from(pub.bucket).remove([pub.path]);
+                }
+              } else {
+                const cleanPath = stripQuery(raw);
+
+                // try films first, then portfolios
+                const resFilms = await supabase.storage.from('films').remove([cleanPath]);
+                if (resFilms?.error) {
+                  await supabase.storage.from('portfolios').remove([cleanPath]);
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('Storage delete failed (continuing):', (e as any)?.message ?? e);
+          }
+
+          // 3) Authoritative refresh so it never “reappears”
+          await fetchUserSubmissions(user.id);
+
+          if (Platform.OS !== 'web') {
+            Alert.alert('Deleted', 'Your submission has been removed.');
+          }
+        } catch (e: any) {
+          console.warn('Delete submission error:', e?.message ?? e);
+
+          // rollback
+          setSubmissions(prevSubs);
+
+          const msg = e?.message ?? 'Could not delete submission.';
+          if (Platform.OS === 'web') {
+            console.warn('Delete failed:', msg);
+            if (typeof window !== 'undefined') window.alert(`Delete failed: ${msg}`);
+          } else {
+            Alert.alert('Delete failed', msg);
+          }
+        }
+      };
+
+      // ✅ WEB CONFIRM (Alert.alert is unreliable on web)
+      if (Platform.OS === 'web') {
+        const ok =
+          typeof window !== 'undefined' &&
+          window.confirm('Delete submission? This will remove it from your profile.');
+        if (ok) await performDelete();
+        return;
       }
+
+      // ✅ NATIVE CONFIRM
+      Alert.alert('Delete submission?', 'This will remove it from your profile.', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            performDelete();
+          },
+        },
+      ]);
+    } catch (e: any) {
+      Alert.alert('Delete failed', e?.message ?? 'Could not delete submission.');
     }
-  }
-} catch (e) {
-  console.warn('Storage delete failed (continuing):', (e as any)?.message ?? e);
-}
+  };
 
-// 3) Authoritative refresh so it never “reappears”
-await fetchUserSubmissions(user.id);
-
-if (Platform.OS !== 'web') {
-  Alert.alert('Deleted', 'Your submission has been removed.');
-}
-} catch (e: any) {
-  console.warn('Delete submission error:', e?.message ?? e);
-
-  // rollback
-  setSubmissions(prevSubs);
-
-  const msg = e?.message ?? 'Could not delete submission.';
-  if (Platform.OS === 'web') {
-    console.warn('Delete failed:', msg);
-    if (typeof window !== 'undefined') window.alert(`Delete failed: ${msg}`);
-  } else {
-    Alert.alert('Delete failed', msg);
-  }
-}
-};
-
- // ✅ WEB CONFIRM (Alert.alert is unreliable on web)
-if (Platform.OS === 'web') {
-  const ok =
-    typeof window !== 'undefined' &&
-    window.confirm('Delete submission? This will remove it from your profile.');
-  if (ok) await performDelete();
-  return;
-}
-
-// ✅ NATIVE CONFIRM
-Alert.alert('Delete submission?', 'This will remove it from your profile.', [
-  { text: 'Cancel', style: 'cancel' },
-  {
-    text: 'Delete',
-    style: 'destructive',
-    onPress: () => {
-      performDelete();
-    },
-  },
-]);
-} catch (e: any) {
-Alert.alert('Delete failed', e?.message ?? 'Could not delete submission.');
-}
-};
   const saveProfile = async () => {
     try {
       savingRef.current = true;
@@ -2311,8 +2253,7 @@ Alert.alert('Delete failed', e?.message ?? 'Could not delete submission.');
 
       const mainRoleId =
         typeof mainRole === 'number' ? mainRole : mainRole != null ? Number(mainRole) : null;
-      const cityFk =
-        typeof cityId === 'number' ? cityId : cityId != null ? Number(cityId) : null;
+      const cityFk = typeof cityId === 'number' ? cityId : cityId != null ? Number(cityId) : null;
 
       const sideRolesClean = (sideRoles || []).map((s) => s.trim()).filter(Boolean);
 
@@ -2418,10 +2359,8 @@ Alert.alert('Delete failed', e?.message ?? 'Could not delete submission.');
 
   useEffect(() => {
     if (!profile) return;
-    const roleId =
-      typeof mainRole === 'number' ? mainRole : mainRole != null ? Number(mainRole) : null;
-    const cityFk =
-      typeof cityId === 'number' ? cityId : cityId != null ? Number(cityId) : null;
+    const roleId = typeof mainRole === 'number' ? mainRole : mainRole != null ? Number(mainRole) : null;
+    const cityFk = typeof cityId === 'number' ? cityId : cityId != null ? Number(cityId) : null;
     const sideA = (sideRoles || []).map((s) => s.trim()).filter(Boolean);
     const sideB = (profile.side_roles || []).map((s) => s.trim()).filter(Boolean);
     const sameSide = sideA.length === sideB.length && sideA.every((v, i) => v === sideB[i]);
@@ -2431,9 +2370,8 @@ Alert.alert('Delete failed', e?.message ?? 'Could not delete submission.');
         (cityFk ?? null) !== (profile.city_id ?? null) ||
         !sameSide ||
         (bio || '') !== (profile.bio || '') ||
-        (portfolioChoice === 'youtube'
-          ? portfolioUrl || ''
-          : mp4MainUrl || '') !== (profile.portfolio_url || '')
+        (portfolioChoice === 'youtube' ? portfolioUrl || '' : mp4MainUrl || '') !==
+          (profile.portfolio_url || '')
     );
   }, [profile, fullName, mainRole, cityId, sideRoles, bio, portfolioUrl, portfolioChoice, mp4MainUrl]);
 
@@ -2458,183 +2396,183 @@ Alert.alert('Delete failed', e?.message ?? 'Could not delete submission.');
 
   /* ---------- submission thumbnail upload (copy from Challenge) ---------- */
 
-const THUMB_BUCKET = "thumbnails";
+  const THUMB_BUCKET = "thumbnails";
 
-async function uploadSubmissionThumbToStorage(opts: {
-  userId: string;
-  submissionId: string;
-  asset: any; // DocumentPicker asset
-  bucket?: string;
-}): Promise<{ publicUrl: string; path: string }> {
-  const { userId, submissionId, asset, bucket = "thumbnails" } = opts;
+  async function uploadSubmissionThumbToStorage(opts: {
+    userId: string;
+    submissionId: string;
+    asset: any; // DocumentPicker asset
+    bucket?: string;
+  }): Promise<{ publicUrl: string; path: string }> {
+    const { userId, submissionId, asset, bucket = "thumbnails" } = opts;
 
-  // ✅ Build a blob safely for BOTH web + native
-  let blob: Blob;
+    // ✅ Build a blob safely for BOTH web + native
+    let blob: Blob;
 
-  // WEB: asset.file is a real File (best path)
-  if (Platform.OS === "web" && asset?.file) {
-    blob = asset.file as Blob;
-  } else {
-    // NATIVE: asset.uri is file:// ... (or sometimes content://)
-    const uri = asset?.uri;
-    if (!uri) throw new Error("No thumbnail URI");
+    // WEB: asset.file is a real File (best path)
+    if (Platform.OS === "web" && asset?.file) {
+      blob = asset.file as Blob;
+    } else {
+      // NATIVE: asset.uri is file:// ... (or sometimes content://)
+      const uri = asset?.uri;
+      if (!uri) throw new Error("No thumbnail URI");
 
-    if (Platform.OS !== "web" && uri.startsWith("file://")) {
-      const base64 = await FileSystem.readAsStringAsync(uri, {
+      if (Platform.OS !== "web" && uri.startsWith("file://")) {
+        const base64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const bytes = Buffer.from(base64, "base64");
+        blob = new Blob([bytes], { type: "image/jpeg" });
+      } else {
+        const resp = await fetch(uri);
+        blob = await resp.blob();
+      }
+    }
+
+    const ext =
+      blob.type.includes("png")
+        ? ".png"
+        : blob.type.includes("jpeg") || blob.type.includes("jpg")
+        ? ".jpg"
+        : blob.type.includes("webp")
+        ? ".webp"
+        : ".jpg";
+
+    const path = `submissions/${userId}/${submissionId}/${Date.now()}${ext}`;
+
+    const up = await supabase.storage.from(bucket).upload(path, blob, {
+      upsert: true,
+      contentType: blob.type || "image/jpeg",
+      cacheControl: "3600",
+    });
+
+    if (up.error) throw up.error;
+
+    const pub = supabase.storage.from(bucket).getPublicUrl(path);
+    const publicUrl = pub?.data?.publicUrl;
+
+    if (!publicUrl) throw new Error("Could not get public thumbnail URL");
+
+    return { publicUrl, path };
+  }
+
+  async function uploadThumbnailToStorage(opts: {
+    userId: string;
+    thumbUri: string; // file:// (native) OR data:image/... (web) OR blob:... (web)
+    objectName?: string;
+    bucket?: string;
+  }): Promise<{ publicUrl: string; path: string }> {
+    const {
+      userId,
+      thumbUri,
+      objectName = `submissions/${userId}/${Date.now()}`,
+      bucket = THUMB_BUCKET,
+    } = opts;
+
+    let blob: Blob;
+
+    if (Platform.OS !== "web" && thumbUri.startsWith("file://")) {
+      const base64 = await FileSystem.readAsStringAsync(thumbUri, {
         encoding: FileSystem.EncodingType.Base64,
       });
       const bytes = Buffer.from(base64, "base64");
       blob = new Blob([bytes], { type: "image/jpeg" });
     } else {
-      const resp = await fetch(uri);
+      const resp = await fetch(thumbUri);
       blob = await resp.blob();
     }
-  }
 
-  const ext =
-    blob.type.includes("png")
-      ? ".png"
-      : blob.type.includes("jpeg") || blob.type.includes("jpg")
-      ? ".jpg"
-      : blob.type.includes("webp")
-      ? ".webp"
-      : ".jpg";
+    const ext =
+      blob.type.includes("png")
+        ? ".png"
+        : blob.type.includes("jpeg") || blob.type.includes("jpg")
+        ? ".jpg"
+        : blob.type.includes("webp")
+        ? ".webp"
+        : ".jpg";
 
-  const path = `submissions/${userId}/${submissionId}/${Date.now()}${ext}`;
+    const filePath = `${objectName}${ext}`;
 
-  const up = await supabase.storage.from(bucket).upload(path, blob, {
-    upsert: true,
-    contentType: blob.type || "image/jpeg",
-    cacheControl: "3600",
-  });
-
-  if (up.error) throw up.error;
-
-  const pub = supabase.storage.from(bucket).getPublicUrl(path);
-  const publicUrl = pub?.data?.publicUrl;
-
-  if (!publicUrl) throw new Error("Could not get public thumbnail URL");
-
-  return { publicUrl, path };
-}
-
-async function uploadThumbnailToStorage(opts: {
-  userId: string;
-  thumbUri: string; // file:// (native) OR data:image/... (web) OR blob:... (web)
-  objectName?: string;
-  bucket?: string;
-}): Promise<{ publicUrl: string; path: string }> {
-  const {
-    userId,
-    thumbUri,
-    objectName = `submissions/${userId}/${Date.now()}`,
-    bucket = THUMB_BUCKET,
-  } = opts;
-
-  let blob: Blob;
-
-  if (Platform.OS !== "web" && thumbUri.startsWith("file://")) {
-    const base64 = await FileSystem.readAsStringAsync(thumbUri, {
-      encoding: FileSystem.EncodingType.Base64,
+    const up = await supabase.storage.from(bucket).upload(filePath, blob, {
+      upsert: true,
+      contentType: blob.type || "image/jpeg",
+      cacheControl: "3600",
     });
-    const bytes = Buffer.from(base64, "base64");
-    blob = new Blob([bytes], { type: "image/jpeg" });
-  } else {
-    const resp = await fetch(thumbUri);
-    blob = await resp.blob();
+
+    if (up.error) throw up.error;
+
+    const pub = supabase.storage.from(bucket).getPublicUrl(filePath);
+    const publicUrl = pub?.data?.publicUrl;
+
+    if (!publicUrl) throw new Error("Could not get public thumbnail URL");
+
+    return { publicUrl, path: filePath };
   }
-
-  const ext =
-    blob.type.includes("png")
-      ? ".png"
-      : blob.type.includes("jpeg") || blob.type.includes("jpg")
-      ? ".jpg"
-      : blob.type.includes("webp")
-      ? ".webp"
-      : ".jpg";
-
-  const filePath = `${objectName}${ext}`;
-
-  const up = await supabase.storage.from(bucket).upload(filePath, blob, {
-    upsert: true,
-    contentType: blob.type || "image/jpeg",
-    cacheControl: "3600",
-  });
-
-  if (up.error) throw up.error;
-
-  const pub = supabase.storage.from(bucket).getPublicUrl(filePath);
-  const publicUrl = pub?.data?.publicUrl;
-
-  if (!publicUrl) throw new Error("Could not get public thumbnail URL");
-
-  return { publicUrl, path: filePath };
-}
 
   /* ---------- apply to job in viewed user's profile ---------- */
 
   const changeSubmissionThumbnail = async (submission: any) => {
-  try {
-    setThumbUploadingId(submission.id);
+    try {
+      setThumbUploadingId(submission.id);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new Error("Not authenticated");
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
 
-    const pick = await DocumentPicker.getDocumentAsync({
-      type: ["image/*"] as any,
-      copyToCacheDirectory: true,
-      multiple: false,
-    });
+      const pick = await DocumentPicker.getDocumentAsync({
+        type: ["image/*"] as any,
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
 
-    if (pick.canceled) return;
+      if (pick.canceled) return;
 
-    const asset: any = pick.assets?.[0];
-    if (!asset?.uri && !asset?.file) throw new Error("No image selected");
+      const asset: any = pick.assets?.[0];
+      if (!asset?.uri && !asset?.file) throw new Error("No image selected");
 
-    let chosenUri: string | null = null;
+      let chosenUri: string | null = null;
 
-    // web: use object url
-    if (Platform.OS === "web" && asset.file) {
-      chosenUri = URL.createObjectURL(asset.file as File);
-    } else {
-      chosenUri = asset.uri;
+      // web: use object url
+      if (Platform.OS === "web" && asset.file) {
+        chosenUri = URL.createObjectURL(asset.file as File);
+      } else {
+        chosenUri = asset.uri;
+      }
+
+      if (!chosenUri) throw new Error("Could not read selected image");
+
+      const { publicUrl } = await uploadThumbnailToStorage({
+        userId: user.id,
+        thumbUri: chosenUri,
+        objectName: `submissions/${user.id}/${submission.id}_${Date.now()}`,
+        bucket: THUMB_BUCKET,
+      });
+
+      const { error: updErr } = await supabase
+        .from("submissions")
+        .update({ thumbnail_url: publicUrl })
+        .eq("id", submission.id);
+
+      if (updErr) throw updErr;
+
+      // ✅ update local submissions list immediately
+      setSubmissions((prev) =>
+        prev.map((s) => (s.id === submission.id ? { ...s, thumbnail_url: publicUrl } : s))
+      );
+
+      // ✅ update active submission (modal) immediately
+      setActiveSubmission((prev: any) =>
+        prev?.id === submission.id ? { ...prev, thumbnail_url: publicUrl } : prev
+      );
+
+      Alert.alert("Updated", "Thumbnail updated.");
+    } catch (e: any) {
+      Alert.alert("Thumbnail update failed", e?.message ?? "Could not update thumbnail.");
+    } finally {
+      setThumbUploadingId(null);
     }
-
-    if (!chosenUri) throw new Error("Could not read selected image");
-
-    const { publicUrl } = await uploadThumbnailToStorage({
-      userId: user.id,
-      thumbUri: chosenUri,
-      objectName: `submissions/${user.id}/${submission.id}_${Date.now()}`,
-      bucket: THUMB_BUCKET,
-    });
-
-    const { error: updErr } = await supabase
-      .from("submissions")
-      .update({ thumbnail_url: publicUrl })
-      .eq("id", submission.id);
-
-    if (updErr) throw updErr;
-
-    // ✅ update local submissions list immediately
-    setSubmissions((prev) =>
-      prev.map((s) => (s.id === submission.id ? { ...s, thumbnail_url: publicUrl } : s))
-    );
-
-    // ✅ update active submission (modal) immediately
-    setActiveSubmission((prev: any) =>
-      prev?.id === submission.id ? { ...prev, thumbnail_url: publicUrl } : prev
-    );
-
-    Alert.alert("Updated", "Thumbnail updated.");
-  } catch (e: any) {
-    Alert.alert("Thumbnail update failed", e?.message ?? "Could not update thumbnail.");
-  } finally {
-    setThumbUploadingId(null);
-  }
-};
+  };
 
   const applyToJob = async (job: MyJob) => {
     try {
@@ -2697,9 +2635,8 @@ async function uploadThumbnailToStorage(opts: {
       setApplyLoadingJobId(null);
     }
   };
-  
 
-    /* ---------- AUTH / CHAT ---------- */
+  /* ---------- AUTH / CHAT ---------- */
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -2765,8 +2702,7 @@ async function uploadThumbnailToStorage(opts: {
       setStartingChat(false);
     }
   };
-
-  /* ---------- RENDERERS ---------- */
+/* ---------- RENDERERS ---------- */
 const renderHero = () => {
   const avatarUrl = image || profile?.avatar_url || null;
   const heroBg = avatarUrl ? addBuster(avatarUrl) : null;
@@ -2799,7 +2735,8 @@ const renderHero = () => {
           styles.heroGrid,
           {
             flexDirection: isMobileLike ? "column" : "row",
-            gap: isMobileLike ? 12 : 18,
+            // ✅ smaller gap between image and edit card on mobile/mobile-web
+            gap: isMobileLike ? 8 : 18,
             alignItems: "stretch",
           },
         ]}
@@ -2820,6 +2757,8 @@ const renderHero = () => {
               isMobileLike ? styles.heroImageMobile : styles.heroImageDesktop,
               // ✅ Avoid weird stretching on web-mobile
               isMobileLike ? { width: "100%" } : null,
+              // ✅ ensures the bottom bar takes up real space (prevents overlap issues)
+              { paddingBottom: isMobileLike ? 12 : 16 },
             ]}
             imageStyle={[styles.heroImageInner, { backgroundColor: bannerColor }]}
           >
@@ -2837,7 +2776,10 @@ const renderHero = () => {
               <View
                 style={[
                   styles.roleWrap,
-                  isMobileLike ? { paddingHorizontal: 14, paddingBottom: 104 } : { paddingBottom: 98 },
+                  // ✅ keep clear space for avatar bottom bar
+                  isMobileLike
+                    ? { paddingHorizontal: 14, paddingBottom: 96 }
+                    : { paddingBottom: 98 },
                 ]}
               >
                 <Text
@@ -2864,11 +2806,98 @@ const renderHero = () => {
                   {profile?.full_name || "—"}
                   {cityName ? `  •  ${cityName}` : ""}
                 </Text>
+
+                {/* ✅ MOBILE: counts centered directly under name/city */}
+                {isMobileLike && (
+                  <View style={{ marginTop: 14, alignItems: "center" }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        // ✅ closer spacing on mobile
+                        gap: 14,
+                      }}
+                    >
+                      <TouchableOpacity
+                        onPress={() => setConnectionsModalVisible(true)}
+                        style={{ alignItems: "center", minWidth: 92, paddingVertical: 4 }}
+                        activeOpacity={0.85}
+                      >
+                        <Text
+                          style={{
+                            color: COLORS.textPrimary,
+                            fontWeight: "900",
+                            fontFamily: FONT_OBLIVION,
+                            letterSpacing: 1,
+                            fontSize: 14,
+                          }}
+                        >
+                          {supportersCount}
+                        </Text>
+                        <Text
+                          style={{
+                            color: COLORS.textSecondary,
+                            fontSize: 12,
+                            fontFamily: FONT_OBLIVION,
+                          }}
+                        >
+                          Supporters
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => setConnectionsModalVisible(true)}
+                        style={{ alignItems: "center", minWidth: 92, paddingVertical: 4 }}
+                        activeOpacity={0.85}
+                      >
+                        <Text
+                          style={{
+                            color: COLORS.textPrimary,
+                            fontWeight: "900",
+                            fontFamily: FONT_OBLIVION,
+                            letterSpacing: 1,
+                            fontSize: 14,
+                          }}
+                        >
+                          {supportingCount}
+                        </Text>
+                        <Text
+                          style={{
+                            color: COLORS.textSecondary,
+                            fontSize: 12,
+                            fontFamily: FONT_OBLIVION,
+                          }}
+                        >
+                          Supporting
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
               </View>
             )}
 
-            {/* ✅ Bottom bar: avatar + counts (no overlap) */}
-            <View style={[styles.heroBottomBar, isMobileLike ? { bottom: 10 } : null]}>
+            {/* ✅ Bottom bar: avatar (+ counts on desktop only) */}
+            <View
+              style={[
+                styles.heroBottomBar,
+                // ✅ NOT absolute here — prevents the next sections overlapping
+                {
+                  position: "relative",
+                  left: undefined,
+                  right: undefined,
+                  bottom: undefined,
+                  width: "100%",
+                  paddingHorizontal: isMobileLike ? 14 : 18,
+                  paddingTop: 6,
+                  flexDirection: "row",
+                  alignItems: "flex-end",
+                  justifyContent: isMobileLike ? "flex-start" : "space-between",
+                  gap: 16,
+                },
+              ]}
+            >
               {/* Avatar + level */}
               <View style={{ alignItems: "center" }}>
                 <LinearGradient
@@ -2897,62 +2926,64 @@ const renderHero = () => {
                 </View>
               </View>
 
-              {/* Counts */}
-              <View style={{ flexDirection: "row", gap: isMobileLike ? 18 : 26 }}>
-                <TouchableOpacity
-                  onPress={() => setConnectionsModalVisible(true)}
-                  style={{ alignItems: "center", minWidth: 92, paddingVertical: isMobileLike ? 6 : 0 }}
-                  activeOpacity={0.85}
-                >
-                  <Text
-                    style={{
-                      color: COLORS.textPrimary,
-                      fontWeight: "900",
-                      fontFamily: FONT_OBLIVION,
-                      letterSpacing: 1,
-                      fontSize: 14,
-                    }}
+              {/* ✅ DESKTOP ONLY: counts stay here */}
+              {!isMobileLike && (
+                <View style={{ flexDirection: "row", gap: 26 }}>
+                  <TouchableOpacity
+                    onPress={() => setConnectionsModalVisible(true)}
+                    style={{ alignItems: "center", minWidth: 92 }}
+                    activeOpacity={0.85}
                   >
-                    {supportersCount}
-                  </Text>
-                  <Text
-                    style={{
-                      color: COLORS.textSecondary,
-                      fontSize: 12,
-                      fontFamily: FONT_OBLIVION,
-                    }}
-                  >
-                    Supporters
-                  </Text>
-                </TouchableOpacity>
+                    <Text
+                      style={{
+                        color: COLORS.textPrimary,
+                        fontWeight: "900",
+                        fontFamily: FONT_OBLIVION,
+                        letterSpacing: 1,
+                        fontSize: 16, // a bit larger on desktop
+                      }}
+                    >
+                      {supportersCount}
+                    </Text>
+                    <Text
+                      style={{
+                        color: COLORS.textSecondary,
+                        fontSize: 13,
+                        fontFamily: FONT_OBLIVION,
+                      }}
+                    >
+                      Supporters
+                    </Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity
-                  onPress={() => setConnectionsModalVisible(true)}
-                  style={{ alignItems: "center", minWidth: 92, paddingVertical: isMobileLike ? 6 : 0 }}
-                  activeOpacity={0.85}
-                >
-                  <Text
-                    style={{
-                      color: COLORS.textPrimary,
-                      fontWeight: "900",
-                      fontFamily: FONT_OBLIVION,
-                      letterSpacing: 1,
-                      fontSize: 14,
-                    }}
+                  <TouchableOpacity
+                    onPress={() => setConnectionsModalVisible(true)}
+                    style={{ alignItems: "center", minWidth: 92 }}
+                    activeOpacity={0.85}
                   >
-                    {supportingCount}
-                  </Text>
-                  <Text
-                    style={{
-                      color: COLORS.textSecondary,
-                      fontSize: 12,
-                      fontFamily: FONT_OBLIVION,
-                    }}
-                  >
-                    Supporting
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                    <Text
+                      style={{
+                        color: COLORS.textPrimary,
+                        fontWeight: "900",
+                        fontFamily: FONT_OBLIVION,
+                        letterSpacing: 1,
+                        fontSize: 16,
+                      }}
+                    >
+                      {supportingCount}
+                    </Text>
+                    <Text
+                      style={{
+                        color: COLORS.textSecondary,
+                        fontSize: 13,
+                        fontFamily: FONT_OBLIVION,
+                      }}
+                    >
+                      Supporting
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           </ImageBackground>
         </View>
@@ -2961,6 +2992,7 @@ const renderHero = () => {
         <View
           style={[
             styles.heroRight,
+            // ✅ reduce perceived "gap" on mobile: keep it tight
             isMobileLike ? { marginTop: 0, width: "100%" } : null,
           ]}
         >
@@ -2972,7 +3004,7 @@ const renderHero = () => {
             ]}
           >
             {/* Buttons */}
-            <View style={[styles.infoButtons, isMobileLike ? { marginTop: 2 } : null]}>
+            <View style={[styles.infoButtons, isMobileLike ? { marginTop: 0 } : null]}>
               {isOwnProfile ? (
                 <TouchableOpacity
                   style={styles.btnPrimary}
@@ -3201,19 +3233,19 @@ const renderHero = () => {
   );
 };
 
- const renderFeaturedFilm = () => {
-  const fromDbRaw = (profile?.portfolio_url || '').trim();
+const renderFeaturedFilm = () => {
+  const fromDbRaw = (profile?.portfolio_url || "").trim();
 
   const primaryRow = showreels.find((r) => r.is_primary);
 
   // ✅ Decide the featured source ONCE (prevents a typed YouTube link from overriding a primary MP4)
   // Priority: primary showreel (url first, then file_path) → users.portfolio_url → mp4MainUrl → portfolioUrl
   const featuredSrc =
-    (primaryRow?.url || primaryRow?.file_path || '')?.trim() ||
+    (primaryRow?.url || primaryRow?.file_path || "")?.trim() ||
     fromDbRaw ||
-    (mp4MainUrl || '')?.trim() ||
-    (portfolioUrl || '')?.trim() ||
-    '';
+    (mp4MainUrl || "")?.trim() ||
+    (portfolioUrl || "")?.trim() ||
+    "";
 
   if (!featuredSrc) return null;
 
@@ -3228,16 +3260,16 @@ const renderHero = () => {
   const maxW = isMobile ? SHOWREEL_MAX_W_MOBILE : SHOWREEL_MAX_W;
 
   return (
-    <View style={[block.section, { alignItems: 'center' }]}>
+    <View style={[block.section, { alignItems: "center" }]}>
       <Text style={block.sectionTitleCentered}>Showreel</Text>
 
       <View
         style={[
           block.mediaCard,
           {
-            width: '100%',
+            width: "100%",
             maxWidth: maxW,
-            alignSelf: 'center',
+            alignSelf: "center",
             padding: isYoutube || isVideo ? 0 : 12,
           },
         ]}
@@ -3250,7 +3282,7 @@ const renderHero = () => {
               width={maxW}
               videoId={ytId}
               play={false}
-              webViewStyle={{ backgroundColor: '#000' }}
+              webViewStyle={{ backgroundColor: "#000" }}
               webViewProps={{
                 allowsInlineMediaPlayback: true,
                 mediaPlaybackRequiresUserAction: false,
@@ -3265,7 +3297,7 @@ const renderHero = () => {
             autoPlay={false}
           />
         ) : (
-          <Text style={[block.muted, { padding: 12, textAlign: 'center' }]}>
+          <Text style={[block.muted, { padding: 12, textAlign: "center" }]}>
             Unsupported portfolio URL.
           </Text>
         )}
@@ -3275,9 +3307,9 @@ const renderHero = () => {
       {showreels.filter((r) => !r.is_primary).length > 0 && (
         <View
           style={{
-            width: '100%',
+            width: "100%",
             maxWidth: maxW,
-            alignSelf: 'center',
+            alignSelf: "center",
             marginTop: 14,
           }}
         >
@@ -3297,34 +3329,25 @@ const renderHero = () => {
                 />
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
                     paddingHorizontal: 10,
                     paddingTop: 6,
                     gap: 8,
                   }}
                 >
-                  <Text
-                    style={[block.mediaRowTitle, { flex: 1 }]}
-                    numberOfLines={1}
-                  >
-                    {r.title || 'Showreel'}
+                  <Text style={[block.mediaRowTitle, { flex: 1 }]} numberOfLines={1}>
+                    {r.title || "Showreel"}
                   </Text>
 
                   {isOwnProfile && (
                     <>
-                      <TouchableOpacity
-                        onPress={() => setPrimaryShowreel(r)}
-                        style={block.rowBtn}
-                      >
+                      <TouchableOpacity onPress={() => setPrimaryShowreel(r)} style={block.rowBtn}>
                         <Text style={block.rowBtnText}>Set Primary</Text>
                       </TouchableOpacity>
 
-                      <TouchableOpacity
-                        onPress={() => deleteShowreel(r)}
-                        style={block.rowBtnGhost}
-                      >
+                      <TouchableOpacity onPress={() => deleteShowreel(r)} style={block.rowBtnGhost}>
                         <Text style={block.rowBtnGhostText}>Delete</Text>
                       </TouchableOpacity>
                     </>
@@ -3339,9 +3362,9 @@ const renderHero = () => {
       {isOwnProfile && (
         <View
           style={{
-            width: '100%',
+            width: "100%",
             maxWidth: maxW,
-            alignSelf: 'center',
+            alignSelf: "center",
             marginTop: 12,
           }}
         >
@@ -3356,14 +3379,12 @@ const renderHero = () => {
               {srUploading ? (
                 <ActivityIndicator color="#000" />
               ) : (
-                <Text style={styles.primaryBtnText}>
-                  Upload another showreel (MP4)
-                </Text>
+                <Text style={styles.primaryBtnText}>Upload another showreel (MP4)</Text>
               )}
             </TouchableOpacity>
 
             {srUploading && (
-              <View style={{ marginTop: 10, alignItems: 'center' }}>
+              <View style={{ marginTop: 10, alignItems: "center" }}>
                 {!!srStatus && (
                   <Text style={[block.muted, { marginBottom: 6 }]}>{srStatus}</Text>
                 )}
@@ -3375,7 +3396,7 @@ const renderHero = () => {
             )}
 
             {showreels.find((r) => r.is_primary) ? (
-              <Text style={[block.muted, { marginTop: 10, textAlign: 'center' }]}>
+              <Text style={[block.muted, { marginTop: 10, textAlign: "center" }]}>
                 Current primary is the one featured above.
               </Text>
             ) : null}
@@ -3389,38 +3410,26 @@ const renderHero = () => {
 const AudioTile = ({ item }: { item: PortfolioItem }) => (
   <View style={block.mediaRowCard}>
     <View style={block.mediaIcon}>
-      <Ionicons
-        name="musical-notes-outline"
-        size={20}
-        color={COLORS.textSecondary}
-      />
+      <Ionicons name="musical-notes-outline" size={20} color={COLORS.textSecondary} />
     </View>
 
     <View style={{ flex: 1 }}>
       <Text style={block.mediaRowTitle} numberOfLines={1}>
-        {item.title ?? 'Audio'}
+        {item.title ?? "Audio"}
       </Text>
       <View style={block.progressRail}>
         <View
-          style={[
-            block.progressFill,
-            { width: playingId === item.id ? '35%' : '0%' },
-          ]}
+          style={[block.progressFill, { width: playingId === item.id ? "35%" : "0%" }]}
         />
       </View>
     </View>
 
     <TouchableOpacity onPress={() => togglePlayAudio(item)} style={block.rowBtn}>
-      <Text style={block.rowBtnText}>
-        {playingId === item.id ? 'Pause' : 'Play'}
-      </Text>
+      <Text style={block.rowBtnText}>{playingId === item.id ? "Pause" : "Play"}</Text>
     </TouchableOpacity>
 
     {isOwnProfile && (
-      <TouchableOpacity
-        onPress={() => deletePortfolioItem(item.id)}
-        style={block.rowBtnGhost}
-      >
+      <TouchableOpacity onPress={() => deletePortfolioItem(item.id)} style={block.rowBtnGhost}>
         <Text style={block.rowBtnGhostText}>Delete</Text>
       </TouchableOpacity>
     )}
@@ -3430,15 +3439,11 @@ const AudioTile = ({ item }: { item: PortfolioItem }) => (
 const PdfTile = ({ item }: { item: PortfolioItem }) => (
   <View style={block.mediaRowCard}>
     <View style={block.mediaIcon}>
-      <Ionicons
-        name="document-text-outline"
-        size={20}
-        color={COLORS.textSecondary}
-      />
+      <Ionicons name="document-text-outline" size={20} color={COLORS.textSecondary} />
     </View>
 
     <Text style={[block.mediaRowTitle, { flex: 1 }]} numberOfLines={1}>
-      {item.title ?? 'PDF'}
+      {item.title ?? "PDF"}
     </Text>
 
     <TouchableOpacity onPress={() => Linking.openURL(item.url)} style={block.rowBtn}>
@@ -3446,10 +3451,7 @@ const PdfTile = ({ item }: { item: PortfolioItem }) => (
     </TouchableOpacity>
 
     {isOwnProfile && (
-      <TouchableOpacity
-        onPress={() => deletePortfolioItem(item.id)}
-        style={block.rowBtnGhost}
-      >
+      <TouchableOpacity onPress={() => deletePortfolioItem(item.id)} style={block.rowBtnGhost}>
         <Text style={block.rowBtnGhostText}>Delete</Text>
       </TouchableOpacity>
     )}
@@ -3473,10 +3475,10 @@ const renderEditorialPortfolio = () => {
   });
   const unique = Array.from(dedupMap.values());
 
-  const imgs = unique.filter((p) => p.type === 'image');
-  const auds = unique.filter((p) => p.type === 'audio');
-  const pdfs = unique.filter((p) => p.type === 'pdf');
-  const yts = unique.filter((p) => p.type === 'youtube');
+  const imgs = unique.filter((p) => p.type === "image");
+  const auds = unique.filter((p) => p.type === "audio");
+  const pdfs = unique.filter((p) => p.type === "pdf");
+  const yts = unique.filter((p) => p.type === "youtube");
 
   const cols = isMobile ? 2 : 3;
   const usable = Math.min(width, PAGE_MAX) - horizontalPad * 2;
@@ -3502,7 +3504,7 @@ const renderEditorialPortfolio = () => {
                   <Pressable onPress={() => openImageViewer(item.url)} style={{ flex: 1 }}>
                     <Image
                       source={{ uri: item.url }}
-                      style={{ width: '100%', height: '100%' }}
+                      style={{ width: "100%", height: "100%" }}
                       resizeMode="cover"
                     />
                   </Pressable>
@@ -3555,17 +3557,14 @@ const renderEditorialPortfolio = () => {
                 height={isMobile ? 180 : 260}
                 width={Math.min(SHOWREEL_MAX_W, usable)}
                 videoId={extractYoutubeId(item.url) || undefined}
-                webViewStyle={{ backgroundColor: '#000' }}
+                webViewStyle={{ backgroundColor: "#000" }}
                 webViewProps={{
                   allowsInlineMediaPlayback: true,
                   mediaPlaybackRequiresUserAction: false,
                 }}
               />
               {isOwnProfile && (
-                <TouchableOpacity
-                  onPress={() => deletePortfolioItem(item.id)}
-                  style={block.ytDelete}
-                >
+                <TouchableOpacity onPress={() => deletePortfolioItem(item.id)} style={block.ytDelete}>
                   <Text style={block.rowBtnGhostText}>Delete</Text>
                 </TouchableOpacity>
               )}
@@ -3621,27 +3620,19 @@ const renderSubmissionsSection = () => {
                 style={{
                   height: tileH,
                   borderRadius: 12,
-                  overflow: 'hidden',
+                  overflow: "hidden",
                   borderWidth: 1,
                   borderColor: COLORS.border,
-                  backgroundColor: '#000',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  backgroundColor: "#000",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
                 {/* Thumbnail */}
                 {yt ? (
-                  <Image
-                    source={{ uri: yt }}
-                    style={{ width: '100%', height: '100%' }}
-                    resizeMode="cover"
-                  />
+                  <Image source={{ uri: yt }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
                 ) : mp4Thumb ? (
-                  <Image
-                    source={{ uri: mp4Thumb }}
-                    style={{ width: '100%', height: '100%' }}
-                    resizeMode="cover"
-                  />
+                  <Image source={{ uri: mp4Thumb }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
                 ) : (
                   <>
                     <Ionicons name="videocam" size={28} color={COLORS.textSecondary} />
@@ -3661,23 +3652,23 @@ const renderSubmissionsSection = () => {
                 {/* overlay */}
                 <View
                   style={{
-                    position: 'absolute',
+                    position: "absolute",
                     left: 0,
                     right: 0,
                     bottom: 0,
                     padding: 10,
-                    backgroundColor: 'rgba(0,0,0,0.55)',
+                    backgroundColor: "rgba(0,0,0,0.55)",
                   }}
                 >
                   <Text
                     style={{
                       color: COLORS.textPrimary,
                       fontFamily: FONT_OBLIVION,
-                      fontWeight: '800',
+                      fontWeight: "800",
                     }}
                     numberOfLines={1}
                   >
-                    {s.title || 'Untitled'}
+                    {s.title || "Untitled"}
                   </Text>
 
                   {!!s.word && (
@@ -3712,8 +3703,8 @@ const renderSubmissionsSection = () => {
         <View
           style={{
             flex: 1,
-            backgroundColor: '#000000EE',
-            justifyContent: 'center',
+            backgroundColor: "#000000EE",
+            justifyContent: "center",
             padding: 14,
           }}
         >
@@ -3731,7 +3722,7 @@ const renderSubmissionsSection = () => {
               borderRadius: 16,
               borderWidth: 1,
               borderColor: COLORS.border,
-              overflow: 'hidden',
+              overflow: "hidden",
               padding: 12,
             }}
           >
@@ -3739,22 +3730,22 @@ const renderSubmissionsSection = () => {
               style={{
                 color: COLORS.textPrimary,
                 fontFamily: FONT_OBLIVION,
-                fontWeight: '900',
+                fontWeight: "900",
                 marginBottom: 8,
               }}
             >
-              {activeSubmission?.title || 'Untitled'}
+              {activeSubmission?.title || "Untitled"}
             </Text>
 
             {/* ✅ Give the media a predictable 16:9 box */}
-            <View style={{ width: '100%', alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: "100%", alignItems: "center", justifyContent: "center" }}>
               <View
                 style={{
                   width: modalMediaW,
                   height: modalMediaH,
-                  backgroundColor: '#000',
+                  backgroundColor: "#000",
                   borderRadius: 14,
-                  overflow: 'hidden',
+                  overflow: "hidden",
                 }}
               >
                 {activeSubmission ? (
@@ -3764,7 +3755,7 @@ const renderSubmissionsSection = () => {
                       width={modalMediaW}
                       videoId={extractYoutubeId(activeSubmission.youtube_url) || undefined}
                       play={false}
-                      webViewStyle={{ backgroundColor: '#000' }}
+                      webViewStyle={{ backgroundColor: "#000" }}
                       webViewProps={{
                         allowsInlineMediaPlayback: true,
                         mediaPlaybackRequiresUserAction: false,
@@ -3779,13 +3770,10 @@ const renderSubmissionsSection = () => {
                       filePathOrUrl={activeSubmission.video_url || activeSubmission.video_path!}
                       width={modalMediaW}
                       autoPlay={false}
-                      // NOTE: crop fix must be inside ShowreelVideoInline:
-                      // - native: ResizeMode.CONTAIN
-                      // - web: objectFit: 'contain'
                     />
                   ) : (
-                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                      <Text style={[block.muted, { textAlign: 'center' }]}>
+                    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                      <Text style={[block.muted, { textAlign: "center" }]}>
                         No video found for this submission.
                       </Text>
                     </View>
@@ -3794,14 +3782,34 @@ const renderSubmissionsSection = () => {
               </View>
             </View>
 
+            {/* ✅ OWNER TOOLS: change thumbnail only for MP4 submissions (not YouTube) */}
+            {isOwnProfile && activeSubmission && !activeSubmission.youtube_url && (
+              <TouchableOpacity
+                onPress={() => changeSubmissionThumbnail(activeSubmission)}
+                disabled={thumbUploadingId === activeSubmission.id}
+                style={[
+                  styles.primaryBtn,
+                  {
+                    marginTop: 12,
+                    opacity: thumbUploadingId === activeSubmission.id ? 0.75 : 1,
+                  },
+                ]}
+                activeOpacity={0.85}
+              >
+                {thumbUploadingId === activeSubmission.id ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={styles.primaryBtnText}>Change thumbnail</Text>
+                )}
+              </TouchableOpacity>
+            )}
+
             {isOwnProfile && activeSubmission && (
               <TouchableOpacity
                 onPress={() => deleteSubmission(activeSubmission)}
                 style={[styles.ghostBtn, { borderColor: COLORS.danger, marginTop: 12 }]}
               >
-                <Text style={[styles.ghostBtnText, { color: COLORS.danger }]}>
-                  Delete submission
-                </Text>
+                <Text style={[styles.ghostBtnText, { color: COLORS.danger }]}>Delete submission</Text>
               </TouchableOpacity>
             )}
 
@@ -4438,7 +4446,8 @@ return (
     />
   </>
 );
-}
+} // ✅ CLOSE THE COMPONENT HERE
+
 /* ======================= STYLES ======================= */
 const styles = StyleSheet.create({
   heroWrap: { paddingTop: 14, paddingBottom: 10 },
