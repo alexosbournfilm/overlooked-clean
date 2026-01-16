@@ -165,6 +165,12 @@ const FEATURES: Feature[] = [
 
 // --- FAQ data ----------------------------------------------
 const EXTRA_FAQS = [
+  // ✅ NEW — top question + capital I
+  {
+    title: 'Is Overlooked free?',
+    body: 'Yes — it’s entirely free to join. No card details required, just an email.',
+  },
+
   {
     title: 'How do I join my city chat?',
     body: 'Go to Location, search your city, then tap “Join City Chat”.',

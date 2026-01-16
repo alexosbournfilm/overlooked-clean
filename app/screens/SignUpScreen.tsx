@@ -34,13 +34,11 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [agreed, setAgreed] = useState(false);
-  const [agreedPrograms, setAgreedPrograms] = useState(false);
   const [isEighteen, setIsEighteen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const [showTos, setShowTos] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
-  const [showRewards, setShowRewards] = useState(false);
 
   const [emailConfirmed, setEmailConfirmed] = useState(false);
   const [checkingLink, setCheckingLink] = useState(true);
@@ -251,10 +249,6 @@ export default function SignUpScreen() {
       Alert.alert('Agreement Required', 'You must agree to the Terms & Privacy Policy.');
       return;
     }
-    if (!agreedPrograms) {
-      Alert.alert('Agreement Required', 'You must agree to the Rewards Policy.');
-      return;
-    }
 
     setLoading(true);
 
@@ -311,7 +305,6 @@ export default function SignUpScreen() {
     password === confirm &&
     isEighteen &&
     agreed &&
-    agreedPrograms &&
     !loading;
 
   return (
@@ -398,20 +391,6 @@ export default function SignUpScreen() {
               and{' '}
               <Text style={styles.link} onPress={() => setShowPrivacy(true)}>
                 Privacy Policy
-              </Text>
-              .
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.checkboxRow}
-            onPress={() => setAgreedPrograms(!agreedPrograms)}
-          >
-            <View style={[styles.checkbox, agreedPrograms && styles.checkboxChecked]} />
-            <Text style={styles.checkboxText}>
-              I agree to the{' '}
-              <Text style={styles.link} onPress={() => setShowRewards(true)}>
-                Rewards Policy
               </Text>
               .
             </Text>
@@ -627,58 +606,6 @@ This Privacy Policy explains how Overlooked LTD (“Overlooked”, “we”, “
               style={styles.closeButton}
               onPress={() => setShowPrivacy(false)}
             >
-              <Text style={styles.closeButtonText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Rewards Policy */}
-      <Modal
-        visible={showRewards}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowRewards(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <ScrollView>
-              <Text style={styles.modalTitle}>Rewards Policy</Text>
-              <Text
-                style={[
-                  styles.modalText,
-                  Platform.OS === 'web' ? ({ whiteSpace: 'pre-wrap' } as any) : null,
-                ]}
-              >
-                {`Last updated: ${new Date().toISOString().slice(0, 10)}
-
-1. OVERVIEW
-Overlooked awards cash prizes and rewards to encourage creativity.
-
-2. ELIGIBILITY
-- Must be a paying user where applicable.
-- Must comply with Terms & challenge rules.
-
-3. TYPES OF REWARDS
-- Cash challenge prizes.
-- Bonus awards.
-- Sponsored rewards when available.
-
-4. WINNER SELECTION
-- Winners determined by voting, review panels, or both.
-- Fraudulent voting may result in disqualification.
-
-5. PAYMENT
-- Cash prizes are sent electronically.
-- Processing times depend on payment provider.
-- Rewards are non-transferable.
-
-6. TAXES
-- You are responsible for reporting and paying any taxes owed in your jurisdiction.`}
-              </Text>
-            </ScrollView>
-
-            <TouchableOpacity style={styles.closeButton} onPress={() => setShowRewards(false)}>
               <Text style={styles.closeButtonText}>Close</Text>
             </TouchableOpacity>
           </View>
