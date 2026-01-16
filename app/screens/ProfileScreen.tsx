@@ -2834,11 +2834,18 @@ const renderHero = () => {
 
             {/* ✔ ROLE + NAME BLOCK */}
             {!!mainRoleName && (
-              <View style={[styles.roleWrap, isMobileLike ? { paddingHorizontal: 14 } : null]}>
+              <View
+                style={[
+                  styles.roleWrap,
+                  isMobileLike ? { paddingHorizontal: 14, paddingBottom: 104 } : { paddingBottom: 98 },
+                ]}
+              >
                 <Text
                   style={[
                     styles.heroMeta,
-                    isMobileLike ? { fontSize: 12, marginTop: 8, letterSpacing: 1.2, lineHeight: 16 } : null,
+                    isMobileLike
+                      ? { fontSize: 12, marginTop: 8, letterSpacing: 1.2, lineHeight: 16 }
+                      : null,
                   ]}
                   numberOfLines={1}
                 >
@@ -2848,7 +2855,9 @@ const renderHero = () => {
                 <Text
                   style={[
                     styles.heroMeta,
-                    isMobileLike ? { fontSize: 12, marginTop: 8, letterSpacing: 1.2, lineHeight: 16 } : null,
+                    isMobileLike
+                      ? { fontSize: 12, marginTop: 8, letterSpacing: 1.2, lineHeight: 16 }
+                      : null,
                   ]}
                   numberOfLines={2}
                 >
@@ -2858,114 +2867,91 @@ const renderHero = () => {
               </View>
             )}
 
-            {/* ✔ Connections Row */}
-            <View
-              style={{
-                marginTop: isMobileLike ? 16 : 14,
-                paddingHorizontal: isMobileLike ? 14 : 0,
-                flexDirection: "row",
-                justifyContent: "space-evenly",
-                alignItems: "center",
-                gap: isMobileLike ? 18 : 26,
-              }}
-            >
-              {/* Supporters */}
-              <TouchableOpacity
-                onPress={() => setConnectionsModalVisible(true)}
-                style={{ alignItems: "center", minWidth: 96, paddingVertical: isMobileLike ? 8 : 6 }}
-                activeOpacity={0.85}
-              >
-                <Text
-                  style={{
-                    color: COLORS.textPrimary,
-                    fontWeight: "900",
-                    fontFamily: FONT_OBLIVION,
-                    letterSpacing: 1,
-                    fontSize: 14,
-                  }}
+            {/* ✅ Bottom bar: avatar + counts (no overlap) */}
+            <View style={[styles.heroBottomBar, isMobileLike ? { bottom: 10 } : null]}>
+              {/* Avatar + level */}
+              <View style={{ alignItems: "center" }}>
+                <LinearGradient
+                  colors={[ringColor, "rgba(255,255,255,0.04)", "rgba(0,0,0,0.9)"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.avatarRing, { borderColor: ringColor }]}
                 >
-                  {supportersCount}
-                </Text>
-                <Text
-                  style={{
-                    color: COLORS.textSecondary,
-                    fontSize: 12,
-                    fontFamily: FONT_OBLIVION,
-                  }}
-                >
-                  Supporters
-                </Text>
-              </TouchableOpacity>
-
-              {/* Supporting */}
-              <TouchableOpacity
-                onPress={() => setConnectionsModalVisible(true)}
-                style={{ alignItems: "center", minWidth: 96, paddingVertical: isMobileLike ? 8 : 6 }}
-                activeOpacity={0.85}
-              >
-                <Text
-                  style={{
-                    color: COLORS.textPrimary,
-                    fontWeight: "900",
-                    fontFamily: FONT_OBLIVION,
-                    letterSpacing: 1,
-                    fontSize: 14,
-                  }}
-                >
-                  {supportingCount}
-                </Text>
-                <Text
-                  style={{
-                    color: COLORS.textSecondary,
-                    fontSize: 12,
-                    fontFamily: FONT_OBLIVION,
-                  }}
-                >
-                  Supporting
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* ✔ AVATAR SECTION */}
-            <View
-              style={[
-                styles.avatarRingWrapper,
-                isMobileLike ? { bottom: 10, left: 14 } : { bottom: 24, left: 24 }
-              ]}
-            >
-              <LinearGradient
-                colors={[
-                  ringColor,
-                  "rgba(255,255,255,0.04)",
-                  "rgba(0,0,0,0.9)",
-                ]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={[styles.avatarRing, { borderColor: ringColor }]}
-              >
-                <View style={[styles.avatarInner, isCompact && styles.avatarInnerCompact]}>
-                  {avatarUrl ? (
-                    <Image
-                      source={{ uri: addBuster(avatarUrl) || avatarUrl }}
-                      style={styles.avatarImage}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View style={styles.avatarFallback}>
-                      <Ionicons
-                        name="person-outline"
-                        size={26}
-                        color={COLORS.textSecondary}
+                  <View style={[styles.avatarInner, isCompact && styles.avatarInnerCompact]}>
+                    {avatarUrl ? (
+                      <Image
+                        source={{ uri: addBuster(avatarUrl) || avatarUrl }}
+                        style={styles.avatarImage}
+                        resizeMode="cover"
                       />
-                    </View>
-                  )}
-                </View>
-              </LinearGradient>
+                    ) : (
+                      <View style={styles.avatarFallback}>
+                        <Ionicons name="person-outline" size={26} color={COLORS.textSecondary} />
+                      </View>
+                    )}
+                  </View>
+                </LinearGradient>
 
-              <View
-                style={[styles.levelPill, { backgroundColor: ringColor }]}
-              >
-                <Text style={styles.levelPillText}>Lv {level}</Text>
+                <View style={[styles.levelPill, { backgroundColor: ringColor }]}>
+                  <Text style={styles.levelPillText}>Lv {level}</Text>
+                </View>
+              </View>
+
+              {/* Counts */}
+              <View style={{ flexDirection: "row", gap: isMobileLike ? 18 : 26 }}>
+                <TouchableOpacity
+                  onPress={() => setConnectionsModalVisible(true)}
+                  style={{ alignItems: "center", minWidth: 92, paddingVertical: isMobileLike ? 6 : 0 }}
+                  activeOpacity={0.85}
+                >
+                  <Text
+                    style={{
+                      color: COLORS.textPrimary,
+                      fontWeight: "900",
+                      fontFamily: FONT_OBLIVION,
+                      letterSpacing: 1,
+                      fontSize: 14,
+                    }}
+                  >
+                    {supportersCount}
+                  </Text>
+                  <Text
+                    style={{
+                      color: COLORS.textSecondary,
+                      fontSize: 12,
+                      fontFamily: FONT_OBLIVION,
+                    }}
+                  >
+                    Supporters
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setConnectionsModalVisible(true)}
+                  style={{ alignItems: "center", minWidth: 92, paddingVertical: isMobileLike ? 6 : 0 }}
+                  activeOpacity={0.85}
+                >
+                  <Text
+                    style={{
+                      color: COLORS.textPrimary,
+                      fontWeight: "900",
+                      fontFamily: FONT_OBLIVION,
+                      letterSpacing: 1,
+                      fontSize: 14,
+                    }}
+                  >
+                    {supportingCount}
+                  </Text>
+                  <Text
+                    style={{
+                      color: COLORS.textSecondary,
+                      fontSize: 12,
+                      fontFamily: FONT_OBLIVION,
+                    }}
+                  >
+                    Supporting
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
           </ImageBackground>
@@ -3011,79 +2997,71 @@ const renderHero = () => {
               )}
             </View>
 
-           {/* Support button */}
-{!isOwnProfile && profile && currentUserId && (
-  <View style={{ marginTop: isMobileLike ? 10 : 12 }}>
-    <TouchableOpacity
-      activeOpacity={0.85}
-      onPress={async () => {
-  const targetIdToSupport = profile?.id; // ✅ always correct
-  if (!targetIdToSupport) return;
+            {/* Support button */}
+            {!isOwnProfile && profile && currentUserId && (
+              <View style={{ marginTop: isMobileLike ? 10 : 12 }}>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={async () => {
+                    const targetIdToSupport = profile?.id; // ✅ always correct
+                    if (!targetIdToSupport) return;
 
-  if (isSupporting) {
-    const { error } = await unsupportUser(targetIdToSupport);
-    if (!error) {
-      setIsSupporting(false);
-      setSupportersCount((n) => Math.max(0, n - 1));
-    }
-  } else {
-    const { error } = await supportUser(targetIdToSupport);
-    if (!error) {
-      setIsSupporting(true);
-      setSupportersCount((n) => n + 1);
-    }
-  }
-}}
-      style={[
-        {
-          paddingVertical: isMobileLike ? 11 : 12,
-          paddingHorizontal: isMobileLike ? 18 : 22,
-          borderRadius: 999,
-          alignItems: "center",
-          justifyContent: "center",
-          shadowColor: "#000",
-          shadowOpacity: 0.15,
-          shadowRadius: 6,
-          shadowOffset: { width: 0, height: 3 },
-          elevation: 3,
-          width: "100%",
-        },
-
-        // === SUPPORTING STATE ===
-        isSupporting
-          ? {
-              backgroundColor: "#1C1C1C",
-              borderWidth: 1,
-              borderColor: "#444",
-            }
-
-          // === NOT SUPPORTING (GOLD GRADIENT) ===
-          : {
-              backgroundColor: COLORS.primary,
-            },
-      ]}
-    >
-      <Text
-        style={{
-          fontSize: 16,
-          fontWeight: "800",
-          color: isSupporting ? "#F7DFA6" : "#000",
-          letterSpacing: 0.5,
-        }}
-      >
-        {isSupporting ? "Supporting" : "Support"}
-      </Text>
-    </TouchableOpacity>
-  </View>
-)}
-
+                    if (isSupporting) {
+                      const { error } = await unsupportUser(targetIdToSupport);
+                      if (!error) {
+                        setIsSupporting(false);
+                        setSupportersCount((n) => Math.max(0, n - 1));
+                      }
+                    } else {
+                      const { error } = await supportUser(targetIdToSupport);
+                      if (!error) {
+                        setIsSupporting(true);
+                        setSupportersCount((n) => n + 1);
+                      }
+                    }
+                  }}
+                  style={[
+                    {
+                      paddingVertical: isMobileLike ? 11 : 12,
+                      paddingHorizontal: isMobileLike ? 18 : 22,
+                      borderRadius: 999,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      shadowColor: "#000",
+                      shadowOpacity: 0.15,
+                      shadowRadius: 6,
+                      shadowOffset: { width: 0, height: 3 },
+                      elevation: 3,
+                      width: "100%",
+                    },
+                    isSupporting
+                      ? {
+                          backgroundColor: "#1C1C1C",
+                          borderWidth: 1,
+                          borderColor: "#444",
+                        }
+                      : {
+                          backgroundColor: COLORS.primary,
+                        },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontSize: 16,
+                      fontWeight: "800",
+                      color: isSupporting ? "#F7DFA6" : "#000",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    {isSupporting ? "Supporting" : "Support"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Gamification */}
             <View style={[styles.gamifyWrap, isMobileLike ? { marginTop: 12 } : null]}>
-              <Text
-                style={[styles.gamifyTitle, { color: ringColor }]}
-                numberOfLines={1}
-              >
+              <Text style={[styles.gamifyTitle, { color: ringColor }]} numberOfLines={1}>
                 {title}
               </Text>
               <View style={styles.gamifyRow}>
@@ -3094,133 +3072,123 @@ const renderHero = () => {
             </View>
           </View>
 
-{/* Filmmaking streak (Year-by-year) */}
-<View style={{ marginTop: isMobileLike ? 10 : 12 }}>
-  {(() => {
-    const s = streakLoading ? 0 : Math.max(0, Number(streak || 0));
+          {/* Filmmaking streak (Year-by-year) */}
+          <View style={{ marginTop: isMobileLike ? 10 : 12 }}>
+            {(() => {
+              const s = streakLoading ? 0 : Math.max(0, Number(streak || 0));
 
-    // Full years completed (12 months each)
-    const fullYears = Math.floor(s / 12);
+              // Full years completed (12 months each)
+              const fullYears = Math.floor(s / 12);
 
-    // Months into the current year (0..11)
-    const remainder = s % 12;
+              // Months into the current year (0..11)
+              const remainder = s % 12;
 
-    // Always show the current “building” year.
-    // If s === 12 exactly -> Year 1 full + Year 2 starts at 0/12
-    const yearsToShow = Math.max(1, fullYears + 1);
+              // Always show the current “building” year.
+              // If s === 12 exactly -> Year 1 full + Year 2 starts at 0/12
+              const yearsToShow = Math.max(1, fullYears + 1);
 
-    return Array.from({ length: yearsToShow }).map((_, idx) => {
-      const yearNumber = idx + 1;
+              return Array.from({ length: yearsToShow }).map((_, idx) => {
+                const yearNumber = idx + 1;
 
-      const isCompletedYear = yearNumber <= fullYears;
-      const monthsThisYear = isCompletedYear ? 12 : remainder;
+                const isCompletedYear = yearNumber <= fullYears;
+                const monthsThisYear = isCompletedYear ? 12 : remainder;
 
-      const pct = streakLoading ? 0 : Math.min((monthsThisYear / 12) * 100, 100);
+                const pct = streakLoading ? 0 : Math.min((monthsThisYear / 12) * 100, 100);
 
-      return (
-        <View key={`year-${yearNumber}`} style={{ marginTop: idx === 0 ? 0 : 12 }}>
-          {/* Filmmaking streak • Year X (same line) */}
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              marginBottom: 6,
-              paddingHorizontal: isMobileLike ? 10 : 0,
-              flexWrap: "wrap",
-              rowGap: 6,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 11,
-                color: COLORS.textSecondary,
-                letterSpacing: 1.4,
-                fontFamily: FONT_OBLIVION,
-              }}
-            >
-              Filmmaking streak
-            </Text>
+                return (
+                  <View key={`year-${yearNumber}`} style={{ marginTop: idx === 0 ? 0 : 12 }}>
+                    {/* Filmmaking streak • Year X (same line) */}
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginBottom: 6,
+                        paddingHorizontal: isMobileLike ? 10 : 0,
+                        flexWrap: "wrap",
+                        rowGap: 6,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: COLORS.textSecondary,
+                          letterSpacing: 1.4,
+                          fontFamily: FONT_OBLIVION,
+                        }}
+                      >
+                        Filmmaking streak
+                      </Text>
 
-            <Text
-              style={{
-                fontSize: 11,
-                color: COLORS.textSecondary,
-                letterSpacing: 1.4,
-                fontFamily: FONT_OBLIVION,
-                opacity: 0.9,
-                marginLeft: 8,
-              }}
-            >
-              • Year {yearNumber}
-            </Text>
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: COLORS.textSecondary,
+                          letterSpacing: 1.4,
+                          fontFamily: FONT_OBLIVION,
+                          opacity: 0.9,
+                          marginLeft: 8,
+                        }}
+                      >
+                        • Year {yearNumber}
+                      </Text>
 
-            {isCompletedYear ? (
-              <View
-                style={{
-                  marginLeft: 10,
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                  borderRadius: 999,
-                  backgroundColor: "rgba(198,166,100,0.18)",
-                  borderWidth: 1,
-                  borderColor: "rgba(198,166,100,0.35)",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 9,
-                    color: "#C6A664",
-                    letterSpacing: 1.2,
-                    fontFamily: FONT_OBLIVION,
-                  }}
-                >
-                  COMPLETED
-                </Text>
-              </View>
-            ) : null}
+                      {isCompletedYear ? (
+                        <View
+                          style={{
+                            marginLeft: 10,
+                            paddingHorizontal: 10,
+                            paddingVertical: 4,
+                            borderRadius: 999,
+                            backgroundColor: "rgba(198,166,100,0.18)",
+                            borderWidth: 1,
+                            borderColor: "rgba(198,166,100,0.35)",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 9,
+                              color: "#C6A664",
+                              letterSpacing: 1.2,
+                              fontFamily: FONT_OBLIVION,
+                            }}
+                          >
+                            COMPLETED
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    <View style={block.progressRail}>
+                      <View style={[block.progressFill, { width: `${pct}%` }]} />
+                    </View>
+
+                    <Text
+                      style={{
+                        marginTop: 6,
+                        fontSize: 12,
+                        color: COLORS.textPrimary,
+                        fontFamily: FONT_OBLIVION,
+                        textAlign: "center",
+                      }}
+                    >
+                      {streakLoading ? "—" : `${monthsThisYear} / 12 months`}
+                    </Text>
+                  </View>
+                );
+              });
+            })()}
           </View>
-
-          <View style={block.progressRail}>
-            <View style={[block.progressFill, { width: `${pct}%` }]} />
-          </View>
-
-          <Text
-            style={{
-              marginTop: 6,
-              fontSize: 12,
-              color: COLORS.textPrimary,
-              fontFamily: FONT_OBLIVION,
-              textAlign: "center",
-            }}
-          >
-            {streakLoading ? "—" : `${monthsThisYear} / 12 months`}
-          </Text>
-        </View>
-      );
-    });
-  })()}
-</View>
-
 
           {/* About */}
           {(bio?.trim()?.length || sideRoles.length || isOwnProfile) ? (
-            <View
-              style={[styles.aboutCard, isMobileLike ? { marginTop: 10 } : null]}
-            >
+            <View style={[styles.aboutCard, isMobileLike ? { marginTop: 10 } : null]}>
               <Text style={styles.aboutTitle}>About</Text>
-              <Text
-                style={[styles.aboutBody, isMobileLike ? { lineHeight: 18 } : null]}
-              >
+              <Text style={[styles.aboutBody, isMobileLike ? { lineHeight: 18 } : null]}>
                 {bio || "—"}
               </Text>
               {!!sideRoles.length && (
-                <Text
-                  style={[
-                    styles.aboutBody,
-                    { marginTop: 8, fontStyle: "italic" },
-                  ]}
-                >
+                <Text style={[styles.aboutBody, { marginTop: 8, fontStyle: "italic" }]}>
                   <Text style={{ fontWeight: "900" }}>Side roles: </Text>
                   {sideRoles.join(", ")}
                 </Text>
@@ -4523,6 +4491,18 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
+  // ✅ NEW: bottom bar inside hero image (avatar + counts) so nothing overlaps text
+  heroBottomBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 12,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
   infoCard: {
     backgroundColor: COLORS.cardAlt,
     borderWidth: 1,
@@ -5176,4 +5156,3 @@ const stylesShowreel = StyleSheet.create({
     textTransform: "uppercase",
   },
 });
-
