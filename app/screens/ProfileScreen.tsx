@@ -28,7 +28,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { openChat } from '../navigation/navigationRef';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import YoutubePlayer from 'react-native-youtube-iframe';
 import { Audio, Video, ResizeMode, VideoFullscreenUpdate, AVPlaybackStatus } from 'expo-av';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
@@ -42,6 +41,7 @@ import { supportUser, unsupportUser } from "../lib/connections";
 import * as FileSystem from "expo-file-system";
 import { Buffer } from "buffer";
 import { useMonthlyStreak } from "../lib/useMonthlyStreak";
+import YoutubePlayer from "react-native-youtube-iframe";
 
 /* ---------- Noir palette ---------- */
 const GOLD = '#C6A664';
@@ -87,26 +87,46 @@ const addBuster = (url?: string | null) =>
   url ? `${url}${/\?/.test(url) ? '&' : '?'}t=${Date.now()}` : null;
 const stripBuster = (url?: string | null) => (url ? url.replace(/[?&]t=\d+$/, '') : url);
 
-function extractYoutubeId(url: string): string | null {
-  if (!url) return null;
-  const short = url.match(/youtu\.be\/([A-Za-z0-9_-]{11})/i);
-  if (short) return short[1];
-  const long = url.match(/[?&]v=([A-Za-z0-9_-]{11})/i);
-  if (long) return long[1];
-  const embed = url.match(/youtube\.com\/embed\/([A-Za-z0-9_-]{11})/i);
-  if (embed) return embed[1];
-  return null;
-}
-const looksLikeVideo = (url: string) =>
-  /\.(mp4|mov|m4v|webm)($|\?)/i.test((url || '').trim()) ||
-  (!!url && url.includes('/storage/v1/object/public/') && url.includes('/'));
-const looksLikeYouTube = (url: string) => !!extractYoutubeId((url || '').trim());
 const ONE_GB = 1024 * 1024 * 1024;
 
-const ytThumb = (url: string) => {
-  const id = extractYoutubeId((url || '').trim());
-  return id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : null;
+const looksLikeVideo = (u: string) => {
+  const s = (u || "").toLowerCase();
+  return s.endsWith(".mp4") || s.includes(".mp4?");
 };
+
+// Keep this ONLY if any part of the file still references it
+const looksLikeYouTube = (u: string) => {
+  const s = (u || "").toLowerCase().trim();
+  return s.includes("youtube.com") || s.includes("youtu.be");
+};
+
+const extractYoutubeId = (url: string) => {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("youtu.be")) return u.pathname.replace("/", "");
+
+    const v = u.searchParams.get("v");
+    if (v) return v;
+
+    // handle /embed/<id> or /shorts/<id>
+    const parts = u.pathname.split("/").filter(Boolean);
+    const embedIdx = parts.indexOf("embed");
+    if (embedIdx >= 0 && parts[embedIdx + 1]) return parts[embedIdx + 1];
+    const shortsIdx = parts.indexOf("shorts");
+    if (shortsIdx >= 0 && parts[shortsIdx + 1]) return parts[shortsIdx + 1];
+
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+const ytThumb = (url: string) => {
+  const id = extractYoutubeId(url);
+  if (!id) return null;
+  return `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+};
+
 
 /* Flag emoji from country code */
 const codeToFlag = (cc?: string) => {
@@ -165,12 +185,8 @@ async function uploadResumableToBucket(opts: {
     throw new Error('No file to upload');
   }
 
-  const ext =
-    type.includes('mp4') ? '.mp4'
-    : type.includes('quicktime') ? '.mov'
-    : type.includes('webm') ? '.webm'
-    : type.startsWith('video/') ? '.mp4'
-    : '.mp4';
+  const ext = '.mp4';
+type = 'video/mp4';
 
   const finalObjectName = `${objectName}${ext}`;
 
@@ -768,7 +784,7 @@ interface ProfileData {
   banner_color?: string | null;
 }
 
-type PortfolioType = 'image' | 'pdf' | 'audio' | 'youtube' | 'video';
+type PortfolioType = 'image' | 'pdf' | 'audio' | 'video';
 
 interface PortfolioItem {
   id: string;
@@ -851,8 +867,6 @@ interface MyJob {
   is_closed?: boolean;
   closed_at?: string | null;
 }
-
-type PortfolioChoice = 'youtube' | 'mp4';
 
 const defaultTitle = 'Overlooked';
 
@@ -954,8 +968,6 @@ export default function ProfileScreen() {
   const [cityId, setCityId] = useState<number | null>(null);
 
   // Portfolio & avatar
-  const [portfolioUrl, setPortfolioUrl] = useState('');
-  const [portfolioChoice, setPortfolioChoice] = useState<PortfolioChoice>('youtube');
   const [mp4MainUrl, setMp4MainUrl] = useState('');
   const [mp4MainUploading, setMp4MainUploading] = useState(false);
   const [mp4MainName, setMp4MainName] = useState('');
@@ -1179,27 +1191,14 @@ export default function ProfileScreen() {
       setBio(pd.bio ?? "");
 
       const existing = (pd.portfolio_url || "").trim();
-      if (existing) {
-        if (looksLikeYouTube(existing)) {
-          setPortfolioChoice("youtube");
-          setPortfolioUrl(existing);
-          setMp4MainUrl("");
-          setMp4MainName("");
-        } else if (looksLikeVideo(existing) || existing.startsWith("http")) {
-          setPortfolioChoice("mp4");
-          setMp4MainUrl(`${existing}${ts()}`);
-          setMp4MainName(existing.split("/").pop() || "Showreel");
-          setPortfolioUrl("");
-        } else {
-          setPortfolioChoice("youtube");
-          setPortfolioUrl(existing);
-        }
-      } else {
-        setPortfolioChoice("youtube");
-        setPortfolioUrl("");
-        setMp4MainUrl("");
-        setMp4MainName("");
-      }
+
+if (existing && looksLikeVideo(existing)) {
+  setMp4MainUrl(`${existing}${ts()}`);
+  setMp4MainName(existing.split("/").pop() || "Showreel.mp4");
+} else {
+  setMp4MainUrl("");
+  setMp4MainName("");
+}
 
       if (pd.main_role_id != null) {
         const { data: roleData } = await supabase
@@ -1291,7 +1290,7 @@ export default function ProfileScreen() {
   const uploadAnotherShowreel = async () => {
     try {
       const pick = await DocumentPicker.getDocumentAsync({
-        type: ['video/mp4', 'video/*'],
+        type: ['video/mp4'],
         multiple: false,
         copyToCacheDirectory: true,
       });
@@ -1302,16 +1301,12 @@ export default function ProfileScreen() {
       const mime = (asset.mime_type || asset.mimeType || '').toLowerCase() || 'video/mp4';
       const size = asset.size ?? asset.fileSize ?? asset.bytes ?? null;
 
-      const isVideoCandidate =
-        name.endsWith('.mp4') ||
-        name.endsWith('.mov') ||
-        name.endsWith('.webm') ||
-        mime.startsWith('video/');
+      const isMp4 = name.endsWith('.mp4') || mime === 'video/mp4';
 
-      if (!isVideoCandidate) {
-        Alert.alert('Use a video file', 'Please select an .mp4 / .mov / .webm video.');
-        return;
-      }
+if (!isMp4) {
+  Alert.alert('MP4 only', 'Please select an .mp4 video.');
+  return;
+}
       if (size && size > ONE_GB) {
         Alert.alert('Too large', 'Please select a video that is 1 GB or less.');
         return;
@@ -1976,7 +1971,7 @@ export default function ProfileScreen() {
   const uploadMainMP4 = async () => {
     try {
       const pick = await DocumentPicker.getDocumentAsync({
-        type: ['video/mp4', 'video/*'],
+        type: ['video/mp4'],
         multiple: false,
         copyToCacheDirectory: true,
       });
@@ -1987,16 +1982,12 @@ export default function ProfileScreen() {
       const mime = (asset.mime_type || asset.mimeType || '').toLowerCase() || 'video/mp4';
       const size = asset.size ?? asset.fileSize ?? asset.bytes ?? null;
 
-      const isVideoCandidate =
-        name.endsWith('.mp4') ||
-        name.endsWith('.mov') ||
-        name.endsWith('.webm') ||
-        mime.startsWith('video/');
+      const isMp4 = name.endsWith('.mp4') || mime === 'video/mp4';
 
-      if (!isVideoCandidate) {
-        Alert.alert('Use a video file', 'Please select an .mp4 / .mov / .webm video.');
-        return;
-      }
+if (!isMp4) {
+  Alert.alert('MP4 only', 'Please select an .mp4 video.');
+  return;
+}
       if (size && size > ONE_GB) {
         Alert.alert('Too large', 'Please select a video that is 1 GB or less.');
         return;
@@ -2028,8 +2019,6 @@ export default function ProfileScreen() {
       const displayUrl = `${publicUrl}${ts()}`;
       setMp4MainUrl(displayUrl);
       setMp4MainName(name || 'Showreel');
-      setPortfolioUrl('');
-      setPortfolioChoice('mp4');
 
       await supabase.from('users').update({ portfolio_url: publicUrl }).eq('id', user.id);
 
@@ -2245,14 +2234,9 @@ export default function ProfileScreen() {
         side_roles: sideRolesClean.length ? sideRolesClean : null,
         city_id: cityFk ?? null,
         bio: (bio || '').trim() || null,
-        portfolio_url:
-          portfolioChoice === 'youtube'
-            ? looksLikeYouTube(portfolioUrl)
-              ? portfolioUrl.trim()
-              : null
-            : mp4MainUrl
-            ? stripBuster(mp4MainUrl)
-            : profile?.portfolio_url ?? null,
+        portfolio_url: mp4MainUrl
+  ? stripBuster(mp4MainUrl)
+  : profile?.portfolio_url ?? null,
       };
 
       const { data: updated, error: updErr } = await supabase
@@ -2352,10 +2336,9 @@ export default function ProfileScreen() {
         (cityFk ?? null) !== (profile.city_id ?? null) ||
         !sameSide ||
         (bio || '') !== (profile.bio || '') ||
-        (portfolioChoice === 'youtube' ? portfolioUrl || '' : mp4MainUrl || '') !==
-          (profile.portfolio_url || '')
+        (mp4MainUrl || '') !== (profile.portfolio_url || '')
     );
-  }, [profile, fullName, mainRole, cityId, sideRoles, bio, portfolioUrl, portfolioChoice, mp4MainUrl]);
+  }, [profile, fullName, mainRole, cityId, sideRoles, bio, mp4MainUrl]);
 
   /* ---------- close job (own) ---------- */
 
@@ -3363,21 +3346,15 @@ const renderFeaturedFilm = () => {
   // ✅ Decide the featured source ONCE (prevents a typed YouTube link from overriding a primary MP4)
   // Priority: primary showreel (url first, then file_path) → users.portfolio_url → mp4MainUrl → portfolioUrl
   const featuredSrc =
-    (primaryRow?.url || primaryRow?.file_path || "")?.trim() ||
-    fromDbRaw ||
-    (mp4MainUrl || "")?.trim() ||
-    (portfolioUrl || "")?.trim() ||
-    "";
+  (primaryRow?.url || primaryRow?.file_path || "")?.trim() ||
+  fromDbRaw ||
+  (mp4MainUrl || "")?.trim() ||
+  "";
 
   if (!featuredSrc) return null;
 
   // ✅ Detect based ONLY on featuredSrc (not portfolioUrl || something)
-  const isYoutube = looksLikeYouTube(featuredSrc);
-  const ytId = isYoutube ? extractYoutubeId(featuredSrc) : null;
-
-  const isVideo =
-    !isYoutube &&
-    (looksLikeVideo(featuredSrc) || looksLikeVideo(mp4MainUrl) || !!primaryRow);
+  const isVideo = looksLikeVideo(featuredSrc) || !!primaryRow;
 
   const maxW = isMobile ? SHOWREEL_MAX_W_MOBILE : SHOWREEL_MAX_W;
 
@@ -3392,37 +3369,22 @@ const renderFeaturedFilm = () => {
             width: "100%",
             maxWidth: maxW,
             alignSelf: "center",
-            padding: isYoutube || isVideo ? 0 : 12,
+            padding: isVideo ? 0 : 12,
           },
         ]}
       >
-        {isYoutube && ytId ? (
-          <View style={[block.videoWrap, { maxWidth: maxW }]}>
-            <YoutubePlayer
-              key={ytId}
-              height={isMobile ? 220 : 420}
-              width={maxW}
-              videoId={ytId}
-              play={false}
-              webViewStyle={{ backgroundColor: "#000" }}
-              webViewProps={{
-                allowsInlineMediaPlayback: true,
-                mediaPlaybackRequiresUserAction: false,
-              }}
-            />
-          </View>
-        ) : isVideo ? (
-          <ShowreelVideoInline
-            playerId="profile_showreel_primary"
-            filePathOrUrl={featuredSrc}
-            width={maxW}
-            autoPlay={false}
-          />
-        ) : (
-          <Text style={[block.muted, { padding: 12, textAlign: "center" }]}>
-            Unsupported portfolio URL.
-          </Text>
-        )}
+        {isVideo ? (
+  <ShowreelVideoInline
+    playerId="profile_showreel_primary"
+    filePathOrUrl={featuredSrc}
+    width={maxW}
+    autoPlay={false}
+  />
+) : (
+  <Text style={[block.muted, { padding: 12, textAlign: "center" }]}>
+    No showreel uploaded yet.
+  </Text>
+)}  
       </View>
 
       {/* Extra showreels */}
@@ -3596,7 +3558,6 @@ const renderEditorialPortfolio = () => {
   const imgs = unique.filter((p) => p.type === "image");
   const auds = unique.filter((p) => p.type === "audio");
   const pdfs = unique.filter((p) => p.type === "pdf");
-  const yts = unique.filter((p) => p.type === "youtube");
 
   const cols = isMobile ? 2 : 3;
   const usable = Math.min(width, PAGE_MAX) - horizontalPad * 2;
@@ -3662,32 +3623,6 @@ const renderEditorialPortfolio = () => {
               <PdfTile key={item.id} item={item} />
             ))}
           </View>
-        </View>
-      )}
-
-      {yts.length > 0 && (
-        <View style={block.section}>
-          <Text style={block.h3Centered}>YouTube</Text>
-          {yts.map((item) => (
-            <View key={item.id} style={block.youtubeWrap}>
-              <YoutubePlayer
-                key={extractYoutubeId(item.url) || item.id}
-                height={isMobile ? 180 : 260}
-                width={Math.min(SHOWREEL_MAX_W, usable)}
-                videoId={extractYoutubeId(item.url) || undefined}
-                webViewStyle={{ backgroundColor: "#000" }}
-                webViewProps={{
-                  allowsInlineMediaPlayback: true,
-                  mediaPlaybackRequiresUserAction: false,
-                }}
-              />
-              {isOwnProfile && (
-                <TouchableOpacity onPress={() => deletePortfolioItem(item.id)} style={block.ytDelete}>
-                  <Text style={block.rowBtnGhostText}>Delete</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          ))}
         </View>
       )}
     </>
@@ -3796,19 +3731,6 @@ const renderSubmissionsSection = () => {
                   >
                     {s.title || "Untitled"}
                   </Text>
-
-                  {!!s.word && (
-                    <Text
-                      style={{
-                        color: COLORS.textSecondary,
-                        fontFamily: FONT_OBLIVION,
-                        fontSize: 12,
-                      }}
-                      numberOfLines={1}
-                    >
-                      “{s.word}”
-                    </Text>
-                  )}
                 </View>
               </View>
             </Pressable>
@@ -3907,28 +3829,6 @@ const renderSubmissionsSection = () => {
                 ) : null}
               </View>
             </View>
-
-            {/* ✅ OWNER TOOLS: change thumbnail only for MP4 submissions (not YouTube) */}
-            {isOwnProfile && activeSubmission && !activeSubmission.youtube_url && (
-              <TouchableOpacity
-                onPress={() => changeSubmissionThumbnail(activeSubmission)}
-                disabled={thumbUploadingId === activeSubmission.id}
-                style={[
-                  styles.primaryBtn,
-                  {
-                    marginTop: 12,
-                    opacity: thumbUploadingId === activeSubmission.id ? 0.75 : 1,
-                  },
-                ]}
-                activeOpacity={0.85}
-              >
-                {thumbUploadingId === activeSubmission.id ? (
-                  <ActivityIndicator color="#000" />
-                ) : (
-                  <Text style={styles.primaryBtnText}>Change thumbnail</Text>
-                )}
-              </TouchableOpacity>
-            )}
 
             {isOwnProfile && activeSubmission && (
               <TouchableOpacity
@@ -4206,96 +4106,49 @@ return (
               />
             </View>
 
-            {/* Showreel selection */}
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Featured Showreel</Text>
-              <View style={styles.segmentWrap}>
-                <TouchableOpacity
-                  style={[styles.segmentBtn, portfolioChoice === "youtube" && styles.segmentActive]}
-                  onPress={() => setPortfolioChoice("youtube")}
-                >
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      portfolioChoice === "youtube" && styles.segmentTextActive,
-                    ]}
-                  >
-                    YouTube link
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.segmentBtn, portfolioChoice === "mp4" && styles.segmentActive]}
-                  onPress={() => setPortfolioChoice("mp4")}
-                >
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      portfolioChoice === "mp4" && styles.segmentTextActive,
-                    ]}
-                  >
-                    Upload MP4
-                  </Text>
-                </TouchableOpacity>
-              </View>
+            {/* Featured Showreel (MP4 only) */}
+<View style={styles.field}>
+  <Text style={styles.fieldLabel}>Featured Showreel (MP4)</Text>
 
-              {portfolioChoice === "youtube" ? (
-                <View style={{ marginTop: 8 }}>
-                  <TextInput
-                    value={portfolioUrl}
-                    onChangeText={setPortfolioUrl}
-                    style={styles.input}
-                    placeholder="Paste YouTube link"
-                    placeholderTextColor={COLORS.textSecondary}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  {!!portfolioUrl && !looksLikeYouTube(portfolioUrl) && (
-                    <Text style={styles.validationText}>That link doesn’t look like YouTube.</Text>
-                  )}
-                </View>
-              ) : (
-                <View style={{ marginTop: 8 }}>
-                  {mp4MainUrl ? (
-                    <>
-                      <Text style={[styles.fieldLabel, { marginBottom: 4 }]}>Current file</Text>
-                      <Text style={[block.muted, { marginBottom: 6 }]} numberOfLines={1}>
-                        {mp4MainName || "Showreel video"}
-                      </Text>
-                    </>
-                  ) : (
-                    <Text style={[block.muted, { marginBottom: 6 }]}>
-                      Upload a high-quality MP4/MOV/WebM up to 1GB.
-                    </Text>
-                  )}
+  <View style={{ marginTop: 8 }}>
+    {mp4MainUrl ? (
+      <>
+        <Text style={[styles.fieldLabel, { marginBottom: 4 }]}>Current file</Text>
+        <Text style={[block.muted, { marginBottom: 6 }]} numberOfLines={1}>
+          {mp4MainName || "Showreel.mp4"}
+        </Text>
+      </>
+    ) : (
+      <Text style={[block.muted, { marginBottom: 6 }]}>
+        Upload a high-quality MP4 up to 1GB.
+      </Text>
+    )}
 
-                  <TouchableOpacity
-                    style={styles.primaryBtn}
-                    onPress={uploadMainMP4}
-                    disabled={mp4MainUploading}
-                  >
-                    {mp4MainUploading ? (
-                      <ActivityIndicator color="#000" />
-                    ) : (
-                      <Text style={styles.primaryBtnText}>
-                        {mp4MainUrl ? "Replace video" : "Upload video"}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
+    <TouchableOpacity
+      style={styles.primaryBtn}
+      onPress={uploadMainMP4}
+      disabled={mp4MainUploading}
+    >
+      {mp4MainUploading ? (
+        <ActivityIndicator color="#000" />
+      ) : (
+        <Text style={styles.primaryBtnText}>
+          {mp4MainUrl ? "Replace MP4" : "Upload MP4"}
+        </Text>
+      )}
+    </TouchableOpacity>
 
-                  {mp4MainUploading && (
-                    <View style={{ marginTop: 8, alignItems: "center" }}>
-                      {!!mp4Status && (
-                        <Text style={[block.muted, { marginBottom: 4 }]}>{mp4Status}</Text>
-                      )}
-                      <View style={block.progressRail}>
-                        <View style={[block.progressFill, { width: `${mp4Progress}%` }]} />
-                      </View>
-                      <Text style={[block.muted, { marginTop: 4 }]}>{mp4Progress}%</Text>
-                    </View>
-                  )}
-                </View>
-              )}
-            </View>
+    {mp4MainUploading && (
+      <View style={{ marginTop: 8, alignItems: "center" }}>
+        {!!mp4Status && <Text style={[block.muted, { marginBottom: 4 }]}>{mp4Status}</Text>}
+        <View style={block.progressRail}>
+          <View style={[block.progressFill, { width: `${mp4Progress}%` }]} />
+        </View>
+        <Text style={[block.muted, { marginTop: 4 }]}>{mp4Progress}%</Text>
+      </View>
+    )}
+  </View>
+</View>
 
             {/* Extra portfolio uploads */}
             <View style={styles.field}>
@@ -4593,15 +4446,14 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  // ✅ NEW: bottom bar inside hero image (avatar + counts) so nothing overlaps text
   heroBottomBar: {
-  position: "relative", // ✅ critical
-  paddingHorizontal: 14,
-  paddingTop: 6,
-  flexDirection: "row",
-  alignItems: "flex-end",
-  justifyContent: "space-between",
-},
+    position: "relative",
+    paddingHorizontal: 14,
+    paddingTop: 6,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+  },
 
   infoCard: {
     backgroundColor: COLORS.cardAlt,
@@ -4654,17 +4506,11 @@ const styles = StyleSheet.create({
     fontFamily: FONT_OBLIVION,
   },
 
-  avatarRingWrapper: {
-    position: "absolute",
-    alignItems: "center",
-  },
   avatarRing: {
     padding: 3,
     borderRadius: 999,
     borderWidth: 2,
   },
-
-  // ✅ No isCompact inside StyleSheet
   avatarInner: {
     width: 80,
     height: 80,
@@ -4678,7 +4524,6 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
   },
-
   avatarImage: {
     width: "100%",
     height: "100%",
@@ -4743,7 +4588,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#000000CC",
     justifyContent: "flex-end",
-    paddingHorizontal: 10, // ✅ helps mobile-web breathing room
+    paddingHorizontal: 10,
   },
   modalContainer: {
     backgroundColor: COLORS.cardAlt,
@@ -4810,31 +4655,6 @@ const styles = StyleSheet.create({
     fontFamily: FONT_OBLIVION,
   },
 
-  segmentWrap: {
-    flexDirection: "row",
-    backgroundColor: "#0C0C0C",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    overflow: "hidden",
-    marginTop: 6,
-  },
-  segmentBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  segmentActive: { backgroundColor: "#151515" },
-  segmentText: {
-    color: COLORS.textSecondary,
-    fontWeight: "700",
-    fontFamily: FONT_OBLIVION,
-  },
-  segmentTextActive: {
-    color: COLORS.textPrimary,
-    fontFamily: FONT_OBLIVION,
-  },
-
   primaryBtn: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
@@ -4882,13 +4702,6 @@ const styles = StyleSheet.create({
     fontFamily: FONT_OBLIVION,
     fontWeight: "700",
   },
-
-  validationText: {
-    marginTop: 4,
-    color: COLORS.danger,
-    fontSize: 11,
-    fontFamily: FONT_OBLIVION,
-  },
 });
 
 const block = StyleSheet.create({
@@ -4906,12 +4719,6 @@ const block = StyleSheet.create({
   muted: {
     color: COLORS.textSecondary,
     fontSize: 13,
-    fontFamily: FONT_OBLIVION,
-  },
-  mutedCentered: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    textAlign: "center",
     fontFamily: FONT_OBLIVION,
   },
 
@@ -4991,6 +4798,7 @@ const block = StyleSheet.create({
     fontWeight: "800",
     fontFamily: FONT_OBLIVION,
   },
+
   progressRail: {
     height: 4,
     backgroundColor: "#0F0F0F",
@@ -5014,28 +4822,6 @@ const block = StyleSheet.create({
     alignItems: "center",
   },
 
-  jobCard: {
-    marginTop: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.cardAlt,
-  },
-  jobHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-
-  rowTitle: {
-    color: COLORS.textPrimary,
-    fontWeight: "800",
-    flexShrink: 1,
-    marginRight: 12,
-    fontFamily: FONT_OBLIVION,
-  },
   rowBtn: {
     backgroundColor: COLORS.primary,
     paddingVertical: 8,
@@ -5064,26 +4850,6 @@ const block = StyleSheet.create({
     fontFamily: FONT_OBLIVION,
   },
 
-  youtubeWrap: {
-    backgroundColor: "#000",
-    borderRadius: 14,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    marginBottom: 12,
-  },
-  ytDelete: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: "#0D0D0D",
-  },
-
   viewerOverlay: {
     flex: 1,
     backgroundColor: "#000000EE",
@@ -5103,59 +4869,6 @@ const block = StyleSheet.create({
   viewerHintText: {
     color: "#fff",
     fontWeight: "800",
-    fontFamily: FONT_OBLIVION,
-  },
-
-  applicantsWrap: {
-    marginTop: 10,
-  },
-  applicantsLabel: {
-    color: COLORS.textSecondary,
-    fontSize: 11,
-    marginBottom: 4,
-    fontFamily: FONT_OBLIVION,
-  },
-  applicantsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  applicantPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: "#111",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    maxWidth: 180,
-  },
-  applicantAvatarRing: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 6,
-    overflow: "hidden",
-  },
-  applicantAvatarImage: {
-    width: "100%",
-    height: "100%",
-    borderRadius: 11,
-  },
-  applicantName: {
-    color: COLORS.textPrimary,
-    fontSize: 11,
-    fontFamily: FONT_OBLIVION,
-    flexShrink: 1,
-  },
-  noApplicantsText: {
-    marginTop: 6,
-    color: COLORS.textSecondary,
-    fontSize: 12,
     fontFamily: FONT_OBLIVION,
   },
 });
