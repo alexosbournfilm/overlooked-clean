@@ -576,42 +576,60 @@ function HostedVideoInline({
     } catch {}
   };
 
-  useEffect(() => {
-    (async () => {
-      if (autoPlay && (Platform.OS !== 'web' || posterReady)) {
-        await play(true);
-      } else {
-        await pause();
-        if (Platform.OS === 'web') {
-          if (htmlRef.current) {
-            htmlRef.current.muted = true;
-            htmlRef.current.controls = false;
-          }
-        } else {
-          try {
-            await ref.current?.setIsMutedAsync(true);
-          } catch {}
+useEffect(() => {
+  (async () => {
+    if (!src) return;
+
+    if (autoPlay && (Platform.OS !== 'web' || posterReady)) {
+      // ✅ Autoplay must be muted on web (and safe on native too)
+      if (Platform.OS === 'web') {
+        if (htmlRef.current) {
+          htmlRef.current.muted = true;
+          htmlRef.current.controls = false;
         }
-        setMuted(true);
+      } else {
+        try {
+          await ref.current?.setIsMutedAsync(true);
+        } catch {}
       }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, autoPlay]);
+      setMuted(true);
 
-  // Ensure native controls never appear (Safari quirks)
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const id = window.setInterval(() => {
-      const el = htmlRef.current;
-      if (el) el.controls = false;
-    }, 500);
-    return () => window.clearInterval(id);
-  }, []);
+      // ✅ autoplay muted (avoids Safari/Chrome autoplay-with-sound block)
+      await play(false);
+    } else {
+      await pause();
 
-  const onSurfacePress = async () => {
-    if (isPlaying) await pause();
-    else await play(false);
-  };
+      // keep muted by default
+      if (Platform.OS === 'web') {
+        if (htmlRef.current) {
+          htmlRef.current.muted = true;
+          htmlRef.current.controls = false;
+        }
+      } else {
+        try {
+          await ref.current?.setIsMutedAsync(true);
+        } catch {}
+      }
+      setMuted(true);
+    }
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [src, autoPlay, posterReady]);
+
+// Ensure native controls never appear (Safari quirks)
+useEffect(() => {
+  if (Platform.OS !== 'web') return;
+  const id = window.setInterval(() => {
+    const el = htmlRef.current;
+    if (el) el.controls = false;
+  }, 500);
+  return () => window.clearInterval(id);
+}, []);
+
+const onSurfacePress = async () => {
+  if (isPlaying) await pause();
+  else await play(false);
+};
 
   const maybeUpdateAspectFromStatus = (status?: AVPlaybackStatus) => {
     if (!status || !('isLoaded' in status) || !status.isLoaded) return;

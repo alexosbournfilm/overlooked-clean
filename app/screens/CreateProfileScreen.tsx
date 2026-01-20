@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -55,7 +54,11 @@ export default function CreateProfileScreen() {
 
   // ---------------- FORM STATE ----------------
   const [fullName, setFullName] = useState('');
+
+  // ✅ keep state (no logic changes), but UI will no longer show it
   const [portfolioUrl, setPortfolioUrl] = useState('');
+
+  // ✅ keep state (no logic changes), but UI will no longer show it
   const [image, setImage] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
@@ -122,9 +125,7 @@ export default function CreateProfileScreen() {
       return setRoleSearchItems([]);
     }
 
-    setRoleSearchItems(
-      (data || []).map((r) => ({ label: r.name, value: r.id }))
-    );
+    setRoleSearchItems((data || []).map((r) => ({ label: r.name, value: r.id })));
   }, []);
 
   // ---------------------------------------------------------
@@ -161,9 +162,7 @@ export default function CreateProfileScreen() {
 
     if (!data) return;
 
-    const exactMatches = data.filter((c) =>
-      c.name.toLowerCase() === query.toLowerCase()
-    );
+    const exactMatches = data.filter((c) => c.name.toLowerCase() === query.toLowerCase());
     const prefixMatches = data.filter(
       (c) =>
         c.name.toLowerCase().startsWith(query.toLowerCase()) &&
@@ -219,8 +218,7 @@ export default function CreateProfileScreen() {
         return Alert.alert('Upload Error', uploadError.message);
       }
 
-      const { data: urlData } =
-        supabase.storage.from('avatars').getPublicUrl(fileName);
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
 
       if (!urlData?.publicUrl) {
         setUploadingImage(false);
@@ -300,11 +298,7 @@ export default function CreateProfileScreen() {
       return Alert.alert('Error', error.message);
     }
 
-    const afterComplete = !!(
-      upserted?.full_name &&
-      upserted?.main_role_id &&
-      upserted?.city_id
-    );
+    const afterComplete = !!(upserted?.full_name && upserted?.main_role_id && upserted?.city_id);
 
     await refreshProfile();
     await refreshGamification();
@@ -329,9 +323,7 @@ export default function CreateProfileScreen() {
       navigationRef.dispatch(
         CommonActions.reset({
           index: 0,
-          routes: [
-            { name: 'MainTabs', state: { index: 0, routes: [{ name: 'Featured' }] } },
-          ],
+          routes: [{ name: 'MainTabs', state: { index: 0, routes: [{ name: 'Featured' }] } }],
         })
       );
     }
@@ -341,14 +333,8 @@ export default function CreateProfileScreen() {
   // UI
   // ---------------------------------------------------------
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1 }}
-    >
-      <ScrollView
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-      >
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>CREATE YOUR PROFILE</Text>
 
         {/* FULL NAME */}
@@ -382,51 +368,23 @@ export default function CreateProfileScreen() {
           activeOpacity={0.9}
         >
           <Text style={styles.selectButtonText}>
-            {cityLabel ??
-              'Spell your city correctly (e.g., Skyros / Skýros)'}
+            {cityLabel ?? 'Spell your city correctly (e.g., Skyros / Skýros)'}
           </Text>
         </TouchableOpacity>
 
-        {/* PORTFOLIO */}
-        <TextInput
-          placeholder="YouTube Portfolio URL (optional)"
-          value={portfolioUrl}
-          onChangeText={setPortfolioUrl}
-          style={styles.input}
-          placeholderTextColor={TEXT_MUTED}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
+        {/* ✅ NOTE TEXT (new) */}
+        <Text style={styles.helperText}>
+          You can build on your profile later — add more details, credits, and media anytime from your Profile page.
+        </Text>
 
-        {/* IMAGE UPLOAD */}
-        <TouchableOpacity
-          onPress={pickImage}
-          style={styles.imageButton}
-          activeOpacity={0.9}
-        >
-          <Text style={styles.imageButtonText}>
-            {uploadingImage
-              ? 'Uploading...'
-              : image
-              ? 'Change Profile Picture'
-              : 'Upload Profile Picture'}
-          </Text>
-        </TouchableOpacity>
-
-        {image && <Image source={{ uri: image }} style={styles.avatar} />}
-
-        {/* SUBMIT */}
+        {/* ✅ SUBMIT (unchanged logic) */}
         <TouchableOpacity
           onPress={handleSubmit}
           style={[styles.submitButton, (saving || uploadingImage) && { opacity: 0.6 }]}
           disabled={saving || uploadingImage}
           activeOpacity={0.9}
         >
-          {saving ? (
-            <ActivityIndicator color={TEXT_IVORY} />
-          ) : (
-            <Text style={styles.submitText}>Finish</Text>
-          )}
+          {saving ? <ActivityIndicator color={TEXT_IVORY} /> : <Text style={styles.submitText}>Finish</Text>}
         </TouchableOpacity>
       </ScrollView>
 
@@ -594,30 +552,15 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  imageButton: {
+  helperText: {
     width: '100%',
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#222',
-    borderWidth: 1,
-    borderColor: BORDER,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-
-  imageButtonText: {
-    color: TEXT_IVORY,
-    fontWeight: '600',
+    textAlign: 'center',
+    color: TEXT_MUTED,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
+    marginBottom: 14,
     fontFamily: SYSTEM_SANS,
-  },
-
-  avatar: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    borderWidth: 2,
-    borderColor: GOLD,
-    marginBottom: 20,
   },
 
   submitButton: {
