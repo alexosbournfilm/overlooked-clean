@@ -64,7 +64,7 @@ const SYSTEM_SANS = Platform.select({
 /* ---------------------------- constants/types --------------------------- */
 type Category = "film" | "acting" | "music";
 
-const MAX_UPLOAD_BYTES = 3 * 1024 * 1024 * 1024; // 3GB
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024; // 5GB
 
 const STORAGE_BUCKET = "films";
 const THUMB_BUCKET = "thumbnails";
@@ -348,29 +348,55 @@ async function uploadResumable(opts: {
 
   return new Promise<{ path: string; contentType: string }>((resolve, reject) => {
     const upload = new Upload(file, {
-      endpoint,
-      retryDelays: [0, 2000, 5000, 10000, 20000],
-      chunkSize: 6 * 1024 * 1024,
-      uploadDataDuringCreation: true,
-      removeFingerprintOnSuccess: true,
-      headers: {
-        authorization: `Bearer ${session.access_token}`,
-        "x-upsert": "true",
-      },
-      metadata: {
-        bucketName: bucket,
-        objectName: finalObjectName,
-        contentType: type,
-        cacheControl: "3600",
-      },
-      onProgress: (sent, total) => {
-        if (!total) return;
-        const pct = Math.max(0, Math.min(100, Math.round((sent / total) * 100)));
-        onProgress?.(pct);
-      },
-      onError: (err) => reject(err),
-      onSuccess: () => resolve({ path: finalObjectName, contentType: type }),
-    });
+  endpoint,
+  retryDelays: [0, 2000, 5000, 10000, 20000],
+
+  // ✅ smaller chunks = fewer random failures on flaky networks / some devices
+  chunkSize: 2 * 1024 * 1024, // 2MB
+
+  uploadDataDuringCreation: true,
+  removeFingerprintOnSuccess: true,
+  headers: {
+    authorization: `Bearer ${session.access_token}`,
+    "x-upsert": "true",
+  },
+  metadata: {
+    bucketName: bucket,
+    objectName: finalObjectName,
+    contentType: type,
+    cacheControl: "3600",
+  },
+  onProgress: (sent, total) => {
+    if (!total) return;
+    const pct = Math.max(0, Math.min(100, Math.round((sent / total) * 100)));
+    onProgress?.(pct);
+  },
+
+  // ✅ show the real status/body (413, 401, 403, 5xx etc.)
+  onError: (err: any) => {
+    try {
+      const res = err?.originalResponse;
+      const status =
+        res?.getStatus?.() ??
+        res?.getStatusCode?.() ??
+        res?.status ??
+        err?.originalResponse?.status;
+
+      const body =
+        res?.getBody?.() ??
+        res?.responseText ??
+        err?.originalResponse?.responseText ??
+        "";
+
+      const detail = String(body || "").slice(0, 350);
+      reject(new Error(`Upload failed (${status || "unknown"}): ${detail || err?.message || "Unknown error"}`));
+    } catch {
+      reject(err);
+    }
+  },
+
+  onSuccess: () => resolve({ path: finalObjectName, contentType: type }),
+});
 
     onPhase?.("Uploading file…");
     upload.findPreviousUploads().then((prev) => {
@@ -919,7 +945,7 @@ export default function ChallengeScreen() {
 
   const monthLabel = dayjs().format("MMMM");
 
-  const capText = "No duration limit. Max file size: 3GB.";
+  const capText = "No duration limit. Max file size: 5GB.";
 
   const headerTitle = `${monthLabel} ${
     category === "film" ? "Film" : category === "acting" ? "Acting" : "Music"
@@ -1042,33 +1068,38 @@ const pickFile = async () => {
       if (pick.canceled) return;
 
       const asset: any = pick.assets?.[0];
-      if (!asset?.uri) {
-        notify("No file", "Please choose a file.");
-        return;
-      }
+if (!asset?.uri) {
+  notify("No file", "Please choose a file.");
+  return;
+}
 
-      let bytes: number | null = null;
+// ✅ For big uploads on web we must have the actual File object.
+// If we don't, some browsers/providers behave weirdly with huge files.
+if (!asset.file) {
+  notify(
+    "Picker issue",
+    "Your browser didn’t provide the actual file object. Try selecting the file from your device storage (not cloud), or try another browser (Chrome usually works best).",
+    setStatus
+  );
+  return;
+}
 
-      if (asset.file) {
-        const f: File = asset.file;
-        bytes = typeof f.size === "number" ? f.size : null;
+let bytes: number | null = null;
 
-        if (objectUrlRef.current) {
-          try {
-            URL.revokeObjectURL(objectUrlRef.current);
-          } catch {}
-        }
+const f: File = asset.file;
+bytes = typeof f.size === "number" ? f.size : null;
 
-        const objUrl = URL.createObjectURL(f);
-        objectUrlRef.current = objUrl;
+if (objectUrlRef.current) {
+  try {
+    URL.revokeObjectURL(objectUrlRef.current);
+  } catch {}
+}
 
-        setWebFile(f);
-        setLocalUri(objUrl);
-      } else {
-        // fallback (rare on web)
-        setWebFile(null);
-        setLocalUri(asset.uri);
-      }
+const objUrl = URL.createObjectURL(f);
+objectUrlRef.current = objUrl;
+
+setWebFile(f);
+setLocalUri(objUrl);
 
       setFileSizeBytes(bytes);
 
@@ -1896,7 +1927,7 @@ try {
                       <Text style={styles.pickBtnText}>
                         {localUri ? "PICK A DIFFERENT FILE" : "PICK A FILE"}
                       </Text>
-                      <Text style={styles.pickBtnSub}>Max file size: 3GB</Text>
+                      <Text style={styles.pickBtnSub}>Max file size: 5GB</Text>
                     </TouchableOpacity>
 
                     {localUri ? (
