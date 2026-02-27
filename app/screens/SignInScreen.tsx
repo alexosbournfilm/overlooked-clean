@@ -39,25 +39,10 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 /*
  ────────────────────────────────────────────────────────────
-   UI FIXES APPLIED (per your screenshots)
+   REQUESTED CHANGE
  ────────────────────────────────────────────────────────────
-   ✅ Sign-in modal + feature/info modals are smaller + perfectly centered on mobile
-   ✅ Modals never fall off-screen (maxHeight + internal scroll)
-   ✅ No sideways scrolling / horizontal “white space” on mobile (RN + RN-web)
-   ✅ "FILM FESTIVAL 2026" is no longer in a pill — now epic text
-   ✅ Removed the “Top 2 highest voted films…Rome…” pill entirely
- ────────────────────────────────────────────────────────────
-   CONTENT UPDATES (per your latest message)
- ────────────────────────────────────────────────────────────
-   ✅ Monthly Film Challenge info now mentions:
-      - Top 2 highest-voted films each month screen at Overlooked Film Festival 2026
-      - July in Rome (exact date TBC)
-   ✅ “What is OverLooked?” now mentions the movement:
-      - networking, collaboration, filming, visibility, awards accessible
-   ✅ Added new info cards at the bottom:
-      - How do I apply for the festival?
-      - Bi-weekly livestreams reacting/reviewing random submissions (spotlight all levels)
-      - Workshop tools updated every Friday
+   ✅ Removed "FILM FESTIVAL 2026" entirely (no logic changes)
+   ✅ Made page more aesthetic/cinematic via styling only
  ────────────────────────────────────────────────────────────
 */
 
@@ -165,12 +150,10 @@ const FEATURES: Feature[] = [
 
 // --- FAQ data ----------------------------------------------
 const EXTRA_FAQS = [
-  // ✅ NEW — top question + capital I
   {
     title: 'Is Overlooked free?',
     body: 'Yes — it’s entirely free to join. No card details required, just an email.',
   },
-
   {
     title: 'How do I join my city chat?',
     body: 'Go to Location, search your city, then tap “Join City Chat”.',
@@ -187,22 +170,16 @@ const EXTRA_FAQS = [
     title: 'Can I vote more than once?',
     body: 'You can vote once per film, and not on your own submissions.',
   },
-
-  // ✅ NEW — Festival application / how it works (community voting)
   {
     title: 'How do I apply for the festival?',
     body:
       'You don’t apply in the traditional way — the community decides. Each month, films are ranked by votes from real users. The top 2 highest-voted films each month will be screened at the Overlooked Film Festival 2026 in July in Rome (exact date TBC). No judges — it’s the community we build.',
   },
-
-  // ✅ NEW — Livestreams spotlighting all levels (random picks)
   {
     title: 'Live streams (bi-weekly reactions & reviews)',
     body:
       'Every two weeks we go live reacting to and reviewing OverLooked film submissions picked at random — not just the highest-voted films. We give spotlight to all levels of filmmakers.',
   },
-
-  // ✅ NEW — Workshop tools updated weekly
   {
     title: 'Workshop (tools updated every Friday)',
     body:
@@ -593,6 +570,8 @@ export default function SignInScreen() {
         <View style={styles.bgSolid} />
         <View style={styles.radialGlowTop} pointerEvents="none" />
         <View style={styles.radialGlowBottom} pointerEvents="none" />
+        <View style={styles.vignette} pointerEvents="none" />
+        <View style={styles.topSheen} pointerEvents="none" />
 
         {/* TOP BAR */}
         <View
@@ -624,12 +603,6 @@ export default function SignInScreen() {
                     OVERLOOKED
                   </Animated.Text>
                 </Pressable>
-
-                {/* ✅ EPIC TEXT (no pill) */}
-                <View style={styles.festivalCenterWrap} pointerEvents="none">
-                  <Text style={styles.festivalEpicText}>FILM FESTIVAL 2026</Text>
-                  <View style={styles.festivalEpicUnderline} />
-                </View>
 
                 <View style={styles.actionsRow}>
                   <TouchableOpacity
@@ -663,12 +636,6 @@ export default function SignInScreen() {
                       OVERLOOKED
                     </Animated.Text>
                   </Pressable>
-                </View>
-
-                {/* ✅ EPIC TEXT (no pill) */}
-                <View style={styles.navRowMid} pointerEvents="none">
-                  <Text style={styles.festivalEpicTextNarrow}>FILM FESTIVAL 2026</Text>
-                  <View style={styles.festivalEpicUnderlineNarrow} />
                 </View>
 
                 <View style={styles.navRowBottom}>
@@ -823,6 +790,8 @@ export default function SignInScreen() {
                   ]}
                 />
                 <View style={styles.heroOverlay} pointerEvents="none" />
+                <View style={styles.heroFilmGrain} pointerEvents="none" />
+                <View style={styles.heroEdgeFade} pointerEvents="none" />
               </View>
             </View>
 
@@ -1189,6 +1158,7 @@ export default function SignInScreen() {
     </SafeAreaView>
   );
 }
+
 // ------------------------------------------------------------
 // STYLES
 // ------------------------------------------------------------
@@ -1206,23 +1176,45 @@ const styles = StyleSheet.create({
   },
   radialGlowTop: {
     position: 'absolute',
-    top: -140,
-    left: -110,
-    width: 340,
-    height: 340,
-    borderRadius: 340,
-    backgroundColor: 'rgba(198,166,100,0.15)',
-    opacity: 0.9,
+    top: -160,
+    left: -140,
+    width: 420,
+    height: 420,
+    borderRadius: 420,
+    backgroundColor: 'rgba(198,166,100,0.14)',
+    opacity: 0.95,
   },
   radialGlowBottom: {
     position: 'absolute',
-    right: -120,
-    bottom: -120,
-    width: 360,
-    height: 360,
-    borderRadius: 360,
+    right: -160,
+    bottom: -160,
+    width: 440,
+    height: 440,
+    borderRadius: 440,
     backgroundColor: 'rgba(198,166,100,0.08)',
-    opacity: 0.9,
+    opacity: 0.95,
+  },
+
+  // cinematic vignette + sheen (styling only)
+  vignette: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+    // @ts-ignore web-only
+    backgroundImage:
+      'radial-gradient(ellipse at center, rgba(0,0,0,0) 35%, rgba(0,0,0,0.55) 100%)',
+    opacity: Platform.OS === 'web' ? 1 : 0,
+  },
+  topSheen: {
+    position: 'absolute',
+    top: -40,
+    left: 0,
+    right: 0,
+    height: 220,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    // @ts-ignore web-only
+    backgroundImage:
+      'radial-gradient(ellipse at top, rgba(198,166,100,0.12) 0%, rgba(13,13,13,0) 70%)',
+    opacity: Platform.OS === 'web' ? 1 : 0,
   },
 
   topBarWrapper: {
@@ -1230,7 +1222,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(13,13,13,0.96)',
+    backgroundColor: 'rgba(13,13,13,0.94)',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: DIVIDER,
     zIndex: 20,
@@ -1246,9 +1238,9 @@ const styles = StyleSheet.create({
     gap: 8,
     position: 'relative',
     // @ts-ignore — web-only blur
-    backdropFilter: 'saturate(120%) blur(8px)',
+    backdropFilter: 'saturate(135%) blur(10px)',
     // @ts-ignore
-    WebkitBackdropFilter: 'saturate(120%) blur(8px)',
+    WebkitBackdropFilter: 'saturate(135%) blur(10px)',
   },
 
   topBarInnerNarrow: {
@@ -1265,7 +1257,6 @@ const styles = StyleSheet.create({
   },
 
   navRowTop: { alignItems: 'center', justifyContent: 'center' },
-  navRowMid: { alignItems: 'center', justifyContent: 'center' },
   navRowBottom: { alignItems: 'center', justifyContent: 'center' },
 
   brandWrap: { paddingVertical: 4, paddingRight: 8 },
@@ -1276,61 +1267,13 @@ const styles = StyleSheet.create({
     color: TEXT_IVORY,
     letterSpacing: 2.2,
     fontFamily: SYSTEM_SANS,
+    textShadowColor: 'rgba(0,0,0,0.65)',
+    textShadowOffset: { width: 0, height: 10 },
+    textShadowRadius: 22,
   },
   brandTitleNarrow: {
     fontSize: 17,
     letterSpacing: 2,
-  },
-
-  festivalCenterWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: '50%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: -20,
-  },
-
-  // ✅ EPIC TEXT (no pill)
-  festivalEpicText: {
-    color: T.text,
-    fontSize: 15.5,
-    fontWeight: '900',
-    letterSpacing: 3.2,
-    fontFamily: SYSTEM_SANS,
-    textTransform: 'uppercase',
-    textShadowColor: 'rgba(198,166,100,0.35)',
-    textShadowOffset: { width: 0, height: 10 },
-    textShadowRadius: 18,
-  },
-  festivalEpicUnderline: {
-    marginTop: 6,
-    width: 120,
-    height: 2,
-    borderRadius: 999,
-    backgroundColor: 'rgba(198,166,100,0.75)',
-    opacity: 0.95,
-  },
-
-  festivalEpicTextNarrow: {
-    color: T.text,
-    fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: 3.4,
-    fontFamily: SYSTEM_SANS,
-    textTransform: 'uppercase',
-    textShadowColor: 'rgba(198,166,100,0.35)',
-    textShadowOffset: { width: 0, height: 10 },
-    textShadowRadius: 18,
-  },
-  festivalEpicUnderlineNarrow: {
-    marginTop: 6,
-    width: 130,
-    height: 2,
-    borderRadius: 999,
-    backgroundColor: 'rgba(198,166,100,0.75)',
-    opacity: 0.95,
   },
 
   actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -1348,9 +1291,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 999,
     shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
   },
   primaryChipNarrow: { paddingVertical: 8, paddingHorizontal: 12 },
   primaryChipTiny: { paddingVertical: 7, paddingHorizontal: 10 },
@@ -1390,8 +1333,11 @@ const styles = StyleSheet.create({
     lineHeight: 34,
     fontWeight: '900',
     color: T.text,
-    letterSpacing: 0.4,
+    letterSpacing: 0.35,
     fontFamily: SYSTEM_SANS,
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 10 },
+    textShadowRadius: 22,
   },
   heroCopy: {
     marginTop: 10,
@@ -1399,6 +1345,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: T.sub,
     fontFamily: SYSTEM_SANS,
+    opacity: 0.95,
   },
 
   manifestoWrap: { marginTop: 12 },
@@ -1416,14 +1363,27 @@ const styles = StyleSheet.create({
     borderRadius: CARD_RADIUS,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: T.border,
+    borderColor: 'rgba(255,255,255,0.08)',
     shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 14 },
     backgroundColor: '#111',
   },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.38)' },
+  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.34)' },
+  heroFilmGrain: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    opacity: 0.14,
+  },
+  heroEdgeFade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+    // @ts-ignore web-only
+    backgroundImage:
+      'linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,0.55) 100%)',
+    opacity: Platform.OS === 'web' ? 1 : 0,
+  },
 
   cardCol: { flexGrow: 1, flexBasis: 420, maxWidth: 500 },
 
@@ -1432,12 +1392,12 @@ const styles = StyleSheet.create({
     backgroundColor: T.card,
     borderRadius: CARD_RADIUS,
     borderWidth: 1,
-    borderColor: T.border,
+    borderColor: 'rgba(255,255,255,0.07)',
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.45,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 16 },
   },
   featureItem: {
     paddingHorizontal: 16,
@@ -1447,14 +1407,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     borderBottomWidth: 1,
-    borderBottomColor: T.border,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
     backgroundColor: T.card,
     minHeight: 60,
   },
   hoveredShadow: {
-    shadowOpacity: 0.5,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.55,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 18 },
   },
   featureNumber: {
     width: 28,
@@ -1464,7 +1424,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: 1,
-    borderColor: T.border,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   featureNumberText: { fontSize: 12, fontWeight: '800', color: T.text, fontFamily: SYSTEM_SANS },
   featureIconWrap: {
@@ -1475,7 +1435,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: 1,
-    borderColor: T.border,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   featureTitle: { fontSize: 15, fontWeight: '900', color: T.text, fontFamily: SYSTEM_SANS },
   featureSubtitle: { fontSize: 12.5, color: T.sub, fontFamily: SYSTEM_SANS },
@@ -1486,11 +1446,11 @@ const styles = StyleSheet.create({
     backgroundColor: T.card,
     borderRadius: CARD_RADIUS,
     borderWidth: 1,
-    borderColor: T.border,
+    borderColor: 'rgba(255,255,255,0.07)',
     shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.45,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 16 },
     overflow: 'hidden',
     width: '100%',
   },
@@ -1516,7 +1476,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.04)',
     borderWidth: 1,
-    borderColor: T.border,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   collapsibleTitle: {
     fontSize: 17,
@@ -1554,7 +1514,7 @@ const styles = StyleSheet.create({
   /* Modal backdrop */
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(0,0,0,0.72)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 18,
@@ -1571,7 +1531,11 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 20,
     borderWidth: 1,
-    borderColor: T.border,
+    borderColor: 'rgba(255,255,255,0.08)',
+    shadowColor: '#000',
+    shadowOpacity: 0.55,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 18 },
   },
   authHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   authTitle: {
@@ -1597,7 +1561,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     borderWidth: 1,
-    borderColor: T.border,
+    borderColor: 'rgba(255,255,255,0.10)',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: Platform.OS === 'web' ? 12 : 10,
@@ -1607,8 +1571,8 @@ const styles = StyleSheet.create({
     borderColor: T.olive,
     shadowColor: T.olive,
     shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
   },
 
   input: {
@@ -1628,6 +1592,10 @@ const styles = StyleSheet.create({
     marginTop: 14,
     borderWidth: 1,
     borderColor: T.accent,
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 12 },
   },
   buttonText: {
     color: DARK_BG,
@@ -1645,7 +1613,11 @@ const styles = StyleSheet.create({
     borderRadius: CARD_RADIUS,
     padding: 18,
     borderWidth: 1,
-    borderColor: T.border,
+    borderColor: 'rgba(255,255,255,0.08)',
+    shadowColor: '#000',
+    shadowOpacity: 0.55,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 18 },
   },
   modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
   modalTitle: {
@@ -1669,7 +1641,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: T.border,
+    borderColor: 'rgba(255,255,255,0.10)',
     backgroundColor: '#0C0C0C',
   },
   modalSecondaryText: {
@@ -1685,6 +1657,10 @@ const styles = StyleSheet.create({
     backgroundColor: T.accent,
     borderWidth: 1,
     borderColor: T.accent,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
   },
   modalPrimaryText: { color: DARK_BG, fontWeight: '900', letterSpacing: 1.2, fontFamily: SYSTEM_SANS },
 });

@@ -1,4 +1,8 @@
-// app/screens/FeaturedScreen.tsx
+// FeaturedScreen.tsx — PART 1 / 3
+// ✅ Includes: imports, theme/constants, Grain, signed URL helpers, media helpers,
+// ✅ HeaderControls updated to match the “Frameup-style” sidebar (vertical sort list)
+// ⛔️ Do NOT run yet — wait for PART 2 + PART 3 to complete the file.
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -20,6 +24,7 @@ import {
   useWindowDimensions,
   ImageBackground,
   LayoutChangeEvent,
+  Modal,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import {
@@ -31,8 +36,8 @@ import {
 } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Submission } from '../types';
-import { supabase, giveXp, XP_VALUES } from '../lib/supabase'; // ✅ shared client & XP helpers
-import { useGamification } from '../context/GamificationContext'; // ✅ gamification context
+import { supabase, giveXp, XP_VALUES } from '../lib/supabase';
+import { useGamification } from '../context/GamificationContext';
 
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
@@ -42,24 +47,20 @@ const SYSTEM_SANS = Platform.select({
 });
 
 /* ------------------------------------------------------------------
-   CINEMATIC NOIR — Simple • Clean • High Contrast
+   CINEMATIC NOIR — Simple • Clean • High Contrast (kept)
    ------------------------------------------------------------------ */
 const GOLD = '#C6A664';
 const T = {
   bg: '#000000',
   bg2: '#050505',
   panel: '#0A0A0A',
-
   card: '#0A0A0A',
   card2: '#0D0D0D',
   outline: '#1A1A1A',
-
   text: '#FFFFFF',
   sub: '#DADADA',
   mute: '#9A9A9A',
-
   accent: '#4FD1FF',
-
   heroBurgundy1: '#0B0B0B',
   heroBurgundy2: '#000000',
 };
@@ -80,11 +81,9 @@ type Category = 'film';
 
 const TOP_BAR_OFFSET = Platform.OS === 'web' ? 76 : 16;
 const BOTTOM_TAB_H = Platform.OS === 'web' ? 64 : 64;
-
-/** Bring content higher */
 const CONTENT_TOP_PAD = Platform.OS === 'web' ? 22 : 14;
 
-/* 🔥 Gamification constants */
+/* 🔥 Gamification constants (kept) */
 const VOTES_PER_MONTH = 10;
 const VOTE_XP =
   (XP_VALUES &&
@@ -210,10 +209,8 @@ function webWarmVideo(href: string) {
   } catch {}
   webWarmStore.warmVideos.set(href, v);
 }
-async function signStoragePath(
-  path: string,
-  expiresInSec = 180
-): Promise<string> {
+
+async function signStoragePath(path: string, expiresInSec = 180): Promise<string> {
   const now = Date.now();
   const cached = signedUrlCache.get(path);
   if (cached && now < cached.exp - 30_000) return cached.url;
@@ -240,9 +237,7 @@ async function signStoragePath(
 }
 
 /* ---------------- Select smallest variant ---------------- */
-function pickSmallestVariant(
-  row: any
-): { path: string | null; thumb: string | null } {
+function pickSmallestVariant(row: any): { path: string | null; thumb: string | null } {
   const variants = row?.videos?.video_variants ?? [];
   if (!variants || variants.length === 0) {
     return {
@@ -251,10 +246,7 @@ function pickSmallestVariant(
         row?.storage_path ??
         row?.videos?.original_path ??
         null,
-      thumb:
-        row?.thumbnail_url ??
-        row?.videos?.thumbnail_path ??
-        null,
+      thumb: row?.thumbnail_url ?? row?.videos?.thumbnail_path ?? null,
     };
   }
   const scored = variants
@@ -271,10 +263,7 @@ function pickSmallestVariant(
       smallest?.path ??
       row?.videos?.original_path ??
       null,
-    thumb:
-      row?.thumbnail_url ??
-      row?.videos?.thumbnail_path ??
-      null,
+    thumb: row?.thumbnail_url ?? row?.videos?.thumbnail_path ?? null,
   };
 }
 
@@ -295,86 +284,14 @@ async function pauseAllExcept(id?: string | null) {
 /* ---------------- Minimal icons ---------------- */
 const IconCorners = () => (
   <View style={{ width: 16, height: 16 }}>
-    <View
-      style={{
-        position: 'absolute',
-        left: 0,
-        top: 0,
-        width: 8,
-        height: 2,
-        backgroundColor: '#fff',
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        left: 0,
-        top: 0,
-        width: 2,
-        height: 8,
-        backgroundColor: '#fff',
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        right: 0,
-        top: 0,
-        width: 8,
-        height: 2,
-        backgroundColor: '#fff',
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        right: 0,
-        top: 0,
-        width: 2,
-        height: 8,
-        backgroundColor: '#fff',
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        left: 0,
-        bottom: 0,
-        width: 8,
-        height: 2,
-        backgroundColor: '#fff',
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        left: 0,
-        bottom: 0,
-        width: 2,
-        height: 8,
-        backgroundColor: '#fff',
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        right: 0,
-        bottom: 0,
-        width: 8,
-        height: 2,
-        backgroundColor: '#fff',
-      }}
-    />
-    <View
-      style={{
-        position: 'absolute',
-        right: 0,
-        bottom: 0,
-        width: 2,
-        height: 8,
-        backgroundColor: '#fff',
-      }}
-    />
+    <View style={{ position: 'absolute', left: 0, top: 0, width: 8, height: 2, backgroundColor: '#fff' }} />
+    <View style={{ position: 'absolute', left: 0, top: 0, width: 2, height: 8, backgroundColor: '#fff' }} />
+    <View style={{ position: 'absolute', right: 0, top: 0, width: 8, height: 2, backgroundColor: '#fff' }} />
+    <View style={{ position: 'absolute', right: 0, top: 0, width: 2, height: 8, backgroundColor: '#fff' }} />
+    <View style={{ position: 'absolute', left: 0, bottom: 0, width: 8, height: 2, backgroundColor: '#fff' }} />
+    <View style={{ position: 'absolute', left: 0, bottom: 0, width: 2, height: 8, backgroundColor: '#fff' }} />
+    <View style={{ position: 'absolute', right: 0, bottom: 0, width: 8, height: 2, backgroundColor: '#fff' }} />
+    <View style={{ position: 'absolute', right: 0, bottom: 0, width: 2, height: 8, backgroundColor: '#fff' }} />
   </View>
 );
 
@@ -441,9 +358,22 @@ const IconSpeaker = ({ muted = false }: { muted?: boolean }) => (
   </View>
 );
 
+/* ---------------- Reddit-style vote arrow ---------------- */
+const VoteArrow = ({ up = true, active = false, disabled = false }: { up?: boolean; active?: boolean; disabled?: boolean }) => (
+  <View
+    style={[
+      styles.voteArrow,
+      up ? styles.voteArrowUp : styles.voteArrowDown,
+      active && styles.voteArrowActive,
+      disabled && { opacity: 0.35 },
+    ]}
+  />
+);
+
 const WebVideo: any = 'video';
 
 /* ---------------- Video with custom progress (no native controls) ---------------- */
+/* NOTE: Kept exactly as your current implementation. */
 function HostedVideoInline({
   playerId,
   storagePath,
@@ -472,12 +402,9 @@ function HostedVideoInline({
   const [muted, setMuted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  // progress 0..1
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const progressRef = useRef<View>(null);
-
-  const clampedW = Math.min(width, Math.max(280, maxHeight * aspect));
 
   useEffect(() => {
     const handle: PlayerHandle = {
@@ -576,60 +503,55 @@ function HostedVideoInline({
     } catch {}
   };
 
-useEffect(() => {
-  (async () => {
-    if (!src) return;
+  useEffect(() => {
+    (async () => {
+      if (!src) return;
 
-    if (autoPlay && (Platform.OS !== 'web' || posterReady)) {
-      // ✅ Autoplay must be muted on web (and safe on native too)
-      if (Platform.OS === 'web') {
-        if (htmlRef.current) {
-          htmlRef.current.muted = true;
-          htmlRef.current.controls = false;
+      if (autoPlay && (Platform.OS !== 'web' || posterReady)) {
+        if (Platform.OS === 'web') {
+          if (htmlRef.current) {
+            htmlRef.current.muted = true;
+            htmlRef.current.controls = false;
+          }
+        } else {
+          try {
+            await ref.current?.setIsMutedAsync(true);
+          } catch {}
         }
+        setMuted(true);
+        await play(false);
       } else {
-        try {
-          await ref.current?.setIsMutedAsync(true);
-        } catch {}
-      }
-      setMuted(true);
+        await pause();
 
-      // ✅ autoplay muted (avoids Safari/Chrome autoplay-with-sound block)
-      await play(false);
-    } else {
-      await pause();
-
-      // keep muted by default
-      if (Platform.OS === 'web') {
-        if (htmlRef.current) {
-          htmlRef.current.muted = true;
-          htmlRef.current.controls = false;
+        if (Platform.OS === 'web') {
+          if (htmlRef.current) {
+            htmlRef.current.muted = true;
+            htmlRef.current.controls = false;
+          }
+        } else {
+          try {
+            await ref.current?.setIsMutedAsync(true);
+          } catch {}
         }
-      } else {
-        try {
-          await ref.current?.setIsMutedAsync(true);
-        } catch {}
+        setMuted(true);
       }
-      setMuted(true);
-    }
-  })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [src, autoPlay, posterReady]);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src, autoPlay, posterReady]);
 
-// Ensure native controls never appear (Safari quirks)
-useEffect(() => {
-  if (Platform.OS !== 'web') return;
-  const id = window.setInterval(() => {
-    const el = htmlRef.current;
-    if (el) el.controls = false;
-  }, 500);
-  return () => window.clearInterval(id);
-}, []);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const id = window.setInterval(() => {
+      const el = htmlRef.current;
+      if (el) el.controls = false;
+    }, 500);
+    return () => window.clearInterval(id);
+  }, []);
 
-const onSurfacePress = async () => {
-  if (isPlaying) await pause();
-  else await play(false);
-};
+  const onSurfacePress = async () => {
+    if (isPlaying) await pause();
+    else await play(false);
+  };
 
   const maybeUpdateAspectFromStatus = (status?: AVPlaybackStatus) => {
     if (!status || !('isLoaded' in status) || !status.isLoaded) return;
@@ -660,11 +582,7 @@ const onSurfacePress = async () => {
     fadeIn();
   };
 
-  const handleFsUpdate = async ({
-    fullscreenUpdate,
-  }: {
-    fullscreenUpdate: number;
-  }) => {
+  const handleFsUpdate = async ({ fullscreenUpdate }: { fullscreenUpdate: number }) => {
     if (Platform.OS === 'web') return;
     try {
       if (fullscreenUpdate === VideoFullscreenUpdate.PLAYER_WILL_PRESENT) {
@@ -752,7 +670,6 @@ const onSurfacePress = async () => {
     } catch {}
   };
 
-  // --- Scrubbing (web) ---
   const [seeking, setSeeking] = useState(false);
 
   const setFromClientX = (clientX: number) => {
@@ -793,7 +710,7 @@ const onSurfacePress = async () => {
   return (
     <View
       style={{
-        width: clampedW,
+        width,
         aspectRatio: aspect as any,
         borderRadius: RADIUS_XL,
         overflow: 'hidden',
@@ -919,7 +836,6 @@ function HostedAudioInline({
   autoPlay: boolean;
 }) {
   const [src, setSrc] = useState<string | null>(null);
-  const [posterReady, setPosterReady] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -929,7 +845,6 @@ function HostedAudioInline({
       try {
         const url = await signStoragePath(storagePath, 180);
         if (alive) {
-          setPosterReady(false);
           setSrc(url);
         }
       } catch (e) {
@@ -1077,7 +992,6 @@ function normalizeIsoRange(start: string, end: string) {
 }
 
 async function fetchChallengesForFeatured() {
-  // 1) finalize last month if needed
   try {
     const { error: finalizeErr } = await supabase.rpc('finalize_last_month_winner_if_needed');
     if (finalizeErr) {
@@ -1085,7 +999,6 @@ async function fetchChallengesForFeatured() {
     }
   } catch {}
 
-  // 2) ensure current month challenge exists
   try {
     const { error: insertErr } = await supabase.rpc('insert_monthly_challenge_if_not_exists');
     if (insertErr) {
@@ -1095,7 +1008,6 @@ async function fetchChallengesForFeatured() {
 
   const nowIso = new Date().toISOString();
 
-  // CURRENT month row (for range/theme)
   const { data: current, error: curErr } = await supabase
     .from('monthly_challenges')
     .select('id, theme_word, month_start, month_end')
@@ -1109,7 +1021,6 @@ async function fetchChallengesForFeatured() {
     console.warn('Failed to fetch CURRENT month challenge:', curErr.message);
   }
 
-  // PREVIOUS month row (for last month winner)
   const { data: previous, error: prevErr } = await supabase
     .from('monthly_challenges')
     .select('id, winner_submission_id, month_start, month_end')
@@ -1128,7 +1039,7 @@ async function fetchChallengesForFeatured() {
   };
 }
 
-/* 🔥 Count votes in current month for cap enforcement */
+/* 🔥 Count votes in current month for cap enforcement (kept) */
 async function countUserVotesInRange(uid: string, range: { start: string; end: string }) {
   try {
     const { startIso, endIso } = normalizeIsoRange(range.start, range.end);
@@ -1159,54 +1070,6 @@ async function countUserVotesInRange(uid: string, range: { start: string; end: s
   }
 }
 
-/* -------------------- Film category tags (match ChallengeScreen) -------------------- */
-const FILM_TAGS: string[] = [
-  // Originals (kept)
-  'Drama',
-  'Comedy',
-  'Thriller',
-  'Horror',
-  'Sci-Fi',
-  'Romance',
-  'Action',
-  'Mystery',
-  'Crime',
-  'Fantasy',
-  'Coming-of-Age',
-  'Experimental',
-  'Documentary-Style',
-  'No-Dialogue',
-  'One-Take',
-  'Found Footage',
-  'Slow Cinema',
-  'Satire',
-  'Neo-Noir',
-  'Musical',
-
-  // ✅ New (acting + narrative + tone)
-  'Tragedy',
-  'Monologue',
-  'Character Study',
-  'Dialogue-Driven',
-  'Dramedy',
-  'Dark Comedy',
-  'Psychological',
-  'Suspense',
-  'Period Piece',
-  'Social Realism',
-  'Rom-Com',
-  'Heist',
-  'War',
-  'Western',
-  'Supernatural',
-  'Animation-Style',
-  'Silent Film',
-  'Improvised',
-  'Voiceover',
-  'Two-Hander',
-  'Single Location',
-];
-
 /* ---------------- Memoized Header Controls ---------------- */
 type HeaderControlsProps = {
   category: Category;
@@ -1215,9 +1078,18 @@ type HeaderControlsProps = {
   searchText: string;
   setSearchText: (s: string) => void;
   isSearching?: boolean;
-  compact?: boolean; // pass compact={isNarrow} from FeaturedScreen
+  compact?: boolean;
+  layout?: 'center' | 'sidebar';
 };
 
+/**
+ * ✅ Updated to match the reference sidebar:
+ * - Search input at top
+ * - “SORT BY” title
+ * - Vertical list buttons (instead of chips)
+ *
+ * NOTE: Layout="center" still renders a compact horizontal row for mobile/narrow.
+ */
 const HeaderControls = React.memo(
   ({
     category,
@@ -1227,50 +1099,45 @@ const HeaderControls = React.memo(
     setSearchText,
     isSearching = false,
     compact = false,
+    layout = 'center',
   }: HeaderControlsProps) => {
     const [focused, setFocused] = useState(false);
 
-    const filters: { key: SortKey; label: string }[] = [
-      { key: 'newest', label: 'Newest' },
-      { key: 'mostvoted', label: 'Top Voted' },
-      { key: 'leastvoted', label: 'Least Voted' },
-      { key: 'oldest', label: 'Oldest' },
+    const filters: { key: SortKey; label: string; sub?: string }[] = [
+      { key: 'mostvoted', label: 'Top', sub: 'Most voted' },
+      { key: 'newest', label: 'New', sub: 'Latest uploads' },
+      { key: 'leastvoted', label: 'Rising', sub: 'Least voted' },
+      { key: 'oldest', label: 'Old', sub: 'Earliest' },
     ];
 
     const raw = searchText ?? '';
     const q = raw.trim();
 
-    // ✅ compact sizing tokens (mobile)
+    // sizing
     const R = compact ? 12 : 14;
     const padH = compact ? 12 : 14;
     const padV = compact ? 8 : 10;
     const inputSize = compact ? 13 : 14;
 
-    const chipPadV = compact ? 7 : 8;
-    const chipPadH = compact ? 14 : 18;
-    const chipFont = compact ? 12 : 13;
-    const chipTrack = compact ? 0.3 : 0.6;
-
     const hintFont = compact ? 11 : 12;
     const hintTrack = compact ? 0.4 : 0.6;
 
+    const isSidebar = layout === 'sidebar';
+
     return (
-      <View style={{ width: '100%', alignItems: 'center' }}>
-        {/* --- Search Bar --- */}
+      <View style={{ width: '100%' }}>
+        {/* Search */}
         <View
-          style={{
-            width: '100%',
-            maxWidth: 620,
-            backgroundColor: '#0F0F0F',
-            borderRadius: R,
-            borderWidth: 1,
-            borderColor: focused ? GOLD : '#1A1A1A',
-            paddingHorizontal: padH,
-            paddingVertical: padV,
-            marginBottom: compact ? 6 : 8,
-            flexDirection: 'row',
-            alignItems: 'center',
-          }}
+          style={[
+            styles.sideSearchBox,
+            {
+              borderRadius: R,
+              borderColor: focused ? GOLD : '#1A1A1A',
+              paddingHorizontal: padH,
+              paddingVertical: padV,
+              marginBottom: 12,
+            },
+          ]}
         >
           <TextInput
             placeholder="Search film name…"
@@ -1294,17 +1161,15 @@ const HeaderControls = React.memo(
           />
         </View>
 
-        {/* ✅ Searching Indicator */}
+        {/* Searching hint */}
         {category === 'film' && isSearching && q.length > 0 ? (
           <View
             style={{
-              width: '100%',
-              maxWidth: 620,
               flexDirection: 'row',
               alignItems: 'center',
-              justifyContent: 'center',
               gap: 10,
-              marginBottom: compact ? 8 : 10,
+              marginBottom: 12,
+              justifyContent: isSidebar ? 'flex-start' : 'center',
             }}
           >
             <ActivityIndicator size="small" color={GOLD} />
@@ -1318,115 +1183,128 @@ const HeaderControls = React.memo(
                 textTransform: 'uppercase',
               }}
             >
-              Searching for film…
+              Searching…
             </Text>
           </View>
         ) : null}
 
-        {/* --- Sort Chips --- */}
-        <View
-          style={{
-            flexDirection: 'row',
-            maxWidth: 650,
-            flexWrap: 'wrap',
-            justifyContent: 'center',
-            gap: compact ? 6 : 8,
-          }}
-        >
-          {filters.map((f) => {
-            const active = sort === f.key;
-            return (
-              <TouchableOpacity
-                key={f.key}
-                activeOpacity={0.9}
-                onPress={() => setSort(f.key)}
-                style={{
-                  paddingVertical: chipPadV,
-                  paddingHorizontal: chipPadH,
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: active ? GOLD : '#2A2A2A',
-                  backgroundColor: active ? '#1A1A1A' : '#0C0C0C',
-                }}
-              >
-                <Text
-                  style={{
-                    color: active ? GOLD : '#DDD',
-                    fontSize: chipFont,
-                    fontFamily: SYSTEM_SANS,
-                    fontWeight: '800',
-                    letterSpacing: chipTrack,
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  {f.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+        {/* Sort panel */}
+        <View style={styles.sidePanel}>
+          <Text style={styles.sidePanelTitle}>SORT BY</Text>
+
+          {/* Sidebar = vertical list, Center = compact row */}
+          {isSidebar ? (
+            <View style={{ gap: 8 }}>
+              {filters.map((f) => {
+                const active = sort === f.key;
+                return (
+                  <TouchableOpacity
+                    key={f.key}
+                    activeOpacity={0.9}
+                    onPress={() => setSort(f.key)}
+                    style={[
+                      styles.sideSortItem,
+                      active && styles.sideSortItemActive,
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.sideSortLabel, active && { color: GOLD }]}>
+                        {f.label}
+                      </Text>
+                      {!!f.sub ? (
+                        <Text style={styles.sideSortSub}>{f.sub}</Text>
+                      ) : null}
+                    </View>
+
+                    {/* tiny indicator */}
+                    <View
+                      style={[
+                        styles.sideSortDot,
+                        active && { backgroundColor: GOLD, opacity: 1 },
+                      ]}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.centerSortRow}>
+              {filters.map((f) => {
+                const active = sort === f.key;
+                return (
+                  <TouchableOpacity
+                    key={f.key}
+                    activeOpacity={0.9}
+                    onPress={() => setSort(f.key)}
+                    style={[
+                      styles.centerChip,
+                      active && { borderColor: GOLD, backgroundColor: '#111' },
+                    ]}
+                  >
+                    <Text style={[styles.centerChipText, active && { color: GOLD }]}>
+                      {f.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
         </View>
       </View>
     );
   }
 );
-/* ---------------- screen ---------------- */
+
+
+// ⬇️ PART 2 continues from here (FeaturedScreen component body, fetch logic, render functions, layout)
+// FeaturedScreen.tsx — PART 2 / 3
+// ✅ Includes: FeaturedScreen component (state, fetch, vote/comment, rendering, layout, preview + comments modals)
+// ⛔️ PART 3 will be styles + export (and a couple of new sidebar styles used in PART 1)
+
 const FeaturedScreen = () => {
   const navigation = useNavigation<any>();
-  const { width: winW, height: winH } =
-    useWindowDimensions();
+  const { width: winW, height: winH } = useWindowDimensions();
   const isNarrow = winW < 480;
 
-  const isMobile = Platform.OS !== 'web';
-  const isSmallMobile = isMobile && winW < 380;
+  const isWideWeb = Platform.OS === 'web' && winW >= 980; // ✅ sidebar + compact grid
+  const gridColumns = isWideWeb ? 2 : 1;
 
-  const S = {
-    h1: isSmallMobile ? 18 : isNarrow ? 20 : 22,
-    h2: isSmallMobile ? 14 : isNarrow ? 15 : 16,
-    body: isSmallMobile ? 12 : isNarrow ? 13 : 14,
-    chip: isSmallMobile ? 11 : isNarrow ? 12 : 13,
-    pad: isSmallMobile ? 10 : isNarrow ? 12 : 14,
-    padSm: isSmallMobile ? 8 : isNarrow ? 10 : 12,
-  };
+  const isMobile = Platform.OS !== 'web';
 
   const category: Category = 'film';
-  const [loading, setLoading] =
-    useState(true);
-  const [winner, setWinner] =
-    useState<
-      | (Submission & {
-          description?: string | null;
-          storage_path?: string | null;
-          thumbnail_url?: string | null;
-          media_kind?: RawSubmission['media_kind'];
-          mime_type?: string | null;
-          category?: Category | null;
-        })
-      | null
-    >(null);
-  const [submissions, setSubmissions] =
-    useState<
-      Array<
-        Submission & {
-          description?: string | null;
-          storage_path?: string | null;
-          thumbnail_url?: string | null;
-          media_kind?: RawSubmission['media_kind'];
-          category?: Category | null;
-        }
-      >
-    >([]);
+  const [loading, setLoading] = useState(true);
+  const [winner, setWinner] = useState<
+    | (Submission & {
+        description?: string | null;
+        storage_path?: string | null;
+        thumbnail_url?: string | null;
+        media_kind?: RawSubmission['media_kind'];
+        mime_type?: string | null;
+        category?: Category | null;
+      })
+    | null
+  >(null);
 
-  const [searchText, setSearchText] =
-    useState('');
-  const [searchQ, setSearchQ] =
-    useState('');
-  const [sort, setSort] =
-    useState<SortKey>('newest');
+  // ✅ ALL FILMS OF ALL TIME
+  const [submissions, setSubmissions] = useState<
+    Array<
+      Submission & {
+        description?: string | null;
+        storage_path?: string | null;
+        thumbnail_url?: string | null;
+        media_kind?: RawSubmission['media_kind'];
+        category?: Category | null;
+      }
+    >
+  >([]);
+
+  const [searchText, setSearchText] = useState('');
+  const [searchQ, setSearchQ] = useState('');
+  const [sort, setSort] = useState<SortKey>('newest');
 
   const [isSearching, setIsSearching] = useState(false);
   const searchDebounceRef = useRef<any>(null);
 
-  // ✅ ADD THIS useEffect RIGHT BELOW YOUR STATES (still inside the component)
   useEffect(() => {
     if (category !== 'film') return;
 
@@ -1448,21 +1326,11 @@ const FeaturedScreen = () => {
     };
   }, [searchText, category]);
 
-  const [currentUserId, setCurrentUserId] =
-    useState<string | null>(null);
-  const [votedIds, setVotedIds] =
-    useState<Set<string>>(new Set());
-  const [voteBusy, setVoteBusy] =
-    useState<Record<string, boolean>>(
-      {}
-    );
-  const [deleteBusy, setDeleteBusy] =
-    useState<Record<string, boolean>>(
-      {}
-    );
-
-  const [activeId, setActiveId] =
-    useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [votedIds, setVotedIds] = useState<Set<string>>(new Set());
+  const [voteBusy, setVoteBusy] = useState<Record<string, boolean>>({});
+  const [deleteBusy, setDeleteBusy] = useState<Record<string, boolean>>({});
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   type CommentRow = {
     id: string;
@@ -1485,6 +1353,19 @@ const FeaturedScreen = () => {
   const [commentPosting, setCommentPosting] = useState(false);
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
 
+  // ✅ Preview modal for wide web compact cards
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewItem, setPreviewItem] = useState<
+    | (Submission & {
+        description?: string | null;
+        storage_path?: string | null;
+        thumbnail_url?: string | null;
+        media_kind?: RawSubmission['media_kind'];
+        category?: Category | null;
+      })
+    | null
+  >(null);
+
   const layoutMap = useRef(
     new Map<
       string,
@@ -1497,24 +1378,14 @@ const FeaturedScreen = () => {
   );
   const lastOffsetY = useRef(0);
 
-  // 🔥 Gamification context — we only need refresh + userId
-  const {
-    userId: gamUserId,
-    refresh: refreshGamification,
-  } = useGamification();
+  const { userId: gamUserId, refresh: refreshGamification } = useGamification();
 
-  // Track monthly votes used for cap enforcement
-  const [monthlyVotesUsed, setMonthlyVotesUsed] =
-    useState(0);
-  const currentRangeRef = useRef<
-    { start: string; end: string } | null
-  >(null);
+  // Track monthly votes used for cap enforcement (kept, even though feed is all-time)
+  const [monthlyVotesUsed, setMonthlyVotesUsed] = useState(0);
+  const currentRangeRef = useRef<{ start: string; end: string } | null>(null);
 
   useEffect(() => {
-    const t = setTimeout(
-      () => setSearchQ(searchText),
-      500
-    );
+    const t = setTimeout(() => setSearchQ(searchText), 500);
     return () => clearTimeout(t);
   }, [searchText]);
 
@@ -1529,17 +1400,44 @@ const FeaturedScreen = () => {
     }).catch(() => {});
   }, []);
 
-  const cardW = Math.min(
-    1120,
-    Math.max(
-      320,
-      winW - (Platform.OS === 'web' ? 40 : 16)
-    )
-  );
-  const availableHForMedia = Math.max(
-    300,
-    winH - (TOP_BAR_OFFSET + BOTTOM_TAB_H + 78)
-  );
+  // ✅ Page sizing — sidebar + grid on wide web
+  const PAGE_PAD = Platform.OS === 'web' ? 18 : 16;
+  const SIDEBAR_W = isWideWeb ? 320 : 0;
+  const GUTTER = isWideWeb ? 18 : 0;
+
+  const pageInnerW = Math.min(1400, Math.max(320, winW - PAGE_PAD * 2));
+  const gridAreaW = isWideWeb ? Math.max(320, pageInnerW - SIDEBAR_W - GUTTER) : pageInnerW;
+
+  // ✅ Hero/winner must fit INSIDE the grid area on wide web (sidebar layout)
+const cardW = isWideWeb
+  ? Math.min(1120, Math.max(320, gridAreaW))
+  : Math.min(1120, Math.max(320, pageInnerW));
+
+  const availableHForMedia = Math.max(280, winH - (TOP_BAR_OFFSET + BOTTOM_TAB_H + 90));
+
+  const FIT_ASPECT = 16 / 9;
+
+const fitContain = (maxW: number, maxH: number, aspect = FIT_ASPECT) => {
+  let w = maxW;
+  let h = w / aspect;
+  if (h > maxH) {
+    h = maxH;
+    w = h * aspect;
+  }
+  return { w, h };
+};
+
+  // ✅ Feed dimensions (Reddit-style) – used in narrow/mobile view
+  const VOTE_COL_W = isNarrow ? 58 : 64;
+  const FEED_INNER_PAD = isNarrow ? 12 : 14;
+  const contentW = Math.max(240, cardW - VOTE_COL_W - FEED_INNER_PAD * 2);
+  const mediaW = isWideWeb
+  ? Math.min(gridAreaW, contentW, 980)
+  : Math.min(contentW, 980);
+
+  // ✅ Compact grid sizing (wide web)
+  const GRID_GAP = 14;
+  const gridCardW = isWideWeb ? Math.floor((gridAreaW - GRID_GAP) / 2) : cardW;
 
   // Fetch content when filters change
   useEffect(() => {
@@ -1552,7 +1450,6 @@ const FeaturedScreen = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sort, searchQ]);
 
-  // Also refresh when screen refocuses (keeps votes / submissions live)
   useFocusEffect(
     useCallback(() => {
       (async () => {
@@ -1564,22 +1461,15 @@ const FeaturedScreen = () => {
   );
 
   const baseCols =
-    'id, user_id, title, votes, submitted_at, is_winner, users ( id, full_name ), video_id, storage_path, video_path, media_kind, mime_type, duration_seconds, category';
+  'id, user_id, title, votes, submitted_at, is_winner, users ( id, full_name ), video_id, storage_path, video_path, thumbnail_url, media_kind, mime_type, duration_seconds, category';
 
-  const fetchWinnerSafe = async (
-    id: string,
-    desired: Category
-  ) => {
+  const fetchWinnerSafe = async (id: string, desired: Category) => {
     const sel = `
       ${baseCols},
       videos:video_id ( original_path, thumbnail_path, video_variants ( path, label ) ),
       description
     `;
-    let res = await supabase
-      .from('submissions')
-      .select(sel)
-      .eq('id', id)
-      .single();
+    let res = await supabase.from('submissions').select(sel).eq('id', id).single();
 
     if (res.error) {
       const sel2 = `
@@ -1587,24 +1477,13 @@ const FeaturedScreen = () => {
         videos:video_id ( original_path, thumbnail_path, video_variants ( path, label ) ),
         word
       `;
-      res = await supabase
-        .from('submissions')
-        .select(sel2)
-        .eq('id', id)
-        .single();
+      res = await supabase.from('submissions').select(sel2).eq('id', id).single();
     }
 
     if (res.error) return res;
 
-    if (
-      res.data &&
-      (res.data as any).category &&
-      (res.data as any).category !== desired
-    ) {
-      return {
-        data: null,
-        error: null,
-      } as any;
+    if (res.data && (res.data as any).category && (res.data as any).category !== desired) {
+      return { data: null, error: null } as any;
     }
 
     if (res.data) {
@@ -1617,14 +1496,7 @@ const FeaturedScreen = () => {
     return res;
   };
 
-  const fetchSubsSafe = async (
-    orderKey: SortKey,
-    searchTextQ: string,
-    range:
-      | { start: string; end: string }
-      | undefined,
-    cat: Category
-  ) => {
+  const fetchSubsSafe = async (orderKey: SortKey, searchTextQ: string, cat: Category) => {
     const sel = `
       ${baseCols},
       videos:video_id ( original_path, thumbnail_path, video_variants ( path, label ) ),
@@ -1632,50 +1504,19 @@ const FeaturedScreen = () => {
     `;
 
     const addSort = (q: any) => {
-      if (orderKey === 'newest')
-        return q.order('submitted_at', {
-          ascending: false,
-        });
-      if (orderKey === 'oldest')
-        return q.order('submitted_at', {
-          ascending: true,
-        });
-      if (orderKey === 'mostvoted')
-        return q.order('votes', {
-          ascending: false,
-        });
-      if (orderKey === 'leastvoted')
-        return q.order('votes', {
-          ascending: true,
-        });
+      if (orderKey === 'newest') return q.order('submitted_at', { ascending: false });
+      if (orderKey === 'oldest') return q.order('submitted_at', { ascending: true });
+      if (orderKey === 'mostvoted') return q.order('votes', { ascending: false });
+      if (orderKey === 'leastvoted') return q.order('votes', { ascending: true });
       return q;
     };
 
-    let query: any = addSort(
-      supabase
-        .from('submissions')
-        .select(sel)
-        .eq('category', 'film')
-    );
-
-    if (range) {
-      const { startIso, endIso } =
-        normalizeIsoRange(
-          range.start,
-          range.end
-        );
-      query = query
-        .gte('submitted_at', startIso)
-        .lt('submitted_at', endIso);
-    }
+    let query: any = addSort(supabase.from('submissions').select(sel).eq('category', 'film'));
 
     const trimmed = searchTextQ.trim();
     if (trimmed) {
       query = query.ilike('title', `%${trimmed}%`);
     }
-
-    // if it looks like a tag, DON'T title-filter in SQL.
-    // Tag filtering happens client-side via selectedKeywords (or Enter-to-apply tag in HeaderControls).
 
     let res = await query;
 
@@ -1685,34 +1526,13 @@ const FeaturedScreen = () => {
         videos:video_id ( original_path, thumbnail_path, video_variants ( path, label ) ),
         word
       `;
-      let q2: any = addSort(
-        supabase
-          .from('submissions')
-          .select(sel2)
-          .eq('category', 'film')
-      );
-      if (range) {
-        const { startIso, endIso } =
-          normalizeIsoRange(
-            range.start,
-            range.end
-          );
-        q2 = q2
-          .gte('submitted_at', startIso)
-          .lt('submitted_at', endIso);
-      }
+      let q2: any = addSort(supabase.from('submissions').select(sel2).eq('category', 'film'));
       if (searchTextQ.trim()) {
-        q2 = q2.ilike(
-          'title',
-          `%${searchTextQ.trim()}%`
-        );
+        q2 = q2.ilike('title', `%${searchTextQ.trim()}%`);
       }
       res = await q2;
       if (res.error) {
-        return {
-          data: [],
-          error: res.error,
-        } as any;
+        return { data: [], error: res.error } as any;
       }
     }
 
@@ -1722,10 +1542,7 @@ const FeaturedScreen = () => {
       const picked = pickSmallestVariant(r);
       r.storage_path =
         r.media_kind === 'file_audio'
-          ? r.storage_path ??
-            r.video_path ??
-            r?.videos?.original_path ??
-            null
+          ? r.storage_path ?? r.video_path ?? r?.videos?.original_path ?? null
           : picked.path;
       r.thumbnail_url = picked.thumb;
     }
@@ -1733,27 +1550,19 @@ const FeaturedScreen = () => {
     return res;
   };
 
-  const fetchContent = async (
-    uid: string | null,
-    cat: Category,
-    searchTextQ: string
-  ) => {
-
+  const fetchContent = async (uid: string | null, cat: Category, searchTextQ: string) => {
     setLoading(true);
 
     try {
       const challenges = await fetchChallengesForFeatured();
 
       const range = challenges.current
-        ? {
-            start: challenges.current.month_start,
-            end: challenges.current.month_end,
-          }
+        ? { start: challenges.current.month_start, end: challenges.current.month_end }
         : undefined;
 
       currentRangeRef.current = range ?? null;
 
-      // Winner
+      // Winner (previous month only)
       let winnerData:
         | (Submission & {
             description?: string | null;
@@ -1765,13 +1574,8 @@ const FeaturedScreen = () => {
           })
         | null = null;
 
-      // Winner must come from PREVIOUS month (not current month)
       if (challenges.previous?.winner_submission_id) {
-        const { data: w } = await fetchWinnerSafe(
-          challenges.previous.winner_submission_id,
-          cat
-        );
-
+        const { data: w } = await fetchWinnerSafe(challenges.previous.winner_submission_id, cat);
         winnerData = w ? normalizeRow(w as RawSubmission) : null;
 
         if (winnerData && winnerData.category !== cat) {
@@ -1783,28 +1587,22 @@ const FeaturedScreen = () => {
         }
       }
 
-      // Submissions
-      const resp = await fetchSubsSafe(sort, searchTextQ, range, cat);
+      // ✅ All-time submissions
+      const resp = await fetchSubsSafe(sort, searchTextQ, cat);
       const subs = (resp?.data || []) as RawSubmission[];
       const normalized = subs.map(normalizeRow);
 
-      // ✅ Load comment counts for the list we’re about to render
       fetchCommentCounts(normalized.map((s) => s.id));
 
-      let filtered = normalized;
-
-      // ✅ Set state once (avoid duplicate setSubmissions)
       setWinner(winnerData);
-      setSubmissions(filtered);
+      setSubmissions(normalized);
 
-      // Preload first few
       normalized.slice(0, 10).forEach((s) => {
         if (s.storage_path) {
           signStoragePath(s.storage_path, 180).catch(() => {});
         }
       });
 
-      // Fetch current user's existing votes for these submissions
       if (uid && normalized.length) {
         const ids = normalized.map((s) => s.id);
         const { data: myVotes } = await supabase
@@ -1813,15 +1611,12 @@ const FeaturedScreen = () => {
           .eq('user_id', uid)
           .in('submission_id', ids);
 
-        const votedSet = new Set<string>(
-          (myVotes || []).map((r) => r.submission_id as string)
-        );
+        const votedSet = new Set<string>((myVotes || []).map((r) => r.submission_id as string));
         setVotedIds(votedSet);
       } else {
         setVotedIds(new Set());
       }
 
-      // 🔥 Recompute monthly vote usage for cap
       if (uid && range) {
         const used = await countUserVotesInRange(uid, range);
         setMonthlyVotesUsed(used);
@@ -1829,149 +1624,46 @@ const FeaturedScreen = () => {
         setMonthlyVotesUsed(0);
       }
 
-      // Pick initial active media
       const firstPlayable = winnerData?.storage_path
         ? `winner-${winnerData.id}`
-        : normalized.find(
-            (r) => !!r.storage_path && r.media_kind !== 'file_audio'
-          )?.id ?? null;
+        : normalized.find((r) => !!r.storage_path && r.media_kind !== 'file_audio')?.id ?? null;
 
       setActiveId((prev) => prev ?? (firstPlayable as string | null));
 
       layoutMap.current.clear();
     } catch (e: any) {
       console.warn('fetchContent error:', e?.message || e);
-
-      // Fail safe: never get stuck on a loader
       setWinner(null);
       setSubmissions([]);
       setVotedIds(new Set());
       setMonthlyVotesUsed(0);
     } finally {
-      // ✅ This fixes your infinite loading when results are empty
       setLoading(false);
     }
   };
 
-  const goToProfile = (user?: {
-    id: string;
-    full_name: string;
-  }) => {
+  const goToProfile = (user?: { id: string; full_name: string }) => {
     if (!user) return;
-    navigation.navigate(
-      'Profile',
-      {
-        user: {
-          id: user.id,
-          full_name: user.full_name,
-        },
-      }
-    );
+    navigation.navigate('Profile', {
+      user: {
+        id: user.id,
+        full_name: user.full_name,
+      },
+    });
   };
 
-  const getFilmTags = (s: any): string[] => {
-    // Supports multiple schema styles safely
-    const arr =
-      (Array.isArray(s?.tags) && s.tags) ||
-      (Array.isArray(s?.keywords) && s.keywords) ||
-      [];
-
-    const trioFromFields = [s?.tag1, s?.tag2, s?.tag3].filter(Boolean);
-
-    const tags = (arr.length ? arr : trioFromFields)
-      .map((t: any) => String(t).trim())
-      .filter(Boolean);
-
-    return tags.slice(0, 3);
+  // ✅ open/close preview modal for compact cards
+  const openPreview = (s: any) => {
+    setPreviewItem(s);
+    setPreviewOpen(true);
+    setActiveId(`preview-${s.id}`);
   };
 
-  const matchesAnyKeyword = (s: any, keywords: string[]) => {
-    if (!keywords.length) return true;
-
-    const kws = keywords.map((k) => k.trim().toLowerCase()).filter(Boolean);
-    if (!kws.length) return true;
-
-    const tags = getFilmTags(s).map((t) => t.toLowerCase());
-    const hay = `${s?.title ?? ''} ${s?.description ?? ''} ${(s as any)?.word ?? ''}`.toLowerCase();
-
-    // match keywords against tags OR text
-    return kws.some((k) => tags.includes(k) || hay.includes(k));
-  };
-
-  const renderVoteArea = (
-    s: Submission & {
-      description?: string | null;
-    }
-  ) => {
-    const mine =
-      currentUserId &&
-      (s as any).user_id ===
-        currentUserId;
-    const voted = votedIds.has(s.id);
-    const count = s.votes || 0;
-
-    return (
-      <View style={styles.votePremiumRow}>
-        {mine ? (
-          <Text style={styles.votePremiumNote}>
-            Your submission — you can’t vote
-          </Text>
-        ) : (
-          <TouchableOpacity
-            onPress={() =>
-              toggleVote(s)
-            }
-            disabled={voteBusy[s.id]}
-            activeOpacity={0.9}
-            style={[
-              styles.votePremiumBtn,
-              voted &&
-                styles.votePremiumBtnOn,
-              voteBusy[s.id] && {
-                opacity: 0.8,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.votePremiumBtnText,
-                voted &&
-                  styles.votePremiumBtnTextOn,
-              ]}
-            >
-              {voteBusy[s.id]
-                ? 'Working…'
-                : voted
-                ? 'Voted'
-                : 'Vote'}
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        <View
-          style={
-            styles.votePremiumCountWrap
-          }
-        >
-          <Text
-            style={
-              styles.votePremiumCount
-            }
-          >
-            {voteBusy[s.id]
-              ? '…'
-              : count}
-          </Text>
-          <Text
-            style={
-              styles.votePremiumCountLabel
-            }
-          >
-            votes
-          </Text>
-        </View>
-      </View>
-    );
+  const closePreview = async () => {
+    setPreviewOpen(false);
+    setPreviewItem(null);
+    setActiveId(null);
+    await pauseAllExcept(PAUSE_NONE_ID);
   };
 
   const openComments = async (s: Submission) => {
@@ -1991,8 +1683,6 @@ const FeaturedScreen = () => {
   const fetchCommentCounts = async (submissionIds: string[]) => {
     if (!submissionIds.length) return;
 
-    // NOTE: This does one lightweight count query per submission id.
-    // It’s simple + reliable, and fine unless you have hundreds on screen.
     try {
       const results = await Promise.all(
         submissionIds.map(async (id) => {
@@ -2021,14 +1711,16 @@ const FeaturedScreen = () => {
     try {
       const { data, error } = await supabase
         .from('submission_comments')
-        .select(`
+        .select(
+          `
           id,
           submission_id,
           user_id,
           comment,
           created_at,
           users:user_id ( id, full_name, avatar_url )
-        `)
+        `
+        )
         .eq('submission_id', submissionId)
         .order('created_at', { ascending: false });
 
@@ -2085,143 +1777,79 @@ const FeaturedScreen = () => {
     }
   };
 
-  const toggleVote = async (
-    s: Submission & {
-      description?: string | null;
-    }
-  ) => {
-    const uid =
-      currentUserId ||
-      gamUserId ||
-      null;
+  const toggleVote = async (s: Submission & { description?: string | null }) => {
+    const uid = currentUserId || gamUserId || null;
 
     if (!uid) {
-      Alert.alert(
-        'Please sign in',
-        'You need to be signed in to vote.'
-      );
+      Alert.alert('Please sign in', 'You need to be signed in to vote.');
       return;
     }
 
-    const creatorId = (s as any)
-      .user_id as
-      | string
-      | undefined;
-    if (
-      creatorId &&
-      creatorId === uid
-    ) {
-      // No self-voting
+    const creatorId = (s as any).user_id as string | undefined;
+    if (creatorId && creatorId === uid) {
       return;
     }
     if (voteBusy[s.id]) return;
 
-    const alreadyVoted =
-      votedIds.has(s.id);
+    const alreadyVoted = votedIds.has(s.id);
 
-    // If casting a NEW vote: enforce monthly cap
     if (!alreadyVoted) {
-      const range =
-        currentRangeRef.current;
+      const range = currentRangeRef.current;
       if (range) {
-        if (
-          monthlyVotesUsed >=
-          VOTES_PER_MONTH
-        ) {
-          Alert.alert(
-            'No votes left',
-            'You’ve used all your votes for this month.'
-          );
+        if (monthlyVotesUsed >= VOTES_PER_MONTH) {
+          Alert.alert('No votes left', 'You’ve used all your votes for this month.');
           return;
         }
       }
     }
 
-    setVoteBusy((prev) => ({
-      ...prev,
-      [s.id]: true,
-    }));
+    setVoteBusy((prev) => ({ ...prev, [s.id]: true }));
 
     try {
       if (alreadyVoted) {
-        // Remove vote
-        const { error } =
-          await supabase
-            .from('user_votes')
-            .delete()
-            .eq('user_id', uid)
-            .eq(
-              'submission_id',
-              s.id
-            );
+        const { error } = await supabase
+          .from('user_votes')
+          .delete()
+          .eq('user_id', uid)
+          .eq('submission_id', s.id);
         if (error) throw error;
 
         setVotedIds((prev) => {
-          const next =
-            new Set(prev);
+          const next = new Set(prev);
           next.delete(s.id);
           return next;
         });
+
         setSubmissions((prev) =>
           prev.map((row) =>
-            row.id === s.id
-              ? {
-                  ...row,
-                  votes: Math.max(
-                    0,
-                    (row.votes ||
-                      0) - 1
-                  ),
-                }
-              : row
+            row.id === s.id ? { ...row, votes: Math.max(0, (row.votes || 0) - 1) } : row
           )
         );
-        setMonthlyVotesUsed(
-          (n) =>
-            Math.max(0, n - 1)
-        );
+
+        setMonthlyVotesUsed((n) => Math.max(0, n - 1));
       } else {
-        // Add vote
-        const {
-          error,
-        } = await supabase
-          .from('user_votes')
-          .insert([
-            {
-              submission_id: s.id,
-              user_id: uid,
-            },
-          ]);
+        const { error } = await supabase.from('user_votes').insert([
+          {
+            submission_id: s.id,
+            user_id: uid,
+          },
+        ]);
         if (error) throw error;
 
         setVotedIds((prev) => {
-          const next =
-            new Set(prev);
+          const next = new Set(prev);
           next.add(s.id);
           return next;
         });
+
         setSubmissions((prev) =>
-          prev.map((row) =>
-            row.id === s.id
-              ? {
-                  ...row,
-                  votes:
-                    (row.votes ||
-                      0) + 1,
-                }
-              : row
-          )
+          prev.map((row) => (row.id === s.id ? { ...row, votes: (row.votes || 0) + 1 } : row))
         );
-        setMonthlyVotesUsed(
-          (n) => n + 1
-        );
-        // 🔥 Award XP for a successful new vote
+
+        setMonthlyVotesUsed((n) => n + 1);
+
         try {
-          await giveXp(
-            uid,
-            VOTE_XP,
-            'VOTE_SUBMISSION' as any // or as XpReason if you've added it to the union
-          );
+          await giveXp(uid, VOTE_XP, 'VOTE_SUBMISSION' as any);
           await refreshGamification();
         } catch (xpErr) {
           console.warn('giveXp VOTE_SUBMISSION failed:', xpErr);
@@ -2231,10 +1859,7 @@ const FeaturedScreen = () => {
       console.warn('Vote error:', e?.message || e);
       Alert.alert('Vote failed', 'Please try again.');
     } finally {
-      setVoteBusy((prev) => ({
-        ...prev,
-        [s.id]: false,
-      }));
+      setVoteBusy((prev) => ({ ...prev, [s.id]: false }));
     }
   };
 
@@ -2249,24 +1874,17 @@ const FeaturedScreen = () => {
     })();
   }, [activeId]);
 
-  const onItemLayout =
-    (id: string, playable: boolean) =>
-    (e: LayoutChangeEvent) => {
-      const { y, height } = e.nativeEvent.layout;
-      layoutMap.current.set(id, {
-        y,
-        h: height,
-        playable,
-      });
-    };
+  const onItemLayout = (id: string, playable: boolean) => (e: LayoutChangeEvent) => {
+    const { y, height } = e.nativeEvent.layout;
+    layoutMap.current.set(id, { y, h: height, playable });
+  };
 
   const pickActiveByCenter = (offsetY: number) => {
     const map = layoutMap.current;
     if (map.size === 0) return null;
 
     const viewportCenter =
-      offsetY +
-      (winH - (TOP_BAR_OFFSET + BOTTOM_TAB_H)) * 0.5;
+      offsetY + (winH - (TOP_BAR_OFFSET + BOTTOM_TAB_H)) * 0.5;
 
     let bestId: string | null = null;
     let bestDist = Number.POSITIVE_INFINITY;
@@ -2307,11 +1925,7 @@ const FeaturedScreen = () => {
               })
             | undefined;
         if (!it) return false;
-        return (
-          !!it.storage_path &&
-          it.media_kind !== 'file_audio' &&
-          v.isViewable
-        );
+        return !!it.storage_path && it.media_kind !== 'file_audio' && v.isViewable;
       });
       if (playable.length) {
         const candidate = playable[playable.length - 1];
@@ -2323,976 +1937,1572 @@ const FeaturedScreen = () => {
     }
   ).current;
 
-  const viewabilityConfigCallbackPairs = useRef([
-    {
-      viewabilityConfig,
-      onViewableItemsChanged,
-    },
-  ]).current;
+ const viewabilityConfigCallbackPairs = useRef([
+  { viewabilityConfig, onViewableItemsChanged },
+]).current;
 
-  const onScrollImmediate = useRef(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const y = e.nativeEvent.contentOffset.y;
-      lastOffsetY.current = y;
-      ensureActiveByCenter(y);
+const onScrollImmediate = useRef((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+  const y = e.nativeEvent.contentOffset.y;
+  lastOffsetY.current = y;
+  ensureActiveByCenter(y);
+}).current;
+
+const onMomentumEnd = useRef(() => {
+  ensureActiveByCenter(lastOffsetY.current);
+}).current;
+
+const onRemoveSubmission = async (s: Submission & { description?: string | null }) => {
+  const prevSubs = submissions;
+  setSubmissions((p) => p.filter((row) => row.id !== s.id));
+  if (winner && winner.id === s.id) {
+    setWinner(null);
+  }
+
+  try {
+    await supabase.from('user_votes').delete().eq('submission_id', s.id);
+
+    const { error } = await supabase
+      .from('submissions')
+      .delete()
+      .eq('id', s.id)
+      .eq('user_id', currentUserId as string);
+
+    if (error) throw error;
+
+    if (Platform.OS !== 'web') {
+      Alert.alert('Removed', 'Your submission has been removed.');
     }
-  ).current;
+  } catch (e: any) {
+    console.warn('Remove error:', e?.message || e);
+    setSubmissions(prevSubs);
+    Alert.alert('Remove failed', 'Please try again.');
+  }
+};
 
-  const onMomentumEnd = useRef(() => {
-    ensureActiveByCenter(lastOffsetY.current);
-  }).current;
-
-  const onRemoveSubmission = async (
-    s: Submission & { description?: string | null }
-  ) => {
-    const prevSubs = submissions;
-    setSubmissions((p) => p.filter((row) => row.id !== s.id));
-    if (winner && winner.id === s.id) {
-      setWinner(null);
-    }
-
-    try {
-      await supabase.from('user_votes').delete().eq('submission_id', s.id);
-
-      const { error } = await supabase
-        .from('submissions')
-        .delete()
-        .eq('id', s.id)
-        .eq('user_id', currentUserId as string);
-
-      if (error) throw error;
-
-      if (Platform.OS !== 'web') {
-        Alert.alert('Removed', 'Your submission has been removed.');
-      }
-    } catch (e: any) {
-      console.warn('Remove error:', e?.message || e);
-      setSubmissions(prevSubs);
-      Alert.alert('Remove failed', 'Please try again.');
-    }
-  };
-
-  const renderMedia = (
-    rowId: string,
-    s: Submission & {
-      description?: string | null;
-      storage_path?: string | null;
-      thumbnail_url?: string | null;
-      media_kind?: RawSubmission['media_kind'];
-    },
-    isActive: boolean,
-    isWinnerRow: boolean
-  ) => {
-    const webHoverProps =
-      Platform.OS === 'web'
-        ? {
-            onMouseEnter: () => setActiveId(rowId),
-            onMouseLeave: () => {
-              if (activeId === rowId) {
-                setActiveId(null);
+const renderMedia = (
+  rowId: string,
+  s: Submission & {
+    description?: string | null;
+    storage_path?: string | null;
+    thumbnail_url?: string | null;
+    media_kind?: RawSubmission['media_kind'];
+  },
+  isActive: boolean,
+  isWinnerRow: boolean
+) => {
+  // ✅ Fix 1: avoid stale `activeId` closure on web hover leave
+  const webHoverProps =
+    Platform.OS === 'web'
+      ? {
+          onMouseEnter: () => setActiveId(rowId),
+          onMouseLeave: () => {
+            setActiveId((prev) => {
+              if (prev === rowId) {
                 pauseAllExcept(PAUSE_NONE_ID);
+                return null;
               }
-            },
-          }
-        : {};
+              return prev;
+            });
+          },
+        }
+      : {};
 
-    if (!s.storage_path) {
-      return (
-        <View
-          {...(webHoverProps as any)}
-          style={[
-            styles.videoOuter,
-            {
-              maxWidth: cardW,
-              maxHeight: availableHForMedia,
-            },
-          ]}
-        >
-          <View
-            style={{
-              width: '100%',
-              aspectRatio: 16 / 9,
-            }}
-          />
-          <View style={styles.aspectFill}>
-            <Image
-              source={{
-                uri: 'https://picsum.photos/1600/900',
-              }}
-              style={{
-                width: '100%',
-                height: '100%',
-                borderRadius: RADIUS_XL,
-              }}
-              resizeMode="cover"
-            />
-          </View>
-        </View>
-      );
-    }
+  // ✅ Fix 2: contain 16:9 inside the available box (prevents web stretch/crop)
+  const fitted = fitContain(mediaW, availableHForMedia, 16 / 9);
+  const frameW = fitted.w; // contained width
+  const frameH = fitted.h; // contained height
 
-    if (s.media_kind === 'file_audio') {
-      return (
-        <View
-          {...(webHoverProps as any)}
-          style={[
-            styles.videoOuter,
-            {
-              maxWidth: cardW,
-              backgroundColor: T.card,
-              maxHeight: availableHForMedia,
-            },
-          ]}
-        >
-          <View
-            style={{
-              width: '100%',
-              padding: 12,
-            }}
-          >
-            <HostedAudioInline
-              playerId={rowId}
-              storagePath={s.storage_path}
-              autoPlay={isActive}
-            />
-          </View>
-        </View>
-      );
-    }
-
+  if (!s.storage_path) {
     return (
       <View
         {...(webHoverProps as any)}
         style={[
           styles.videoOuter,
           {
-            maxWidth: cardW,
+            width: frameW,
+            maxWidth: mediaW,
+            height: frameH,
             maxHeight: availableHForMedia,
           },
         ]}
       >
-        <HostedVideoInline
-          playerId={rowId}
-          storagePath={s.storage_path!}
-          width={cardW}
-          maxHeight={availableHForMedia}
-          autoPlay={isActive}
-          posterUri={s.thumbnail_url ?? null}
-          dimVignette={isWinnerRow}
-        />
-      </View>
-    );
-  };
-
-  const renderHeroOverlay = (
-    s: Submission & { users?: { id: string; full_name: string } }
-  ) => {
-    const name = (s as any)?.users?.full_name;
-    const userObj = (s as any)?.users;
-
-    // ✅ IMPORTANT: web-on-phone should behave like mobile.
-// Platform.OS === 'web' is still true in a phone browser.
-const isCompactHero = winW < 520;       // phone / narrow web
-const isTinyHero = winW < 380;          // very small phones
-
-const heroKickerSize = isCompactHero ? 10 : 14;
-const heroTitleSize = isTinyHero ? 22 : isCompactHero ? 26 : 52;
-const heroTitleLine = isTinyHero ? 26 : isCompactHero ? 30 : 58;
-const heroBylineSize = isTinyHero ? 11 : isCompactHero ? 12 : 16;
-
-    return (
-      <View
-        style={styles.heroOverlay}
-        pointerEvents="box-none"
-      >
-        <View
-          style={styles.heroOverlayInner}
-          pointerEvents="none"
-        >
-         <Text
-  style={[
-    styles.heroKicker,
-    {
-      fontSize: heroKickerSize,
-      marginBottom: isCompactHero ? 4 : 6,
-      letterSpacing: isCompactHero ? 0.6 : 0.8,
-    },
-  ]}
->
-
-            LAST MONTH’S WINNER
-          </Text>
-          <Text
-  style={[
-    styles.heroTitle,
-    {
-      fontSize: heroTitleSize,
-      lineHeight: heroTitleLine,
-      maxWidth: isCompactHero ? '92%' : '85%',
-      letterSpacing: isCompactHero ? 0.6 : 0.9,
-    },
-  ]}
-  numberOfLines={2}
-  ellipsizeMode="tail"
->
-            {s.title}
-          </Text>
-        </View>
-        {name ? (
-          <TouchableOpacity
-            onPress={() => goToProfile(userObj)}
-            activeOpacity={0.9}
-            style={styles.heroBylineTap}
-          >
-            <Text
-  style={[
-    styles.heroByline,
-    {
-      fontSize: heroBylineSize,
-      marginTop: isCompactHero ? 2 : 4,
-    },
-  ]}
->
-              by {name}
-            </Text>
-          </TouchableOpacity>
-        ) : null}
-      </View>
-    );
-  };
-
-  const renderCard = useCallback(
-    (
-      rowId: string,
-      s: Submission & {
-        description?: string | null;
-        storage_path?: string | null;
-        thumbnail_url?: string | null;
-        media_kind?: RawSubmission['media_kind'];
-        category?: Category | null;
-      },
-      isActive: boolean,
-      isWinnerRow: boolean = false
-    ) => {
-      const isPlayableVideo =
-        !!s.storage_path && s.media_kind !== 'file_audio';
-
-      return (
-        <View
-          key={rowId}
-          onLayout={onItemLayout(rowId, isPlayableVideo)}
-          style={[
-            styles.cardWrapper,
-            isWinnerRow && styles.cardWrapperHero,
-          ]}
-        >
-          <LinearGradient
-            colors={
-              isWinnerRow
-                ? [T.heroBurgundy1, T.heroBurgundy2]
-                : ['#0D0D0D', '#050505']
-            }
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[
-              styles.cardBorder,
-              { alignSelf: 'center' },
-            ]}
-          >
-            <View
-              style={[
-                styles.card,
-                isWinnerRow && styles.cardHero,
-              ]}
-            >
-              {isWinnerRow ? (
-                <>
-                  <View
-                    style={[
-                      styles.heroRow,
-                      {
-                        maxWidth: cardW,
-                        maxHeight: availableHForMedia,
-                        alignSelf: 'center',
-                      },
-                    ]}
-                  >
-                    {renderMedia(
-                      rowId,
-                      s,
-                      isActive,
-                      true
-                    )}
-                    <LinearGradient
-                      colors={[
-                        'rgba(0,0,0,0.0)',
-                        'rgba(0,0,0,0.35)',
-                        'rgba(0,0,0,0.80)',
-                      ]}
-                      start={{ x: 0.2, y: 0.2 }}
-                      end={{ x: 0.8, y: 1 }}
-                      style={[
-                        StyleSheet.absoluteFillObject,
-                        { borderRadius: RADIUS_XL },
-                      ]}
-                      pointerEvents="none"
-                    />
-                    <Grain opacity={0.05} />
-                    {renderHeroOverlay(s)}
-                  </View>
-                </>
-              ) : (
-                <>
-                  {renderMedia(
-                    rowId,
-                    s,
-                    isActive,
-                    false
-                  )}
-                  <Grain opacity={0.05} />
-                  <View
-                    style={[
-                      styles.content,
-                      { width: cardW },
-                    ]}
-                  >
-                    <View style={styles.titleWrap}>
-                      <Text
-                        style={styles.title}
-                        numberOfLines={2}
-                      >
-                        {s.title}
-                      </Text>
-                    </View>
-
-                    {s.users?.full_name ? (
-                      <TouchableOpacity
-                        onPress={() =>
-                          goToProfile(s.users)
-                        }
-                        activeOpacity={0.9}
-                      >
-                        <Text style={styles.byline}>
-                          by {s.users.full_name}
-                        </Text>
-                      </TouchableOpacity>
-                    ) : null}
-
-                    {!!s.description && (
-                      <Text style={styles.description}>
-                        {s.description}
-                      </Text>
-                    )}
-
-                    <View style={styles.actionsRow}>
-                      {renderVoteArea(s)}
-
-                      <TouchableOpacity
-                        onPress={() => {
-                          console.log('COMMENTS PRESSED', s.id);
-                          openComments(s);
-                        }}
-                        activeOpacity={0.9}
-                        style={styles.commentBtn}
-                      >
-                        <Text style={styles.commentBtnText}>
-                          COMMENTS ({commentCounts[s.id] ?? 0})
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    {currentUserId &&
-                    (s as any).user_id === currentUserId ? (
-                      <View style={{ marginTop: 8 }}>
-                        <TouchableOpacity
-                          style={[
-                            styles.ghostBtn,
-                            (deleteBusy[s.id] ||
-                              (s as any).is_winner) &&
-                              styles.ghostBtnDisabled,
-                          ]}
-                          disabled={
-                            !!deleteBusy[s.id] ||
-                            (s as any).is_winner
-                          }
-                          onPress={() => {
-                            const doRemove = () =>
-                              onRemoveSubmission(
-                                s as any
-                              );
-                            if (
-                              Platform.OS ===
-                              'web'
-                            ) {
-                              const ok =
-                                typeof window !==
-                                  'undefined' &&
-                                window.confirm(
-                                  'Remove submission? This will remove it and its votes.'
-                                );
-                              if (ok)
-                                doRemove();
-                            } else {
-                              Alert.alert(
-                                'Remove submission?',
-                                'This will remove it and its votes.',
-                                [
-                                  {
-                                    text: 'Cancel',
-                                    style: 'cancel',
-                                  },
-                                  {
-                                    text: 'Remove',
-                                    style: 'destructive',
-                                    onPress:
-                                      doRemove,
-                                  },
-                                ]
-                              );
-                            }
-                          }}
-                        >
-                          <Text
-                            style={
-                              styles.ghostText
-                            }
-                          >
-                            {deleteBusy[s.id]
-                              ? 'Removing…'
-                              : (s as any)
-                                  .is_winner
-                              ? 'Winner (locked)'
-                              : 'Remove'}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : null}
-                  </View>
-                </>
-              )}
-            </View>
-          </LinearGradient>
-        </View>
-      );
-    },
-    [
-      cardW,
-      votedIds,
-      voteBusy,
-      deleteBusy,
-      currentUserId,
-      availableHForMedia,
-      commentCounts,
-      commentsOpen,
-      activeId,
-      isNarrow,
-      isSmallMobile,
-    ]
-  );
-
-  const headerElement = useMemo(
-    () => (
-      <View style={{ alignItems: 'center' }}>
-        {winner
-          ? renderCard(
-              `winner-${winner.id}`,
-              winner,
-              activeId === `winner-${winner.id}`,
-              true
-            )
-          : null}
-
-        <View
-          style={{
-            height: isNarrow ? 12 : 10,
-          }}
-        />
-
-        <View
-          style={[
-            styles.subHeaderWrap,
-            {
-              width: cardW,
-              marginTop: 4,
-            },
-          ]}
-          onLayout={() => {
-            layoutMap.current.set('submissions-header', {
-              y: 0,
-              h: 0,
-              playable: false,
-            });
-          }}
-        >
-          <HeaderControls
-            compact={isNarrow}
-            category={category}
-            sort={sort}
-            setSort={setSort}
-            searchText={searchText}
-            setSearchText={setSearchText}
-            isSearching={isSearching}
+        <View style={styles.aspectFill}>
+          <Image
+            source={{ uri: 'https://picsum.photos/1600/900' }}
+            style={{ width: '100%', height: '100%', borderRadius: RADIUS_XL }}
+            resizeMode="cover"
           />
         </View>
       </View>
-    ),
-    [
-      cardW,
-      category,
-      sort,
-      searchText,
-      winner,
-      activeId,
-      winW,
-      isNarrow,
-      isSearching, // ✅ ADD THIS
-      commentCounts,
-    ]
-  );
+    );
+  }
 
-  const renderSubmissionItem = ({
-    item,
-  }: {
-    item: Submission & {
+  if (s.media_kind === 'file_audio') {
+    return (
+      <View
+        {...(webHoverProps as any)}
+        style={[
+          styles.videoOuter,
+          {
+            width: mediaW,
+            maxWidth: mediaW,
+            backgroundColor: T.card,
+            maxHeight: availableHForMedia,
+          },
+        ]}
+      >
+        <View style={{ width: '100%', padding: 12 }}>
+          <HostedAudioInline playerId={rowId} storagePath={s.storage_path} autoPlay={isActive} />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View
+      {...(webHoverProps as any)}
+      style={[
+        styles.videoOuter,
+        {
+          width: frameW,
+          maxWidth: mediaW,
+          height: frameH,
+          maxHeight: availableHForMedia,
+        },
+      ]}
+    >
+      <HostedVideoInline
+        playerId={rowId}
+        storagePath={s.storage_path!}
+        width={frameW}
+        maxHeight={frameH}
+        autoPlay={isActive}
+        posterUri={s.thumbnail_url ?? null}
+        dimVignette={isWinnerRow}
+      />
+    </View>
+  );
+};
+
+const renderHeroOverlay = (s: Submission & { users?: { id: string; full_name: string } }) => {
+  const name = (s as any)?.users?.full_name;
+  const userObj = (s as any)?.users;
+
+    const isCompactHero = winW < 520;
+  const isTinyHero = winW < 380;
+
+  const heroKickerSize = isCompactHero ? 10 : 14;
+
+  // ✅ wide web hero title was too tall for the 16:9 safe area → causes clipping
+  const heroTitleSize = isTinyHero ? 22 : isCompactHero ? 26 : isWideWeb ? 40 : 52;
+  const heroTitleLine = isTinyHero ? 26 : isCompactHero ? 30 : isWideWeb ? 44 : 58;
+
+  const heroBylineSize = isTinyHero ? 11 : isCompactHero ? 12 : 16;
+
+  return (
+    <View style={styles.heroOverlay} pointerEvents="box-none">
+      <View style={styles.heroOverlayInner} pointerEvents="none">
+        <Text
+          style={[
+            styles.heroKicker,
+            {
+              fontSize: heroKickerSize,
+              marginBottom: isCompactHero ? 4 : 6,
+              letterSpacing: isCompactHero ? 0.6 : 0.8,
+            },
+          ]}
+        >
+          LAST MONTH’S WINNER
+        </Text>
+                <Text
+          style={[
+            styles.heroTitle,
+            {
+              fontSize: heroTitleSize,
+              lineHeight: heroTitleLine,
+              maxWidth: '100%', // ✅ deterministic, prevents edge clipping
+              letterSpacing: isCompactHero ? 0.6 : 0.9,
+              paddingBottom: 4, // ✅ prevents bottom clipping
+            },
+          ]}
+          numberOfLines={2}
+          ellipsizeMode="tail"
+        >
+          {s.title}
+        </Text>
+      </View>
+      {name ? (
+        <TouchableOpacity
+          onPress={() => goToProfile(userObj)}
+          activeOpacity={0.9}
+          style={styles.heroBylineTap}
+        >
+          <Text
+            style={[
+              styles.heroByline,
+              {
+                fontSize: heroBylineSize,
+                marginTop: isCompactHero ? 2 : 4,
+              },
+            ]}
+          >
+            by {name}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+};
+
+// ✅ Reddit-style vote column (kept for narrow/mobile layout)
+const renderVoteColumn = (s: Submission & { description?: string | null }) => {
+  const mine = !!currentUserId && (s as any).user_id === currentUserId;
+  const voted = votedIds.has(s.id);
+  const count = s.votes ?? 0;
+  const busy = !!voteBusy?.[s.id];
+  const disabled = busy || mine;
+
+  return (
+    <View style={[styles.voteCol, { width: VOTE_COL_W }]}>
+      <TouchableOpacity
+        activeOpacity={0.9}
+        disabled={disabled}
+        onPress={() => {
+          if (!mine) toggleVote(s);
+        }}
+        style={styles.voteTap}
+      >
+        <VoteArrow up active={voted} disabled={disabled} />
+      </TouchableOpacity>
+
+      <Text style={[styles.voteCountText, voted && { color: T.accent }]}>{busy ? '…' : count}</Text>
+
+      <TouchableOpacity activeOpacity={0.9} onPress={() => openComments(s)} style={styles.voteTap}>
+        <View style={styles.commentDot} />
+        <Text style={styles.commentMini}>{commentCounts?.[s.id] ?? 0}</Text>
+      </TouchableOpacity>
+
+      {mine ? <Text style={styles.mineMini}>Yours</Text> : null}
+    </View>
+  );
+};
+
+// ✅ compact grid card (wide-web)
+const renderCompactGridCard = useCallback(
+  (
+    s: Submission & {
       description?: string | null;
       storage_path?: string | null;
       thumbnail_url?: string | null;
       media_kind?: RawSubmission['media_kind'];
       category?: Category | null;
-    };
-  }) =>
-    renderCard(
-      item.id,
-      item,
-      activeId === item.id,
-      false
+    }
+  ) => {
+    const mine = !!currentUserId && (s as any).user_id === currentUserId;
+    const voted = votedIds.has(s.id);
+    const busy = !!voteBusy?.[s.id];
+
+    const thumb = s.thumbnail_url || 'https://picsum.photos/600/340';
+    const votes = s.votes ?? 0;
+    const commentsN = commentCounts?.[s.id] ?? 0;
+
+    return (
+      <TouchableOpacity
+  activeOpacity={0.95}
+  onPress={() => openPreview(s)}
+  style={[styles.gridCard, { width: gridCardW }]}
+  {...(Platform.OS === 'web'
+    ? {
+        onMouseEnter: () => setActiveId(`grid-${s.id}`),
+        onMouseLeave: () =>
+          setActiveId((prev) => (prev === `grid-${s.id}` ? null : prev)),
+      }
+    : {})}
+>
+        <View style={styles.gridThumbWrap}>
+  {s.storage_path ? (
+    <HostedVideoInline
+      playerId={`grid-${s.id}`}
+      storagePath={s.storage_path}
+      width={gridCardW}
+      maxHeight={gridCardW / (16 / 9)}
+      autoPlay={activeId === `grid-${s.id}`} // plays only when active (optional)
+      posterUri={s.thumbnail_url ?? null}
+      dimVignette={false}
+    />
+  ) : (
+    <>
+      <Image source={{ uri: thumb }} style={styles.gridThumb} resizeMode="cover" />
+      <View style={styles.gridThumbOverlay} pointerEvents="none" />
+    </>
+  )}
+</View>
+
+        <View style={styles.gridBody}>
+          <Text style={styles.gridTitle} numberOfLines={1}>
+            {s.title}
+          </Text>
+          {s.users?.full_name ? (
+            <Text style={styles.gridByline} numberOfLines={1}>
+              {s.users.full_name}
+            </Text>
+          ) : null}
+
+          <View style={styles.gridMetaRow}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              disabled={busy || mine}
+              onPress={(e: any) => {
+                e?.stopPropagation?.();
+                if (!mine) toggleVote(s);
+              }}
+              style={[styles.gridVotePill, (busy || mine) && { opacity: 0.55 }]}
+            >
+              <Text style={[styles.gridVoteText, voted && { color: T.accent }]}>
+                {busy ? '…' : `▲ ${votes}`}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={(e: any) => {
+                e?.stopPropagation?.();
+                openComments(s);
+              }}
+              style={styles.gridCommentPill}
+            >
+              <Text style={styles.gridCommentText}>{`💬 ${commentsN}`}</Text>
+            </TouchableOpacity>
+
+            {mine ? <Text style={styles.gridMine}>Yours</Text> : null}
+          </View>
+        </View>
+      </TouchableOpacity>
     );
+  },
+  [gridCardW, currentUserId, votedIds, voteBusy, commentCounts]
+);
 
-  return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={[T.heroBurgundy1, T.heroBurgundy2, T.bg]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 0.75 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-      <Grain opacity={0.05} />
+// ✅ Existing full card (kept)
+const renderCard = useCallback(
+  (
+    rowId: string,
+    s: Submission & {
+      description?: string | null;
+      storage_path?: string | null;
+      thumbnail_url?: string | null;
+      media_kind?: RawSubmission['media_kind'];
+      category?: Category | null;
+    },
+    isActive: boolean,
+    isWinnerRow: boolean = false
+  ) => {
+    const isPlayableVideo = !!s.storage_path && s.media_kind !== 'file_audio';
 
-      {loading && submissions.length === 0 ? (
-        <ActivityIndicator
-          style={{ marginTop: CONTENT_TOP_PAD + 8 }}
-          color={T.accent}
-        />
-      ) : (
-        <FlatList
-          data={submissions}
-          renderItem={renderSubmissionItem}
-          keyExtractor={(item) => item.id}
-          ListHeaderComponent={headerElement}
-          ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
-          contentContainerStyle={[
-            styles.listContent,
-            {
-              paddingTop: CONTENT_TOP_PAD,
-              paddingBottom: BOTTOM_TAB_H + 8,
-            },
-          ]}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="always"
-          keyboardDismissMode="none"
-          removeClippedSubviews={Platform.OS !== 'web'}
-          windowSize={5}
-          initialNumToRender={3}
-          maxToRenderPerBatch={4}
-          viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
-          onEndReachedThreshold={0.4}
-          onScroll={onScrollImmediate}
-          onMomentumScrollEnd={onMomentumEnd}
-          scrollEventThrottle={16}
-          onContentSizeChange={() => ensureActiveByCenter(lastOffsetY.current)}
-          onLayout={() => ensureActiveByCenter(lastOffsetY.current)}
-        />
-      )}
+    return (
+      <View
+        key={rowId}
+        onLayout={onItemLayout(rowId, isPlayableVideo)}
+        style={[styles.cardWrapper, isWinnerRow && styles.cardWrapperHero]}
+      >
+        <LinearGradient
+          colors={isWinnerRow ? [T.heroBurgundy1, T.heroBurgundy2] : ['#0D0D0D', '#050505']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.cardBorder, { alignSelf: 'center' }]}
+        >
+          <View style={[styles.card, isWinnerRow && styles.cardHero]}>
+            {isWinnerRow ? (
+              <>
+                <View
+                  style={[
+                    styles.heroRow,
+                    {
+                      width: cardW,
+                      maxWidth: cardW,
+                      maxHeight: availableHForMedia,
+                      alignSelf: 'center',
+                    },
+                  ]}
+                >
+                  {renderMedia(rowId, s, isActive, true)}
+                  <LinearGradient
+                    colors={['rgba(0,0,0,0.0)', 'rgba(0,0,0,0.35)', 'rgba(0,0,0,0.80)']}
+                    start={{ x: 0.2, y: 0.2 }}
+                    end={{ x: 0.8, y: 1 }}
+                    style={[StyleSheet.absoluteFillObject, { borderRadius: RADIUS_XL }]}
+                    pointerEvents="none"
+                  />
+                  <Grain opacity={0.05} />
+                  {renderHeroOverlay(s)}
+                </View>
 
-      {/* ---------------- Comments Modal ---------------- */}
-      {commentsOpen && (
-        <View style={styles.commentsOverlay}>
-          <Pressable
-            style={StyleSheet.absoluteFillObject}
-            onPress={closeComments}
-          />
+                <View style={[styles.winnerFooter, { width: cardW }]}>
+                  <View style={styles.winnerMetaRow}>
+                    <Text style={styles.winnerMetaLabel}>Votes</Text>
+                    <Text style={styles.winnerMetaValue}>{s.votes || 0}</Text>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={[styles.feedRow, { width: cardW, paddingHorizontal: FEED_INNER_PAD }]}>
+                  {renderVoteColumn(s)}
 
-          <View style={styles.commentsSheet}>
-            <View style={styles.commentsHeader}>
-              <Text style={styles.commentsTitle}>Comments</Text>
-              <TouchableOpacity onPress={closeComments} activeOpacity={0.9}>
-                <Text style={styles.commentsClose}>Close</Text>
-              </TouchableOpacity>
-            </View>
+                  <View style={[styles.feedBody, { width: cardW - VOTE_COL_W - FEED_INNER_PAD * 2 }]}>
+                    <View style={styles.feedHeader}>
+                      <Text style={styles.feedTitle} numberOfLines={2}>
+                        {s.title}
+                      </Text>
 
-            {/* ✅ Fill modal height properly */}
-            <View style={{ flex: 1 }}>
-              {commentsLoading ? (
-                <ActivityIndicator color={T.accent} style={{ padding: 14 }} />
-              ) : (
-                <FlatList
-                  data={comments}
-                  keyExtractor={(item) => item.id}
-                  contentContainerStyle={{ paddingBottom: 12 }}
-                  showsVerticalScrollIndicator={false}
-                  keyboardShouldPersistTaps="always"
-                  renderItem={({ item }) => {
-                    const u = item.users;
-                    return (
-                      <View style={styles.commentRow}>
-                        <TouchableOpacity
-                          onPress={() =>
-                            u && goToProfile({ id: u.id, full_name: u.full_name })
-                          }
-                          activeOpacity={0.9}
-                          style={styles.commentAvatarTap}
-                        >
-                          <Image
-                            source={{
-                              uri: u?.avatar_url || 'https://picsum.photos/80/80',
-                            }}
-                            style={styles.commentAvatar}
-                          />
+                      {s.users?.full_name ? (
+                        <TouchableOpacity onPress={() => goToProfile(s.users)} activeOpacity={0.9}>
+                          <Text style={styles.feedByline}>by {s.users.full_name}</Text>
                         </TouchableOpacity>
+                      ) : null}
+                    </View>
 
-                        <View style={{ flex: 1 }}>
-                          <TouchableOpacity
-                            onPress={() =>
-                              u && goToProfile({ id: u.id, full_name: u.full_name })
+                    <View style={{ marginTop: 10 }}>
+                      {renderMedia(rowId, s, isActive, false)}
+                      <Grain opacity={0.05} />
+                    </View>
+
+                    {!!s.description && <Text style={styles.feedDescription}>{s.description}</Text>}
+
+                    <View style={styles.feedActionsRow}>
+                      <TouchableOpacity
+                        onPress={() => openComments(s)}
+                        activeOpacity={0.9}
+                        style={styles.feedActionBtn}
+                      >
+                        <Text style={styles.feedActionText}>COMMENTS ({commentCounts[s.id] ?? 0})</Text>
+                      </TouchableOpacity>
+
+                      {currentUserId && (s as any).user_id === currentUserId ? (
+                        <TouchableOpacity
+                          style={[
+                            styles.feedActionBtnGhost,
+                            (deleteBusy[s.id] || (s as any).is_winner) && { opacity: 0.5 },
+                          ]}
+                          disabled={!!deleteBusy[s.id] || (s as any).is_winner}
+                          onPress={() => {
+                            const doRemove = () => onRemoveSubmission(s as any);
+                            if (Platform.OS === 'web') {
+                              const ok =
+                                typeof window !== 'undefined' &&
+                                window.confirm('Remove submission? This will remove it and its votes.');
+                              if (ok) doRemove();
+                            } else {
+                              Alert.alert('Remove submission?', 'This will remove it and its votes.', [
+                                { text: 'Cancel', style: 'cancel' },
+                                { text: 'Remove', style: 'destructive', onPress: doRemove },
+                              ]);
                             }
-                            activeOpacity={0.9}
-                          >
-                            <Text style={styles.commentName}>
-                              {u?.full_name || 'Unknown'}
-                            </Text>
-                          </TouchableOpacity>
+                          }}
+                          activeOpacity={0.9}
+                        >
+                          <Text style={styles.feedActionGhostText}>
+                            {(s as any).is_winner
+                              ? 'Winner (locked)'
+                              : deleteBusy[s.id]
+                              ? 'Removing…'
+                              : 'Remove'}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  </View>
+                </View>
+              </>
+            )}
+          </View>
+        </LinearGradient>
+      </View>
+    );
+  },
+  [
+    cardW,
+    votedIds,
+    voteBusy,
+    deleteBusy,
+    currentUserId,
+    availableHForMedia,
+    commentCounts,
+    activeId,
+    isNarrow,
+    mediaW,
+  ]
+);
 
-                          <Text style={styles.commentText}>{item.comment}</Text>
-                        </View>
-                      </View>
-                    );
-                  }}
-                />
-              )}
+const headerElement = useMemo(
+  () => (
+    <View style={{ alignItems: 'center' }}>
+      {winner ? renderCard(`winner-${winner.id}`, winner, activeId === `winner-${winner.id}`, true) : null}
+      <View style={{ height: isNarrow ? 12 : 12 }} />
+    </View>
+  ),
+  [winner, activeId, isNarrow, cardW, availableHForMedia]
+);
+
+const sidebarElement = useMemo(() => {
+  if (!isWideWeb) return null;
+  return (
+    <View style={[styles.sidebar, { width: 320 }]}>
+      <HeaderControls
+        compact={false}
+        category={category}
+        sort={sort}
+        setSort={setSort}
+        searchText={searchText}
+        setSearchText={setSearchText}
+        isSearching={isSearching}
+        layout="sidebar"
+      />
+    </View>
+  );
+}, [isWideWeb, category, sort, searchText, isSearching]);
+
+const renderSubmissionItem = ({ item }: any) => {
+  if (isWideWeb) return renderCompactGridCard(item);
+  return renderCard(item.id, item, activeId === item.id, false);
+};
+
+const keyForList = isWideWeb ? `grid-${searchQ}-${sort}` : `feed-${searchQ}-${sort}`;
+
+return (
+  <View style={styles.container}>
+    <LinearGradient
+      colors={[T.heroBurgundy1, T.heroBurgundy2, T.bg]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 0, y: 0.75 }}
+      style={StyleSheet.absoluteFillObject}
+    />
+    <Grain opacity={0.05} />
+
+    {loading && submissions.length === 0 ? (
+      <ActivityIndicator style={{ marginTop: CONTENT_TOP_PAD + 8 }} color={T.accent} />
+    ) : (
+      <View style={{ flex: 1, paddingHorizontal: Platform.OS === 'web' ? 18 : 0 }}>
+        {isWideWeb ? (
+          <View style={[styles.wideLayout, { maxWidth: 1400, alignSelf: 'center' }]}>
+            {sidebarElement}
+
+            <View style={[styles.gridArea, { flex: 1 }]}>
+              <FlatList
+                key={keyForList}
+                data={submissions}
+                renderItem={renderSubmissionItem}
+                keyExtractor={(item: any) => item.id}
+                ListHeaderComponent={headerElement}
+                numColumns={2}
+                columnWrapperStyle={{ gap: 14, paddingHorizontal: 0 }}
+                contentContainerStyle={[
+                  styles.listContentWide,
+                  {
+                    paddingTop: CONTENT_TOP_PAD,
+                    paddingBottom: BOTTOM_TAB_H + 18,
+                  },
+                ]}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="always"
+                onScroll={onScrollImmediate}
+                onMomentumScrollEnd={onMomentumEnd}
+                scrollEventThrottle={16}
+              />
+            </View>
+          </View>
+        ) : (
+          <FlatList
+            key={keyForList}
+            data={submissions}
+            renderItem={renderSubmissionItem}
+            keyExtractor={(item: any) => item.id}
+            ListHeaderComponent={
+              <View style={{ alignItems: 'center' }}>
+                {headerElement}
+                <View style={[styles.subHeaderWrap, { width: cardW, marginTop: 4 }]}>
+                  <HeaderControls
+                    compact={isNarrow}
+                    category={category}
+                    sort={sort}
+                    setSort={setSort}
+                    searchText={searchText}
+                    setSearchText={setSearchText}
+                    isSearching={isSearching}
+                    layout="center"
+                  />
+                </View>
+              </View>
+            }
+            ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
+            contentContainerStyle={[
+              styles.listContent,
+              {
+                paddingTop: CONTENT_TOP_PAD,
+                paddingBottom: BOTTOM_TAB_H + 8,
+              },
+            ]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="always"
+            keyboardDismissMode="none"
+            removeClippedSubviews={Platform.OS !== 'web'}
+            windowSize={5}
+            initialNumToRender={3}
+            maxToRenderPerBatch={4}
+            viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
+            onEndReachedThreshold={0.4}
+            onScroll={onScrollImmediate}
+            onMomentumScrollEnd={onMomentumEnd}
+            scrollEventThrottle={16}
+            onContentSizeChange={() => ensureActiveByCenter(lastOffsetY.current)}
+            onLayout={() => ensureActiveByCenter(lastOffsetY.current)}
+          />
+        )}
+      </View>
+    )}
+
+    {/* ✅ Preview modal (wide web): full player + actions */}
+    {previewOpen && previewItem && (
+      <Modal visible transparent animationType="fade" onRequestClose={closePreview}>
+        <View style={styles.previewOverlay}>
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={closePreview} />
+          <View style={styles.previewCard}>
+            <View style={styles.previewHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.previewTitle} numberOfLines={1}>
+                  {previewItem.title}
+                </Text>
+                {previewItem.users?.full_name ? (
+                  <TouchableOpacity onPress={() => goToProfile(previewItem.users)} activeOpacity={0.9}>
+                    <Text style={styles.previewByline}>{previewItem.users.full_name}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              <TouchableOpacity onPress={closePreview} activeOpacity={0.9} style={styles.previewCloseBtn}>
+                <Text style={styles.previewCloseText}>Close</Text>
+              </TouchableOpacity>
             </View>
 
-            <View style={styles.commentComposer}>
-              <TextInput
-                value={commentText}
-                onChangeText={setCommentText}
-                placeholder="Add a comment…"
-                placeholderTextColor="#777"
-                style={styles.commentInput}
-                multiline
-              />
-              <TouchableOpacity
-                onPress={postComment}
-                disabled={commentPosting || !commentText.trim()}
-                activeOpacity={0.9}
-                style={[
-                  styles.commentSendBtn,
-                  (commentPosting || !commentText.trim()) && { opacity: 0.5 },
-                ]}
-              >
-                <Text style={styles.commentSendText}>
-                  {commentPosting ? '…' : 'Post'}
-                </Text>
-              </TouchableOpacity>
+            <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
+              {previewItem.storage_path ? (
+                <HostedVideoInline
+                  playerId={`preview-${previewItem.id}`}
+                  storagePath={previewItem.storage_path}
+                  width={Math.min(980, 860)}
+                  maxHeight={520}
+                  autoPlay={activeId === `preview-${previewItem.id}`}
+                  posterUri={previewItem.thumbnail_url ?? null}
+                  dimVignette={false}
+                />
+              ) : (
+                <View style={{ height: 320, borderRadius: 16, backgroundColor: '#000' }} />
+              )}
+
+              <View style={styles.previewActions}>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => toggleVote(previewItem)}
+                  disabled={
+                    !!voteBusy[previewItem.id] ||
+                    (!!currentUserId && (previewItem as any).user_id === currentUserId)
+                  }
+                  style={[
+                    styles.previewActionPill,
+                    (voteBusy[previewItem.id] ||
+                      (!!currentUserId && (previewItem as any).user_id === currentUserId)) && {
+                      opacity: 0.55,
+                    },
+                  ]}
+                >
+                  <Text style={styles.previewActionText}>
+                    {votedIds.has(previewItem.id) ? 'Voted' : 'Vote'} ({previewItem.votes ?? 0})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => openComments(previewItem)}
+                  style={styles.previewActionPillGhost}
+                >
+                  <Text style={styles.previewActionTextGhost}>
+                    Comments ({commentCounts[previewItem.id] ?? 0})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {!!previewItem.description ? <Text style={styles.previewDesc}>{previewItem.description}</Text> : null}
             </View>
           </View>
         </View>
-      )}
-    </View>
-  );
+      </Modal>
+    )}
+
+    {/* ---------------- Comments Modal (kept) ---------------- */}
+    {commentsOpen && (
+      <View style={styles.commentsOverlay}>
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={closeComments} />
+
+        <View style={styles.commentsSheet}>
+          <View style={styles.commentsHeader}>
+            <Text style={styles.commentsTitle}>Comments</Text>
+            <TouchableOpacity onPress={closeComments} activeOpacity={0.9}>
+              <Text style={styles.commentsClose}>Close</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ flex: 1 }}>
+            {commentsLoading ? (
+              <ActivityIndicator color={T.accent} style={{ padding: 14 }} />
+            ) : (
+              <FlatList
+                data={comments}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={{ paddingBottom: 12 }}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="always"
+                renderItem={({ item }) => {
+                  const u = item.users;
+                  return (
+                    <View style={styles.commentRow}>
+                      <TouchableOpacity
+                        onPress={() => u && goToProfile({ id: u.id, full_name: u.full_name })}
+                        activeOpacity={0.9}
+                        style={styles.commentAvatarTap}
+                      >
+                        <Image
+                          source={{ uri: u?.avatar_url || 'https://picsum.photos/80/80' }}
+                          style={styles.commentAvatar}
+                        />
+                      </TouchableOpacity>
+
+                      <View style={{ flex: 1 }}>
+                        <TouchableOpacity
+                          onPress={() => u && goToProfile({ id: u.id, full_name: u.full_name })}
+                          activeOpacity={0.9}
+                        >
+                          <Text style={styles.commentName}>{u?.full_name || 'Unknown'}</Text>
+                        </TouchableOpacity>
+
+                        <Text style={styles.commentText}>{item.comment}</Text>
+                      </View>
+                    </View>
+                  );
+                }}
+              />
+            )}
+          </View>
+
+          <View style={styles.commentComposer}>
+            <TextInput
+              value={commentText}
+              onChangeText={setCommentText}
+              placeholder="Add a comment…"
+              placeholderTextColor="#777"
+              style={styles.commentInput}
+              multiline
+            />
+            <TouchableOpacity
+              onPress={postComment}
+              disabled={commentPosting || !commentText.trim()}
+              activeOpacity={0.9}
+              style={[styles.commentSendBtn, (commentPosting || !commentText.trim()) && { opacity: 0.5 }]}
+            >
+              <Text style={styles.commentSendText}>{commentPosting ? '…' : 'Post'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    )}
+  </View>
+);
 };
 
+// ⬇️ PART 3 is styles + export (includes the NEW sidebar styles used in PART 1)
+// FeaturedScreen.tsx — PART 3 / 3
+// ✅ Styles + export (includes the sidebar/grid/preview/comment styles used above)
+
 const RADIUS_XL = 18;
-/* ──────────────────────────────────────────────────────────── */
-/**
- * ✅ IMPORTANT NOTE
- * Your “mobile” screenshots are coming from a PHONE BROWSER, so Platform.OS === 'web'
- * even on a tiny screen. Using IS_WEB alone will always make the hero text huge.
- *
- * Solution: keep IS_WEB, but also detect NARROW WEB and use compact hero text there.
- */
-const IS_WEB = Platform.OS === 'web';
-const IS_NARROW_WEB = IS_WEB && typeof window !== 'undefined' && window.innerWidth < 520;
-const IS_TINY_WEB = IS_WEB && typeof window !== 'undefined' && window.innerWidth < 380;
 
-// Use these for the hero overlay sizing ONLY
-const HERO_COMPACT = !IS_WEB || IS_NARROW_WEB;
-const HERO_TINY = !IS_WEB ? false : IS_TINY_WEB;
-
+/* ---------------- styles ---------------- */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: T.bg },
-  listContent: { paddingHorizontal: 16 },
-
-  topControls: {
-    alignSelf: 'center',
-    width: '100%',
-    gap: 4,
-    paddingVertical: 0,
-    marginBottom: 0,
+  container: {
+    flex: 1,
+    backgroundColor: T.bg,
   },
-  controlsBottomRow: {
+
+  wideLayout: {
+    flex: 1,
     flexDirection: 'row',
+    gap: 18,
+    paddingTop: CONTENT_TOP_PAD,
+  },
+
+  sidebar: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#141414',
+    backgroundColor: '#090909',
+    padding: 14,
+    height: 'fit-content' as any,
+    alignSelf: 'flex-start',
+  },
+
+  gridArea: {
+    flex: 1,
+    // optional safety net:
+    // overflow: 'hidden',
+  },
+
+  listContent: {
     alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+    paddingHorizontal: 0,
+  },
+
+  listContentWide: {
+    paddingHorizontal: 0,
+    paddingBottom: 28,
   },
 
   subHeaderWrap: {
-    alignSelf: 'center',
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 6,
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 2,
   },
 
-  catRow: {
-    marginTop: 6,
-    flexDirection: 'row',
-    alignSelf: 'center',
-    gap: 18,
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-  },
-  catTap: { alignItems: 'center' },
-  catText: {
-    color: '#FFFFFF',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
-    letterSpacing: IS_WEB ? 1.2 : 1.0,
-    textTransform: 'uppercase',
-    fontSize: IS_WEB ? 13 : 12,
-  },
-  catTextActive: { color: GOLD },
-  catUnderline: {
-    marginTop: 6,
-    height: 3,
-    width: IS_WEB ? 42 : 38,
-    backgroundColor: GOLD,
-    borderRadius: 2,
-  },
-
-  searchWrap: {
-    width: '100%',
-    maxWidth: 680,
-    alignSelf: 'center',
-    position: 'relative',
-  },
-  searchInput: {
-    backgroundColor: '#0F0F0F',
-    borderRadius: 10,
-    paddingLeft: 12,
-    paddingRight: 12,
-    paddingVertical: IS_WEB ? 10 : 9,
-    borderWidth: 1,
-    borderColor: '#1F1F1F',
-    fontSize: IS_WEB ? 14 : 13,
-    color: T.text,
-    minWidth: 220,
-    fontFamily: SYSTEM_SANS,
-    letterSpacing: IS_WEB ? 0.5 : 0.4,
-    fontWeight: '600',
-  },
-
-  sortRow: {
-    flexDirection: 'row',
-    gap: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-  },
-  sortTextBtn: {
-    alignItems: 'center',
-    paddingVertical: 0,
-  },
-  sortText: {
-    color: '#FFFFFF',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
-    letterSpacing: IS_WEB ? 1 : 0.8,
-    textTransform: 'uppercase',
-    fontSize: 10,
-  },
-  sortTextActive: { color: '#FFFFFF' },
-  sortUnderline: {
-    height: 1.5,
-    width: 26,
-    backgroundColor: '#FFFFFF',
-    opacity: 0.22,
-    marginTop: 3,
-    borderRadius: 2,
-  },
-
+  /* ---------------- Cards (full feed) ---------------- */
   cardWrapper: {
-    maxWidth: 1240,
-    alignSelf: 'center',
-  },
-  cardWrapperHero: {
-    marginTop: 4,
-    marginBottom: 12,
-  },
-  cardBorder: {
-    padding: 1,
-    borderRadius: RADIUS_XL + 1,
-  },
-  card: {
-    backgroundColor: T.card,
-    borderRadius: RADIUS_XL,
-    borderWidth: 1,
-    borderColor: '#ffffff12',
+    width: '100%',
     alignItems: 'center',
-    overflow: 'hidden',
-  },
-  cardHero: {
-    borderColor: '#ffffff1a',
   },
 
-  videoOuter: {
-    position: 'relative',
+  cardWrapperHero: {
+    marginBottom: 6,
+  },
+
+  cardBorder: {
+    borderRadius: RADIUS_XL + 2,
+    padding: 1,
+    width: '100%',
+    alignItems: 'center',
+  },
+
+  card: {
+    width: '100%',
+    borderRadius: RADIUS_XL,
+    backgroundColor: T.card,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: T.outline,
+  },
+
+  cardHero: {
+    backgroundColor: '#050505',
+  },
+
+  heroRow: {
+    alignSelf: 'center',
     borderRadius: RADIUS_XL,
     overflow: 'hidden',
-    marginBottom: 0,
     backgroundColor: '#000',
-    alignSelf: 'center',
+    marginTop: 14,
   },
+
+  winnerFooter: {
+    alignSelf: 'center',
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 14,
+  },
+
+  winnerMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 10,
+  },
+
+  winnerMetaLabel: {
+    color: 'rgba(237,235,230,0.55)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    fontSize: 11,
+  },
+
+  winnerMetaValue: {
+    color: GOLD,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+    fontSize: 13,
+  },
+
+  /* ---------------- Hero overlay ---------------- */
+    heroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+
+    // ✅ Center the entire text block over the video
+    justifyContent: 'center',
+    alignItems: 'center',
+
+    // ✅ keep safe padding from rounded edges
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+  },
+
+    heroOverlayInner: {
+    maxWidth: '100%',
+    alignItems: 'center', // ✅ center the text block
+  },
+
+    heroKicker: {
+    color: GOLD,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    textAlign: 'center', // ✅
+  },
+
+    heroTitle: {
+    color: '#fff',
+    fontFamily: FONT_CINEMATIC,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    textAlign: 'center', // ✅
+  },
+
+    heroBylineTap: {
+    alignSelf: 'center', // ✅ was flex-start
+    marginTop: 2,
+  },
+
+    heroByline: {
+    color: 'rgba(255,255,255,0.78)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    textAlign: 'center', // ✅
+  },
+
+  /* ---------------- Feed layout ---------------- */
+  feedRow: {
+    flexDirection: 'row',
+    alignSelf: 'center',
+    paddingTop: 14,
+    paddingBottom: 14,
+    gap: 10,
+  },
+
+  voteCol: {
+    alignItems: 'center',
+    paddingTop: 10,
+  },
+
+  voteTap: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#0B0B0B',
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+
+  voteArrow: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 9,
+    borderRightWidth: 9,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+  },
+
+  voteArrowUp: {
+    borderBottomWidth: 12,
+    borderBottomColor: '#D6D6D6',
+    marginTop: -2,
+  },
+
+  voteArrowDown: {
+    borderTopWidth: 12,
+    borderTopColor: '#D6D6D6',
+    marginBottom: -2,
+  },
+
+  voteArrowActive: {
+    borderBottomColor: T.accent,
+    borderTopColor: T.accent,
+  },
+
+  voteCountText: {
+    color: '#EDEBE6',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 13,
+    letterSpacing: 0.3,
+    marginBottom: 10,
+  },
+
+  commentDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: GOLD,
+    marginBottom: 4,
+  },
+
+  commentMini: {
+    color: 'rgba(237,235,230,0.65)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '800',
+    fontSize: 11,
+    letterSpacing: 0.2,
+  },
+
+  mineMini: {
+    marginTop: 8,
+    color: 'rgba(237,235,230,0.38)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 10,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+  },
+
+  feedBody: {
+    flex: 1,
+    paddingBottom: 6,
+  },
+
+  feedHeader: {
+    paddingRight: 8,
+  },
+
+  feedTitle: {
+    color: '#fff',
+    fontFamily: FONT_CINEMATIC,
+    fontWeight: '800',
+    fontSize: 22,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+
+  feedByline: {
+    marginTop: 6,
+    color: GOLD,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 12,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+
+  feedDescription: {
+    marginTop: 12,
+    color: 'rgba(237,235,230,0.72)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '600',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+
+  feedActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 12,
+    flexWrap: 'wrap',
+  },
+
+  feedActionBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: '#0B0B0B',
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+  },
+
+  feedActionText: {
+    color: '#EDEBE6',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 11,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+  },
+
+  feedActionBtnGhost: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#222',
+  },
+
+  feedActionGhostText: {
+    color: 'rgba(237,235,230,0.65)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 11,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+  },
+
+  /* ---------------- Video wrapper ---------------- */
+  videoOuter: {
+    alignSelf: 'center',
+    borderRadius: RADIUS_XL,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    borderWidth: 1,
+    borderColor: '#121212',
+  },
+
   aspectFill: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: RADIUS_XL,
     overflow: 'hidden',
   },
 
-  heroRow: { position: 'relative' },
-
-  heroOverlay: {
+  progressHit: {
     position: 'absolute',
-    left: IS_WEB ? 16 : 14,
-    right: IS_WEB ? 16 : 14,
-    top: 0,
-    bottom: 0,
+    left: 12,
+    right: 12,
+    bottom: 10,
+    height: 24,
+    justifyContent: 'center',
+  },
+
+  progressTrack: {
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    overflow: 'hidden',
+  },
+
+  progressFill: {
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: GOLD,
+  },
+
+  fsButton: {
+    position: 'absolute',
+    left: 12,
+    top: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: IS_WEB ? 12 : 10,
-    zIndex: 10,
   },
-  heroOverlayInner: {
+
+  soundBtn: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+    height: 38,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    pointerEvents: 'none',
-
-    // ✅ was pushing text down too much, made it feel huge on phone-web
-    paddingBottom: HERO_COMPACT ? 14 : 36,
+    gap: 8,
   },
 
-  /**
-   * ✅ HERO TEXT: now compact on:
-   * - native mobile
-   * - web-on-phone (narrow web)
-   */
-  heroKicker: {
-    color: '#ffffffdd',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    letterSpacing: HERO_COMPACT ? 0.6 : 1.0,
-    fontSize: HERO_COMPACT ? 10 : 16,
-    textTransform: 'uppercase',
-    marginBottom: HERO_COMPACT ? 4 : 8,
-    textAlign: 'center',
-    maxWidth: HERO_COMPACT ? '92%' : '85%',
-  },
-
-  heroTitle: {
+  soundText: {
     color: '#fff',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    letterSpacing: HERO_COMPACT ? 0.6 : 1.4,
-
-    // ✅ key fix: reduce giant title on phone-web
-    fontSize: HERO_TINY ? 22 : HERO_COMPACT ? 26 : 56,
-    lineHeight: HERO_TINY ? 26 : HERO_COMPACT ? 30 : 62,
-
-    marginBottom: HERO_COMPACT ? 2 : 6,
+    fontSize: 11,
+    letterSpacing: 0.7,
     textTransform: 'uppercase',
-    textAlign: 'center',
-    maxWidth: HERO_COMPACT ? '92%' : '85%',
   },
 
-  heroBylineTap: {
-  marginTop: HERO_COMPACT ? 2 : 6,
-  alignSelf: 'center',
-  maxWidth: HERO_COMPACT ? '92%' : '85%',
-},
-
-heroByline: {
-  color: GOLD,
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '700',
-  letterSpacing: HERO_COMPACT ? 0.25 : 0.5,
-  fontSize: HERO_TINY ? 11 : HERO_COMPACT ? 12 : 18,
-  textAlign: 'center',
-},
-
-  commentBtn: {
-    marginTop: IS_WEB ? 10 : 8,
-    alignSelf: 'flex-start',
-    paddingVertical: IS_WEB ? 8 : 7,
-    paddingHorizontal: IS_WEB ? 14 : 12,
-    borderRadius: 999,
+  /* ---------------- Audio wrapper ---------------- */
+  audioWrap: {
+    width: '100%',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#2A2A2A',
-    backgroundColor: '#0C0C0C',
+    borderColor: '#1A1A1A',
+    backgroundColor: '#060606',
+    padding: 10,
   },
 
-  commentBtnText: {
-    color: '#DDD',
-    fontSize: IS_WEB ? 13 : 12,
+  audioHint: {
+    color: 'rgba(237,235,230,0.72)',
+    fontFamily: SYSTEM_SANS,
     fontWeight: '800',
-    letterSpacing: IS_WEB ? 0.6 : 0.3,
+    letterSpacing: 0.4,
+  },
+
+  /* ---------------- Compact grid cards (wide web) ---------------- */
+  gridCard: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#0A0A0A',
+    borderWidth: 1,
+    borderColor: '#141414',
+    marginBottom: 14,
+  },
+
+  gridThumbWrap: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#000',
+  },
+
+  gridThumb: {
+    width: '100%',
+    height: '100%',
+  },
+
+  gridThumbOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+  },
+
+  gridBody: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+
+  gridTitle: {
+    color: '#fff',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 13,
+    letterSpacing: 0.2,
+    textTransform: 'none',
+  },
+
+  gridByline: {
+    marginTop: 4,
+    color: 'rgba(237,235,230,0.55)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '800',
+    fontSize: 11,
+    letterSpacing: 0.2,
+  },
+
+  gridMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 10,
+  },
+
+  gridVotePill: {
+    height: 30,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: '#0B0B0B',
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  gridVoteText: {
+    color: '#EDEBE6',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 11,
+    letterSpacing: 0.3,
     textTransform: 'uppercase',
   },
 
-  commentsOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  gridCommentPill: {
+    height: 30,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#1E1E1E',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  gridCommentText: {
+    color: 'rgba(237,235,230,0.70)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 11,
+    letterSpacing: 0.2,
+  },
+
+  gridMine: {
+    marginLeft: 'auto',
+    color: 'rgba(237,235,230,0.35)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+
+  /* ---------------- Preview modal ---------------- */
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.72)',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 18,
+  },
+
+  previewCard: {
+    width: '100%',
+    maxWidth: 920,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#0A0A0A',
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+  },
+
+  previewHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#141414',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  previewTitle: {
+    color: '#fff',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 14,
+    letterSpacing: 0.2,
+  },
+
+  previewByline: {
+    marginTop: 4,
+    color: GOLD,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 11,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+
+  previewCloseBtn: {
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: '#0B0B0B',
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  previewCloseText: {
+    color: '#EDEBE6',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 11,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+  },
+
+  previewActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 12,
+    marginBottom: 6,
+  },
+
+  previewActionPill: {
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: '#0B0B0B',
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  previewActionText: {
+    color: '#EDEBE6',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 11,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+
+  previewActionPillGhost: {
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#1E1E1E',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  previewActionTextGhost: {
+    color: 'rgba(237,235,230,0.70)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 11,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+
+  previewDesc: {
+    marginTop: 10,
+    color: 'rgba(237,235,230,0.72)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '600',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+
+  /* ---------------- HeaderControls (sidebar + center) ---------------- */
+  sideSearchBox: {
+    width: '100%',
+    backgroundColor: '#0B0B0B',
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+  },
+
+  sidePanel: {
+    width: '100%',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#141414',
+    backgroundColor: '#0A0A0A',
+    padding: 12,
+  },
+
+  sidePanelTitle: {
+    color: 'rgba(237,235,230,0.70)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 11,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+
+  sideSortItem: {
+    width: '100%',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#0B0B0B',
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+
+  sideSortItemActive: {
+    borderColor: GOLD,
+    backgroundColor: '#101010',
+  },
+
+  sideSortLabel: {
+    color: '#EDEBE6',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 12,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+
+  sideSortSub: {
+    marginTop: 3,
+    color: 'rgba(237,235,230,0.55)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '700',
+    fontSize: 11,
+    letterSpacing: 0.2,
+  },
+
+  sideSortDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(237,235,230,0.22)',
+    opacity: 0.8,
+  },
+
+  /* ---------------- HeaderControls (center compact row) ---------------- */
+  centerSortRow: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+  },
+
+  centerChip: {
+    paddingHorizontal: 12,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: '#0B0B0B',
+    borderWidth: 1,
+    borderColor: '#1A1A1A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  centerChipText: {
+    color: 'rgba(237,235,230,0.78)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 11,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+
+  /* ---------------- Comments modal ---------------- */
+  commentsOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 50,
     backgroundColor: 'rgba(0,0,0,0.65)',
-    zIndex: 999999,
-    elevation: 999999,
+    justifyContent: 'flex-end',
   },
 
   commentsSheet: {
-    width: '92%',
-    maxWidth: 720,
     maxHeight: '80%',
-    backgroundColor: '#0B0B0B',
-    borderRadius: IS_WEB ? 20 : 18,
+    backgroundColor: '#090909',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
     borderWidth: 1,
-    borderColor: '#1A1A1A',
+    borderColor: '#161616',
     overflow: 'hidden',
-    elevation: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 12 },
   },
 
   commentsHeader: {
-    paddingHorizontal: IS_WEB ? 18 : 16,
-    paddingTop: IS_WEB ? 18 : 16,
-    paddingBottom: IS_WEB ? 14 : 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#151515',
+    borderBottomColor: '#141414',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -3300,35 +3510,39 @@ heroByline: {
 
   commentsTitle: {
     color: '#fff',
-    fontSize: IS_WEB ? 16 : 15,
+    fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    letterSpacing: IS_WEB ? 0.6 : 0.5,
+    fontSize: 13,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
   },
 
   commentsClose: {
     color: GOLD,
-    fontSize: IS_WEB ? 13 : 12,
+    fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    letterSpacing: IS_WEB ? 0.5 : 0.4,
+    fontSize: 12,
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
 
   commentRow: {
     flexDirection: 'row',
-    gap: IS_WEB ? 12 : 10,
-    paddingHorizontal: IS_WEB ? 16 : 14,
-    paddingVertical: IS_WEB ? 12 : 10,
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#121212',
   },
 
   commentAvatarTap: {
-    width: IS_WEB ? 38 : 34,
-    height: IS_WEB ? 38 : 34,
-    borderRadius: 999,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#222',
+    borderColor: '#1A1A1A',
+    backgroundColor: '#000',
   },
 
   commentAvatar: {
@@ -3338,23 +3552,26 @@ heroByline: {
 
   commentName: {
     color: '#fff',
+    fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    fontSize: IS_WEB ? 13 : 12,
+    fontSize: 12,
     letterSpacing: 0.2,
-    marginBottom: 2,
   },
 
   commentText: {
-    color: '#DADADA',
-    fontSize: IS_WEB ? 13 : 12,
-    lineHeight: IS_WEB ? 18 : 17,
+    marginTop: 4,
+    color: 'rgba(237,235,230,0.75)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '600',
+    fontSize: 13,
+    lineHeight: 18,
   },
 
   commentComposer: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: '#151515',
-    paddingHorizontal: IS_WEB ? 16 : 14,
-    paddingVertical: IS_WEB ? 14 : 12,
+    borderTopColor: '#141414',
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 10,
@@ -3362,235 +3579,40 @@ heroByline: {
 
   commentInput: {
     flex: 1,
-    minHeight: IS_WEB ? 42 : 40,
-    maxHeight: IS_WEB ? 90 : 88,
-    color: '#fff',
-    backgroundColor: '#0F0F0F',
+    minHeight: 40,
+    maxHeight: 120,
+    borderRadius: 14,
+    backgroundColor: '#0B0B0B',
     borderWidth: 1,
-    borderColor: '#1F1F1F',
-    borderRadius: IS_WEB ? 14 : 12,
+    borderColor: '#1A1A1A',
     paddingHorizontal: 12,
-    paddingVertical: IS_WEB ? 10 : 9,
-    fontSize: IS_WEB ? 14 : 13,
+    paddingVertical: 10,
+    color: '#EDEBE6',
+    fontFamily: SYSTEM_SANS,
     fontWeight: '700',
+    fontSize: 13,
+    // @ts-ignore
+    outlineStyle: 'none',
   },
 
   commentSendBtn: {
-    paddingVertical: IS_WEB ? 10 : 9,
-    paddingHorizontal: IS_WEB ? 14 : 12,
-    borderRadius: IS_WEB ? 14 : 12,
-    backgroundColor: GOLD,
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: '#141414',
+    borderWidth: 1,
+    borderColor: GOLD,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   commentSendText: {
-    color: '#000',
-    fontWeight: '900',
-    fontSize: IS_WEB ? 13 : 12,
-    letterSpacing: IS_WEB ? 0.6 : 0.4,
-    textTransform: 'uppercase',
-  },
-
-  content: {
-    alignItems: 'center',
-    width: '100%',
-    paddingHorizontal: IS_WEB ? 16 : 14,
-    paddingTop: IS_WEB ? 12 : 10,
-    paddingBottom: IS_WEB ? 14 : 12,
-  },
-
-  titleWrap: {
-    marginBottom: 6,
-    width: '100%',
-  },
-  title: {
-    fontSize: IS_WEB ? 20 : 16,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    color: T.text,
-    letterSpacing: IS_WEB ? 1.2 : 0.7,
-    textTransform: 'uppercase',
-    textAlign: 'center',
-  },
-
-  byline: {
-    fontSize: IS_WEB ? 14 : 12,
     color: GOLD,
-    marginBottom: IS_WEB ? 8 : 6,
-    letterSpacing: IS_WEB ? 0.5 : 0.3,
-    textAlign: 'center',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '700',
-  },
-  description: {
-    fontSize: IS_WEB ? 15 : 13,
-    color: '#EDEDED',
-    letterSpacing: IS_WEB ? 0.2 : 0.15,
-    marginBottom: IS_WEB ? 12 : 10,
-    width: '100%',
-    lineHeight: IS_WEB ? 22 : 18,
-    textAlign: 'center',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '400',
-  },
-
-  actionsRow: {
-    width: '100%',
-    marginTop: 2,
-  },
-
-  progressHit: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: IS_WEB ? 24 : 22,
-  },
-  progressTrack: {
-    position: 'absolute',
-    left: 10,
-    right: 10,
-    bottom: 8,
-    height: 3,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    overflow: 'hidden',
-    borderRadius: 999,
-  },
-  progressFill: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: '#fff',
-    opacity: 0.9,
-  },
-
-  votePremiumRow: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 2,
-  },
-  votePremiumBtn: {
-    paddingVertical: IS_WEB ? 8 : 7,
-    paddingHorizontal: IS_WEB ? 14 : 12,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: '#ffffff22',
-    backgroundColor: 'transparent',
-  },
-  votePremiumBtnOn: {
-    borderColor: T.accent,
-    backgroundColor: '#00141A',
-  },
-  votePremiumBtnText: {
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    letterSpacing: IS_WEB ? 0.5 : 0.35,
-    fontSize: IS_WEB ? 13 : 12,
-    color: '#FFFFFF',
+    fontSize: 12,
+    letterSpacing: 0.7,
     textTransform: 'uppercase',
-  },
-  votePremiumBtnTextOn: {
-    color: T.accent,
-  },
-  votePremiumCountWrap: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 6,
-    marginLeft: 'auto',
-  },
-  votePremiumCount: {
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    fontSize: IS_WEB ? 18 : 16,
-    color: '#FFFFFF',
-  },
-  votePremiumCountLabel: {
-    fontFamily: SYSTEM_SANS,
-    fontSize: IS_WEB ? 12 : 11,
-    fontWeight: '800',
-    color: '#E0E0E0',
-    textTransform: 'lowercase',
-    opacity: 0.92,
-  },
-  votePremiumNote: {
-    fontFamily: SYSTEM_SANS,
-    fontSize: IS_WEB ? 12 : 11,
-    color: T.mute,
-    fontWeight: '800',
-  },
-
-  ghostBtn: {
-    alignSelf: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  ghostBtnDisabled: { opacity: 0.5 },
-  ghostText: {
-    fontFamily: SYSTEM_SANS,
-    color: T.sub,
-    fontWeight: '900',
-    fontSize: 11,
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-  },
-
-  fsButton: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    borderRadius: 999,
-    paddingHorizontal: IS_WEB ? 10 : 8,
-    paddingVertical: IS_WEB ? 8 : 6,
-    borderWidth: 1,
-    borderColor: '#ffffff24',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  soundBtn: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    borderRadius: 999,
-    paddingHorizontal: IS_WEB ? 12 : 10,
-    paddingVertical: IS_WEB ? 8 : 6,
-    borderWidth: 1,
-    borderColor: '#ffffff24',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: IS_WEB ? 8 : 6,
-  },
-  soundText: {
-    fontFamily: SYSTEM_SANS,
-    fontSize: IS_WEB ? 12 : 10,
-    color: '#fff',
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: IS_WEB ? 0.4 : 0.25,
-  },
-
-  audioWrap: {
-    width: '100%',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#ffffff14',
-    backgroundColor: T.card2,
-  },
-  audioHint: {
-    textAlign: 'center',
-    paddingVertical: 8,
-    color: T.sub,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
   },
 });
 

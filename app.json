@@ -6,21 +6,19 @@
     "orientation": "portrait",
     "icon": "./app/assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": false,
-
     "scheme": "overlooked",
-
     "splash": {
       "image": "./app/assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#0D0D0D"
     },
-
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.yourname.overlooked",
       "infoPlist": {
-        "CFBundleURLTypes": [{ "CFBundleURLSchemes": ["overlooked"] }],
+        "CFBundleURLTypes": [
+          { "CFBundleURLSchemes": ["overlooked"] }
+        ],
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library for profile uploads."
       },
       "associatedDomains": [
@@ -28,10 +26,8 @@
         "applinks:www.overlooked.cloud"
       ]
     },
-
     "android": {
       "package": "com.yourname.overlooked",
-      "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "foregroundImage": "./app/assets/adaptive-icon.png",
         "backgroundColor": "#0D0D0D"
@@ -49,31 +45,16 @@
         }
       ]
     },
-
     "web": {
-      "bundler": "metro",
-      "name": "Overlooked",
-      "shortName": "Overlooked",
+      "bundler": "webpack",
       "favicon": "./favicon.png",
-
       "display": "browser",
-      "pwa": false,
-
       "themeColor": "#0D0D0D",
-      "backgroundColor": "#0D0D0D",
-      "startUrl": "/",
-      "scope": "/",
-      "lang": "en",
-
-      "static": {
-        "copy": ["vercel.json", "sw.js"]
-      }
+      "backgroundColor": "#0D0D0D"
     },
-
     "extra": {
       "supabaseRedirectUrl": "overlooked://callback"
     },
-
     "plugins": ["expo-secure-store", "expo-font"],
     "platforms": ["ios", "android", "web"],
     "assetBundlePatterns": ["**/*"]

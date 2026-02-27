@@ -3,9 +3,8 @@
   "compilerOptions": {
     "strict": true,
     "skipLibCheck": true,
-    "types": ["react", "react-native"],
-    "jsx": "react-native",
     "noImplicitAny": false
   },
-  "include": ["app", "lib"]
+  "include": ["app", "lib", "*.ts", "*.tsx"],
+  "exclude": ["node_modules"]
 }

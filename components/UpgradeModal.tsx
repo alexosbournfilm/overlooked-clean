@@ -390,54 +390,20 @@ export const UpgradeModal: React.FC<Props> = ({
                     currentTier === 'pro' && styles.tierCardCurrentPro,
                   ]}
                 >
-                  <View style={[styles.offerStrip, isMobile && styles.offerStripMobile]}>
-                    <View style={styles.offerStripLeft}>
-                      <Text style={styles.offerStripKicker}>NEW YEAR’S OFFER</Text>
-                      <Text style={styles.offerStripTitle}>£24.99 Lifetime</Text>
-                    </View>
-
-                    <View style={[styles.offerStripRight, isMobile && styles.offerStripRightMobile]}>
-                      <View style={styles.offerDot} />
-                      <Text style={styles.offerStripMeta}>
-                        {offerCountdown.expired ? 'Offer ended' : offerCountdown.long}
-                      </Text>
-                    </View>
-                  </View>
-
                   <Text style={styles.tierName}>Pro</Text>
                   <Text style={styles.tierTagline}>Submit, apply, unlock everything</Text>
 
                   <View style={styles.plansArea}>
                     <View style={[styles.planRow, isMobile && styles.planRowMobile]}>
                       <View style={[styles.planTile, styles.planTileHero, isTiny && styles.planTileTiny]}>
-                        <Text style={[styles.planKicker, styles.planKickerHero]}>LIFETIME</Text>
+                        <Text style={[styles.planKicker, styles.planKickerHero]}>MONTHLY</Text>
 
                         <View style={styles.planPriceRow}>
                           <Text style={styles.planCurrency}>£</Text>
-                          <Text style={styles.planPriceHero}>24.99</Text>
+                          <Text style={styles.planPriceHero}>4.99</Text>
                         </View>
 
-                        <Text style={styles.planSubHero}>
-                          {offerCountdown.expired ? 'Offer ended' : 'Ends Jan 31'}
-                        </Text>
-                      </View>
-
-                      <View style={[styles.planTile, styles.planTileSecondary, isTiny && styles.planTileTiny]}>
-                        <Text style={styles.planKicker}>YEARLY</Text>
-                        <View style={styles.planPriceRow}>
-                          <Text style={styles.planCurrency}>£</Text>
-                          <Text style={styles.planPrice}>49.99</Text>
-                        </View>
-                        <Text style={styles.planSub}>Cancel anytime</Text>
-                      </View>
-
-                      <View style={[styles.planTile, styles.planTileSecondary, isTiny && styles.planTileTiny]}>
-                        <Text style={styles.planKicker}>MONTHLY</Text>
-                        <View style={styles.planPriceRow}>
-                          <Text style={styles.planCurrency}>£</Text>
-                          <Text style={styles.planPrice}>4.99</Text>
-                        </View>
-                        <Text style={styles.planSub}>Cancel anytime</Text>
+                        <Text style={styles.planSubHero}>Cancel anytime</Text>
                       </View>
                     </View>
                   </View>
@@ -810,72 +776,6 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  offerStrip: {
-    borderRadius: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: OFFER_STRIP_BG,
-    borderWidth: 1,
-    borderColor: OFFER_STRIP_BORDER,
-    marginBottom: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-
-  // ✅ Mobile: allow it to breathe + wrap cleanly instead of squeezing
-  offerStripMobile: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-
-  offerStripLeft: {
-    flex: 1,
-    minWidth: 140,
-  },
-
-  offerStripKicker: {
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-    color: 'rgba(237,235,230,0.82)',
-    textTransform: 'uppercase',
-    fontFamily: SYSTEM_SANS,
-    marginBottom: 2,
-  },
-
-  offerStripTitle: {
-    fontSize: 14.5,
-    fontWeight: '900',
-    color: TEXT_IVORY,
-    fontFamily: SYSTEM_SANS,
-  },
-
-  offerStripRight: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    gap: 6,
-  },
-
-  offerStripRightMobile: {
-    alignItems: 'flex-start',
-  },
-
-  offerDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 99,
-    backgroundColor: OFFER_ACCENT,
-    opacity: 0.95,
-  },
-
-  offerStripMeta: {
-    fontSize: 11.5,
-    color: 'rgba(237,235,230,0.72)',
-    fontFamily: SYSTEM_SANS,
-  },
-
   plansArea: {
     marginTop: 6,
     borderRadius: 18,
@@ -915,10 +815,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
 
-  planTileSecondary: {
-    backgroundColor: 'rgba(255,255,255,0.025)',
-  },
-
   planKicker: {
     fontSize: 10,
     fontWeight: '900',
@@ -946,24 +842,10 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  planPrice: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: TEXT_IVORY,
-    fontFamily: SYSTEM_SANS,
-  },
-
   planPriceHero: {
     fontSize: 22,
     fontWeight: '900',
     color: TEXT_IVORY,
-    fontFamily: SYSTEM_SANS,
-  },
-
-  planSub: {
-    marginTop: 6,
-    fontSize: 11,
-    color: TEXT_MUTED_2,
     fontFamily: SYSTEM_SANS,
   },
 

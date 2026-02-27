@@ -27,10 +27,8 @@ import { invalidateMembershipCache } from '../lib/membership';
 
 /* -------------------------- Stripe Price IDs (authoritative) -------------------------- */
 const STRIPE_PRICE_MONTHLY = 'price_1S1jLxIaba42c4jIsVBQneb0';
-const STRIPE_PRICE_YEARLY = 'price_1SnJ7bIaba42c4jIyjgmASbH';
-const STRIPE_PRICE_LIFETIME = 'price_1SnJ5vIaba42c4jIf8o7Ys6w';
 
-type PlanKey = 'lifetime' | 'yearly' | 'monthly';
+type PlanKey = 'monthly';
 
 function isActive(status?: string | null, currentPeriodEnd?: string | null) {
   if (!status) return false;
@@ -74,9 +72,7 @@ const TEXT_MUTED = 'rgba(237,235,230,0.60)';
 const TEXT_MUTED_2 = 'rgba(237,235,230,0.42)';
 const HAIRLINE = 'rgba(255,255,255,0.09)';
 const GOLD = '#C6A664';
-const OFFER_ACCENT = '#2ED47A';
-const OFFER_STRIP_BG = 'rgba(46,212,122,0.10)';
-const OFFER_STRIP_BORDER = 'rgba(46,212,122,0.18)';
+
 const OFFER_TILE_BG = 'rgba(46,212,122,0.12)';
 const OFFER_TILE_BORDER = 'rgba(46,212,122,0.22)';
 
@@ -86,26 +82,6 @@ const SYSTEM_SANS = Platform.select({
   web: undefined,
   default: undefined,
 });
-
-// Countdown to Jan 25, 2026 (end of day local time)
-function getOfferRemaining() {
-  const end = new Date(2026, 0, 31, 23, 59, 59); // Jan 31, 2026
-  const now = new Date();
-  const ms = end.getTime() - now.getTime();
-
-  if (ms <= 0) {
-    return { expired: true, short: 'Offer ended', long: 'Offer ended' };
-  }
-
-  const totalMinutes = Math.floor(ms / (1000 * 60));
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-
-  const short = days > 0 ? `${days}d ${hours}h left` : `${hours}h left`;
-  const long = `Ends Jan 31 • ${short}`;
-
-  return { expired: false, short, long };
-}
 
 function extractInvokeError(err: any): string {
   return (
@@ -130,7 +106,6 @@ export default function PaywallScreen() {
   const [message, setMessage] = useState<string | null>(null);
 
   const [selectedPlan, setSelectedPlan] = useState<PlanKey>('monthly');
-  const [offerCountdown, setOfferCountdown] = useState(() => getOfferRemaining());
 
   // prevents "flash" by not rendering until we confirm user isn't already Pro
   const [gateChecking, setGateChecking] = useState(true);
@@ -150,13 +125,6 @@ export default function PaywallScreen() {
     }
   };
 
-  useEffect(() => {
-    const tick = () => setOfferCountdown(getOfferRemaining());
-    tick();
-    const id = setInterval(tick, 60 * 1000);
-    return () => clearInterval(id);
-  }, []);
-
   // Disable native back gesture & header back while on paywall
   useFocusEffect(
     useCallback(() => {
@@ -169,26 +137,16 @@ export default function PaywallScreen() {
   );
 
   const planLabel = useMemo(() => {
-    if (selectedPlan === 'lifetime') return 'Choose Lifetime';
-    if (selectedPlan === 'yearly') return 'Choose Yearly';
     return 'Choose Monthly';
-  }, [selectedPlan]);
+  }, []);
 
   const selectedSubLabel = useMemo(() => {
-    if (selectedPlan === 'lifetime') return 'Selected: £24.99 lifetime';
-    if (selectedPlan === 'yearly') return 'Selected: £49.99 / year';
     return 'Selected: £4.99 / month';
-  }, [selectedPlan]);
+  }, []);
 
   const selectedPlanPayload = useMemo(() => {
-    if (selectedPlan === 'lifetime') {
-      return { plan: 'lifetime' as const, priceId: STRIPE_PRICE_LIFETIME };
-    }
-    if (selectedPlan === 'yearly') {
-      return { plan: 'yearly' as const, priceId: STRIPE_PRICE_YEARLY };
-    }
     return { plan: 'monthly' as const, priceId: STRIPE_PRICE_MONTHLY };
-  }, [selectedPlan]);
+  }, []);
 
   const enterFeatured = useCallback(() => {
     nav.dispatch(
@@ -513,81 +471,25 @@ export default function PaywallScreen() {
             Submit films to the Monthly Film Challenge, apply for paid jobs, and unlock Workshop tools.
           </Text>
 
-          {/* Offer strip */}
-          <View style={[styles.offerStrip, isMobile && styles.offerStripMobile]}>
-            <View style={{ flex: 1, minWidth: 160 }}>
-              <Text style={styles.offerStripKicker}>NEW YEAR’S OFFER</Text>
-              <Text style={styles.offerStripTitle}>£24.99 Lifetime</Text>
-            </View>
-
-            <View style={[styles.offerStripRight, isMobile && styles.offerStripRightMobile]}>
-              <View style={styles.offerDot} />
-              <Text style={styles.offerStripMeta}>
-                {offerCountdown.expired ? 'Offer ended' : offerCountdown.long}
-              </Text>
-            </View>
-          </View>
-
-          {/* Plan tiles */}
+          {/* Monthly plan tile */}
           <View style={styles.plansArea}>
             <View style={[styles.planRow, isMobile && styles.planRowMobile, isTiny && styles.planRowTiny]}>
-              {/* Lifetime */}
-              <TouchableOpacity
-                activeOpacity={0.92}
-                onPress={() => setSelectedPlan('lifetime')}
-                style={[
-                  styles.planTile,
-                  styles.planTileHero,
-                  selectedPlan === 'lifetime' ? styles.tileSelected : null,
-                  isTiny ? styles.planTileTinyStack : null,
-                ]}
-              >
-                <Text style={[styles.planKicker, styles.planKickerHero]}>LIFETIME</Text>
-                <View style={styles.planPriceRow}>
-                  <Text style={styles.planCurrency}>£</Text>
-                  <Text style={styles.planPriceHero}>24.99</Text>
-                </View>
-                <Text style={styles.planSubHero}>
-                  {offerCountdown.expired ? 'Offer ended' : 'Ends Jan 31'}
-                </Text>
-              </TouchableOpacity>
-
-              {/* Yearly */}
-              <TouchableOpacity
-                activeOpacity={0.92}
-                onPress={() => setSelectedPlan('yearly')}
-                style={[
-                  styles.planTile,
-                  styles.planTileSecondary,
-                  selectedPlan === 'yearly' ? styles.tileSelected : null,
-                  isTiny ? styles.planTileTinyStack : null,
-                ]}
-              >
-                <Text style={styles.planKicker}>YEARLY</Text>
-                <View style={styles.planPriceRow}>
-                  <Text style={styles.planCurrency}>£</Text>
-                  <Text style={styles.planPrice}>49.99</Text>
-                </View>
-                <Text style={styles.planSub}>Cancel anytime</Text>
-              </TouchableOpacity>
-
-              {/* Monthly */}
               <TouchableOpacity
                 activeOpacity={0.92}
                 onPress={() => setSelectedPlan('monthly')}
                 style={[
                   styles.planTile,
-                  styles.planTileSecondary,
-                  selectedPlan === 'monthly' ? styles.tileSelected : null,
+                  styles.planTileHero,
+                  styles.tileSelected,
                   isTiny ? styles.planTileTinyStack : null,
                 ]}
               >
-                <Text style={styles.planKicker}>MONTHLY</Text>
+                <Text style={[styles.planKicker, styles.planKickerHero]}>MONTHLY</Text>
                 <View style={styles.planPriceRow}>
                   <Text style={styles.planCurrency}>£</Text>
-                  <Text style={styles.planPrice}>4.99</Text>
+                  <Text style={styles.planPriceHero}>4.99</Text>
                 </View>
-                <Text style={styles.planSub}>Cancel anytime</Text>
+                <Text style={styles.planSubHero}>Cancel anytime</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -698,67 +600,6 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  offerStrip: {
-    borderRadius: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: OFFER_STRIP_BG,
-    borderWidth: 1,
-    borderColor: OFFER_STRIP_BORDER,
-    marginBottom: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-
-  // ✅ Mobile: stack the right side under the title so it doesn’t squeeze
-  offerStripMobile: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-
-  offerStripRight: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    gap: 6,
-  },
-
-  offerStripRightMobile: {
-    alignItems: 'flex-start',
-  },
-
-  offerStripKicker: {
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-    color: 'rgba(237,235,230,0.82)',
-    textTransform: 'uppercase',
-    fontFamily: SYSTEM_SANS,
-    marginBottom: 2,
-  },
-
-  offerStripTitle: {
-    fontSize: 14.5,
-    fontWeight: '900',
-    color: TEXT_IVORY,
-    fontFamily: SYSTEM_SANS,
-  },
-
-  offerDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 99,
-    backgroundColor: OFFER_ACCENT,
-    opacity: 0.95,
-  },
-
-  offerStripMeta: {
-    fontSize: 11.5,
-    color: 'rgba(237,235,230,0.72)',
-    fontFamily: SYSTEM_SANS,
-  },
-
   plansArea: {
     marginTop: 6,
     borderRadius: 18,
@@ -773,7 +614,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
 
-  // ✅ Mobile: allow nicer wrapping; on most phones you’ll get 1-2 tiles per row naturally
+  // ✅ Mobile: allow nicer wrapping
   planRowMobile: {
     flexWrap: 'wrap',
   },
@@ -802,11 +643,6 @@ const styles = StyleSheet.create({
   planTileHero: {
     backgroundColor: OFFER_TILE_BG,
     borderColor: OFFER_TILE_BORDER,
-  },
-
-  planTileSecondary: {
-    backgroundColor: 'rgba(255,255,255,0.025)',
-    borderColor: 'rgba(255,255,255,0.06)',
   },
 
   tileSelected: {
@@ -841,24 +677,10 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  planPrice: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: TEXT_IVORY,
-    fontFamily: SYSTEM_SANS,
-  },
-
   planPriceHero: {
     fontSize: 22,
     fontWeight: '900',
     color: TEXT_IVORY,
-    fontFamily: SYSTEM_SANS,
-  },
-
-  planSub: {
-    marginTop: 6,
-    fontSize: 11,
-    color: TEXT_MUTED_2,
     fontFamily: SYSTEM_SANS,
   },
 

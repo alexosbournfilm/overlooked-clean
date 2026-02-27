@@ -1765,16 +1765,14 @@ try {
   </Text>
 
   <Text style={styles.impactSteps}>
-    Join. Submit. Vote. Get voted. Win a slot at the Overlooked Film Festival 2026.
+    Join. Submit. Vote. Get voted.
   </Text>
 
   <View style={styles.impactDivider} />
 
-  <Text style={styles.impactHighlightTitle}>🎬 FILM FESTIVAL 2026 — ROME</Text>
+  <Text style={styles.impactHighlightTitle}>🏆 TOP FILMS GET FEATURED</Text>
   <Text style={styles.impactBody}>
-    The <Text style={styles.impactStrong}>Top 2 highest-voted films</Text> will be screened at the first in-person
-    Overlooked Film Festival in <Text style={styles.impactStrong}>Rome</Text> in <Text style={styles.impactStrong}>July 2026</Text>.
-    Exact date to be decided.
+    The highest-voted films are showcased at the top of the platform and highlighted across Overlooked channels.
   </Text>
 
   <View style={styles.impactDivider} />

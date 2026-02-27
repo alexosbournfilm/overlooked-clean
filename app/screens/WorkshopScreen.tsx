@@ -850,14 +850,12 @@ const WorkshopScreen: React.FC = () => {
       </View>
 
       {/* Hero intro */}
-      <View style={styles.hero}>
-        <Text style={styles.heroTitle}>Tools for stronger work.</Text>
-        <Text style={styles.heroSubtitle}>
-          Hand-crafted packs designed to help creators polish, experiment, and level up.
-          {'\n'}
-          <Text style={styles.heroFriday}>New tools coming every Friday.</Text>
-        </Text>
-      </View>
+<View style={styles.hero}>
+  <Text style={styles.heroTitle}>Tools for stronger work.</Text>
+  <Text style={styles.heroSubtitle}>
+    Hand-crafted packs designed to help creators polish, experiment, and level up.
+  </Text>
+</View>
 
       {loading && !refreshing ? (
         <View style={styles.loadingRow}>
@@ -910,9 +908,7 @@ const WorkshopScreen: React.FC = () => {
 
           {soundProducts.map((p) => renderProductCard(p, { forceFullRow: false }))}
 
-          {hasAnything && (
-            <Text style={styles.comingSoonBig}>NEW TOOLS COMING EVERY FRIDAY.</Text>
-          )}
+          
         </ScrollView>
       )}
 

@@ -53,10 +53,6 @@ const TEXT_MUTED = '#A7A6A2';
 const DIVIDER = '#2A2A2A';
 const GOLD = '#C6A664';
 
-const OFFER_ACCENT = '#2ED47A';
-const OFFER_STRIP_BG = 'rgba(46,212,122,0.12)';
-const OFFER_STRIP_BORDER = 'rgba(46,212,122,0.20)';
-
 /* ------------------------------- fonts --------------------------------- */
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
@@ -66,25 +62,6 @@ const SYSTEM_SANS = Platform.select({
 });
 
 /* ------------------------------- helpers ------------------------------- */
-
-function getOfferRemaining() {
-  const end = new Date(2026, 0, 31, 23, 59, 59); // Jan 31, 2026
-  const now = new Date();
-  const ms = end.getTime() - now.getTime();
-
-  if (ms <= 0) {
-    return { expired: true, short: 'Offer ended', long: 'Offer ended' };
-  }
-
-  const totalMinutes = Math.floor(ms / (1000 * 60));
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-
-  const short = days > 0 ? `${days}d ${hours}h left` : `${hours}h left`;
-  const long = `Ends Jan 31 • ${short}`;
-
-  return { expired: false, short, long };
-}
 
 function withTimeout<T>(promise: Promise<T>, ms = 9000): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -289,12 +266,7 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
         <View style={[styles.streakBarOverlay, compactUI && { paddingHorizontal: 10 }]}>
           <View style={styles.streakSidesRow}>
             <View style={styles.streakLeftGroup}>
-              <Text
-                style={[
-                  styles.streakBarLeft,
-                  compactUI && { fontSize: 8, letterSpacing: 0.75 },
-                ]}
-              >
+              <Text style={[styles.streakBarLeft, compactUI && { fontSize: 8, letterSpacing: 0.75 }]}>
                 STREAK
               </Text>
             </View>
@@ -302,13 +274,7 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
             <Text style={[styles.streakBarRight, compactUI && { fontSize: 8 }]}>Year {yearLabel}</Text>
           </View>
 
-          <View
-            pointerEvents="none"
-            style={[
-              styles.streakCenterAbs,
-              compactUI && { paddingHorizontal: 64 },
-            ]}
-          >
+          <View pointerEvents="none" style={[styles.streakCenterAbs, compactUI && { paddingHorizontal: 64 }]}>
             <Text style={[styles.streakBarCenter, compactUI && { fontSize: 8 }]} numberOfLines={1}>
               {loading ? '—' : `${displayStreak}/${targetMonths}`}
             </Text>
@@ -865,12 +831,7 @@ const TopBarXpProgress = memo(function TopBarXpProgress({ variant, onOpenLeaderb
     <>
       <View style={[styles.xpWrap, isWide ? styles.xpWrapWide : styles.xpWrapCompact]}>
         {onOpenLeaderboard && (
-          <View
-            style={[
-              styles.leaderboardLinkRow,
-              isWide ? styles.leaderboardLinkRowWide : styles.leaderboardLinkRowCompact,
-            ]}
-          >
+          <View style={[styles.leaderboardLinkRow, isWide ? styles.leaderboardLinkRowWide : styles.leaderboardLinkRowCompact]}>
             <Pressable onPress={onOpenLeaderboard} hitSlop={6}>
               <Text style={styles.leaderboardLinkText}>VIEW LEADERBOARD</Text>
             </Pressable>
@@ -936,64 +897,27 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
   const isWide = width >= 980;
   const isPhone = width < 420;
   const isTiny = width < 360;
-
-  const [offerCountdown, setOfferCountdown] = useState(() => getOfferRemaining());
-
-  useEffect(() => {
-    const tick = () => setOfferCountdown(getOfferRemaining());
-    tick();
-    const id = setInterval(tick, 60 * 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const bannerHeight = isPhone ? 22 : 34;
-  const wrapperHeight = bannerHeight + navHeight + (isWide ? 0 : 30);
-
-  const saleText = offerCountdown.expired
-    ? `NEW YEAR’S PRO SALE • OFFER ENDED`
-    : `NEW YEAR’S PRO SALE • ${offerCountdown.long}`;
-
   const compactUI = !isWide;
 
   return (
-    <View style={[styles.topBarWrapper, { height: wrapperHeight, top: topOffset }]}>
-      <HoverPress
-        onPress={onOpenUpgrade}
-        style={[styles.saleBanner, { height: bannerHeight }]}
-        hitSlop={6}
-        accessibilityLabel="Open upgrade"
-      >
-        <View style={[styles.saleBannerInner, { height: bannerHeight, paddingHorizontal: isPhone ? 10 : 14 }]}>
-          <View style={[styles.saleDot, isPhone && { width: 6, height: 6 }]} />
-          <View pointerEvents="none" style={[styles.saleBannerCenterAbs, { paddingHorizontal: isPhone ? 24 : 36 }]}>
-            <Text
-              style={[
-                styles.saleBannerText,
-                isPhone && styles.saleBannerTextCompact,
-                isTiny && styles.saleBannerTextTiny,
-              ]}
-              numberOfLines={1}
-            >
-              {saleText}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={isPhone ? 13 : 16} color="rgba(237,235,230,0.88)" />
-        </View>
-      </HoverPress>
-
+    <View style={[styles.topBarWrapper, { top: topOffset }]}>
       <View style={[styles.topBarInner, { height: navHeight, paddingHorizontal: isPhone ? 10 : 14 }]}>
-        <HoverPress style={{ borderRadius: 10 }} accessibilityLabel="Overlooked">
-          <BrandWordmark compact={compactUI} />
-        </HoverPress>
+        {/* Left */}
+        <View style={styles.topBarLeft}>
+          <HoverPress style={{ borderRadius: 10 }} accessibilityLabel="Overlooked">
+            <BrandWordmark compact={compactUI} />
+          </HoverPress>
+        </View>
 
+        {/* Center (wide only) — FLEX so it never overlaps right buttons */}
         {isWide && (
-          <View pointerEvents="box-none" style={[styles.centerSlotAbs, { paddingHorizontal: 220 }]}>
+          <View style={styles.topBarCenter}>
             <HoverPress
               accessibilityLabel="Streak"
               style={{
                 borderRadius: 999,
                 width: '100%',
-                maxWidth: 600,
+                maxWidth: 620,
                 alignSelf: 'center',
               }}
             >
@@ -1002,7 +926,27 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
           </View>
         )}
 
+        {/* Right tools */}
         <View style={[styles.rightTools, { gap: isPhone ? 6 : 10 }]}>
+          {/* Upgrade */}
+          <HoverPress onPress={onOpenUpgrade} hitSlop={6} accessibilityLabel="Open upgrade">
+            <View
+              style={[
+                styles.upgradeBtn,
+                isPhone && styles.upgradeBtnPhone,
+                compactUI && styles.upgradeBtnCompact,
+              ]}
+            >
+              <Ionicons name="sparkles-outline" size={isPhone ? 15 : 16} color={GOLD} />
+              {!isPhone && (
+                <Text style={[styles.upgradeBtnText, compactUI && styles.upgradeBtnTextCompact]} numberOfLines={1}>
+                  UPGRADE
+                </Text>
+              )}
+            </View>
+          </HoverPress>
+
+          {/* Leaderboard */}
           <HoverPress onPress={onOpenLeaderboard} hitSlop={6} accessibilityLabel="View leaderboard">
             <View
               style={[
@@ -1013,16 +957,14 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
             >
               <Ionicons name="trophy-outline" size={isPhone ? 15 : 16} color={GOLD} />
               {!isPhone && (
-                <Text
-                  style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]}
-                  numberOfLines={1}
-                >
+                <Text style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]} numberOfLines={1}>
                   LEADERBOARD
                 </Text>
               )}
             </View>
           </HoverPress>
 
+          {/* Settings */}
           <HoverPress disabled>
             <View
               style={[
@@ -1039,6 +981,7 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
         </View>
       </View>
 
+      {/* Compact streak row (mobile / narrow web) */}
       {!isWide && (
         <View style={[styles.topBarInnerStreakRow, { paddingHorizontal: isPhone ? 10 : 14 }]}>
           <HoverPress
@@ -1227,10 +1170,13 @@ export default function MainTabs() {
     }
   }, []);
 
-  const NAV_HEIGHT = width >= 980 ? 56 : isPhone ? 40 : 44;
-  const topOffset = width >= 980 ? 0 : Platform.OS === 'ios' ? Math.max((insets.top || 0) - 4, 0) : 0;
+  const isWide = width >= 980;
 
-  const contentTopPadding = (isPhone ? 22 : 34) + NAV_HEIGHT + (width >= 980 ? 0 : 30);
+  const NAV_HEIGHT = isWide ? 56 : isPhone ? 40 : 44;
+  const topOffset = isWide ? 0 : Platform.OS === 'ios' ? Math.max((insets.top || 0) - 4, 0) : 0;
+
+  // ✅ Sale strip removed, so padding is just navbar + (compact streak row height when not wide)
+  const contentTopPadding = NAV_HEIGHT + (isWide ? 0 : 30);
 
   const TABBAR_HEIGHT = isPhone ? 54 : 56;
 
@@ -1264,7 +1210,6 @@ export default function MainTabs() {
         },
 
         // ✅ PERF: keep screens mounted for instant switching.
-        // still lazy-load the first time so initial boot is lighter.
         lazy: true,
         lazyPreloadDistance: 1,
         detachInactiveScreens: Platform.OS !== 'web',
@@ -1381,54 +1326,26 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
 
-  saleBanner: {
-    paddingHorizontal: 0,
-    backgroundColor: OFFER_STRIP_BG,
-    borderBottomWidth: 1,
-    borderBottomColor: OFFER_STRIP_BORDER,
-  },
-  saleBannerInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  saleDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 99,
-    backgroundColor: OFFER_ACCENT,
-    opacity: 0.95,
-  },
-  saleBannerCenterAbs: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saleBannerText: {
-    fontSize: 14.5,
-    fontWeight: '900',
-    letterSpacing: 1.0,
-    color: TEXT_IVORY,
-    fontFamily: SYSTEM_SANS,
-    textTransform: 'uppercase',
-  },
-  saleBannerTextCompact: {
-    fontSize: 10.2,
-    letterSpacing: 0.5,
-  },
-  saleBannerTextTiny: {
-    fontSize: 9.4,
-    letterSpacing: 0.35,
-  },
-
   topBarInner: {
     width: '100%',
     maxWidth: 1200,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    position: 'relative',
+  },
+
+  topBarLeft: {
+    flexShrink: 0,
+    paddingRight: 8,
+  },
+
+  // ✅ Flex center so it never overlaps the right tools
+  topBarCenter: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
   },
 
   topBarInnerStreakRow: {
@@ -1455,18 +1372,51 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
   },
 
-  centerSlotAbs: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
   rightTools: {
     marginLeft: 'auto',
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
+  },
+
+  upgradeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(198,166,100,0.10)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(198,166,100,0.30)',
+    maxWidth: 140,
+  },
+  upgradeBtnPhone: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    gap: 0,
+    maxWidth: 44,
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+  },
+  upgradeBtnCompact: {
+    paddingVertical: 6,
+    paddingHorizontal: 9,
+    gap: 6,
+    maxWidth: 110,
+  },
+  upgradeBtnText: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    color: GOLD,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+    flexShrink: 1,
+  },
+  upgradeBtnTextCompact: {
+    fontSize: 8.5,
+    letterSpacing: 0.9,
   },
 
   leaderboardBtn: {

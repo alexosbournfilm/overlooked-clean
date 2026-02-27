@@ -6,7 +6,6 @@ const path = require('path');
 module.exports = async (env, argv) => {
   const config = await createExpoWebpackConfigAsync(env, argv);
 
-  // Node core fallbacks for web
   config.resolve.fallback = {
     ...(config.resolve.fallback || {}),
     crypto: require.resolve('crypto-browserify'),
@@ -16,7 +15,6 @@ module.exports = async (env, argv) => {
     vm: require.resolve('vm-browserify'),
   };
 
-  // Provide globals some libs expect
   config.plugins = [
     ...(config.plugins || []),
     new webpack.ProvidePlugin({
@@ -25,19 +23,29 @@ module.exports = async (env, argv) => {
     }),
   ];
 
-  // Allow importing .html (react-native-web-webview)
   config.module.rules.push({
     test: /\.html$/i,
     use: 'raw-loader',
   });
 
-  // Vercel cannot process custom rewrites for react-native-web.
-
+  // ✅ PUT IT HERE
   config.resolve.alias = {
     ...(config.resolve.alias || {}),
-    // Keep only this react-native-vector-icons override:
+
     '@react-native-vector-icons/material-design-icons':
       '@expo/vector-icons/MaterialCommunityIcons',
+
+    // stub react-native-maps for web
+    'react-native-maps': path.resolve(
+      __dirname,
+      'app/shims/react-native-maps.web.js'
+    ),
+
+    // stub ffmpeg-kit-react-native for web
+    'ffmpeg-kit-react-native': path.resolve(
+      __dirname,
+      'app/shims/ffmpeg-kit-react-native.web.js'
+    ),
   };
 
   return config;

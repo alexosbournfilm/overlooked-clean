@@ -20,6 +20,36 @@ import { supabase } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
+/**
+ * ────────────────────────────────────────────────────────────
+ * ✅ MAP SUPPORT (Mobile)
+ * ────────────────────────────────────────────────────────────
+ * This screen now includes a "globe/map" panel.
+ *
+ * For iOS/Android (Expo), install:
+ *   npx expo install react-native-maps
+ *
+ * Web: we render a clean "Map preview" card (react-native-maps is not reliably web-safe)
+ * ────────────────────────────────────────────────────────────
+ */
+const IS_WEB = Platform.OS === 'web';
+const IS_MAP_SUPPORTED = !IS_WEB;
+
+// Lazy require so web bundling doesn't explode
+let MapViewAny: any = null;
+let MarkerAny: any = null;
+try {
+  if (IS_MAP_SUPPORTED) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const RNMaps = require('react-native-maps');
+    MapViewAny = RNMaps.default;
+    MarkerAny = RNMaps.Marker;
+  }
+} catch (e) {
+  MapViewAny = null;
+  MarkerAny = null;
+}
+
 /* ────────────────────────────────────────────────────────────
    Match MainTabs aesthetic (same palette + font system)
    ──────────────────────────────────────────────────────────── */
@@ -57,6 +87,13 @@ const WEB_NO_OUTLINE =
 const COLLAB_IMAGE_URI =
   'https://images.unsplash.com/photo-1568992688065-536aad8a12f6?auto=format&fit=crop&w=1800&q=70';
 
+/**
+ * ✅ Subtle world-map image (web fallback + "globe vibe")
+ * (Used only when map isn't interactive)
+ */
+const WORLD_MAP_FALLBACK_URI =
+  'https://images.unsplash.com/photo-1526779259212-939e64788e3c?auto=format&fit=crop&w=1800&q=70';
+
 /* -------------------------------------------
    Types
 -------------------------------------------- */
@@ -89,8 +126,8 @@ type JoinedUser =
   | undefined;
 
 type JoinedCity =
-  | { name?: string; country_code?: string }
-  | { name?: string; country_code?: string }[]
+  | { name?: string; country_code?: string; latitude?: number | null; longitude?: number | null; lat?: number | null; lng?: number | null }
+  | { name?: string; country_code?: string; latitude?: number | null; longitude?: number | null; lat?: number | null; lng?: number | null }[]
   | null
   | undefined;
 
@@ -121,6 +158,11 @@ type JobDetail = {
   cities?: JoinedCity; // cities(name, country_code)
   users?: JoinedUser; // users(id, full_name)
 };
+
+type CityCoords = {
+  lat: number;
+  lng: number;
+} | null;
 
 /* -------------------------------------------
    Helpers
@@ -277,6 +319,12 @@ export default function LocationScreen() {
   // Collab image fallback
   const [collabImageFailed, setCollabImageFailed] = useState(false);
 
+  // ✅ Map / globe state
+  const [cityCoords, setCityCoords] = useState<CityCoords>(null);
+  const [coordsLoading, setCoordsLoading] = useState(false);
+  const [coordsUnavailable, setCoordsUnavailable] = useState(false);
+  const [mapMode, setMapMode] = useState<'world' | 'city'>('city');
+
   const navigation = useNavigation<any>();
   const { height: screenH } = useWindowDimensions();
 
@@ -367,11 +415,74 @@ export default function LocationScreen() {
     }
   }, []);
 
+  /**
+   * ✅ Fetch coords for the selected city (if your cities table has them).
+   * Supports either:
+   *   - latitude / longitude
+   *   - lat / lng
+   *
+   * If your schema doesn't have coords yet, the UI stays beautiful and simply shows
+   * a "coords unavailable" message instead of breaking.
+   */
+  const fetchCityCoords = useCallback(async (cityId: number) => {
+    if (!cityId) return;
+
+    setCoordsLoading(true);
+    setCoordsUnavailable(false);
+    setCityCoords(null);
+
+    try {
+      // Try latitude/longitude first
+      const attemptA = await supabase
+        .from('cities')
+        .select('id, name, country_code, latitude, longitude')
+        .eq('id', cityId)
+        .maybeSingle();
+
+      if (!attemptA.error && attemptA.data) {
+        const lat = (attemptA.data as any)?.latitude;
+        const lng = (attemptA.data as any)?.longitude;
+        if (typeof lat === 'number' && typeof lng === 'number') {
+          setCityCoords({ lat, lng });
+          setCoordsLoading(false);
+          return;
+        }
+      }
+
+      // If error suggests columns don't exist, try lat/lng
+      const attemptB = await supabase
+        .from('cities')
+        .select('id, name, country_code, lat, lng')
+        .eq('id', cityId)
+        .maybeSingle();
+
+      if (!attemptB.error && attemptB.data) {
+        const lat = (attemptB.data as any)?.lat;
+        const lng = (attemptB.data as any)?.lng;
+        if (typeof lat === 'number' && typeof lng === 'number') {
+          setCityCoords({ lat, lng });
+          setCoordsLoading(false);
+          return;
+        }
+      }
+
+      // If we got here, coords exist but not set, OR cols are missing
+      setCoordsUnavailable(true);
+    } catch (e) {
+      setCoordsUnavailable(true);
+    } finally {
+      setCoordsLoading(false);
+    }
+  }, []);
+
   const handleSearch = async () => {
     if (!city) return;
 
     setSearching(true);
     setSearched(false);
+
+    // ✅ pull coords early so map feels instant
+    void fetchCityCoords(city.value);
 
     const [usersRes, jobsRes] = await Promise.all([
       // ✅ include avatar_url + level so we can do the ring color properly
@@ -596,6 +707,155 @@ export default function LocationScreen() {
     }
   }, [selectedJob]);
 
+  const MapGlobeCard = () => {
+    // World / city regions
+    const worldRegion = useMemo(() => {
+      return {
+        latitude: 20,
+        longitude: 0,
+        latitudeDelta: 140,
+        longitudeDelta: 140,
+      };
+    }, []);
+
+    const cityRegion = useMemo(() => {
+      if (!cityCoords) return worldRegion;
+      return {
+        latitude: cityCoords.lat,
+        longitude: cityCoords.lng,
+        latitudeDelta: 0.18,
+        longitudeDelta: 0.18,
+      };
+    }, [cityCoords, worldRegion]);
+
+    const activeRegion = mapMode === 'world' ? worldRegion : cityRegion;
+
+    const hasPin = !!city && !!cityCoords;
+
+    return (
+      <View style={styles.mapCard}>
+        <View style={styles.mapHeaderRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={styles.mapIconPill}>
+              <Ionicons name="globe-outline" size={16} color={GOLD} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.mapTitle}>Global Map</Text>
+              <Text style={styles.mapSub}>
+                {city ? `Pinned to ${city.label}` : 'Pick a city to pin it on the map'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.mapModeRow}>
+            {(['city', 'world'] as const).map((m) => {
+              const active = mapMode === m;
+              return (
+                <TouchableOpacity
+                  key={m}
+                  style={[styles.mapModeBtn, active && styles.mapModeBtnActive]}
+                  onPress={() => setMapMode(m)}
+                  activeOpacity={0.9}
+                >
+                  <Text style={[styles.mapModeText, active && styles.mapModeTextActive]}>
+                    {m === 'city' ? 'CITY' : 'WORLD'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.mapViewport}>
+          {/* Web fallback */}
+          {IS_WEB || !MapViewAny ? (
+            <>
+              <Image
+                source={{ uri: WORLD_MAP_FALLBACK_URI }}
+                style={styles.mapFallbackImage}
+                resizeMode="cover"
+              />
+
+              <LinearGradient
+                colors={['rgba(0,0,0,0.12)', 'rgba(0,0,0,0.78)']}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.mapOverlayGrad}
+                pointerEvents="none"
+              />
+
+              <View style={styles.mapFallbackTextWrap} pointerEvents="none">
+                <Text style={styles.mapFallbackHeadline}>MAP PREVIEW</Text>
+                <Text style={styles.mapFallbackCopy}>
+                  Interactive globe is enabled on iOS/Android. Web stays clean + fast.
+                </Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <MapViewAny
+                style={styles.mapView}
+                initialRegion={activeRegion}
+                region={activeRegion}
+                rotateEnabled
+                pitchEnabled
+                zoomEnabled
+                scrollEnabled
+                toolbarEnabled={false}
+                showsCompass={false}
+                showsBuildings={false}
+                showsIndoors={false}
+                showsMyLocationButton={false}
+              >
+                {hasPin && MarkerAny ? (
+                  <MarkerAny
+                    coordinate={{ latitude: cityCoords!.lat, longitude: cityCoords!.lng }}
+                    title={city?.label}
+                    description={`${users.length} creatives • ${jobs.length} jobs`}
+                    pinColor={GOLD}
+                  />
+                ) : null}
+              </MapViewAny>
+
+              {/* Vignette to match your aesthetic */}
+              <LinearGradient
+                colors={['rgba(0,0,0,0.10)', 'rgba(0,0,0,0.72)']}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.mapOverlayGrad}
+                pointerEvents="none"
+              />
+            </>
+          )}
+
+          {/* Bottom status pill */}
+          <View style={styles.mapStatusPill}>
+            {coordsLoading ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <ActivityIndicator color={GOLD} style={{ marginRight: 10 }} />
+                <Text style={styles.mapStatusText}>Pinning your city…</Text>
+              </View>
+            ) : city ? (
+              cityCoords ? (
+                <Text style={styles.mapStatusText}>
+                  Pinned: <Text style={{ color: GOLD, fontWeight: '900' }}>{city.label}</Text>
+                </Text>
+              ) : coordsUnavailable ? (
+                <Text style={styles.mapStatusText}>
+                  Map pin unavailable for this city (coords missing). Still works for search + chat.
+                </Text>
+              ) : (
+                <Text style={styles.mapStatusText}>Pick a city, then tap Search.</Text>
+              )
+            ) : (
+              <Text style={styles.mapStatusText}>Select a city to place the pin.</Text>
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   const InspirationCard = () => (
     <View style={styles.inspirationCard}>
       <View style={styles.inspirationImageWrap}>
@@ -685,6 +945,11 @@ export default function LocationScreen() {
           </Text>
         </View>
       </TouchableOpacity>
+
+      {/* ✅ NEW: Map/Globe card (shows immediately, pins after Search or when coords are available) */}
+      <View style={{ marginBottom: 14 }}>
+        <MapGlobeCard />
+      </View>
 
       {city && (
         <TouchableOpacity style={styles.searchButton} onPress={handleSearch} activeOpacity={0.92}>
@@ -827,6 +1092,9 @@ export default function LocationScreen() {
                     onPress={() => {
                       setCity(item);
                       setSearchModalVisible(false);
+
+                      // ✅ preload coords so the pin feels immediate
+                      void fetchCityCoords(item.value);
                     }}
                     activeOpacity={0.9}
                   >
@@ -1011,6 +1279,145 @@ const styles = StyleSheet.create({
     color: GOLD,
     letterSpacing: 0.8,
     fontWeight: '900',
+  },
+
+  // ✅ NEW: Globe/Map card
+  mapCard: {
+    backgroundColor: DARK_ELEVATED,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
+    overflow: 'hidden',
+  },
+  mapHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    gap: 12,
+  },
+  mapIconPill: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
+    backgroundColor: '#101010',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+  },
+  mapSub: {
+    marginTop: 4,
+    fontSize: 12,
+    color: TEXT_MUTED,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  mapModeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  mapModeBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
+    backgroundColor: '#111111',
+  },
+  mapModeBtnActive: {
+    borderColor: GOLD,
+  },
+  mapModeText: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    color: TEXT_MUTED,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+  },
+  mapModeTextActive: {
+    color: GOLD,
+  },
+  mapViewport: {
+    height: 240,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#101010',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: DIVIDER,
+  },
+  mapView: {
+    width: '100%',
+    height: '100%',
+  },
+  mapOverlayGrad: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
+  mapStatusPill: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    bottom: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(13,13,13,0.72)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  mapStatusText: {
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+  mapFallbackImage: {
+    width: '100%',
+    height: '100%',
+  },
+  mapFallbackTextWrap: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    top: 14,
+    alignItems: 'center',
+  },
+  mapFallbackHeadline: {
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 2.0,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  mapFallbackCopy: {
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 18,
+    opacity: 0.92,
   },
 
   searchButton: {
