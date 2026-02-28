@@ -46,7 +46,7 @@
       ]
     },
     "web": {
-      "bundler": "webpack",
+      "bundler": "metro",
       "favicon": "./favicon.png",
       "display": "browser",
       "themeColor": "#0D0D0D",
