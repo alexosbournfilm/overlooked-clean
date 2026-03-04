@@ -9,6 +9,7 @@ import {
   Text,
   StyleSheet,
   FlatList,
+  ScrollView,
   TextInput,
   TouchableOpacity,
   Platform,
@@ -77,7 +78,60 @@ const FONT_OBLIVION =
   }) || 'Avenir Next';
 
 type SortKey = 'newest' | 'oldest' | 'mostvoted' | 'leastvoted';
-type Category = 'film';
+type Category = 'film' | 'all';
+
+const FILM_CATEGORIES = [
+  'All',
+  'Drama',
+  'Comedy',
+  'Thriller',
+  'Horror',
+  'Sci-Fi',
+  'Romance',
+  'Action',
+  'Mystery',
+  'Crime',
+  'Fantasy',
+  'Coming-of-Age',
+  'Experimental',
+  'Documentary-Style',
+  'No-Dialogue',
+  'One-Take',
+  'Found Footage',
+  'Slow Cinema',
+  'Satire',
+  'Neo-Noir',
+  'Musical',
+  'Tragedy',
+  'Monologue',
+  'Character Study',
+  'Dialogue-Driven',
+  'Dramedy',
+  'Dark Comedy',
+  'Psychological',
+  'Suspense',
+  'Period Piece',
+  'Social Realism',
+  'Rom-Com',
+  'Heist',
+  'War',
+  'Western',
+  'Supernatural',
+  'Animation-Style',
+  'Silent Film',
+  'Improvised',
+  'Voiceover',
+  'Two-Hander',
+  'Single Location',
+] as const;
+
+type FilmCategory = (typeof FILM_CATEGORIES)[number];
+
+// Because Challenge stores EXACT strings from the tag list into submissions.film_category,
+// the DB values should match 1:1 (no translation needed).
+const FILM_CATEGORY_DB_MAP: Record<string, string> = Object.fromEntries(
+  FILM_CATEGORIES.filter((c) => c !== 'All').map((c) => [c, c])
+);
 
 const TOP_BAR_OFFSET = Platform.OS === 'web' ? 76 : 16;
 const BOTTOM_TAB_H = Platform.OS === 'web' ? 64 : 64;
@@ -405,6 +459,7 @@ function HostedVideoInline({
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const progressRef = useRef<View>(null);
+
 
   useEffect(() => {
     const handle: PlayerHandle = {
@@ -1073,6 +1128,11 @@ async function countUserVotesInRange(uid: string, range: { start: string; end: s
 /* ---------------- Memoized Header Controls ---------------- */
 type HeaderControlsProps = {
   category: Category;
+
+  // NEW: Film category selection
+  filmCategory: FilmCategory;
+  setFilmCategory: (c: FilmCategory) => void;
+
   sort: SortKey;
   setSort: (k: SortKey) => void;
   searchText: string;
@@ -1090,9 +1150,14 @@ type HeaderControlsProps = {
  *
  * NOTE: Layout="center" still renders a compact horizontal row for mobile/narrow.
  */
+// ✅ REPLACE THE ENTIRE HeaderControls BLOCK WITH THIS
+
+
 const HeaderControls = React.memo(
   ({
     category,
+    filmCategory,
+    setFilmCategory,
     sort,
     setSort,
     searchText,
@@ -1188,11 +1253,10 @@ const HeaderControls = React.memo(
           </View>
         ) : null}
 
-        {/* Sort panel */}
+        {/* SORT panel */}
         <View style={styles.sidePanel}>
           <Text style={styles.sidePanelTitle}>SORT BY</Text>
 
-          {/* Sidebar = vertical list, Center = compact row */}
           {isSidebar ? (
             <View style={{ gap: 8 }}>
               {filters.map((f) => {
@@ -1211,12 +1275,9 @@ const HeaderControls = React.memo(
                       <Text style={[styles.sideSortLabel, active && { color: GOLD }]}>
                         {f.label}
                       </Text>
-                      {!!f.sub ? (
-                        <Text style={styles.sideSortSub}>{f.sub}</Text>
-                      ) : null}
+                      {!!f.sub ? <Text style={styles.sideSortSub}>{f.sub}</Text> : null}
                     </View>
 
-                    {/* tiny indicator */}
                     <View
                       style={[
                         styles.sideSortDot,
@@ -1250,6 +1311,77 @@ const HeaderControls = React.memo(
             </View>
           )}
         </View>
+
+        {/* ✅ CATEGORY panel (separate + scrollable on sidebar) */}
+        <View style={[styles.sidePanel, { marginTop: 14 }]}>
+          <Text style={styles.sidePanelTitle}>CATEGORY</Text>
+
+          {isSidebar ? (
+            <ScrollView
+  style={{ maxHeight: 360 }}
+  contentContainerStyle={{ gap: 8, paddingBottom: 24 }}
+  showsVerticalScrollIndicator
+  nestedScrollEnabled
+  onStartShouldSetResponderCapture={() => true}
+  onMoveShouldSetResponderCapture={() => true}
+  {...(Platform.OS === 'web'
+    ? ({
+        // stop the main feed from stealing wheel scroll
+        onWheel: (e: any) => e.stopPropagation(),
+      } as any)
+    : {})}
+>
+              {FILM_CATEGORIES.map((c) => {
+                const active = filmCategory === c;
+                return (
+                  <TouchableOpacity
+                    key={c}
+                    activeOpacity={0.9}
+                    onPress={() => setFilmCategory(c)}
+                    style={[
+                      styles.sideSortItem,
+                      active && styles.sideSortItemActive,
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.sideSortLabel, active && { color: GOLD }]}>
+                        {c}
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.sideSortDot,
+                        active && { backgroundColor: GOLD, opacity: 1 },
+                      ]}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          ) : (
+            <View style={styles.centerSortRow}>
+              {FILM_CATEGORIES.map((c) => {
+                const active = filmCategory === c;
+                return (
+                  <TouchableOpacity
+                    key={c}
+                    activeOpacity={0.9}
+                    onPress={() => setFilmCategory(c)}
+                    style={[
+                      styles.centerChip,
+                      active && { borderColor: GOLD, backgroundColor: '#111' },
+                    ]}
+                  >
+                    <Text style={[styles.centerChipText, active && { color: GOLD }]}>
+                      {c}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </View>
       </View>
     );
   }
@@ -1272,6 +1404,9 @@ const FeaturedScreen = () => {
   const isMobile = Platform.OS !== 'web';
 
   const category: Category = 'film';
+
+// Category filter (matches Challenge categories)
+const [filmCategory, setFilmCategory] = useState<FilmCategory>('All');
   const [loading, setLoading] = useState(true);
   const [winner, setWinner] = useState<
     | (Submission & {
@@ -1448,7 +1583,7 @@ const fitContain = (maxW: number, maxH: number, aspect = FIT_ASPECT) => {
       await fetchContent(uid, category, searchQ);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sort, searchQ]);
+  }, [sort, searchQ, filmCategory]);
 
   useFocusEffect(
     useCallback(() => {
@@ -1496,7 +1631,12 @@ const fitContain = (maxW: number, maxH: number, aspect = FIT_ASPECT) => {
     return res;
   };
 
-  const fetchSubsSafe = async (orderKey: SortKey, searchTextQ: string, cat: Category) => {
+  const fetchSubsSafe = async (
+  orderKey: SortKey,
+  searchTextQ: string,
+  cat: Category,
+  filmCat: FilmCategory
+) => {
     const sel = `
       ${baseCols},
       videos:video_id ( original_path, thumbnail_path, video_variants ( path, label ) ),
@@ -1511,147 +1651,173 @@ const fitContain = (maxW: number, maxH: number, aspect = FIT_ASPECT) => {
       return q;
     };
 
-    let query: any = addSort(supabase.from('submissions').select(sel).eq('category', 'film'));
+   let query: any = addSort(
+  supabase.from('submissions').select(sel)
+);
 
-    const trimmed = searchTextQ.trim();
-    if (trimmed) {
-      query = query.ilike('title', `%${trimmed}%`);
+// Always restrict to film type
+query = query.eq('category', 'film');
+
+// ✅ Apply Film Category filter (genre)
+if (filmCat && filmCat !== 'All') {
+  const dbVal = (FILM_CATEGORY_DB_MAP[filmCat] ?? filmCat).trim();
+query = query.ilike('film_category', `%${dbVal}%`);
+}
+
+
+const trimmed = searchTextQ.trim();
+if (trimmed) {
+  query = query.ilike('title', `%${trimmed}%`);
+}
+
+let res = await query;
+
+if (res.error) {
+  const sel2 = `
+    ${baseCols},
+    videos:video_id ( original_path, thumbnail_path, video_variants ( path, label ) ),
+    word
+  `;
+
+  let q2: any = addSort(
+    supabase.from('submissions').select(sel2)
+  );
+
+  // Always restrict to film type
+  q2 = q2.eq('category', 'film');
+
+  if (filmCat && filmCat !== 'All') {
+  const dbVal = (FILM_CATEGORY_DB_MAP[filmCat] ?? filmCat).trim();
+q2 = q2.ilike('film_category', `%${dbVal}%`);
+}
+
+
+  if (searchTextQ.trim()) {
+    q2 = q2.ilike('title', `%${searchTextQ.trim()}%`);
+  }
+
+  res = await q2;
+
+  if (res.error) {
+    return { data: [], error: res.error } as any;
+  }
+}
+
+const rows = (res.data ?? []) as any[];
+
+for (const r of rows) {
+  const picked = pickSmallestVariant(r);
+  r.storage_path =
+    r.media_kind === 'file_audio'
+      ? r.storage_path ?? r.video_path ?? r?.videos?.original_path ?? null
+      : picked.path;
+  r.thumbnail_url = picked.thumb;
+}
+
+return res;
+};
+
+const fetchContent = async (uid: string | null, cat: Category, searchTextQ: string) => {
+  setLoading(true);
+
+  try {
+    const challenges = await fetchChallengesForFeatured();
+
+    const range = challenges.current
+      ? { start: challenges.current.month_start, end: challenges.current.month_end }
+      : undefined;
+
+    currentRangeRef.current = range ?? null;
+
+    // Winner (previous month only)
+    let winnerData:
+      | (Submission & {
+          description?: string | null;
+          storage_path?: string | null;
+          thumbnail_url?: string | null;
+          media_kind?: RawSubmission['media_kind'];
+          mime_type?: string | null;
+          category?: Category | null;
+        })
+      | null = null;
+
+    if (challenges.previous?.winner_submission_id) {
+      const { data: w } = await fetchWinnerSafe(challenges.previous.winner_submission_id, cat);
+      winnerData = w ? normalizeRow(w as RawSubmission) : null;
+
+      if (winnerData && winnerData.category !== cat) {
+        winnerData = null;
+      }
+
+      if ((winnerData as any)?.storage_path) {
+        signStoragePath((winnerData as any).storage_path!, 180).catch(() => {});
+      }
     }
 
-    let res = await query;
+    // ✅ All-time submissions
+    const resp = await fetchSubsSafe(sort, searchTextQ, cat, filmCategory);
+    const subs = (resp?.data || []) as RawSubmission[];
+    const normalized = subs.map(normalizeRow);
 
-    if (res.error) {
-      const sel2 = `
-        ${baseCols},
-        videos:video_id ( original_path, thumbnail_path, video_variants ( path, label ) ),
-        word
-      `;
-      let q2: any = addSort(supabase.from('submissions').select(sel2).eq('category', 'film'));
-      if (searchTextQ.trim()) {
-        q2 = q2.ilike('title', `%${searchTextQ.trim()}%`);
+    fetchCommentCounts(normalized.map((s) => s.id));
+
+    setWinner(winnerData);
+    setSubmissions(normalized);
+
+    normalized.slice(0, 10).forEach((s) => {
+      if (s.storage_path) {
+        signStoragePath(s.storage_path, 180).catch(() => {});
       }
-      res = await q2;
-      if (res.error) {
-        return { data: [], error: res.error } as any;
-      }
-    }
-
-    const rows = (res.data ?? []) as any[];
-
-    for (const r of rows) {
-      const picked = pickSmallestVariant(r);
-      r.storage_path =
-        r.media_kind === 'file_audio'
-          ? r.storage_path ?? r.video_path ?? r?.videos?.original_path ?? null
-          : picked.path;
-      r.thumbnail_url = picked.thumb;
-    }
-
-    return res;
-  };
-
-  const fetchContent = async (uid: string | null, cat: Category, searchTextQ: string) => {
-    setLoading(true);
-
-    try {
-      const challenges = await fetchChallengesForFeatured();
-
-      const range = challenges.current
-        ? { start: challenges.current.month_start, end: challenges.current.month_end }
-        : undefined;
-
-      currentRangeRef.current = range ?? null;
-
-      // Winner (previous month only)
-      let winnerData:
-        | (Submission & {
-            description?: string | null;
-            storage_path?: string | null;
-            thumbnail_url?: string | null;
-            media_kind?: RawSubmission['media_kind'];
-            mime_type?: string | null;
-            category?: Category | null;
-          })
-        | null = null;
-
-      if (challenges.previous?.winner_submission_id) {
-        const { data: w } = await fetchWinnerSafe(challenges.previous.winner_submission_id, cat);
-        winnerData = w ? normalizeRow(w as RawSubmission) : null;
-
-        if (winnerData && winnerData.category !== cat) {
-          winnerData = null;
-        }
-
-        if ((winnerData as any)?.storage_path) {
-          signStoragePath((winnerData as any).storage_path!, 180).catch(() => {});
-        }
-      }
-
-      // ✅ All-time submissions
-      const resp = await fetchSubsSafe(sort, searchTextQ, cat);
-      const subs = (resp?.data || []) as RawSubmission[];
-      const normalized = subs.map(normalizeRow);
-
-      fetchCommentCounts(normalized.map((s) => s.id));
-
-      setWinner(winnerData);
-      setSubmissions(normalized);
-
-      normalized.slice(0, 10).forEach((s) => {
-        if (s.storage_path) {
-          signStoragePath(s.storage_path, 180).catch(() => {});
-        }
-      });
-
-      if (uid && normalized.length) {
-        const ids = normalized.map((s) => s.id);
-        const { data: myVotes } = await supabase
-          .from('user_votes')
-          .select('submission_id')
-          .eq('user_id', uid)
-          .in('submission_id', ids);
-
-        const votedSet = new Set<string>((myVotes || []).map((r) => r.submission_id as string));
-        setVotedIds(votedSet);
-      } else {
-        setVotedIds(new Set());
-      }
-
-      if (uid && range) {
-        const used = await countUserVotesInRange(uid, range);
-        setMonthlyVotesUsed(used);
-      } else {
-        setMonthlyVotesUsed(0);
-      }
-
-      const firstPlayable = winnerData?.storage_path
-        ? `winner-${winnerData.id}`
-        : normalized.find((r) => !!r.storage_path && r.media_kind !== 'file_audio')?.id ?? null;
-
-      setActiveId((prev) => prev ?? (firstPlayable as string | null));
-
-      layoutMap.current.clear();
-    } catch (e: any) {
-      console.warn('fetchContent error:', e?.message || e);
-      setWinner(null);
-      setSubmissions([]);
-      setVotedIds(new Set());
-      setMonthlyVotesUsed(0);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const goToProfile = (user?: { id: string; full_name: string }) => {
-    if (!user) return;
-    navigation.navigate('Profile', {
-      user: {
-        id: user.id,
-        full_name: user.full_name,
-      },
     });
-  };
 
+    if (uid && normalized.length) {
+      const ids = normalized.map((s) => s.id);
+      const { data: myVotes } = await supabase
+        .from('user_votes')
+        .select('submission_id')
+        .eq('user_id', uid)
+        .in('submission_id', ids);
+
+      const votedSet = new Set<string>((myVotes || []).map((r) => r.submission_id as string));
+      setVotedIds(votedSet);
+    } else {
+      setVotedIds(new Set());
+    }
+
+    if (uid && range) {
+      const used = await countUserVotesInRange(uid, range);
+      setMonthlyVotesUsed(used);
+    } else {
+      setMonthlyVotesUsed(0);
+    }
+
+    const firstPlayable = winnerData?.storage_path
+      ? `winner-${winnerData.id}`
+      : normalized.find((r) => !!r.storage_path && r.media_kind !== 'file_audio')?.id ?? null;
+
+    setActiveId((prev) => prev ?? (firstPlayable as string | null));
+
+    layoutMap.current.clear();
+  } catch (e: any) {
+    console.warn('fetchContent error:', e?.message || e);
+    setWinner(null);
+    setSubmissions([]);
+    setVotedIds(new Set());
+    setMonthlyVotesUsed(0);
+  } finally {
+    setLoading(false);
+  }
+};
+
+const goToProfile = (user?: { id: string; full_name: string }) => {
+  if (!user) return;
+  navigation.navigate('Profile', {
+    user: {
+      id: user.id,
+      full_name: user.full_name,
+    },
+  });
+};
   // ✅ open/close preview modal for compact cards
   const openPreview = (s: any) => {
     setPreviewItem(s);
@@ -2446,28 +2612,49 @@ const headerElement = useMemo(
 
 const sidebarElement = useMemo(() => {
   if (!isWideWeb) return null;
+
+  const maxH = winH - (TOP_BAR_OFFSET + BOTTOM_TAB_H + 24);
+
   return (
-    <View style={[styles.sidebar, { width: 320 }]}>
-      <HeaderControls
-        compact={false}
-        category={category}
-        sort={sort}
-        setSort={setSort}
-        searchText={searchText}
-        setSearchText={setSearchText}
-        isSearching={isSearching}
-        layout="sidebar"
-      />
+    <View style={[styles.sidebar, { width: 320, maxHeight: maxH, overflow: 'hidden' as any }]}>
+      <ScrollView
+        showsVerticalScrollIndicator
+        contentContainerStyle={{ paddingBottom: 18 }}
+        nestedScrollEnabled
+        onStartShouldSetResponderCapture={() => true}
+        onMoveShouldSetResponderCapture={() => true}
+        {...(Platform.OS === 'web'
+          ? ({
+              // keep wheel scrolling INSIDE sidebar
+              onWheel: (e: any) => e.stopPropagation(),
+            } as any)
+          : {})}
+      >
+        <HeaderControls
+          compact={false}
+          category={category}
+          filmCategory={filmCategory}
+          setFilmCategory={setFilmCategory}
+          sort={sort}
+          setSort={setSort}
+          searchText={searchText}
+          setSearchText={setSearchText}
+          isSearching={isSearching}
+          layout="sidebar"
+        />
+      </ScrollView>
     </View>
   );
-}, [isWideWeb, category, sort, searchText, isSearching]);
+}, [isWideWeb, category, sort, searchText, isSearching, filmCategory, winH]);
 
 const renderSubmissionItem = ({ item }: any) => {
   if (isWideWeb) return renderCompactGridCard(item);
   return renderCard(item.id, item, activeId === item.id, false);
 };
 
-const keyForList = isWideWeb ? `grid-${searchQ}-${sort}` : `feed-${searchQ}-${sort}`;
+const keyForList = isWideWeb
+  ? `grid-${searchQ}-${sort}-${filmCategory}`
+  : `feed-${searchQ}-${sort}-${filmCategory}`;
 
 return (
   <View style={styles.container}>
@@ -2522,15 +2709,17 @@ return (
                 {headerElement}
                 <View style={[styles.subHeaderWrap, { width: cardW, marginTop: 4 }]}>
                   <HeaderControls
-                    compact={isNarrow}
-                    category={category}
-                    sort={sort}
-                    setSort={setSort}
-                    searchText={searchText}
-                    setSearchText={setSearchText}
-                    isSearching={isSearching}
-                    layout="center"
-                  />
+  compact={isNarrow}
+  category={category}
+  filmCategory={filmCategory}
+  setFilmCategory={setFilmCategory}
+  sort={sort}
+  setSort={setSort}
+  searchText={searchText}
+  setSearchText={setSearchText}
+  isSearching={isSearching}
+  layout="center"
+/>
                 </View>
               </View>
             }

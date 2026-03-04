@@ -1,10 +1,10 @@
 {
-  "extends": ["expo/tsconfig.base", "./tsconfig.paths.json"],
+  "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
     "skipLibCheck": true,
     "noImplicitAny": false
   },
-  "include": ["app", "lib", "*.ts", "*.tsx"],
+  "include": ["app", "*.ts", "*.tsx"],
   "exclude": ["node_modules"]
-}
+} 

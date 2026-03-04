@@ -29,7 +29,7 @@
     "base64-arraybuffer": "^1.0.2",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.18",
-    "expo": "50.0.21",
+    "expo": "^50.0.21",
     "expo-av": "~13.10.6",
     "expo-crypto": "~12.8.1",
     "expo-document-picker": "~11.10.1",

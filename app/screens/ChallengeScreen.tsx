@@ -1,5 +1,5 @@
 // app/screens/ChallengeScreen.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,6 @@ import {
   Platform,
   Modal,
   Pressable,
-  ImageBackground,
   useWindowDimensions,
   Image,
 } from "react-native";
@@ -28,7 +27,6 @@ import { Upload } from "tus-js-client";
 import { LinearGradient } from "expo-linear-gradient";
 import { useGamification } from "../context/GamificationContext";
 import { UpgradeModal } from "../../components/UpgradeModal";
-import { backfillMissingSubmissionThumbnails } from "../lib/backfillThumbnails";
 import { useMonthlyStreak } from "../lib/useMonthlyStreak";
 
 import * as FileSystem from "expo-file-system";
@@ -69,32 +67,12 @@ const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024; // 5GB
 const STORAGE_BUCKET = "films";
 const THUMB_BUCKET = "thumbnails";
 
-/* ---------------- Hero image (warm + cinematic) ---------------- */
-const HERO_IMAGE =
-  "https://images.pexels.com/photos/3379943/pexels-photo-3379943.jpeg?auto=compress&cs=tinysrgb&w=2000";
-
-/* ---------------- Film Grain ---------------- */
-const GRAIN_PNG =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAIElEQVQYV2P8//8/AzGAiYGB4T8mGJgYhBmMCEwMDAwA1wQq1i3gN8QAAAAASUVORK5CYII=";
-
-const Grain = ({ opacity = 0.06 }: { opacity?: number }) => (
-  <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { opacity }]}>
-    <ImageBackground
-      source={{ uri: GRAIN_PNG }}
-      style={StyleSheet.absoluteFillObject}
-      resizeMode={"repeat" as any}
-    />
-  </View>
-);
-
 /* ---------------- UX helpers ---------------- */
 function notify(title: string, message?: string, setStatusFn?: (s: string) => void) {
   const text = message ? `${title} — ${message}` : title;
 
-  // ✅ ALWAYS show something on-screen (works even if alerts are blocked)
   if (setStatusFn) setStatusFn(text);
 
-  // Optional: also try alert
   try {
     if (Platform.OS === "web") {
       // @ts-ignore
@@ -105,51 +83,7 @@ function notify(title: string, message?: string, setStatusFn?: (s: string) => vo
   } catch {}
 }
 
-/**
- * ✅ THEME GUARANTEE (server-persisted)
- * IMPORTANT: Theme must NOT change on refresh.
- *
- * If theme_word is blank, we try to pick one and WRITE IT BACK to the DB.
- * If we cannot persist it (RLS / permissions / network), we DO NOT show a random word.
- * Instead we show a stable fallback ("Untitled") so the theme stays consistent across refreshes.
- */
-async function ensureThemeWordOnChallengeRow(ch: MonthlyChallenge): Promise<MonthlyChallenge> {
-  try {
-    const current = (ch?.theme_word ?? "").trim();
-    if (current) return ch;
-
-    const pick = await supabase.from("theme_words").select("word").order("word", { ascending: true });
-
-    if (!pick.error && Array.isArray(pick.data) && pick.data.length > 0) {
-      const words = pick.data
-        .map((r: any) => String(r?.word ?? "").trim())
-        .filter((w: string) => w.length > 0);
-
-      if (words.length > 0) {
-        const chosen = words[Math.floor(Math.random() * words.length)];
-
-        const upd = await supabase
-          .from("monthly_challenges")
-          .update({ theme_word: chosen })
-          .eq("id", ch.id)
-          .select("id, month_start, month_end, theme_word")
-          .single();
-
-        if (!upd.error && upd.data?.theme_word) return upd.data as MonthlyChallenge;
-
-        return { ...ch, theme_word: "Untitled" } as MonthlyChallenge;
-      }
-    }
-
-    return { ...ch, theme_word: "Untitled" } as MonthlyChallenge;
-  } catch (e) {
-    console.warn("[challenge] ensureThemeWord failed:", (e as any)?.message ?? e);
-    return { ...ch, theme_word: (ch?.theme_word ?? "").trim() || "Untitled" } as MonthlyChallenge;
-  }
-}
-
 async function fetchCurrentChallenge() {
-  // 1) finalize winner (previous month) if needed
   try {
     const { error } = await supabase.rpc("finalize_last_month_winner_if_needed");
     if (error) console.warn("[challenge] finalize_last_month_winner_if_needed:", error.message);
@@ -157,7 +91,6 @@ async function fetchCurrentChallenge() {
     console.warn("[challenge] finalize rpc threw:", e?.message || e);
   }
 
-  // 2) ensure current month row exists
   try {
     const { error } = await supabase.rpc("insert_monthly_challenge_if_not_exists");
     if (error) console.warn("[challenge] insert_monthly_challenge_if_not_exists:", error.message);
@@ -165,14 +98,12 @@ async function fetchCurrentChallenge() {
     console.warn("[challenge] insert rpc threw:", e?.message || e);
   }
 
-  // 3) robust fetch: try exact month_start/month_end (DATE-safe), then range, then fallback
   const start = dayjs().startOf("month");
   const end = start.add(1, "month");
 
   const startDateOnly = start.format("YYYY-MM-DD");
   const endDateOnly = end.format("YYYY-MM-DD");
 
-  // Try exact DATE match
   const exact = await supabase
     .from("monthly_challenges")
     .select("id, month_start, month_end, theme_word")
@@ -181,11 +112,8 @@ async function fetchCurrentChallenge() {
     .limit(1)
     .single();
 
-  if (!exact.error && exact.data) {
-    return (await ensureThemeWordOnChallengeRow(exact.data as MonthlyChallenge)) as MonthlyChallenge;
-  }
+  if (!exact.error && exact.data) return exact.data as MonthlyChallenge;
 
-  // Try timestamp range
   const nowIso = new Date().toISOString();
   const range = await supabase
     .from("monthly_challenges")
@@ -196,11 +124,8 @@ async function fetchCurrentChallenge() {
     .limit(1)
     .single();
 
-  if (!range.error && range.data) {
-    return (await ensureThemeWordOnChallengeRow(range.data as MonthlyChallenge)) as MonthlyChallenge;
-  }
+  if (!range.error && range.data) return range.data as MonthlyChallenge;
 
-  // Final fallback: latest row
   const fallback = await supabase
     .from("monthly_challenges")
     .select("id, month_start, month_end, theme_word")
@@ -210,15 +135,7 @@ async function fetchCurrentChallenge() {
 
   if (fallback.error) throw fallback.error;
 
-  console.warn(
-    "[challenge] WARNING: current month row not found. Using latest row instead.",
-    "Expected month_start=",
-    startDateOnly,
-    "month_end=",
-    endDateOnly
-  );
-
-  return (await ensureThemeWordOnChallengeRow(fallback.data as MonthlyChallenge)) as MonthlyChallenge;
+  return fallback.data as MonthlyChallenge;
 }
 
 async function getResumableEndpoint() {
@@ -230,7 +147,7 @@ async function getResumableEndpoint() {
 
 async function uploadThumbnailToStorage(opts: {
   userId: string;
-  thumbUri: string; // file:// (native) OR data:image/... (web) OR blob:... (web)
+  thumbUri: string;
   objectName?: string;
   bucket?: string;
 }): Promise<{ publicUrl: string; path: string }> {
@@ -348,55 +265,53 @@ async function uploadResumable(opts: {
 
   return new Promise<{ path: string; contentType: string }>((resolve, reject) => {
     const upload = new Upload(file, {
-  endpoint,
-  retryDelays: [0, 2000, 5000, 10000, 20000],
+      endpoint,
+      retryDelays: [0, 2000, 5000, 10000, 20000],
+      chunkSize: 2 * 1024 * 1024,
+      uploadDataDuringCreation: true,
+      removeFingerprintOnSuccess: true,
+      headers: {
+        authorization: `Bearer ${session.access_token}`,
+        "x-upsert": "true",
+      },
+      metadata: {
+        bucketName: bucket,
+        objectName: finalObjectName,
+        contentType: type,
+        cacheControl: "3600",
+      },
+      onProgress: (sent, total) => {
+        if (!total) return;
+        const pct = Math.max(0, Math.min(100, Math.round((sent / total) * 100)));
+        onProgress?.(pct);
+      },
+      onError: (err: any) => {
+        try {
+          const res = err?.originalResponse;
+          const status =
+            res?.getStatus?.() ??
+            res?.getStatusCode?.() ??
+            res?.status ??
+            err?.originalResponse?.status;
 
-  // ✅ smaller chunks = fewer random failures on flaky networks / some devices
-  chunkSize: 2 * 1024 * 1024, // 2MB
+          const body =
+            res?.getBody?.() ??
+            res?.responseText ??
+            err?.originalResponse?.responseText ??
+            "";
 
-  uploadDataDuringCreation: true,
-  removeFingerprintOnSuccess: true,
-  headers: {
-    authorization: `Bearer ${session.access_token}`,
-    "x-upsert": "true",
-  },
-  metadata: {
-    bucketName: bucket,
-    objectName: finalObjectName,
-    contentType: type,
-    cacheControl: "3600",
-  },
-  onProgress: (sent, total) => {
-    if (!total) return;
-    const pct = Math.max(0, Math.min(100, Math.round((sent / total) * 100)));
-    onProgress?.(pct);
-  },
-
-  // ✅ show the real status/body (413, 401, 403, 5xx etc.)
-  onError: (err: any) => {
-    try {
-      const res = err?.originalResponse;
-      const status =
-        res?.getStatus?.() ??
-        res?.getStatusCode?.() ??
-        res?.status ??
-        err?.originalResponse?.status;
-
-      const body =
-        res?.getBody?.() ??
-        res?.responseText ??
-        err?.originalResponse?.responseText ??
-        "";
-
-      const detail = String(body || "").slice(0, 350);
-      reject(new Error(`Upload failed (${status || "unknown"}): ${detail || err?.message || "Unknown error"}`));
-    } catch {
-      reject(err);
-    }
-  },
-
-  onSuccess: () => resolve({ path: finalObjectName, contentType: type }),
-});
+          const detail = String(body || "").slice(0, 350);
+          reject(
+            new Error(
+              `Upload failed (${status || "unknown"}): ${detail || err?.message || "Unknown error"}`
+            )
+          );
+        } catch {
+          reject(err);
+        }
+      },
+      onSuccess: () => resolve({ path: finalObjectName, contentType: type }),
+    });
 
     onPhase?.("Uploading file…");
     upload.findPreviousUploads().then((prev) => {
@@ -415,7 +330,6 @@ function mediaKindFromMime(
   return "file_video";
 }
 
-/* ✅ formatting helpers */
 function formatBytes(bytes?: number | null) {
   if (!bytes || !Number.isFinite(bytes)) return "—";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -436,10 +350,7 @@ function formatDur(sec?: number | null) {
 }
 
 /* ✅ SUPER-ROBUST WEB thumbnail (first decodable frame) */
-async function captureFirstFrameWeb(videoSrc: string): Promise<{
-  dataUrl: string;
-  aspect: number;
-} | null> {
+async function captureFirstFrameWeb(videoSrc: string): Promise<{ dataUrl: string; aspect: number } | null> {
   try {
     // @ts-ignore
     if (Platform.OS !== "web" || typeof document === "undefined") return null;
@@ -461,16 +372,9 @@ async function captureFirstFrameWeb(videoSrc: string): Promise<{
     document.body.appendChild(video);
 
     const cleanup = () => {
-      try {
-        video.pause();
-      } catch {}
-      try {
-        video.removeAttribute("src");
-        video.load();
-      } catch {}
-      try {
-        document.body.removeChild(video);
-      } catch {}
+      try { video.pause(); } catch {}
+      try { video.removeAttribute("src"); video.load(); } catch {}
+      try { document.body.removeChild(video); } catch {}
     };
 
     const draw = (): { dataUrl: string; aspect: number } | null => {
@@ -500,9 +404,7 @@ async function captureFirstFrameWeb(videoSrc: string): Promise<{
         resolve(val);
       };
 
-      const timeout = setTimeout(() => {
-        finish(draw());
-      }, 8000);
+      const timeout = setTimeout(() => finish(draw()), 8000);
 
       const tryFinish = () => {
         const out = draw();
@@ -516,32 +418,18 @@ async function captureFirstFrameWeb(videoSrc: string): Promise<{
       if (typeof (video as any).requestVideoFrameCallback === "function") {
         try {
           // @ts-ignore
-          (video as any).requestVideoFrameCallback(() => {
-            tryFinish();
-          });
+          (video as any).requestVideoFrameCallback(() => tryFinish());
         } catch {}
       }
 
       video.addEventListener("loadeddata", tryFinish, { once: true });
       video.addEventListener("canplay", tryFinish, { once: true });
       video.addEventListener("seeked", tryFinish, { once: true });
-      video.addEventListener(
-        "error",
-        () => {
-          clearTimeout(timeout);
-          finish(null);
-        },
-        { once: true }
-      );
+      video.addEventListener("error", () => { clearTimeout(timeout); finish(null); }, { once: true });
 
       (async () => {
-        try {
-          await video.play();
-          video.pause();
-        } catch {}
-        try {
-          video.currentTime = 0.05;
-        } catch {}
+        try { await video.play(); video.pause(); } catch {}
+        try { video.currentTime = 0.05; } catch {}
       })();
     });
 
@@ -554,76 +442,28 @@ async function captureFirstFrameWeb(videoSrc: string): Promise<{
 
 /* -------------------- Film category tags (expanded) -------------------- */
 const FILM_TAGS: string[] = [
-  // Originals (kept)
-  "Drama",
-  "Comedy",
-  "Thriller",
-  "Horror",
-  "Sci-Fi",
-  "Romance",
-  "Action",
-  "Mystery",
-  "Crime",
-  "Fantasy",
-  "Coming-of-Age",
-  "Experimental",
-  "Documentary-Style",
-  "No-Dialogue",
-  "One-Take",
-  "Found Footage",
-  "Slow Cinema",
-  "Satire",
-  "Neo-Noir",
-  "Musical",
-
-  // ✅ New (acting + narrative + tone)
-  "Tragedy",
-  "Monologue",
-  "Character Study",
-  "Dialogue-Driven",
-  "Dramedy",
-  "Dark Comedy",
-  "Psychological",
-  "Suspense",
-  "Period Piece",
-  "Social Realism",
-  "Rom-Com",
-  "Heist",
-  "War",
-  "Western",
-  "Supernatural",
-  "Animation-Style",
-  "Silent Film",
-  "Improvised",
-  "Voiceover",
-  "Two-Hander",
-  "Single Location",
+  "Drama","Comedy","Thriller","Horror","Sci-Fi","Romance","Action","Mystery","Crime","Fantasy",
+  "Coming-of-Age","Experimental","Documentary-Style","No-Dialogue","One-Take","Found Footage",
+  "Slow Cinema","Satire","Neo-Noir","Musical","Tragedy","Monologue","Character Study",
+  "Dialogue-Driven","Dramedy","Dark Comedy","Psychological","Suspense","Period Piece",
+  "Social Realism","Rom-Com","Heist","War","Western","Supernatural","Animation-Style",
+  "Silent Film","Improvised","Voiceover","Two-Hander","Single Location",
 ];
 
 /* ------------------------- insert helper (robust) ------------------------ */
 function looksLikeMissingColumnError(msg: string) {
   const m = (msg || "").toLowerCase();
-
-  // Postgres style:
-  // "column \"xyz\" of relation \"submissions\" does not exist"
   if (m.includes("column") && m.includes("does not exist")) return true;
-
-  // PostgREST schema cache style (YOUR CURRENT ERROR):
-  // "Could not find the 'monthly_challenge_id' column of 'submissions' in the schema cache"
   if (m.includes("schema cache") && m.includes("could not find") && m.includes("column")) return true;
-
   return false;
 }
 function extractMissingColumnName(msg: string): string | null {
-  // Postgres: column "xyz" ...
   const m1 = msg.match(/column\s+"([^"]+)"/i);
   if (m1?.[1]) return m1[1];
 
-  // Postgres: column submissions.xyz does not exist
   const m2 = msg.match(/column\s+([a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)\s+does\s+not\s+exist/i);
   if (m2?.[1]) return m2[1].split(".").pop() || null;
 
-  // PostgREST schema cache: could not find the 'xyz' column of 'submissions' in the schema cache
   const m3 = msg.match(/could\s+not\s+find\s+the\s+'([^']+)'\s+column/i);
   if (m3?.[1]) return m3[1];
 
@@ -634,7 +474,6 @@ async function insertSubmissionRobust(
   payload: Record<string, any>,
   requiredKeys: string[] = ["user_id", "title", "submitted_at"]
 ) {
-  // Try insert, and if schema mismatch (missing columns), remove unknown columns and retry.
   let working = { ...payload };
 
   for (let attempt = 0; attempt < 12; attempt++) {
@@ -645,19 +484,14 @@ async function insertSubmissionRobust(
     const msg = String(res.error.message || "");
     const missingCol = extractMissingColumnName(msg);
 
-    // If it's not a missing-column error, stop and throw it.
     if (!looksLikeMissingColumnError(msg) || !missingCol) throw res.error;
-
-    // Never remove required fields.
     if (requiredKeys.includes(missingCol)) throw res.error;
 
-    // Remove the missing column and retry.
     if (Object.prototype.hasOwnProperty.call(working, missingCol)) {
       delete working[missingCol];
       continue;
     }
 
-    // If we couldn't find it in the object (weird message), bail.
     throw res.error;
   }
 
@@ -669,7 +503,6 @@ async function insertSubmissionRobust(
 export default function ChallengeScreen() {
   const navigation = useNavigation<any>();
   const { width, height: winH } = useWindowDimensions();
-
   const isWide = width >= 1100;
 
   const [challenge, setChallenge] = useState<MonthlyChallenge | null>(null);
@@ -677,6 +510,7 @@ export default function ChallengeScreen() {
   const [session, setSession] = useState<Session | null>(null);
 
   const [category] = useState<Category>("film");
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [agreed, setAgreed] = useState(false);
@@ -684,20 +518,22 @@ export default function ChallengeScreen() {
   const [localUri, setLocalUri] = useState<string | null>(null);
   const [webFile, setWebFile] = useState<File | Blob | null>(null);
   const objectUrlRef = useRef<string | null>(null);
-  const [durationSec, setDurationSec] = useState<number | null>(null);
 
+  const [durationSec, setDurationSec] = useState<number | null>(null);
   const [fileSizeBytes, setFileSizeBytes] = useState<number | null>(null);
 
   const [thumbUri, setThumbUri] = useState<string | null>(null);
   const [thumbLoading, setThumbLoading] = useState(false);
   const [thumbAspect, setThumbAspect] = useState<number>(16 / 9);
 
-  // ✅ user-picked thumbnail
+  // ✅ user-picked thumbnail (required)
   const [customThumbUri, setCustomThumbUri] = useState<string | null>(null);
   const customThumbObjectUrlRef = useRef<string | null>(null);
 
-  // ✅ film categories (tags) - pick up to 3
+  // ✅ category selection via modal (less clutter)
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagModalVisible, setTagModalVisible] = useState(false);
+  const [tagQuery, setTagQuery] = useState("");
 
   const [previewVisible, setPreviewVisible] = useState(false);
 
@@ -730,12 +566,7 @@ export default function ChallengeScreen() {
     refresh: refreshGamification,
   } = useGamification();
 
-  const {
-  streak,
-  loading: streakLoading,
-  errorMsg: streakErrorMsg,
-  refreshStreak,
-} = useMonthlyStreak();
+  const { refreshStreak } = useMonthlyStreak();
 
   const SUBMIT_XP = (XP_VALUES && (XP_VALUES as any).CHALLENGE_SUBMISSION) || 50;
 
@@ -754,12 +585,8 @@ export default function ChallengeScreen() {
     previewLoadTimer.current = setTimeout(async () => {
       setPreviewLoading(false);
       setPreviewError("Preview is taking too long to load. Tap Retry or pick a different file.");
-      try {
-        await previewPlayerRef.current?.stopAsync?.();
-      } catch {}
-      try {
-        await previewPlayerRef.current?.unloadAsync?.();
-      } catch {}
+      try { await previewPlayerRef.current?.stopAsync?.(); } catch {}
+      try { await previewPlayerRef.current?.unloadAsync?.(); } catch {}
     }, 12000);
   };
 
@@ -797,20 +624,14 @@ export default function ChallengeScreen() {
     stopWebPreviewIfAny();
 
     (async () => {
-      try {
-        await previewPlayerRef.current?.stopAsync?.();
-      } catch {}
-      try {
-        await previewPlayerRef.current?.unloadAsync?.();
-      } catch {}
+      try { await previewPlayerRef.current?.stopAsync?.(); } catch {}
+      try { await previewPlayerRef.current?.unloadAsync?.(); } catch {}
     })();
   };
 
   const revokeCustomThumbObjectUrlIfAny = () => {
     if (customThumbObjectUrlRef.current) {
-      try {
-        URL.revokeObjectURL(customThumbObjectUrlRef.current);
-      } catch {}
+      try { URL.revokeObjectURL(customThumbObjectUrlRef.current); } catch {}
       customThumbObjectUrlRef.current = null;
     }
   };
@@ -822,9 +643,7 @@ export default function ChallengeScreen() {
 
   const resetSelectedFile = () => {
     if (objectUrlRef.current) {
-      try {
-        URL.revokeObjectURL(objectUrlRef.current);
-      } catch {}
+      try { URL.revokeObjectURL(objectUrlRef.current); } catch {}
       objectUrlRef.current = null;
     }
 
@@ -850,36 +669,35 @@ export default function ChallengeScreen() {
   };
 
   useEffect(() => {
-  (async () => {
-    try {
-      setChallenge(await fetchCurrentChallenge());
-    } catch {}
+    (async () => {
+      try {
+        setChallenge(await fetchCurrentChallenge());
+      } catch {}
 
-    const { data } = await supabase.auth.getSession();
-    setSession(data.session);
+      const { data } = await supabase.auth.getSession();
+      setSession(data.session);
 
-    // ✅ cache tier for instant Pro gating (web-safe)
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-      if (user) {
-        const { data: profile } = await supabase
-          .from("users")
-          .select("tier")
-          .eq("id", user.id)
-          .single();
+        if (user) {
+          const { data: profile } = await supabase
+            .from("users")
+            .select("tier")
+            .eq("id", user.id)
+            .single();
 
-        setUserTier((profile?.tier ?? "").toLowerCase().trim() || null);
-      } else {
+          setUserTier((profile?.tier ?? "").toLowerCase().trim() || null);
+        } else {
+          setUserTier(null);
+        }
+      } catch {
         setUserTier(null);
       }
-    } catch {
-      setUserTier(null);
-    }
-  })();
-}, []);
+    })();
+  }, []);
 
   useEffect(() => {
     if (!challenge) return;
@@ -894,7 +712,7 @@ export default function ChallengeScreen() {
       const diffMs = targetEnd.diff(dayjs());
 
       if (diffMs <= 0) {
-        setCountdown("This challenge has ended. Updating…");
+        setCountdown("Updating…");
         try {
           const next = await fetchCurrentChallenge();
           if (alive) setChallenge(next);
@@ -933,9 +751,7 @@ export default function ChallengeScreen() {
         webDurationTimer.current = null;
       }
       if (objectUrlRef.current) {
-        try {
-          URL.revokeObjectURL(objectUrlRef.current);
-        } catch {}
+        try { URL.revokeObjectURL(objectUrlRef.current); } catch {}
         objectUrlRef.current = null;
       }
       revokeCustomThumbObjectUrlIfAny();
@@ -943,20 +759,7 @@ export default function ChallengeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const monthLabel = dayjs().format("MMMM");
-
   const capText = "No duration limit. Max file size: 5GB.";
-
-  const headerTitle = `${monthLabel} ${
-    category === "film" ? "Film" : category === "acting" ? "Acting" : "Music"
-  } Challenge`;
-
-  const explainer =
-    category === "film"
-      ? "Make a short film. All levels welcome — upload your video directly here."
-      : category === "acting"
-      ? "Perform a monologue (max 2 minutes). All levels welcome — upload your video here."
-      : "Create a track inspired by the theme. Upload an MP3 or a performance video.";
 
   const pickThumbnail = async () => {
     try {
@@ -986,32 +789,43 @@ export default function ChallengeScreen() {
       }
     } catch (e: any) {
       console.warn("pickThumbnail failed:", e?.message ?? e);
-      notify("Could not pick thumbnail", "Try a different image.");
+      notify("Could not pick thumbnail", "Try a different image.", setStatus);
     }
   };
 
-  const toggleTag = (tag: string) => {
-    setSelectedTags((prev) => {
-      const has = prev.includes(tag);
-      if (has) return prev.filter((t) => t !== tag);
-      if (prev.length >= 3) return prev;
-      return [...prev, tag];
-    });
+  const openCategoryModal = () => {
+    setTagQuery("");
+    setTagModalVisible(true);
   };
+
+  const closeCategoryModal = () => {
+    setTagModalVisible(false);
+  };
+
+  const selectTag = (tag: string) => {
+    setSelectedTags([tag]);
+    setTagModalVisible(false);
+  };
+
+  const clearTag = () => setSelectedTags([]);
+
+  const filteredTags = useMemo(() => {
+    const q = tagQuery.trim().toLowerCase();
+    if (!q) return FILM_TAGS;
+    return FILM_TAGS.filter((t) => t.toLowerCase().includes(q));
+  }, [tagQuery]);
+
+ // ✅ pickFile continues in Part 2 (unchanged logic, just moved)
+// --- STOP PART 1 HERE ---
 
 const pickFile = async () => {
   try {
-    // ---------------------------
-    // ✅ WEB: MUST be synchronous
-    // ---------------------------
     if (Platform.OS === "web") {
-      // If tier hasn't loaded yet, don't try to open picker (browser will block if we await first)
       const tierNorm = (userTier ?? "").toLowerCase().trim();
 
       if (!tierNorm) {
         notify("Loading your account…", "Try again in 1 second.", setStatus);
 
-        // refresh tier in background (NO picker this click)
         (async () => {
           try {
             const {
@@ -1039,7 +853,6 @@ const pickFile = async () => {
         return;
       }
 
-      // ✅ Tier is pro, so we are allowed to open picker immediately (no awaits before this)
       setStatus("");
       setDurationSec(null);
       setThumbUri(null);
@@ -1068,45 +881,43 @@ const pickFile = async () => {
       if (pick.canceled) return;
 
       const asset: any = pick.assets?.[0];
-if (!asset?.uri) {
-  notify("No file", "Please choose a file.");
-  return;
-}
+      if (!asset?.uri) {
+        notify("No file", "Please choose a file.", setStatus);
+        return;
+      }
 
-// ✅ For big uploads on web we must have the actual File object.
-// If we don't, some browsers/providers behave weirdly with huge files.
-if (!asset.file) {
-  notify(
-    "Picker issue",
-    "Your browser didn’t provide the actual file object. Try selecting the file from your device storage (not cloud), or try another browser (Chrome usually works best).",
-    setStatus
-  );
-  return;
-}
+      if (!asset.file) {
+        notify(
+          "Picker issue",
+          "Your browser didn’t provide the actual file object. Try selecting from device storage or use Chrome.",
+          setStatus
+        );
+        return;
+      }
 
-let bytes: number | null = null;
+      let bytes: number | null = null;
+      const f: File = asset.file;
+      bytes = typeof f.size === "number" ? f.size : null;
 
-const f: File = asset.file;
-bytes = typeof f.size === "number" ? f.size : null;
+      if (objectUrlRef.current) {
+        try {
+          URL.revokeObjectURL(objectUrlRef.current);
+        } catch {}
+      }
 
-if (objectUrlRef.current) {
-  try {
-    URL.revokeObjectURL(objectUrlRef.current);
-  } catch {}
-}
+      const objUrl = URL.createObjectURL(f);
+      objectUrlRef.current = objUrl;
 
-const objUrl = URL.createObjectURL(f);
-objectUrlRef.current = objUrl;
-
-setWebFile(f);
-setLocalUri(objUrl);
+      setWebFile(f);
+      setLocalUri(objUrl);
 
       setFileSizeBytes(bytes);
 
       if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
         notify(
           "File too large",
-          `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`
+          `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
+          setStatus
         );
         resetSelectedFile();
         return;
@@ -1133,24 +944,20 @@ setLocalUri(objUrl);
       return;
     }
 
-    // ---------------------------
-    // ✅ NATIVE (iOS/Android): can await safely
-    // ---------------------------
     const {
       data: { user },
       error: uErr,
     } = await supabase.auth.getUser();
 
     if (uErr) {
-      notify("Please try again", "We couldn’t verify your account right now.");
+      notify("Please try again", "We couldn’t verify your account right now.", setStatus);
       return;
     }
     if (!user) {
-      notify("Please sign in", "You must be logged in to submit.");
+      notify("Please sign in", "You must be logged in to submit.", setStatus);
       return;
     }
 
-    // check tier (native can await before picker)
     const { data: profile, error: pErr } = await supabase
       .from("users")
       .select("tier")
@@ -1158,7 +965,7 @@ setLocalUri(objUrl);
       .single();
 
     if (pErr) {
-      notify("Please try again", "We couldn’t verify your Pro status right now.");
+      notify("Please try again", "We couldn’t verify your Pro status right now.", setStatus);
       return;
     }
 
@@ -1170,7 +977,6 @@ setLocalUri(objUrl);
       return;
     }
 
-    // 🔽 existing picker logic (native)
     setStatus("");
     setDurationSec(null);
 
@@ -1200,7 +1006,7 @@ setLocalUri(objUrl);
 
     const asset: any = pick.assets?.[0];
     if (!asset?.uri) {
-      notify("No file", "Please choose a file.");
+      notify("No file", "Please choose a file.", setStatus);
       return;
     }
 
@@ -1223,7 +1029,8 @@ setLocalUri(objUrl);
     if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
       notify(
         "File too large",
-        `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`
+        `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
+        setStatus
       );
       resetSelectedFile();
       return;
@@ -1254,402 +1061,182 @@ setLocalUri(objUrl);
     setStatus("Loaded file. Checking duration…");
   } catch (e) {
     console.warn("pickFile failed:", (e as any)?.message ?? e);
-    notify("Could not open picker", "Try again.");
+    notify("Could not open picker", "Try again.", setStatus);
   }
 };
 
+/** ✅ FIX: this function MUST exist because the Video uses onLoad={onVideoLoaded} */
+const onVideoLoaded = (payload: any) => {
+  const dMs = payload?.durationMillis ?? 0;
+  const dSec = Math.max(0, Math.round(dMs / 1000));
 
-  useEffect(() => {
-    if (Platform.OS !== "web" || !localUri) return;
+  if (dSec > 0) setDurationSec(dSec);
 
-    let cancelled = false;
+  const sizeText = formatBytes(fileSizeBytes);
 
-    try {
-      // @ts-ignore
-      const videoEl = document.createElement("video");
-      videoEl.preload = "metadata";
-      videoEl.muted = true;
-      videoEl.playsInline = true;
-      videoEl.src = localUri;
+  if (dSec > 0) {
+    setStatus(`Media ready • duration ${formatDur(dSec)} • ${sizeText}`);
+  } else {
+    setStatus(`Media ready (duration unknown) • ${sizeText}`);
+  }
+};
 
-      const sizeText = formatBytes(fileSizeBytes);
-
-      const cleanup = () => {
-        // @ts-ignore
-        videoEl.onloadedmetadata = null;
-        // @ts-ignore
-        videoEl.ontimeupdate = null;
-        // @ts-ignore
-        videoEl.onerror = null;
-        try {
-          // @ts-ignore
-          videoEl.src = "";
-        } catch {}
-        if (webDurationTimer.current) {
-          clearTimeout(webDurationTimer.current);
-          webDurationTimer.current = null;
-        }
-      };
-
-      const applyDuration = (d: number | null) => {
-        if (cancelled) return;
-        if (d && Number.isFinite(d) && d > 0) {
-          const dSec = Math.max(1, Math.round(d));
-          setDurationSec(dSec);
-          setStatus(`Media ready • duration ${formatDur(dSec)} • ${sizeText}`);
-        } else {
-          setDurationSec(null);
-          setStatus(`Media ready (duration unknown) • ${sizeText}`);
-        }
-      };
-
-      // @ts-ignore
-      videoEl.onloadedmetadata = () => {
-        // @ts-ignore
-        if (Number.isFinite(videoEl.duration) && videoEl.duration > 0) {
-          // @ts-ignore
-          applyDuration(videoEl.duration);
-          cleanup();
-          return;
-        }
-
-        try {
-          // @ts-ignore
-          videoEl.ontimeupdate = () => {
-            // @ts-ignore
-            if (Number.isFinite(videoEl.duration) && videoEl.duration > 0) {
-              // @ts-ignore
-              applyDuration(videoEl.duration);
-              cleanup();
-            }
-          };
-          // @ts-ignore
-          videoEl.currentTime = 1e101;
-        } catch {
-          applyDuration(null);
-          cleanup();
-        }
-      };
-
-      // @ts-ignore
-      videoEl.onerror = () => {
-        applyDuration(null);
-        cleanup();
-      };
-
-      webDurationTimer.current = setTimeout(() => {
-        // @ts-ignore
-        applyDuration(Number.isFinite(videoEl.duration) ? videoEl.duration : null);
-        cleanup();
-      }, 12000);
-    } catch {
-      const sizeText = formatBytes(fileSizeBytes);
-      setDurationSec(null);
-      setStatus(`Media ready (duration unknown) • ${sizeText}`);
-    }
-
-    return () => {
-      cancelled = true;
-      if (webDurationTimer.current) {
-        clearTimeout(webDurationTimer.current);
-        webDurationTimer.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localUri]);
-
-  const onVideoLoaded = (payload: any) => {
-    const dMs = payload?.durationMillis ?? 0;
-    const dSec = Math.max(0, Math.round(dMs / 1000));
-    if (dSec > 0) setDurationSec(dSec);
-
-    const sizeText = formatBytes(fileSizeBytes);
-
-    if (dSec > 0) {
-      setStatus(`Media ready • duration ${formatDur(dSec)} • ${sizeText}`);
-    } else {
-      setStatus(`Media ready (duration unknown) • ${sizeText}`);
-    }
-  };
-
-  const handleSubmit = async () => {
+const handleSubmit = async () => {
   if (!agreed)
-    return notify(
-      "Agreement required",
-      "You must agree to the rules before submitting.",
-      setStatus
-    );
+    return notify("Agreement required", "You must agree to the rules before submitting.", setStatus);
 
-  if (!session)
-    return notify(
-      "Please sign in",
-      "You must be logged in to submit.",
-      setStatus
-    );
+  if (!session) return notify("Please sign in", "You must be logged in to submit.", setStatus);
 
-  if (!title.trim() || !description.trim())
-    return notify(
-      "Please complete all fields.",
-      undefined,
-      setStatus
-    );
+  if (!title.trim() || !description.trim()) return notify("Please complete all fields.", undefined, setStatus);
 
-  if (!localUri && !webFile)
-    return notify(
-      "No file selected",
-      "Pick a file first.",
-      setStatus
-    );
+  if (!localUri && !webFile) return notify("No file selected", "Pick a file first.", setStatus);
 
-  // ✅ require tags for film
   if (category === "film" && selectedTags.length === 0) {
+    return notify("Pick a category", "Choose 1 category for your film.", setStatus);
+  }
+
+  if (category !== "music" && !customThumbUri) {
+    return notify("Thumbnail required", "Please add a thumbnail image before submitting.", setStatus);
+  }
+
+  if (fileSizeBytes != null && fileSizeBytes > MAX_UPLOAD_BYTES) {
     return notify(
-      "Pick categories",
-      "Choose at least 1 category (up to 3) for your film.",
+      "File too large",
+      `This file is ${formatBytes(fileSizeBytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
       setStatus
     );
   }
 
-    if (fileSizeBytes != null && fileSizeBytes > MAX_UPLOAD_BYTES) {
-      return notify(
-        "File too large",
-        `This file is ${formatBytes(fileSizeBytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`
-      );
+  setLoading(true);
+  setStatus("Checking eligibility…");
+  setProgressPct(0);
+  setEtaText("");
+
+  try {
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+
+    if (userErr) throw userErr;
+    if (!user) {
+      setLoading(false);
+      return notify("Please sign in", "You must be logged in to submit.", setStatus);
     }
 
-    // ✅ Server preflight gate (TEMP BYPASS FOR TESTING)
-    try {
-      const {
-        data: { user },
-        error: userErr,
-      } = await supabase.auth.getUser();
+    const { data, error } = await supabase.rpc("can_submit_this_month", {
+      p_user_id: user.id,
+    });
 
-      if (userErr) throw userErr;
-      if (!user) {
-        notify("Please sign in", "You must be logged in to submit.");
-        return;
+    if (error) throw error;
+
+    const row = Array.isArray(data) ? data[0] : data;
+
+    if (!row?.allowed) {
+      setLoading(false);
+
+      if (row?.reason === "tier_too_low") {
+        setUpgradeVisible(true);
+        return notify("Upgrade required", "Submitting is available on Pro.", setStatus);
       }
 
-      const BYPASS_LIMITS_FOR_TESTING = false;
-
-      if (!BYPASS_LIMITS_FOR_TESTING) {
-        const { data, error } = await supabase.rpc("can_submit_this_month", {
-          p_user_id: user.id,
-        });
-
-        if (error) throw error;
-
-        const row = Array.isArray(data) ? data[0] : data;
-
-        if (!row?.allowed) {
-          if (row?.reason === "tier_too_low") {
-            notify(
-              "Upgrade required",
-              "Submitting to the monthly challenge is available on the Pro tier."
-            );
-            setUpgradeVisible(true);
-            return;
-          }
-
-          if (row?.reason === "no_submissions_left") {
-            notify("Submission limit reached", "You’ve used all 2 submissions for this month.");
-            return;
-          }
-
-          notify("Not allowed", "You can’t submit right now.");
-          return;
-        }
+      if (row?.reason === "no_submissions_left") {
+        return notify("Submission limit reached", "You’ve used all 2 submissions for this month.", setStatus);
       }
-    } catch (err) {
-      console.warn("server preflight can_submit_this_month failed:", err);
-      notify(
-        "Please try again",
-        "We couldn’t verify your submission limit just now. Try again in a moment."
-      );
-      return;
+
+      return notify("Not allowed", "You can’t submit right now.", setStatus);
     }
-
-    setLoading(true);
-setStatus("Checking eligibility…");
-setProgressPct(0);
-setEtaText("");
-
-// ✅ Server preflight gate
-try {
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
-
-  if (userErr) throw userErr;
-  if (!user) {
+  } catch (err) {
+    console.warn("server preflight can_submit_this_month failed:", err);
     setLoading(false);
-    return notify("Please sign in", "You must be logged in to submit.", setStatus);
+    return notify(
+      "Please try again",
+      "We couldn’t verify your submission limit just now. Try again in a moment.",
+      setStatus
+    );
   }
 
-  const { data, error } = await supabase.rpc("can_submit_this_month", {
-    p_user_id: user.id,
-  });
+  setStatus("Uploading file…");
+  setProgressPct(0);
+  setEtaText("");
 
-  if (error) throw error;
+  try {
+    const {
+      data: { user },
+      error: userErr2,
+    } = await supabase.auth.getUser();
+    if (userErr2) throw userErr2;
+    if (!user) throw new Error("Not signed in");
 
-  const row = Array.isArray(data) ? data[0] : data;
+    const finalThumbUri = customThumbUri;
 
-  if (!row?.allowed) {
-    setLoading(false);
+    const { path, contentType } = await uploadResumable({
+      userId: user.id,
+      fileBlob: Platform.OS === "web" ? ((webFile as File | Blob | null) ?? undefined) : undefined,
+      localUri: Platform.OS !== "web" ? (localUri as string) : undefined,
+      onProgress: (pct) => setProgressPct(pct),
+      onPhase: (label) => setStatus(label),
+      objectName: `submissions/${user.id}/${Date.now()}`,
+      bucket: STORAGE_BUCKET,
+    });
 
-    if (row?.reason === "tier_too_low") {
-      setUpgradeVisible(true);
-      return notify("Upgrade required", "Submitting is available on Pro.", setStatus);
-    }
+    let thumbnail_url: string | null = null;
 
-    if (row?.reason === "no_submissions_left") {
-      return notify("Submission limit reached", "You’ve used all 2 submissions for this month.", setStatus);
-    }
-
-    return notify("Not allowed", "You can’t submit right now.", setStatus);
-  }
-} catch (err) {
-  console.warn("server preflight can_submit_this_month failed:", err);
-  setLoading(false);
-  return notify(
-    "Please try again",
-    "We couldn’t verify your submission limit just now. Try again in a moment.",
-    setStatus
-  );
-}
-    setStatus("Uploading file…");
-    setProgressPct(0);
-    setEtaText("");
-
-    try {
-      const {
-        data: { user },
-        error: userErr2,
-      } = await supabase.auth.getUser();
-      if (userErr2) throw userErr2;
-      if (!user) throw new Error("Not signed in");
-
-      // ✅ Use custom thumbnail for preview + upload (one box)
-      let finalThumbUri = customThumbUri || thumbUri;
-
-      if (!finalThumbUri && category !== "music") {
-        try {
-          setStatus("Generating thumbnail…");
-
-          if (Platform.OS === "web") {
-            const src = objectUrlRef.current ?? localUri ?? "";
-            if (src) {
-              const cap = await captureFirstFrameWeb(src);
-              if (cap?.dataUrl) {
-                finalThumbUri = cap.dataUrl;
-                setThumbUri(cap.dataUrl);
-                setThumbAspect(cap.aspect || 16 / 9);
-              }
-            }
-          } else if (localUri) {
-            const t = await VideoThumbnails.getThumbnailAsync(localUri, { time: 120 });
-            if (t?.uri) {
-              finalThumbUri = t.uri;
-              setThumbUri(t.uri);
-              // @ts-ignore
-              const w = (t as any)?.width;
-              // @ts-ignore
-              const h = (t as any)?.height;
-              if (w && h) setThumbAspect(w / h);
-            }
-          }
-        } catch {
-          // ok
-        }
-      }
-
-      const { path, contentType } = await uploadResumable({
+    if (category !== "music" && finalThumbUri) {
+      setStatus("Uploading thumbnail…");
+      const thumbRes = await uploadThumbnailToStorage({
         userId: user.id,
-        fileBlob: Platform.OS === "web" ? ((webFile as File | Blob | null) ?? undefined) : undefined,
-        localUri: Platform.OS !== "web" ? (localUri as string) : undefined,
-        onProgress: (pct) => setProgressPct(pct),
-        onPhase: (label) => setStatus(label),
+        thumbUri: finalThumbUri,
         objectName: `submissions/${user.id}/${Date.now()}`,
-        bucket: STORAGE_BUCKET,
+        bucket: THUMB_BUCKET,
       });
+      thumbnail_url = thumbRes.publicUrl;
+    }
 
-      let thumbnail_url: string | null = null;
+    setProgressPct(100);
+    setStatus("Creating submission…");
 
-      if (category !== "music" && finalThumbUri) {
-        try {
-          setStatus("Uploading thumbnail…");
-          const thumbRes = await uploadThumbnailToStorage({
-            userId: user.id,
-            thumbUri: finalThumbUri,
-            objectName: `submissions/${user.id}/${Date.now()}`,
-            bucket: THUMB_BUCKET,
-          });
-          thumbnail_url = thumbRes.publicUrl;
-        } catch (e) {
-          const msg = (e as any)?.message ?? String(e);
-          console.warn("[thumb upload] failed:", msg);
-          setStatus(`Thumbnail upload failed: ${msg}`);
-          thumbnail_url = null;
-        }
-      }
+    const media_kind = mediaKindFromMime(contentType);
 
-      setProgressPct(100);
-      setStatus("Creating submission…");
-
-      const media_kind = mediaKindFromMime(contentType);
-
-      // ✅ include challenge id if your DB supports it (robust insert will remove if not)
+      // ✅ Monthly theme removed from UI; keep DB fields safe
+      // word is set to null (or existing default) so no theme is forced.
       const basePayload: any = {
         user_id: user.id,
         title: title.trim(),
         description: description.trim(),
         submitted_at: new Date().toISOString(),
-        word: (challenge?.theme_word ?? "Untitled").trim() || "Untitled",
-
-        // optional FK; safe if not present (robust insert strips)
+        word: null,
         monthly_challenge_id: challenge?.id ?? null,
-
         storage_path: path,
         video_path: path,
         mime_type: contentType,
         media_kind,
         duration_seconds: durationSec ?? null,
         category,
+        film_category: category === "film" ? selectedTags[0] ?? null : null,
         thumbnail_url,
       };
 
       const payloadWithTags: any =
         category === "film" ? { ...basePayload, tags: selectedTags } : basePayload;
 
-      // ✅ SUPER ROBUST INSERT:
-      // If your submissions table doesn't have some of these columns, we auto-strip them and retry.
       await insertSubmissionRobust(payloadWithTags, ["user_id", "title", "submitted_at"]);
 
       try {
-  await refreshStreak();
-} catch (e) {
-  console.warn("refreshStreak failed:", e);
-}
+        await refreshStreak();
+      } catch {}
 
       try {
         await giveXp(user.id, SUBMIT_XP, "challenge_submission");
-      } catch (xpErr) {
-        console.warn("giveXp challenge_submission failed:", xpErr);
-      }
+      } catch {}
 
       try {
         await refreshGamification();
-      } catch (e) {
-        console.warn("Gamification refresh after submission failed:", e);
-      }
+      } catch {}
 
       setStatus("Submitted! 🎉");
       setEtaText("");
-      notify(
-        "Submission received!",
-        `Thanks for entering this month’s challenge. You just earned +${SUBMIT_XP} XP.`
-      );
+      notify("Submission received!", `Thanks — you just earned +${SUBMIT_XP} XP.`, setStatus);
 
       setTitle("");
       setDescription("");
@@ -1659,7 +1246,7 @@ try {
     } catch (e: any) {
       console.warn("Submit failed:", e?.message ?? e);
       const msg = e?.message ?? "Please try again.";
-      notify("Submission failed", msg);
+      notify("Submission failed", msg, setStatus);
       setStatus("");
       setProgressPct(0);
       setEtaText("");
@@ -1677,16 +1264,12 @@ try {
           end={{ x: 0, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
-        <Grain opacity={0.05} />
         <ActivityIndicator size="large" color={T.olive} />
-        <Text style={styles.loadingText}>Loading this month&apos;s challenge…</Text>
+        <Text style={styles.loadingText}>Loading…</Text>
       </View>
     );
   }
 
-  const monthLabelText = dayjs().format("MMMM");
-
-  // ✅ ONE preview image: custom overrides generated thumb
   const previewThumbToShow = customThumbUri || thumbUri;
 
   return (
@@ -1697,7 +1280,6 @@ try {
         end={{ x: 0, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <Grain opacity={0.05} />
 
       <ScrollView
         contentContainerStyle={[
@@ -1709,597 +1291,568 @@ try {
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.pageWrap, isWide && styles.pageWrapWide]}>
+          {/* ✅ SIMPLE HEADER */}
+          <View style={styles.topHeader}>
+            <Text style={styles.topTitle}>Share your film</Text>
+            <Text style={styles.topSub}>
+              Title, one sentence, one category, upload.{" "}
+              <Text style={styles.topSubStrong}>Time left: {countdown}</Text>
+            </Text>
+          </View>
+
           <View style={[styles.twoCol, isWide && styles.twoColWide]}>
-            {/* LEFT COLUMN */}
+            {/* LEFT */}
             <View style={[styles.col, isWide && styles.leftCol]}>
-              <View style={styles.cardShell}>
-                <View style={styles.heroCard}>
-                  <View style={styles.heroImageWrap}>
-                    <ImageBackground
-                      source={{ uri: HERO_IMAGE }}
-                      style={styles.heroImage}
-                      resizeMode="cover"
-                    >
-                      <LinearGradient
-                        colors={["rgba(0,0,0,0.10)", "rgba(0,0,0,0.74)"]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 0, y: 1 }}
-                        style={StyleSheet.absoluteFill}
-                      />
-                      <LinearGradient
-                        colors={["rgba(198,166,100,0.18)", "rgba(0,0,0,0.65)"]}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={StyleSheet.absoluteFill}
-                      />
-                      <Grain opacity={0.12} />
+              <View style={styles.card}>
+                <Text style={styles.sectionKicker}>How it works</Text>
+                <Text style={styles.bullet}>• Add a title + one sentence</Text>
+                <Text style={styles.bullet}>• Choose 1 category</Text>
+                <Text style={styles.bullet}>• Upload your film + thumbnail</Text>
+                <Text style={styles.bullet}>• It appears on Featured for voting</Text>
 
-                      <View style={styles.heroImageInner}>
-                        <Text style={styles.heroKicker}>MONTHLY CHALLENGE</Text>
-                        <Text style={styles.heroTitleBig}>{headerTitle}</Text>
+                <View style={styles.divider} />
 
-                        <View style={styles.pillsRow}>
-                          <View style={[styles.pill, styles.pillGold]}>
-                            <Text style={[styles.pillText, styles.pillTextDark]}>
-                              THEME · {String(challenge.theme_word ?? "Untitled").toUpperCase()}
-                            </Text>
-                          </View>
+                <View style={styles.xpMini}>
+                  <Text style={styles.xpMiniText}>
+                    Submit to earn <Text style={styles.xpMiniStrong}>+{SUBMIT_XP} XP</Text>
+                    {` · `}
+                    Win the month to earn <Text style={styles.xpMiniStrong}>+500 XP</Text>
+                  </Text>
 
-                          <View style={styles.pill}>
-                            <Text style={styles.pillText}>
-                              TIME LEFT · {countdown.toUpperCase()}
-                            </Text>
-                          </View>
-                        </View>
-                      </View>
-                    </ImageBackground>
-                  </View>
-
-                  <Text style={styles.heroExplainer}>{explainer}</Text>
-
-                  <View style={styles.impactCard}>
-  <Text style={styles.impactTitle}>OVERLOOKED IS A MOVEMENT</Text>
-
-  <Text style={styles.impactBody}>
-    Making filmmaking, networking, and screening available to all.
-  </Text>
-
-  <Text style={styles.impactSteps}>
-    Join. Submit. Vote. Get voted.
-  </Text>
-
-  <View style={styles.impactDivider} />
-
-  <Text style={styles.impactHighlightTitle}>🏆 TOP FILMS GET FEATURED</Text>
-  <Text style={styles.impactBody}>
-    The highest-voted films are showcased at the top of the platform and highlighted across Overlooked channels.
-  </Text>
-
-  <View style={styles.impactDivider} />
-
-  <Text style={styles.impactHighlightTitle}>🔴 EVERY OTHER THURSDAY — LIVE REVIEWS</Text>
-  <Text style={styles.impactBody}>
-    Submitted films are selected at random to be watched and reviewed every other Thursday on the Overlooked YouTube channel during livestreams.
-  </Text>
-</View>
-
-
-<View style={styles.hypeCard}>
-  <View style={styles.hypeHeaderRow}>
-  <Text style={styles.hypeTitle}>WHY UPLOAD MONTHLY</Text>
-</View>
-
-  <Text style={styles.hypeBody}>
-    Most film students make only a handful of films across three years. Progress comes faster when
-    you stop waiting and start finishing.
-  </Text>
-
-  <Text style={styles.hypeBody}>
-    Uploading monthly builds momentum. Each project teaches you more than the last — and over time,
-    your work naturally gets better.
-  </Text>
-
-  <Text style={styles.hypeBodyTight}>
-    <Text style={styles.hypeStrong}>All levels are welcome.</Text> You don’t need to make something
-    great — just make something, submit it, and keep going.
-  </Text>
-
-  <Text style={[styles.hypeBodyTight, { marginTop: 10 }]}>
-    Streaks are simple: submit at least one film every month, and your streak grows. Miss a month
-    and it resets — not to punish you, but to keep you creating.{" "}
-    <Text style={styles.hypeStrong}>Consistent finishing is what turns you into a filmmaker.</Text>
-  </Text>
-</View>
-  
-                  <View style={styles.xpBanner}>
-                    <Text style={styles.xpLine}>
-                      Submit this month to earn{" "}
-                      <Text style={styles.xpStrong}>+{SUBMIT_XP} XP</Text>. Win the month and gain{" "}
-                      <Text style={styles.xpStrong}>+500 XP</Text>.
+                  {!gamificationLoading && typeof level === "number" && (
+                    <Text style={styles.xpMiniSub} numberOfLines={1}>
+                      Lv <Text style={styles.xpMiniStrong}>{level}</Text>
+                      {levelTitle ? (
+                        <>
+                          {" "}
+                          · <Text style={styles.xpMiniStrong}>{String(levelTitle).toUpperCase()}</Text>
+                        </>
+                      ) : null}
+                      {xpToNext !== null && xpToNext > 0 ? (
+                        <>
+                          {" "}
+                          · <Text style={styles.xpMiniSubSoft}>{xpToNext} XP to next title</Text>
+                        </>
+                      ) : null}
                     </Text>
-
-                    {!gamificationLoading && typeof level === "number" && (
-                      <Text style={styles.xpSub} numberOfLines={1}>
-                        You are <Text style={styles.xpStrong}>Lv {level}</Text>
-                        {levelTitle ? (
-                          <>
-                            {" "}
-                            · <Text style={styles.xpTitle}>{String(levelTitle).toUpperCase()}</Text>
-                          </>
-                        ) : null}
-                        {xpToNext !== null && xpToNext > 0 ? (
-                          <>
-                            {" "}
-                            · <Text style={styles.xpSoft}>{xpToNext} XP to next title</Text>
-                          </>
-                        ) : null}
-                      </Text>
-                    )}
-                  </View>
+                  )}
                 </View>
+
+                <View style={styles.divider} />
+
+                <Pressable onPress={() => setRulesVisible(true)} style={styles.linkRow}>
+                  <Text style={styles.linkText}>View rules & terms</Text>
+                </Pressable>
               </View>
             </View>
 
-            {/* RIGHT COLUMN */}
+            {/* RIGHT */}
             <View style={[styles.col, isWide && styles.rightCol]}>
-              <View style={styles.cardShell}>
-                <View style={styles.formCard}>
-                  <View style={styles.formHeader}>
-                    <Text style={styles.formHeaderText}>SUBMIT ENTRY</Text>
-                    <Text style={styles.formHeaderSub}>Title, one sentence, then your file.</Text>
+              <View style={styles.card}>
+                <View style={styles.formHeaderLite}>
+                  <Text style={styles.formTitle}>Submit</Text>
+                  <Text style={styles.formSubtitle}>Simple, clear, intuitive.</Text>
+                </View>
+
+                <View style={styles.formBodyLite}>
+                  <Text style={styles.label}>Title</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder={"e.g. Flicker in the Dark"}
+                    placeholderTextColor={T.mute}
+                    value={title}
+                    onChangeText={setTitle}
+                  />
+
+                  <View style={styles.descRow}>
+                    <Text style={[styles.label, { marginBottom: 0 }]}>One sentence</Text>
+                    <Text style={styles.counterText}>{description.length}/100</Text>
                   </View>
 
-                  <View style={styles.formBody}>
-                    <Text style={styles.label}>TITLE</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder={category === "music" ? "e.g. Quiet Fire" : "e.g. Flicker in the Dark"}
-                      placeholderTextColor={T.mute}
-                      value={title}
-                      onChangeText={setTitle}
-                    />
+                  <TextInput
+                    style={styles.input}
+                    placeholder={"One sentence about your film"}
+                    placeholderTextColor={T.mute}
+                    value={description}
+                    onChangeText={(t) => setDescription(t.slice(0, 100))}
+                    maxLength={100}
+                  />
 
-                    <View style={styles.descRow}>
-                      <Text style={[styles.label, { marginBottom: 0 }]}>SHORT DESCRIPTION</Text>
-                      <Text style={styles.counterText}>{description.length}/100</Text>
-                    </View>
+                  {/* ✅ Category modal trigger */}
+                  {category === "film" ? (
+                    <View style={{ marginTop: 14 }}>
+                      <Text style={styles.label}>Category</Text>
 
-                    <TextInput
-                      style={styles.input}
-                      placeholder={
-                        category === "music"
-                          ? "One sentence about your track"
-                          : category === "acting"
-                          ? "One sentence about your monologue"
-                          : "One sentence about your film"
-                      }
-                      placeholderTextColor={T.mute}
-                      value={description}
-                      onChangeText={(t) => setDescription(t.slice(0, 100))}
-                      maxLength={100}
-                    />
-
-                    {/* ✅ Film categories (pick up to 3) */}
-                    {category === "film" ? (
-                      <View style={{ marginTop: 12 }}>
-                        <View style={[styles.descRow, { marginBottom: 10 }]}>
-                          <Text style={[styles.label, { marginBottom: 0 }]}>CATEGORIES (PICK UP TO 3)</Text>
-                          <Text style={styles.counterText}>{selectedTags.length}/3</Text>
-                        </View>
-
-                        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                          {FILM_TAGS.map((tag) => {
-                            const active = selectedTags.includes(tag);
-                            return (
-                              <Pressable
-                                key={tag}
-                                onPress={() => toggleTag(tag)}
-                                style={{
-                                  paddingVertical: 8,
-                                  paddingHorizontal: 12,
-                                  borderRadius: 999,
-                                  borderWidth: 1,
-                                  borderColor: active ? T.olive : T.line,
-                                  backgroundColor: active
-                                    ? "rgba(198,166,100,0.12)"
-                                    : "rgba(255,255,255,0.02)",
-                                }}
-                              >
-                                <Text style={{ color: active ? T.text : T.sub, fontSize: 12, letterSpacing: 0.3 }}>
-                                  {tag}
-                                </Text>
-                              </Pressable>
-                            );
-                          })}
-                        </View>
-
-                        {selectedTags.length === 0 ? (
-                          <Text style={[styles.formFootnote, { marginTop: 10 }]}>
-                            Pick at least 1 category. This helps Featured sort your film.
-                          </Text>
-                        ) : null}
-                      </View>
-                    ) : null}
-
-                    <TouchableOpacity style={styles.pickBtn} onPress={pickFile} activeOpacity={0.92}>
-                      <Text style={styles.pickBtnText}>
-                        {localUri ? "PICK A DIFFERENT FILE" : "PICK A FILE"}
-                      </Text>
-                      <Text style={styles.pickBtnSub}>Max file size: 5GB</Text>
-                    </TouchableOpacity>
-
-                    {localUri ? (
-                      <View style={styles.fileActionsRow}>
-                        <Pressable
-                          onPress={pickFile}
-                          style={({ pressed }) => [styles.fileActionBtn, pressed && { opacity: 0.9 }]}
-                        >
-                          <Text style={styles.fileActionText}>Change file</Text>
-                        </Pressable>
-
-                        <Pressable
-                          onPress={resetSelectedFile}
-                          style={({ pressed }) => [styles.fileActionBtnDanger, pressed && { opacity: 0.9 }]}
-                        >
-                          <Text style={styles.fileActionTextDanger}>Remove</Text>
-                        </Pressable>
-                      </View>
-                    ) : null}
-
-                    {/* ✅ ONE preview box only: shows chosen thumbnail if present */}
-
-                                        {/* ✅ ONE preview box only: shows chosen thumbnail if present */}
-                    {localUri ? (
                       <Pressable
-                        onPress={openPreview}
-                        style={({ pressed }) => [styles.previewWrap, pressed && { opacity: 0.92 }]}
+                        onPress={openCategoryModal}
+                        style={({ pressed }) => [styles.selectBtn, pressed && { opacity: 0.92 }]}
                       >
-                        <View style={[styles.previewStage, { aspectRatio: thumbAspect }]}>
-                          {thumbLoading ? (
-                            <View style={styles.thumbLoading}>
-                              <ActivityIndicator size="small" color={T.olive} />
-                              <Text style={styles.thumbLoadingText}>Generating thumbnail…</Text>
-                            </View>
-                          ) : previewThumbToShow ? (
-                            <Image
-                              source={{ uri: previewThumbToShow }}
-                              style={styles.previewImg}
-                              resizeMode={customThumbUri ? "cover" : "contain"}
-                            />
-                          ) : (
-                            <View style={styles.thumbFallback}>
-                              <Text style={styles.thumbFallbackText}>WATCH PREVIEW</Text>
-                            </View>
-                          )}
-                        </View>
-
-                        <View style={styles.previewOverlay} pointerEvents="none">
-                          <View style={styles.playPill}>
-                            <Text style={styles.playPillText}>▶ WATCH PREVIEW</Text>
-                          </View>
-                        </View>
+                        <Text style={styles.selectBtnText}>
+                          {selectedTags[0] ? selectedTags[0] : "Choose a category"}
+                        </Text>
+                        <Text style={styles.selectBtnHint}>
+                          {selectedTags[0] ? "Tap to change" : "Tap to select"}
+                        </Text>
                       </Pressable>
-                    ) : null}
 
-                    {/* ✅ Thumbnail actions live under the preview (no second box) */}
-                    {localUri && category !== "music" ? (
-                      <View style={{ marginTop: 10 }}>
-                        <View style={{ flexDirection: "row", gap: 10 }}>
+                      {selectedTags[0] ? (
+                        <View style={styles.selectedRow}>
+                          <View style={styles.selectedChip}>
+                            <Text style={styles.selectedChipText}>{selectedTags[0]}</Text>
+                          </View>
                           <Pressable
-                            onPress={pickThumbnail}
+                            onPress={clearTag}
+                            style={({ pressed }) => [styles.clearChipBtn, pressed && { opacity: 0.9 }]}
+                          >
+                            <Text style={styles.clearChipText}>Clear</Text>
+                          </Pressable>
+                        </View>
+                      ) : (
+                        <Text style={styles.helperText}>
+                          Pick 1 category so Featured can sort your film.
+                        </Text>
+                      )}
+                    </View>
+                  ) : null}
+
+                  {/* Pick file */}
+                  <TouchableOpacity style={styles.primaryBtn} onPress={pickFile} activeOpacity={0.92}>
+                    <Text style={styles.primaryBtnText}>
+                      {localUri ? "Pick a different file" : "Pick a file"}
+                    </Text>
+                    <Text style={styles.primaryBtnSub}>Max file size: 5GB</Text>
+                  </TouchableOpacity>
+
+                  {localUri ? (
+                    <View style={styles.fileActionsRow}>
+                      <Pressable
+                        onPress={pickFile}
+                        style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.9 }]}
+                      >
+                        <Text style={styles.secondaryBtnText}>Change file</Text>
+                      </Pressable>
+
+                      <Pressable
+                        onPress={resetSelectedFile}
+                        style={({ pressed }) => [styles.secondaryBtnDanger, pressed && { opacity: 0.9 }]}
+                      >
+                        <Text style={styles.secondaryBtnDangerText}>Remove</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+
+                  {/* Preview */}
+                  {localUri ? (
+                    <Pressable
+                      onPress={openPreview}
+                      style={({ pressed }) => [styles.previewWrap, pressed && { opacity: 0.92 }]}
+                    >
+                      <View style={[styles.previewStage, { aspectRatio: thumbAspect }]}>
+                        {thumbLoading ? (
+                          <View style={styles.thumbLoading}>
+                            <ActivityIndicator size="small" color={T.olive} />
+                            <Text style={styles.thumbLoadingText}>Generating preview…</Text>
+                          </View>
+                        ) : previewThumbToShow ? (
+                          <Image
+                            source={{ uri: previewThumbToShow }}
+                            style={styles.previewImg}
+                            resizeMode={customThumbUri ? "cover" : "contain"}
+                          />
+                        ) : (
+                          <View style={styles.thumbFallback}>
+                            <Text style={styles.thumbFallbackText}>Watch preview</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <View style={styles.previewOverlay} pointerEvents="none">
+                        <View style={styles.playPill}>
+                          <Text style={styles.playPillText}>▶ Watch preview</Text>
+                        </View>
+                      </View>
+                    </Pressable>
+                  ) : null}
+
+                  {/* REQUIRED thumbnail */}
+                  {localUri && category !== "music" ? (
+                    <View style={{ marginTop: 12 }}>
+                      <View style={styles.thumbReqRow}>
+                        <Text style={styles.thumbReqTitle}>Thumbnail (required)</Text>
+                        {!customThumbUri ? (
+                          <Text style={styles.thumbReqBadge}>Missing</Text>
+                        ) : (
+                          <Text
+                            style={[
+                              styles.thumbReqBadge,
+                              { borderColor: "rgba(60,200,120,0.35)", color: "#BFF3D4" },
+                            ]}
+                          >
+                            Added
+                          </Text>
+                        )}
+                      </View>
+
+                      <View style={{ flexDirection: "row", gap: 10 }}>
+                        <Pressable
+                          onPress={pickThumbnail}
+                          style={({ pressed }) => [
+                            styles.secondaryBtn,
+                            pressed && { opacity: 0.9 },
+                            { flex: 1, alignItems: "center" },
+                          ]}
+                        >
+                          <Text style={styles.secondaryBtnText}>
+                            {customThumbUri ? "Change thumbnail" : "Add thumbnail"}
+                          </Text>
+                        </Pressable>
+
+                        {customThumbUri ? (
+                          <Pressable
+                            onPress={removeCustomThumbnail}
                             style={({ pressed }) => [
-                              styles.fileActionBtn,
+                              styles.secondaryBtnDanger,
                               pressed && { opacity: 0.9 },
                               { flex: 1, alignItems: "center" },
                             ]}
                           >
-                            <Text style={styles.fileActionText}>
-                              {customThumbUri ? "Change thumbnail" : "Add thumbnail"}
-                            </Text>
+                            <Text style={styles.secondaryBtnDangerText}>Remove</Text>
                           </Pressable>
-
-                          {customThumbUri ? (
-                            <Pressable
-                              onPress={removeCustomThumbnail}
-                              style={({ pressed }) => [
-                                styles.fileActionBtnDanger,
-                                pressed && { opacity: 0.9 },
-                                { flex: 1, alignItems: "center" },
-                              ]}
-                            >
-                              <Text style={styles.fileActionTextDanger}>Remove thumbnail</Text>
-                            </Pressable>
-                          ) : null}
-                        </View>
-
-                        <Text style={[styles.formFootnote, { marginTop: 8 }]}>
-                          Optional: choose the exact image you want people to see on Featured.
-                        </Text>
-                      </View>
-                    ) : null}
-
-                    {localUri && category !== "music" && Platform.OS !== "web" ? (
-                      <Video
-                        ref={videoRef}
-                        source={{ uri: localUri }}
-                        style={{ width: 1, height: 1, opacity: 0.0001 }}
-                        resizeMode={ResizeMode.CONTAIN}
-                        isMuted
-                        shouldPlay={false}
-                        onLoad={onVideoLoaded}
-                        onError={() => {
-                          setDurationSec(null);
-                          setStatus(`Media ready (duration unknown) • ${formatBytes(fileSizeBytes)}`);
-                        }}
-                      />
-                    ) : null}
-
-                    {!!status && (
-                      <View style={styles.statusRow}>
-                        {status.toLowerCase().includes("checking") ? (
-                          <ActivityIndicator size="small" color={T.olive} />
                         ) : null}
-                        <Text style={styles.statusText}>{status}</Text>
                       </View>
-                    )}
 
-                    {loading ? (
-                      <View style={styles.progressWrap}>
-                        <View style={styles.progressBar}>
-                          <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
-                        </View>
-                        <View style={styles.progressLabels}>
-                          <Text style={styles.progressText}>{progressPct}%</Text>
-                          <Text style={styles.progressEta}>{etaText}</Text>
-                        </View>
-                      </View>
-                    ) : null}
-
-                    <View style={styles.agreeBlock}>
-                      <Pressable
-                        onPress={() => setAgreed(!agreed)}
-                        style={({ pressed }) => [styles.agreeRow, pressed && { opacity: 0.9 }]}
-                      >
-                        <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
-                          {agreed ? <Text style={styles.checkGlyph}>✓</Text> : null}
-                        </View>
-
-                        <Text style={styles.agreeText}>
-                          I agree to{" "}
-                          <Text
-                            style={styles.termsLink}
-                            onPress={() => setRulesVisible(true)}
-                            suppressHighlighting
-                          >
-                            the rules & terms
-                          </Text>
-                        </Text>
-                      </Pressable>
-
-                      <Pressable onPress={() => setRulesVisible(true)} style={styles.termsHintRow}>
-                        <Text style={styles.termsHintText}>View rules</Text>
-                      </Pressable>
+                      {!customThumbUri ? (
+                        <Text style={styles.helperText}>You must add a thumbnail before submitting.</Text>
+                      ) : (
+                        <Text style={styles.helperText}>This is the image that will show on Featured.</Text>
+                      )}
                     </View>
+                  ) : null}
 
-                    <TouchableOpacity
-                      style={[styles.submitBtn, (!agreed || loading) && { opacity: 0.78 }]}
-                      onPress={handleSubmit}
-                      disabled={loading || !agreed}
-                      activeOpacity={0.92}
+                  {/* hidden native video to read duration */}
+                  {localUri && category !== "music" && Platform.OS !== "web" ? (
+                    <Video
+                      ref={videoRef}
+                      source={{ uri: localUri }}
+                      style={{ width: 1, height: 1, opacity: 0.0001 }}
+                      resizeMode={ResizeMode.CONTAIN}
+                      isMuted
+                      shouldPlay={false}
+                      onLoad={onVideoLoaded}
+                      onError={() => {
+                        setDurationSec(null);
+                        setStatus(`Media ready (duration unknown) • ${formatBytes(fileSizeBytes)}`);
+                      }}
+                    />
+                  ) : null}
+
+                  {!!status && (
+                    <View style={styles.statusRow}>
+                      {status.toLowerCase().includes("checking") ? (
+                        <ActivityIndicator size="small" color={T.olive} />
+                      ) : null}
+                      <Text style={styles.statusText}>{status}</Text>
+                    </View>
+                  )}
+
+                  {loading ? (
+                    <View style={styles.progressWrap}>
+                      <View style={styles.progressBar}>
+                        <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
+                      </View>
+                      <View style={styles.progressLabels}>
+                        <Text style={styles.progressText}>{progressPct}%</Text>
+                        <Text style={styles.progressEta}>{etaText}</Text>
+                      </View>
+                    </View>
+                  ) : null}
+
+                  <View style={styles.agreeBlock}>
+                    <Pressable
+                      onPress={() => setAgreed(!agreed)}
+                      style={({ pressed }) => [styles.agreeRow, pressed && { opacity: 0.9 }]}
                     >
-                      <Text style={styles.submitText}>
-                        {loading ? "SUBMITTING…" : "UPLOAD & SUBMIT"}
-                      </Text>
-                    </TouchableOpacity>
+                      <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
+                        {agreed ? <Text style={styles.checkGlyph}>✓</Text> : null}
+                      </View>
 
-                    <Text style={styles.formFootnote}>
-                      Your entry will appear on Featured shortly after submission.
-                    </Text>
+                      <Text style={styles.agreeText}>
+                        I agree to{" "}
+                        <Text
+                          style={styles.termsLink}
+                          onPress={() => setRulesVisible(true)}
+                          suppressHighlighting
+                        >
+                          the rules & terms
+                        </Text>
+                      </Text>
+                    </Pressable>
+
+                    <Pressable onPress={() => setRulesVisible(true)} style={styles.termsHintRow}>
+                      <Text style={styles.termsHintText}>View rules</Text>
+                    </Pressable>
                   </View>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.submitBtn,
+                      (!agreed || loading || (category !== "music" && !customThumbUri)) && {
+                        opacity: 0.6,
+                      },
+                    ]}
+                    onPress={handleSubmit}
+                    disabled={loading || !agreed || (category !== "music" && !customThumbUri)}
+                    activeOpacity={0.92}
+                  >
+                    <Text style={styles.submitText}>{loading ? "Submitting…" : "Upload & submit"}</Text>
+                  </TouchableOpacity>
+
+                  <Text style={styles.formFootnote}>
+                    Your entry will appear on Featured shortly after submission.
+                  </Text>
                 </View>
               </View>
-
-              {isWide ? <View style={{ height: 10 }} /> : null}
             </View>
           </View>
-        </View>
 
-        {/* RULES MODAL (keep as-is) */}
-        <Modal visible={rulesVisible} animationType="fade" transparent>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Challenge Rules & Terms</Text>
+          {/* ✅ CATEGORY MODAL */}
+          <Modal visible={tagModalVisible} animationType="fade" transparent>
+            <View style={styles.modalOverlay}>
+              <View style={styles.categoryModal}>
+                <View style={styles.categoryModalHeader}>
+                  <Text style={styles.modalTitle}>Choose a category</Text>
+                  <Pressable onPress={closeCategoryModal} style={styles.modalIconClose}>
+                    <Text style={styles.modalIconCloseText}>✕</Text>
+                  </Pressable>
+                </View>
 
-              <ScrollView style={{ marginBottom: 16 }}>
-                <Text style={styles.modalText}>• Time limit: {capText}</Text>
+                <TextInput
+                  value={tagQuery}
+                  onChangeText={setTagQuery}
+                  placeholder="Search categories…"
+                  placeholderTextColor={T.mute}
+                  style={styles.modalSearch}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
 
-                <Text style={styles.modalText}>
-                  • File size: keep it reasonable. Extremely large uploads may fail or be removed.
-                </Text>
+                <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+                  <View style={styles.tagList}>
+                    {filteredTags.map((tag) => {
+                      const active = selectedTags[0] === tag;
+                      return (
+                        <Pressable
+                          key={tag}
+                          onPress={() => selectTag(tag)}
+                          style={({ pressed }) => [
+                            styles.tagRow,
+                            active && styles.tagRowActive,
+                            pressed && { opacity: 0.9 },
+                          ]}
+                        >
+                          <Text style={[styles.tagRowText, active && styles.tagRowTextActive]}>{tag}</Text>
+                          {active ? <Text style={styles.tagRowCheck}>✓</Text> : null}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
 
-                <Text style={styles.modalText}>
-                  • Keep it original. No stolen footage, copyrighted films, or unlicensed music.
-                </Text>
-
-                <Text style={styles.modalText}>
-                  • Be appropriate. No hate, harassment, explicit sexual content, or violent / harmful
-                  material.
-                </Text>
-
-                <Text style={styles.modalTextStrong}>
-                  • IMPORTANT: Overlooked is for ART — not content.
-                </Text>
-
-                <Text style={styles.modalText}>
-                  • This is not Instagram or TikTok. Brain-rot / “content farm” style videos will be
-                  removed.
-                </Text>
-
-                <Text style={styles.modalTextStrong}>
-                  • Repeated low-effort “content” uploads can result in a permanent ban.
-                </Text>
-
-                <Text style={styles.modalText}>
-                  • All levels are welcome. You do not need to submit something “perfect” — just
-                  finish work and keep going.
-                </Text>
-
-                <Text style={styles.modalText}>
-                  • If you submit every month for a year, you’ll make 12 films — more than most
-                  people make in their entire lives.
-                </Text>
-
-                <Text style={styles.modalText}>
-                  • The monthly theme word is optional inspiration — you don’t have to mention it.
-                </Text>
-              </ScrollView>
-
-              <Pressable style={styles.modalClose} onPress={() => setRulesVisible(false)}>
-                <Text style={styles.modalCloseText}>Close</Text>
-              </Pressable>
+                <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+                  <Pressable
+                    onPress={clearTag}
+                    style={({ pressed }) => [styles.modalAltBtn, pressed && { opacity: 0.9 }]}
+                  >
+                    <Text style={styles.modalAltText}>Clear</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={closeCategoryModal}
+                    style={({ pressed }) => [styles.modalPrimaryBtn, pressed && { opacity: 0.9 }]}
+                  >
+                    <Text style={styles.modalPrimaryText}>Done</Text>
+                  </Pressable>
+                </View>
+              </View>
             </View>
-          </View>
-        </Modal>
+          </Modal>
 
-        {/* ✅ Preview Player Modal (ALWAYS fits) */}
-        <Modal visible={previewVisible} animationType="fade" transparent>
-          <View style={styles.modalOverlay}>
-            <View style={styles.previewModal}>
-              <Text style={styles.previewTitle}>Preview</Text>
+          {/* RULES MODAL */}
+          <Modal visible={rulesVisible} animationType="fade" transparent>
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>Challenge Rules & Terms</Text>
 
-              <View style={styles.previewVideoWrap}>
-                <View style={styles.previewVideoStage}>
-                  {localUri ? (
-                    Platform.OS === "web" ? (
-                      // @ts-ignore
-                      <video
-                        key={`web-preview-${previewNonce}-${localUri}`}
-                        ref={(el) => {
-                          // @ts-ignore
-                          webPreviewVideoRef.current = el;
-                        }}
-                        src={localUri}
-                        controls
-                        autoPlay
-                        playsInline
-                        onLoadStart={() => {
-                          setPreviewError(null);
-                          setPreviewLoading(true);
-                          startPreviewTimer();
-                        }}
-                        onCanPlay={() => {
-                          clearPreviewTimer();
-                          setPreviewLoading(false);
-                        }}
-                        onError={() => {
-                          clearPreviewTimer();
-                          setPreviewLoading(false);
-                          setPreviewError(
-                            "Could not play this file. Try Retry or pick a different file."
-                          );
-                        }}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "contain",
-                          background: "#0B0B0B",
-                          display: "block",
-                        }}
-                      />
-                    ) : (
-                      <Video
-                        key={`native-preview-${previewNonce}-${localUri}`}
-                        ref={previewPlayerRef}
-                        source={{ uri: localUri }}
-                        style={styles.previewVideo}
-                        resizeMode={ResizeMode.CONTAIN}
-                        useNativeControls
-                        shouldPlay
-                        isLooping={false}
-                        onLoadStart={() => {
-                          setPreviewError(null);
-                          setPreviewLoading(true);
-                          startPreviewTimer();
-                        }}
-                        onReadyForDisplay={() => {
-                          clearPreviewTimer();
-                          setPreviewLoading(false);
-                        }}
-                        onLoad={() => {
-                          clearPreviewTimer();
-                          setPreviewLoading(false);
-                        }}
-                        onPlaybackStatusUpdate={(s: any) => {
-                          if (s?.isLoaded) {
+                <ScrollView style={{ marginBottom: 16 }}>
+                  <Text style={styles.modalText}>• Time limit: {capText}</Text>
+
+                  <Text style={styles.modalText}>
+                    • File size: keep it reasonable. Extremely large uploads may fail or be removed.
+                  </Text>
+
+                  <Text style={styles.modalText}>
+                    • Keep it original. No stolen footage, copyrighted films, or unlicensed music.
+                  </Text>
+
+                  <Text style={styles.modalText}>
+                    • Be appropriate. No hate, harassment, explicit sexual content, or violent / harmful
+                    material.
+                  </Text>
+
+                  <Text style={styles.modalTextStrong}>• IMPORTANT: Overlooked is for ART — not content.</Text>
+
+                  <Text style={styles.modalText}>
+                    • This is not Instagram or TikTok. Brain-rot / “content farm” style videos will be
+                    removed.
+                  </Text>
+
+                  <Text style={styles.modalTextStrong}>
+                    • Repeated low-effort “content” uploads can result in a permanent ban.
+                  </Text>
+
+                  <Text style={styles.modalText}>
+                    • All levels are welcome. You do not need to submit something “perfect” — just
+                    finish work and keep going.
+                  </Text>
+
+                  <Text style={styles.modalText}>
+                    • If you submit every month for a year, you’ll make 12 films — more than most
+                    people make in their entire lives.
+                  </Text>
+                </ScrollView>
+
+                <Pressable style={styles.modalClose} onPress={() => setRulesVisible(false)}>
+                  <Text style={styles.modalCloseText}>Close</Text>
+                </Pressable>
+              </View>
+            </View>
+          </Modal>
+
+          {/* Preview Modal */}
+          <Modal visible={previewVisible} animationType="fade" transparent>
+            <View style={styles.modalOverlay}>
+              <View style={styles.previewModal}>
+                <Text style={styles.previewTitle}>Preview</Text>
+
+                <View style={styles.previewVideoWrap}>
+                  <View style={styles.previewVideoStage}>
+                    {localUri ? (
+                      Platform.OS === "web" ? (
+                        // @ts-ignore
+                        <video
+                          key={`web-preview-${previewNonce}-${localUri}`}
+                          ref={(el) => {
+                            // @ts-ignore
+                            webPreviewVideoRef.current = el;
+                          }}
+                          src={localUri}
+                          controls
+                          autoPlay
+                          playsInline
+                          onLoadStart={() => {
+                            setPreviewError(null);
+                            setPreviewLoading(true);
+                            startPreviewTimer();
+                          }}
+                          onCanPlay={() => {
                             clearPreviewTimer();
                             setPreviewLoading(false);
-                          }
-                        }}
-                        onError={() => {
-                          clearPreviewTimer();
-                          setPreviewLoading(false);
-                          setPreviewError(
-                            "Could not play this file. Try Retry or pick a different file."
-                          );
-                        }}
-                      />
-                    )
-                  ) : null}
+                          }}
+                          onError={() => {
+                            clearPreviewTimer();
+                            setPreviewLoading(false);
+                            setPreviewError("Could not play this file. Try Retry or pick a different file.");
+                          }}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                            background: "#0B0B0B",
+                            display: "block",
+                          }}
+                        />
+                      ) : (
+                        <Video
+                          key={`native-preview-${previewNonce}-${localUri}`}
+                          ref={previewPlayerRef}
+                          source={{ uri: localUri }}
+                          style={styles.previewVideo}
+                          resizeMode={ResizeMode.CONTAIN}
+                          useNativeControls
+                          shouldPlay
+                          isLooping={false}
+                          onLoadStart={() => {
+                            setPreviewError(null);
+                            setPreviewLoading(true);
+                            startPreviewTimer();
+                          }}
+                          onReadyForDisplay={() => {
+                            clearPreviewTimer();
+                            setPreviewLoading(false);
+                          }}
+                          onLoad={() => {
+                            clearPreviewTimer();
+                            setPreviewLoading(false);
+                          }}
+                          onPlaybackStatusUpdate={(s: any) => {
+                            if (s?.isLoaded) {
+                              clearPreviewTimer();
+                              setPreviewLoading(false);
+                            }
+                          }}
+                          onError={() => {
+                            clearPreviewTimer();
+                            setPreviewLoading(false);
+                            setPreviewError("Could not play this file. Try Retry or pick a different file.");
+                          }}
+                        />
+                      )
+                    ) : null}
 
-                  {previewLoading ? (
-                    <View style={styles.previewLoadingOverlay} pointerEvents="none">
-                      <ActivityIndicator size="large" color={T.olive} />
-                      <Text style={styles.previewLoadingText}>Loading preview…</Text>
-                    </View>
-                  ) : null}
-
-                  {previewError ? (
-                    <View style={styles.previewErrorOverlay}>
-                      <Text style={styles.previewErrorText}>{previewError}</Text>
-                      <View style={styles.previewErrorActions}>
-                        <Pressable style={styles.previewRetryBtn} onPress={retryPreview}>
-                          <Text style={styles.previewRetryText}>Retry</Text>
-                        </Pressable>
-                        <Pressable style={styles.previewAltBtn} onPress={closePreview}>
-                          <Text style={styles.previewAltText}>Close</Text>
-                        </Pressable>
+                    {previewLoading ? (
+                      <View style={styles.previewLoadingOverlay} pointerEvents="none">
+                        <ActivityIndicator size="large" color={T.olive} />
+                        <Text style={styles.previewLoadingText}>Loading preview…</Text>
                       </View>
-                    </View>
-                  ) : null}
+                    ) : null}
+
+                    {previewError ? (
+                      <View style={styles.previewErrorOverlay}>
+                        <Text style={styles.previewErrorText}>{previewError}</Text>
+                        <View style={styles.previewErrorActions}>
+                          <Pressable style={styles.previewRetryBtn} onPress={retryPreview}>
+                            <Text style={styles.previewRetryText}>Retry</Text>
+                          </Pressable>
+                          <Pressable style={styles.previewAltBtn} onPress={closePreview}>
+                            <Text style={styles.previewAltText}>Close</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    ) : null}
+                  </View>
                 </View>
-              </View>
 
-              <View style={styles.previewMetaRow}>
-                <Text style={styles.previewMeta}>
-                  Duration:{" "}
-                  <Text style={styles.previewMetaStrong}>{formatDur(durationSec)}</Text>
-                </Text>
-                <Text style={styles.previewMeta}>
-                  Size: <Text style={styles.previewMetaStrong}>{formatBytes(fileSizeBytes)}</Text>
-                </Text>
-              </View>
+                <View style={styles.previewMetaRow}>
+                  <Text style={styles.previewMeta}>
+                    Duration: <Text style={styles.previewMetaStrong}>{formatDur(durationSec)}</Text>
+                  </Text>
+                  <Text style={styles.previewMeta}>
+                    Size: <Text style={styles.previewMetaStrong}>{formatBytes(fileSizeBytes)}</Text>
+                  </Text>
+                </View>
 
-              <Pressable style={styles.modalClose} onPress={closePreview}>
-                <Text style={styles.modalCloseText}>Close</Text>
-              </Pressable>
+                <Pressable style={styles.modalClose} onPress={closePreview}>
+                  <Text style={styles.modalCloseText}>Close</Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
-        </Modal>
+          </Modal>
+        </View>
       </ScrollView>
 
-      <UpgradeModal
-        visible={upgradeVisible}
-        context="challenge"
-        onClose={() => setUpgradeVisible(false)}
-      />
+      <UpgradeModal visible={upgradeVisible} context="challenge" onClose={() => setUpgradeVisible(false)} />
     </View>
   );
 }
-
-// ------------------------------- STYLES -------------------------------
-
-                  
-// STOP HERE — styles go below this line in your file
 
 /* -------------------------------- Styles -------------------------------- */
 
@@ -2318,7 +1871,7 @@ const styles = StyleSheet.create({
 
   scroll: {
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 18,
   },
 
   pageWrap: {
@@ -2327,9 +1880,32 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     paddingBottom: 22,
   },
-  pageWrapWide: {
-    maxWidth: 1180,
+  pageWrapWide: { maxWidth: 1180 },
+
+  topHeader: {
+    width: "100%",
+    alignItems: "center",
+    marginBottom: 16,
+    paddingHorizontal: 8,
   },
+  topTitle: {
+    fontSize: 24,
+    fontWeight: "900",
+    letterSpacing: 0.2,
+    color: T.text,
+    fontFamily: SYSTEM_SANS,
+    textAlign: "center",
+    lineHeight: 30,
+  },
+  topSub: {
+    marginTop: 8,
+    fontSize: 13,
+    color: T.mute,
+    fontFamily: SYSTEM_SANS,
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  topSubStrong: { color: T.text, fontWeight: "900" },
 
   twoCol: { width: "100%" },
   twoColWide: {
@@ -2337,324 +1913,92 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 14,
   },
+
   col: { width: "100%" },
   leftCol: { flex: 1, minWidth: 520 },
   rightCol: { width: 520 },
 
-  cardShell: {
+  card: {
     width: "100%",
-    borderRadius: RADIUS_XL + 2,
-    padding: 1,
-    backgroundColor: "#FFFFFF10",
-  },
-
-  heroCard: {
     borderRadius: RADIUS_XL,
     backgroundColor: T.card,
     borderWidth: 1,
     borderColor: T.line,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 16,
+    padding: 16,
   },
 
-  heroImageWrap: {
-    borderRadius: 18,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#ffffff12",
-    backgroundColor: "#0B0B0B",
+  divider: {
+    height: 1,
+    backgroundColor: "#FFFFFF10",
+    marginVertical: 14,
   },
-  heroImage: { width: "100%", height: 170 },
-  heroImageInner: {
-    flex: 1,
-    justifyContent: "flex-end",
-    paddingHorizontal: 16,
-    paddingBottom: 14,
-  },
-  heroKicker: {
-    fontSize: 10,
-    letterSpacing: 2.4,
-    color: "rgba(237,235,230,0.72)",
-    fontWeight: "800",
-    textTransform: "uppercase",
-    fontFamily: SYSTEM_SANS,
-    marginBottom: 6,
-  },
-  heroTitleBig: {
-    fontSize: 26,
+
+  sectionKicker: {
+    fontSize: 12,
     fontWeight: "900",
-    letterSpacing: 0.2,
+    letterSpacing: 1.6,
     color: T.text,
     textTransform: "uppercase",
     fontFamily: SYSTEM_SANS,
-    lineHeight: 30,
+    marginBottom: 8,
   },
-
-  pillsRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    justifyContent: "flex-start",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  pill: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#ffffff18",
-    backgroundColor: "rgba(0,0,0,0.35)",
-  },
-  pillGold: {
-    borderColor: "rgba(0,0,0,0.55)",
-    backgroundColor: T.olive,
-  },
-  pillText: {
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 1.2,
-    color: T.text,
-    textTransform: "uppercase",
-    fontFamily: SYSTEM_SANS,
-  },
-  pillTextDark: { color: "#0B0B0B" },
-
-  heroExplainer: {
-    marginTop: 14,
-    fontSize: 14,
-    color: "#E2E2E2",
-    textAlign: "left",
+  bullet: {
+    fontSize: 13,
+    color: "#D0D0D0",
     lineHeight: 20,
     fontFamily: SYSTEM_SANS,
+    marginBottom: 4,
   },
 
-  segmentWrap: {
-    marginTop: 14,
-    flexDirection: "row",
-    alignSelf: "flex-start",
-    backgroundColor: "#0B0B0B",
-    borderWidth: 1,
-    borderColor: T.line,
-    borderRadius: 999,
-    padding: 4,
-    gap: 6,
-  },
-  segment: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 999,
-    backgroundColor: "transparent",
-  },
-  segmentActive: {
-    backgroundColor: "#151515",
-    borderWidth: 1,
-    borderColor: T.olive,
-  },
-  segmentText: {
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 0.6,
-    color: T.mute,
-    fontFamily: SYSTEM_SANS,
-  },
-  segmentTextActive: { color: T.olive },
-
-  xpBanner: {
-    marginTop: 12,
+  xpMini: {
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#2B2B2B",
+    borderColor: "#FFFFFF12",
     backgroundColor: "#0B0B0B",
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  xpLine: {
+  xpMiniText: {
     fontSize: 12,
     color: "#D7D7D7",
-    fontWeight: "600",
     lineHeight: 18,
     fontFamily: SYSTEM_SANS,
-    textAlign: "left",
+    fontWeight: "600",
   },
-  xpStrong: { color: T.text, fontWeight: "900" },
-  xpSub: {
+  xpMiniStrong: { color: T.text, fontWeight: "900" },
+  xpMiniSub: {
     marginTop: 6,
     fontSize: 10,
     color: T.mute,
-    textAlign: "left",
     fontFamily: SYSTEM_SANS,
   },
-  xpTitle: {
-    color: T.text,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    fontFamily: SYSTEM_SANS,
-  },
-  xpSoft: { color: "#B8B8B8", fontWeight: "600", fontFamily: SYSTEM_SANS },
+  xpMiniSubSoft: { color: "#B8B8B8", fontWeight: "600" },
 
-  formCard: {
-    borderRadius: RADIUS_XL,
-    backgroundColor: T.card,
-    borderWidth: 1,
-    borderColor: T.line,
-    overflow: "hidden",
-  },
-  formHeader: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1F1F1F",
-    backgroundColor: "#0E0E0E",
-  },
-  impactCard: {
-  marginTop: 12,
-  borderRadius: 16,
-  borderWidth: 1,
-  borderColor: "rgba(198,166,100,0.28)",
-  backgroundColor: "rgba(198,166,100,0.07)",
-  padding: 14,
-},
-
-impactTitle: {
-  fontSize: 12,
-  fontWeight: "900",
-  letterSpacing: 2.0,
-  color: T.text,
-  textTransform: "uppercase",
-  fontFamily: SYSTEM_SANS,
-  marginBottom: 8,
-},
-
-impactBody: {
-  fontSize: 13,
-  color: "#D7D7D7",
-  lineHeight: 19,
-  fontFamily: SYSTEM_SANS,
-  marginBottom: 8,
-},
-
-impactSteps: {
-  fontSize: 13,
-  color: T.text,
-  lineHeight: 19,
-  fontFamily: SYSTEM_SANS,
-  fontWeight: "900",
-  marginBottom: 8,
-},
-
-impactDivider: {
-  height: 1,
-  backgroundColor: "rgba(255,255,255,0.10)",
-  marginVertical: 10,
-},
-
-impactHighlightTitle: {
-  fontSize: 11,
-  fontWeight: "900",
-  letterSpacing: 1.4,
-  color: T.text,
-  textTransform: "uppercase",
-  fontFamily: SYSTEM_SANS,
-  marginBottom: 6,
-},
-
-impactStrong: {
-  color: T.text,
-  fontWeight: "900",
-  fontFamily: SYSTEM_SANS,
-},
-
-  hypeCard: {
-    marginTop: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#2B2B2B",
-    backgroundColor: "#0B0B0B",
-    padding: 14,
-  },
-  hypeTitle: {
-  fontSize: 12,
-  fontWeight: "900",
-  letterSpacing: 2.0,
-  color: T.text,
-  textTransform: "uppercase",
-  fontFamily: SYSTEM_SANS,
-  marginBottom: 0, // ✅ was 8
-},
-  hypeBody: {
-    fontSize: 13,
-    color: "#D0D0D0",
-    lineHeight: 19,
-    fontFamily: SYSTEM_SANS,
-    marginBottom: 8,
-  },
-  hypeBodyTight: {
-    fontSize: 13,
-    color: "#D0D0D0",
-    lineHeight: 19,
-    fontFamily: SYSTEM_SANS,
-    marginBottom: 0,
-  },
-  hypeStrong: {
-    color: T.text,
+  linkRow: { alignSelf: "flex-start" },
+  linkText: {
+    color: T.olive,
     fontWeight: "900",
+    letterSpacing: 0.6,
     fontFamily: SYSTEM_SANS,
+    textDecorationLine: "underline",
   },
-hypeHeaderRow: {
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 10,
-  marginBottom: 8,
-},
 
-streakBadge: {
-  flexDirection: "row",
-  alignItems: "center",
-  gap: 8,
-  paddingHorizontal: 12,
-  paddingVertical: 8,
-  borderRadius: 999,
-  borderWidth: 1,
-  borderColor: "rgba(198,166,100,0.35)",
-  backgroundColor: "rgba(198,166,100,0.10)",
-},
-
-streakBadgeLabel: {
-  fontSize: 10,
-  fontWeight: "900",
-  letterSpacing: 1.4,
-  color: "rgba(237,235,230,0.70)",
-  textTransform: "uppercase",
-  fontFamily: SYSTEM_SANS,
-},
-
-streakBadgeValue: {
-  fontSize: 12,
-  fontWeight: "900",
-  letterSpacing: 1.0,
-  color: T.text,
-  textTransform: "uppercase",
-  fontFamily: SYSTEM_SANS,
-},
-
-
-  formHeaderText: {
+  formHeaderLite: { paddingBottom: 10 },
+  formTitle: {
     fontSize: 14,
     fontWeight: "900",
-    letterSpacing: 2.2,
+    letterSpacing: 1.6,
     color: T.text,
     textTransform: "uppercase",
     fontFamily: SYSTEM_SANS,
   },
-  formHeaderSub: {
+  formSubtitle: {
     marginTop: 6,
     fontSize: 12,
     color: "#B8B8B8",
     fontFamily: SYSTEM_SANS,
   },
-  formBody: { padding: 16 },
+  formBodyLite: { paddingTop: 6 },
 
   label: {
     fontSize: 11,
@@ -2691,7 +2035,71 @@ streakBadgeValue: {
     outlineStyle: "none",
   },
 
-  pickBtn: {
+  helperText: {
+    marginTop: 8,
+    fontSize: 11,
+    color: T.mute,
+    fontFamily: SYSTEM_SANS,
+    lineHeight: 16,
+  },
+
+  selectBtn: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#262626",
+    backgroundColor: "#121212",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  selectBtnText: {
+    color: T.text,
+    fontSize: 14,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: "800",
+  },
+  selectBtnHint: {
+    marginTop: 4,
+    color: T.mute,
+    fontSize: 12,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  selectedRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  selectedChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: T.olive,
+    backgroundColor: "rgba(198,166,100,0.12)",
+  },
+  selectedChipText: {
+    color: T.text,
+    fontSize: 12,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: "900",
+  },
+  clearChipBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#ffffff1a",
+    backgroundColor: "#111111",
+  },
+  clearChipText: {
+    color: T.sub,
+    fontSize: 12,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: "900",
+  },
+
+  primaryBtn: {
     marginTop: 16,
     borderRadius: 16,
     borderWidth: 1,
@@ -2700,15 +2108,15 @@ streakBadgeValue: {
     paddingVertical: 14,
     alignItems: "center",
   },
-  pickBtnText: {
+  primaryBtnText: {
     fontWeight: "900",
     color: T.text,
     fontSize: 12,
-    letterSpacing: 2,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
     fontFamily: SYSTEM_SANS,
   },
-  pickBtnSub: {
+  primaryBtnSub: {
     marginTop: 6,
     fontSize: 12,
     color: "#B8B8B8",
@@ -2721,7 +2129,7 @@ streakBadgeValue: {
     justifyContent: "space-between",
     gap: 10,
   },
-  fileActionBtn: {
+  secondaryBtn: {
     flex: 1,
     paddingVertical: 10,
     borderRadius: 12,
@@ -2730,7 +2138,7 @@ streakBadgeValue: {
     backgroundColor: "#111111",
     alignItems: "center",
   },
-  fileActionText: {
+  secondaryBtnText: {
     color: T.text,
     fontWeight: "900",
     letterSpacing: 1.0,
@@ -2738,7 +2146,7 @@ streakBadgeValue: {
     fontSize: 10,
     fontFamily: SYSTEM_SANS,
   },
-  fileActionBtnDanger: {
+  secondaryBtnDanger: {
     flex: 1,
     paddingVertical: 10,
     borderRadius: 12,
@@ -2747,7 +2155,7 @@ streakBadgeValue: {
     backgroundColor: "rgba(198,166,100,0.10)",
     alignItems: "center",
   },
-  fileActionTextDanger: {
+  secondaryBtnDangerText: {
     color: T.olive,
     fontWeight: "900",
     letterSpacing: 1.0,
@@ -2771,11 +2179,7 @@ streakBadgeValue: {
     justifyContent: "center",
     alignItems: "center",
   },
-  previewImg: {
-    width: "100%",
-    height: "100%",
-    backgroundColor: "#0B0B0B",
-  },
+  previewImg: { width: "100%", height: "100%", backgroundColor: "#0B0B0B" },
   thumbLoading: {
     width: "100%",
     height: "100%",
@@ -2807,7 +2211,6 @@ streakBadgeValue: {
     textTransform: "uppercase",
     fontFamily: SYSTEM_SANS,
   },
-
   previewOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "flex-end",
@@ -2826,12 +2229,38 @@ streakBadgeValue: {
     fontWeight: "900",
     color: T.text,
     fontSize: 10,
-    letterSpacing: 2,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
     fontFamily: SYSTEM_SANS,
   },
 
-  /* -------- status + progress -------- */
+  thumbReqRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  thumbReqTitle: {
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1.0,
+    textTransform: "uppercase",
+    color: T.text,
+    fontFamily: SYSTEM_SANS,
+  },
+  thumbReqBadge: {
+    fontSize: 11,
+    color: "#FFD6D6",
+    fontFamily: SYSTEM_SANS,
+    fontWeight: "900",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,120,120,0.35)",
+    backgroundColor: "rgba(255,120,120,0.10)",
+    overflow: "hidden",
+  },
 
   statusRow: {
     marginTop: 10,
@@ -2845,19 +2274,14 @@ streakBadgeValue: {
     fontFamily: SYSTEM_SANS,
   },
 
-  progressWrap: {
-    marginTop: 12,
-  },
+  progressWrap: { marginTop: 12 },
   progressBar: {
     height: 6,
     borderRadius: 999,
     backgroundColor: "#1B1B1B",
     overflow: "hidden",
   },
-  progressFill: {
-    height: "100%",
-    backgroundColor: T.olive,
-  },
+  progressFill: { height: "100%", backgroundColor: T.olive },
   progressLabels: {
     marginTop: 6,
     flexDirection: "row",
@@ -2869,22 +2293,10 @@ streakBadgeValue: {
     fontWeight: "800",
     fontFamily: SYSTEM_SANS,
   },
-  progressEta: {
-    fontSize: 11,
-    color: T.mute,
-    fontFamily: SYSTEM_SANS,
-  },
+  progressEta: { fontSize: 11, color: T.mute, fontFamily: SYSTEM_SANS },
 
-  /* -------- agreement -------- */
-
-  agreeBlock: {
-    marginTop: 16,
-  },
-  agreeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
+  agreeBlock: { marginTop: 16 },
+  agreeRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   checkbox: {
     width: 20,
     height: 20,
@@ -2895,28 +2307,11 @@ streakBadgeValue: {
     justifyContent: "center",
     backgroundColor: "#0B0B0B",
   },
-  checkboxChecked: {
-    backgroundColor: T.olive,
-    borderColor: T.olive,
-  },
-  checkGlyph: {
-    color: "#0B0B0B",
-    fontWeight: "900",
-    fontSize: 12,
-    fontFamily: SYSTEM_SANS,
-  },
-  agreeText: {
-    color: T.sub,
-    fontSize: 12,
-    fontFamily: SYSTEM_SANS,
-  },
-  termsLink: {
-    color: T.olive,
-    fontWeight: "900",
-  },
-  termsHintRow: {
-    marginTop: 6,
-  },
+  checkboxChecked: { backgroundColor: T.olive, borderColor: T.olive },
+  checkGlyph: { color: "#0B0B0B", fontWeight: "900", fontSize: 12, fontFamily: SYSTEM_SANS },
+  agreeText: { color: T.sub, fontSize: 12, fontFamily: SYSTEM_SANS },
+  termsLink: { color: T.olive, fontWeight: "900" },
+  termsHintRow: { marginTop: 6 },
   termsHintText: {
     fontSize: 11,
     color: T.mute,
@@ -2924,52 +2319,6 @@ streakBadgeValue: {
     fontFamily: SYSTEM_SANS,
   },
 
-  streakRow: {
-  marginTop: 12,
-  flexDirection: "row",
-  alignItems: "center",
-  gap: 10,
-},
-
-streakPill: {
-  paddingHorizontal: 12,
-  paddingVertical: 10,
-  borderRadius: 999,
-  borderWidth: 1,
-  borderColor: "#ffffff18",
-  backgroundColor: "rgba(0,0,0,0.35)",
-  flexDirection: "row",
-  alignItems: "center",
-  gap: 8,
-},
-
-streakPillLabel: {
-  fontSize: 10,
-  fontWeight: "900",
-  letterSpacing: 1.2,
-  color: "rgba(237,235,230,0.75)",
-  textTransform: "uppercase",
-  fontFamily: SYSTEM_SANS,
-},
-
-streakPillValue: {
-  fontSize: 12,
-  fontWeight: "900",
-  letterSpacing: 1.0,
-  color: T.text,
-  textTransform: "uppercase",
-  fontFamily: SYSTEM_SANS,
-},
-
-streakHint: {
-  flex: 1,
-  fontSize: 11,
-  color: "rgba(237,235,230,0.70)",
-  lineHeight: 16,
-  fontFamily: SYSTEM_SANS,
-},
-
-  /* -------- submit -------- */
   submitBtn: {
     marginTop: 14,
     borderRadius: 16,
@@ -2982,7 +2331,7 @@ streakHint: {
   submitText: {
     color: "#0B0B0B",
     fontWeight: "900",
-    letterSpacing: 2,
+    letterSpacing: 1.6,
     fontSize: 12,
     textTransform: "uppercase",
     fontFamily: SYSTEM_SANS,
@@ -2995,8 +2344,6 @@ streakHint: {
     fontFamily: SYSTEM_SANS,
   },
 
-  /* -------- Modals -------- */
-
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.72)",
@@ -3004,6 +2351,107 @@ streakHint: {
     alignItems: "center",
     paddingHorizontal: 16,
   },
+
+  /* category modal */
+  categoryModal: {
+    width: "100%",
+    maxWidth: 520,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#2B2B2B",
+    backgroundColor: "#0F0F0F",
+  },
+  categoryModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  modalIconClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#2B2B2B",
+    backgroundColor: "#151515",
+  },
+  modalIconCloseText: { color: T.text, fontWeight: "900", fontFamily: SYSTEM_SANS },
+
+  modalSearch: {
+    backgroundColor: "#121212",
+    borderWidth: 1,
+    borderColor: "#262626",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: T.text,
+    fontFamily: SYSTEM_SANS,
+    // @ts-ignore
+    outlineStyle: "none",
+    marginBottom: 12,
+  },
+
+  tagList: { gap: 8 },
+  tagRow: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#2A2A2A",
+    backgroundColor: "#121212",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  tagRowActive: {
+    borderColor: T.olive,
+    backgroundColor: "rgba(198,166,100,0.12)",
+  },
+  tagRowText: { color: T.sub, fontSize: 13, fontFamily: SYSTEM_SANS, fontWeight: "700" },
+  tagRowTextActive: { color: T.text, fontWeight: "900" },
+  tagRowCheck: { color: T.olive, fontWeight: "900", fontFamily: SYSTEM_SANS },
+
+  modalAltBtn: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: "center",
+    backgroundColor: "#151515",
+    borderWidth: 1,
+    borderColor: "#2B2B2B",
+  },
+  modalAltText: {
+    color: T.text,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    fontSize: 11,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  modalPrimaryBtn: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: "center",
+    backgroundColor: T.olive,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.35)",
+  },
+  modalPrimaryText: {
+    color: "#0B0B0B",
+    fontWeight: "900",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    fontSize: 11,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  /* rules modal */
   modalContent: {
     width: "100%",
     maxWidth: 520,
@@ -3055,8 +2503,7 @@ streakHint: {
     fontFamily: SYSTEM_SANS,
   },
 
-  /* -------- Preview Modal -------- */
-
+  /* preview modal */
   previewModal: {
     width: "100%",
     maxWidth: 720,
@@ -3088,11 +2535,7 @@ streakHint: {
     aspectRatio: 16 / 9,
     backgroundColor: "#0B0B0B",
   },
-  previewVideo: {
-    width: "100%",
-    height: "100%",
-    backgroundColor: "#0B0B0B",
-  },
+  previewVideo: { width: "100%", height: "100%", backgroundColor: "#0B0B0B" },
   previewLoadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
@@ -3123,10 +2566,7 @@ streakHint: {
     fontFamily: SYSTEM_SANS,
     marginBottom: 12,
   },
-  previewErrorActions: {
-    flexDirection: "row",
-    gap: 10,
-  },
+  previewErrorActions: { flexDirection: "row", gap: 10 },
   previewRetryBtn: {
     paddingVertical: 10,
     paddingHorizontal: 14,
@@ -3159,20 +2599,7 @@ streakHint: {
     fontSize: 11,
     fontFamily: SYSTEM_SANS,
   },
-
-  previewMetaRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  previewMeta: {
-    fontSize: 12,
-    color: T.mute,
-    fontFamily: SYSTEM_SANS,
-  },
-  previewMetaStrong: {
-    color: T.text,
-    fontWeight: "900",
-    fontFamily: SYSTEM_SANS,
-  },
+  previewMetaRow: { marginTop: 10, flexDirection: "row", justifyContent: "space-between" },
+  previewMeta: { fontSize: 12, color: T.mute, fontFamily: SYSTEM_SANS },
+  previewMetaStrong: { color: T.text, fontWeight: "900", fontFamily: SYSTEM_SANS },
 });
