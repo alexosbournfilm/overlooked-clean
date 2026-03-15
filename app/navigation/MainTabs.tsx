@@ -31,6 +31,7 @@ import LocationScreen from '../screens/LocationScreen';
 import ChatsStack from './ChatsStack';
 import ProfileScreen from '../screens/ProfileScreen';
 import WorkshopScreen from '../screens/WorkshopScreen';
+import WorkshopSubmitScreen from '../screens/WorkshopSubmitScreen';
 
 import { SettingsModalProvider } from '../context/SettingsModalContext';
 import SettingsButton from '../../components/SettingsButton';
@@ -40,8 +41,6 @@ import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 
 // NOTE: keeping this import because your file already has it.
 import { useGamification } from '../context/GamificationContext';
-
-import { UpgradeModal } from '../../components/UpgradeModal';
 
 const Tab = createBottomTabNavigator();
 
@@ -192,7 +191,6 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
     outputRange: ['0%', '100%'],
   });
 
-  // ✨ shimmer sweep (web only)
   const shimmerX = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -831,7 +829,12 @@ const TopBarXpProgress = memo(function TopBarXpProgress({ variant, onOpenLeaderb
     <>
       <View style={[styles.xpWrap, isWide ? styles.xpWrapWide : styles.xpWrapCompact]}>
         {onOpenLeaderboard && (
-          <View style={[styles.leaderboardLinkRow, isWide ? styles.leaderboardLinkRowWide : styles.leaderboardLinkRowCompact]}>
+          <View
+            style={[
+              styles.leaderboardLinkRow,
+              isWide ? styles.leaderboardLinkRowWide : styles.leaderboardLinkRowCompact,
+            ]}
+          >
             <Pressable onPress={onOpenLeaderboard} hitSlop={6}>
               <Text style={styles.leaderboardLinkText}>VIEW LEADERBOARD</Text>
             </Pressable>
@@ -888,28 +891,25 @@ const TopBarXpProgress = memo(function TopBarXpProgress({ variant, onOpenLeaderb
 type TopBarProps = {
   topOffset: number;
   navHeight: number;
-  onOpenUpgrade: () => void;
+  onOpenUpload: () => void;
   onOpenLeaderboard: () => void;
 };
 
-const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpenLeaderboard }: TopBarProps) {
+const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpload, onOpenLeaderboard }: TopBarProps) {
   const { width } = useWindowDimensions();
   const isWide = width >= 980;
   const isPhone = width < 420;
-  const isTiny = width < 360;
   const compactUI = !isWide;
 
   return (
     <View style={[styles.topBarWrapper, { top: topOffset }]}>
       <View style={[styles.topBarInner, { height: navHeight, paddingHorizontal: isPhone ? 10 : 14 }]}>
-        {/* Left */}
         <View style={styles.topBarLeft}>
           <HoverPress style={{ borderRadius: 10 }} accessibilityLabel="Overlooked">
             <BrandWordmark compact={compactUI} />
           </HoverPress>
         </View>
 
-        {/* Center (wide only) — FLEX so it never overlaps right buttons */}
         {isWide && (
           <View style={styles.topBarCenter}>
             <HoverPress
@@ -926,27 +926,24 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
           </View>
         )}
 
-        {/* Right tools */}
         <View style={[styles.rightTools, { gap: isPhone ? 6 : 10 }]}>
-          {/* Upgrade */}
-          <HoverPress onPress={onOpenUpgrade} hitSlop={6} accessibilityLabel="Open upgrade">
+          <HoverPress onPress={onOpenUpload} hitSlop={6} accessibilityLabel="Upload film">
             <View
               style={[
-                styles.upgradeBtn,
-                isPhone && styles.upgradeBtnPhone,
-                compactUI && styles.upgradeBtnCompact,
+                styles.uploadBtn,
+                isPhone && styles.uploadBtnPhone,
+                compactUI && styles.uploadBtnCompact,
               ]}
             >
-              <Ionicons name="sparkles-outline" size={isPhone ? 15 : 16} color={GOLD} />
+              <Ionicons name="cloud-upload-outline" size={isPhone ? 15 : 16} color={GOLD} />
               {!isPhone && (
-                <Text style={[styles.upgradeBtnText, compactUI && styles.upgradeBtnTextCompact]} numberOfLines={1}>
-                  UPGRADE
+                <Text style={[styles.uploadBtnText, compactUI && styles.uploadBtnTextCompact]} numberOfLines={1}>
+                  UPLOAD FILM
                 </Text>
               )}
             </View>
           </HoverPress>
 
-          {/* Leaderboard */}
           <HoverPress onPress={onOpenLeaderboard} hitSlop={6} accessibilityLabel="View leaderboard">
             <View
               style={[
@@ -957,14 +954,16 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
             >
               <Ionicons name="trophy-outline" size={isPhone ? 15 : 16} color={GOLD} />
               {!isPhone && (
-                <Text style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]} numberOfLines={1}>
+                <Text
+                  style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]}
+                  numberOfLines={1}
+                >
                   LEADERBOARD
                 </Text>
               )}
             </View>
           </HoverPress>
 
-          {/* Settings */}
           <HoverPress disabled>
             <View
               style={[
@@ -981,7 +980,6 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
         </View>
       </View>
 
-      {/* Compact streak row (mobile / narrow web) */}
       {!isWide && (
         <View style={[styles.topBarInnerStreakRow, { paddingHorizontal: isPhone ? 10 : 14 }]}>
           <HoverPress
@@ -1002,16 +1000,14 @@ const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpgrade, onOpe
 });
 
 /* ---------------------- Screen wrapper --------------------- */
-/**
- * ✅ SPEED: remove TabTransition / wrapper animation work entirely.
- * This makes screen switching as fast as possible.
- */
+
 const FeaturedWrapped = FeaturedScreen;
 const JobsWrapped = JobsScreen;
 const ChallengeWrapped = ChallengeScreen;
 const LocationWrapped = LocationScreen;
 const ProfileWrapped = ProfileScreen;
 const WorkshopWrapped = WorkshopScreen;
+const WorkshopSubmitWrapped = WorkshopSubmitScreen;
 const ChatsWrapped = ChatsStack;
 
 /* ------------------------ Animated Tab Bar Button --------------------- */
@@ -1071,6 +1067,7 @@ const TabBarButton = memo(function TabBarButton(props: any) {
 /* --------------------------------- Tabs -------------------------------- */
 
 export default function MainTabs() {
+  const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -1078,19 +1075,15 @@ export default function MainTabs() {
   const isTiny = width < 360;
 
   const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [showUpgrade, setShowUpgrade] = useState(false);
 
-  // ✅ Web background / foreground + native background / foreground fix:
-  // This is what prevents “click off → come back → infinite loading”.
   const lastResumeAt = useRef(0);
 
   const resumeWarmAuth = useCallback(async () => {
     const now = Date.now();
-    if (now - lastResumeAt.current < 800) return; // throttle
+    if (now - lastResumeAt.current < 800) return;
     lastResumeAt.current = now;
 
     try {
-      // Warm session immediately (prevents screens racing auth)
       await supabase.auth.getSession();
     } catch {}
 
@@ -1106,10 +1099,8 @@ export default function MainTabs() {
   }, []);
 
   useEffect(() => {
-    // Start immediately on mount
     resumeWarmAuth();
 
-    // Native lifecycle
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') resumeWarmAuth();
       else pauseAuth();
@@ -1140,7 +1131,6 @@ export default function MainTabs() {
     window.addEventListener('focus', onFocus);
     window.addEventListener('blur', onBlur);
 
-    // Run once
     onVisibility();
 
     return () => {
@@ -1175,10 +1165,13 @@ export default function MainTabs() {
   const NAV_HEIGHT = isWide ? 56 : isPhone ? 40 : 44;
   const topOffset = isWide ? 0 : Platform.OS === 'ios' ? Math.max((insets.top || 0) - 4, 0) : 0;
 
-  // ✅ Sale strip removed, so padding is just navbar + (compact streak row height when not wide)
   const contentTopPadding = NAV_HEIGHT + (isWide ? 0 : 30);
 
   const TABBAR_HEIGHT = isPhone ? 54 : 56;
+
+  const handleOpenUpload = useCallback(() => {
+  navigation.navigate('WorkshopSubmit', { mode: 'monthly' });
+}, [navigation]);
 
   const screenOptions = useCallback(
     ({ route }: any): BottomTabNavigationOptions =>
@@ -1190,18 +1183,21 @@ export default function MainTabs() {
         tabBarInactiveTintColor: TEXT_MUTED,
         tabBarShowLabel: false,
 
-        tabBarStyle: {
-          backgroundColor: DARK_ELEVATED,
-          borderTopWidth: 0,
-          height: TABBAR_HEIGHT,
-          paddingTop: isTiny ? 5 : 6,
-          paddingBottom: Platform.OS === 'ios' ? (isPhone ? 10 : 12) : 8,
-          shadowColor: '#000',
-          shadowOpacity: 0.3,
-          shadowOffset: { width: 0, height: -4 },
-          shadowRadius: 6,
-          elevation: 10,
-        },
+        tabBarStyle:
+          route.name === 'WorkshopSubmit'
+            ? { display: 'none' }
+            : {
+                backgroundColor: DARK_ELEVATED,
+                borderTopWidth: 0,
+                height: TABBAR_HEIGHT,
+                paddingTop: isTiny ? 5 : 6,
+                paddingBottom: Platform.OS === 'ios' ? (isPhone ? 10 : 12) : 8,
+                shadowColor: '#000',
+                shadowOpacity: 0.3,
+                shadowOffset: { width: 0, height: -4 },
+                shadowRadius: 6,
+                elevation: 10,
+              },
 
         tabBarItemStyle: {
           alignItems: 'center',
@@ -1209,14 +1205,13 @@ export default function MainTabs() {
           paddingVertical: 0,
         },
 
-        // ✅ PERF: keep screens mounted for instant switching.
         lazy: true,
         lazyPreloadDistance: 1,
         detachInactiveScreens: Platform.OS !== 'web',
         freezeOnBlur: Platform.OS !== 'web',
         unmountOnBlur: false,
 
-        tabBarButton: (props: any) => <TabBarButton {...props} />,
+        tabBarButton: route.name === 'WorkshopSubmit' ? () => null : (props: any) => <TabBarButton {...props} />,
 
         tabBarIcon: ({ color }: { color: string; focused: boolean }) => {
           let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
@@ -1261,47 +1256,54 @@ export default function MainTabs() {
         <TopBar
           topOffset={topOffset}
           navHeight={NAV_HEIGHT}
-          onOpenUpgrade={() => setShowUpgrade(true)}
+          onOpenUpload={handleOpenUpload}
           onOpenLeaderboard={() => setShowLeaderboard(true)}
         />
 
         <SafeAreaView style={[styles.safeArea, { paddingTop: contentTopPadding }]} edges={['left', 'right', 'bottom']}>
           <Tab.Navigator screenOptions={screenOptions}>
-            <Tab.Screen name="Featured" component={FeaturedWrapped} />
-            <Tab.Screen name="Jobs" component={JobsWrapped} />
-            <Tab.Screen name="Challenge" component={ChallengeWrapped} />
-            <Tab.Screen name="Workshop" component={WorkshopWrapped} />
-            <Tab.Screen name="Location" component={LocationWrapped} />
+  <Tab.Screen name="Featured" component={FeaturedWrapped} />
+  <Tab.Screen name="Workshop" component={WorkshopWrapped} />
+  <Tab.Screen name="Challenge" component={ChallengeWrapped} />
+  <Tab.Screen name="Location" component={LocationWrapped} />
+  <Tab.Screen name="Jobs" component={JobsWrapped} />
 
-            <Tab.Screen
-              name="Chats"
-              component={ChatsWrapped}
-              options={{
-                unmountOnBlur: false,
-              }}
-            />
+  <Tab.Screen
+    name="Chats"
+    component={ChatsWrapped}
+    options={{
+      unmountOnBlur: false,
+    }}
+  />
 
-            <Tab.Screen
-              name="Profile"
-              component={ProfileWrapped}
-              listeners={({ navigation }) => ({
-                tabPress: (e) => {
-                  e.preventDefault();
-                  navigation.dispatch(TabActions.jumpTo('Profile', undefined));
-                },
-              })}
-            />
-          </Tab.Navigator>
+  <Tab.Screen
+    name="Profile"
+    component={ProfileWrapped}
+    listeners={({ navigation }) => ({
+      tabPress: (e) => {
+        e.preventDefault();
+        navigation.dispatch(TabActions.jumpTo('Profile', undefined));
+      },
+    })}
+  />
+
+  <Tab.Screen
+    name="WorkshopSubmit"
+    component={WorkshopSubmitWrapped}
+    options={{
+      tabBarButton: () => null,
+      tabBarStyle: { display: 'none' },
+    }}
+  />
+</Tab.Navigator>
         </SafeAreaView>
 
         <SettingsModal />
         <LeaderboardModal visible={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
-        <UpgradeModal visible={showUpgrade} onClose={() => setShowUpgrade(false)} context={undefined} />
       </View>
     </SettingsModalProvider>
   );
 }
-
 /* -------------------------------- Styles -------------------------------- */
 
 const styles = StyleSheet.create({
@@ -1310,7 +1312,6 @@ const styles = StyleSheet.create({
     backgroundColor: DARK_BG,
   },
 
-  /* ✅ icons only tab */
   tabIconOnly: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -1339,7 +1340,6 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
 
-  // ✅ Flex center so it never overlaps the right tools
   topBarCenter: {
     flex: 1,
     minWidth: 0,
@@ -1379,7 +1379,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
 
-  upgradeBtn: {
+  uploadBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -1391,7 +1391,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(198,166,100,0.30)',
     maxWidth: 140,
   },
-  upgradeBtnPhone: {
+  uploadBtnPhone: {
     paddingVertical: 4,
     paddingHorizontal: 8,
     gap: 0,
@@ -1399,13 +1399,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderColor: 'transparent',
   },
-  upgradeBtnCompact: {
+  uploadBtnCompact: {
     paddingVertical: 6,
     paddingHorizontal: 9,
     gap: 6,
     maxWidth: 110,
   },
-  upgradeBtnText: {
+  uploadBtnText: {
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1.2,
@@ -1414,7 +1414,7 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     flexShrink: 1,
   },
-  upgradeBtnTextCompact: {
+  uploadBtnTextCompact: {
     fontSize: 8.5,
     letterSpacing: 0.9,
   },
@@ -1475,7 +1475,6 @@ const styles = StyleSheet.create({
     padding: 2.5,
   },
 
-  /* ------------------ STREAK ------------------ */
   streakWrap: { paddingVertical: 2, width: '100%' },
   streakWrapWide: {
     width: '100%',

@@ -4,7 +4,7 @@
 // + ✅ Handles email-confirm deep links (PKCE exchange) on /signin
 // ------------------------------------------------------------
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,

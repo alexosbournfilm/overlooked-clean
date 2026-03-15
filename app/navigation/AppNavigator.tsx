@@ -19,6 +19,7 @@ import COLORS from "../theme/colors";
 import PaywallScreen from "../screens/PaywallScreen";
 import PaySuccessScreen from "../screens/PaySuccessScreen";
 import NewPassword from "../screens/NewPassword";
+import WorkshopSubmitScreen from "../screens/WorkshopSubmitScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -234,6 +235,8 @@ export default function AppNavigator({
           <Stack.Screen name="MainTabs" component={MainTabs} />
         )}
 
+
+<Stack.Screen name="WorkshopSubmit" component={WorkshopSubmitScreen} />
         {/* Always keep NewPassword accessible (deep link + manual nav) */}
         <Stack.Screen name="NewPassword" component={NewPassword} />
       </Stack.Navigator>

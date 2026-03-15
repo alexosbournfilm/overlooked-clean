@@ -1,0 +1,14 @@
+# Query: Choose Your Path
+# Flags: IgnoreExcludeSettings
+# ContextLines: 1
+
+1 result - 1 file
+
+app/screens/WorkshopScreen.tsx:
+  3449            <View style={styles.pageWrap}>
+  <Text style={styles.eyebrow}>Workshop</Text>
+  <Text style={styles.pageTitle}>Learn the Craft of Film</Text>
+  <Text style={styles.pageSubtitle}>
+    Choose a discipline, build real skills, and grow your creative portfolio with every challenge you complete.
+  </Text>
+  3451  

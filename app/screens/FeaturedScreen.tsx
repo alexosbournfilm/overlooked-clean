@@ -2917,46 +2917,51 @@ const RADIUS_XL = 18;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: T.bg,
+    backgroundColor: '#040404',
   },
 
   wideLayout: {
     flex: 1,
     flexDirection: 'row',
-    gap: 18,
+    gap: 22,
     paddingTop: CONTENT_TOP_PAD,
+    paddingHorizontal: 12,
   },
 
   sidebar: {
-    borderRadius: 16,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: '#141414',
-    backgroundColor: '#090909',
-    padding: 14,
+    borderColor: 'rgba(212,180,95,0.10)',
+    backgroundColor: 'rgba(8,8,8,0.96)',
+    padding: 16,
     height: 'fit-content' as any,
     alignSelf: 'flex-start',
+    shadowColor: '#000',
+    shadowOpacity: 0.32,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
   },
 
   gridArea: {
     flex: 1,
-    // optional safety net:
-    // overflow: 'hidden',
   },
 
   listContent: {
     alignItems: 'center',
     paddingHorizontal: 0,
+    paddingBottom: 40,
   },
 
   listContentWide: {
     paddingHorizontal: 0,
-    paddingBottom: 28,
+    paddingBottom: 36,
   },
 
   subHeaderWrap: {
     paddingHorizontal: 0,
     paddingTop: 0,
-    paddingBottom: 6,
+    paddingBottom: 10,
     alignItems: 'center',
   },
 
@@ -2967,56 +2972,65 @@ const styles = StyleSheet.create({
   },
 
   cardWrapperHero: {
-    marginBottom: 6,
+    marginBottom: 14,
   },
 
   cardBorder: {
-    borderRadius: RADIUS_XL + 2,
+    borderRadius: RADIUS_XL + 4,
     padding: 1,
     width: '100%',
     alignItems: 'center',
+    backgroundColor: 'rgba(212,180,95,0.10)',
   },
 
   card: {
     width: '100%',
-    borderRadius: RADIUS_XL,
-    backgroundColor: T.card,
+    borderRadius: RADIUS_XL + 2,
+    backgroundColor: '#070707',
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: T.outline,
+    borderColor: 'rgba(255,255,255,0.05)',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 12,
   },
 
   cardHero: {
-    backgroundColor: '#050505',
+    backgroundColor: '#030303',
+    borderColor: 'rgba(212,180,95,0.12)',
   },
 
   heroRow: {
     alignSelf: 'center',
-    borderRadius: RADIUS_XL,
+    borderRadius: RADIUS_XL + 2,
     overflow: 'hidden',
     backgroundColor: '#000',
-    marginTop: 14,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
   },
 
   winnerFooter: {
     alignSelf: 'center',
-    paddingHorizontal: 18,
-    paddingTop: 10,
-    paddingBottom: 14,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
   },
 
   winnerMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-start',
-    gap: 10,
+    gap: 12,
   },
 
   winnerMetaLabel: {
-    color: 'rgba(237,235,230,0.55)',
+    color: 'rgba(237,235,230,0.48)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '800',
-    letterSpacing: 0.6,
+    letterSpacing: 1,
     textTransform: 'uppercase',
     fontSize: 11,
   },
@@ -3025,83 +3039,99 @@ const styles = StyleSheet.create({
     color: GOLD,
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    letterSpacing: 0.4,
+    letterSpacing: 0.6,
     fontSize: 13,
   },
 
   /* ---------------- Hero overlay ---------------- */
-    heroOverlay: {
+  heroOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 10,
-
-    // ✅ Center the entire text block over the video
     justifyContent: 'center',
     alignItems: 'center',
-
-    // ✅ keep safe padding from rounded edges
-    paddingHorizontal: 18,
-    paddingVertical: 18,
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+    backgroundColor: 'rgba(0,0,0,0.18)',
   },
 
-    heroOverlayInner: {
+  heroOverlayInner: {
     maxWidth: '100%',
-    alignItems: 'center', // ✅ center the text block
+    alignItems: 'center',
   },
 
-    heroKicker: {
+  heroKicker: {
     color: GOLD,
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     textTransform: 'uppercase',
-    textAlign: 'center', // ✅
+    textAlign: 'center',
+    fontSize: 13,
+    letterSpacing: 1.6,
+    marginBottom: 10,
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
   },
 
-    heroTitle: {
-    color: '#fff',
+  heroTitle: {
+    color: '#F8F6F1',
     fontFamily: FONT_CINEMATIC,
     fontWeight: '800',
     textTransform: 'uppercase',
-    textAlign: 'center', // ✅
+    textAlign: 'center',
+    letterSpacing: 1,
+    textShadowColor: 'rgba(0,0,0,0.65)',
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 14,
   },
 
-    heroBylineTap: {
-    alignSelf: 'center', // ✅ was flex-start
-    marginTop: 2,
+  heroBylineTap: {
+    alignSelf: 'center',
+    marginTop: 8,
   },
 
-    heroByline: {
-    color: 'rgba(255,255,255,0.78)',
+  heroByline: {
+    color: 'rgba(255,255,255,0.82)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '800',
-    letterSpacing: 0.3,
+    letterSpacing: 1,
     textTransform: 'uppercase',
-    textAlign: 'center', // ✅
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
   },
 
   /* ---------------- Feed layout ---------------- */
   feedRow: {
     flexDirection: 'row',
     alignSelf: 'center',
-    paddingTop: 14,
-    paddingBottom: 14,
-    gap: 10,
+    paddingTop: 16,
+    paddingBottom: 16,
+    gap: 14,
   },
 
   voteCol: {
     alignItems: 'center',
     paddingTop: 10,
+    paddingLeft: 2,
   },
 
   voteTap: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: '#0B0B0B',
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#0A0A0A',
     borderWidth: 1,
-    borderColor: '#1A1A1A',
+    borderColor: 'rgba(255,255,255,0.07)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
   },
 
   voteArrow: {
@@ -3126,42 +3156,42 @@ const styles = StyleSheet.create({
   },
 
   voteArrowActive: {
-    borderBottomColor: T.accent,
-    borderTopColor: T.accent,
+    borderBottomColor: GOLD,
+    borderTopColor: GOLD,
   },
 
   voteCountText: {
-    color: '#EDEBE6',
+    color: '#F2EFE8',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 13,
-    letterSpacing: 0.3,
+    letterSpacing: 0.4,
     marginBottom: 10,
   },
 
   commentDot: {
     width: 6,
     height: 6,
-    borderRadius: 3,
+    borderRadius: 999,
     backgroundColor: GOLD,
     marginBottom: 4,
   },
 
   commentMini: {
-    color: 'rgba(237,235,230,0.65)',
+    color: 'rgba(237,235,230,0.58)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '800',
     fontSize: 11,
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
   },
 
   mineMini: {
     marginTop: 8,
-    color: 'rgba(237,235,230,0.38)',
+    color: 'rgba(237,235,230,0.32)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 10,
-    letterSpacing: 0.7,
+    letterSpacing: 0.9,
     textTransform: 'uppercase',
   },
 
@@ -3175,21 +3205,21 @@ const styles = StyleSheet.create({
   },
 
   feedTitle: {
-    color: '#fff',
+    color: '#F8F6F1',
     fontFamily: FONT_CINEMATIC,
     fontWeight: '800',
-    fontSize: 22,
-    letterSpacing: 0.4,
+    fontSize: 23,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
 
   feedByline: {
-    marginTop: 6,
+    marginTop: 7,
     color: GOLD,
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 12,
-    letterSpacing: 0.5,
+    letterSpacing: 0.9,
     textTransform: 'uppercase',
   },
 
@@ -3199,73 +3229,78 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     fontWeight: '600',
     fontSize: 13,
-    lineHeight: 18,
+    lineHeight: 20,
   },
 
   feedActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginTop: 12,
+    marginTop: 14,
     flexWrap: 'wrap',
   },
 
   feedActionBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 15,
+    borderRadius: 14,
     backgroundColor: '#0B0B0B',
     borderWidth: 1,
-    borderColor: '#1A1A1A',
+    borderColor: 'rgba(212,180,95,0.20)',
   },
 
   feedActionText: {
-    color: '#EDEBE6',
+    color: '#F3EFE7',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 11,
-    letterSpacing: 0.7,
+    letterSpacing: 0.9,
     textTransform: 'uppercase',
   },
 
   feedActionBtnGhost: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 15,
+    borderRadius: 14,
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: '#222',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
 
   feedActionGhostText: {
-    color: 'rgba(237,235,230,0.65)',
+    color: 'rgba(237,235,230,0.66)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 11,
-    letterSpacing: 0.7,
+    letterSpacing: 0.9,
     textTransform: 'uppercase',
   },
 
   /* ---------------- Video wrapper ---------------- */
   videoOuter: {
     alignSelf: 'center',
-    borderRadius: RADIUS_XL,
+    borderRadius: RADIUS_XL + 2,
     overflow: 'hidden',
     backgroundColor: '#000',
     borderWidth: 1,
-    borderColor: '#121212',
+    borderColor: 'rgba(255,255,255,0.05)',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
   },
 
   aspectFill: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: RADIUS_XL,
+    borderRadius: RADIUS_XL + 2,
     overflow: 'hidden',
   },
 
   progressHit: {
     position: 'absolute',
-    left: 12,
-    right: 12,
+    left: 14,
+    right: 14,
     bottom: 10,
     height: 24,
     justifyContent: 'center',
@@ -3274,7 +3309,7 @@ const styles = StyleSheet.create({
   progressTrack: {
     height: 3,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.16)',
     overflow: 'hidden',
   },
 
@@ -3286,31 +3321,41 @@ const styles = StyleSheet.create({
 
   fsButton: {
     position: 'absolute',
-    left: 12,
-    top: 12,
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    left: 14,
+    top: 14,
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.62)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
+    borderColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
   },
 
   soundBtn: {
     position: 'absolute',
-    right: 12,
-    top: 12,
-    height: 38,
-    paddingHorizontal: 12,
+    right: 14,
+    top: 14,
+    height: 40,
+    paddingHorizontal: 13,
     borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: 'rgba(0,0,0,0.62)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
+    borderColor: 'rgba(255,255,255,0.12)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
   },
 
   soundText: {
@@ -3318,18 +3363,18 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 11,
-    letterSpacing: 0.7,
+    letterSpacing: 0.9,
     textTransform: 'uppercase',
   },
 
   /* ---------------- Audio wrapper ---------------- */
   audioWrap: {
     width: '100%',
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#1A1A1A',
+    borderColor: 'rgba(255,255,255,0.07)',
     backgroundColor: '#060606',
-    padding: 10,
+    padding: 12,
   },
 
   audioHint: {
@@ -3341,12 +3386,17 @@ const styles = StyleSheet.create({
 
   /* ---------------- Compact grid cards (wide web) ---------------- */
   gridCard: {
-    borderRadius: 16,
+    borderRadius: 20,
     overflow: 'hidden',
-    backgroundColor: '#0A0A0A',
+    backgroundColor: '#080808',
     borderWidth: 1,
-    borderColor: '#141414',
-    marginBottom: 14,
+    borderColor: 'rgba(255,255,255,0.05)',
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
   },
 
   gridThumbWrap: {
@@ -3362,16 +3412,16 @@ const styles = StyleSheet.create({
 
   gridThumbOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.15)',
+    backgroundColor: 'rgba(0,0,0,0.20)',
   },
 
   gridBody: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
 
   gridTitle: {
-    color: '#fff',
+    color: '#F7F4ED',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 13,
@@ -3380,54 +3430,54 @@ const styles = StyleSheet.create({
   },
 
   gridByline: {
-    marginTop: 4,
-    color: 'rgba(237,235,230,0.55)',
+    marginTop: 5,
+    color: 'rgba(237,235,230,0.52)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '800',
     fontSize: 11,
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
   },
 
   gridMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginTop: 10,
+    marginTop: 12,
   },
 
   gridVotePill: {
     height: 30,
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     borderRadius: 999,
     backgroundColor: '#0B0B0B',
     borderWidth: 1,
-    borderColor: '#1A1A1A',
+    borderColor: 'rgba(212,180,95,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   gridVoteText: {
-    color: '#EDEBE6',
+    color: '#F3EFE7',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 11,
-    letterSpacing: 0.3,
+    letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
 
   gridCommentPill: {
     height: 30,
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     borderRadius: 999,
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: '#1E1E1E',
+    borderColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   gridCommentText: {
-    color: 'rgba(237,235,230,0.70)',
+    color: 'rgba(237,235,230,0.68)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 11,
@@ -3436,39 +3486,44 @@ const styles = StyleSheet.create({
 
   gridMine: {
     marginLeft: 'auto',
-    color: 'rgba(237,235,230,0.35)',
+    color: 'rgba(237,235,230,0.32)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 10,
-    letterSpacing: 0.8,
+    letterSpacing: 0.9,
     textTransform: 'uppercase',
   },
 
   /* ---------------- Preview modal ---------------- */
   previewOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.72)',
+    backgroundColor: 'rgba(0,0,0,0.78)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 18,
+    padding: 20,
   },
 
   previewCard: {
     width: '100%',
     maxWidth: 920,
-    borderRadius: 18,
+    borderRadius: 22,
     overflow: 'hidden',
-    backgroundColor: '#0A0A0A',
+    backgroundColor: '#080808',
     borderWidth: 1,
-    borderColor: '#1A1A1A',
+    borderColor: 'rgba(255,255,255,0.07)',
+    shadowColor: '#000',
+    shadowOpacity: 0.36,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 14,
   },
 
   previewHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 12,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#141414',
+    borderBottomColor: 'rgba(255,255,255,0.05)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -3479,7 +3534,7 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 14,
-    letterSpacing: 0.2,
+    letterSpacing: 0.25,
   },
 
   previewByline: {
@@ -3488,17 +3543,17 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 11,
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
 
   previewCloseBtn: {
-    height: 34,
-    paddingHorizontal: 12,
+    height: 36,
+    paddingHorizontal: 14,
     borderRadius: 999,
     backgroundColor: '#0B0B0B',
     borderWidth: 1,
-    borderColor: '#1A1A1A',
+    borderColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3508,7 +3563,7 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 11,
-    letterSpacing: 0.7,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
 
@@ -3521,12 +3576,12 @@ const styles = StyleSheet.create({
   },
 
   previewActionPill: {
-    height: 36,
-    paddingHorizontal: 14,
+    height: 38,
+    paddingHorizontal: 15,
     borderRadius: 999,
     backgroundColor: '#0B0B0B',
     borderWidth: 1,
-    borderColor: '#1A1A1A',
+    borderColor: 'rgba(212,180,95,0.20)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3536,17 +3591,17 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 11,
-    letterSpacing: 0.6,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
 
   previewActionPillGhost: {
-    height: 36,
-    paddingHorizontal: 14,
+    height: 38,
+    paddingHorizontal: 15,
     borderRadius: 999,
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: '#1E1E1E',
+    borderColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3556,7 +3611,7 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 11,
-    letterSpacing: 0.6,
+    letterSpacing: 0.7,
     textTransform: 'uppercase',
   },
 
@@ -3566,66 +3621,73 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     fontWeight: '600',
     fontSize: 13,
-    lineHeight: 18,
+    lineHeight: 20,
   },
 
   /* ---------------- HeaderControls (sidebar + center) ---------------- */
   sideSearchBox: {
     width: '100%',
-    backgroundColor: '#0B0B0B',
+    backgroundColor: '#0A0A0A',
     borderWidth: 1,
-    borderColor: '#1A1A1A',
+    borderColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 16,
+    color: '#F2EFE8',
   },
 
   sidePanel: {
     width: '100%',
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#141414',
-    backgroundColor: '#0A0A0A',
+    borderColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: '#090909',
     padding: 12,
   },
 
   sidePanelTitle: {
-    color: 'rgba(237,235,230,0.70)',
+    color: 'rgba(237,235,230,0.72)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 11,
-    letterSpacing: 0.7,
+    letterSpacing: 1,
     textTransform: 'uppercase',
     marginBottom: 10,
   },
 
   sideSortItem: {
     width: '100%',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 14,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
     backgroundColor: '#0B0B0B',
     borderWidth: 1,
-    borderColor: '#1A1A1A',
+    borderColor: 'rgba(255,255,255,0.06)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
 
   sideSortItemActive: {
-    borderColor: GOLD,
+    borderColor: 'rgba(212,180,95,0.55)',
     backgroundColor: '#101010',
+    shadowColor: GOLD,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 3,
   },
 
   sideSortLabel: {
-    color: '#EDEBE6',
+    color: '#F1EEE7',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 12,
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
 
   sideSortSub: {
     marginTop: 3,
-    color: 'rgba(237,235,230,0.55)',
+    color: 'rgba(237,235,230,0.50)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '700',
     fontSize: 11,
@@ -3633,11 +3695,11 @@ const styles = StyleSheet.create({
   },
 
   sideSortDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(237,235,230,0.22)',
-    opacity: 0.8,
+    width: 9,
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: 'rgba(237,235,230,0.24)',
+    opacity: 0.9,
   },
 
   /* ---------------- HeaderControls (center compact row) ---------------- */
@@ -3650,22 +3712,22 @@ const styles = StyleSheet.create({
   },
 
   centerChip: {
-    paddingHorizontal: 12,
-    height: 34,
+    paddingHorizontal: 13,
+    height: 36,
     borderRadius: 999,
     backgroundColor: '#0B0B0B',
     borderWidth: 1,
-    borderColor: '#1A1A1A',
+    borderColor: 'rgba(255,255,255,0.07)',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   centerChipText: {
-    color: 'rgba(237,235,230,0.78)',
+    color: 'rgba(237,235,230,0.80)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 11,
-    letterSpacing: 0.6,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
 
@@ -3673,25 +3735,25 @@ const styles = StyleSheet.create({
   commentsOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 50,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    backgroundColor: 'rgba(0,0,0,0.72)',
     justifyContent: 'flex-end',
   },
 
   commentsSheet: {
     maxHeight: '80%',
-    backgroundColor: '#090909',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    backgroundColor: '#080808',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
     borderWidth: 1,
-    borderColor: '#161616',
+    borderColor: 'rgba(255,255,255,0.06)',
     overflow: 'hidden',
   },
 
   commentsHeader: {
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#141414',
+    borderBottomColor: 'rgba(255,255,255,0.05)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -3702,7 +3764,7 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 13,
-    letterSpacing: 0.7,
+    letterSpacing: 0.9,
     textTransform: 'uppercase',
   },
 
@@ -3711,7 +3773,7 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 12,
-    letterSpacing: 0.6,
+    letterSpacing: 0.7,
     textTransform: 'uppercase',
   },
 
@@ -3721,7 +3783,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#121212',
+    borderBottomColor: 'rgba(255,255,255,0.04)',
   },
 
   commentAvatarTap: {
@@ -3730,7 +3792,7 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#1A1A1A',
+    borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: '#000',
   },
 
@@ -3760,7 +3822,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: '#141414',
+    borderTopColor: 'rgba(255,255,255,0.05)',
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 10,
@@ -3768,12 +3830,12 @@ const styles = StyleSheet.create({
 
   commentInput: {
     flex: 1,
-    minHeight: 40,
+    minHeight: 42,
     maxHeight: 120,
-    borderRadius: 14,
+    borderRadius: 15,
     backgroundColor: '#0B0B0B',
     borderWidth: 1,
-    borderColor: '#1A1A1A',
+    borderColor: 'rgba(255,255,255,0.07)',
     paddingHorizontal: 12,
     paddingVertical: 10,
     color: '#EDEBE6',
@@ -3785,12 +3847,12 @@ const styles = StyleSheet.create({
   },
 
   commentSendBtn: {
-    height: 40,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    backgroundColor: '#141414',
+    height: 42,
+    paddingHorizontal: 15,
+    borderRadius: 15,
+    backgroundColor: '#131313',
     borderWidth: 1,
-    borderColor: GOLD,
+    borderColor: 'rgba(212,180,95,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3800,7 +3862,7 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 12,
-    letterSpacing: 0.7,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
 });

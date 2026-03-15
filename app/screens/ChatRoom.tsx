@@ -19,6 +19,8 @@ import {
 import * as DocumentPicker from 'expo-document-picker';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { useGamification } from '../context/GamificationContext';
+import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 

@@ -1,2605 +1,1751 @@
-// app/screens/ChallengeScreen.tsx
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
-  Alert,
   ScrollView,
   ActivityIndicator,
+  TouchableOpacity,
+  RefreshControl,
+  Image,
+  Alert,
+  Linking,
   Platform,
   Modal,
   Pressable,
-  useWindowDimensions,
-  Image,
-} from "react-native";
-import dayjs from "dayjs";
-import duration from "dayjs/plugin/duration";
-import { useNavigation } from "@react-navigation/native";
-import { supabase, giveXp, XP_VALUES } from "../lib/supabase";
-import type { Session } from "@supabase/supabase-js";
-import type { MonthlyChallenge } from "../types";
-import { Video, ResizeMode } from "expo-av";
-import * as DocumentPicker from "expo-document-picker";
-import { Upload } from "tus-js-client";
-import { LinearGradient } from "expo-linear-gradient";
-import { useGamification } from "../context/GamificationContext";
-import { UpgradeModal } from "../../components/UpgradeModal";
-import { useMonthlyStreak } from "../lib/useMonthlyStreak";
-
-import * as FileSystem from "expo-file-system";
-import * as VideoThumbnails from "expo-video-thumbnails";
-import { Buffer } from "buffer";
-
-dayjs.extend(duration);
+  Dimensions,
+  Animated,
+  Easing,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import { Audio, Video, ResizeMode } from 'expo-av';
+import { supabase, type UserTier } from '../lib/supabase';
+import { UpgradeModal } from '../../components/UpgradeModal';
 
 /* ------------------------------- palette ------------------------------- */
-const GOLD = "#C6A664";
-const DARK_BG = "#0D0D0D";
-const BORDER = "#2A2A2A";
-const TEXT_IVORY = "#EDEBE6";
-const TEXT_MUTED = "#A7A6A2";
+const DARK_BG = '#0D0D0D';
+const DARK_ELEVATED = '#171717';
+const DARK_ELEVATED_2 = '#141414';
+const TEXT_IVORY = '#EDEBE6';
+const TEXT_MUTED = '#A7A6A2';
+const GOLD = '#C6A664';
 
-const T = {
-  bg: DARK_BG,
-  card: "#101010",
-  text: TEXT_IVORY,
-  sub: "#DADADA",
-  mute: TEXT_MUTED,
-  olive: GOLD,
-  line: BORDER,
-};
+const IS_WEB = Platform.OS === 'web';
 
+// ✅ TS-safe web-only style (not in StyleSheet because objectFit isn't ViewStyle)
+const WEB_VIDEO_FIT = IS_WEB ? ({ objectFit: 'contain' } as any) : undefined;
+
+/* ✅ Starter LUT Pack previews (thumbnail + video) */
+const STARTER_LUT_PACK_PREVIEW_IMAGE =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/STARTER_1.25.1.jpg';
+const STARTER_LUT_PACK_PREVIEW_VIDEO =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/STARTER00000000.mp4';
+
+/* ✅ Cinema LUTs assets */
+const CINEMA_LUTS_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/CINEMA%20LUTS.zip';
+const CINEMA_LUTS_PREVIEW_VIDEO =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/CINEMA00000000.mp4';
+const CINEMA_LUTS_PREVIEW_IMAGE =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/CINEMA_1.8.1.jpg';
+
+/* ✅ Breaking Bad LUTs assets */
+const BREAKING_BAD_LUTS_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/BREAKING%20BAD%20LUTS.zip';
+const BREAKING_BAD_LUTS_PREVIEW_VIDEO =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/BREAKING%20BAD%20VIDEO00000000.mp4';
+const BREAKING_BAD_LUTS_PREVIEW_IMAGE =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/BREAKING%20BAD%20IMAGE_1.31.1.jpg';
+
+/* ✅ Sound FX packs (provided) */
+const SWOOSHES_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/SWOOSHES.zip';
+const IMPACTS_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/IMPACTS.zip';
+const RISERS_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/RISERS.zip';
+const GUN_SHOTS_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/GUN%20SHOTS.zip';
+
+/* ✅ Sound FX previews (audio) */
+const SWOOSH_PREVIEW_MP3 =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/swoosh%20preview.mp3';
+const RISER_PREVIEW_MP3 =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/riser%20preview.mp3';
+const IMPACT_PREVIEW_MP3 =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/impactpreview.mp3';
+const GUN_PREVIEW_MP3 =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/gun%20preview.mp3';
+
+/* ✅ fixed card height so ALL cards are identical size */
+const WORKSHOP_CARD_HEIGHT = 150;
+
+/* ------------------------------- fonts --------------------------------- */
 const SYSTEM_SANS = Platform.select({
-  ios: "System",
-  android: "Roboto",
+  ios: 'System',
+  android: 'Roboto',
   web: undefined,
   default: undefined,
 });
 
-/* ---------------------------- constants/types --------------------------- */
-type Category = "film" | "acting" | "music";
+/* ------------------------------- types --------------------------------- */
+type WorkshopProduct = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  price_cents: number;
+  currency: string;
+  image_url: string | null;
+  file_url: string | null;
 
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024; // 5GB
+  // Optional: you can add later in Supabase with no code changes.
+  preview_url?: string | null;
 
-const STORAGE_BUCKET = "films";
-const THUMB_BUCKET = "thumbnails";
+  // ✅ local-only: use themed icons when you don’t have preview images yet
+  thumb_icon?: keyof typeof Ionicons.glyphMap | null;
+  thumb_label?: string | null;
 
-/* ---------------- UX helpers ---------------- */
-function notify(title: string, message?: string, setStatusFn?: (s: string) => void) {
-  const text = message ? `${title} — ${message}` : title;
+  is_active: boolean;
+  created_at: string;
+};
 
-  if (setStatusFn) setStatusFn(text);
+type WorkshopPurchase = { product_id: string };
 
-  try {
-    if (Platform.OS === "web") {
-      // @ts-ignore
-      window.alert(message ? `${title}\n\n${message}` : title);
-    } else {
-      Alert.alert(title, message);
-    }
-  } catch {}
-}
+type UserProfile = {
+  id: string;
+  tier: UserTier;
+};
 
-async function fetchCurrentChallenge() {
-  try {
-    const { error } = await supabase.rpc("finalize_last_month_winner_if_needed");
-    if (error) console.warn("[challenge] finalize_last_month_winner_if_needed:", error.message);
-  } catch (e: any) {
-    console.warn("[challenge] finalize rpc threw:", e?.message || e);
-  }
+/* --------------------------- shimmer component -------------------------- */
+const ShimmerThumb: React.FC<{ size: number }> = ({ size }) => {
+  const pulse = useRef(new Animated.Value(0)).current;
 
-  try {
-    const { error } = await supabase.rpc("insert_monthly_challenge_if_not_exists");
-    if (error) console.warn("[challenge] insert_monthly_challenge_if_not_exists:", error.message);
-  } catch (e: any) {
-    console.warn("[challenge] insert rpc threw:", e?.message || e);
-  }
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [pulse]);
 
-  const start = dayjs().startOf("month");
-  const end = start.add(1, "month");
-
-  const startDateOnly = start.format("YYYY-MM-DD");
-  const endDateOnly = end.format("YYYY-MM-DD");
-
-  const exact = await supabase
-    .from("monthly_challenges")
-    .select("id, month_start, month_end, theme_word")
-    .eq("month_start", startDateOnly)
-    .eq("month_end", endDateOnly)
-    .limit(1)
-    .single();
-
-  if (!exact.error && exact.data) return exact.data as MonthlyChallenge;
-
-  const nowIso = new Date().toISOString();
-  const range = await supabase
-    .from("monthly_challenges")
-    .select("id, month_start, month_end, theme_word")
-    .lte("month_start", nowIso)
-    .gt("month_end", nowIso)
-    .order("month_start", { ascending: false })
-    .limit(1)
-    .single();
-
-  if (!range.error && range.data) return range.data as MonthlyChallenge;
-
-  const fallback = await supabase
-    .from("monthly_challenges")
-    .select("id, month_start, month_end, theme_word")
-    .order("month_start", { ascending: false })
-    .limit(1)
-    .single();
-
-  if (fallback.error) throw fallback.error;
-
-  return fallback.data as MonthlyChallenge;
-}
-
-async function getResumableEndpoint() {
-  const probe = supabase.storage.from(STORAGE_BUCKET).getPublicUrl("__probe__");
-  const url = new URL(probe.data.publicUrl);
-  const projectRef = url.hostname.split(".")[0];
-  return `https://${projectRef}.storage.supabase.co/storage/v1/upload/resumable`;
-}
-
-async function uploadThumbnailToStorage(opts: {
-  userId: string;
-  thumbUri: string;
-  objectName?: string;
-  bucket?: string;
-}): Promise<{ publicUrl: string; path: string }> {
-  const {
-    userId,
-    thumbUri,
-    objectName = `submissions/${userId}/${Date.now()}`,
-    bucket = THUMB_BUCKET,
-  } = opts;
-
-  let blob: Blob;
-
-  if (Platform.OS !== "web" && thumbUri.startsWith("file://")) {
-    const base64 = await FileSystem.readAsStringAsync(thumbUri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-    const bytes = Buffer.from(base64, "base64");
-    blob = new Blob([bytes], { type: "image/jpeg" });
-  } else {
-    const resp = await fetch(thumbUri);
-    blob = await resp.blob();
-  }
-
-  const ext =
-    blob.type.includes("png")
-      ? ".png"
-      : blob.type.includes("jpeg") || blob.type.includes("jpg")
-      ? ".jpg"
-      : blob.type.includes("webp")
-      ? ".webp"
-      : ".jpg";
-
-  const filePath = `${objectName}${ext}`;
-
-  const up = await supabase.storage.from(bucket).upload(filePath, blob, {
-    upsert: true,
-    contentType: blob.type || "image/jpeg",
-    cacheControl: "3600",
+  const opacity = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.35, 0.9],
   });
 
-  if (up.error) throw up.error;
-
-  const pub = supabase.storage.from(bucket).getPublicUrl(filePath);
-  const publicUrl = pub?.data?.publicUrl;
-
-  if (!publicUrl) throw new Error("Could not get public thumbnail URL");
-
-  return { publicUrl, path: filePath };
-}
-
-async function uploadResumable(opts: {
-  userId: string;
-  fileBlob?: Blob | File | null;
-  localUri?: string | null;
-  onProgress?: (pct: number) => void;
-  onPhase?: (label: string) => void;
-  objectName?: string;
-  bucket?: string;
-}): Promise<{ path: string; contentType: string }> {
-  const {
-    userId,
-    fileBlob,
-    localUri,
-    onProgress,
-    onPhase,
-    objectName = `submissions/${userId}/${Date.now()}`,
-    bucket = STORAGE_BUCKET,
-  } = opts;
-
-  onPhase?.("Preparing file…");
-
-  let file: Blob;
-  let type = "application/octet-stream";
-
-  if (fileBlob) {
-    file = fileBlob as Blob;
-    // @ts-ignore
-    if ((fileBlob as any)?.type) type = (fileBlob as any).type as string;
-  } else if (localUri) {
-    const resp = await fetch(localUri);
-    file = await resp.blob();
-    // @ts-ignore
-    if ((file as any)?.type) type = (file as any).type as string;
-  } else {
-    throw new Error("No file to upload");
-  }
-
-  const ext =
-    type.includes("png")
-      ? ".png"
-      : type.includes("jpeg") || type.includes("jpg")
-      ? ".jpg"
-      : type.includes("webp")
-      ? ".webp"
-      : type.includes("gif")
-      ? ".gif"
-      : type.includes("mp4")
-      ? ".mp4"
-      : type.includes("quicktime")
-      ? ".mov"
-      : type.startsWith("audio/")
-      ? ".mp3"
-      : type.startsWith("video/")
-      ? ".mp4"
-      : "";
-
-  const finalObjectName = objectName + ext;
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) throw new Error("Not signed in");
-
-  const endpoint = await getResumableEndpoint();
-
-  return new Promise<{ path: string; contentType: string }>((resolve, reject) => {
-    const upload = new Upload(file, {
-      endpoint,
-      retryDelays: [0, 2000, 5000, 10000, 20000],
-      chunkSize: 2 * 1024 * 1024,
-      uploadDataDuringCreation: true,
-      removeFingerprintOnSuccess: true,
-      headers: {
-        authorization: `Bearer ${session.access_token}`,
-        "x-upsert": "true",
-      },
-      metadata: {
-        bucketName: bucket,
-        objectName: finalObjectName,
-        contentType: type,
-        cacheControl: "3600",
-      },
-      onProgress: (sent, total) => {
-        if (!total) return;
-        const pct = Math.max(0, Math.min(100, Math.round((sent / total) * 100)));
-        onProgress?.(pct);
-      },
-      onError: (err: any) => {
-        try {
-          const res = err?.originalResponse;
-          const status =
-            res?.getStatus?.() ??
-            res?.getStatusCode?.() ??
-            res?.status ??
-            err?.originalResponse?.status;
-
-          const body =
-            res?.getBody?.() ??
-            res?.responseText ??
-            err?.originalResponse?.responseText ??
-            "";
-
-          const detail = String(body || "").slice(0, 350);
-          reject(
-            new Error(
-              `Upload failed (${status || "unknown"}): ${detail || err?.message || "Unknown error"}`
-            )
-          );
-        } catch {
-          reject(err);
-        }
-      },
-      onSuccess: () => resolve({ path: finalObjectName, contentType: type }),
-    });
-
-    onPhase?.("Uploading file…");
-    upload.findPreviousUploads().then((prev) => {
-      if (prev.length) upload.resumeFromPreviousUpload(prev[0]);
-      upload.start();
-    });
+  const translateX = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-size * 0.3, size * 0.3],
   });
-}
 
-function mediaKindFromMime(
-  mime: string | null | undefined
-): "file_audio" | "file_video" | "youtube" {
-  if (!mime) return "file_video";
-  if (mime.startsWith("audio/")) return "file_audio";
-  if (mime.startsWith("video/")) return "file_video";
-  return "file_video";
-}
+  return (
+    <View style={[styles.thumbPlaceholder, { height: size, borderRadius: 12 }]}>
+      <Ionicons name="film-outline" size={22} color={GOLD} />
+      <Text style={styles.thumbPlaceholderText}>Preview</Text>
 
-function formatBytes(bytes?: number | null) {
-  if (!bytes || !Number.isFinite(bytes)) return "—";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let b = bytes;
-  let u = 0;
-  while (b >= 1024 && u < units.length - 1) {
-    b /= 1024;
-    u++;
-  }
-  const dp = u === 0 ? 0 : u === 1 ? 0 : 1;
-  return `${b.toFixed(dp)} ${units[u]}`;
-}
-function formatDur(sec?: number | null) {
-  if (!sec || !Number.isFinite(sec) || sec <= 0) return "—";
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
+      {/* subtle sweep highlight */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.shimmerSweep,
+          {
+            height: size + 18,
+            opacity,
+            transform: [{ translateX }, { rotate: '12deg' }],
+          },
+        ]}
+      />
+    </View>
+  );
+};
 
-/* ✅ SUPER-ROBUST WEB thumbnail (first decodable frame) */
-async function captureFirstFrameWeb(videoSrc: string): Promise<{ dataUrl: string; aspect: number } | null> {
-  try {
-    // @ts-ignore
-    if (Platform.OS !== "web" || typeof document === "undefined") return null;
+/* ------------------------ themed icon thumb ----------------------------- */
+const IconThumb: React.FC<{ icon: keyof typeof Ionicons.glyphMap; label?: string | null }> = ({
+  icon,
+  label,
+}) => {
+  return (
+    <View style={styles.iconThumb}>
+      <View style={styles.iconThumbInner}>
+        <Ionicons name={icon} size={26} color={GOLD} />
+      </View>
+      <Text style={styles.iconThumbLabel}>{label || 'AUDIO'}</Text>
+    </View>
+  );
+};
 
-    const video = document.createElement("video");
-    video.src = videoSrc;
-    video.preload = "auto";
-    video.muted = true;
-    video.playsInline = true;
-    video.setAttribute("playsinline", "true");
-    video.setAttribute("muted", "true");
-    video.crossOrigin = "anonymous";
-
-    video.style.position = "fixed";
-    video.style.left = "-9999px";
-    video.style.top = "0px";
-    video.style.width = "1px";
-    video.style.height = "1px";
-    document.body.appendChild(video);
-
-    const cleanup = () => {
-      try { video.pause(); } catch {}
-      try { video.removeAttribute("src"); video.load(); } catch {}
-      try { document.body.removeChild(video); } catch {}
-    };
-
-    const draw = (): { dataUrl: string; aspect: number } | null => {
-      const w = video.videoWidth || 0;
-      const h = video.videoHeight || 0;
-      if (!w || !h) return null;
-
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return null;
-
-      ctx.drawImage(video, 0, 0, w, h);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
-      const aspect = w / h;
-      return { dataUrl, aspect };
-    };
-
-    const result = await new Promise<{ dataUrl: string; aspect: number } | null>((resolve) => {
-      let done = false;
-
-      const finish = (val: { dataUrl: string; aspect: number } | null) => {
-        if (done) return;
-        done = true;
-        resolve(val);
-      };
-
-      const timeout = setTimeout(() => finish(draw()), 8000);
-
-      const tryFinish = () => {
-        const out = draw();
-        if (out) {
-          clearTimeout(timeout);
-          finish(out);
+/* ---------------------- FIX: rock-solid web thumbs --------------------- */
+/**
+ * RN-web's <Image> can sometimes "flash then disappear" when nested in animated/transformed parents.
+ * This uses a native <img> ONLY on web for the thumbnail slot (like we already do with <video>).
+ */
+const ThumbMedia: React.FC<{ uri: string }> = ({ uri }) => {
+  if (IS_WEB) {
+    return (
+      <img
+        src={uri}
+        style={
+          {
+            width: 76,
+            height: 76,
+            borderRadius: 12,
+            objectFit: 'cover',
+            display: 'block',
+          } as any
         }
-      };
+        draggable={false}
+        alt=""
+      />
+    );
+  }
 
-      // @ts-ignore
-      if (typeof (video as any).requestVideoFrameCallback === "function") {
-        try {
-          // @ts-ignore
-          (video as any).requestVideoFrameCallback(() => tryFinish());
-        } catch {}
+  return <Image source={{ uri }} style={styles.thumb} resizeMode="cover" />;
+};
+
+/* ------------------------------- screen -------------------------------- */
+const WorkshopScreen: React.FC = () => {
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Split into categories
+  const [lutProducts, setLutProducts] = useState<WorkshopProduct[]>([]);
+  const [soundProducts, setSoundProducts] = useState<WorkshopProduct[]>([]);
+
+  const [purchases, setPurchases] = useState<WorkshopPurchase[]>([]); // kept to avoid refactor risk
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
+  // Upgrade modal state
+  const [upgradeVisible, setUpgradeVisible] = useState(false);
+
+  // Preview modal state
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<WorkshopProduct | null>(null);
+
+  // Inline video/audio controls
+  const videoRef = useRef<Video | null>(null);
+  const webVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  const audioRef = useRef<Audio.Sound | null>(null);
+  const webAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
+
+  // Track current preview kind so play/mute works for video OR audio
+  const [previewKind, setPreviewKind] = useState<'none' | 'video' | 'audio' | 'image'>('none');
+
+  // ✅ IMPORTANT: dynamic aspect ratio so previews never crop
+  const [previewAspect, setPreviewAspect] = useState(16 / 9);
+
+  const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+
+  const columns = useMemo(() => {
+    // 2-column grid on desktop web
+    if (IS_WEB && SCREEN_W >= 900) return 2;
+    return 1;
+  }, [SCREEN_W]);
+
+  // ✅ subtle hover/press zoom per-card (web hover + mobile press feedback)
+  const cardScalesRef = useRef<Record<string, Animated.Value>>({});
+  const getCardScale = (id: string) => {
+    if (!cardScalesRef.current[id]) cardScalesRef.current[id] = new Animated.Value(1);
+    return cardScalesRef.current[id];
+  };
+
+  const animateCardScale = (id: string, toValue: number) => {
+    Animated.timing(getCardScale(id), {
+      toValue,
+      duration: 170,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  };
+
+  // ✅ animate TouchableOpacity for scale transform
+  const AnimatedTouchableOpacity = useMemo(
+    () => Animated.createAnimatedComponent(TouchableOpacity),
+    []
+  );
+
+  const loadWorkshop = async () => {
+    try {
+      setLoading(true);
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError) console.warn('Workshop: auth error:', userError.message);
+
+      if (user) {
+        const { data: profileData, error: profileErr } = await supabase
+          .from('users')
+          .select('id, tier')
+          .eq('id', user.id)
+          .single();
+
+        if (profileErr) {
+          console.warn('Workshop: profile error:', profileErr.message);
+        } else if (profileData) {
+          setUserProfile({
+            id: profileData.id,
+            tier: profileData.tier as UserTier,
+          });
+        }
+
+        // Purchases no longer used for access (Pro-only), but keep fetch so nothing breaks.
+        const { data: purchaseData, error: purchaseErr } = await supabase
+          .from('workshop_purchases')
+          .select('product_id')
+          .eq('user_id', user.id);
+
+        if (purchaseErr) {
+          console.warn('Workshop: purchases error:', purchaseErr.message);
+        } else if (purchaseData) {
+          setPurchases(purchaseData as WorkshopPurchase[]);
+        }
+      } else {
+        setUserProfile(null);
+        setPurchases([]);
       }
 
-      video.addEventListener("loadeddata", tryFinish, { once: true });
-      video.addEventListener("canplay", tryFinish, { once: true });
-      video.addEventListener("seeked", tryFinish, { once: true });
-      video.addEventListener("error", () => { clearTimeout(timeout); finish(null); }, { once: true });
+      const { data: productData, error: productErr } = await supabase
+        .from('workshop_products')
+        .select('*')
+        .eq('is_active', true)
+        .order('created_at', { ascending: true });
 
-      (async () => {
-        try { await video.play(); video.pause(); } catch {}
-        try { video.currentTime = 0.05; } catch {}
-      })();
+      if (productErr) {
+        console.warn('Workshop: products error:', productErr.message);
+      } else if (productData) {
+        let fetched = (productData as WorkshopProduct[]) || [];
+
+        /* ✅ inject Cinema LUTs if it’s not yet in Supabase */
+        const hasCinemaAlready = fetched.some((p) => {
+          const slug = (p.slug || '').toLowerCase();
+          const name = (p.name || '').toLowerCase();
+          return slug === 'cinema-luts' || name === 'cinema luts' || name.includes('cinema luts');
+        });
+
+        const injectedCinema: WorkshopProduct = {
+          id: 'local-cinema-luts',
+          name: 'Cinema LUTs',
+          slug: 'cinema-luts',
+          description:
+            'A collection of 7 cinematic LUTs designed to instantly add rich tone and filmic contrast to your footage.',
+          price_cents: 0,
+          currency: 'GBP',
+          image_url: CINEMA_LUTS_PREVIEW_IMAGE,
+          file_url: CINEMA_LUTS_ZIP,
+          preview_url: CINEMA_LUTS_PREVIEW_VIDEO,
+          is_active: true,
+          created_at: new Date().toISOString(),
+        };
+
+        if (!hasCinemaAlready) fetched = [...fetched, injectedCinema];
+
+        /* ✅ inject Breaking Bad LUTs if it’s not yet in Supabase */
+        const hasBreakingBadAlready = fetched.some((p) => {
+          const slug = (p.slug || '').toLowerCase();
+          const name = (p.name || '').toLowerCase();
+          return (
+            slug === 'breaking-bad-luts' ||
+            name === 'breaking bad luts' ||
+            name.includes('breaking bad')
+          );
+        });
+
+        const injectedBreakingBad: WorkshopProduct = {
+          id: 'local-breaking-bad-luts',
+          name: 'Breaking Bad LUTs',
+          slug: 'breaking-bad-luts',
+          description: '7 LUTs inspired by Breaking Bad.',
+          price_cents: 0,
+          currency: 'GBP',
+          image_url: BREAKING_BAD_LUTS_PREVIEW_IMAGE,
+          file_url: BREAKING_BAD_LUTS_ZIP,
+          preview_url: BREAKING_BAD_LUTS_PREVIEW_VIDEO,
+          is_active: true,
+          created_at: new Date(Date.now() + 1).toISOString(),
+        };
+
+        if (!hasBreakingBadAlready) fetched = [...fetched, injectedBreakingBad];
+
+        // ✅ Map Starter LUT Pack if needed (same logic as before)
+        const mappedFetched = fetched.map((product) => {
+          const isStarter =
+            product.slug === 'starter-lut-pack' ||
+            product.slug === 'out-pack' ||
+            product.name.toLowerCase() === 'out pack';
+
+          if (!isStarter) return product;
+
+          return {
+            ...product,
+            name: 'STARTER LUT Pack',
+            slug: 'starter-lut-pack',
+            description:
+              'A compact pack of six clean, versatile starter LUTs designed to give your footage instant polish. Perfect for experimenting inside Overlooked and shaping your first cinematic cuts.',
+            file_url:
+              'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/avatars/STARTER.zip',
+            image_url: STARTER_LUT_PACK_PREVIEW_IMAGE,
+            preview_url: STARTER_LUT_PACK_PREVIEW_VIDEO,
+          };
+        });
+
+        // ✅ LUT section remains your fetched products
+        const nextLuts = mappedFetched;
+
+        // ✅ Sound FX section (injected packs) + ✅ AUDIO PREVIEW_URLS ADDED
+        const nextSoundFx: WorkshopProduct[] = [
+          {
+            id: 'local-swooshes-pack',
+            name: 'Swooshes Pack',
+            slug: 'swooshes-pack',
+            description: '6 cinematic swooshes.',
+            price_cents: 0,
+            currency: 'GBP',
+            image_url: null,
+            file_url: SWOOSHES_ZIP,
+            preview_url: SWOOSH_PREVIEW_MP3,
+            thumb_icon: 'swap-horizontal-outline',
+            thumb_label: 'SWOOSH',
+            is_active: true,
+            created_at: new Date(Date.now() + 2).toISOString(),
+          },
+          {
+            id: 'local-impacts-pack',
+            name: 'Impacts Pack',
+            slug: 'impacts-pack',
+            description: '6 cinematic impacts.',
+            price_cents: 0,
+            currency: 'GBP',
+            image_url: null,
+            file_url: IMPACTS_ZIP,
+            preview_url: IMPACT_PREVIEW_MP3,
+            thumb_icon: 'flash-outline',
+            thumb_label: 'IMPACT',
+            is_active: true,
+            created_at: new Date(Date.now() + 3).toISOString(),
+          },
+          {
+            id: 'local-risers-pack',
+            name: 'Risers Pack',
+            slug: 'risers-pack',
+            description: '6 cinematic risers ranging from sci-fi to horror.',
+            price_cents: 0,
+            currency: 'GBP',
+            image_url: null,
+            file_url: RISERS_ZIP,
+            preview_url: RISER_PREVIEW_MP3,
+            thumb_icon: 'trending-up-outline',
+            thumb_label: 'RISER',
+            is_active: true,
+            created_at: new Date(Date.now() + 4).toISOString(),
+          },
+          {
+            id: 'local-gun-shots-pack',
+            name: 'Gun Shots Pack',
+            slug: 'gun-shots-pack',
+            description: 'A variety of gunshots.',
+            price_cents: 0,
+            currency: 'GBP',
+            image_url: null,
+            file_url: GUN_SHOTS_ZIP,
+            preview_url: GUN_PREVIEW_MP3,
+            thumb_icon: 'volume-high-outline',
+            thumb_label: 'SHOTS',
+            is_active: true,
+            created_at: new Date(Date.now() + 5).toISOString(),
+          },
+        ];
+
+        setLutProducts(nextLuts);
+        setSoundProducts(nextSoundFx);
+      }
+    } catch (err: any) {
+      console.warn('Workshop: unexpected error:', err?.message || err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadWorkshop();
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadWorkshop();
+    }, [])
+  );
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadWorkshop();
+  };
+
+  /* --------------------------- access helpers -------------------------- */
+  // Products are ONLY available with Pro subscription.
+  const hasAccess = (_product: WorkshopProduct): boolean => {
+    return userProfile?.tier === 'pro';
+  };
+
+  const openProductContent = (product: WorkshopProduct) => {
+    if (!hasAccess(product)) {
+      setUpgradeVisible(true);
+      return;
+    }
+    if (!product.file_url) {
+      Alert.alert(
+        'Coming soon',
+        'You have access, but the download link for this pack has not been set yet.'
+      );
+      return;
+    }
+    Linking.openURL(product.file_url).catch(() => {
+      Alert.alert('Error', 'Unable to open this link on your device.');
     });
-
-    cleanup();
-    return result;
-  } catch {
-    return null;
-  }
-}
-
-/* -------------------- Film category tags (expanded) -------------------- */
-const FILM_TAGS: string[] = [
-  "Drama","Comedy","Thriller","Horror","Sci-Fi","Romance","Action","Mystery","Crime","Fantasy",
-  "Coming-of-Age","Experimental","Documentary-Style","No-Dialogue","One-Take","Found Footage",
-  "Slow Cinema","Satire","Neo-Noir","Musical","Tragedy","Monologue","Character Study",
-  "Dialogue-Driven","Dramedy","Dark Comedy","Psychological","Suspense","Period Piece",
-  "Social Realism","Rom-Com","Heist","War","Western","Supernatural","Animation-Style",
-  "Silent Film","Improvised","Voiceover","Two-Hander","Single Location",
-];
-
-/* ------------------------- insert helper (robust) ------------------------ */
-function looksLikeMissingColumnError(msg: string) {
-  const m = (msg || "").toLowerCase();
-  if (m.includes("column") && m.includes("does not exist")) return true;
-  if (m.includes("schema cache") && m.includes("could not find") && m.includes("column")) return true;
-  return false;
-}
-function extractMissingColumnName(msg: string): string | null {
-  const m1 = msg.match(/column\s+"([^"]+)"/i);
-  if (m1?.[1]) return m1[1];
-
-  const m2 = msg.match(/column\s+([a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)\s+does\s+not\s+exist/i);
-  if (m2?.[1]) return m2[1].split(".").pop() || null;
-
-  const m3 = msg.match(/could\s+not\s+find\s+the\s+'([^']+)'\s+column/i);
-  if (m3?.[1]) return m3[1];
-
-  return null;
-}
-
-async function insertSubmissionRobust(
-  payload: Record<string, any>,
-  requiredKeys: string[] = ["user_id", "title", "submitted_at"]
-) {
-  let working = { ...payload };
-
-  for (let attempt = 0; attempt < 12; attempt++) {
-    const res = await supabase.from("submissions").insert(working).select().limit(1);
-
-    if (!res.error) return res;
-
-    const msg = String(res.error.message || "");
-    const missingCol = extractMissingColumnName(msg);
-
-    if (!looksLikeMissingColumnError(msg) || !missingCol) throw res.error;
-    if (requiredKeys.includes(missingCol)) throw res.error;
-
-    if (Object.prototype.hasOwnProperty.call(working, missingCol)) {
-      delete working[missingCol];
-      continue;
-    }
-
-    throw res.error;
-  }
-
-  throw new Error("Insert failed after multiple retries. Check submissions table schema / RLS.");
-}
-
-/* -------------------------------- Screen -------------------------------- */
-
-export default function ChallengeScreen() {
-  const navigation = useNavigation<any>();
-  const { width, height: winH } = useWindowDimensions();
-  const isWide = width >= 1100;
-
-  const [challenge, setChallenge] = useState<MonthlyChallenge | null>(null);
-  const [countdown, setCountdown] = useState("");
-  const [session, setSession] = useState<Session | null>(null);
-
-  const [category] = useState<Category>("film");
-
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [agreed, setAgreed] = useState(false);
-
-  const [localUri, setLocalUri] = useState<string | null>(null);
-  const [webFile, setWebFile] = useState<File | Blob | null>(null);
-  const objectUrlRef = useRef<string | null>(null);
-
-  const [durationSec, setDurationSec] = useState<number | null>(null);
-  const [fileSizeBytes, setFileSizeBytes] = useState<number | null>(null);
-
-  const [thumbUri, setThumbUri] = useState<string | null>(null);
-  const [thumbLoading, setThumbLoading] = useState(false);
-  const [thumbAspect, setThumbAspect] = useState<number>(16 / 9);
-
-  // ✅ user-picked thumbnail (required)
-  const [customThumbUri, setCustomThumbUri] = useState<string | null>(null);
-  const customThumbObjectUrlRef = useRef<string | null>(null);
-
-  // ✅ category selection via modal (less clutter)
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [tagModalVisible, setTagModalVisible] = useState(false);
-  const [tagQuery, setTagQuery] = useState("");
-
-  const [previewVisible, setPreviewVisible] = useState(false);
-
-  const [status, setStatus] = useState<string>("");
-  const [loading, setLoading] = useState(false);
-  const [rulesVisible, setRulesVisible] = useState(false);
-  const [progressPct, setProgressPct] = useState(0);
-  const [etaText, setEtaText] = useState("");
-
-  const [upgradeVisible, setUpgradeVisible] = useState(false);
-  const [userTier, setUserTier] = useState<string | null>(null);
-
-  const videoRef = useRef<Video>(null);
-  const webDurationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const previewPlayerRef = useRef<Video>(null);
-  const previewLoadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [previewNonce, setPreviewNonce] = useState(0);
-
-  const webPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
-
-  const {
-    xp,
-    level,
-    levelTitle,
-    nextLevelMinXp,
-    loading: gamificationLoading,
-    refresh: refreshGamification,
-  } = useGamification();
-
-  const { refreshStreak } = useMonthlyStreak();
-
-  const SUBMIT_XP = (XP_VALUES && (XP_VALUES as any).CHALLENGE_SUBMISSION) || 50;
-
-  const xpToNext =
-    nextLevelMinXp && typeof xp === "number" ? Math.max(0, nextLevelMinXp - xp) : null;
-
-  const clearPreviewTimer = () => {
-    if (previewLoadTimer.current) {
-      clearTimeout(previewLoadTimer.current);
-      previewLoadTimer.current = null;
-    }
   };
 
-  const startPreviewTimer = () => {
-    clearPreviewTimer();
-    previewLoadTimer.current = setTimeout(async () => {
-      setPreviewLoading(false);
-      setPreviewError("Preview is taking too long to load. Tap Retry or pick a different file.");
-      try { await previewPlayerRef.current?.stopAsync?.(); } catch {}
-      try { await previewPlayerRef.current?.unloadAsync?.(); } catch {}
-    }, 12000);
+  const renderCTA = (product: WorkshopProduct) => {
+    const access = hasAccess(product);
+
+    if (access) {
+      return (
+        <TouchableOpacity
+          style={[styles.ctaButton, styles.ctaButtonOutline]}
+          onPress={() => openProductContent(product)}
+          activeOpacity={0.9}
+        >
+          <Text style={[styles.ctaText, styles.ctaTextOutline]} numberOfLines={1}>
+            Download / Access
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+
+    return (
+      <TouchableOpacity
+        style={styles.ctaButton}
+        onPress={() => setUpgradeVisible(true)}
+        activeOpacity={0.9}
+      >
+        <Text style={styles.ctaText} numberOfLines={1}>
+          Unlock with Pro
+        </Text>
+      </TouchableOpacity>
+    );
   };
 
-  const stopWebPreviewIfAny = () => {
+  /* -------------------------- preview helpers --------------------------- */
+  const isAudio = (url: string) => {
+    const lower = url.toLowerCase();
+    return (
+      lower.endsWith('.mp3') ||
+      lower.endsWith('.m4a') ||
+      lower.endsWith('.wav') ||
+      lower.endsWith('.ogg') ||
+      lower.includes('preview.mp3') ||
+      lower.includes('preview')
+    );
+  };
+
+  const previewIsLikelyVideo = (url: string) => {
+    const lower = url.toLowerCase();
+    return lower.endsWith('.mp4') || lower.endsWith('.mov') || lower.includes('video');
+  };
+
+  /* -------------------------- preview modal ---------------------------- */
+  const openPreview = async (product: WorkshopProduct) => {
+    // stop any previous audio cleanly
     try {
-      const el = webPreviewVideoRef.current;
-      if (el) {
-        el.pause();
-        el.currentTime = 0;
+      if (audioRef.current) {
+        await audioRef.current.stopAsync();
+        await audioRef.current.unloadAsync();
+        audioRef.current = null;
+      }
+    } catch {}
+
+    setSelectedProduct(product);
+    setPreviewVisible(true);
+    setIsPlaying(false);
+    setIsMuted(true);
+
+    // default aspect
+    setPreviewAspect(16 / 9);
+
+    const asset = (product.preview_url || product.image_url) ?? null;
+    if (!asset) setPreviewKind('none');
+    else if (isAudio(asset)) {
+      setPreviewKind('audio');
+      setPreviewAspect(16 / 9); // keep consistent modal sizing
+    } else if (previewIsLikelyVideo(asset)) {
+      setPreviewKind('video');
+      setPreviewAspect(16 / 9);
+    } else {
+      setPreviewKind('image');
+    }
+  };
+
+  const closePreview = async () => {
+    try {
+      // stop web media
+      if (IS_WEB && webVideoRef.current) {
+        webVideoRef.current.pause();
+        webVideoRef.current.currentTime = 0;
+      }
+      if (IS_WEB && webAudioRef.current) {
+        webAudioRef.current.pause();
+        webAudioRef.current.currentTime = 0;
+      }
+
+      // stop native media
+      if (videoRef.current) {
+        await videoRef.current.stopAsync();
+      }
+      if (audioRef.current) {
+        await audioRef.current.stopAsync();
+        await audioRef.current.unloadAsync();
+        audioRef.current = null;
+      }
+    } catch {}
+
+    setIsPlaying(false);
+    setIsMuted(true);
+    setPreviewVisible(false);
+    setSelectedProduct(null);
+    setPreviewKind('none');
+  };
+
+  const MODAL_MAX_W = Math.min(520, SCREEN_W - 24);
+
+  const togglePlay = async () => {
+    try {
+      const asset = selectedProduct ? (selectedProduct.preview_url || selectedProduct.image_url) : null;
+      if (!asset) return;
+
+      // ---------- WEB ----------
+      if (IS_WEB) {
+        if (previewKind === 'audio') {
+          const el = webAudioRef.current;
+          if (!el) return;
+          if (!el.paused) {
+            el.pause();
+            setIsPlaying(false);
+          } else {
+            await el.play().catch(() => {});
+            setIsPlaying(!el.paused);
+          }
+          return;
+        }
+
+        if (previewKind === 'video') {
+          const el = webVideoRef.current;
+          if (!el) return;
+          if (!el.paused) {
+            el.pause();
+            setIsPlaying(false);
+          } else {
+            await el.play().catch(() => {});
+            setIsPlaying(!el.paused);
+          }
+          return;
+        }
+
+        return;
+      }
+
+      // ---------- NATIVE ----------
+      if (previewKind === 'audio') {
+        // lazy-load audio
+        if (!audioRef.current) {
+          const created = await Audio.Sound.createAsync(
+            { uri: asset },
+            { shouldPlay: true, isMuted, volume: 1.0 },
+            (status) => {
+              if (!status.isLoaded) return;
+              setIsPlaying(!!status.isPlaying);
+              if (status.didJustFinish) setIsPlaying(false);
+            }
+          );
+          audioRef.current = created.sound;
+          setIsPlaying(true);
+          return;
+        }
+
+        // toggle play/pause
+        const st = await audioRef.current.getStatusAsync();
+        if (st.isLoaded && st.isPlaying) {
+          await audioRef.current.pauseAsync();
+          setIsPlaying(false);
+        } else {
+          await audioRef.current.playAsync();
+          setIsPlaying(true);
+        }
+        return;
+      }
+
+      // video
+      if (previewKind === 'video') {
+        if (!videoRef.current) return;
+        if (isPlaying) {
+          await videoRef.current.pauseAsync();
+          setIsPlaying(false);
+        } else {
+          await videoRef.current.playAsync();
+          setIsPlaying(true);
+        }
       }
     } catch {}
   };
 
-  const openPreview = () => {
-    setPreviewError(null);
-    setPreviewLoading(true);
-    setPreviewNonce((n) => n + 1);
-    setPreviewVisible(true);
-    startPreviewTimer();
-  };
-
-  const retryPreview = () => {
-    setPreviewError(null);
-    setPreviewLoading(true);
-    setPreviewNonce((n) => n + 1);
-    startPreviewTimer();
-  };
-
-  const closePreview = () => {
-    setPreviewVisible(false);
-    setPreviewLoading(false);
-    setPreviewError(null);
-    clearPreviewTimer();
-
-    stopWebPreviewIfAny();
-
-    (async () => {
-      try { await previewPlayerRef.current?.stopAsync?.(); } catch {}
-      try { await previewPlayerRef.current?.unloadAsync?.(); } catch {}
-    })();
-  };
-
-  const revokeCustomThumbObjectUrlIfAny = () => {
-    if (customThumbObjectUrlRef.current) {
-      try { URL.revokeObjectURL(customThumbObjectUrlRef.current); } catch {}
-      customThumbObjectUrlRef.current = null;
-    }
-  };
-
-  const removeCustomThumbnail = () => {
-    revokeCustomThumbObjectUrlIfAny();
-    setCustomThumbUri(null);
-  };
-
-  const resetSelectedFile = () => {
-    if (objectUrlRef.current) {
-      try { URL.revokeObjectURL(objectUrlRef.current); } catch {}
-      objectUrlRef.current = null;
-    }
-
-    removeCustomThumbnail();
-
-    setLocalUri(null);
-    setWebFile(null);
-    setDurationSec(null);
-    setFileSizeBytes(null);
-
-    setThumbUri(null);
-    setThumbAspect(16 / 9);
-    setThumbLoading(false);
-
-    setPreviewVisible(false);
-    setPreviewLoading(false);
-    setPreviewError(null);
-    clearPreviewTimer();
-
-    setStatus("");
-    setProgressPct(0);
-    setEtaText("");
-  };
-
-  useEffect(() => {
-    (async () => {
-      try {
-        setChallenge(await fetchCurrentChallenge());
-      } catch {}
-
-      const { data } = await supabase.auth.getSession();
-      setSession(data.session);
-
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-
-        if (user) {
-          const { data: profile } = await supabase
-            .from("users")
-            .select("tier")
-            .eq("id", user.id)
-            .single();
-
-          setUserTier((profile?.tier ?? "").toLowerCase().trim() || null);
-        } else {
-          setUserTier(null);
-        }
-      } catch {
-        setUserTier(null);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!challenge) return;
-
-    let alive = true;
-
-    const updateCountdown = async () => {
-      const fallbackEnd = dayjs().startOf("month").add(1, "month");
-      const dbEnd = challenge?.month_end ? dayjs(challenge.month_end) : null;
-      const targetEnd = dbEnd && dbEnd.isValid() && dbEnd.isAfter(dayjs()) ? dbEnd : fallbackEnd;
-
-      const diffMs = targetEnd.diff(dayjs());
-
-      if (diffMs <= 0) {
-        setCountdown("Updating…");
-        try {
-          const next = await fetchCurrentChallenge();
-          if (alive) setChallenge(next);
-        } catch {}
-        return;
-      }
-
-      const totalMinutes = Math.floor(diffMs / 60000);
-      const minsPerDay = 60 * 24;
-      const days = Math.floor(totalMinutes / minsPerDay);
-      const hours = Math.floor((totalMinutes % minsPerDay) / 60);
-      const minutes = totalMinutes % 60;
-
-      setCountdown(`${days}d ${hours}h ${minutes}m`);
-    };
-
-    updateCountdown();
-    const t = setInterval(updateCountdown, 60_000);
-
-    const refresh = setInterval(() => {
-      fetchCurrentChallenge().then((c) => alive && setChallenge(c)).catch(() => {});
-    }, 10 * 60_000);
-
-    return () => {
-      alive = false;
-      clearInterval(t);
-      clearInterval(refresh);
-    };
-  }, [challenge]);
-
-  useEffect(() => {
-    return () => {
-      clearPreviewTimer();
-      if (webDurationTimer.current) {
-        clearTimeout(webDurationTimer.current);
-        webDurationTimer.current = null;
-      }
-      if (objectUrlRef.current) {
-        try { URL.revokeObjectURL(objectUrlRef.current); } catch {}
-        objectUrlRef.current = null;
-      }
-      revokeCustomThumbObjectUrlIfAny();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const capText = "No duration limit. Max file size: 5GB.";
-
-  const pickThumbnail = async () => {
+  const toggleMute = async () => {
     try {
-      const pick = await DocumentPicker.getDocumentAsync({
-        type: ["image/*"] as any,
-        copyToCacheDirectory: true,
-        multiple: false,
-      });
+      // ---------- WEB ----------
+      if (IS_WEB) {
+        const next = !isMuted;
 
-      if (pick.canceled) return;
-
-      const asset: any = pick.assets?.[0];
-      if (!asset?.uri && !asset?.file) return;
-
-      revokeCustomThumbObjectUrlIfAny();
-
-      if (Platform.OS === "web" && asset.file) {
-        const f: File = asset.file;
-        const objUrl = URL.createObjectURL(f);
-        customThumbObjectUrlRef.current = objUrl;
-        setCustomThumbUri(objUrl);
-        return;
-      }
-
-      if (asset.uri) {
-        setCustomThumbUri(asset.uri);
-      }
-    } catch (e: any) {
-      console.warn("pickThumbnail failed:", e?.message ?? e);
-      notify("Could not pick thumbnail", "Try a different image.", setStatus);
-    }
-  };
-
-  const openCategoryModal = () => {
-    setTagQuery("");
-    setTagModalVisible(true);
-  };
-
-  const closeCategoryModal = () => {
-    setTagModalVisible(false);
-  };
-
-  const selectTag = (tag: string) => {
-    setSelectedTags([tag]);
-    setTagModalVisible(false);
-  };
-
-  const clearTag = () => setSelectedTags([]);
-
-  const filteredTags = useMemo(() => {
-    const q = tagQuery.trim().toLowerCase();
-    if (!q) return FILM_TAGS;
-    return FILM_TAGS.filter((t) => t.toLowerCase().includes(q));
-  }, [tagQuery]);
-
- // ✅ pickFile continues in Part 2 (unchanged logic, just moved)
-// --- STOP PART 1 HERE ---
-
-const pickFile = async () => {
-  try {
-    if (Platform.OS === "web") {
-      const tierNorm = (userTier ?? "").toLowerCase().trim();
-
-      if (!tierNorm) {
-        notify("Loading your account…", "Try again in 1 second.", setStatus);
-
-        (async () => {
-          try {
-            const {
-              data: { user },
-              error: uErr,
-            } = await supabase.auth.getUser();
-
-            if (uErr || !user) return;
-
-            const { data: profile } = await supabase
-              .from("users")
-              .select("tier")
-              .eq("id", user.id)
-              .single();
-
-            if (profile?.tier) setUserTier(profile.tier);
-          } catch {}
-        })();
-
-        return;
-      }
-
-      if (tierNorm !== "pro") {
-        setUpgradeVisible(true);
-        return;
-      }
-
-      setStatus("");
-      setDurationSec(null);
-      setThumbUri(null);
-      setThumbAspect(16 / 9);
-      setThumbLoading(false);
-
-      removeCustomThumbnail();
-
-      setPreviewVisible(false);
-      setPreviewLoading(false);
-      setPreviewError(null);
-      clearPreviewTimer();
-
-      setLocalUri(null);
-      setWebFile(null);
-      setProgressPct(0);
-      setEtaText("");
-
-      const acceptType = category === "music" ? ["audio/*", "video/*"] : ["video/*"];
-
-      const pick = await DocumentPicker.getDocumentAsync({
-        type: acceptType as any,
-        copyToCacheDirectory: true,
-      });
-
-      if (pick.canceled) return;
-
-      const asset: any = pick.assets?.[0];
-      if (!asset?.uri) {
-        notify("No file", "Please choose a file.", setStatus);
-        return;
-      }
-
-      if (!asset.file) {
-        notify(
-          "Picker issue",
-          "Your browser didn’t provide the actual file object. Try selecting from device storage or use Chrome.",
-          setStatus
-        );
-        return;
-      }
-
-      let bytes: number | null = null;
-      const f: File = asset.file;
-      bytes = typeof f.size === "number" ? f.size : null;
-
-      if (objectUrlRef.current) {
-        try {
-          URL.revokeObjectURL(objectUrlRef.current);
-        } catch {}
-      }
-
-      const objUrl = URL.createObjectURL(f);
-      objectUrlRef.current = objUrl;
-
-      setWebFile(f);
-      setLocalUri(objUrl);
-
-      setFileSizeBytes(bytes);
-
-      if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
-        notify(
-          "File too large",
-          `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
-          setStatus
-        );
-        resetSelectedFile();
-        return;
-      }
-
-      const shouldTryThumb = category !== "music";
-      if (shouldTryThumb) {
-        setThumbLoading(true);
-
-        const src = objectUrlRef.current ?? asset.uri;
-        const thumb = await captureFirstFrameWeb(src);
-
-        if (thumb?.dataUrl) {
-          setThumbUri(thumb.dataUrl);
-          setThumbAspect(thumb.aspect || 16 / 9);
-        } else {
-          setThumbUri(null);
+        if (previewKind === 'audio') {
+          const el = webAudioRef.current;
+          if (!el) return;
+          el.muted = next;
+          setIsMuted(next);
+          return;
         }
 
-        setThumbLoading(false);
-      }
-
-      setStatus("Loaded file. Checking duration…");
-      return;
-    }
-
-    const {
-      data: { user },
-      error: uErr,
-    } = await supabase.auth.getUser();
-
-    if (uErr) {
-      notify("Please try again", "We couldn’t verify your account right now.", setStatus);
-      return;
-    }
-    if (!user) {
-      notify("Please sign in", "You must be logged in to submit.", setStatus);
-      return;
-    }
-
-    const { data: profile, error: pErr } = await supabase
-      .from("users")
-      .select("tier")
-      .eq("id", user.id)
-      .single();
-
-    if (pErr) {
-      notify("Please try again", "We couldn’t verify your Pro status right now.", setStatus);
-      return;
-    }
-
-    const tierNorm = String(profile?.tier ?? "").toLowerCase().trim();
-    setUserTier(profile?.tier ?? null);
-
-    if (tierNorm !== "pro") {
-      setUpgradeVisible(true);
-      return;
-    }
-
-    setStatus("");
-    setDurationSec(null);
-
-    setThumbUri(null);
-    setThumbAspect(16 / 9);
-    setThumbLoading(false);
-
-    removeCustomThumbnail();
-
-    setPreviewVisible(false);
-    setPreviewLoading(false);
-    setPreviewError(null);
-    clearPreviewTimer();
-
-    setLocalUri(null);
-    setWebFile(null);
-    setProgressPct(0);
-    setEtaText("");
-
-    const acceptType = category === "music" ? ["audio/*", "video/*"] : ["video/*"];
-
-    const pick = await DocumentPicker.getDocumentAsync({
-      type: acceptType as any,
-      copyToCacheDirectory: true,
-    });
-    if (pick.canceled) return;
-
-    const asset: any = pick.assets?.[0];
-    if (!asset?.uri) {
-      notify("No file", "Please choose a file.", setStatus);
-      return;
-    }
-
-    let bytes: number | null = null;
-
-    if (typeof asset.size === "number") bytes = asset.size;
-    if (bytes == null) {
-      try {
-        const info = await FileSystem.getInfoAsync(asset.uri, { size: true } as any);
-        // @ts-ignore
-        if (info?.exists && typeof (info as any)?.size === "number") bytes = (info as any).size;
-      } catch {}
-    }
-
-    setWebFile(null);
-    setLocalUri(asset.uri);
-
-    setFileSizeBytes(bytes);
-
-    if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
-      notify(
-        "File too large",
-        `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
-        setStatus
-      );
-      resetSelectedFile();
-      return;
-    }
-
-    const shouldTryThumb = category !== "music";
-    if (shouldTryThumb) {
-      setThumbLoading(true);
-
-      try {
-        const thumb = await VideoThumbnails.getThumbnailAsync(asset.uri, { time: 120 });
-        if (thumb?.uri) setThumbUri(thumb.uri);
-
-        // @ts-ignore
-        const w = (thumb as any)?.width;
-        // @ts-ignore
-        const h = (thumb as any)?.height;
-        if (typeof w === "number" && typeof h === "number" && w > 0 && h > 0) {
-          setThumbAspect(w / h);
+        if (previewKind === 'video') {
+          const el = webVideoRef.current;
+          if (!el) return;
+          el.muted = next;
+          setIsMuted(next);
+          return;
         }
-      } catch {
-        setThumbUri(null);
-      } finally {
-        setThumbLoading(false);
-      }
-    }
 
-    setStatus("Loaded file. Checking duration…");
-  } catch (e) {
-    console.warn("pickFile failed:", (e as any)?.message ?? e);
-    notify("Could not open picker", "Try again.", setStatus);
-  }
-};
-
-/** ✅ FIX: this function MUST exist because the Video uses onLoad={onVideoLoaded} */
-const onVideoLoaded = (payload: any) => {
-  const dMs = payload?.durationMillis ?? 0;
-  const dSec = Math.max(0, Math.round(dMs / 1000));
-
-  if (dSec > 0) setDurationSec(dSec);
-
-  const sizeText = formatBytes(fileSizeBytes);
-
-  if (dSec > 0) {
-    setStatus(`Media ready • duration ${formatDur(dSec)} • ${sizeText}`);
-  } else {
-    setStatus(`Media ready (duration unknown) • ${sizeText}`);
-  }
-};
-
-const handleSubmit = async () => {
-  if (!agreed)
-    return notify("Agreement required", "You must agree to the rules before submitting.", setStatus);
-
-  if (!session) return notify("Please sign in", "You must be logged in to submit.", setStatus);
-
-  if (!title.trim() || !description.trim()) return notify("Please complete all fields.", undefined, setStatus);
-
-  if (!localUri && !webFile) return notify("No file selected", "Pick a file first.", setStatus);
-
-  if (category === "film" && selectedTags.length === 0) {
-    return notify("Pick a category", "Choose 1 category for your film.", setStatus);
-  }
-
-  if (category !== "music" && !customThumbUri) {
-    return notify("Thumbnail required", "Please add a thumbnail image before submitting.", setStatus);
-  }
-
-  if (fileSizeBytes != null && fileSizeBytes > MAX_UPLOAD_BYTES) {
-    return notify(
-      "File too large",
-      `This file is ${formatBytes(fileSizeBytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
-      setStatus
-    );
-  }
-
-  setLoading(true);
-  setStatus("Checking eligibility…");
-  setProgressPct(0);
-  setEtaText("");
-
-  try {
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
-
-    if (userErr) throw userErr;
-    if (!user) {
-      setLoading(false);
-      return notify("Please sign in", "You must be logged in to submit.", setStatus);
-    }
-
-    const { data, error } = await supabase.rpc("can_submit_this_month", {
-      p_user_id: user.id,
-    });
-
-    if (error) throw error;
-
-    const row = Array.isArray(data) ? data[0] : data;
-
-    if (!row?.allowed) {
-      setLoading(false);
-
-      if (row?.reason === "tier_too_low") {
-        setUpgradeVisible(true);
-        return notify("Upgrade required", "Submitting is available on Pro.", setStatus);
+        return;
       }
 
-      if (row?.reason === "no_submissions_left") {
-        return notify("Submission limit reached", "You’ve used all 2 submissions for this month.", setStatus);
+      // ---------- NATIVE ----------
+      const next = !isMuted;
+
+      if (previewKind === 'audio') {
+        if (audioRef.current) {
+          await audioRef.current.setIsMutedAsync(next);
+        }
+        setIsMuted(next);
+        return;
       }
 
-      return notify("Not allowed", "You can’t submit right now.", setStatus);
-    }
-  } catch (err) {
-    console.warn("server preflight can_submit_this_month failed:", err);
-    setLoading(false);
-    return notify(
-      "Please try again",
-      "We couldn’t verify your submission limit just now. Try again in a moment.",
-      setStatus
-    );
-  }
-
-  setStatus("Uploading file…");
-  setProgressPct(0);
-  setEtaText("");
-
-  try {
-    const {
-      data: { user },
-      error: userErr2,
-    } = await supabase.auth.getUser();
-    if (userErr2) throw userErr2;
-    if (!user) throw new Error("Not signed in");
-
-    const finalThumbUri = customThumbUri;
-
-    const { path, contentType } = await uploadResumable({
-      userId: user.id,
-      fileBlob: Platform.OS === "web" ? ((webFile as File | Blob | null) ?? undefined) : undefined,
-      localUri: Platform.OS !== "web" ? (localUri as string) : undefined,
-      onProgress: (pct) => setProgressPct(pct),
-      onPhase: (label) => setStatus(label),
-      objectName: `submissions/${user.id}/${Date.now()}`,
-      bucket: STORAGE_BUCKET,
-    });
-
-    let thumbnail_url: string | null = null;
-
-    if (category !== "music" && finalThumbUri) {
-      setStatus("Uploading thumbnail…");
-      const thumbRes = await uploadThumbnailToStorage({
-        userId: user.id,
-        thumbUri: finalThumbUri,
-        objectName: `submissions/${user.id}/${Date.now()}`,
-        bucket: THUMB_BUCKET,
-      });
-      thumbnail_url = thumbRes.publicUrl;
-    }
-
-    setProgressPct(100);
-    setStatus("Creating submission…");
-
-    const media_kind = mediaKindFromMime(contentType);
-
-      // ✅ Monthly theme removed from UI; keep DB fields safe
-      // word is set to null (or existing default) so no theme is forced.
-      const basePayload: any = {
-        user_id: user.id,
-        title: title.trim(),
-        description: description.trim(),
-        submitted_at: new Date().toISOString(),
-        word: null,
-        monthly_challenge_id: challenge?.id ?? null,
-        storage_path: path,
-        video_path: path,
-        mime_type: contentType,
-        media_kind,
-        duration_seconds: durationSec ?? null,
-        category,
-        film_category: category === "film" ? selectedTags[0] ?? null : null,
-        thumbnail_url,
-      };
-
-      const payloadWithTags: any =
-        category === "film" ? { ...basePayload, tags: selectedTags } : basePayload;
-
-      await insertSubmissionRobust(payloadWithTags, ["user_id", "title", "submitted_at"]);
-
-      try {
-        await refreshStreak();
-      } catch {}
-
-      try {
-        await giveXp(user.id, SUBMIT_XP, "challenge_submission");
-      } catch {}
-
-      try {
-        await refreshGamification();
-      } catch {}
-
-      setStatus("Submitted! 🎉");
-      setEtaText("");
-      notify("Submission received!", `Thanks — you just earned +${SUBMIT_XP} XP.`, setStatus);
-
-      setTitle("");
-      setDescription("");
-      setSelectedTags([]);
-      resetSelectedFile();
-      setAgreed(false);
-    } catch (e: any) {
-      console.warn("Submit failed:", e?.message ?? e);
-      const msg = e?.message ?? "Please try again.";
-      notify("Submission failed", msg, setStatus);
-      setStatus("");
-      setProgressPct(0);
-      setEtaText("");
-    } finally {
-      setLoading(false);
-    }
+      if (previewKind === 'video') {
+        if (!videoRef.current) return;
+        await videoRef.current.setIsMutedAsync(next);
+        setIsMuted(next);
+      }
+    } catch {}
   };
 
-  if (!challenge) {
+  const renderProductCard = (product: WorkshopProduct, opts?: { forceFullRow?: boolean }) => {
+    const access = hasAccess(product);
+    const scale = getCardScale(product.id);
+
+    const isBreakingBad = (product.slug || '').toLowerCase() === 'breaking-bad-luts';
+    const fullRow = opts?.forceFullRow || (columns === 2 && isBreakingBad ? true : false);
+
     return (
-      <View style={styles.loadingWrap}>
-        <LinearGradient
-          colors={[T.bg, T.bg]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-        <ActivityIndicator size="large" color={T.olive} />
-        <Text style={styles.loadingText}>Loading…</Text>
+      <View
+        key={product.id}
+        style={[
+          styles.gridItem,
+          columns === 2 ? styles.gridItemTwoCol : styles.gridItemOneCol,
+          columns === 2 && fullRow ? styles.gridItemFullRow : null,
+        ]}
+      >
+        <AnimatedTouchableOpacity
+          style={[styles.card, { transform: [{ scale }] }]}
+          activeOpacity={0.92}
+          onPress={() => openPreview(product)}
+          onPressIn={() => animateCardScale(product.id, 0.985)}
+          onPressOut={() => animateCardScale(product.id, 1)}
+          {...(IS_WEB
+            ? ({
+                onMouseEnter: () => animateCardScale(product.id, 1.015),
+                onMouseLeave: () => animateCardScale(product.id, 1),
+              } as any)
+            : null)}
+        >
+          <View style={styles.thumbWrap}>
+            {product.image_url ? (
+              <ThumbMedia uri={product.image_url} />
+            ) : product.thumb_icon ? (
+              <IconThumb icon={product.thumb_icon} label={product.thumb_label} />
+            ) : (
+              <ShimmerThumb size={76} />
+            )}
+          </View>
+
+          <View style={styles.cardBody}>
+            <View>
+              <View style={styles.cardTitleRow}>
+                <Text style={styles.cardTitle} numberOfLines={1}>
+                  {product.name}
+                </Text>
+
+                <View style={styles.badgeProOnly}>
+                  <Ionicons name="sparkles-outline" size={12} color={GOLD} />
+                  <Text style={styles.badgeProOnlyText}>Pro only</Text>
+                </View>
+              </View>
+
+              {product.description ? (
+                <Text style={styles.cardDescription} numberOfLines={3}>
+                  {product.description}
+                </Text>
+              ) : null}
+
+              <View style={styles.metaRow}>
+                <Text style={styles.metaHint}>
+                  {access ? 'Tap to preview' : 'Preview available • unlock with Pro'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.cardBottomRow}>
+              {renderCTA(product)}
+              <View style={styles.previewChip}>
+                <Ionicons name="play-circle-outline" size={14} color={TEXT_IVORY} />
+                <Text style={styles.previewChipText}>Preview</Text>
+              </View>
+            </View>
+          </View>
+        </AnimatedTouchableOpacity>
       </View>
     );
-  }
+  };
 
-  const previewThumbToShow = customThumbUri || thumbUri;
+  const hasAnything = lutProducts.length > 0 || soundProducts.length > 0;
 
+  /* ------------------------------ render ------------------------------- */
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={[T.bg, T.bg]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
+      {/* Centered header */}
+      <View style={styles.header}>
+        <Ionicons name="cube-outline" size={20} color={GOLD} />
+        <Text style={styles.headerTitle}>Workshop</Text>
+      </View>
 
-      <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { minHeight: winH + 1, paddingBottom: isWide ? 56 : 40 },
-        ]}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={[styles.pageWrap, isWide && styles.pageWrapWide]}>
-          {/* ✅ SIMPLE HEADER */}
-          <View style={styles.topHeader}>
-            <Text style={styles.topTitle}>Share your film</Text>
-            <Text style={styles.topSub}>
-              Title, one sentence, one category, upload.{" "}
-              <Text style={styles.topSubStrong}>Time left: {countdown}</Text>
-            </Text>
-          </View>
+      {/* Hero intro */}
+<View style={styles.hero}>
+  <Text style={styles.heroTitle}>Tools for stronger work.</Text>
+  <Text style={styles.heroSubtitle}>
+    Hand-crafted packs designed to help creators polish, experiment, and level up.
+  </Text>
+</View>
 
-          <View style={[styles.twoCol, isWide && styles.twoColWide]}>
-            {/* LEFT */}
-            <View style={[styles.col, isWide && styles.leftCol]}>
-              <View style={styles.card}>
-                <Text style={styles.sectionKicker}>How it works</Text>
-                <Text style={styles.bullet}>• Add a title + one sentence</Text>
-                <Text style={styles.bullet}>• Choose 1 category</Text>
-                <Text style={styles.bullet}>• Upload your film + thumbnail</Text>
-                <Text style={styles.bullet}>• It appears on Featured for voting</Text>
+      {loading && !refreshing ? (
+        <View style={styles.loadingRow}>
+          <ActivityIndicator size="small" color={GOLD} />
+          <Text style={styles.loadingText}>Loading Workshop...</Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.scrollContent, columns === 2 ? styles.gridContent : null]}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={GOLD} />
+          }
+        >
+          {!hasAnything && (
+            <View style={styles.emptyState}>
+              <Ionicons name="cube-outline" size={30} color={TEXT_MUTED} />
+              <Text style={styles.emptyTitle}>Nothing in the crate yet</Text>
+              <Text style={styles.emptyText}>Your first Workshop pack will drop here soon.</Text>
+            </View>
+          )}
 
-                <View style={styles.divider} />
-
-                <View style={styles.xpMini}>
-                  <Text style={styles.xpMiniText}>
-                    Submit to earn <Text style={styles.xpMiniStrong}>+{SUBMIT_XP} XP</Text>
-                    {` · `}
-                    Win the month to earn <Text style={styles.xpMiniStrong}>+500 XP</Text>
-                  </Text>
-
-                  {!gamificationLoading && typeof level === "number" && (
-                    <Text style={styles.xpMiniSub} numberOfLines={1}>
-                      Lv <Text style={styles.xpMiniStrong}>{level}</Text>
-                      {levelTitle ? (
-                        <>
-                          {" "}
-                          · <Text style={styles.xpMiniStrong}>{String(levelTitle).toUpperCase()}</Text>
-                        </>
-                      ) : null}
-                      {xpToNext !== null && xpToNext > 0 ? (
-                        <>
-                          {" "}
-                          · <Text style={styles.xpMiniSubSoft}>{xpToNext} XP to next title</Text>
-                        </>
-                      ) : null}
-                    </Text>
-                  )}
-                </View>
-
-                <View style={styles.divider} />
-
-                <Pressable onPress={() => setRulesVisible(true)} style={styles.linkRow}>
-                  <Text style={styles.linkText}>View rules & terms</Text>
-                </Pressable>
+          {/* ------------------------------ LUT PACKS ------------------------------ */}
+          {lutProducts.length > 0 && (
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionHeaderLeft}>
+                <Ionicons name="color-filter-outline" size={16} color={GOLD} />
+                <Text style={styles.sectionHeaderTitle}>LUT Packs</Text>
+              </View>
+              <View style={styles.sectionHeaderPill}>
+                <Text style={styles.sectionHeaderPillText}>Color</Text>
               </View>
             </View>
+          )}
 
-            {/* RIGHT */}
-            <View style={[styles.col, isWide && styles.rightCol]}>
-              <View style={styles.card}>
-                <View style={styles.formHeaderLite}>
-                  <Text style={styles.formTitle}>Submit</Text>
-                  <Text style={styles.formSubtitle}>Simple, clear, intuitive.</Text>
-                </View>
+          {lutProducts.map((p) => renderProductCard(p))}
 
-                <View style={styles.formBodyLite}>
-                  <Text style={styles.label}>Title</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder={"e.g. Flicker in the Dark"}
-                    placeholderTextColor={T.mute}
-                    value={title}
-                    onChangeText={setTitle}
-                  />
+          {/* --------------------------- SOUND EFFECTS ---------------------------- */}
+          {soundProducts.length > 0 && (
+            <View style={[styles.sectionHeaderRow, styles.sectionHeaderRowSpaced]}>
+              <View style={styles.sectionHeaderLeft}>
+                <Ionicons name="musical-notes-outline" size={16} color={GOLD} />
+                <Text style={styles.sectionHeaderTitle}>Sound Effects</Text>
+              </View>
+              <View style={styles.sectionHeaderPill}>
+                <Text style={styles.sectionHeaderPillText}>Audio</Text>
+              </View>
+            </View>
+          )}
 
-                  <View style={styles.descRow}>
-                    <Text style={[styles.label, { marginBottom: 0 }]}>One sentence</Text>
-                    <Text style={styles.counterText}>{description.length}/100</Text>
-                  </View>
+          {soundProducts.map((p) => renderProductCard(p, { forceFullRow: false }))}
 
-                  <TextInput
-                    style={styles.input}
-                    placeholder={"One sentence about your film"}
-                    placeholderTextColor={T.mute}
-                    value={description}
-                    onChangeText={(t) => setDescription(t.slice(0, 100))}
-                    maxLength={100}
-                  />
+          
+        </ScrollView>
+      )}
 
-                  {/* ✅ Category modal trigger */}
-                  {category === "film" ? (
-                    <View style={{ marginTop: 14 }}>
-                      <Text style={styles.label}>Category</Text>
+      {/* Preview Modal */}
+      <Modal visible={previewVisible} transparent animationType="fade" onRequestClose={closePreview}>
+        <Pressable style={styles.modalBackdrop} onPress={closePreview} />
 
-                      <Pressable
-                        onPress={openCategoryModal}
-                        style={({ pressed }) => [styles.selectBtn, pressed && { opacity: 0.92 }]}
-                      >
-                        <Text style={styles.selectBtnText}>
-                          {selectedTags[0] ? selectedTags[0] : "Choose a category"}
+        <View style={styles.modalCardWrap}>
+          <View
+            style={[
+              styles.modalCard,
+              { width: MODAL_MAX_W, maxHeight: Math.min(680, SCREEN_H - 90) },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderLeft}>
+                <Ionicons name="cube-outline" size={18} color={GOLD} />
+                <Text style={styles.modalTitle} numberOfLines={1}>
+                  {selectedProduct?.name || 'Preview'}
+                </Text>
+              </View>
+
+              <TouchableOpacity onPress={closePreview} activeOpacity={0.8} style={styles.modalClose}>
+                <Ionicons name="close" size={18} color={TEXT_IVORY} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.previewArea, { aspectRatio: previewAspect }]}>
+              {selectedProduct ? (
+                (() => {
+                  const asset = (selectedProduct.preview_url || selectedProduct.image_url) ?? null;
+
+                  if (!asset) {
+                    return (
+                      <View style={styles.previewPlaceholder}>
+                        <Ionicons name="image-outline" size={24} color={GOLD} />
+                        <Text style={styles.previewPlaceholderTitle}>Preview coming soon</Text>
+                        <Text style={styles.previewPlaceholderText}>
+                          Upload a preview and set preview_url on the product.
                         </Text>
-                        <Text style={styles.selectBtnHint}>
-                          {selectedTags[0] ? "Tap to change" : "Tap to select"}
-                        </Text>
-                      </Pressable>
+                      </View>
+                    );
+                  }
 
-                      {selectedTags[0] ? (
-                        <View style={styles.selectedRow}>
-                          <View style={styles.selectedChip}>
-                            <Text style={styles.selectedChipText}>{selectedTags[0]}</Text>
+                  // ✅ AUDIO PREVIEW (MP3)
+                  if (isAudio(asset)) {
+                    return (
+                      <View style={styles.audioWrap}>
+                        <View style={styles.audioTop}>
+                          <View style={styles.audioIconPill}>
+                            <Ionicons name="musical-notes-outline" size={18} color={GOLD} />
                           </View>
-                          <Pressable
-                            onPress={clearTag}
-                            style={({ pressed }) => [styles.clearChipBtn, pressed && { opacity: 0.9 }]}
-                          >
-                            <Text style={styles.clearChipText}>Clear</Text>
-                          </Pressable>
+                          <Text style={styles.audioTitle} numberOfLines={2}>
+                            Audio preview
+                          </Text>
                         </View>
-                      ) : (
-                        <Text style={styles.helperText}>
-                          Pick 1 category so Featured can sort your film.
-                        </Text>
-                      )}
-                    </View>
-                  ) : null}
 
-                  {/* Pick file */}
-                  <TouchableOpacity style={styles.primaryBtn} onPress={pickFile} activeOpacity={0.92}>
-                    <Text style={styles.primaryBtnText}>
-                      {localUri ? "Pick a different file" : "Pick a file"}
-                    </Text>
-                    <Text style={styles.primaryBtnSub}>Max file size: 5GB</Text>
-                  </TouchableOpacity>
+                        {IS_WEB ? (
+                          <audio
+                            ref={(el) => (webAudioRef.current = el)}
+                            src={asset}
+                            muted={isMuted}
+                            preload="metadata"
+                            controls={false}
+                            onPlay={() => setIsPlaying(true)}
+                            onPause={() => setIsPlaying(false)}
+                            onEnded={() => setIsPlaying(false)}
+                            style={{ display: 'none' } as any}
+                          />
+                        ) : null}
 
-                  {localUri ? (
-                    <View style={styles.fileActionsRow}>
-                      <Pressable
-                        onPress={pickFile}
-                        style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.9 }]}
-                      >
-                        <Text style={styles.secondaryBtnText}>Change file</Text>
-                      </Pressable>
+                        <View style={styles.audioBarsRow}>
+                          {Array.from({ length: 22 }).map((_, i) => (
+                            <View
+                              key={i}
+                              style={[
+                                styles.audioBar,
+                                { height: 10 + ((i * 7) % 18) },
+                              ]}
+                            />
+                          ))}
+                        </View>
 
-                      <Pressable
-                        onPress={resetSelectedFile}
-                        style={({ pressed }) => [styles.secondaryBtnDanger, pressed && { opacity: 0.9 }]}
-                      >
-                        <Text style={styles.secondaryBtnDangerText}>Remove</Text>
-                      </Pressable>
-                    </View>
-                  ) : null}
+                        <View style={styles.audioControls}>
+                          <TouchableOpacity
+                            onPress={togglePlay}
+                            activeOpacity={0.85}
+                            style={styles.videoControlButton}
+                          >
+                            <Ionicons
+                              name={isPlaying ? 'pause' : 'play'}
+                              size={18}
+                              color={TEXT_IVORY}
+                            />
+                            <Text style={styles.videoControlText}>
+                              {isPlaying ? 'Pause' : 'Play'}
+                            </Text>
+                          </TouchableOpacity>
 
-                  {/* Preview */}
-                  {localUri ? (
-                    <Pressable
-                      onPress={openPreview}
-                      style={({ pressed }) => [styles.previewWrap, pressed && { opacity: 0.92 }]}
-                    >
-                      <View style={[styles.previewStage, { aspectRatio: thumbAspect }]}>
-                        {thumbLoading ? (
-                          <View style={styles.thumbLoading}>
-                            <ActivityIndicator size="small" color={T.olive} />
-                            <Text style={styles.thumbLoadingText}>Generating preview…</Text>
-                          </View>
-                        ) : previewThumbToShow ? (
-                          <Image
-                            source={{ uri: previewThumbToShow }}
-                            style={styles.previewImg}
-                            resizeMode={customThumbUri ? "cover" : "contain"}
+                          <TouchableOpacity
+                            onPress={toggleMute}
+                            activeOpacity={0.85}
+                            style={styles.videoControlButton}
+                          >
+                            <Ionicons
+                              name={isMuted ? 'volume-mute' : 'volume-high'}
+                              size={18}
+                              color={TEXT_IVORY}
+                            />
+                            <Text style={styles.videoControlText}>
+                              {isMuted ? 'Muted' : 'Sound'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  }
+
+                  // ✅ VIDEO PREVIEW
+                  if (previewIsLikelyVideo(asset)) {
+                    return (
+                      <View style={styles.videoWrap}>
+                        {IS_WEB ? (
+                          <video
+                            ref={(el) => (webVideoRef.current = el)}
+                            src={asset}
+                            style={
+                              {
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'contain',
+                                objectPosition: 'center center',
+                                background: '#000',
+                                display: 'block',
+                              } as any
+                            }
+                            muted={isMuted}
+                            playsInline
+                            preload="metadata"
+                            controls={false}
+                            onLoadedMetadata={(e: any) => {
+                              const el = e?.currentTarget as HTMLVideoElement | null;
+                              if (!el) return;
+                              const w = el.videoWidth || 0;
+                              const h = el.videoHeight || 0;
+                              if (w > 0 && h > 0) {
+                                const next = w / h;
+                                if (Number.isFinite(next)) setPreviewAspect(next);
+                              }
+                            }}
+                            onPlay={() => setIsPlaying(true)}
+                            onPause={() => setIsPlaying(false)}
                           />
                         ) : (
-                          <View style={styles.thumbFallback}>
-                            <Text style={styles.thumbFallbackText}>Watch preview</Text>
-                          </View>
-                        )}
-                      </View>
+                          <Video
+                            ref={(r) => (videoRef.current = r)}
+                            source={{ uri: asset }}
+                            style={[styles.video, WEB_VIDEO_FIT]}
+                            resizeMode={ResizeMode.CONTAIN}
+                            isLooping
+                            shouldPlay={false}
+                            isMuted={true}
+                            useNativeControls={false}
+                            onPlaybackStatusUpdate={(status: any) => {
+                              if (!status?.isLoaded) return;
 
-                      <View style={styles.previewOverlay} pointerEvents="none">
-                        <View style={styles.playPill}>
-                          <Text style={styles.playPillText}>▶ Watch preview</Text>
+                              setIsPlaying(!!status.isPlaying);
+
+                              const ns = status?.naturalSize;
+                              const w = ns?.width || 0;
+                              const h = ns?.height || 0;
+                              if (w > 0 && h > 0) {
+                                const next = w / h;
+                                if (Number.isFinite(next)) setPreviewAspect(next);
+                              }
+                            }}
+                          />
+                        )}
+
+                        <View style={styles.videoControls}>
+                          <TouchableOpacity
+                            onPress={togglePlay}
+                            activeOpacity={0.85}
+                            style={styles.videoControlButton}
+                          >
+                            <Ionicons
+                              name={isPlaying ? 'pause' : 'play'}
+                              size={18}
+                              color={TEXT_IVORY}
+                            />
+                            <Text style={styles.videoControlText}>
+                              {isPlaying ? 'Pause' : 'Play'}
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            onPress={toggleMute}
+                            activeOpacity={0.85}
+                            style={styles.videoControlButton}
+                          >
+                            <Ionicons
+                              name={isMuted ? 'volume-mute' : 'volume-high'}
+                              size={18}
+                              color={TEXT_IVORY}
+                            />
+                            <Text style={styles.videoControlText}>
+                              {isMuted ? 'Muted' : 'Sound'}
+                            </Text>
+                          </TouchableOpacity>
                         </View>
                       </View>
-                    </Pressable>
-                  ) : null}
+                    );
+                  }
 
-                  {/* REQUIRED thumbnail */}
-                  {localUri && category !== "music" ? (
-                    <View style={{ marginTop: 12 }}>
-                      <View style={styles.thumbReqRow}>
-                        <Text style={styles.thumbReqTitle}>Thumbnail (required)</Text>
-                        {!customThumbUri ? (
-                          <Text style={styles.thumbReqBadge}>Missing</Text>
-                        ) : (
-                          <Text
-                            style={[
-                              styles.thumbReqBadge,
-                              { borderColor: "rgba(60,200,120,0.35)", color: "#BFF3D4" },
-                            ]}
-                          >
-                            Added
-                          </Text>
-                        )}
-                      </View>
+                  // ✅ IMAGE PREVIEW
+                  return <Image source={{ uri: asset }} style={styles.previewImage} />;
+                })()
+              ) : null}
+            </View>
 
-                      <View style={{ flexDirection: "row", gap: 10 }}>
-                        <Pressable
-                          onPress={pickThumbnail}
-                          style={({ pressed }) => [
-                            styles.secondaryBtn,
-                            pressed && { opacity: 0.9 },
-                            { flex: 1, alignItems: "center" },
-                          ]}
-                        >
-                          <Text style={styles.secondaryBtnText}>
-                            {customThumbUri ? "Change thumbnail" : "Add thumbnail"}
-                          </Text>
-                        </Pressable>
+            {!!selectedProduct?.description && (
+              <Text style={styles.modalDescription}>{selectedProduct.description}</Text>
+            )}
 
-                        {customThumbUri ? (
-                          <Pressable
-                            onPress={removeCustomThumbnail}
-                            style={({ pressed }) => [
-                              styles.secondaryBtnDanger,
-                              pressed && { opacity: 0.9 },
-                              { flex: 1, alignItems: "center" },
-                            ]}
-                          >
-                            <Text style={styles.secondaryBtnDangerText}>Remove</Text>
-                          </Pressable>
-                        ) : null}
-                      </View>
+            {selectedProduct && (
+              <View style={styles.modalMetaRow}>
+                <View style={styles.modalMetaPill}>
+                  <Ionicons name="sparkles-outline" size={14} color={GOLD} />
+                  <Text style={styles.modalMetaText}>Pro only</Text>
+                </View>
 
-                      {!customThumbUri ? (
-                        <Text style={styles.helperText}>You must add a thumbnail before submitting.</Text>
-                      ) : (
-                        <Text style={styles.helperText}>This is the image that will show on Featured.</Text>
-                      )}
-                    </View>
-                  ) : null}
+                <View style={styles.modalMetaPill}>
+                  <Ionicons
+                    name={hasAccess(selectedProduct) ? 'lock-open-outline' : 'lock-closed-outline'}
+                    size={14}
+                    color={GOLD}
+                  />
+                  <Text style={styles.modalMetaText}>
+                    {hasAccess(selectedProduct) ? 'Unlocked' : 'Locked'}
+                  </Text>
+                </View>
+              </View>
+            )}
 
-                  {/* hidden native video to read duration */}
-                  {localUri && category !== "music" && Platform.OS !== "web" ? (
-                    <Video
-                      ref={videoRef}
-                      source={{ uri: localUri }}
-                      style={{ width: 1, height: 1, opacity: 0.0001 }}
-                      resizeMode={ResizeMode.CONTAIN}
-                      isMuted
-                      shouldPlay={false}
-                      onLoad={onVideoLoaded}
-                      onError={() => {
-                        setDurationSec(null);
-                        setStatus(`Media ready (duration unknown) • ${formatBytes(fileSizeBytes)}`);
-                      }}
-                    />
-                  ) : null}
+            {selectedProduct && (
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonGhost]}
+                  onPress={closePreview}
+                  activeOpacity={0.9}
+                >
+                  <Text style={styles.modalButtonGhostText}>Close</Text>
+                </TouchableOpacity>
 
-                  {!!status && (
-                    <View style={styles.statusRow}>
-                      {status.toLowerCase().includes("checking") ? (
-                        <ActivityIndicator size="small" color={T.olive} />
-                      ) : null}
-                      <Text style={styles.statusText}>{status}</Text>
-                    </View>
-                  )}
-
-                  {loading ? (
-                    <View style={styles.progressWrap}>
-                      <View style={styles.progressBar}>
-                        <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
-                      </View>
-                      <View style={styles.progressLabels}>
-                        <Text style={styles.progressText}>{progressPct}%</Text>
-                        <Text style={styles.progressEta}>{etaText}</Text>
-                      </View>
-                    </View>
-                  ) : null}
-
-                  <View style={styles.agreeBlock}>
-                    <Pressable
-                      onPress={() => setAgreed(!agreed)}
-                      style={({ pressed }) => [styles.agreeRow, pressed && { opacity: 0.9 }]}
-                    >
-                      <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
-                        {agreed ? <Text style={styles.checkGlyph}>✓</Text> : null}
-                      </View>
-
-                      <Text style={styles.agreeText}>
-                        I agree to{" "}
-                        <Text
-                          style={styles.termsLink}
-                          onPress={() => setRulesVisible(true)}
-                          suppressHighlighting
-                        >
-                          the rules & terms
-                        </Text>
-                      </Text>
-                    </Pressable>
-
-                    <Pressable onPress={() => setRulesVisible(true)} style={styles.termsHintRow}>
-                      <Text style={styles.termsHintText}>View rules</Text>
-                    </Pressable>
-                  </View>
-
+                {hasAccess(selectedProduct) ? (
                   <TouchableOpacity
-                    style={[
-                      styles.submitBtn,
-                      (!agreed || loading || (category !== "music" && !customThumbUri)) && {
-                        opacity: 0.6,
-                      },
-                    ]}
-                    onPress={handleSubmit}
-                    disabled={loading || !agreed || (category !== "music" && !customThumbUri)}
-                    activeOpacity={0.92}
+                    style={[styles.modalButton, styles.modalButtonGold]}
+                    onPress={() => {
+                      closePreview();
+                      openProductContent(selectedProduct);
+                    }}
+                    activeOpacity={0.9}
                   >
-                    <Text style={styles.submitText}>{loading ? "Submitting…" : "Upload & submit"}</Text>
+                    <Ionicons name="download-outline" size={16} color="#050505" />
+                    <Text style={styles.modalButtonGoldText}>Download / Access</Text>
                   </TouchableOpacity>
-
-                  <Text style={styles.formFootnote}>
-                    Your entry will appear on Featured shortly after submission.
-                  </Text>
-                </View>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonGold]}
+                    onPress={() => {
+                      closePreview();
+                      setUpgradeVisible(true);
+                    }}
+                    activeOpacity={0.9}
+                  >
+                    <Ionicons name="sparkles-outline" size={16} color="#050505" />
+                    <Text style={styles.modalButtonGoldText}>Unlock with Pro</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-            </View>
+            )}
           </View>
-
-          {/* ✅ CATEGORY MODAL */}
-          <Modal visible={tagModalVisible} animationType="fade" transparent>
-            <View style={styles.modalOverlay}>
-              <View style={styles.categoryModal}>
-                <View style={styles.categoryModalHeader}>
-                  <Text style={styles.modalTitle}>Choose a category</Text>
-                  <Pressable onPress={closeCategoryModal} style={styles.modalIconClose}>
-                    <Text style={styles.modalIconCloseText}>✕</Text>
-                  </Pressable>
-                </View>
-
-                <TextInput
-                  value={tagQuery}
-                  onChangeText={setTagQuery}
-                  placeholder="Search categories…"
-                  placeholderTextColor={T.mute}
-                  style={styles.modalSearch}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-
-                <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
-                  <View style={styles.tagList}>
-                    {filteredTags.map((tag) => {
-                      const active = selectedTags[0] === tag;
-                      return (
-                        <Pressable
-                          key={tag}
-                          onPress={() => selectTag(tag)}
-                          style={({ pressed }) => [
-                            styles.tagRow,
-                            active && styles.tagRowActive,
-                            pressed && { opacity: 0.9 },
-                          ]}
-                        >
-                          <Text style={[styles.tagRowText, active && styles.tagRowTextActive]}>{tag}</Text>
-                          {active ? <Text style={styles.tagRowCheck}>✓</Text> : null}
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </ScrollView>
-
-                <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
-                  <Pressable
-                    onPress={clearTag}
-                    style={({ pressed }) => [styles.modalAltBtn, pressed && { opacity: 0.9 }]}
-                  >
-                    <Text style={styles.modalAltText}>Clear</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={closeCategoryModal}
-                    style={({ pressed }) => [styles.modalPrimaryBtn, pressed && { opacity: 0.9 }]}
-                  >
-                    <Text style={styles.modalPrimaryText}>Done</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </View>
-          </Modal>
-
-          {/* RULES MODAL */}
-          <Modal visible={rulesVisible} animationType="fade" transparent>
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                <Text style={styles.modalTitle}>Challenge Rules & Terms</Text>
-
-                <ScrollView style={{ marginBottom: 16 }}>
-                  <Text style={styles.modalText}>• Time limit: {capText}</Text>
-
-                  <Text style={styles.modalText}>
-                    • File size: keep it reasonable. Extremely large uploads may fail or be removed.
-                  </Text>
-
-                  <Text style={styles.modalText}>
-                    • Keep it original. No stolen footage, copyrighted films, or unlicensed music.
-                  </Text>
-
-                  <Text style={styles.modalText}>
-                    • Be appropriate. No hate, harassment, explicit sexual content, or violent / harmful
-                    material.
-                  </Text>
-
-                  <Text style={styles.modalTextStrong}>• IMPORTANT: Overlooked is for ART — not content.</Text>
-
-                  <Text style={styles.modalText}>
-                    • This is not Instagram or TikTok. Brain-rot / “content farm” style videos will be
-                    removed.
-                  </Text>
-
-                  <Text style={styles.modalTextStrong}>
-                    • Repeated low-effort “content” uploads can result in a permanent ban.
-                  </Text>
-
-                  <Text style={styles.modalText}>
-                    • All levels are welcome. You do not need to submit something “perfect” — just
-                    finish work and keep going.
-                  </Text>
-
-                  <Text style={styles.modalText}>
-                    • If you submit every month for a year, you’ll make 12 films — more than most
-                    people make in their entire lives.
-                  </Text>
-                </ScrollView>
-
-                <Pressable style={styles.modalClose} onPress={() => setRulesVisible(false)}>
-                  <Text style={styles.modalCloseText}>Close</Text>
-                </Pressable>
-              </View>
-            </View>
-          </Modal>
-
-          {/* Preview Modal */}
-          <Modal visible={previewVisible} animationType="fade" transparent>
-            <View style={styles.modalOverlay}>
-              <View style={styles.previewModal}>
-                <Text style={styles.previewTitle}>Preview</Text>
-
-                <View style={styles.previewVideoWrap}>
-                  <View style={styles.previewVideoStage}>
-                    {localUri ? (
-                      Platform.OS === "web" ? (
-                        // @ts-ignore
-                        <video
-                          key={`web-preview-${previewNonce}-${localUri}`}
-                          ref={(el) => {
-                            // @ts-ignore
-                            webPreviewVideoRef.current = el;
-                          }}
-                          src={localUri}
-                          controls
-                          autoPlay
-                          playsInline
-                          onLoadStart={() => {
-                            setPreviewError(null);
-                            setPreviewLoading(true);
-                            startPreviewTimer();
-                          }}
-                          onCanPlay={() => {
-                            clearPreviewTimer();
-                            setPreviewLoading(false);
-                          }}
-                          onError={() => {
-                            clearPreviewTimer();
-                            setPreviewLoading(false);
-                            setPreviewError("Could not play this file. Try Retry or pick a different file.");
-                          }}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "contain",
-                            background: "#0B0B0B",
-                            display: "block",
-                          }}
-                        />
-                      ) : (
-                        <Video
-                          key={`native-preview-${previewNonce}-${localUri}`}
-                          ref={previewPlayerRef}
-                          source={{ uri: localUri }}
-                          style={styles.previewVideo}
-                          resizeMode={ResizeMode.CONTAIN}
-                          useNativeControls
-                          shouldPlay
-                          isLooping={false}
-                          onLoadStart={() => {
-                            setPreviewError(null);
-                            setPreviewLoading(true);
-                            startPreviewTimer();
-                          }}
-                          onReadyForDisplay={() => {
-                            clearPreviewTimer();
-                            setPreviewLoading(false);
-                          }}
-                          onLoad={() => {
-                            clearPreviewTimer();
-                            setPreviewLoading(false);
-                          }}
-                          onPlaybackStatusUpdate={(s: any) => {
-                            if (s?.isLoaded) {
-                              clearPreviewTimer();
-                              setPreviewLoading(false);
-                            }
-                          }}
-                          onError={() => {
-                            clearPreviewTimer();
-                            setPreviewLoading(false);
-                            setPreviewError("Could not play this file. Try Retry or pick a different file.");
-                          }}
-                        />
-                      )
-                    ) : null}
-
-                    {previewLoading ? (
-                      <View style={styles.previewLoadingOverlay} pointerEvents="none">
-                        <ActivityIndicator size="large" color={T.olive} />
-                        <Text style={styles.previewLoadingText}>Loading preview…</Text>
-                      </View>
-                    ) : null}
-
-                    {previewError ? (
-                      <View style={styles.previewErrorOverlay}>
-                        <Text style={styles.previewErrorText}>{previewError}</Text>
-                        <View style={styles.previewErrorActions}>
-                          <Pressable style={styles.previewRetryBtn} onPress={retryPreview}>
-                            <Text style={styles.previewRetryText}>Retry</Text>
-                          </Pressable>
-                          <Pressable style={styles.previewAltBtn} onPress={closePreview}>
-                            <Text style={styles.previewAltText}>Close</Text>
-                          </Pressable>
-                        </View>
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-
-                <View style={styles.previewMetaRow}>
-                  <Text style={styles.previewMeta}>
-                    Duration: <Text style={styles.previewMetaStrong}>{formatDur(durationSec)}</Text>
-                  </Text>
-                  <Text style={styles.previewMeta}>
-                    Size: <Text style={styles.previewMetaStrong}>{formatBytes(fileSizeBytes)}</Text>
-                  </Text>
-                </View>
-
-                <Pressable style={styles.modalClose} onPress={closePreview}>
-                  <Text style={styles.modalCloseText}>Close</Text>
-                </Pressable>
-              </View>
-            </View>
-          </Modal>
         </View>
-      </ScrollView>
+      </Modal>
 
-      <UpgradeModal visible={upgradeVisible} context="challenge" onClose={() => setUpgradeVisible(false)} />
+      <UpgradeModal
+        visible={upgradeVisible}
+        onClose={() => setUpgradeVisible(false)}
+        context="workshop"
+        onSelectPro={() => {
+          setUpgradeVisible(false);
+          Alert.alert(
+            'Upgrade to Pro',
+            'The Pro upgrade flow is not wired up yet. Once it is, you’ll unlock all Workshop products automatically.'
+          );
+        }}
+      />
     </View>
   );
-}
+};
 
-/* -------------------------------- Styles -------------------------------- */
+export default WorkshopScreen;
 
-const RADIUS_XL = 20;
-
+/* -------------------------------- styles ------------------------------- */
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: T.bg },
+  container: { flex: 1, backgroundColor: DARK_BG },
 
-  loadingWrap: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: T.bg,
+  header: {
+    marginTop: 8,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
-  loadingText: { marginTop: 10, color: T.sub, fontFamily: SYSTEM_SANS },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+    color: TEXT_IVORY,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+  },
 
-  scroll: {
-    paddingHorizontal: 16,
-    paddingTop: 18,
+  hero: {
+    marginTop: 10,
+    marginHorizontal: 12,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: DARK_ELEVATED_2,
+    borderWidth: 1,
+    borderColor: '#242424',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 14,
+    elevation: 7,
   },
-
-  pageWrap: {
-    width: "100%",
-    maxWidth: 980,
-    alignSelf: "center",
-    paddingBottom: 22,
-  },
-  pageWrapWide: { maxWidth: 1180 },
-
-  topHeader: {
-    width: "100%",
-    alignItems: "center",
-    marginBottom: 16,
-    paddingHorizontal: 8,
-  },
-  topTitle: {
-    fontSize: 24,
-    fontWeight: "900",
+  heroTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: TEXT_IVORY,
     letterSpacing: 0.2,
-    color: T.text,
-    fontFamily: SYSTEM_SANS,
-    textAlign: "center",
-    lineHeight: 30,
-  },
-  topSub: {
-    marginTop: 8,
-    fontSize: 13,
-    color: T.mute,
-    fontFamily: SYSTEM_SANS,
-    textAlign: "center",
-    lineHeight: 18,
-  },
-  topSubStrong: { color: T.text, fontWeight: "900" },
-
-  twoCol: { width: "100%" },
-  twoColWide: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 14,
-  },
-
-  col: { width: "100%" },
-  leftCol: { flex: 1, minWidth: 520 },
-  rightCol: { width: 520 },
-
-  card: {
-    width: "100%",
-    borderRadius: RADIUS_XL,
-    backgroundColor: T.card,
-    borderWidth: 1,
-    borderColor: T.line,
-    padding: 16,
-  },
-
-  divider: {
-    height: 1,
-    backgroundColor: "#FFFFFF10",
-    marginVertical: 14,
-  },
-
-  sectionKicker: {
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 1.6,
-    color: T.text,
-    textTransform: "uppercase",
-    fontFamily: SYSTEM_SANS,
-    marginBottom: 8,
-  },
-  bullet: {
-    fontSize: 13,
-    color: "#D0D0D0",
-    lineHeight: 20,
-    fontFamily: SYSTEM_SANS,
-    marginBottom: 4,
-  },
-
-  xpMini: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#FFFFFF12",
-    backgroundColor: "#0B0B0B",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  xpMiniText: {
-    fontSize: 12,
-    color: "#D7D7D7",
-    lineHeight: 18,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: "600",
-  },
-  xpMiniStrong: { color: T.text, fontWeight: "900" },
-  xpMiniSub: {
-    marginTop: 6,
-    fontSize: 10,
-    color: T.mute,
     fontFamily: SYSTEM_SANS,
   },
-  xpMiniSubSoft: { color: "#B8B8B8", fontWeight: "600" },
-
-  linkRow: { alignSelf: "flex-start" },
-  linkText: {
-    color: T.olive,
-    fontWeight: "900",
-    letterSpacing: 0.6,
-    fontFamily: SYSTEM_SANS,
-    textDecorationLine: "underline",
-  },
-
-  formHeaderLite: { paddingBottom: 10 },
-  formTitle: {
-    fontSize: 14,
-    fontWeight: "900",
-    letterSpacing: 1.6,
-    color: T.text,
-    textTransform: "uppercase",
-    fontFamily: SYSTEM_SANS,
-  },
-  formSubtitle: {
-    marginTop: 6,
-    fontSize: 12,
-    color: "#B8B8B8",
-    fontFamily: SYSTEM_SANS,
-  },
-  formBodyLite: { paddingTop: 6 },
-
-  label: {
-    fontSize: 11,
-    color: T.text,
-    marginBottom: 8,
-    fontWeight: "900",
-    letterSpacing: 1.0,
-    textTransform: "uppercase",
-    fontFamily: SYSTEM_SANS,
-  },
-  descRow: {
-    marginTop: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  counterText: {
-    fontSize: 11,
-    color: T.mute,
-    fontFamily: SYSTEM_SANS,
-  },
-  input: {
-    backgroundColor: "#121212",
-    borderWidth: 1,
-    borderColor: "#262626",
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: T.text,
-    fontFamily: SYSTEM_SANS,
-    // @ts-ignore
-    outlineStyle: "none",
-  },
-
-  helperText: {
-    marginTop: 8,
-    fontSize: 11,
-    color: T.mute,
-    fontFamily: SYSTEM_SANS,
-    lineHeight: 16,
-  },
-
-  selectBtn: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#262626",
-    backgroundColor: "#121212",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  selectBtnText: {
-    color: T.text,
-    fontSize: 14,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: "800",
-  },
-  selectBtnHint: {
+  heroSubtitle: {
     marginTop: 4,
-    color: T.mute,
-    fontSize: 12,
+    fontSize: 10.5,
+    lineHeight: 15,
+    color: TEXT_MUTED,
     fontFamily: SYSTEM_SANS,
   },
+  heroFriday: { color: TEXT_IVORY, fontWeight: '900', letterSpacing: 0.2 },
 
-  selectedRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  selectedChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: T.olive,
-    backgroundColor: "rgba(198,166,100,0.12)",
-  },
-  selectedChipText: {
-    color: T.text,
-    fontSize: 12,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: "900",
-  },
-  clearChipBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#ffffff1a",
-    backgroundColor: "#111111",
-  },
-  clearChipText: {
-    color: T.sub,
-    fontSize: 12,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: "900",
-  },
-
-  primaryBtn: {
-    marginTop: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#ffffff14",
-    backgroundColor: "rgba(198,166,100,0.10)",
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  primaryBtnText: {
-    fontWeight: "900",
-    color: T.text,
-    fontSize: 12,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    fontFamily: SYSTEM_SANS,
-  },
-  primaryBtnSub: {
-    marginTop: 6,
-    fontSize: 12,
-    color: "#B8B8B8",
-    fontFamily: SYSTEM_SANS,
-  },
-
-  fileActionsRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  secondaryBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#ffffff1a",
-    backgroundColor: "#111111",
-    alignItems: "center",
-  },
-  secondaryBtnText: {
-    color: T.text,
-    fontWeight: "900",
-    letterSpacing: 1.0,
-    textTransform: "uppercase",
-    fontSize: 10,
-    fontFamily: SYSTEM_SANS,
-  },
-  secondaryBtnDanger: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(198,166,100,0.35)",
-    backgroundColor: "rgba(198,166,100,0.10)",
-    alignItems: "center",
-  },
-  secondaryBtnDangerText: {
-    color: T.olive,
-    fontWeight: "900",
-    letterSpacing: 1.0,
-    textTransform: "uppercase",
-    fontSize: 10,
-    fontFamily: SYSTEM_SANS,
-  },
-
-  previewWrap: {
-    marginTop: 12,
-    borderRadius: 16,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#ffffff14",
-    backgroundColor: "#0B0B0B",
-  },
-  previewStage: {
-    width: "100%",
-    backgroundColor: "#0B0B0B",
-    minHeight: 240,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  previewImg: { width: "100%", height: "100%", backgroundColor: "#0B0B0B" },
-  thumbLoading: {
-    width: "100%",
-    height: "100%",
-    minHeight: 240,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-  },
-  thumbLoadingText: {
-    color: T.sub,
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 1.0,
-    textTransform: "uppercase",
-    fontFamily: SYSTEM_SANS,
-  },
-  thumbFallback: {
-    width: "100%",
-    height: "100%",
-    minHeight: 240,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  thumbFallbackText: {
-    color: "#B8B8B8",
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    fontFamily: SYSTEM_SANS,
-  },
-  previewOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "flex-end",
-    alignItems: "center",
-    paddingBottom: 12,
-  },
-  playPill: {
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#ffffff22",
-    backgroundColor: "rgba(0,0,0,0.55)",
+    paddingTop: 12,
+    gap: 8,
+    justifyContent: 'center',
   },
-  playPillText: {
-    fontWeight: "900",
-    color: T.text,
-    fontSize: 10,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    fontFamily: SYSTEM_SANS,
-  },
+  loadingText: { fontSize: 10, color: TEXT_MUTED, fontFamily: SYSTEM_SANS },
 
-  thumbReqRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  scroll: { flex: 1, marginTop: 10 },
+  scrollContent: { paddingHorizontal: 12, paddingBottom: 64 },
+
+  gridContent: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'stretch',
+  },
+  gridItem: { marginBottom: 12 },
+  gridItemOneCol: { width: '100%' },
+  gridItemTwoCol: { width: '49%' },
+  gridItemFullRow: { width: '100%' },
+
+  /* --------------------------- section headers -------------------------- */
+  sectionHeaderRow: {
+    width: '100%',
+    marginTop: 8,
     marginBottom: 10,
+    paddingHorizontal: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  thumbReqTitle: {
+  sectionHeaderRowSpaced: { marginTop: 18 },
+  sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sectionHeaderTitle: {
     fontSize: 11,
-    fontWeight: "900",
+    fontWeight: '900',
+    color: TEXT_IVORY,
     letterSpacing: 1.0,
-    textTransform: "uppercase",
-    color: T.text,
+    textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
   },
-  thumbReqBadge: {
-    fontSize: 11,
-    color: "#FFD6D6",
-    fontFamily: SYSTEM_SANS,
-    fontWeight: "900",
+  sectionHeaderPill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
+    backgroundColor: '#101010',
     borderWidth: 1,
-    borderColor: "rgba(255,120,120,0.35)",
-    backgroundColor: "rgba(255,120,120,0.10)",
-    overflow: "hidden",
+    borderColor: '#2A2A2A',
+  },
+  sectionHeaderPillText: {
+    fontSize: 8.5,
+    fontWeight: '900',
+    color: TEXT_MUTED,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    fontFamily: SYSTEM_SANS,
   },
 
-  statusRow: {
+  emptyState: {
+    alignItems: 'center',
+    marginTop: 48,
+    paddingHorizontal: 24,
+    width: '100%',
+  },
+  emptyTitle: {
     marginTop: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    fontSize: 15,
+    fontWeight: '800',
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
   },
-  statusText: {
-    color: T.sub,
-    fontSize: 12,
+  emptyText: {
+    marginTop: 4,
+    fontSize: 10,
+    color: TEXT_MUTED,
+    textAlign: 'center',
     fontFamily: SYSTEM_SANS,
   },
 
-  progressWrap: { marginTop: 12 },
-  progressBar: {
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: "#1B1B1B",
-    overflow: "hidden",
-  },
-  progressFill: { height: "100%", backgroundColor: T.olive },
-  progressLabels: {
-    marginTop: 6,
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  progressText: {
-    fontSize: 11,
-    color: T.text,
-    fontWeight: "800",
-    fontFamily: SYSTEM_SANS,
-  },
-  progressEta: { fontSize: 11, color: T.mute, fontFamily: SYSTEM_SANS },
-
-  agreeBlock: { marginTop: 16 },
-  agreeRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: "#3A3A3A",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#0B0B0B",
-  },
-  checkboxChecked: { backgroundColor: T.olive, borderColor: T.olive },
-  checkGlyph: { color: "#0B0B0B", fontWeight: "900", fontSize: 12, fontFamily: SYSTEM_SANS },
-  agreeText: { color: T.sub, fontSize: 12, fontFamily: SYSTEM_SANS },
-  termsLink: { color: T.olive, fontWeight: "900" },
-  termsHintRow: { marginTop: 6 },
-  termsHintText: {
-    fontSize: 11,
-    color: T.mute,
-    textDecorationLine: "underline",
-    fontFamily: SYSTEM_SANS,
-  },
-
-  submitBtn: {
-    marginTop: 14,
-    borderRadius: 16,
-    paddingVertical: 14,
-    alignItems: "center",
-    backgroundColor: T.olive,
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.35)",
-  },
-  submitText: {
-    color: "#0B0B0B",
-    fontWeight: "900",
-    letterSpacing: 1.6,
-    fontSize: 12,
-    textTransform: "uppercase",
-    fontFamily: SYSTEM_SANS,
-  },
-  formFootnote: {
-    marginTop: 10,
-    fontSize: 11,
-    color: T.mute,
-    textAlign: "center",
-    fontFamily: SYSTEM_SANS,
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.72)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 16,
-  },
-
-  /* category modal */
-  categoryModal: {
-    width: "100%",
-    maxWidth: 520,
+  card: {
+    flexDirection: 'row',
+    padding: 10,
     borderRadius: 18,
-    padding: 16,
+    backgroundColor: DARK_ELEVATED,
     borderWidth: 1,
-    borderColor: "#2B2B2B",
-    backgroundColor: "#0F0F0F",
-  },
-  categoryModalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  modalIconClose: {
-    width: 34,
-    height: 34,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#2B2B2B",
-    backgroundColor: "#151515",
-  },
-  modalIconCloseText: { color: T.text, fontWeight: "900", fontFamily: SYSTEM_SANS },
-
-  modalSearch: {
-    backgroundColor: "#121212",
-    borderWidth: 1,
-    borderColor: "#262626",
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: T.text,
-    fontFamily: SYSTEM_SANS,
-    // @ts-ignore
-    outlineStyle: "none",
-    marginBottom: 12,
+    borderColor: '#262626',
+    shadowColor: '#000',
+    shadowOpacity: 0.42,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 12,
+    elevation: 7,
+    width: '100%',
+    height: WORKSHOP_CARD_HEIGHT,
+    alignItems: 'stretch',
   },
 
-  tagList: { gap: 8 },
-  tagRow: {
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#2A2A2A",
-    backgroundColor: "#121212",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  tagRowActive: {
-    borderColor: T.olive,
-    backgroundColor: "rgba(198,166,100,0.12)",
-  },
-  tagRowText: { color: T.sub, fontSize: 13, fontFamily: SYSTEM_SANS, fontWeight: "700" },
-  tagRowTextActive: { color: T.text, fontWeight: "900" },
-  tagRowCheck: { color: T.olive, fontWeight: "900", fontFamily: SYSTEM_SANS },
+  thumbWrap: { width: 76, marginRight: 10, justifyContent: 'center' },
+  thumb: { width: 76, height: 76, borderRadius: 12 },
 
-  modalAltBtn: {
-    flex: 1,
-    borderRadius: 14,
-    paddingVertical: 12,
-    alignItems: "center",
-    backgroundColor: "#151515",
+  /* ✅ themed icon thumb */
+  iconThumb: {
+    width: 76,
+    height: 76,
+    borderRadius: 12,
+    backgroundColor: '#111111',
     borderWidth: 1,
-    borderColor: "#2B2B2B",
+    borderColor: '#2A2A2A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  modalAltText: {
-    color: T.text,
-    fontWeight: "900",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    fontSize: 11,
+  iconThumbInner: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: '#0F0F0F',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+  },
+  iconThumbLabel: {
+    position: 'absolute',
+    bottom: 8,
+    fontSize: 8,
+    color: TEXT_MUTED,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
     fontFamily: SYSTEM_SANS,
   },
 
-  modalPrimaryBtn: {
-    flex: 1,
-    borderRadius: 14,
-    paddingVertical: 12,
-    alignItems: "center",
-    backgroundColor: T.olive,
+  thumbPlaceholder: {
+    width: 76,
+    height: 76,
+    borderRadius: 12,
+    backgroundColor: '#111111',
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.35)",
+    borderColor: '#2A2A2A',
+    gap: 4,
+    overflow: 'hidden',
   },
-  modalPrimaryText: {
-    color: "#0B0B0B",
-    fontWeight: "900",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    fontSize: 11,
+  thumbPlaceholderText: {
+    fontSize: 8,
+    color: TEXT_MUTED,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
     fontFamily: SYSTEM_SANS,
   },
-
-  /* rules modal */
-  modalContent: {
-    width: "100%",
-    maxWidth: 520,
+  shimmerSweep: {
+    position: 'absolute',
+    width: '45%',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    top: -12,
+    left: '30%',
     borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#2B2B2B",
-    backgroundColor: "#0F0F0F",
   },
+
+  cardBody: { flex: 1, justifyContent: 'space-between' },
+
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cardTitle: {
+    flexShrink: 1,
+    fontSize: 13,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  badgeProOnly: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#101010',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+  },
+  badgeProOnlyText: {
+    fontSize: 8.5,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  cardDescription: {
+    marginTop: 3,
+    fontSize: 9.5,
+    color: TEXT_MUTED,
+    lineHeight: 13,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  metaHint: { fontSize: 8.5, color: TEXT_MUTED, fontFamily: SYSTEM_SANS },
+
+  cardBottomRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+
+  previewChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#101010',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+  },
+  previewChipText: {
+    fontSize: 9,
+    color: TEXT_IVORY,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  ctaButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    backgroundColor: GOLD,
+  },
+  ctaButtonOutline: { backgroundColor: 'transparent', borderWidth: 1, borderColor: GOLD },
+  ctaText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#050505',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+  },
+  ctaTextOutline: { color: GOLD },
+
+  comingSoonBig: {
+    marginTop: 28,
+    marginBottom: 6,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
+    color: TEXT_MUTED,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    fontSize: Platform.select({ ios: 18, android: 18, web: 24 }),
+    opacity: 0.95,
+    width: '100%',
+  },
+
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+  },
+  modalCardWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  modalCard: {
+    borderRadius: 20,
+    backgroundColor: DARK_ELEVATED,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    padding: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowOffset: { width: 0, height: 10 },
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 10,
+  },
+  modalHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   modalTitle: {
-    fontSize: 14,
-    fontWeight: "900",
-    letterSpacing: 1.6,
-    color: T.text,
-    textTransform: "uppercase",
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
-    marginBottom: 12,
-  },
-  modalText: {
-    fontSize: 13,
-    color: "#D0D0D0",
-    lineHeight: 19,
-    marginBottom: 10,
-    fontFamily: SYSTEM_SANS,
-  },
-  modalTextStrong: {
-    fontSize: 13,
-    color: T.text,
-    lineHeight: 19,
-    marginBottom: 10,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: "900",
   },
   modalClose: {
-    width: "100%",
-    borderRadius: 14,
-    paddingVertical: 12,
-    alignItems: "center",
-    backgroundColor: "#151515",
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#101010',
     borderWidth: 1,
-    borderColor: "#2B2B2B",
+    borderColor: '#2A2A2A',
   },
-  modalCloseText: {
-    color: T.text,
-    fontWeight: "900",
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
+
+  previewArea: {
+    width: '100%',
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+  },
+  previewImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+
+  videoWrap: { flex: 1, backgroundColor: '#000' },
+  video: { width: '100%', height: '100%', backgroundColor: '#000' },
+
+  /* ✅ audio preview */
+  audioWrap: {
+    flex: 1,
+    backgroundColor: '#000',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    justifyContent: 'space-between',
+  },
+  audioTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  audioIconPill: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: '#0F0F0F',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  audioTitle: {
+    flex: 1,
     fontSize: 12,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+  },
+  audioBarsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 4,
+    justifyContent: 'center',
+    opacity: 0.9,
+    paddingVertical: 8,
+  },
+  audioBar: {
+    width: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(198,166,100,0.85)',
+  },
+  audioControls: { flexDirection: 'row', gap: 10 },
+
+  videoControls: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    bottom: 10,
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'space-between',
+  },
+  videoControlButton: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  videoControlText: {
+    color: TEXT_IVORY,
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
     fontFamily: SYSTEM_SANS,
   },
 
-  /* preview modal */
-  previewModal: {
-    width: "100%",
-    maxWidth: 720,
-    borderRadius: 18,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#2B2B2B",
-    backgroundColor: "#0F0F0F",
+  previewPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    gap: 6,
   },
-  previewTitle: {
-    fontSize: 14,
-    fontWeight: "900",
-    letterSpacing: 1.6,
-    color: T.text,
-    textTransform: "uppercase",
-    fontFamily: SYSTEM_SANS,
-    marginBottom: 10,
-  },
-  previewVideoWrap: {
-    width: "100%",
-    borderRadius: 16,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#2B2B2B",
-    backgroundColor: "#0B0B0B",
-  },
-  previewVideoStage: {
-    width: "100%",
-    aspectRatio: 16 / 9,
-    backgroundColor: "#0B0B0B",
-  },
-  previewVideo: { width: "100%", height: "100%", backgroundColor: "#0B0B0B" },
-  previewLoadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    backgroundColor: "rgba(0,0,0,0.35)",
-  },
-  previewLoadingText: {
-    color: T.sub,
+  previewPlaceholderTitle: {
+    marginTop: 4,
     fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
+    fontWeight: '900',
+    color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
   },
-  previewErrorOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    padding: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.55)",
-  },
-  previewErrorText: {
-    color: T.text,
-    fontSize: 13,
-    lineHeight: 18,
-    textAlign: "center",
+  previewPlaceholderText: {
+    fontSize: 9.5,
+    color: TEXT_MUTED,
+    textAlign: 'center',
+    lineHeight: 13,
     fontFamily: SYSTEM_SANS,
-    marginBottom: 12,
   },
-  previewErrorActions: { flexDirection: "row", gap: 10 },
-  previewRetryBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: T.olive,
+
+  modalDescription: {
+    marginTop: 10,
+    fontSize: 10,
+    color: TEXT_MUTED,
+    lineHeight: 14,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  modalMetaRow: { marginTop: 10, flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  modalMetaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: '#101010',
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.35)",
+    borderColor: '#2A2A2A',
   },
-  previewRetryText: {
-    color: "#0B0B0B",
-    fontWeight: "900",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    fontSize: 11,
+  modalMetaText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
     fontFamily: SYSTEM_SANS,
   },
-  previewAltBtn: {
+
+  modalActions: { marginTop: 12, flexDirection: 'row', gap: 10, justifyContent: 'space-between' },
+  modalButton: {
+    flex: 1,
+    borderRadius: 999,
     paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: "#151515",
-    borderWidth: 1,
-    borderColor: "#2B2B2B",
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
   },
-  previewAltText: {
-    color: T.text,
-    fontWeight: "900",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    fontSize: 11,
+  modalButtonGhost: { backgroundColor: '#101010', borderWidth: 1, borderColor: '#2A2A2A' },
+  modalButtonGhostText: {
+    color: TEXT_IVORY,
+    fontWeight: '900',
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
     fontFamily: SYSTEM_SANS,
   },
-  previewMetaRow: { marginTop: 10, flexDirection: "row", justifyContent: "space-between" },
-  previewMeta: { fontSize: 12, color: T.mute, fontFamily: SYSTEM_SANS },
-  previewMetaStrong: { color: T.text, fontWeight: "900", fontFamily: SYSTEM_SANS },
+  modalButtonGold: { backgroundColor: GOLD },
+  modalButtonGoldText: {
+    color: '#050505',
+    fontWeight: '900',
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    fontFamily: SYSTEM_SANS,
+  },
 });
+
