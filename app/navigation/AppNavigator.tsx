@@ -20,6 +20,7 @@ import PaywallScreen from "../screens/PaywallScreen";
 import PaySuccessScreen from "../screens/PaySuccessScreen";
 import NewPassword from "../screens/NewPassword";
 import WorkshopSubmitScreen from "../screens/WorkshopSubmitScreen";
+import PublicProfileScreen from "../screens/PublicProfileScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -237,8 +238,9 @@ export default function AppNavigator({
 
 
 <Stack.Screen name="WorkshopSubmit" component={WorkshopSubmitScreen} />
-        {/* Always keep NewPassword accessible (deep link + manual nav) */}
-        <Stack.Screen name="NewPassword" component={NewPassword} />
+<Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
+{/* Always keep NewPassword accessible (deep link + manual nav) */}
+<Stack.Screen name="NewPassword" component={NewPassword} />
       </Stack.Navigator>
 
       {/* ✅ Optional: keep invisible, but ensures membership check doesn't "feel stuck".

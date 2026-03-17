@@ -6,12 +6,16 @@ export const linking: LinkingOptions<any> = {
     "https://overlooked.cloud",
     "https://www.overlooked.cloud",
     "overlooked://",
+    "http://localhost:8081",
+    "http://localhost:19006",
+    "http://localhost:3000",
   ],
 
   config: {
     screens: {
-      // DIRECT screen — must exist here!
+      // DIRECT screens
       NewPassword: "reset-password",
+      PublicProfile: "creative/:slug",
 
       // AUTH STACK
       Auth: {
@@ -35,7 +39,7 @@ export const linking: LinkingOptions<any> = {
         },
       },
 
-      // OPTIONAL ROUTES SO TS DOESN’T COMPLAIN
+      // OPTIONAL ROUTES
       Paywall: "paywall",
       PaySuccess: "pay-success",
     },
