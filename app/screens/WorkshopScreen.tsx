@@ -4878,19 +4878,22 @@ const chapters = useMemo(() => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.pageWrap}>
-          <Text style={styles.eyebrow}>Film Bootcamp</Text>
-<Text style={styles.pageTitle}>Learn the Craft of Film</Text>
-<Text style={styles.pageSubtitle}>
-  Choose a discipline, build real skills, and grow your creative portfolio with every challenge you complete.
-</Text>
+          <View style={styles.heroBlock}>
+  <Text style={styles.eyebrow}>Film Bootcamp</Text>
+  <Text style={styles.pageTitle}>Learn the Craft of Film</Text>
+  <Text style={styles.pageSubtitle}>
+    Choose a discipline, build real skills, and grow your creative portfolio with every challenge you complete.
+  </Text>
+</View>
 
 
           {!isDesktop ? (
             <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.mobileChipRow}
-            >
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  contentContainerStyle={styles.mobileChipRow}
+  style={styles.mobileChipScroll}
+>
               {PATHS.map((path) => (
                 <MobilePathChip
                   key={path.key}
@@ -4918,134 +4921,156 @@ const chapters = useMemo(() => {
             ) : null}
 
             <View style={styles.centerPanel}>
-              <View style={styles.topSummary}>
-                <View style={styles.topSummaryLeft}>
-                  <View style={styles.activePathBadge}>
+              <View style={[styles.topSummary, !isDesktop && styles.topSummaryMobile]}>
+                <View style={[styles.topSummaryLeft, !isDesktop && styles.topSummaryLeftMobile]}>
+                  <View style={[styles.activePathBadge, !isDesktop && styles.activePathBadgeMobile]}>
                     <Ionicons name={activePath.icon} size={18} color={GOLD} />
                   </View>
 
-                  <View style={styles.topSummaryTextWrap}>
-                    <Text style={styles.topSummaryTitle}>{activePath.label}</Text>
-                    <Text style={styles.topSummarySubtitle}>{activePath.subtitle}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.summaryPillsRow}>
-                  <View style={styles.summaryPill}>
-                    <Ionicons name="flash-outline" size={12} color={GOLD} />
-                    <Text style={styles.summaryPillText}>{`${globalXp} Total XP`}</Text>
-                  </View>
-
-                  <View style={styles.summaryPill}>
-                    <Ionicons name="ribbon-outline" size={12} color={GOLD} />
-                    <Text style={styles.summaryPillText}>{`Lv ${level}`}</Text>
-                  </View>
-
-                  <View style={styles.summaryPill}>
-                    <Ionicons name="flame-outline" size={12} color={GOLD} />
-                    <Text style={styles.summaryPillText}>{streak} Streak</Text>
-                  </View>
-
-                  <View style={styles.summaryPill}>
-                    <Ionicons name="library-outline" size={12} color={GOLD} />
-                    <Text style={styles.summaryPillText}>{`${workshopSessionXp} Path XP`}</Text>
-                  </View>
-
-                  <View style={styles.summaryPill}>
-                    <Ionicons name="checkmark-circle-outline" size={12} color={GREEN} />
-                    <Text style={styles.summaryPillText}>{completedSteps.length}/40</Text>
-                  </View>
-
-                  <View style={styles.summaryPill}>
-                    <Ionicons name="trophy-outline" size={12} color={GOLD} />
-                    <Text style={styles.summaryPillText}>{bossesCleared} Bosses</Text>
-                  </View>
-                </View>
-              </View>
-
-              <View style={styles.currentMissionCard}>
-                <Text style={styles.currentMissionEyebrow}>Current Lesson</Text>
-                <Text style={styles.currentMissionTitle}>
-                  Step {currentLesson.step} — {currentLesson.title}
-                </Text>
-
-                <View style={styles.proOnlyPill}>
-                  <Ionicons name="sparkles-outline" size={12} color={GOLD} />
-                  <Text style={styles.proOnlyPillText}>Pro only</Text>
-                </View>
-
-                <Text style={styles.currentMissionText}>{currentLesson.description}</Text>
-
-                <View style={styles.currentMissionMeta}>
-                  <View style={styles.currentMetaPill}>
-                    <Ionicons name={kindIcon(currentLesson.kind)} size={12} color={GOLD} />
-                    <Text style={styles.currentMetaText}>{kindLabel(currentLesson.kind)}</Text>
-                  </View>
-
-                  <View style={styles.currentMetaPill}>
-                    <Ionicons name="time-outline" size={12} color={GOLD} />
-                    <Text style={styles.currentMetaText}>{currentLesson.duration}</Text>
-                  </View>
-
-                  <View style={styles.currentMetaPill}>
-                    <Ionicons name="flash-outline" size={12} color={GOLD} />
-                    <Text style={styles.currentMetaText}>{`Reward: ${currentLesson.xp} XP`}</Text>
-                  </View>
-
-                  <View style={styles.currentMetaPill}>
-                    <Ionicons name="ribbon-outline" size={12} color={GOLD} />
-                    <Text style={styles.currentMetaText}>{`Lv ${level}`}</Text>
-                  </View>
-
-                  <View style={styles.currentMetaPill}>
-                    <Ionicons name="flame-outline" size={12} color={GOLD} />
-                    <Text style={styles.currentMetaText}>{`${streak} Streak`}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.progressTrack}>
                   <View
-                    style={[styles.progressFill, { width: `${completionPercent}%` }]}
-                  />
-                </View>
-              </View>
-
-              {currentMission ? (
-                <View style={styles.missionCard}>
-                  <View style={styles.missionHeader}>
-                    <View style={styles.missionBadge}>
-                      <Ionicons name={currentMission.icon} size={16} color={BLUE} />
-                    </View>
-
-                    <View style={styles.missionTextWrap}>
-                      <Text style={styles.missionEyebrow}>Mission</Text>
-                      <Text style={styles.missionTitle}>{currentMission.title}</Text>
-                    </View>
-                  </View>
-
-                  <Text style={styles.missionDescription}>
-                    {currentMission.description}
-                  </Text>
-
-                  <View style={styles.missionPillsRow}>
-                    <View style={styles.missionPill}>
-                      <Ionicons name="sparkles-outline" size={12} color={BLUE} />
-                      <Text style={styles.missionPillText}>{currentMission.reward}</Text>
-                    </View>
-
-                    <View style={styles.missionPill}>
-                      <Ionicons
-                        name={missionIcon(currentMission.type)}
-                        size={12}
-                        color={BLUE}
-                      />
-                      <Text style={styles.missionPillText}>
-                        {missionLabel(currentMission.type)}
-                      </Text>
-                    </View>
+  style={[
+    styles.topSummaryTextWrap,
+    !isDesktop && styles.topSummaryTextWrapMobile,
+  ]}
+>
+                    <Text style={[styles.topSummaryTitle, !isDesktop && styles.topSummaryTitleMobile]}>
+  {activePath.label}
+</Text>
+                    <Text
+  style={[
+    styles.topSummarySubtitle,
+    !isDesktop && styles.topSummarySubtitleMobile,
+  ]}
+>
+  {activePath.subtitle}
+</Text>
                   </View>
                 </View>
-              ) : null}
+
+  <View style={[styles.summaryPillsRow, !isDesktop && styles.summaryPillsRowMobile]}>
+    <View style={[styles.summaryPill, !isDesktop && styles.summaryPillMobile]}>
+      <Ionicons name="flash-outline" size={12} color={GOLD} />
+      <Text style={[styles.summaryPillText, !isDesktop && styles.summaryPillTextMobile]}>
+        {`${globalXp} Total XP`}
+      </Text>
+    </View>
+
+    <View style={[styles.summaryPill, !isDesktop && styles.summaryPillMobile]}>
+      <Ionicons name="ribbon-outline" size={12} color={GOLD} />
+      <Text style={[styles.summaryPillText, !isDesktop && styles.summaryPillTextMobile]}>
+        {`Lv ${level}`}
+      </Text>
+    </View>
+
+    <View style={[styles.summaryPill, !isDesktop && styles.summaryPillMobile]}>
+      <Ionicons name="flame-outline" size={12} color={GOLD} />
+      <Text style={[styles.summaryPillText, !isDesktop && styles.summaryPillTextMobile]}>
+        {`${streak} Streak`}
+      </Text>
+    </View>
+
+    <View style={[styles.summaryPill, !isDesktop && styles.summaryPillMobile]}>
+      <Ionicons name="checkmark-circle-outline" size={12} color={GREEN} />
+      <Text style={[styles.summaryPillText, !isDesktop && styles.summaryPillTextMobile]}>
+        {`${completedSteps.length}/40 Complete`}
+      </Text>
+    </View>
+
+    {isDesktop ? (
+      <>
+        <View style={styles.summaryPill}>
+          <Ionicons name="library-outline" size={12} color={GOLD} />
+          <Text style={styles.summaryPillText}>{`${workshopSessionXp} Path XP`}</Text>
+        </View>
+
+        <View style={styles.summaryPill}>
+          <Ionicons name="trophy-outline" size={12} color={GOLD} />
+          <Text style={styles.summaryPillText}>{`${bossesCleared} Bosses`}</Text>
+        </View>
+      </>
+    ) : null}
+  </View>
+</View>
+
+<View style={styles.currentMissionCard}>
+  <Text style={styles.currentMissionEyebrow}>Current Lesson</Text>
+  <Text style={styles.currentMissionTitle}>
+    Step {currentLesson.step} — {currentLesson.title}
+  </Text>
+
+  <View style={styles.proOnlyPill}>
+    <Ionicons name="sparkles-outline" size={12} color={GOLD} />
+    <Text style={styles.proOnlyPillText}>Pro only</Text>
+  </View>
+
+  <Text style={styles.currentMissionText}>{currentLesson.description}</Text>
+
+  <View style={styles.currentMissionMeta}>
+    <View style={styles.currentMetaPill}>
+      <Ionicons name={kindIcon(currentLesson.kind)} size={12} color={GOLD} />
+      <Text style={styles.currentMetaText}>{kindLabel(currentLesson.kind)}</Text>
+    </View>
+
+    <View style={styles.currentMetaPill}>
+      <Ionicons name="time-outline" size={12} color={GOLD} />
+      <Text style={styles.currentMetaText}>{currentLesson.duration}</Text>
+    </View>
+
+    <View style={styles.currentMetaPill}>
+      <Ionicons name="flash-outline" size={12} color={GOLD} />
+      <Text style={styles.currentMetaText}>{`Reward: ${currentLesson.xp} XP`}</Text>
+    </View>
+
+    <View style={styles.currentMetaPill}>
+      <Ionicons name="ribbon-outline" size={12} color={GOLD} />
+      <Text style={styles.currentMetaText}>{`Lv ${level}`}</Text>
+    </View>
+
+    <View style={styles.currentMetaPill}>
+      <Ionicons name="flame-outline" size={12} color={GOLD} />
+      <Text style={styles.currentMetaText}>{`${streak} Streak`}</Text>
+    </View>
+  </View>
+
+  <View style={styles.progressTrack}>
+    <View style={[styles.progressFill, { width: `${completionPercent}%` }]} />
+  </View>
+</View>
+
+{currentMission ? (
+  <View style={styles.missionCard}>
+    <View style={styles.missionHeader}>
+      <View style={styles.missionBadge}>
+        <Ionicons name={currentMission.icon} size={16} color={BLUE} />
+      </View>
+
+      <View style={styles.missionTextWrap}>
+        <Text style={styles.missionEyebrow}>Mission</Text>
+        <Text style={styles.missionTitle}>{currentMission.title}</Text>
+      </View>
+    </View>
+
+    <Text style={styles.missionDescription}>{currentMission.description}</Text>
+
+    <View style={styles.missionPillsRow}>
+      <View style={styles.missionPill}>
+        <Ionicons name="sparkles-outline" size={12} color={BLUE} />
+        <Text style={styles.missionPillText}>{currentMission.reward}</Text>
+      </View>
+
+      <View style={styles.missionPill}>
+        <Ionicons
+          name={missionIcon(currentMission.type)}
+          size={12}
+          color={BLUE}
+        />
+        <Text style={styles.missionPillText}>
+          {missionLabel(currentMission.type)}
+        </Text>
+      </View>
+    </View>
+  </View>
+) : null}
 
              <View style={styles.treeCard}>
   {workshopLoading ? (
@@ -5448,60 +5473,75 @@ const styles = StyleSheet.create({
   },
 
   pageWrap: {
-    width: '100%',
-    maxWidth: 1180,
-    alignSelf: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 40,
-  },
+  width: '100%',
+  maxWidth: 1180,
+  alignSelf: 'center',
+  paddingHorizontal: 24,
+  paddingTop: 46,
+},
+  heroBlock: {
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginBottom: 10,
+},
 
   eyebrow: {
   color: GOLD,
   fontSize: 11,
-  letterSpacing: 2.6,
+  letterSpacing: 3,
   textTransform: 'uppercase',
-  marginBottom: 10,
+  marginBottom: 12,
   fontFamily: SYSTEM_SANS,
   fontWeight: '700',
   opacity: 0.95,
+  textAlign: 'center',
 },
 
-  pageTitle: {
+ pageTitle: {
   color: IVORY,
-  fontSize: 38,
-  fontWeight: '700',
-  letterSpacing: -0.9,
-  lineHeight: 42,
+  fontSize: 42,
+  fontWeight: '800',
+  letterSpacing: -1.2,
+  lineHeight: 46,
   maxWidth: 760,
+  textAlign: 'center',
 },
 
   pageSubtitle: {
   color: '#B7AE9F',
   fontSize: 15,
   lineHeight: 24,
-  marginTop: 12,
-  marginBottom: 34,
-  maxWidth: 760,
+  marginTop: 14,
+  marginBottom: 30,
+  maxWidth: 720,
   fontWeight: '400',
+  textAlign: 'center',
 },
 
   mobileChipRow: {
-    paddingBottom: 8,
-    gap: 10,
-  },
+  paddingRight: 6,
+  gap: 8,
+  paddingBottom: 14,
+  paddingHorizontal: 2,
+},
 
   mobileChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: PANEL,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginRight: 10,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+  backgroundColor: PANEL,
+  borderWidth: 1,
+  borderColor: BORDER,
+  borderRadius: 999,
+  paddingHorizontal: 14,
+  paddingVertical: 10,
+  marginRight: 10,
+  shadowColor: '#000',
+  shadowOpacity: 0.18,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 4,
+},
 
   mobileChipActive: {
     backgroundColor: GOLD,
@@ -5519,9 +5559,10 @@ const styles = StyleSheet.create({
   },
 
   mainLayout: {
-    flexDirection: 'row',
-    gap: 24,
-  },
+  flexDirection: 'row',
+  gap: 24,
+  marginTop: 6,
+},
 
   mainLayoutMobile: {
     flexDirection: 'column',
@@ -5590,6 +5631,9 @@ chapterTitle: {
   fontSize: 20,
   fontWeight: '700',
   lineHeight: 26,
+},
+mobileChipScroll: {
+  marginBottom: 4,
 },
 
 chapterSubtitle: {
@@ -5731,7 +5775,7 @@ chapterLockedText: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: PANEL,
+    backgroundColor: '#0A0A0D',
     borderRadius: 18,
     padding: 18,
     borderWidth: 1,
@@ -5739,13 +5783,23 @@ chapterLockedText: {
     gap: 14,
   },
 
+  topSummaryMobile: {
+  flexDirection: 'column',
+  alignItems: 'stretch',
+  padding: 14,
+  gap: 12,
+},
+
   topSummaryLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
     flexShrink: 1,
   },
-
+topSummaryLeftMobile: {
+  alignItems: 'center',
+  gap: 10,
+},
   activePathBadge: {
     width: 44,
     height: 44,
@@ -5754,10 +5808,18 @@ chapterLockedText: {
     alignItems: 'center',
     justifyContent: 'center',
   },
+  activePathBadgeMobile: {
+  width: 40,
+  height: 40,
+  borderRadius: 12,
+},
 
   topSummaryTextWrap: {
     flexShrink: 1,
   },
+  topSummaryTextWrapMobile: {
+  flex: 1,
+},
 
   topSummaryTitle: {
     color: IVORY,
@@ -5765,11 +5827,20 @@ chapterLockedText: {
     fontWeight: '700',
   },
 
+  topSummaryTitleMobile: {
+  fontSize: 16,
+},
+
   topSummarySubtitle: {
     color: MUTED,
     fontSize: 12,
     marginTop: 2,
   },
+
+  topSummarySubtitleMobile: {
+  fontSize: 11,
+  lineHeight: 16,
+},
 
   summaryPillsRow: {
     flexDirection: 'row',
@@ -5778,6 +5849,10 @@ chapterLockedText: {
     gap: 10,
     flexShrink: 1,
   },
+  summaryPillsRowMobile: {
+  justifyContent: 'space-between',
+  gap: 8,
+},
 
   summaryPill: {
     flexDirection: 'row',
@@ -5788,15 +5863,25 @@ chapterLockedText: {
     paddingVertical: 7,
     borderRadius: 999,
   },
+  summaryPillMobile: {
+  width: '48%',
+  paddingHorizontal: 10,
+  paddingVertical: 9,
+  borderRadius: 12,
+  backgroundColor: '#121216',
+},
 
   summaryPillText: {
     color: IVORY,
     fontSize: 11,
     fontWeight: '600',
   },
+  summaryPillTextMobile: {
+  fontSize: 10,
+},
 
   currentMissionCard: {
-    backgroundColor: PANEL,
+    backgroundColor: '#0A0A0D',
     borderRadius: 18,
     padding: 20,
     borderWidth: 1,

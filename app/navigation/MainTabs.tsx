@@ -1163,9 +1163,9 @@ export default function MainTabs() {
   const isWide = width >= 980;
 
   const NAV_HEIGHT = isWide ? 56 : isPhone ? 40 : 44;
-  const topOffset = isWide ? 0 : Platform.OS === 'ios' ? Math.max((insets.top || 0) - 4, 0) : 0;
+const topOffset = Platform.OS === 'ios' ? insets.top : 0;
 
-  const contentTopPadding = NAV_HEIGHT + (isWide ? 0 : 30);
+  const contentTopPadding = NAV_HEIGHT + (isWide ? 0 : 12);
 
   const TABBAR_HEIGHT = isPhone ? 54 : 56;
 
@@ -1260,7 +1260,10 @@ export default function MainTabs() {
           onOpenLeaderboard={() => setShowLeaderboard(true)}
         />
 
-        <SafeAreaView style={[styles.safeArea, { paddingTop: contentTopPadding }]} edges={['left', 'right', 'bottom']}>
+        <SafeAreaView
+  style={[styles.safeArea, { paddingTop: contentTopPadding }]}
+  edges={['top', 'left', 'right', 'bottom']}
+>
           <Tab.Navigator screenOptions={screenOptions}>
   <Tab.Screen name="Featured" component={FeaturedWrapped} />
   <Tab.Screen name="Workshop" component={WorkshopWrapped} />

@@ -1289,26 +1289,31 @@ const HeaderControls = React.memo(
               })}
             </View>
           ) : (
-            <View style={styles.centerSortRow}>
-              {filters.map((f) => {
-                const active = sort === f.key;
-                return (
-                  <TouchableOpacity
-                    key={f.key}
-                    activeOpacity={0.9}
-                    onPress={() => setSort(f.key)}
-                    style={[
-                      styles.centerChip,
-                      active && { borderColor: GOLD, backgroundColor: '#111' },
-                    ]}
-                  >
-                    <Text style={[styles.centerChipText, active && { color: GOLD }]}>
-                      {f.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+ <ScrollView
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  contentContainerStyle={styles.mobileChipRow}
+>
+  {filters.map((f) => {
+    const active = sort === f.key;
+    return (
+      <TouchableOpacity
+        key={f.key}
+        activeOpacity={0.9}
+        onPress={() => setSort(f.key)}
+        style={[
+          styles.centerChip,
+          styles.mobileChip,
+          active && { borderColor: GOLD, backgroundColor: '#111' },
+        ]}
+      >
+        <Text style={[styles.centerChipText, active && { color: GOLD }]}>
+          {f.label}
+        </Text>
+      </TouchableOpacity>
+    );
+  })}
+</ScrollView>
           )}
         </View>
 
@@ -1318,19 +1323,18 @@ const HeaderControls = React.memo(
 
           {isSidebar ? (
             <ScrollView
-  style={{ maxHeight: 360 }}
-  contentContainerStyle={{ gap: 8, paddingBottom: 24 }}
-  showsVerticalScrollIndicator
-  nestedScrollEnabled
-  onStartShouldSetResponderCapture={() => true}
-  onMoveShouldSetResponderCapture={() => true}
-  {...(Platform.OS === 'web'
-    ? ({
-        // stop the main feed from stealing wheel scroll
-        onWheel: (e: any) => e.stopPropagation(),
-      } as any)
-    : {})}
->
+              style={{ maxHeight: 360 }}
+              contentContainerStyle={{ gap: 8, paddingBottom: 24 }}
+              showsVerticalScrollIndicator
+              nestedScrollEnabled
+              onStartShouldSetResponderCapture={() => true}
+              onMoveShouldSetResponderCapture={() => true}
+              {...(Platform.OS === 'web'
+                ? ({
+                    onWheel: (e: any) => e.stopPropagation(),
+                  } as any)
+                : {})}
+            >
               {FILM_CATEGORIES.map((c) => {
                 const active = filmCategory === c;
                 return (
@@ -1360,7 +1364,11 @@ const HeaderControls = React.memo(
               })}
             </ScrollView>
           ) : (
-            <View style={styles.centerSortRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.mobileChipRow}
+            >
               {FILM_CATEGORIES.map((c) => {
                 const active = filmCategory === c;
                 return (
@@ -1370,6 +1378,7 @@ const HeaderControls = React.memo(
                     onPress={() => setFilmCategory(c)}
                     style={[
                       styles.centerChip,
+                      styles.mobileChip,
                       active && { borderColor: GOLD, backgroundColor: '#111' },
                     ]}
                   >
@@ -1379,14 +1388,13 @@ const HeaderControls = React.memo(
                   </TouchableOpacity>
                 );
               })}
-            </View>
+            </ScrollView>
           )}
         </View>
       </View>
     );
   }
 );
-
 
 // ⬇️ PART 2 continues from here (FeaturedScreen component body, fetch logic, render functions, layout)
 // FeaturedScreen.tsx — PART 2 / 3
@@ -1468,17 +1476,18 @@ const [filmCategory, setFilmCategory] = useState<FilmCategory>('All');
   const [activeId, setActiveId] = useState<string | null>(null);
 
   type CommentRow = {
+  id: string;
+  submission_id: string;
+  user_id: string;
+  comment: string;
+  created_at: string;
+  parent_comment_id?: string | null;
+  users?: {
     id: string;
-    submission_id: string;
-    user_id: string;
-    comment: string;
-    created_at: string;
-    users?: {
-      id: string;
-      full_name: string;
-      avatar_url?: string | null;
-    } | null;
-  };
+    full_name: string;
+    avatar_url?: string | null;
+  } | null;
+};
 
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [commentsFor, setCommentsFor] = useState<Submission | null>(null);
@@ -1487,6 +1496,22 @@ const [filmCategory, setFilmCategory] = useState<FilmCategory>('All');
   const [commentText, setCommentText] = useState('');
   const [commentPosting, setCommentPosting] = useState(false);
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [replyingTo, setReplyingTo] = useState<CommentRow | null>(null);
+
+  const rootComments = useMemo(
+  () => comments.filter((c) => !c.parent_comment_id),
+  [comments]
+);
+
+const repliesByParent = useMemo(() => {
+  const map: Record<string, CommentRow[]> = {};
+  for (const c of comments) {
+    if (!c.parent_comment_id) continue;
+    if (!map[c.parent_comment_id]) map[c.parent_comment_id] = [];
+    map[c.parent_comment_id].push(c);
+  }
+  return map;
+}, [comments]);
 
   // ✅ Preview modal for wide web compact cards
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -1564,10 +1589,20 @@ const fitContain = (maxW: number, maxH: number, aspect = FIT_ASPECT) => {
 
   // ✅ Feed dimensions (Reddit-style) – used in narrow/mobile view
   const VOTE_COL_W = isNarrow ? 58 : 64;
-  const FEED_INNER_PAD = isNarrow ? 12 : 14;
-  const contentW = Math.max(240, cardW - VOTE_COL_W - FEED_INNER_PAD * 2);
-  const mediaW = isWideWeb
+const FEED_INNER_PAD = isNarrow ? 12 : 14;
+
+const mobileCardW = winW - 20;
+const mobileMediaW = mobileCardW;
+
+const contentW = Math.max(
+  240,
+  (isMobile ? mobileCardW : cardW) - VOTE_COL_W - FEED_INNER_PAD * 2
+);
+
+const mediaW = isWideWeb
   ? Math.min(gridAreaW, contentW, 980)
+  : isMobile
+  ? mobileMediaW
   : Math.min(contentW, 980);
 
   // ✅ Compact grid sizing (wide web)
@@ -1833,18 +1868,20 @@ const goToProfile = (user?: { id: string; full_name: string }) => {
   };
 
   const openComments = async (s: Submission) => {
-    setCommentsFor(s);
-    setCommentsOpen(true);
-    setCommentText('');
-    await fetchComments(s.id);
-  };
+  setCommentsFor(s);
+  setCommentsOpen(true);
+  setCommentText('');
+  setReplyingTo(null);
+  await fetchComments(s.id);
+};
 
   const closeComments = () => {
-    setCommentsOpen(false);
-    setCommentsFor(null);
-    setComments([]);
-    setCommentText('');
-  };
+  setCommentsOpen(false);
+  setCommentsFor(null);
+  setComments([]);
+  setCommentText('');
+  setReplyingTo(null);
+};
 
   const fetchCommentCounts = async (submissionIds: string[]) => {
     if (!submissionIds.length) return;
@@ -1875,20 +1912,41 @@ const goToProfile = (user?: { id: string; full_name: string }) => {
   const fetchComments = async (submissionId: string) => {
     setCommentsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('submission_comments')
-        .select(
-          `
-          id,
-          submission_id,
-          user_id,
-          comment,
-          created_at,
-          users:user_id ( id, full_name, avatar_url )
-        `
-        )
-        .eq('submission_id', submissionId)
-        .order('created_at', { ascending: false });
+      let { data, error } = await supabase
+  .from('submission_comments')
+  .select(
+    `
+    id,
+    submission_id,
+    user_id,
+    comment,
+    created_at,
+    parent_comment_id,
+    users:user_id ( id, full_name, avatar_url )
+  `
+  )
+  .eq('submission_id', submissionId)
+  .order('created_at', { ascending: false });
+
+if (error) {
+  const fallback = await supabase
+    .from('submission_comments')
+    .select(
+      `
+      id,
+      submission_id,
+      user_id,
+      comment,
+      created_at,
+      users:user_id ( id, full_name, avatar_url )
+    `
+    )
+    .eq('submission_id', submissionId)
+    .order('created_at', { ascending: false });
+
+  data = fallback.data as any;
+  error = fallback.error;
+}
 
       if (error) throw error;
       setComments((data as any) || []);
@@ -1918,13 +1976,26 @@ const goToProfile = (user?: { id: string; full_name: string }) => {
     setCommentPosting(true);
 
     try {
-      const { error } = await supabase.from('submission_comments').insert([
-        {
-          submission_id: commentsFor.id,
-          user_id: uid,
-          comment: text,
-        },
-      ]);
+      let { error } = await supabase.from('submission_comments').insert([
+  {
+    submission_id: commentsFor.id,
+    user_id: uid,
+    comment: text,
+    parent_comment_id: replyingTo?.id ?? null,
+  },
+]);
+
+if (error) {
+  const fallback = await supabase.from('submission_comments').insert([
+    {
+      submission_id: commentsFor.id,
+      user_id: uid,
+      comment: text,
+    },
+  ]);
+
+  error = fallback.error;
+}
 
       if (error) throw error;
 
@@ -1934,7 +2005,8 @@ const goToProfile = (user?: { id: string; full_name: string }) => {
       }));
 
       setCommentText('');
-      await fetchComments(commentsFor.id);
+setReplyingTo(null);
+await fetchComments(commentsFor.id);
     } catch (e: any) {
       console.warn('postComment error:', e?.message || e);
       Alert.alert('Comment failed', 'Please try again.');
@@ -2174,9 +2246,18 @@ const renderMedia = (
       : {};
 
   // ✅ Fix 2: contain 16:9 inside the available box (prevents web stretch/crop)
-  const fitted = fitContain(mediaW, availableHForMedia, 16 / 9);
-  const frameW = fitted.w; // contained width
-  const frameH = fitted.h; // contained height
+  const mobileWinnerMaxH = winH * 0.28;
+const mobileFeedMaxH = winH * 0.24;
+
+const effectiveMaxH = isMobile
+  ? isWinnerRow
+    ? Math.max(220, mobileWinnerMaxH)
+    : Math.max(190, mobileFeedMaxH)
+  : availableHForMedia;
+
+const fitted = fitContain(mediaW, effectiveMaxH, 16 / 9);
+const frameW = fitted.w;
+const frameH = fitted.h;
 
   if (!s.storage_path) {
     return (
@@ -2257,29 +2338,26 @@ const renderHeroOverlay = (s: Submission & { users?: { id: string; full_name: st
     const isCompactHero = winW < 520;
   const isTinyHero = winW < 380;
 
-  const heroKickerSize = isCompactHero ? 10 : 14;
-
-  // ✅ wide web hero title was too tall for the 16:9 safe area → causes clipping
-  const heroTitleSize = isTinyHero ? 22 : isCompactHero ? 26 : isWideWeb ? 40 : 52;
-  const heroTitleLine = isTinyHero ? 26 : isCompactHero ? 30 : isWideWeb ? 44 : 58;
-
-  const heroBylineSize = isTinyHero ? 11 : isCompactHero ? 12 : 16;
+  const heroKickerSize = isCompactHero ? 9 : 14;
+const heroTitleSize = isTinyHero ? 18 : isCompactHero ? 22 : isWideWeb ? 40 : 52;
+const heroTitleLine = isTinyHero ? 22 : isCompactHero ? 26 : isWideWeb ? 44 : 58;
+const heroBylineSize = isTinyHero ? 10 : isCompactHero ? 11 : 16;
 
   return (
     <View style={styles.heroOverlay} pointerEvents="box-none">
       <View style={styles.heroOverlayInner} pointerEvents="none">
         <Text
-          style={[
-            styles.heroKicker,
-            {
-              fontSize: heroKickerSize,
-              marginBottom: isCompactHero ? 4 : 6,
-              letterSpacing: isCompactHero ? 0.6 : 0.8,
-            },
-          ]}
-        >
-          LAST MONTH’S WINNER
-        </Text>
+  style={[
+    styles.heroKicker,
+    {
+      fontSize: heroKickerSize,
+      marginBottom: isCompactHero ? 3 : 6,
+      letterSpacing: isCompactHero ? 0.45 : 0.8,
+    },
+  ]}
+>
+  LAST MONTH’S WINNER
+</Text>
                 <Text
           style={[
             styles.heroTitle,
@@ -2287,8 +2365,8 @@ const renderHeroOverlay = (s: Submission & { users?: { id: string; full_name: st
               fontSize: heroTitleSize,
               lineHeight: heroTitleLine,
               maxWidth: '100%', // ✅ deterministic, prevents edge clipping
-              letterSpacing: isCompactHero ? 0.6 : 0.9,
-              paddingBottom: 4, // ✅ prevents bottom clipping
+              letterSpacing: isCompactHero ? 0.3 : 0.9,
+paddingBottom: 2,
             },
           ]}
           numberOfLines={2}
@@ -2447,6 +2525,105 @@ const renderCompactGridCard = useCallback(
     );
   },
   [gridCardW, currentUserId, votedIds, voteBusy, commentCounts]
+);
+const renderMobileYouTubeCard = useCallback(
+  (
+    s: Submission & {
+      description?: string | null;
+      storage_path?: string | null;
+      thumbnail_url?: string | null;
+      media_kind?: RawSubmission['media_kind'];
+      category?: Category | null;
+    }
+  ) => {
+    const mine = !!currentUserId && (s as any).user_id === currentUserId;
+    const voted = votedIds.has(s.id);
+    const busy = !!voteBusy?.[s.id];
+    const rowId = s.id;
+
+    return (
+      <View key={rowId} style={[styles.mobileFeedCard, { width: mobileCardW }]}>
+        <View style={styles.mobileMediaWrap}>
+          {renderMedia(rowId, s, activeId === rowId, false)}
+        </View>
+
+        <View style={styles.mobileMetaWrap}>
+          <Text style={styles.mobileTitle} numberOfLines={2}>
+            {s.title}
+          </Text>
+
+          {s.users?.full_name ? (
+            <TouchableOpacity onPress={() => goToProfile(s.users)} activeOpacity={0.9}>
+              <Text style={styles.mobileByline} numberOfLines={1}>
+                {s.users.full_name}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {!!s.description ? (
+            <Text style={styles.mobileDescription} numberOfLines={2}>
+              {s.description}
+            </Text>
+          ) : null}
+
+          <View style={styles.mobileActionRow}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              disabled={busy || mine}
+              onPress={() => {
+                if (!mine) toggleVote(s);
+              }}
+              style={[styles.mobilePill, (busy || mine) && { opacity: 0.5 }]}
+            >
+              <Text style={[styles.mobilePillText, voted && { color: GOLD }]}>
+                {busy ? '…' : `Votes ${s.votes ?? 0}`}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => openComments(s)}
+              style={styles.mobilePillGhost}
+            >
+              <Text style={styles.mobilePillGhostText}>
+                Comments {commentCounts[s.id] ?? 0}
+              </Text>
+            </TouchableOpacity>
+
+            {mine ? (
+              <TouchableOpacity
+                style={[
+                  styles.mobilePillGhost,
+                  (deleteBusy[s.id] || (s as any).is_winner) && { opacity: 0.5 },
+                ]}
+                disabled={!!deleteBusy[s.id] || (s as any).is_winner}
+                onPress={() => {
+                  const doRemove = () => onRemoveSubmission(s as any);
+                  if (Platform.OS === 'web') {
+                    const ok =
+                      typeof window !== 'undefined' &&
+                      window.confirm('Remove submission? This will remove it and its votes.');
+                    if (ok) doRemove();
+                  } else {
+                    Alert.alert('Remove submission?', 'This will remove it and its votes.', [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Remove', style: 'destructive', onPress: doRemove },
+                    ]);
+                  }
+                }}
+                activeOpacity={0.9}
+              >
+                <Text style={styles.mobilePillGhostText}>
+                  {(s as any).is_winner ? 'Winner locked' : deleteBusy[s.id] ? 'Removing…' : 'Remove'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      </View>
+    );
+  },
+  [activeId, currentUserId, votedIds, voteBusy, deleteBusy, commentCounts, mobileCardW]
 );
 
 // ✅ Existing full card (kept)
@@ -2649,6 +2826,7 @@ const sidebarElement = useMemo(() => {
 
 const renderSubmissionItem = ({ item }: any) => {
   if (isWideWeb) return renderCompactGridCard(item);
+  if (isMobile) return renderMobileYouTubeCard(item);
   return renderCard(item.id, item, activeId === item.id, false);
 };
 
@@ -2705,23 +2883,33 @@ return (
             renderItem={renderSubmissionItem}
             keyExtractor={(item: any) => item.id}
             ListHeaderComponent={
-              <View style={{ alignItems: 'center' }}>
-                {headerElement}
-                <View style={[styles.subHeaderWrap, { width: cardW, marginTop: 4 }]}>
-                  <HeaderControls
-  compact={isNarrow}
-  category={category}
-  filmCategory={filmCategory}
-  setFilmCategory={setFilmCategory}
-  sort={sort}
-  setSort={setSort}
-  searchText={searchText}
-  setSearchText={setSearchText}
-  isSearching={isSearching}
-  layout="center"
-/>
-                </View>
-              </View>
+             <View style={{ alignItems: 'center' }}>
+  {headerElement}
+  <View
+    style={[
+      styles.subHeaderWrap,
+      {
+        width: isMobile ? winW - 20 : cardW,
+        marginTop: 8,
+        alignSelf: 'center',
+      },
+    ]}
+  >
+    <HeaderControls
+      compact={isNarrow}
+      category={category}
+      filmCategory={filmCategory}
+      setFilmCategory={setFilmCategory}
+      sort={sort}
+      setSort={setSort}
+      searchText={searchText}
+      setSearchText={setSearchText}
+      isSearching={isSearching}
+      layout="center"
+    />
+  </View>
+  <View style={{ height: 8 }} />
+</View>
             }
             ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
             contentContainerStyle={[
@@ -2829,31 +3017,58 @@ return (
 
     {/* ---------------- Comments Modal (kept) ---------------- */}
     {commentsOpen && (
-      <View style={styles.commentsOverlay}>
-        <Pressable style={StyleSheet.absoluteFillObject} onPress={closeComments} />
+  <Modal visible transparent animationType="fade" onRequestClose={closeComments}>
+    <View style={styles.commentsOverlay}>
+      <Pressable style={StyleSheet.absoluteFillObject} onPress={closeComments} />
 
-        <View style={styles.commentsSheet}>
-          <View style={styles.commentsHeader}>
+      <View
+  style={[
+    styles.commentsModalCard,
+    isMobile && {
+      width: winW - 20,
+      maxWidth: winW - 20,
+      height: Math.min(winH - 140, 520),
+      alignSelf: 'center',
+    },
+  ]}
+>
+        <View style={styles.commentsHeader}>
+          <View style={{ flex: 1 }}>
             <Text style={styles.commentsTitle}>Comments</Text>
-            <TouchableOpacity onPress={closeComments} activeOpacity={0.9}>
-              <Text style={styles.commentsClose}>Close</Text>
-            </TouchableOpacity>
+            {commentsFor?.title ? (
+              <Text style={styles.commentsSubtitle} numberOfLines={1}>
+                {commentsFor.title}
+              </Text>
+            ) : null}
           </View>
 
-          <View style={{ flex: 1 }}>
-            {commentsLoading ? (
-              <ActivityIndicator color={T.accent} style={{ padding: 14 }} />
-            ) : (
-              <FlatList
-                data={comments}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={{ paddingBottom: 12 }}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="always"
-                renderItem={({ item }) => {
-                  const u = item.users;
-                  return (
-                    <View style={styles.commentRow}>
+          <TouchableOpacity onPress={closeComments} activeOpacity={0.9} style={styles.commentsCloseBtn}>
+            <Text style={styles.commentsClose}>Close</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.commentsBody}>
+          {commentsLoading ? (
+            <ActivityIndicator color={T.accent} style={{ padding: 20 }} />
+          ) : rootComments.length === 0 ? (
+            <View style={styles.commentsEmptyState}>
+              <Text style={styles.commentsEmptyTitle}>No comments yet</Text>
+              <Text style={styles.commentsEmptyText}>Be the first to say something thoughtful.</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={rootComments}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.commentsListContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="always"
+              renderItem={({ item }) => {
+                const u = item.users;
+                const replies = repliesByParent[item.id] || [];
+
+                return (
+                  <View style={styles.commentThread}>
+                    <View style={styles.commentCard}>
                       <TouchableOpacity
                         onPress={() => u && goToProfile({ id: u.id, full_name: u.full_name })}
                         activeOpacity={0.9}
@@ -2874,19 +3089,79 @@ return (
                         </TouchableOpacity>
 
                         <Text style={styles.commentText}>{item.comment}</Text>
+
+                        <View style={styles.commentActionsRow}>
+                          <TouchableOpacity
+                            activeOpacity={0.9}
+                            onPress={() => setReplyingTo(item)}
+                            style={styles.replyBtn}
+                          >
+                            <Text style={styles.replyBtnText}>Reply</Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
                     </View>
-                  );
-                }}
-              />
-            )}
-          </View>
+
+                    {replies.length > 0 && (
+                      <View style={styles.repliesWrap}>
+                        {replies.map((reply) => {
+                          const ru = reply.users;
+                          return (
+                            <View key={reply.id} style={styles.replyCard}>
+                              <TouchableOpacity
+                                onPress={() =>
+                                  ru && goToProfile({ id: ru.id, full_name: ru.full_name })
+                                }
+                                activeOpacity={0.9}
+                                style={styles.replyAvatarTap}
+                              >
+                                <Image
+                                  source={{ uri: ru?.avatar_url || 'https://picsum.photos/80/80' }}
+                                  style={styles.replyAvatar}
+                                />
+                              </TouchableOpacity>
+
+                              <View style={{ flex: 1 }}>
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    ru && goToProfile({ id: ru.id, full_name: ru.full_name })
+                                  }
+                                  activeOpacity={0.9}
+                                >
+                                  <Text style={styles.replyName}>{ru?.full_name || 'Unknown'}</Text>
+                                </TouchableOpacity>
+
+                                <Text style={styles.replyText}>{reply.comment}</Text>
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+                );
+              }}
+            />
+          )}
+        </View>
+
+        <View style={styles.commentComposerWrap}>
+          {replyingTo ? (
+            <View style={styles.replyingBanner}>
+              <Text style={styles.replyingBannerText} numberOfLines={1}>
+                Replying to {replyingTo.users?.full_name || 'comment'}
+              </Text>
+              <TouchableOpacity onPress={() => setReplyingTo(null)} activeOpacity={0.9}>
+                <Text style={styles.replyingBannerCancel}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
 
           <View style={styles.commentComposer}>
             <TextInput
               value={commentText}
               onChangeText={setCommentText}
-              placeholder="Add a comment…"
+              placeholder={replyingTo ? 'Write a reply…' : 'Add a comment…'}
               placeholderTextColor="#777"
               style={styles.commentInput}
               multiline
@@ -2895,14 +3170,19 @@ return (
               onPress={postComment}
               disabled={commentPosting || !commentText.trim()}
               activeOpacity={0.9}
-              style={[styles.commentSendBtn, (commentPosting || !commentText.trim()) && { opacity: 0.5 }]}
+              style={[
+                styles.commentSendBtn,
+                (commentPosting || !commentText.trim()) && { opacity: 0.5 },
+              ]}
             >
               <Text style={styles.commentSendText}>{commentPosting ? '…' : 'Post'}</Text>
             </TouchableOpacity>
           </View>
         </View>
       </View>
-    )}
+    </View>
+  </Modal>
+)}
   </View>
 );
 };
@@ -2959,11 +3239,11 @@ const styles = StyleSheet.create({
   },
 
   subHeaderWrap: {
-    paddingHorizontal: 0,
-    paddingTop: 0,
-    paddingBottom: 10,
-    alignItems: 'center',
-  },
+  paddingHorizontal: 0,
+  paddingTop: 0,
+  paddingBottom: 6,
+  alignItems: 'center',
+},
 
   /* ---------------- Cards (full feed) ---------------- */
   cardWrapper: {
@@ -3013,11 +3293,12 @@ const styles = StyleSheet.create({
   },
 
   winnerFooter: {
-    alignSelf: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 16,
-  },
+  alignSelf: 'center',
+  paddingHorizontal: 16,
+  paddingTop: 10,
+  paddingBottom: 12,
+},
+
 
   winnerMetaRow: {
     flexDirection: 'row',
@@ -3027,32 +3308,131 @@ const styles = StyleSheet.create({
   },
 
   winnerMetaLabel: {
-    color: 'rgba(237,235,230,0.48)',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    fontSize: 11,
-  },
+  color: 'rgba(237,235,230,0.44)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '800',
+  letterSpacing: 0.8,
+  textTransform: 'uppercase',
+  fontSize: 10,
+},
 
   winnerMetaValue: {
-    color: GOLD,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    letterSpacing: 0.6,
-    fontSize: 13,
-  },
+  color: GOLD,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  letterSpacing: 0.4,
+  fontSize: 12,
+},
 
   /* ---------------- Hero overlay ---------------- */
   heroOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 24,
-    backgroundColor: 'rgba(0,0,0,0.18)',
-  },
+  ...StyleSheet.absoluteFillObject,
+  zIndex: 10,
+  justifyContent: 'center',
+  alignItems: 'center',
+  paddingHorizontal: Platform.OS === 'web' ? 24 : 12,
+  paddingVertical: Platform.OS === 'web' ? 24 : 12,
+  backgroundColor: 'rgba(0,0,0,0.18)',
+},
+
+mobileChipRow: {
+  paddingRight: 8,
+  gap: 10,
+},
+
+mobileChip: {
+  marginRight: 0,
+  height: 34,
+  paddingHorizontal: 14,
+},
+
+mobileFeedCard: {
+  alignSelf: 'center',
+  backgroundColor: '#040404',
+  marginBottom: 18,
+},
+
+mobileMediaWrap: {
+  width: '100%',
+  borderRadius: 0,
+  overflow: 'hidden',
+  backgroundColor: '#000',
+},
+
+mobileMetaWrap: {
+  paddingHorizontal: 10,
+  paddingTop: 8,
+  paddingBottom: 2,
+},
+
+mobileTitle: {
+  color: '#F8F6F1',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 16,
+  lineHeight: 21,
+},
+
+mobileByline: {
+  marginTop: 3,
+  color: 'rgba(237,235,230,0.58)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  fontSize: 12,
+},
+
+mobileDescription: {
+  marginTop: 5,
+  color: 'rgba(237,235,230,0.68)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '500',
+  fontSize: 12,
+  lineHeight: 17,
+},
+
+mobileActionRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: 7,
+  marginTop: 9,
+},
+
+mobilePill: {
+  height: 32,
+  paddingHorizontal: 12,
+  borderRadius: 999,
+  backgroundColor: '#101010',
+  borderWidth: 1,
+  borderColor: 'rgba(212,180,95,0.20)',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+mobilePillText: {
+  color: '#F3EFE7',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '800',
+  fontSize: 11,
+},
+
+mobilePillGhost: {
+  height: 32,
+  paddingHorizontal: 12,
+  borderRadius: 999,
+  backgroundColor: 'transparent',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.07)',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+mobilePillGhostText: {
+  color: 'rgba(237,235,230,0.72)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '800',
+  fontSize: 11,
+},
 
   heroOverlayInner: {
     maxWidth: '100%',
@@ -3626,32 +4006,32 @@ const styles = StyleSheet.create({
 
   /* ---------------- HeaderControls (sidebar + center) ---------------- */
   sideSearchBox: {
-    width: '100%',
-    backgroundColor: '#0A0A0A',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 16,
-    color: '#F2EFE8',
-  },
+  width: '100%',
+  backgroundColor: '#090909',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.06)',
+  borderRadius: 14,
+  color: '#F2EFE8',
+},
 
   sidePanel: {
-    width: '100%',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    backgroundColor: '#090909',
-    padding: 12,
-  },
+  width: '100%',
+  borderRadius: 16,
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.04)',
+  backgroundColor: '#080808',
+  padding: 10,
+},
 
   sidePanelTitle: {
-    color: 'rgba(237,235,230,0.72)',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 10,
-  },
+  color: 'rgba(237,235,230,0.68)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 10,
+  letterSpacing: 0.9,
+  textTransform: 'uppercase',
+  marginBottom: 8,
+},
 
   sideSortItem: {
     width: '100%',
@@ -3712,15 +4092,15 @@ const styles = StyleSheet.create({
   },
 
   centerChip: {
-    paddingHorizontal: 13,
-    height: 36,
-    borderRadius: 999,
-    backgroundColor: '#0B0B0B',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  paddingHorizontal: 12,
+  height: 34,
+  borderRadius: 999,
+  backgroundColor: '#0B0B0B',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.06)',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
 
   centerChipText: {
     color: 'rgba(237,235,230,0.80)',
@@ -3733,138 +4113,315 @@ const styles = StyleSheet.create({
 
   /* ---------------- Comments modal ---------------- */
   commentsOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 50,
-    backgroundColor: 'rgba(0,0,0,0.72)',
-    justifyContent: 'flex-end',
-  },
+  ...StyleSheet.absoluteFillObject,
+  zIndex: 50,
+  backgroundColor: 'rgba(0,0,0,0.78)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  paddingHorizontal: Platform.OS === 'web' ? 24 : 10,
+  paddingVertical: Platform.OS === 'web' ? 32 : 20,
+},
 
-  commentsSheet: {
-    maxHeight: '80%',
-    backgroundColor: '#080808',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    overflow: 'hidden',
-  },
+commentsModalCard: {
+  width: '100%',
+  maxWidth: 760,
+  backgroundColor: '#080808',
+  borderRadius: Platform.OS === 'web' ? 24 : 20,
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.06)',
+  overflow: 'hidden',
+  shadowColor: '#000',
+  shadowOpacity: 0.38,
+  shadowRadius: 24,
+  shadowOffset: { width: 0, height: 14 },
+  elevation: 16,
+},
 
-  commentsHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+commentsHeader: {
+  paddingHorizontal: 18,
+  paddingTop: 16,
+  paddingBottom: 14,
+  borderBottomWidth: 1,
+  borderBottomColor: 'rgba(255,255,255,0.05)',
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 12,
+},
 
-  commentsTitle: {
-    color: '#fff',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    fontSize: 13,
-    letterSpacing: 0.9,
-    textTransform: 'uppercase',
-  },
+commentsTitle: {
+  color: '#fff',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 15,
+  letterSpacing: 1,
+  textTransform: 'uppercase',
+},
 
-  commentsClose: {
-    color: GOLD,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    fontSize: 12,
-    letterSpacing: 0.7,
-    textTransform: 'uppercase',
-  },
+commentsSubtitle: {
+  marginTop: 4,
+  color: 'rgba(237,235,230,0.52)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  fontSize: 12,
+},
 
-  commentRow: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.04)',
-  },
+commentsCloseBtn: {
+  height: 36,
+  paddingHorizontal: 14,
+  borderRadius: 999,
+  backgroundColor: '#0D0D0D',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.08)',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
 
-  commentAvatarTap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: '#000',
-  },
+commentsClose: {
+  color: GOLD,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 11,
+  letterSpacing: 0.8,
+  textTransform: 'uppercase',
+},
 
-  commentAvatar: {
-    width: '100%',
-    height: '100%',
-  },
+commentsBody: {
+  flex: 1,
+  minHeight: 180,
+},
 
-  commentName: {
-    color: '#fff',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    fontSize: 12,
-    letterSpacing: 0.2,
-  },
+commentsListContent: {
+  paddingHorizontal: 16,
+  paddingTop: 14,
+  paddingBottom: 18,
+},
 
-  commentText: {
-    marginTop: 4,
-    color: 'rgba(237,235,230,0.75)',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '600',
-    fontSize: 13,
-    lineHeight: 18,
-  },
+commentsEmptyState: {
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingHorizontal: 24,
+  paddingVertical: 40,
+},
 
-  commentComposer: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.05)',
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 10,
-  },
+commentsEmptyTitle: {
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 16,
+  marginBottom: 6,
+},
 
-  commentInput: {
-    flex: 1,
-    minHeight: 42,
-    maxHeight: 120,
-    borderRadius: 15,
-    backgroundColor: '#0B0B0B',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: '#EDEBE6',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '700',
-    fontSize: 13,
-    // @ts-ignore
-    outlineStyle: 'none',
-  },
+commentsEmptyText: {
+  color: 'rgba(237,235,230,0.58)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '600',
+  fontSize: 13,
+  textAlign: 'center',
+  lineHeight: 18,
+},
 
-  commentSendBtn: {
-    height: 42,
-    paddingHorizontal: 15,
-    borderRadius: 15,
-    backgroundColor: '#131313',
-    borderWidth: 1,
-    borderColor: 'rgba(212,180,95,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+commentThread: {
+  marginBottom: 14,
+},
 
-  commentSendText: {
-    color: GOLD,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    fontSize: 12,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
+commentCard: {
+  flexDirection: 'row',
+  gap: 12,
+  padding: 14,
+  borderRadius: 18,
+  backgroundColor: '#0B0B0B',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.05)',
+},
+
+commentAvatarTap: {
+  width: 38,
+  height: 38,
+  borderRadius: 19,
+  overflow: 'hidden',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.08)',
+  backgroundColor: '#000',
+},
+
+commentAvatar: {
+  width: '100%',
+  height: '100%',
+},
+
+commentName: {
+  color: '#fff',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 12,
+  letterSpacing: 0.2,
+},
+
+commentText: {
+  marginTop: 5,
+  color: 'rgba(237,235,230,0.78)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '600',
+  fontSize: 13,
+  lineHeight: 19,
+},
+
+commentActionsRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginTop: 10,
+},
+
+replyBtn: {
+  height: 30,
+  paddingHorizontal: 12,
+  borderRadius: 999,
+  backgroundColor: 'rgba(198,166,100,0.10)',
+  borderWidth: 1,
+  borderColor: 'rgba(198,166,100,0.24)',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+replyBtnText: {
+  color: GOLD,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 11,
+  letterSpacing: 0.5,
+  textTransform: 'uppercase',
+},
+
+repliesWrap: {
+  marginTop: 10,
+  marginLeft: 22,
+  gap: 8,
+},
+
+replyCard: {
+  flexDirection: 'row',
+  gap: 10,
+  padding: 12,
+  borderRadius: 16,
+  backgroundColor: '#101010',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.04)',
+},
+
+replyAvatarTap: {
+  width: 30,
+  height: 30,
+  borderRadius: 15,
+  overflow: 'hidden',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.08)',
+  backgroundColor: '#000',
+},
+
+replyAvatar: {
+  width: '100%',
+  height: '100%',
+},
+
+replyName: {
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '800',
+  fontSize: 11,
+},
+
+replyText: {
+  marginTop: 4,
+  color: 'rgba(237,235,230,0.72)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '600',
+  fontSize: 12,
+  lineHeight: 17,
+},
+
+commentComposerWrap: {
+  borderTopWidth: 1,
+  borderTopColor: 'rgba(255,255,255,0.05)',
+  backgroundColor: '#090909',
+  paddingHorizontal: 12,
+  paddingTop: 8,
+  paddingBottom: 10,
+},
+
+replyingBanner: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: 10,
+  paddingHorizontal: 12,
+  paddingVertical: 10,
+  borderRadius: 14,
+  backgroundColor: 'rgba(198,166,100,0.08)',
+  borderWidth: 1,
+  borderColor: 'rgba(198,166,100,0.18)',
+},
+
+replyingBannerText: {
+  flex: 1,
+  color: '#F1EBDD',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  fontSize: 12,
+  marginRight: 10,
+},
+
+replyingBannerCancel: {
+  color: GOLD,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 11,
+  textTransform: 'uppercase',
+  letterSpacing: 0.5,
+},
+
+commentComposer: {
+  flexDirection: 'row',
+  alignItems: 'flex-end',
+  gap: 10,
+},
+
+commentInput: {
+  flex: 1,
+  minHeight: 42,
+  maxHeight: 110,
+  borderRadius: 16,
+  backgroundColor: '#0B0B0B',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.07)',
+  paddingHorizontal: 14,
+  paddingVertical: 10,
+  color: '#EDEBE6',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  fontSize: 13,
+  // @ts-ignore
+  outlineStyle: 'none',
+},
+
+commentSendBtn: {
+  height: 46,
+  paddingHorizontal: 16,
+  borderRadius: 16,
+  backgroundColor: '#131313',
+  borderWidth: 1,
+  borderColor: 'rgba(198,166,100,0.40)',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+commentSendText: {
+  color: GOLD,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 12,
+  letterSpacing: 0.8,
+  textTransform: 'uppercase',
+},
 });
 
 export default FeaturedScreen;
