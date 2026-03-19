@@ -436,6 +436,9 @@ function HostedVideoInline({
   autoPlay,
   posterUri,
   dimVignette = true,
+  showControls = true,
+  captureSurfacePress = true,
+  surfacePressMode = 'hold',
 }: {
   playerId: string;
   storagePath: string;
@@ -444,6 +447,9 @@ function HostedVideoInline({
   autoPlay: boolean;
   posterUri?: string | null;
   dimVignette?: boolean;
+  showControls?: boolean;
+  captureSurfacePress?: boolean;
+  surfacePressMode?: 'hold' | 'toggle';
 }) {
   const ref = useRef<Video>(null);
   const htmlRef = useRef<any>(null);
@@ -603,10 +609,18 @@ function HostedVideoInline({
     return () => window.clearInterval(id);
   }, []);
 
-  const onSurfacePress = async () => {
-    if (isPlaying) await pause();
-    else await play(false);
-  };
+  const onSurfacePressIn = async () => {
+  await play(false);
+};
+
+const onSurfacePressOut = async () => {
+  await pause();
+};
+
+const onSurfaceTogglePress = async () => {
+  if (isPlaying) await pause();
+  else await play(false);
+};
 
   const maybeUpdateAspectFromStatus = (status?: AVPlaybackStatus) => {
     if (!status || !('isLoaded' in status) || !status.isLoaded) return;
@@ -626,8 +640,11 @@ function HostedVideoInline({
   };
 
   const handleLoad = (status?: AVPlaybackStatus) => {
-    if (Platform.OS !== 'web') maybeUpdateAspectFromStatus(status);
-  };
+  if (Platform.OS !== 'web') {
+    maybeUpdateAspectFromStatus(status);
+    fadeIn();
+  }
+};
 
   const handleReadyForDisplay = (evt?: any) => {
     if (Platform.OS !== 'web') {
@@ -773,7 +790,15 @@ function HostedVideoInline({
         alignSelf: 'center',
       }}
     >
-      <Animated.View style={[StyleSheet.absoluteFillObject, { opacity, zIndex: 0 }]}>
+      <Animated.View
+  style={[
+    StyleSheet.absoluteFillObject,
+    {
+      opacity: Platform.OS === 'web' ? opacity : 1,
+      zIndex: 0,
+    },
+  ]}
+>
         {Platform.OS === 'web' ? (
           <WebVideo
             ref={htmlRef}
@@ -825,16 +850,20 @@ function HostedVideoInline({
         )}
       </Animated.View>
 
-      <Pressable
-        onPress={onSurfacePress}
-        style={[
-          StyleSheet.absoluteFillObject,
-          {
-            zIndex: 6,
-            backgroundColor: 'transparent',
-          },
-        ]}
-      />
+      {captureSurfacePress ? (
+  <Pressable
+    onPress={surfacePressMode === 'toggle' ? onSurfaceTogglePress : () => {}}
+    onPressIn={surfacePressMode === 'hold' ? onSurfacePressIn : undefined}
+    onPressOut={surfacePressMode === 'hold' ? onSurfacePressOut : undefined}
+    style={[
+      StyleSheet.absoluteFillObject,
+      {
+        zIndex: 6,
+        backgroundColor: 'transparent',
+      },
+    ]}
+  />
+) : null}
 
       <View
         ref={progressRef}
@@ -860,22 +889,26 @@ function HostedVideoInline({
         </View>
       </View>
 
-      <TouchableOpacity
-        onPress={enterFullscreen}
-        activeOpacity={0.9}
-        style={[styles.fsButton, { zIndex: 20 }]}
-      >
-        <IconCorners />
-      </TouchableOpacity>
+      {showControls && (
+  <TouchableOpacity
+    onPress={enterFullscreen}
+    activeOpacity={0.9}
+    style={[styles.fsButton, { zIndex: 20 }]}
+  >
+    <IconCorners />
+  </TouchableOpacity>
+)}
 
-      <TouchableOpacity
-        onPress={toggleMute}
-        style={[styles.soundBtn, { zIndex: 20 }]}
-        activeOpacity={0.9}
-      >
-        <IconSpeaker muted={muted} />
-        <Text style={styles.soundText}>{muted ? 'Sound Off' : 'Sound On'}</Text>
-      </TouchableOpacity>
+{showControls && (
+  <TouchableOpacity
+    onPress={toggleMute}
+    style={[styles.soundBtn, { zIndex: 20 }]}
+    activeOpacity={0.9}
+  >
+    <IconSpeaker muted={muted} />
+    <Text style={styles.soundText}>{muted ? 'OFF' : 'ON'}</Text>
+  </TouchableOpacity>
+)}
     </View>
   );
 }
@@ -1128,11 +1161,8 @@ async function countUserVotesInRange(uid: string, range: { start: string; end: s
 /* ---------------- Memoized Header Controls ---------------- */
 type HeaderControlsProps = {
   category: Category;
-
-  // NEW: Film category selection
   filmCategory: FilmCategory;
   setFilmCategory: (c: FilmCategory) => void;
-
   sort: SortKey;
   setSort: (k: SortKey) => void;
   searchText: string;
@@ -1140,6 +1170,9 @@ type HeaderControlsProps = {
   isSearching?: boolean;
   compact?: boolean;
   layout?: 'center' | 'sidebar';
+  showSearch?: boolean;
+  showSort?: boolean;
+  showCategory?: boolean;
 };
 
 /**
@@ -1165,6 +1198,9 @@ const HeaderControls = React.memo(
     isSearching = false,
     compact = false,
     layout = 'center',
+    showSearch = true,
+    showSort = true,
+    showCategory = true,
   }: HeaderControlsProps) => {
     const [focused, setFocused] = useState(false);
 
@@ -1179,83 +1215,89 @@ const HeaderControls = React.memo(
     const q = raw.trim();
 
     // sizing
-    const R = compact ? 12 : 14;
-    const padH = compact ? 12 : 14;
-    const padV = compact ? 8 : 10;
-    const inputSize = compact ? 13 : 14;
+    const R = compact ? 8 : 14;
+const padH = compact ? 8 : 14;
+const padV = compact ? 3 : 10;
+const inputSize = compact ? 11 : 14;
 
-    const hintFont = compact ? 11 : 12;
-    const hintTrack = compact ? 0.4 : 0.6;
+const hintFont = compact ? 9 : 12;
+const hintTrack = compact ? 0.2 : 0.6;
 
     const isSidebar = layout === 'sidebar';
 
     return (
-      <View style={{ width: '100%' }}>
-        {/* Search */}
-        <View
-          style={[
-            styles.sideSearchBox,
-            {
-              borderRadius: R,
-              borderColor: focused ? GOLD : '#1A1A1A',
-              paddingHorizontal: padH,
-              paddingVertical: padV,
-              marginBottom: 12,
-            },
-          ]}
-        >
-          <TextInput
-            placeholder="Search film name…"
-            placeholderTextColor="rgba(237,235,230,0.45)"
-            value={searchText}
-            onChangeText={(txt) => setSearchText(txt)}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            selectionColor={GOLD}
-            cursorColor={GOLD}
-            style={{
-              flex: 1,
-              color: '#EDEBE6',
-              fontSize: inputSize,
-              fontFamily: SYSTEM_SANS,
-              fontWeight: Platform.OS === 'android' ? '700' : '800',
-              letterSpacing: 0.2,
-              // @ts-ignore
-              outlineStyle: 'none',
-            }}
-          />
-        </View>
+  <View style={{ width: '100%' }}>
+    {showSearch ? (
+      <View
+        style={[
+          styles.sideSearchBox,
+          {
+            borderRadius: R,
+            borderColor: focused ? GOLD : '#1A1A1A',
+            paddingHorizontal: padH,
+            paddingVertical: padV,
+            marginBottom: 0,
+          },
+        ]}
+      >
+        <TextInput
+          placeholder="Search film…"
+          placeholderTextColor="rgba(237,235,230,0.45)"
+          value={searchText}
+          onChangeText={(txt) => setSearchText(txt)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          selectionColor={GOLD}
+          cursorColor={GOLD}
+          style={{
+            flex: 1,
+            color: '#EDEBE6',
+            fontSize: inputSize,
+            fontFamily: SYSTEM_SANS,
+            fontWeight: Platform.OS === 'android' ? '700' : '800',
+            letterSpacing: 0.2,
+          }}
+        />
+      </View>
+    ) : null}
+      
 
         {/* Searching hint */}
-        {category === 'film' && isSearching && q.length > 0 ? (
+        {showSearch && category === 'film' && isSearching && q.length > 0 ? (
           <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 10,
-              marginBottom: 12,
-              justifyContent: isSidebar ? 'flex-start' : 'center',
-            }}
-          >
-            <ActivityIndicator size="small" color={GOLD} />
-            <Text
-              style={{
-                color: 'rgba(237,235,230,0.72)',
-                fontSize: hintFont,
-                fontFamily: SYSTEM_SANS,
-                fontWeight: '800',
-                letterSpacing: hintTrack,
-                textTransform: 'uppercase',
-              }}
-            >
-              Searching…
-            </Text>
-          </View>
+  style={{
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: compact ? 6 : 12,
+    justifyContent: isSidebar ? 'flex-start' : 'center',
+  }}
+>
+  <ActivityIndicator size="small" color={GOLD} />
+  <Text
+    style={{
+      marginLeft: 10,
+      color: 'rgba(237,235,230,0.72)',
+      fontSize: hintFont,
+      fontFamily: SYSTEM_SANS,
+      fontWeight: '800',
+      letterSpacing: hintTrack,
+      textTransform: 'uppercase',
+    }}
+  >
+    Searching…
+  </Text>
+</View>
         ) : null}
 
         {/* SORT panel */}
-        <View style={styles.sidePanel}>
-          <Text style={styles.sidePanelTitle}>SORT BY</Text>
+        <View
+  style={[
+    styles.sidePanel,
+    compact && !isSidebar && { padding: 2 },
+    !isSidebar && { alignItems: 'center' },
+  ]}
+>
+  <Text style={styles.sidePanelTitle}>SORT BY</Text>
 
           {isSidebar ? (
             <View style={{ gap: 8 }}>
@@ -1318,8 +1360,15 @@ const HeaderControls = React.memo(
         </View>
 
         {/* ✅ CATEGORY panel (separate + scrollable on sidebar) */}
-        <View style={[styles.sidePanel, { marginTop: 14 }]}>
-          <Text style={styles.sidePanelTitle}>CATEGORY</Text>
+        <View
+  style={[
+    styles.sidePanel,
+    { marginTop: compact ? 6 : 14 },
+    compact && !isSidebar && { padding: 6 },
+    !isSidebar && { alignItems: 'center' },
+  ]}
+>
+  <Text style={styles.sidePanelTitle}>CATEGORY</Text>
 
           {isSidebar ? (
             <ScrollView
@@ -1406,10 +1455,10 @@ const FeaturedScreen = () => {
   const { width: winW, height: winH } = useWindowDimensions();
   const isNarrow = winW < 480;
 
-  const isWideWeb = Platform.OS === 'web' && winW >= 980; // ✅ sidebar + compact grid
-  const gridColumns = isWideWeb ? 2 : 1;
-
-  const isMobile = Platform.OS !== 'web';
+  const isWideWeb = Platform.OS === 'web' && winW >= 980;
+const isMobile = Platform.OS !== 'web';
+const useTwoColumnMobile = isMobile;
+const gridColumns = isWideWeb || useTwoColumnMobile ? 2 : 1;
 
   const category: Category = 'film';
 
@@ -1538,6 +1587,8 @@ const repliesByParent = useMemo(() => {
   );
   const lastOffsetY = useRef(0);
 
+  const longPressTriggeredRef = useRef<Record<string, boolean>>({});
+
   const { userId: gamUserId, refresh: refreshGamification } = useGamification();
 
   // Track monthly votes used for cap enforcement (kept, even though feed is all-time)
@@ -1607,7 +1658,14 @@ const mediaW = isWideWeb
 
   // ✅ Compact grid sizing (wide web)
   const GRID_GAP = 14;
-  const gridCardW = isWideWeb ? Math.floor((gridAreaW - GRID_GAP) / 2) : cardW;
+const MOBILE_GRID_SIDE_PAD = 8;
+const MOBILE_CARD_SHRINK = 2;
+
+const gridCardW = isWideWeb
+  ? Math.floor((gridAreaW - GRID_GAP) / 2)
+  : isMobile
+  ? Math.floor((winW - MOBILE_GRID_SIDE_PAD * 2 - GRID_GAP) / 2) - MOBILE_CARD_SHRINK
+  : cardW;
 
   // Fetch content when filters change
   useEffect(() => {
@@ -2326,6 +2384,7 @@ const frameH = fitted.h;
         autoPlay={isActive}
         posterUri={s.thumbnail_url ?? null}
         dimVignette={isWinnerRow}
+        showControls={false}
       />
     </View>
   );
@@ -2431,7 +2490,7 @@ const renderVoteColumn = (s: Submission & { description?: string | null }) => {
   );
 };
 
-// ✅ compact grid card (wide-web)
+// ✅ compact grid card (wide-web / mobile grid)
 const renderCompactGridCard = useCallback(
   (
     s: Submission & {
@@ -2442,89 +2501,93 @@ const renderCompactGridCard = useCallback(
       category?: Category | null;
     }
   ) => {
-    const mine = !!currentUserId && (s as any).user_id === currentUserId;
-    const voted = votedIds.has(s.id);
-    const busy = !!voteBusy?.[s.id];
-
     const thumb = s.thumbnail_url || 'https://picsum.photos/600/340';
-    const votes = s.votes ?? 0;
-    const commentsN = commentCounts?.[s.id] ?? 0;
+    const playerId = `grid-${s.id}`;
+    const isActiveCard = activeId === playerId;
 
     return (
-      <TouchableOpacity
-  activeOpacity={0.95}
-  onPress={() => openPreview(s)}
-  style={[styles.gridCard, { width: gridCardW }]}
-  {...(Platform.OS === 'web'
-    ? {
-        onMouseEnter: () => setActiveId(`grid-${s.id}`),
-        onMouseLeave: () =>
-          setActiveId((prev) => (prev === `grid-${s.id}` ? null : prev)),
-      }
-    : {})}
->
+      <Pressable
+        onPress={() => {
+          if (longPressTriggeredRef.current[s.id]) {
+            longPressTriggeredRef.current[s.id] = false;
+            return;
+          }
+          openPreview(s);
+        }}
+        onLongPress={() => {
+          if (Platform.OS !== 'web' && s.storage_path) {
+            longPressTriggeredRef.current[s.id] = true;
+            setActiveId(playerId);
+          }
+        }}
+        delayLongPress={140}
+        onPressOut={() => {
+          if (Platform.OS !== 'web') {
+            setActiveId((prev) => (prev === playerId ? null : prev));
+            setTimeout(() => {
+              longPressTriggeredRef.current[s.id] = false;
+            }, 0);
+          }
+        }}
+        style={[styles.gridCard, { width: gridCardW }]}
+        {...(Platform.OS === 'web'
+          ? {
+              onHoverIn: () => {
+                if (s.storage_path) setActiveId(playerId);
+              },
+              onHoverOut: () => {
+                setActiveId((prev) => (prev === playerId ? null : prev));
+              },
+            }
+          : {})}
+      >
         <View style={styles.gridThumbWrap}>
-  {s.storage_path ? (
-    <HostedVideoInline
-      playerId={`grid-${s.id}`}
-      storagePath={s.storage_path}
-      width={gridCardW}
-      maxHeight={gridCardW / (16 / 9)}
-      autoPlay={activeId === `grid-${s.id}`} // plays only when active (optional)
-      posterUri={s.thumbnail_url ?? null}
-      dimVignette={false}
-    />
-  ) : (
-    <>
-      <Image source={{ uri: thumb }} style={styles.gridThumb} resizeMode="cover" />
-      <View style={styles.gridThumbOverlay} pointerEvents="none" />
-    </>
-  )}
-</View>
+          {/* Base thumbnail always visible */}
+          <Image source={{ uri: thumb }} style={styles.gridThumb} resizeMode="cover" />
 
-        <View style={styles.gridBody}>
-          <Text style={styles.gridTitle} numberOfLines={1}>
-            {s.title}
-          </Text>
-          {s.users?.full_name ? (
-            <Text style={styles.gridByline} numberOfLines={1}>
-              {s.users.full_name}
-            </Text>
+          {/* Only mount video while hovered / holding */}
+          {s.storage_path && isActiveCard ? (
+            <View style={StyleSheet.absoluteFillObject}>
+              <HostedVideoInline
+                playerId={playerId}
+                storagePath={s.storage_path}
+                width={gridCardW}
+                maxHeight={gridCardW / (16 / 9)}
+                autoPlay={true}
+                posterUri={s.thumbnail_url ?? null}
+                dimVignette={false}
+                showControls={false}
+                captureSurfacePress={false}
+              />
+            </View>
           ) : null}
 
-          <View style={styles.gridMetaRow}>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              disabled={busy || mine}
-              onPress={(e: any) => {
-                e?.stopPropagation?.();
-                if (!mine) toggleVote(s);
-              }}
-              style={[styles.gridVotePill, (busy || mine) && { opacity: 0.55 }]}
-            >
-              <Text style={[styles.gridVoteText, voted && { color: T.accent }]}>
-                {busy ? '…' : `▲ ${votes}`}
+          <View style={styles.gridThumbOverlay} pointerEvents="none" />
+
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.28)', 'rgba(0,0,0,0.88)']}
+            start={{ x: 0.5, y: 0.1 }}
+            end={{ x: 0.5, y: 1 }}
+            style={styles.gridOverlay}
+            pointerEvents="none"
+          />
+
+          <View style={styles.gridOverlayTextWrap}>
+            <Text style={styles.gridOverlayTitle} numberOfLines={2}>
+              {s.title}
+            </Text>
+
+            {s.users?.full_name ? (
+              <Text style={styles.gridOverlayByline} numberOfLines={1}>
+                {s.users.full_name}
               </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={(e: any) => {
-                e?.stopPropagation?.();
-                openComments(s);
-              }}
-              style={styles.gridCommentPill}
-            >
-              <Text style={styles.gridCommentText}>{`💬 ${commentsN}`}</Text>
-            </TouchableOpacity>
-
-            {mine ? <Text style={styles.gridMine}>Yours</Text> : null}
+            ) : null}
           </View>
         </View>
-      </TouchableOpacity>
+      </Pressable>
     );
   },
-  [gridCardW, currentUserId, votedIds, voteBusy, commentCounts]
+  [gridCardW, activeId]
 );
 const renderMobileYouTubeCard = useCallback(
   (
@@ -2680,12 +2743,7 @@ const renderCard = useCallback(
                   {renderHeroOverlay(s)}
                 </View>
 
-                <View style={[styles.winnerFooter, { width: cardW }]}>
-                  <View style={styles.winnerMetaRow}>
-                    <Text style={styles.winnerMetaLabel}>Votes</Text>
-                    <Text style={styles.winnerMetaValue}>{s.votes || 0}</Text>
-                  </View>
-                </View>
+                
               </>
             ) : (
               <>
@@ -2825,8 +2883,7 @@ const sidebarElement = useMemo(() => {
 }, [isWideWeb, category, sort, searchText, isSearching, filmCategory, winH]);
 
 const renderSubmissionItem = ({ item }: any) => {
-  if (isWideWeb) return renderCompactGridCard(item);
-  if (isMobile) return renderMobileYouTubeCard(item);
+  if (isWideWeb || isMobile) return renderCompactGridCard(item);
   return renderCard(item.id, item, activeId === item.id, false);
 };
 
@@ -2854,167 +2911,185 @@ return (
 
             <View style={[styles.gridArea, { flex: 1 }]}>
               <FlatList
-                key={keyForList}
-                data={submissions}
-                renderItem={renderSubmissionItem}
-                keyExtractor={(item: any) => item.id}
-                ListHeaderComponent={headerElement}
-                numColumns={2}
-                columnWrapperStyle={{ gap: 14, paddingHorizontal: 0 }}
-                contentContainerStyle={[
-                  styles.listContentWide,
-                  {
-                    paddingTop: CONTENT_TOP_PAD,
-                    paddingBottom: BOTTOM_TAB_H + 18,
-                  },
-                ]}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="always"
-                onScroll={onScrollImmediate}
-                onMomentumScrollEnd={onMomentumEnd}
-                scrollEventThrottle={16}
-              />
+  key={keyForList}
+  data={submissions}
+  renderItem={renderSubmissionItem}
+  keyExtractor={(item: any) => item.id}
+  ListHeaderComponent={headerElement}
+  numColumns={2}
+  columnWrapperStyle={{ justifyContent: 'space-between' }}
+  contentContainerStyle={[
+    styles.listContentWide,
+    {
+      paddingTop: CONTENT_TOP_PAD,
+      paddingBottom: BOTTOM_TAB_H + 18,
+    },
+  ]}
+  showsVerticalScrollIndicator={false}
+  keyboardShouldPersistTaps="always"
+  onScroll={onScrollImmediate}
+  onMomentumScrollEnd={onMomentumEnd}
+  scrollEventThrottle={16}
+/>
             </View>
           </View>
         ) : (
           <FlatList
-            key={keyForList}
-            data={submissions}
-            renderItem={renderSubmissionItem}
-            keyExtractor={(item: any) => item.id}
-            ListHeaderComponent={
-             <View style={{ alignItems: 'center' }}>
-  {headerElement}
-  <View
-    style={[
-      styles.subHeaderWrap,
-      {
-        width: isMobile ? winW - 20 : cardW,
-        marginTop: 8,
-        alignSelf: 'center',
-      },
-    ]}
-  >
-    <HeaderControls
-      compact={isNarrow}
-      category={category}
-      filmCategory={filmCategory}
-      setFilmCategory={setFilmCategory}
-      sort={sort}
-      setSort={setSort}
-      searchText={searchText}
-      setSearchText={setSearchText}
-      isSearching={isSearching}
-      layout="center"
-    />
-  </View>
-  <View style={{ height: 8 }} />
-</View>
-            }
-            ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
-            contentContainerStyle={[
-              styles.listContent,
-              {
-                paddingTop: CONTENT_TOP_PAD,
-                paddingBottom: BOTTOM_TAB_H + 8,
-              },
-            ]}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="always"
-            keyboardDismissMode="none"
-            removeClippedSubviews={Platform.OS !== 'web'}
-            windowSize={5}
-            initialNumToRender={3}
-            maxToRenderPerBatch={4}
-            viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
-            onEndReachedThreshold={0.4}
-            onScroll={onScrollImmediate}
-            onMomentumScrollEnd={onMomentumEnd}
-            scrollEventThrottle={16}
-            onContentSizeChange={() => ensureActiveByCenter(lastOffsetY.current)}
-            onLayout={() => ensureActiveByCenter(lastOffsetY.current)}
-          />
+  key={keyForList}
+  data={submissions}
+  renderItem={renderSubmissionItem}
+  keyExtractor={(item: any) => item.id}
+  ListHeaderComponent={
+    <View style={{ alignItems: 'center' }}>
+      {headerElement}
+      <View
+        style={[
+          styles.subHeaderWrap,
+          {
+            width: isMobile ? winW - 20 : cardW,
+            marginTop: 8,
+            alignSelf: 'center',
+          },
+        ]}
+      >
+        <HeaderControls
+          compact={isNarrow}
+          category={category}
+          filmCategory={filmCategory}
+          setFilmCategory={setFilmCategory}
+          sort={sort}
+          setSort={setSort}
+          searchText={searchText}
+          setSearchText={setSearchText}
+          isSearching={isSearching}
+          layout="center"
+        />
+      </View>
+      <View style={{ height: 8 }} />
+    </View>
+  }
+  numColumns={gridColumns}
+  columnWrapperStyle={
+  gridColumns > 1
+    ? {
+        justifyContent: 'space-between',
+        paddingHorizontal: 8,
+        marginBottom: 18,
+      }
+    : undefined
+}
+  contentContainerStyle={[
+    styles.listContent,
+    {
+      paddingTop: CONTENT_TOP_PAD,
+      paddingBottom: BOTTOM_TAB_H + 8,
+    },
+  ]}
+  showsVerticalScrollIndicator={false}
+  keyboardShouldPersistTaps="always"
+  keyboardDismissMode="none"
+  removeClippedSubviews={Platform.OS !== 'web'}
+  windowSize={5}
+  initialNumToRender={3}
+  maxToRenderPerBatch={4}
+  viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
+  onEndReachedThreshold={0.4}
+  onScroll={onScrollImmediate}
+  onMomentumScrollEnd={onMomentumEnd}
+  scrollEventThrottle={16}
+  onContentSizeChange={() => ensureActiveByCenter(lastOffsetY.current)}
+  onLayout={() => ensureActiveByCenter(lastOffsetY.current)}
+/>
         )}
       </View>
     )}
 
     {/* ✅ Preview modal (wide web): full player + actions */}
     {previewOpen && previewItem && (
-      <Modal visible transparent animationType="fade" onRequestClose={closePreview}>
-        <View style={styles.previewOverlay}>
-          <Pressable style={StyleSheet.absoluteFillObject} onPress={closePreview} />
-          <View style={styles.previewCard}>
-            <View style={styles.previewHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.previewTitle} numberOfLines={1}>
-                  {previewItem.title}
-                </Text>
-                {previewItem.users?.full_name ? (
-                  <TouchableOpacity onPress={() => goToProfile(previewItem.users)} activeOpacity={0.9}>
-                    <Text style={styles.previewByline}>{previewItem.users.full_name}</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
+  <Modal visible transparent animationType="fade" onRequestClose={closePreview}>
+    <View style={styles.previewOverlay}>
+      <Pressable style={StyleSheet.absoluteFillObject} onPress={closePreview} />
 
-              <TouchableOpacity onPress={closePreview} activeOpacity={0.9} style={styles.previewCloseBtn}>
-                <Text style={styles.previewCloseText}>Close</Text>
+      <View style={styles.previewCard}>
+        <View style={styles.previewHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.previewTitle} numberOfLines={2}>
+              {previewItem.title}
+            </Text>
+
+            {previewItem.users?.full_name ? (
+              <TouchableOpacity
+                onPress={() => goToProfile(previewItem.users)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.previewByline}>{previewItem.users.full_name}</Text>
               </TouchableOpacity>
-            </View>
+            ) : null}
+          </View>
 
-            <View style={{ paddingHorizontal: 16, paddingBottom: 14 }}>
-              {previewItem.storage_path ? (
-                <HostedVideoInline
-                  playerId={`preview-${previewItem.id}`}
-                  storagePath={previewItem.storage_path}
-                  width={Math.min(980, 860)}
-                  maxHeight={520}
-                  autoPlay={activeId === `preview-${previewItem.id}`}
-                  posterUri={previewItem.thumbnail_url ?? null}
-                  dimVignette={false}
-                />
-              ) : (
-                <View style={{ height: 320, borderRadius: 16, backgroundColor: '#000' }} />
-              )}
+          <TouchableOpacity
+            onPress={closePreview}
+            activeOpacity={0.9}
+            style={styles.previewCloseBtn}
+          >
+            <Text style={styles.previewCloseText}>Close</Text>
+          </TouchableOpacity>
+        </View>
 
-              <View style={styles.previewActions}>
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => toggleVote(previewItem)}
-                  disabled={
-                    !!voteBusy[previewItem.id] ||
-                    (!!currentUserId && (previewItem as any).user_id === currentUserId)
-                  }
-                  style={[
-                    styles.previewActionPill,
-                    (voteBusy[previewItem.id] ||
-                      (!!currentUserId && (previewItem as any).user_id === currentUserId)) && {
-                      opacity: 0.55,
-                    },
-                  ]}
-                >
-                  <Text style={styles.previewActionText}>
-                    {votedIds.has(previewItem.id) ? 'Voted' : 'Vote'} ({previewItem.votes ?? 0})
-                  </Text>
-                </TouchableOpacity>
+        <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }}>
+          {previewItem.storage_path ? (
+            <HostedVideoInline
+  playerId={`preview-${previewItem.id}`}
+  storagePath={previewItem.storage_path}
+  width={Math.min(winW - 40, 760)}
+  maxHeight={Math.min(winH * 0.34, 300)}
+  autoPlay={activeId === `preview-${previewItem.id}`}
+  posterUri={previewItem.thumbnail_url ?? null}
+  dimVignette={false}
+  showControls={true}
+  captureSurfacePress={true}
+  surfacePressMode="toggle"
+/>
+          ) : (
+            <View style={{ height: 220, borderRadius: 14, backgroundColor: '#000' }} />
+          )}
 
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => openComments(previewItem)}
-                  style={styles.previewActionPillGhost}
-                >
-                  <Text style={styles.previewActionTextGhost}>
-                    Comments ({commentCounts[previewItem.id] ?? 0})
-                  </Text>
-                </TouchableOpacity>
-              </View>
+          <View style={styles.previewActions}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => toggleVote(previewItem)}
+              disabled={
+                !!voteBusy[previewItem.id] ||
+                (!!currentUserId && (previewItem as any).user_id === currentUserId)
+              }
+              style={[
+                styles.previewActionPill,
+                (voteBusy[previewItem.id] ||
+                  (!!currentUserId && (previewItem as any).user_id === currentUserId)) && {
+                  opacity: 0.55,
+                },
+              ]}
+            >
+              <Text style={styles.previewActionText}>
+                {votedIds.has(previewItem.id) ? 'Voted' : 'Vote'} ({previewItem.votes ?? 0})
+              </Text>
+            </TouchableOpacity>
 
-              {!!previewItem.description ? <Text style={styles.previewDesc}>{previewItem.description}</Text> : null}
-            </View>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => openComments(previewItem)}
+              style={styles.previewActionPillGhost}
+            >
+              <Text style={styles.previewActionTextGhost}>
+                Comments ({commentCounts[previewItem.id] ?? 0})
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
-      </Modal>
-    )}
-
+      </View>
+    </View>
+  </Modal>
+)}
     {/* ---------------- Comments Modal (kept) ---------------- */}
     {commentsOpen && (
   <Modal visible transparent animationType="fade" onRequestClose={closeComments}>
@@ -3025,11 +3100,11 @@ return (
   style={[
     styles.commentsModalCard,
     isMobile && {
-      width: winW - 20,
-      maxWidth: winW - 20,
-      height: Math.min(winH - 140, 520),
-      alignSelf: 'center',
-    },
+  width: winW - 24,
+  maxWidth: winW - 24,
+  maxHeight: Math.min(winH * 0.68, 460),
+  alignSelf: 'center',
+}
   ]}
 >
         <View style={styles.commentsHeader}>
@@ -3203,18 +3278,17 @@ const styles = StyleSheet.create({
   wideLayout: {
     flex: 1,
     flexDirection: 'row',
-    gap: 22,
     paddingTop: CONTENT_TOP_PAD,
     paddingHorizontal: 12,
   },
 
   sidebar: {
+    width: '100%',
     borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(212,180,95,0.10)',
     backgroundColor: 'rgba(8,8,8,0.96)',
     padding: 16,
-    height: 'fit-content' as any,
     alignSelf: 'flex-start',
     shadowColor: '#000',
     shadowOpacity: 0.32,
@@ -3239,11 +3313,12 @@ const styles = StyleSheet.create({
   },
 
   subHeaderWrap: {
-  paddingHorizontal: 0,
-  paddingTop: 0,
-  paddingBottom: 6,
-  alignItems: 'center',
-},
+    width: '100%',
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 6,
+    alignItems: 'center',
+  },
 
   /* ---------------- Cards (full feed) ---------------- */
   cardWrapper: {
@@ -3293,146 +3368,154 @@ const styles = StyleSheet.create({
   },
 
   winnerFooter: {
-  alignSelf: 'center',
-  paddingHorizontal: 16,
-  paddingTop: 10,
-  paddingBottom: 12,
-},
-
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 12,
+  },
 
   winnerMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 12,
   },
 
   winnerMetaLabel: {
-  color: 'rgba(237,235,230,0.44)',
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '800',
-  letterSpacing: 0.8,
-  textTransform: 'uppercase',
-  fontSize: 10,
-},
+    color: 'rgba(237,235,230,0.44)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    fontSize: 10,
+    marginRight: 12,
+  },
 
   winnerMetaValue: {
-  color: GOLD,
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
-  letterSpacing: 0.4,
-  fontSize: 12,
-},
+    color: GOLD,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+    fontSize: 12,
+  },
 
   /* ---------------- Hero overlay ---------------- */
   heroOverlay: {
-  ...StyleSheet.absoluteFillObject,
-  zIndex: 10,
-  justifyContent: 'center',
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Platform.OS === 'web' ? 24 : 12,
+    paddingVertical: Platform.OS === 'web' ? 24 : 12,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+  },
+
+  mobileChipRow: {
+  paddingRight: 0,
+  paddingLeft: 0,
   alignItems: 'center',
-  paddingHorizontal: Platform.OS === 'web' ? 24 : 12,
-  paddingVertical: Platform.OS === 'web' ? 24 : 12,
-  backgroundColor: 'rgba(0,0,0,0.18)',
+  justifyContent: 'center',
 },
 
-mobileChipRow: {
-  paddingRight: 8,
-  gap: 10,
+  mobileChip: {
+  marginRight: 6,
+  height: 24,
+  paddingHorizontal: 8,
 },
 
-mobileChip: {
-  marginRight: 0,
-  height: 34,
-  paddingHorizontal: 14,
-},
-
-mobileFeedCard: {
+  mobileFeedCard: {
   alignSelf: 'center',
   backgroundColor: '#040404',
   marginBottom: 18,
+  width: '94%', // add this
 },
 
+
+  
 mobileMediaWrap: {
   width: '100%',
   borderRadius: 0,
   overflow: 'hidden',
   backgroundColor: '#000',
+  minHeight: 300, // optional
+},
+  mobileMetaWrap: {
+  paddingHorizontal: 12, // was 10
+  paddingTop: 20,        // was 8
+  paddingBottom: 4,      // was 2
 },
 
-mobileMetaWrap: {
-  paddingHorizontal: 10,
-  paddingTop: 8,
-  paddingBottom: 2,
-},
-
-mobileTitle: {
+  mobileTitle: {
   color: '#F8F6F1',
   fontFamily: SYSTEM_SANS,
   fontWeight: '900',
-  fontSize: 16,
-  lineHeight: 21,
+  fontSize: 17,   // was 16
+  lineHeight: 22, // was 21
+  textAlign: 'center',
 },
+  mobileByline: {
+    marginTop: 3,
+    color: 'rgba(237,235,230,0.58)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '700',
+    fontSize: 12,
+    textAlign: 'center',
+  },
 
-mobileByline: {
-  marginTop: 3,
-  color: 'rgba(237,235,230,0.58)',
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '700',
-  fontSize: 12,
-},
+  mobileDescription: {
+    marginTop: 5,
+    color: 'rgba(237,235,230,0.68)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '500',
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
 
-mobileDescription: {
-  marginTop: 5,
-  color: 'rgba(237,235,230,0.68)',
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '500',
-  fontSize: 12,
-  lineHeight: 17,
-},
+  mobileActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginTop: 9,
+  },
 
-mobileActionRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  flexWrap: 'wrap',
-  gap: 7,
-  marginTop: 9,
-},
+  mobilePill: {
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: '#101010',
+    borderWidth: 1,
+    borderColor: 'rgba(212,180,95,0.20)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 7,
+    marginBottom: 7,
+  },
 
-mobilePill: {
-  height: 32,
-  paddingHorizontal: 12,
-  borderRadius: 999,
-  backgroundColor: '#101010',
-  borderWidth: 1,
-  borderColor: 'rgba(212,180,95,0.20)',
-  alignItems: 'center',
-  justifyContent: 'center',
-},
+  mobilePillText: {
+    color: '#F3EFE7',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '800',
+    fontSize: 11,
+  },
 
-mobilePillText: {
-  color: '#F3EFE7',
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '800',
-  fontSize: 11,
-},
+  mobilePillGhost: {
+    height: 32,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 7,
+    marginBottom: 7,
+  },
 
-mobilePillGhost: {
-  height: 32,
-  paddingHorizontal: 12,
-  borderRadius: 999,
-  backgroundColor: 'transparent',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.07)',
-  alignItems: 'center',
-  justifyContent: 'center',
-},
-
-mobilePillGhostText: {
-  color: 'rgba(237,235,230,0.72)',
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '800',
-  fontSize: 11,
-},
+  mobilePillGhostText: {
+    color: 'rgba(237,235,230,0.72)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '800',
+    fontSize: 11,
+  },
 
   heroOverlayInner: {
     maxWidth: '100%',
@@ -3488,7 +3571,6 @@ mobilePillGhostText: {
     alignSelf: 'center',
     paddingTop: 16,
     paddingBottom: 16,
-    gap: 14,
   },
 
   voteCol: {
@@ -3615,9 +3697,8 @@ mobilePillGhostText: {
   feedActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginTop: 14,
     flexWrap: 'wrap',
+    marginTop: 14,
   },
 
   feedActionBtn: {
@@ -3627,6 +3708,8 @@ mobilePillGhostText: {
     backgroundColor: '#0B0B0B',
     borderWidth: 1,
     borderColor: 'rgba(212,180,95,0.20)',
+    marginRight: 10,
+    marginBottom: 10,
   },
 
   feedActionText: {
@@ -3645,6 +3728,8 @@ mobilePillGhostText: {
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
+    marginRight: 10,
+    marginBottom: 10,
   },
 
   feedActionGhostText: {
@@ -3700,52 +3785,43 @@ mobilePillGhostText: {
   },
 
   fsButton: {
-    position: 'absolute',
-    left: 14,
-    top: 14,
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.62)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 5,
-  },
+  position: 'absolute',
+  left: 10,
+  top: 10,
+  width: 36,
+  height: 36,
+  borderRadius: 12,
+  backgroundColor: 'rgba(0,0,0,0.55)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.10)',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
 
   soundBtn: {
-    position: 'absolute',
-    right: 14,
-    top: 14,
-    height: 40,
-    paddingHorizontal: 13,
-    borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.62)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 5,
-  },
+  position: 'absolute',
+  right: 10,
+  top: 10,
+  minHeight: 36,
+  paddingHorizontal: 10,
+  borderRadius: 999,
+  backgroundColor: 'rgba(0,0,0,0.55)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.10)',
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
 
-  soundText: {
-    color: '#fff',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    fontSize: 11,
-    letterSpacing: 0.9,
-    textTransform: 'uppercase',
-  },
+soundText: {
+  color: '#fff',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 5,
+  letterSpacing: 0.2,
+  textTransform: 'uppercase',
+  marginLeft: 3,
+},
 
   /* ---------------- Audio wrapper ---------------- */
   audioWrap: {
@@ -3764,25 +3840,28 @@ mobilePillGhostText: {
     letterSpacing: 0.4,
   },
 
-  /* ---------------- Compact grid cards (wide web) ---------------- */
+    /* ---------------- Compact grid cards ---------------- */
   gridCard: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: '#080808',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-  },
+  borderRadius: 18,
+  overflow: 'hidden',
+  backgroundColor: '#080808',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.04)',
+  marginHorizontal: 6,
+  marginBottom: 0,
+  shadowColor: '#000',
+  shadowOpacity: 0.16,
+  shadowRadius: 8,
+  shadowOffset: { width: 0, height: 4 },
+  elevation: 5,
+},
 
   gridThumbWrap: {
     width: '100%',
     aspectRatio: 16 / 9,
     backgroundColor: '#000',
+    position: 'relative',
+    overflow: 'hidden',
   },
 
   gridThumb: {
@@ -3792,87 +3871,131 @@ mobilePillGhostText: {
 
   gridThumbOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.20)',
+    backgroundColor: 'rgba(0,0,0,0.12)',
   },
 
+  gridOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-end',
+  },
+
+  gridOverlayTextWrap: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    bottom: 8,
+  },
+  gridOverlayBylineTap: {
+  alignSelf: 'flex-start',
+  marginTop: 2,
+},
+
+  gridOverlayTitle: {
+    color: '#F8F6F1',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 11,
+    lineHeight: 13,
+    textAlign: 'left',
+  },
+
+  gridOverlayByline: {
+  marginTop: 2,
+  color: GOLD,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  fontSize: 8,
+  lineHeight: 10,
+  textAlign: 'left',
+},
+
   gridBody: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 8,
+    paddingTop: 6,
+    paddingBottom: 8,
+    alignItems: 'center',
   },
 
   gridTitle: {
     color: '#F7F4ED',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    fontSize: 13,
-    letterSpacing: 0.2,
-    textTransform: 'none',
+    fontWeight: '800',
+    fontSize: 11,
+    letterSpacing: 0.1,
+    textAlign: 'center',
   },
 
   gridByline: {
-    marginTop: 5,
-    color: 'rgba(237,235,230,0.52)',
+    marginTop: 2,
+    color: 'rgba(237,235,230,0.46)',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
-    fontSize: 11,
-    letterSpacing: 0.3,
+    fontWeight: '700',
+    fontSize: 9,
+    letterSpacing: 0.1,
+    textAlign: 'center',
   },
 
   gridMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 12,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'flex-start',
+  paddingHorizontal: 6,
+  paddingTop: 4,
+  paddingBottom: 5,
+},
 
-  gridVotePill: {
-    height: 30,
-    paddingHorizontal: 11,
-    borderRadius: 999,
-    backgroundColor: '#0B0B0B',
-    borderWidth: 1,
-    borderColor: 'rgba(212,180,95,0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+gridVotePill: {
+  height: 16,
+  minWidth: 20,
+  paddingHorizontal: 6,
+  borderRadius: 999,
+  backgroundColor: '#0B0B0B',
+  borderWidth: 1,
+  borderColor: 'rgba(212,180,95,0.12)',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginRight: 4,
+},
 
-  gridVoteText: {
-    color: '#F3EFE7',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    fontSize: 11,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
+gridVoteText: {
+  color: '#F3EFE7',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '800',
+  fontSize: 7,
+  letterSpacing: 0,
+  textTransform: 'uppercase',
+},
 
-  gridCommentPill: {
-    height: 30,
-    paddingHorizontal: 11,
-    borderRadius: 999,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+gridCommentPill: {
+  height: 16,
+  minWidth: 20,
+  paddingHorizontal: 6,
+  borderRadius: 999,
+  backgroundColor: 'transparent',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.06)',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginRight: 4,
+},
 
-  gridCommentText: {
-    color: 'rgba(237,235,230,0.68)',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    fontSize: 11,
-    letterSpacing: 0.2,
-  },
+gridCommentText: {
+  color: 'rgba(237,235,230,0.62)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '800',
+  fontSize: 7,
+  letterSpacing: 0,
+},
 
-  gridMine: {
-    marginLeft: 'auto',
-    color: 'rgba(237,235,230,0.32)',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    fontSize: 10,
-    letterSpacing: 0.9,
-    textTransform: 'uppercase',
-  },
+gridMine: {
+  color: 'rgba(237,235,230,0.24)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '800',
+  fontSize: 6,
+  letterSpacing: 0.3,
+  textTransform: 'uppercase',
+  marginLeft: 'auto',
+},
 
   /* ---------------- Preview modal ---------------- */
   previewOverlay: {
@@ -3884,30 +4007,29 @@ mobilePillGhostText: {
   },
 
   previewCard: {
-    width: '100%',
-    maxWidth: 920,
-    borderRadius: 22,
-    overflow: 'hidden',
-    backgroundColor: '#080808',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    shadowColor: '#000',
-    shadowOpacity: 0.36,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 14,
-  },
+  width: '100%',
+  maxWidth: 820,
+  borderRadius: 20,
+  overflow: 'hidden',
+  backgroundColor: '#080808',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.06)',
+  shadowColor: '#000',
+  shadowOpacity: 0.30,
+  shadowRadius: 18,
+  shadowOffset: { width: 0, height: 10 },
+  elevation: 12,
+},
 
   previewHeader: {
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
+  paddingHorizontal: 16,
+  paddingTop: 14,
+  paddingBottom: 12,
+  borderBottomWidth: 1,
+  borderBottomColor: 'rgba(255,255,255,0.05)',
+  flexDirection: 'row',
+  alignItems: 'center',
+},
 
   previewTitle: {
     color: '#fff',
@@ -3936,6 +4058,7 @@ mobilePillGhostText: {
     borderColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 12,
   },
 
   previewCloseText: {
@@ -3948,12 +4071,13 @@ mobilePillGhostText: {
   },
 
   previewActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 12,
-    marginBottom: 6,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  justifyContent: 'center',
+  marginTop: 10,
+  marginBottom: 4,
+},
 
   previewActionPill: {
     height: 38,
@@ -3964,6 +4088,8 @@ mobilePillGhostText: {
     borderColor: 'rgba(212,180,95,0.20)',
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 10,
+    marginBottom: 10,
   },
 
   previewActionText: {
@@ -3984,6 +4110,8 @@ mobilePillGhostText: {
     borderColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 10,
+    marginBottom: 10,
   },
 
   previewActionTextGhost: {
@@ -3996,42 +4124,43 @@ mobilePillGhostText: {
   },
 
   previewDesc: {
-    marginTop: 10,
-    color: 'rgba(237,235,230,0.72)',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '600',
-    fontSize: 13,
-    lineHeight: 20,
+  marginTop: 8,
+  color: 'rgba(237,235,230,0.70)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '600',
+  fontSize: 12,
+  lineHeight: 18,
+  textAlign: 'center',
+},
+
+  /* ---------------- HeaderControls ---------------- */
+  sideSearchBox: {
+    width: '100%',
+    backgroundColor: '#090909',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 14,
   },
 
-  /* ---------------- HeaderControls (sidebar + center) ---------------- */
-  sideSearchBox: {
-  width: '100%',
-  backgroundColor: '#090909',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.06)',
-  borderRadius: 14,
-  color: '#F2EFE8',
-},
-
   sidePanel: {
-  width: '100%',
-  borderRadius: 16,
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.04)',
-  backgroundColor: '#080808',
-  padding: 10,
-},
+    width: '100%',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: '#080808',
+    padding: 10,
+  },
 
   sidePanelTitle: {
-  color: 'rgba(237,235,230,0.68)',
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
-  fontSize: 10,
-  letterSpacing: 0.9,
-  textTransform: 'uppercase',
-  marginBottom: 8,
-},
+    color: 'rgba(237,235,230,0.68)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 10,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
 
   sideSortItem: {
     width: '100%',
@@ -4043,7 +4172,6 @@ mobilePillGhostText: {
     borderColor: 'rgba(255,255,255,0.06)',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
   },
 
   sideSortItemActive: {
@@ -4080,6 +4208,7 @@ mobilePillGhostText: {
     borderRadius: 999,
     backgroundColor: 'rgba(237,235,230,0.24)',
     opacity: 0.9,
+    marginLeft: 10,
   },
 
   /* ---------------- HeaderControls (center compact row) ---------------- */
@@ -4088,22 +4217,96 @@ mobilePillGhostText: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 10,
   },
 
   centerChip: {
-  paddingHorizontal: 12,
-  height: 34,
+  paddingHorizontal: 8,
+  height: 24,
   borderRadius: 999,
   backgroundColor: '#0B0B0B',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.06)',
   alignItems: 'center',
   justifyContent: 'center',
+  marginRight: 6,
 },
 
   centerChipText: {
-    color: 'rgba(237,235,230,0.80)',
+  color: 'rgba(237,235,230,0.80)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 8,
+  letterSpacing: 0.35,
+  textTransform: 'uppercase',
+},
+
+  /* ---------------- Comments modal ---------------- */
+  commentsOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 50,
+    backgroundColor: 'rgba(0,0,0,0.78)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Platform.OS === 'web' ? 24 : 10,
+    paddingVertical: Platform.OS === 'web' ? 32 : 20,
+  },
+
+  commentsModalCard: {
+  width: '100%',
+  maxWidth: 720,
+  backgroundColor: '#080808',
+  borderRadius: Platform.OS === 'web' ? 22 : 18,
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.06)',
+  overflow: 'hidden',
+  shadowColor: '#000',
+  shadowOpacity: 0.30,
+  shadowRadius: 18,
+  shadowOffset: { width: 0, height: 10 },
+  elevation: 14,
+},
+
+  commentsHeader: {
+  paddingHorizontal: 16,
+  paddingTop: 14,
+  paddingBottom: 12,
+  borderBottomWidth: 1,
+  borderBottomColor: 'rgba(255,255,255,0.05)',
+  flexDirection: 'row',
+  alignItems: 'center',
+},
+
+  commentsTitle: {
+    color: '#fff',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 15,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+
+  commentsSubtitle: {
+    marginTop: 4,
+    color: 'rgba(237,235,230,0.52)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+
+  commentsCloseBtn: {
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: '#0D0D0D',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
+  },
+
+  commentsClose: {
+    color: GOLD,
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 11,
@@ -4111,317 +4314,241 @@ mobilePillGhostText: {
     textTransform: 'uppercase',
   },
 
-  /* ---------------- Comments modal ---------------- */
-  commentsOverlay: {
-  ...StyleSheet.absoluteFillObject,
-  zIndex: 50,
-  backgroundColor: 'rgba(0,0,0,0.78)',
-  justifyContent: 'center',
-  alignItems: 'center',
-  paddingHorizontal: Platform.OS === 'web' ? 24 : 10,
-  paddingVertical: Platform.OS === 'web' ? 32 : 20,
+  commentsBody: {
+  flexGrow: 0,
+  minHeight: 120,
+  maxHeight: 250,
 },
 
-commentsModalCard: {
-  width: '100%',
-  maxWidth: 760,
-  backgroundColor: '#080808',
-  borderRadius: Platform.OS === 'web' ? 24 : 20,
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.06)',
-  overflow: 'hidden',
-  shadowColor: '#000',
-  shadowOpacity: 0.38,
-  shadowRadius: 24,
-  shadowOffset: { width: 0, height: 14 },
-  elevation: 16,
-},
-
-commentsHeader: {
-  paddingHorizontal: 18,
-  paddingTop: 16,
-  paddingBottom: 14,
-  borderBottomWidth: 1,
-  borderBottomColor: 'rgba(255,255,255,0.05)',
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 12,
-},
-
-commentsTitle: {
-  color: '#fff',
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
-  fontSize: 15,
-  letterSpacing: 1,
-  textTransform: 'uppercase',
-},
-
-commentsSubtitle: {
-  marginTop: 4,
-  color: 'rgba(237,235,230,0.52)',
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '700',
-  fontSize: 12,
-},
-
-commentsCloseBtn: {
-  height: 36,
+  commentsListContent: {
   paddingHorizontal: 14,
-  borderRadius: 999,
-  backgroundColor: '#0D0D0D',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.08)',
-  alignItems: 'center',
-  justifyContent: 'center',
+  paddingTop: 12,
+  paddingBottom: 12,
 },
 
-commentsClose: {
-  color: GOLD,
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
-  fontSize: 11,
-  letterSpacing: 0.8,
-  textTransform: 'uppercase',
-},
+  commentsEmptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 40,
+  },
 
-commentsBody: {
-  flex: 1,
-  minHeight: 180,
-},
+  commentsEmptyTitle: {
+    color: '#F4F1EA',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 16,
+    marginBottom: 6,
+  },
 
-commentsListContent: {
-  paddingHorizontal: 16,
-  paddingTop: 14,
-  paddingBottom: 18,
-},
+  commentsEmptyText: {
+    color: 'rgba(237,235,230,0.58)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '600',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
 
-commentsEmptyState: {
-  alignItems: 'center',
-  justifyContent: 'center',
-  paddingHorizontal: 24,
-  paddingVertical: 40,
-},
+  commentThread: {
+    marginBottom: 14,
+  },
 
-commentsEmptyTitle: {
-  color: '#F4F1EA',
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
-  fontSize: 16,
-  marginBottom: 6,
-},
+  commentCard: {
+    flexDirection: 'row',
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: '#0B0B0B',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
 
-commentsEmptyText: {
-  color: 'rgba(237,235,230,0.58)',
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '600',
-  fontSize: 13,
-  textAlign: 'center',
-  lineHeight: 18,
-},
+  commentAvatarTap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: '#000',
+    marginRight: 12,
+  },
 
-commentThread: {
-  marginBottom: 14,
-},
+  commentAvatar: {
+    width: '100%',
+    height: '100%',
+  },
 
-commentCard: {
-  flexDirection: 'row',
-  gap: 12,
-  padding: 14,
-  borderRadius: 18,
-  backgroundColor: '#0B0B0B',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.05)',
-},
+  commentName: {
+    color: '#fff',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 12,
+    letterSpacing: 0.2,
+  },
 
-commentAvatarTap: {
-  width: 38,
-  height: 38,
-  borderRadius: 19,
-  overflow: 'hidden',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.08)',
-  backgroundColor: '#000',
-},
+  commentText: {
+    marginTop: 5,
+    color: 'rgba(237,235,230,0.78)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '600',
+    fontSize: 13,
+    lineHeight: 19,
+  },
 
-commentAvatar: {
-  width: '100%',
-  height: '100%',
-},
+  commentActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+  },
 
-commentName: {
-  color: '#fff',
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
-  fontSize: 12,
-  letterSpacing: 0.2,
-},
+  replyBtn: {
+    height: 30,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(198,166,100,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.24)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
-commentText: {
-  marginTop: 5,
-  color: 'rgba(237,235,230,0.78)',
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '600',
-  fontSize: 13,
-  lineHeight: 19,
-},
+  replyBtnText: {
+    color: GOLD,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 11,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
 
-commentActionsRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  marginTop: 10,
-},
+  repliesWrap: {
+    marginTop: 10,
+    marginLeft: 22,
+  },
 
-replyBtn: {
-  height: 30,
-  paddingHorizontal: 12,
-  borderRadius: 999,
-  backgroundColor: 'rgba(198,166,100,0.10)',
-  borderWidth: 1,
-  borderColor: 'rgba(198,166,100,0.24)',
-  alignItems: 'center',
-  justifyContent: 'center',
-},
+  replyCard: {
+    flexDirection: 'row',
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: '#101010',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.04)',
+    marginBottom: 8,
+  },
 
-replyBtnText: {
-  color: GOLD,
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
-  fontSize: 11,
-  letterSpacing: 0.5,
-  textTransform: 'uppercase',
-},
+  replyAvatarTap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: '#000',
+    marginRight: 10,
+  },
 
-repliesWrap: {
-  marginTop: 10,
-  marginLeft: 22,
-  gap: 8,
-},
+  replyAvatar: {
+    width: '100%',
+    height: '100%',
+  },
 
-replyCard: {
-  flexDirection: 'row',
-  gap: 10,
-  padding: 12,
-  borderRadius: 16,
-  backgroundColor: '#101010',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.04)',
-},
+  replyName: {
+    color: '#F4F1EA',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '800',
+    fontSize: 11,
+  },
 
-replyAvatarTap: {
-  width: 30,
-  height: 30,
-  borderRadius: 15,
-  overflow: 'hidden',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.08)',
-  backgroundColor: '#000',
-},
+  replyText: {
+    marginTop: 4,
+    color: 'rgba(237,235,230,0.72)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '600',
+    fontSize: 12,
+    lineHeight: 17,
+  },
 
-replyAvatar: {
-  width: '100%',
-  height: '100%',
-},
-
-replyName: {
-  color: '#F4F1EA',
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '800',
-  fontSize: 11,
-},
-
-replyText: {
-  marginTop: 4,
-  color: 'rgba(237,235,230,0.72)',
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '600',
-  fontSize: 12,
-  lineHeight: 17,
-},
-
-commentComposerWrap: {
+  commentComposerWrap: {
   borderTopWidth: 1,
   borderTopColor: 'rgba(255,255,255,0.05)',
   backgroundColor: '#090909',
-  paddingHorizontal: 12,
+  paddingHorizontal: 10,
   paddingTop: 8,
-  paddingBottom: 10,
+  paddingBottom: 8,
 },
 
-replyingBanner: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  marginBottom: 10,
-  paddingHorizontal: 12,
-  paddingVertical: 10,
+  replyingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(198,166,100,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.18)',
+  },
+
+  replyingBannerText: {
+    flex: 1,
+    color: '#F1EBDD',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '700',
+    fontSize: 12,
+    marginRight: 10,
+  },
+
+  replyingBannerCancel: {
+    color: GOLD,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  commentComposer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+
+  commentInput: {
+  flex: 1,
+  minHeight: 40,
+  maxHeight: 86,
   borderRadius: 14,
-  backgroundColor: 'rgba(198,166,100,0.08)',
-  borderWidth: 1,
-  borderColor: 'rgba(198,166,100,0.18)',
-},
-
-replyingBannerText: {
-  flex: 1,
-  color: '#F1EBDD',
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '700',
-  fontSize: 12,
-  marginRight: 10,
-},
-
-replyingBannerCancel: {
-  color: GOLD,
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
-  fontSize: 11,
-  textTransform: 'uppercase',
-  letterSpacing: 0.5,
-},
-
-commentComposer: {
-  flexDirection: 'row',
-  alignItems: 'flex-end',
-  gap: 10,
-},
-
-commentInput: {
-  flex: 1,
-  minHeight: 42,
-  maxHeight: 110,
-  borderRadius: 16,
   backgroundColor: '#0B0B0B',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.07)',
-  paddingHorizontal: 14,
-  paddingVertical: 10,
+  paddingHorizontal: 12,
+  paddingVertical: 9,
   color: '#EDEBE6',
   fontFamily: SYSTEM_SANS,
   fontWeight: '700',
-  fontSize: 13,
-  // @ts-ignore
-  outlineStyle: 'none',
+  fontSize: 12,
 },
 
-commentSendBtn: {
-  height: 46,
-  paddingHorizontal: 16,
-  borderRadius: 16,
+  commentSendBtn: {
+  height: 42,
+  paddingHorizontal: 14,
+  borderRadius: 14,
   backgroundColor: '#131313',
   borderWidth: 1,
-  borderColor: 'rgba(198,166,100,0.40)',
+  borderColor: 'rgba(198,166,100,0.32)',
   alignItems: 'center',
   justifyContent: 'center',
+  marginLeft: 8,
 },
 
-commentSendText: {
-  color: GOLD,
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
-  fontSize: 12,
-  letterSpacing: 0.8,
-  textTransform: 'uppercase',
-},
+  commentSendText: {
+    color: GOLD,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 12,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
 });
 
 export default FeaturedScreen;

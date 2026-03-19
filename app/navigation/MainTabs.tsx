@@ -532,7 +532,14 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
   };
 
   return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+    <Modal
+  visible={visible}
+  animationType="fade"
+  transparent
+  statusBarTranslucent
+  presentationStyle="overFullScreen"
+  onRequestClose={onClose}
+>
       <View style={styles.lbOverlay}>
         <View
           style={[
@@ -1163,9 +1170,8 @@ export default function MainTabs() {
   const isWide = width >= 980;
 
   const NAV_HEIGHT = isWide ? 56 : isPhone ? 40 : 44;
-const topOffset = Platform.OS === 'ios' ? insets.top : 0;
-
-  const contentTopPadding = NAV_HEIGHT + (isWide ? 0 : 12);
+const topOffset = insets.top;
+const contentTopPadding = topOffset + NAV_HEIGHT + (isWide ? 0 : 12);
 
   const TABBAR_HEIGHT = isPhone ? 54 : 56;
 
@@ -1257,7 +1263,10 @@ const topOffset = Platform.OS === 'ios' ? insets.top : 0;
           topOffset={topOffset}
           navHeight={NAV_HEIGHT}
           onOpenUpload={handleOpenUpload}
-          onOpenLeaderboard={() => setShowLeaderboard(true)}
+          onOpenLeaderboard={() => {
+  console.log('leaderboard pressed');
+  setShowLeaderboard(true);
+}}
         />
 
         <SafeAreaView
@@ -1728,21 +1737,25 @@ const styles = StyleSheet.create({
   },
 
   lbOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-  },
-  lbCard: {
-    borderRadius: 18,
-    backgroundColor: '#050505',
-    borderWidth: 1,
-    borderColor: DIVIDER,
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 14,
-  },
+  flex: 1,
+  backgroundColor: 'rgba(0,0,0,0.9)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  paddingHorizontal: 16,
+  zIndex: 9999,
+  elevation: 9999,
+},
+lbCard: {
+  borderRadius: 18,
+  backgroundColor: '#050505',
+  borderWidth: 1,
+  borderColor: DIVIDER,
+  paddingHorizontal: 14,
+  paddingTop: 10,
+  paddingBottom: 14,
+  zIndex: 10000,
+  elevation: 10000,
+},
   lbHeader: {
     flexDirection: 'row',
     alignItems: 'center',
