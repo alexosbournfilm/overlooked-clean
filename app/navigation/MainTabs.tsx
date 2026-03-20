@@ -45,8 +45,8 @@ import { useGamification } from '../context/GamificationContext';
 const Tab = createBottomTabNavigator();
 
 /* ------------------------------- palette ------------------------------- */
-const DARK_BG = '#0D0D0D';
-const DARK_ELEVATED = '#171717';
+const DARK_BG = '#000000';
+const DARK_ELEVATED = '#000000';
 const TEXT_IVORY = '#EDEBE6';
 const TEXT_MUTED = '#A7A6A2';
 const DIVIDER = '#2A2A2A';
@@ -1190,20 +1190,21 @@ const contentTopPadding = topOffset + NAV_HEIGHT + (isWide ? 0 : 12);
         tabBarShowLabel: false,
 
         tabBarStyle:
-          route.name === 'WorkshopSubmit'
-            ? { display: 'none' }
-            : {
-                backgroundColor: DARK_ELEVATED,
-                borderTopWidth: 0,
-                height: TABBAR_HEIGHT,
-                paddingTop: isTiny ? 5 : 6,
-                paddingBottom: Platform.OS === 'ios' ? (isPhone ? 10 : 12) : 8,
-                shadowColor: '#000',
-                shadowOpacity: 0.3,
-                shadowOffset: { width: 0, height: -4 },
-                shadowRadius: 6,
-                elevation: 10,
-              },
+  route.name === 'WorkshopSubmit'
+    ? { display: 'none' }
+    : {
+        backgroundColor: DARK_BG,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.06)',
+        height: TABBAR_HEIGHT,
+        paddingTop: isTiny ? 5 : 6,
+        paddingBottom: Platform.OS === 'ios' ? (isPhone ? 10 : 12) : 8,
+        shadowColor: 'transparent',
+        shadowOpacity: 0,
+        shadowOffset: { width: 0, height: 0 },
+        shadowRadius: 0,
+        elevation: 0,
+      },
 
         tabBarItemStyle: {
           alignItems: 'center',
@@ -1330,14 +1331,14 @@ const styles = StyleSheet.create({
   },
 
   topBarWrapper: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(13,13,13,0.96)',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: DIVIDER,
-    zIndex: 20,
-  },
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  backgroundColor: DARK_BG,
+  borderBottomWidth: 0,
+  borderBottomColor: 'transparent',
+  zIndex: 20,
+},
 
   topBarInner: {
     width: '100%',
@@ -1361,13 +1362,12 @@ const styles = StyleSheet.create({
   },
 
   topBarInnerStreakRow: {
-    width: '100%',
-    maxWidth: 1200,
-    alignSelf: 'center',
-    paddingTop: 4,
-    paddingBottom: 6,
-  },
-
+  width: '100%',
+  maxWidth: 1200,
+  alignSelf: 'center',
+  paddingTop: 2,
+  paddingBottom: 4,
+},
   brandWrap: {
     paddingVertical: 4,
     paddingRight: 8,

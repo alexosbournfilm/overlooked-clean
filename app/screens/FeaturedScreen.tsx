@@ -53,16 +53,16 @@ const SYSTEM_SANS = Platform.select({
 const GOLD = '#C6A664';
 const T = {
   bg: '#000000',
-  bg2: '#050505',
-  panel: '#0A0A0A',
-  card: '#0A0A0A',
-  card2: '#0D0D0D',
+  bg2: '#000000',
+  panel: '#000000',
+  card: '#000000',
+  card2: '#000000',
   outline: '#1A1A1A',
   text: '#FFFFFF',
   sub: '#DADADA',
   mute: '#9A9A9A',
   accent: '#4FD1FF',
-  heroBurgundy1: '#0B0B0B',
+  heroBurgundy1: '#000000',
   heroBurgundy2: '#000000',
 };
 
@@ -437,6 +437,7 @@ function HostedVideoInline({
   posterUri,
   dimVignette = true,
   showControls = true,
+  showProgress = true,
   captureSurfacePress = true,
   surfacePressMode = 'hold',
 }: {
@@ -448,9 +449,10 @@ function HostedVideoInline({
   posterUri?: string | null;
   dimVignette?: boolean;
   showControls?: boolean;
+  showProgress?: boolean;
   captureSurfacePress?: boolean;
   surfacePressMode?: 'hold' | 'toggle';
-}) {
+}){
   const ref = useRef<Video>(null);
   const htmlRef = useRef<any>(null);
   const [src, setSrc] = useState<string | null>(null);
@@ -852,9 +854,27 @@ const onSurfaceTogglePress = async () => {
 
       {captureSurfacePress ? (
   <Pressable
-    onPress={surfacePressMode === 'toggle' ? onSurfaceTogglePress : () => {}}
-    onPressIn={surfacePressMode === 'hold' ? onSurfacePressIn : undefined}
-    onPressOut={surfacePressMode === 'hold' ? onSurfacePressOut : undefined}
+    onPress={
+      playerId.startsWith('winner-')
+        ? () => {}
+        : surfacePressMode === 'toggle'
+        ? onSurfaceTogglePress
+        : () => {}
+    }
+    onPressIn={
+      playerId.startsWith('winner-')
+        ? undefined
+        : surfacePressMode === 'hold'
+        ? onSurfacePressIn
+        : undefined
+    }
+    onPressOut={
+      playerId.startsWith('winner-')
+        ? undefined
+        : surfacePressMode === 'hold'
+        ? onSurfacePressOut
+        : undefined
+    }
     style={[
       StyleSheet.absoluteFillObject,
       {
@@ -865,29 +885,31 @@ const onSurfaceTogglePress = async () => {
   />
 ) : null}
 
+      {showProgress ? (
+  <View
+    ref={progressRef}
+    style={[styles.progressHit, { zIndex: 15 }]}
+    {...(Platform.OS === 'web'
+      ? {
+          onMouseDown: (e: any) => {
+            setSeeking(true);
+            setFromClientX(e.clientX);
+          },
+        }
+      : {})}
+  >
+    <View style={styles.progressTrack}>
       <View
-        ref={progressRef}
-        style={[styles.progressHit, { zIndex: 15 }]}
-        {...(Platform.OS === 'web'
-          ? {
-              onMouseDown: (e: any) => {
-                setSeeking(true);
-                setFromClientX(e.clientX);
-              },
-            }
-          : {})}
-      >
-        <View style={styles.progressTrack}>
-          <View
-            style={[
-              styles.progressFill,
-              {
-                width: `${Math.max(0, Math.min(100, progress * 100))}%`,
-              },
-            ]}
-          />
-        </View>
-      </View>
+        style={[
+          styles.progressFill,
+          {
+            width: `${Math.max(0, Math.min(100, progress * 100))}%`,
+          },
+        ]}
+      />
+    </View>
+  </View>
+) : null}
 
       {showControls && (
   <TouchableOpacity
@@ -1217,50 +1239,59 @@ const HeaderControls = React.memo(
     // sizing
     const R = compact ? 8 : 14;
 const padH = compact ? 8 : 14;
-const padV = compact ? 3 : 10;
-const inputSize = compact ? 11 : 14;
+const padV = compact ? 2 : 10;
+const inputSize = compact ? 10 : 14;
 
-const hintFont = compact ? 9 : 12;
-const hintTrack = compact ? 0.2 : 0.6;
+const hintFont = compact ? 8 : 12;
+const hintTrack = compact ? 0.15 : 0.6;
 
     const isSidebar = layout === 'sidebar';
 
     return (
-  <View style={{ width: '100%' }}>
-    {showSearch ? (
-      <View
-        style={[
-          styles.sideSearchBox,
-          {
-            borderRadius: R,
-            borderColor: focused ? GOLD : '#1A1A1A',
-            paddingHorizontal: padH,
-            paddingVertical: padV,
-            marginBottom: 0,
-          },
-        ]}
-      >
-        <TextInput
-          placeholder="Search film…"
-          placeholderTextColor="rgba(237,235,230,0.45)"
-          value={searchText}
-          onChangeText={(txt) => setSearchText(txt)}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          selectionColor={GOLD}
-          cursorColor={GOLD}
-          style={{
-            flex: 1,
-            color: '#EDEBE6',
-            fontSize: inputSize,
-            fontFamily: SYSTEM_SANS,
-            fontWeight: Platform.OS === 'android' ? '700' : '800',
-            letterSpacing: 0.2,
-          }}
-        />
-      </View>
-    ) : null}
-      
+  <View
+  style={{
+    width: '100%',
+    alignItems: isSidebar ? 'stretch' : 'center',
+  }}
+>
+  {showSearch ? (
+  <View
+    style={[
+      styles.sideSearchBox,
+      {
+        width: '100%',
+        borderRadius: 999,
+        borderColor: 'transparent',
+        paddingHorizontal: isSidebar ? padH : 12,
+        paddingVertical: isSidebar ? padV : 6,
+        minHeight: isSidebar ? undefined : '100%',
+height: isSidebar ? undefined : '100%',
+marginBottom: 0,
+justifyContent: 'center',
+      },
+    ]}
+  >
+    <TextInput
+  placeholder="Search film…"
+  placeholderTextColor="rgba(237,235,230,0.45)"
+  value={searchText}
+  onChangeText={(txt) => setSearchText(txt)}
+  onFocus={() => setFocused(true)}
+  onBlur={() => setFocused(false)}
+  selectionColor={GOLD}
+  cursorColor={GOLD}
+  style={{
+    flex: 1,
+    color: '#EDEBE6',
+    fontSize: isSidebar ? inputSize : compact ? 10 : 12,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: Platform.OS === 'android' ? '700' : '800',
+    letterSpacing: 0.2,
+    outlineStyle: 'none',
+  } as any}
+/>
+  </View>
+) : null}
 
         {/* Searching hint */}
         {showSearch && category === 'film' && isSearching && q.length > 0 ? (
@@ -1289,157 +1320,158 @@ const hintTrack = compact ? 0.2 : 0.6;
 </View>
         ) : null}
 
-        {/* SORT panel */}
-        <View
-  style={[
-    styles.sidePanel,
-    compact && !isSidebar && { padding: 2 },
-    !isSidebar && { alignItems: 'center' },
-  ]}
->
-  <Text style={styles.sidePanelTitle}>SORT BY</Text>
+        {showSort ? (
+  <View
+    style={[
+      styles.sidePanel,
+      compact && !isSidebar && { padding: 2 },
+      !isSidebar && { alignItems: 'center' },
+    ]}
+  >
 
-          {isSidebar ? (
-            <View style={{ gap: 8 }}>
-              {filters.map((f) => {
-                const active = sort === f.key;
-                return (
-                  <TouchableOpacity
-                    key={f.key}
-                    activeOpacity={0.9}
-                    onPress={() => setSort(f.key)}
-                    style={[
-                      styles.sideSortItem,
-                      active && styles.sideSortItemActive,
-                    ]}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.sideSortLabel, active && { color: GOLD }]}>
-                        {f.label}
-                      </Text>
-                      {!!f.sub ? <Text style={styles.sideSortSub}>{f.sub}</Text> : null}
-                    </View>
+    {isSidebar ? (
+      <View style={{ gap: 8 }}>
+        {filters.map((f) => {
+          const active = sort === f.key;
+          return (
+            <TouchableOpacity
+              key={f.key}
+              activeOpacity={0.9}
+              onPress={() => setSort(f.key)}
+              style={[
+                styles.sideSortItem,
+                active && styles.sideSortItemActive,
+              ]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.sideSortLabel, active && { color: GOLD }]}>
+                  {f.label}
+                </Text>
+                {!!f.sub ? <Text style={styles.sideSortSub}>{f.sub}</Text> : null}
+              </View>
 
-                    <View
-                      style={[
-                        styles.sideSortDot,
-                        active && { backgroundColor: GOLD, opacity: 1 },
-                      ]}
-                    />
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ) : (
- <ScrollView
-  horizontal
-  showsHorizontalScrollIndicator={false}
-  contentContainerStyle={styles.mobileChipRow}
->
-  {filters.map((f) => {
-    const active = sort === f.key;
-    return (
-      <TouchableOpacity
-        key={f.key}
-        activeOpacity={0.9}
-        onPress={() => setSort(f.key)}
-        style={[
-          styles.centerChip,
-          styles.mobileChip,
-          active && { borderColor: GOLD, backgroundColor: '#111' },
-        ]}
+              <View
+                style={[
+                  styles.sideSortDot,
+                  active && { backgroundColor: GOLD, opacity: 1 },
+                ]}
+              />
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    ) : (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.mobileChipRow}
       >
-        <Text style={[styles.centerChipText, active && { color: GOLD }]}>
-          {f.label}
-        </Text>
-      </TouchableOpacity>
-    );
-  })}
-</ScrollView>
-          )}
-        </View>
+        {filters.map((f) => {
+          const active = sort === f.key;
+          return (
+            <TouchableOpacity
+              key={f.key}
+              activeOpacity={0.9}
+              onPress={() => setSort(f.key)}
+              style={[
+                styles.centerChip,
+                styles.mobileChip,
+                active && { borderColor: GOLD, backgroundColor: '#111' },
+              ]}
+            >
+              <Text style={[styles.centerChipText, active && { color: GOLD }]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    )}
+  </View>
+) : null}
 
-        {/* ✅ CATEGORY panel (separate + scrollable on sidebar) */}
-        <View
+        {showCategory ? (
+  <View
   style={[
-    styles.sidePanel,
+    styles.sidePanelSeamless,
     { marginTop: compact ? 6 : 14 },
-    compact && !isSidebar && { padding: 6 },
+    compact && !isSidebar && { padding: 0 },
     !isSidebar && { alignItems: 'center' },
   ]}
 >
-  <Text style={styles.sidePanelTitle}>CATEGORY</Text>
+    <Text style={styles.sidePanelTitle}>CATEGORY</Text>
 
-          {isSidebar ? (
-            <ScrollView
-              style={{ maxHeight: 360 }}
-              contentContainerStyle={{ gap: 8, paddingBottom: 24 }}
-              showsVerticalScrollIndicator
-              nestedScrollEnabled
-              onStartShouldSetResponderCapture={() => true}
-              onMoveShouldSetResponderCapture={() => true}
-              {...(Platform.OS === 'web'
-                ? ({
-                    onWheel: (e: any) => e.stopPropagation(),
-                  } as any)
-                : {})}
+    {isSidebar ? (
+      <ScrollView
+        style={{ maxHeight: 360 }}
+        contentContainerStyle={{ gap: 8, paddingBottom: 24 }}
+        showsVerticalScrollIndicator
+        nestedScrollEnabled
+        onStartShouldSetResponderCapture={() => true}
+        onMoveShouldSetResponderCapture={() => true}
+        {...(Platform.OS === 'web'
+          ? ({
+              onWheel: (e: any) => e.stopPropagation(),
+            } as any)
+          : {})}
+      >
+        {FILM_CATEGORIES.map((c) => {
+          const active = filmCategory === c;
+          return (
+            <TouchableOpacity
+              key={c}
+              activeOpacity={0.9}
+              onPress={() => setFilmCategory(c)}
+              style={[
+                styles.sideSortItem,
+                active && styles.sideSortItemActive,
+              ]}
             >
-              {FILM_CATEGORIES.map((c) => {
-                const active = filmCategory === c;
-                return (
-                  <TouchableOpacity
-                    key={c}
-                    activeOpacity={0.9}
-                    onPress={() => setFilmCategory(c)}
-                    style={[
-                      styles.sideSortItem,
-                      active && styles.sideSortItemActive,
-                    ]}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.sideSortLabel, active && { color: GOLD }]}>
-                        {c}
-                      </Text>
-                    </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.sideSortLabel, active && { color: GOLD }]}>
+                  {c}
+                </Text>
+              </View>
 
-                    <View
-                      style={[
-                        styles.sideSortDot,
-                        active && { backgroundColor: GOLD, opacity: 1 },
-                      ]}
-                    />
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          ) : (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.mobileChipRow}
+              <View
+                style={[
+                  styles.sideSortDot,
+                  active && { backgroundColor: GOLD, opacity: 1 },
+                ]}
+              />
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    ) : (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.mobileChipRow}
+      >
+        {FILM_CATEGORIES.map((c) => {
+          const active = filmCategory === c;
+          return (
+            <TouchableOpacity
+              key={c}
+              activeOpacity={0.9}
+              onPress={() => setFilmCategory(c)}
+              style={[
+                styles.centerChip,
+                styles.mobileChip,
+                active && { borderColor: GOLD, backgroundColor: '#111' },
+              ]}
             >
-              {FILM_CATEGORIES.map((c) => {
-                const active = filmCategory === c;
-                return (
-                  <TouchableOpacity
-                    key={c}
-                    activeOpacity={0.9}
-                    onPress={() => setFilmCategory(c)}
-                    style={[
-                      styles.centerChip,
-                      styles.mobileChip,
-                      active && { borderColor: GOLD, backgroundColor: '#111' },
-                    ]}
-                  >
-                    <Text style={[styles.centerChipText, active && { color: GOLD }]}>
-                      {c}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          )}
-        </View>
+              <Text style={[styles.centerChipText, active && { color: GOLD }]}>
+                {c}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    )}
+  </View>
+) : null}
       </View>
     );
   }
@@ -1885,10 +1917,11 @@ const fetchContent = async (uid: string | null, cat: Category, searchTextQ: stri
     }
 
     const firstPlayable = winnerData?.storage_path
-      ? `winner-${winnerData.id}`
-      : normalized.find((r) => !!r.storage_path && r.media_kind !== 'file_audio')?.id ?? null;
+  ? `winner-${winnerData.id}`
+  : normalized.find((r) => !!r.storage_path && r.media_kind !== 'file_audio')?.id ?? null;
 
-    setActiveId((prev) => prev ?? (firstPlayable as string | null));
+// Always default to last month's winner if it exists
+setActiveId(firstPlayable as string | null);
 
     layoutMap.current.clear();
   } catch (e: any) {
@@ -2117,10 +2150,16 @@ await fetchComments(commentsFor.id);
         });
 
         setSubmissions((prev) =>
-          prev.map((row) =>
-            row.id === s.id ? { ...row, votes: Math.max(0, (row.votes || 0) - 1) } : row
-          )
-        );
+  prev.map((row) =>
+    row.id === s.id ? { ...row, votes: Math.max(0, (row.votes || 0) - 1) } : row
+  )
+);
+
+setPreviewItem((prev) =>
+  prev && prev.id === s.id
+    ? { ...prev, votes: Math.max(0, (prev.votes || 0) - 1) }
+    : prev
+);
 
         setMonthlyVotesUsed((n) => Math.max(0, n - 1));
       } else {
@@ -2139,8 +2178,14 @@ await fetchComments(commentsFor.id);
         });
 
         setSubmissions((prev) =>
-          prev.map((row) => (row.id === s.id ? { ...row, votes: (row.votes || 0) + 1 } : row))
-        );
+  prev.map((row) => (row.id === s.id ? { ...row, votes: (row.votes || 0) + 1 } : row))
+);
+
+setPreviewItem((prev) =>
+  prev && prev.id === s.id
+    ? { ...prev, votes: (prev.votes || 0) + 1 }
+    : prev
+);
 
         setMonthlyVotesUsed((n) => n + 1);
 
@@ -2159,93 +2204,28 @@ await fetchComments(commentsFor.id);
     }
   };
 
-  // Ensure only activeId plays
-  useEffect(() => {
-    (async () => {
-      if (activeId) {
-        await pauseAllExcept(activeId);
-      } else {
-        await pauseAllExcept(PAUSE_NONE_ID);
-      }
-    })();
-  }, [activeId]);
+  // Ensure only the chosen activeId plays.
+// If nothing is active, immediately resume last month's winner if it exists.
+useEffect(() => {
+  (async () => {
+    const fallbackWinnerId = winner?.storage_path ? `winner-${winner.id}` : null;
+    const targetId = activeId || fallbackWinnerId || PAUSE_NONE_ID;
+    await pauseAllExcept(targetId);
+  })();
+}, [activeId, winner]);
 
   const onItemLayout = (id: string, playable: boolean) => (e: LayoutChangeEvent) => {
-    const { y, height } = e.nativeEvent.layout;
-    layoutMap.current.set(id, { y, h: height, playable });
-  };
+  const { y, height } = e.nativeEvent.layout;
+  layoutMap.current.set(id, { y, h: height, playable });
+};
 
-  const pickActiveByCenter = (offsetY: number) => {
-    const map = layoutMap.current;
-    if (map.size === 0) return null;
-
-    const viewportCenter =
-      offsetY + (winH - (TOP_BAR_OFFSET + BOTTOM_TAB_H)) * 0.5;
-
-    let bestId: string | null = null;
-    let bestDist = Number.POSITIVE_INFINITY;
-
-    map.forEach((meta, id) => {
-      if (!meta.playable) return;
-      const mid = meta.y + meta.h * 0.5;
-      const d = Math.abs(mid - viewportCenter);
-      if (d < bestDist) {
-        bestDist = d;
-        bestId = id;
-      }
-    });
-
-    return bestId;
-  };
-
-  const ensureActiveByCenter = (offsetY: number) => {
-    const next = pickActiveByCenter(offsetY);
-    if (next && next !== activeId) setActiveId(next);
-    if (!next && activeId) setActiveId(null);
-  };
-
-  const viewabilityConfig = useRef({
-    itemVisiblePercentThreshold: 80,
-    minimumViewTime: 0,
-    waitForInteraction: false,
-  }).current;
-
-  const onViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      const playable = viewableItems.filter((v) => {
-        const it =
-          v.item as
-            | (Submission & {
-                media_kind?: RawSubmission['media_kind'];
-                storage_path?: string | null;
-              })
-            | undefined;
-        if (!it) return false;
-        return !!it.storage_path && it.media_kind !== 'file_audio' && v.isViewable;
-      });
-      if (playable.length) {
-        const candidate = playable[playable.length - 1];
-        const id = (candidate.item as Submission).id;
-        if (!layoutMap.current.size && id !== activeId) {
-          setActiveId(id);
-        }
-      }
-    }
-  ).current;
-
- const viewabilityConfigCallbackPairs = useRef([
-  { viewabilityConfig, onViewableItemsChanged },
-]).current;
-
+// Keep scroll handlers passive.
+// Scrolling should never change which video is active.
 const onScrollImmediate = useRef((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-  const y = e.nativeEvent.contentOffset.y;
-  lastOffsetY.current = y;
-  ensureActiveByCenter(y);
+  lastOffsetY.current = e.nativeEvent.contentOffset.y;
 }).current;
 
-const onMomentumEnd = useRef(() => {
-  ensureActiveByCenter(lastOffsetY.current);
-}).current;
+const onMomentumEnd = useRef(() => {}).current;
 
 const onRemoveSubmission = async (s: Submission & { description?: string | null }) => {
   const prevSubs = submissions;
@@ -2287,21 +2267,26 @@ const renderMedia = (
   isWinnerRow: boolean
 ) => {
   // ✅ Fix 1: avoid stale `activeId` closure on web hover leave
-  const webHoverProps =
-    Platform.OS === 'web'
-      ? {
-          onMouseEnter: () => setActiveId(rowId),
-          onMouseLeave: () => {
-            setActiveId((prev) => {
-              if (prev === rowId) {
-                pauseAllExcept(PAUSE_NONE_ID);
-                return null;
-              }
-              return prev;
-            });
-          },
-        }
-      : {};
+  const isWinnerPlayer = rowId.startsWith('winner-');
+
+const webHoverProps =
+  Platform.OS === 'web'
+    ? {
+        onMouseEnter: () => setActiveId(rowId),
+        onMouseLeave: () => {
+          // Winner should keep playing when mouse leaves it
+          if (isWinnerPlayer) return;
+
+          setActiveId((prev) => {
+            if (prev === rowId) {
+              pauseAllExcept(PAUSE_NONE_ID);
+              return null;
+            }
+            return prev;
+          });
+        },
+      }
+    : {};
 
   // ✅ Fix 2: contain 16:9 inside the available box (prevents web stretch/crop)
   const mobileWinnerMaxH = winH * 0.28;
@@ -2322,14 +2307,15 @@ const frameH = fitted.h;
       <View
         {...(webHoverProps as any)}
         style={[
-          styles.videoOuter,
-          {
-            width: frameW,
-            maxWidth: mediaW,
-            height: frameH,
-            maxHeight: availableHForMedia,
-          },
-        ]}
+  styles.videoOuter,
+  isWinnerRow && styles.videoOuterHeroFlat,
+  {
+    width: frameW,
+    maxWidth: mediaW,
+    height: frameH,
+    maxHeight: availableHForMedia,
+  },
+]}
       >
         <View style={styles.aspectFill}>
           <Image
@@ -2367,25 +2353,27 @@ const frameH = fitted.h;
     <View
       {...(webHoverProps as any)}
       style={[
-        styles.videoOuter,
-        {
-          width: frameW,
-          maxWidth: mediaW,
-          height: frameH,
-          maxHeight: availableHForMedia,
-        },
-      ]}
+  styles.videoOuter,
+  isWinnerRow && styles.videoOuterHeroFlat,
+  {
+    width: frameW,
+    maxWidth: mediaW,
+    height: frameH,
+    maxHeight: availableHForMedia,
+  },
+]}
     >
       <HostedVideoInline
-        playerId={rowId}
-        storagePath={s.storage_path!}
-        width={frameW}
-        maxHeight={frameH}
-        autoPlay={isActive}
-        posterUri={s.thumbnail_url ?? null}
-        dimVignette={isWinnerRow}
-        showControls={false}
-      />
+  playerId={rowId}
+  storagePath={s.storage_path!}
+  width={frameW}
+  maxHeight={frameH}
+  autoPlay={isActive}
+  posterUri={s.thumbnail_url ?? null}
+  dimVignette={isWinnerRow}
+  showControls={false}
+  showProgress={!isWinnerRow}
+/>
     </View>
   );
 };
@@ -2507,40 +2495,45 @@ const renderCompactGridCard = useCallback(
 
     return (
       <Pressable
-        onPress={() => {
-          if (longPressTriggeredRef.current[s.id]) {
-            longPressTriggeredRef.current[s.id] = false;
-            return;
-          }
-          openPreview(s);
-        }}
-        onLongPress={() => {
-          if (Platform.OS !== 'web' && s.storage_path) {
-            longPressTriggeredRef.current[s.id] = true;
-            setActiveId(playerId);
-          }
-        }}
-        delayLongPress={140}
-        onPressOut={() => {
-          if (Platform.OS !== 'web') {
-            setActiveId((prev) => (prev === playerId ? null : prev));
-            setTimeout(() => {
-              longPressTriggeredRef.current[s.id] = false;
-            }, 0);
-          }
-        }}
-        style={[styles.gridCard, { width: gridCardW }]}
-        {...(Platform.OS === 'web'
-          ? {
-              onHoverIn: () => {
-                if (s.storage_path) setActiveId(playerId);
-              },
-              onHoverOut: () => {
-                setActiveId((prev) => (prev === playerId ? null : prev));
-              },
-            }
-          : {})}
-      >
+  onPress={() => {
+    if (longPressTriggeredRef.current[s.id]) {
+      longPressTriggeredRef.current[s.id] = false;
+      return;
+    }
+
+    if (Platform.OS !== 'web' && activeId === playerId) {
+      setActiveId(null);
+      return;
+    }
+
+    openPreview(s);
+  }}
+  onLongPress={() => {
+    if (Platform.OS !== 'web' && s.storage_path) {
+      longPressTriggeredRef.current[s.id] = true;
+      setActiveId(playerId);
+    }
+  }}
+  delayLongPress={140}
+  onPressOut={() => {
+    if (Platform.OS !== 'web') {
+      setTimeout(() => {
+        longPressTriggeredRef.current[s.id] = false;
+      }, 120);
+    }
+  }}
+  style={[styles.gridCard, { width: gridCardW }]}
+  {...(Platform.OS === 'web'
+    ? {
+        onHoverIn: () => {
+          if (s.storage_path) setActiveId(playerId);
+        },
+        onHoverOut: () => {
+          setActiveId((prev) => (prev === playerId ? null : prev));
+        },
+      }
+    : {})}
+>
         <View style={styles.gridThumbWrap}>
           {/* Base thumbnail always visible */}
           <Image source={{ uri: thumb }} style={styles.gridThumb} resizeMode="cover" />
@@ -2717,7 +2710,7 @@ const renderCard = useCallback(
           end={{ x: 1, y: 1 }}
           style={[styles.cardBorder, { alignSelf: 'center' }]}
         >
-          <View style={[styles.card, isWinnerRow && styles.cardHero]}>
+          <View style={[styles.card, isWinnerRow && styles.cardHero, isWinnerRow && styles.cardHeroFlat]}>
             {isWinnerRow ? (
               <>
                 <View
@@ -2838,7 +2831,14 @@ const renderCard = useCallback(
 const headerElement = useMemo(
   () => (
     <View style={{ alignItems: 'center' }}>
-      {winner ? renderCard(`winner-${winner.id}`, winner, activeId === `winner-${winner.id}`, true) : null}
+      {winner
+  ? renderCard(
+      `winner-${winner.id}`,
+      winner,
+      activeId === `winner-${winner.id}` || !activeId,
+      true
+    )
+  : null}
       <View style={{ height: isNarrow ? 12 : 12 }} />
     </View>
   ),
@@ -2940,34 +2940,101 @@ return (
   renderItem={renderSubmissionItem}
   keyExtractor={(item: any) => item.id}
   ListHeaderComponent={
-    <View style={{ alignItems: 'center' }}>
-      {headerElement}
-      <View
-        style={[
-          styles.subHeaderWrap,
-          {
-            width: isMobile ? winW - 20 : cardW,
-            marginTop: 8,
-            alignSelf: 'center',
-          },
-        ]}
-      >
-        <HeaderControls
-          compact={isNarrow}
-          category={category}
-          filmCategory={filmCategory}
-          setFilmCategory={setFilmCategory}
-          sort={sort}
-          setSort={setSort}
-          searchText={searchText}
-          setSearchText={setSearchText}
-          isSearching={isSearching}
-          layout="center"
-        />
-      </View>
-      <View style={{ height: 8 }} />
+  <View style={{ alignItems: 'center' }}>
+    {/* CATEGORY ONLY — above winner */}
+    <View
+      style={[
+        styles.subHeaderWrap,
+        {
+          width: isMobile ? winW - 20 : cardW,
+          marginTop: -20,
+          alignSelf: 'center',
+        },
+      ]}
+    >
+      <HeaderControls
+        compact={isNarrow}
+        category={category}
+        filmCategory={filmCategory}
+        setFilmCategory={setFilmCategory}
+        sort={sort}
+        setSort={setSort}
+        searchText={searchText}
+        setSearchText={setSearchText}
+        isSearching={isSearching}
+        layout="center"
+        showCategory={true}
+        showSearch={false}
+        showSort={false}
+      />
     </View>
-  }
+
+    <View style={{ height: 2 }} />
+
+    {/* WINNER */}
+    {headerElement}
+
+    {/* SEARCH + SORT ONLY — below winner */}
+    <View
+      style={[
+        styles.subHeaderWrap,
+        {
+          width: isMobile ? winW - 24 : 360,
+          marginTop: -25,
+          alignSelf: 'center',
+        },
+      ]}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          width: '100%',
+          gap: 6,
+        }}
+      >
+        <View style={{ flex: 1, height: 52 }}>
+          <HeaderControls
+            compact={true}
+            category={category}
+            filmCategory={filmCategory}
+            setFilmCategory={setFilmCategory}
+            sort={sort}
+            setSort={setSort}
+            searchText={searchText}
+            setSearchText={setSearchText}
+            isSearching={isSearching}
+            layout="center"
+            showCategory={false}
+            showSearch={true}
+            showSort={false}
+          />
+        </View>
+
+        <View style={{ flex: 1, height: 52 }}>
+          <HeaderControls
+            compact={true}
+            category={category}
+            filmCategory={filmCategory}
+            setFilmCategory={setFilmCategory}
+            sort={sort}
+            setSort={setSort}
+            searchText={searchText}
+            setSearchText={setSearchText}
+            isSearching={isSearching}
+            layout="center"
+            showCategory={false}
+            showSearch={false}
+            showSort={true}
+          />
+        </View>
+      </View>
+    </View>
+
+    <View style={{ height: 2 }} />
+  </View>
+}
   numColumns={gridColumns}
   columnWrapperStyle={
   gridColumns > 1
@@ -2992,13 +3059,10 @@ return (
   windowSize={5}
   initialNumToRender={3}
   maxToRenderPerBatch={4}
-  viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs}
-  onEndReachedThreshold={0.4}
+    onEndReachedThreshold={0.4}
   onScroll={onScrollImmediate}
   onMomentumScrollEnd={onMomentumEnd}
   scrollEventThrottle={16}
-  onContentSizeChange={() => ensureActiveByCenter(lastOffsetY.current)}
-  onLayout={() => ensureActiveByCenter(lastOffsetY.current)}
 />
         )}
       </View>
@@ -3271,9 +3335,9 @@ const RADIUS_XL = 18;
 /* ---------------- styles ---------------- */
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: '#040404',
-  },
+  flex: 1,
+  backgroundColor: '#000000',
+},
 
   wideLayout: {
     flex: 1,
@@ -3283,19 +3347,19 @@ const styles = StyleSheet.create({
   },
 
   sidebar: {
-    width: '100%',
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(212,180,95,0.10)',
-    backgroundColor: 'rgba(8,8,8,0.96)',
-    padding: 16,
-    alignSelf: 'flex-start',
-    shadowColor: '#000',
-    shadowOpacity: 0.32,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
-  },
+  width: '100%',
+  borderRadius: 22,
+  borderWidth: 0,
+  borderColor: 'transparent',
+  backgroundColor: '#000000',
+  padding: 16,
+  alignSelf: 'flex-start',
+  shadowColor: '#000',
+  shadowOpacity: 0,
+  shadowRadius: 0,
+  shadowOffset: { width: 0, height: 0 },
+  elevation: 0,
+},
 
   gridArea: {
     flex: 1,
@@ -3353,19 +3417,27 @@ const styles = StyleSheet.create({
   },
 
   cardHero: {
-    backgroundColor: '#030303',
-    borderColor: 'rgba(212,180,95,0.12)',
-  },
-
+  backgroundColor: '#030303',
+  borderColor: 'transparent',
+  paddingTop: 16,
+  paddingBottom: 16,
+},
+cardHeroFlat: {
+  borderWidth: 0,
+  shadowOpacity: 0,
+  shadowRadius: 0,
+  shadowOffset: { width: 0, height: 0 },
+  elevation: 0,
+},
   heroRow: {
-    alignSelf: 'center',
-    borderRadius: RADIUS_XL + 2,
-    overflow: 'hidden',
-    backgroundColor: '#000',
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
+  alignSelf: 'center',
+  borderRadius: RADIUS_XL + 2,
+  overflow: 'hidden',
+  backgroundColor: '#000',
+  marginTop: 0,
+  borderWidth: 0,
+  borderColor: 'transparent',
+},
 
   winnerFooter: {
     alignSelf: 'center',
@@ -3413,13 +3485,15 @@ const styles = StyleSheet.create({
   paddingLeft: 0,
   alignItems: 'center',
   justifyContent: 'center',
+  flexWrap: 'nowrap',
 },
 
-  mobileChip: {
-  marginRight: 6,
-  height: 24,
-  paddingHorizontal: 8,
+mobileChip: {
+  marginRight: 4,
+  height: 20,
+  paddingHorizontal: 6,
 },
+
 
   mobileFeedCard: {
   alignSelf: 'center',
@@ -3755,6 +3829,14 @@ mobileMediaWrap: {
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
   },
+  videoOuterHeroFlat: {
+  borderWidth: 0,
+  borderColor: 'transparent',
+  shadowOpacity: 0,
+  shadowRadius: 0,
+  shadowOffset: { width: 0, height: 0 },
+  elevation: 0,
+},
 
   aspectFill: {
     ...StyleSheet.absoluteFillObject,
@@ -3999,21 +4081,21 @@ gridMine: {
 
   /* ---------------- Preview modal ---------------- */
   previewOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.78)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
+  flex: 1,
+  backgroundColor: 'rgba(0,0,0,0.88)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  padding: 20,
+},
 
   previewCard: {
   width: '100%',
   maxWidth: 820,
   borderRadius: 20,
   overflow: 'hidden',
-  backgroundColor: '#080808',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.06)',
+  backgroundColor: '#000000',
+  borderWidth: 0,
+  borderColor: 'transparent',
   shadowColor: '#000',
   shadowOpacity: 0.30,
   shadowRadius: 18,
@@ -4025,8 +4107,9 @@ gridMine: {
   paddingHorizontal: 16,
   paddingTop: 14,
   paddingBottom: 12,
-  borderBottomWidth: 1,
-  borderBottomColor: 'rgba(255,255,255,0.05)',
+  borderBottomWidth: 0,
+  borderBottomColor: 'transparent',
+  backgroundColor: '#000000',
   flexDirection: 'row',
   alignItems: 'center',
 },
@@ -4080,17 +4163,17 @@ gridMine: {
 },
 
   previewActionPill: {
-    height: 38,
-    paddingHorizontal: 15,
-    borderRadius: 999,
-    backgroundColor: '#0B0B0B',
-    borderWidth: 1,
-    borderColor: 'rgba(212,180,95,0.20)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-    marginBottom: 10,
-  },
+  height: 38,
+  paddingHorizontal: 15,
+  borderRadius: 999,
+  backgroundColor: '#000000',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.06)',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginRight: 10,
+  marginBottom: 10,
+},
 
   previewActionText: {
     color: '#EDEBE6',
@@ -4102,17 +4185,17 @@ gridMine: {
   },
 
   previewActionPillGhost: {
-    height: 38,
-    paddingHorizontal: 15,
-    borderRadius: 999,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-    marginBottom: 10,
-  },
+  height: 38,
+  paddingHorizontal: 15,
+  borderRadius: 999,
+  backgroundColor: '#000000',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.06)',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginRight: 10,
+  marginBottom: 10,
+},
 
   previewActionTextGhost: {
     color: 'rgba(237,235,230,0.70)',
@@ -4135,54 +4218,69 @@ gridMine: {
 
   /* ---------------- HeaderControls ---------------- */
   sideSearchBox: {
-    width: '100%',
-    backgroundColor: '#090909',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 14,
-  },
+  width: '100%',
+  height: '100%',
+  backgroundColor: '#000000',
+  borderWidth: 0,
+  borderColor: 'transparent',
+  borderRadius: 999,
+  justifyContent: 'center',
+},
 
-  sidePanel: {
-    width: '100%',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
-    backgroundColor: '#080808',
-    padding: 10,
-  },
+sidePanel: {
+  width: '100%',
+  height: '100%',
+  borderRadius: 999,
+  borderWidth: 0,
+  borderColor: 'transparent',
+  backgroundColor: '#000000',
+  paddingHorizontal: 0,
+  paddingVertical: 0,
+  justifyContent: 'center',
+},
 
+sidePanelSeamless: {
+  width: '100%',
+  backgroundColor: '#000000',
+  borderWidth: 0,
+  borderColor: 'transparent',
+  paddingHorizontal: 0,
+  paddingVertical: 0,
+},
   sidePanelTitle: {
-    color: 'rgba(237,235,230,0.68)',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    fontSize: 10,
-    letterSpacing: 0.9,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
+  color: 'rgba(237,235,230,0.68)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 8,
+  letterSpacing: 0.9,
+  textTransform: 'uppercase',
+  marginBottom: 4,
+  textAlign: 'center',
+  lineHeight: 20,
+},
 
   sideSortItem: {
-    width: '100%',
-    borderRadius: 14,
-    paddingHorizontal: 13,
-    paddingVertical: 11,
-    backgroundColor: '#0B0B0B',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  width: '100%',
+  borderRadius: 14,
+  paddingHorizontal: 13,
+  paddingVertical: 11,
+  backgroundColor: '#000000',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.03)',
+  flexDirection: 'row',
+  alignItems: 'center',
+},
 
   sideSortItemActive: {
-    borderColor: 'rgba(212,180,95,0.55)',
-    backgroundColor: '#101010',
-    shadowColor: GOLD,
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 3,
-  },
+  borderWidth: 1,
+  borderColor: 'rgba(212,180,95,0.55)',
+  backgroundColor: '#000000',
+  shadowColor: GOLD,
+  shadowOpacity: 0,
+  shadowRadius: 0,
+  shadowOffset: { width: 0, height: 0 },
+  elevation: 0,
+},
 
   sideSortLabel: {
     color: '#F1EEE7',
