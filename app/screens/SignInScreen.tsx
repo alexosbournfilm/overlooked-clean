@@ -297,38 +297,61 @@ export default function SignInScreen() {
    * - otherwise does NOTHING and lets AppNavigator swap trees.
    */
   const finishPostAuthRedirect = async () => {
-    if (didFinishRedirectRef.current) return;
-    didFinishRedirectRef.current = true;
+  if (didFinishRedirectRef.current) return;
+  didFinishRedirectRef.current = true;
 
-    const { data: u } = await supabase.auth.getUser();
-    const userId = u?.user?.id;
+  const { data: u } = await supabase.auth.getUser();
+  const userId = u?.user?.id;
 
-    if (!userId) return;
+  if (!userId) {
+    showError('Error', 'No active session found after sign-in.');
+    return;
+  }
 
-    const { data: profile, error: profileError } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', userId)
-      .maybeSingle();
+  const { data: profile, error: profileError } = await supabase
+    .from('users')
+    .select('id')
+    .eq('id', userId)
+    .maybeSingle();
 
-    if (profileError) {
-      console.log('Profile fetch error:', profileError);
-      showError('Error', 'Could not load your profile. Please try again.');
+  if (profileError) {
+    console.log('Profile fetch error:', profileError);
+    showError('Error', 'Could not load your profile. Please try again.');
+    return;
+  }
+
+  // No profile yet -> stay in Auth stack and go to CreateProfile
+  if (!profile) {
+    try {
+      navigation.navigate('CreateProfile');
+    } catch (e) {
+      console.log('CreateProfile navigation error:', e);
+    }
+    return;
+  }
+
+  // Profile exists -> leave Auth stack and go to MainTabs
+  try {
+    const parentNav = navigation.getParent?.();
+
+    if (parentNav) {
+      parentNav.reset({
+        index: 0,
+        routes: [{ name: 'MainTabs' }],
+      });
       return;
     }
 
-    // If the user has no profile row, ensure they land on CreateProfile (AuthStack screen)
-    if (!profile) {
-      try {
-        navigation.navigate('CreateProfile');
-      } catch {}
-      return;
-    }
-
-    // ✅ If profile exists: DO NOTHING.
-    // AppNavigator will render MainTabs automatically once useAuth() updates.
-    // (Keeping this no-op for stability)
-  };
+    // fallback
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'MainTabs' }],
+    });
+  } catch (e) {
+    console.log('MainTabs navigation error:', e);
+    showError('Navigation Error', 'Signed in, but could not open the app.');
+  }
+};
 
   const handleAuthDeepLink = async (url: string) => {
     try {
@@ -492,60 +515,62 @@ export default function SignInScreen() {
   }, [displayText, isDeleting, fullLine, showSignIn]);
 
   const handleSignIn = async () => {
-    const trimmedEmail = email.trim();
+  const trimmedEmail = email.trim();
 
-    if (!trimmedEmail || !password) {
-      showError('Sign in to continue', 'Enter your email and password.');
+  if (!trimmedEmail || !password) {
+    showError('Sign in to continue', 'Enter your email and password.');
+    return;
+  }
+
+  if (loading) return;
+  setLoading(true);
+
+  try {
+    didFinishRedirectRef.current = false;
+
+    console.log('[SignIn] attempting sign-in', { email: trimmedEmail });
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: trimmedEmail,
+      password,
+    });
+
+    console.log('[SignIn] result', {
+      userId: data?.user?.id,
+      hasSession: !!data?.session,
+      error: error?.message,
+    });
+
+    if (error) {
+      showError('Login Error', error.message);
       return;
     }
 
-    if (loading) return;
-    setLoading(true);
-
-    try {
-      // ✅ reset redirect guard for a fresh login attempt
-      didFinishRedirectRef.current = false;
-
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: trimmedEmail,
-        password,
-      });
-
-      if (error) {
-        showError('Login Error', error.message);
-        return;
-      }
-
-      const userId = data?.user?.id;
-      if (!userId) {
-        showError('Error', 'Login failed. Please try again.');
-        return;
-      }
-
-      const isConfirmed = !!data?.user?.email_confirmed_at;
-      if (!isConfirmed) {
-        showError(
-          'Email not confirmed',
-          'Please confirm your email first, then try signing in again.'
-        );
-        return;
-      }
-
-      setShowSignIn(false);
-
-      // ✅ IMPORTANT: no navigation.reset() here.
-      // Let AppNavigator switch trees; we only route to CreateProfile if needed.
-      await finishPostAuthRedirect();
-
-      // keep your import stable (no-op)
-      void resetToMain;
-    } catch (err: any) {
-      console.log('SignIn exception:', err);
-      showError('Login Error', 'Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
+    const userId = data?.user?.id;
+    if (!userId) {
+      showError('Error', 'Login failed. Please try again.');
+      return;
     }
-  };
+
+    const isConfirmed = !!data?.user?.email_confirmed_at;
+    if (!isConfirmed) {
+      showError(
+        'Email not confirmed',
+        'Please confirm your email first, then try signing in again.'
+      );
+      return;
+    }
+
+    setShowSignIn(false);
+
+    await finishPostAuthRedirect();
+  } catch (err: any) {
+    console.log('SignIn exception:', err);
+    showError('Login Error', 'Something went wrong. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   // ✅ Modal sizing helpers (prevents falling out of frame)
   const MODAL_SIDE_PAD = isPhone ? 14 : 18;

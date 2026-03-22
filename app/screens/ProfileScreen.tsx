@@ -20,11 +20,10 @@ import {
   Linking,
   Pressable,
   ImageBackground,
-  SafeAreaView,
   Animated,
   Easing,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { openChat } from '../navigation/navigationRef';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -38,7 +37,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../context/AuthProvider';
 import { Upload } from 'tus-js-client';
 import { supportUser, unsupportUser } from "../lib/connections";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { Buffer } from "buffer";
 import { useMonthlyStreak } from "../lib/useMonthlyStreak";
 import YoutubePlayer from "react-native-youtube-iframe";
@@ -309,9 +308,17 @@ const showreelSignedUrlCache = new Map<string, { url: string; exp: number }>();
 const showreelInflight = new Map<string, Promise<string>>();
 
 /** Sign a storage path from portfolios, or pass through if it's already a URL */
-async function signShowreelPath(pathOrUrl: string, expiresInSec = 300): Promise<string> {
-  if (!pathOrUrl) throw new Error('Missing showreel path');
-  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+async function signShowreelPath(pathOrUrl: string, expiresInSec = 3600): Promise<string> {
+  if (!pathOrUrl) throw new Error("Missing showreel path");
+
+  const stripQuery = (u: string) => (u ? u.split("?")[0] : u);
+
+  const pathFromSupabaseUrl = (u: string) => {
+    const clean = stripQuery(u);
+    const m = clean.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
+    if (!m) return null;
+    return { bucket: m[1], path: m[2] };
+  };
 
   const now = Date.now();
   const cached = showreelSignedUrlCache.get(pathOrUrl);
@@ -319,17 +326,48 @@ async function signShowreelPath(pathOrUrl: string, expiresInSec = 300): Promise<
   if (showreelInflight.has(pathOrUrl)) return showreelInflight.get(pathOrUrl)!;
 
   const p = (async () => {
+    // Case 1: already a Supabase public URL -> convert it to a signed URL
+    if (/^https?:\/\//i.test(pathOrUrl)) {
+      const parsed = pathFromSupabaseUrl(pathOrUrl);
+
+      if (!parsed) {
+        showreelInflight.delete(pathOrUrl);
+        return pathOrUrl;
+      }
+
+      const { data, error } = await supabase.storage
+        .from(parsed.bucket)
+        .createSignedUrl(parsed.path, expiresInSec);
+
+      if (error || !data?.signedUrl) {
+        showreelInflight.delete(pathOrUrl);
+        throw error ?? new Error("Failed to sign showreel URL");
+      }
+
+      showreelSignedUrlCache.set(pathOrUrl, {
+        url: data.signedUrl,
+        exp: now + expiresInSec * 1000,
+      });
+      showreelInflight.delete(pathOrUrl);
+      return data.signedUrl;
+    }
+
+    // Case 2: raw storage path -> sign from portfolios bucket
     const { data, error } = await supabase.storage
       .from(SHOWREEL_BUCKET)
       .createSignedUrl(pathOrUrl, expiresInSec);
-    if (error || !data) {
+
+    if (error || !data?.signedUrl) {
       showreelInflight.delete(pathOrUrl);
-      throw error ?? new Error('Failed to sign showreel URL');
+      throw error ?? new Error("Failed to sign showreel path");
     }
-    const url = data.signedUrl;
-    showreelSignedUrlCache.set(pathOrUrl, { url, exp: now + expiresInSec * 1000 });
+
+    showreelSignedUrlCache.set(pathOrUrl, {
+      url: data.signedUrl,
+      exp: now + expiresInSec * 1000,
+    });
     showreelInflight.delete(pathOrUrl);
-    return url;
+    return data.signedUrl;
   })();
 
   showreelInflight.set(pathOrUrl, p);
@@ -728,20 +766,19 @@ function ShowreelVideoInline({
           />
         ) : (
           <Video
-            ref={expoRef}
-            source={src ? { uri: src } : undefined}
-            style={StyleSheet.absoluteFillObject}
-            // ✅ ALWAYS FIT (no crop), like Submissions
-            resizeMode={ResizeMode.CONTAIN}
-            isLooping
-            shouldPlay={autoPlay}
-            isMuted={muted}
-            useNativeControls={false}
-            onReadyForDisplay={onExpoReady}
-            onPlaybackStatusUpdate={onExpoStatus}
-            onFullscreenUpdate={onExpoFullscreen}
-            progressUpdateIntervalMillis={150}
-          />
+  ref={expoRef}
+  source={src ? { uri: src } : undefined}
+  style={StyleSheet.absoluteFillObject}
+  resizeMode={ResizeMode.CONTAIN}
+  isLooping
+  shouldPlay={false}
+  isMuted={muted}
+  useNativeControls={false}
+  onReadyForDisplay={onExpoReady}
+  onPlaybackStatusUpdate={onExpoStatus}
+  onFullscreenUpdate={onExpoFullscreen}
+  progressUpdateIntervalMillis={150}
+/>
         )}
       </Animated.View>
 
@@ -1102,22 +1139,24 @@ const [showreelModalOpen, setShowreelModalOpen] = useState(false);
 
       if (pd.level != null) {
         const { data } = await supabase
-          .from('gamification_levels')
-          .select('level,name,banner_color,min_xp')
-          .eq('level', pd.level)
-          .maybeSingle<LevelRow>();
-        if (data) row = data;
+  .from('gamification_levels')
+  .select('level,name,banner_color,min_xp')
+  .eq('level', pd.level)
+  .maybeSingle();
+
+if (data) row = data as LevelRow;
       }
 
       if (!row) {
         const { data } = await supabase
-          .from('gamification_levels')
-          .select('level,name,banner_color,min_xp')
-          .lte('min_xp', xp)
-          .order('min_xp', { ascending: false })
-          .limit(1)
-          .maybeSingle<LevelRow>();
-        if (data) row = data;
+  .from('gamification_levels')
+  .select('level,name,banner_color,min_xp')
+  .lte('min_xp', xp)
+  .order('min_xp', { ascending: false })
+  .limit(1)
+  .maybeSingle();
+
+if (data) row = data as LevelRow;
       }
 
       if (!row) {
@@ -1246,34 +1285,36 @@ const [showreelModalOpen, setShowreelModalOpen] = useState(false);
       const existing = (pd.portfolio_url || "").trim();
 
       if (existing && looksLikeVideo(existing)) {
-        setMp4MainUrl(`${existing}${ts()}`);
-        setMp4MainName(existing.split("/").pop() || "Showreel.mp4");
-      } else {
-        setMp4MainUrl("");
-        setMp4MainName("");
-      }
+  setMp4MainUrl(existing);
+  setMp4MainName(existing.split("/").pop() || "Showreel.mp4");
+} else {
+  setMp4MainUrl("");
+  setMp4MainName("");
+}
 
       if (pd.main_role_id != null) {
         const { data: roleData } = await supabase
-          .from("creative_roles")
-          .select("name")
-          .eq("id", Number(pd.main_role_id))
-          .maybeSingle<{ name: string }>();
-        setMainRoleName(roleData?.name ?? "");
+  .from("creative_roles")
+  .select("name")
+  .eq("id", Number(pd.main_role_id))
+  .maybeSingle();
+
+setMainRoleName((roleData as { name?: string } | null)?.name ?? "");
       } else {
         setMainRoleName("");
       }
 
       if (pd.city_id != null) {
         const { data: cityData } = await supabase
-          .from("cities")
-          .select("name, country_code")
-          .eq("id", Number(pd.city_id))
-          .maybeSingle<{ name?: string; country_code?: string }>();
-        const label = cityData?.name ?? "";
-        setCityName(
-          label ? (cityData?.country_code ? `${label}, ${cityData.country_code}` : label) : ""
-        );
+  .from("cities")
+  .select("name, country_code")
+  .eq("id", Number(pd.city_id))
+  .maybeSingle();
+
+const city = cityData as { name?: string; country_code?: string } | null;
+const label = city?.name ?? "";
+
+setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : label) : "");
       } else {
         setCityName("");
       }
@@ -1874,8 +1915,10 @@ const [showreelModalOpen, setShowreelModalOpen] = useState(false);
         console.error('fetchUserJobs applications error', appsErr);
         setAlreadyAppliedJobIds([]);
       } else {
-        const ids = Array.from(new Set((appsData || []).map((a: any) => String(a.job_id))));
-        setAlreadyAppliedJobIds(ids);
+        const ids: string[] = Array.from(
+  new Set<string>((appsData || []).map((a: any) => String(a.job_id)))
+);
+setAlreadyAppliedJobIds(ids);
       }
     } else {
       setAlreadyAppliedJobIds([]);
@@ -1997,7 +2040,7 @@ const [showreelModalOpen, setShowreelModalOpen] = useState(false);
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
       const publicUrl = urlData.publicUrl;
 
-      setImage(publicUrl);
+     setImage(`${publicUrl}?t=${Date.now()}`);
 
       const { error: updErr } = await supabase
         .from('users')
@@ -2395,8 +2438,12 @@ const uploadPendingShowreelThumbs = async (userId: string) => {
     if (error) throw error;
 
     setShowreels((prev) =>
-      prev.map((s) => (s.id === showreelId ? { ...s, thumbnail_url: publicUrl } : s))
-    );
+  prev.map((s) =>
+    s.id === showreelId
+      ? { ...s, thumbnail_url: `${publicUrl}?t=${Date.now()}` }
+      : s
+  )
+);
   }
 
   setPendingShowreelThumbs({});
@@ -2467,22 +2514,25 @@ const uploadPendingShowreelThumbs = async (userId: string) => {
 
     if (pd.main_role_id != null) {
       const { data: roleData } = await supabase
-        .from('creative_roles')
-        .select('name')
-        .eq('id', Number(pd.main_role_id))
-        .maybeSingle<{ name: string }>();
-      setMainRoleName(roleData?.name ?? '');
+  .from('creative_roles')
+  .select('name')
+  .eq('id', Number(pd.main_role_id))
+  .maybeSingle();
+
+setMainRoleName((roleData as { name?: string } | null)?.name ?? '');
     } else {
       setMainRoleName('');
     }
 
     if (pd.city_id != null) {
       const { data: cityData } = await supabase
-        .from('cities')
-        .select('name, country_code')
-        .eq('id', Number(pd.city_id))
-        .maybeSingle<{ name?: string; country_code?: string }>();
-      const label = cityData?.name ?? '';
+  .from('cities')
+  .select('name, country_code')
+  .eq('id', Number(pd.city_id))
+  .maybeSingle();
+
+const city = cityData as { name?: string; country_code?: string } | null;
+const label = city?.name ?? '';
       setCityName(
         label
           ? cityData?.country_code
@@ -2637,9 +2687,12 @@ async function uploadSubmissionThumbToStorage(opts: {
     cacheControl: "3600",
   });
 
-  const up = await withTimeout(uploadPromise, 20000);
+  const up: { data: any; error: Error | null } = await withTimeout(
+  uploadPromise as Promise<{ data: any; error: Error | null }>,
+  20000
+);
 
-  if (up.error) throw up.error;
+if (up.error) throw up.error;
 
   const pub = supabase.storage.from(bucket).getPublicUrl(path);
   const publicUrl = pub?.data?.publicUrl;
@@ -2701,9 +2754,12 @@ async function uploadShowreelThumbToStorage(opts: {
     cacheControl: "3600",
   });
 
-  const up = await withTimeout(uploadPromise, 20000);
+  const up: { data: any; error: Error | null } = await withTimeout(
+  uploadPromise as Promise<{ data: any; error: Error | null }>,
+  20000
+);
 
-  if (up.error) throw up.error;
+if (up.error) throw up.error;
 
   const pub = supabase.storage.from(bucket).getPublicUrl(path);
   const publicUrl = pub?.data?.publicUrl;
@@ -2759,9 +2815,12 @@ async function uploadThumbnailToStorage(opts: {
     cacheControl: "3600",
   });
 
-  const up = await withTimeout(uploadPromise, 20000);
+  const up: { data: any; error: Error | null } = await withTimeout(
+  uploadPromise as Promise<{ data: any; error: Error | null }>,
+  20000
+);
 
-  if (up.error) throw up.error;
+if (up.error) throw up.error;
 
   const pub = supabase.storage.from(bucket).getPublicUrl(filePath);
   const publicUrl = pub?.data?.publicUrl;
@@ -2818,14 +2877,15 @@ async function uploadThumbnailToStorage(opts: {
       if (updErr) throw updErr;
 
       // ✅ update local submissions list immediately
-      setSubmissions((prev) =>
-        prev.map((s) => (s.id === submission.id ? { ...s, thumbnail_url: publicUrl } : s))
-      );
+      const freshThumb = `${publicUrl}?t=${Date.now()}`;
 
-      // ✅ update active submission (modal) immediately
-      setActiveSubmission((prev: any) =>
-        prev?.id === submission.id ? { ...prev, thumbnail_url: publicUrl } : prev
-      );
+setSubmissions((prev) =>
+  prev.map((s) => (s.id === submission.id ? { ...s, thumbnail_url: freshThumb } : s))
+);
+
+setActiveSubmission((prev: any) =>
+  prev?.id === submission.id ? { ...prev, thumbnail_url: freshThumb } : prev
+);
 
       Alert.alert("Updated", "Thumbnail updated.");
     } catch (e: any) {
@@ -2982,11 +3042,22 @@ const previewCreativeProtocolLink = () => {
       setStartingChat(false);
     }
   };
+ const openShowreel = async (row: ShowreelRow) => {
+    try {
+      await pauseAllExcept(PAUSE_NONE_ID);
+      setActiveShowreel(row);
+      setShowreelModalOpen(true);
+    } catch (e) {
+      console.warn("openShowreel failed:", e);
+    }
+  };
 
   const closeShowreelModal = async () => {
+  try {
+    await pauseAllExcept(PAUSE_NONE_ID);
+  } catch {}
   setShowreelModalOpen(false);
   setActiveShowreel(null);
-  await pauseAllExcept(PAUSE_NONE_ID);
 };
 /* ---------- RENDERERS ---------- */
 
@@ -3091,6 +3162,41 @@ const renderEditProfileCard = () => {
           <View style={styles.gamifyDot} />
           <Text style={styles.gamifyXp}>{xp} XP</Text>
         </View>
+      </View>
+    </View>
+  );
+};
+
+const renderCreativeProtocolCard = () => {
+  return (
+    <View style={[styles.infoCard, { marginTop: 12 }]}>
+      <Text style={styles.protocolTitle}>Share Creative Portfolio</Text>
+
+      <Text style={styles.protocolBody}>
+        Create a shareable link to your creative portfolio and showcase your films, showreels, and work across Instagram, TikTok, and beyond.
+      </Text>
+
+      <View
+        style={[
+          styles.protocolButtons,
+          isMobileLike ? { flexDirection: "column" } : null,
+        ]}
+      >
+        <TouchableOpacity
+          style={[styles.ghostBtn, isMobileLike ? { width: "100%" } : { flex: 1 }]}
+          onPress={copyCreativeProtocolLink}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.ghostBtnText}>Copy Link</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.btnPrimary, isMobileLike ? { width: "100%" } : { flex: 1 }]}
+          onPress={previewCreativeProtocolLink}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.btnPrimaryText}>Preview</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -3237,7 +3343,7 @@ const renderAboutStreaksCard = () => {
 
 const renderHero = () => {
   const avatarUrl = image || profile?.avatar_url || null;
-  const heroBg = avatarUrl ? addBuster(avatarUrl) : null;
+const heroBg = avatarUrl || null;
 
   const bannerColor = displayBannerColor || GOLD;
   const level = displayLevel || 1;
@@ -3441,10 +3547,10 @@ const heroMaxW = "100%";
                   <View style={[styles.avatarInner, isCompact && styles.avatarInnerCompact]}>
                     {avatarUrl ? (
                       <Image
-                        source={{ uri: addBuster(avatarUrl) || avatarUrl }}
-                        style={styles.avatarImage}
-                        resizeMode="cover"
-                      />
+  source={{ uri: avatarUrl }}
+  style={styles.avatarImage}
+  resizeMode="cover"
+/>
                     ) : (
                       <View style={styles.avatarFallback}>
                         <Ionicons name="person-outline" size={26} color={COLORS.textSecondary} />
@@ -3569,31 +3675,7 @@ const heroMaxW = "100%";
                   </TouchableOpacity>
                 )}
               </View>
-              <View style={[styles.infoCard, { marginTop: 12 }]}>
-  <Text style={styles.protocolTitle}>Share Creative Portfolio</Text>
-
-  <Text style={styles.protocolBody}>
-    Create a shareable link to your creative portfolio and showcase your films, showreels, and work across Instagram, TikTok, and beyond.
-  </Text>
-
-  <View style={styles.protocolButtons}>
-    <TouchableOpacity
-      style={[styles.ghostBtn, { flex: 1 }]}
-      onPress={copyCreativeProtocolLink}
-      activeOpacity={0.85}
-    >
-      <Text style={styles.ghostBtnText}>Copy Link</Text>
-    </TouchableOpacity>
-
-    <TouchableOpacity
-      style={[styles.btnPrimary, { flex: 1 }]}
-      onPress={previewCreativeProtocolLink}
-      activeOpacity={0.85}
-    >
-      <Text style={styles.btnPrimaryText}>Preview</Text>
-    </TouchableOpacity>
-  </View>
-</View>
+              {renderCreativeProtocolCard()}
 
               {/* Support button */}
               {!isOwnProfile && profile && currentUserId && (
@@ -3674,7 +3756,12 @@ const heroMaxW = "100%";
       </View>
 
       {/* ✅ MOBILE: keep the edit card under hero like you had */}
-      {isMobileLike ? <View style={{ width: "100%", marginTop: 12 }}>{renderEditProfileCard()}</View> : null}
+      {isMobileLike ? (
+  <View style={{ width: "100%", marginTop: 12 }}>
+    {renderEditProfileCard()}
+    {renderCreativeProtocolCard()}
+  </View>
+) : null}
 
       {/* ✅ NOW: About/Streaks renders on BOTH web + mobile */}
       <View style={{ width: "100%", maxWidth: heroMaxW, alignSelf: "center" }}>
@@ -3713,25 +3800,76 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
   {primaryRow.category ? `${primaryRow.category} Showreel` : "Showreel"}
 </Text>
 
-      <View
-        style={[
-          block.mediaCard,
-          {
-            width: "100%",
-            maxWidth: maxW,
-            alignSelf: "center",
-            padding: 0,
-            overflow: "hidden",
-          },
-        ]}
+      <Pressable
+  onPress={() => openShowreel(primaryRow)}
+  style={[
+    block.mediaCard,
+    {
+      width: "100%",
+      maxWidth: maxW,
+      alignSelf: "center",
+      padding: 0,
+      overflow: "hidden",
+    },
+  ]}
+>
+  <View
+    style={{
+      width: "100%",
+      aspectRatio: 16 / 9,
+      backgroundColor: "#000",
+      alignItems: "center",
+      justifyContent: "center",
+      position: "relative",
+    }}
+  >
+    {primaryRow.thumbnail_url ? (
+      <Image
+        source={{ uri: addBuster(primaryRow.thumbnail_url) || primaryRow.thumbnail_url }}
+        style={{ width: "100%", height: "100%" }}
+        resizeMode="cover"
+      />
+    ) : (
+      <>
+        <Ionicons name="videocam" size={34} color={COLORS.textSecondary} />
+        <Text
+          style={{
+            marginTop: 8,
+            color: COLORS.textSecondary,
+            fontFamily: FONT_OBLIVION,
+            fontSize: 12,
+          }}
+        >
+          Tap to play showreel
+        </Text>
+      </>
+    )}
+
+    <View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        top: 12,
+        right: 12,
+        backgroundColor: "rgba(0,0,0,0.55)",
+        borderRadius: 999,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+      }}
+    >
+      <Text
+        style={{
+          color: "#fff",
+          fontSize: 11,
+          fontFamily: FONT_OBLIVION,
+          fontWeight: "800",
+        }}
       >
-        <ShowreelVideoInline
-          playerId={`profile_showreel_primary_${primaryRow.id}`}
-          filePathOrUrl={primaryRow.file_path || primaryRow.url}
-          width={maxW}
-          autoPlay={false}
-        />
-      </View>
+        ▶ Play
+      </Text>
+    </View>
+  </View>
+</Pressable>
 
       {secondaryRows.length > 0 && (
         <View
@@ -3765,7 +3903,7 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
   }}
 >
             {secondaryRows.map((r) => {
-              const thumb = r.thumbnail_url ? addBuster(r.thumbnail_url) : null;
+              const thumb = r.thumbnail_url || null;
 
               return (
                 <View
@@ -3776,10 +3914,7 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
                 >
                   <TouchableOpacity
   activeOpacity={0.92}
-  onPress={() => {
-  setActiveShowreel(r);
-  setShowreelModalOpen(true);
-}}
+  onPress={() => openShowreel(r)}
 >
                     <View
   style={[
@@ -3959,46 +4094,39 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
   </Text>
 
   <ScrollView
-    horizontal
-    showsHorizontalScrollIndicator={false}
-    contentContainerStyle={{ gap: isMobileLike ? 6 : 8, paddingRight: 4 }}
-  >
-                        >
-                          {SHOWREEL_CATEGORIES.map((cat) => {
-                            const selected = r.category === cat;
-                            return (
-                              <TouchableOpacity
-                                key={`${r.id}_${cat}`}
-                                onPress={() => updateShowreelCategory(r, cat)}
-                                style={{
-  paddingHorizontal: isMobileLike ? 7 : 10,
-  paddingVertical: isMobileLike ? 5 : 6,
-  borderRadius: 999,
-  backgroundColor: selected
-    ? "rgba(198,166,100,0.18)"
-    : "#111",
-  borderWidth: 1,
-  borderColor: selected
-    ? COLORS.primary
-    : COLORS.border,
-}}
-                              >
-                                <Text
-                                  style={{
-  color: selected
-    ? COLORS.primary
-    : COLORS.textSecondary,
-  fontSize: isMobileLike ? 9 : 11,
-  fontFamily: FONT_OBLIVION,
-  fontWeight: "700",
-}}
-                                >
-                                  {cat}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </ScrollView>
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  contentContainerStyle={{ gap: isMobileLike ? 6 : 8, paddingRight: 4 }}
+>
+  {SHOWREEL_CATEGORIES.map((cat) => {
+    const selected = r.category === cat;
+    return (
+      <TouchableOpacity
+        key={`${r.id}_${cat}`}
+        onPress={() => updateShowreelCategory(r, cat)}
+        style={{
+          paddingHorizontal: isMobileLike ? 7 : 10,
+          paddingVertical: isMobileLike ? 5 : 6,
+          borderRadius: 999,
+          backgroundColor: selected ? "rgba(198,166,100,0.18)" : "#111",
+          borderWidth: 1,
+          borderColor: selected ? COLORS.primary : COLORS.border,
+        }}
+      >
+        <Text
+          style={{
+            color: selected ? COLORS.primary : COLORS.textSecondary,
+            fontSize: isMobileLike ? 9 : 11,
+            fontFamily: FONT_OBLIVION,
+            fontWeight: "700",
+          }}
+        >
+          {cat}
+        </Text>
+      </TouchableOpacity>
+    );
+  })}
+</ScrollView>
                       </View>
                     </>
                   )}
@@ -4181,7 +4309,7 @@ const renderSubmissionsSection = () => {
       <View style={[block.grid, { gap: GRID_GAP }]}>
         {submissions.map((s) => {
           const yt = s.youtube_url ? ytThumb(s.youtube_url) : null;
-          const mp4Thumb = s.thumbnail_url ? addBuster(s.thumbnail_url) : null;
+          const mp4Thumb = s.thumbnail_url || null;
 
           return (
             <Pressable
@@ -4432,7 +4560,7 @@ if (!profile) {
 
 return (
   <>
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }} edges={['top']}>
       <ScrollView
         style={{ flex: 1, backgroundColor: COLORS.background }}
         contentContainerStyle={{
@@ -4553,13 +4681,15 @@ return (
 </Text>
 
           {activeShowreel ? (
-            <ShowreelVideoInline
-              playerId={`secondary_showreel_${activeShowreel.id}`}
-              filePathOrUrl={activeShowreel.file_path || activeShowreel.url}
-              width={Math.min(width - horizontalPad * 2 - 24, 760)}
-              autoPlay={true}
-            />
-          ) : null}
+  <View style={{ width: "100%", alignItems: "center", justifyContent: "center" }}>
+    <ShowreelVideoInline
+      playerId={`secondary_showreel_${activeShowreel.id}`}
+      filePathOrUrl={activeShowreel.file_path || activeShowreel.url}
+      width={Math.max(280, Math.min(width - horizontalPad * 2 - 24, 760))}
+      autoPlay={false}
+    />
+  </View>
+) : null}
 
           <TouchableOpacity
   onPress={closeShowreelModal}
@@ -4579,19 +4709,21 @@ return (
       onRequestClose={() => setShowEditModal(false)}
     >
       <KeyboardAvoidingView
-        style={styles.modalOverlay}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+  style={styles.modalOverlay}
+  behavior={Platform.OS === "ios" ? "height" : undefined}
+>
         <View style={styles.modalContainer}>
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>Edit Profile</Text>
 
           <ScrollView
-            style={{ flex: 1, width: "100%" }}
-            contentContainerStyle={{ paddingBottom: 32 }}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
+  style={{ flex: 1, width: "100%" }}
+  contentContainerStyle={{
+    paddingBottom: Math.max(insets.bottom + 24, 36),
+  }}
+  showsVerticalScrollIndicator={false}
+  keyboardShouldPersistTaps="handled"
+>
             {/* Profile picture (own profile only) */}
             {isOwnProfile && (
               <View style={[styles.field, { marginTop: 8 }]}>
@@ -4599,16 +4731,16 @@ return (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
                   {image || profile.avatar_url ? (
                     <Image
-                      source={{ uri: addBuster(image || profile.avatar_url || "") || "" }}
-                      style={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: 21,
-                        backgroundColor: "#111",
-                        borderWidth: 1,
-                        borderColor: COLORS.border,
-                      }}
-                    />
+  source={{ uri: image || profile.avatar_url || "" }}
+  style={{
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  }}
+/>
                   ) : (
                     <View
                       style={{
@@ -4927,7 +5059,14 @@ return (
             </View>
 
             {/* Actions */}
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 18, marginBottom: 6 }}>
+            <View
+  style={{
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 18,
+    marginBottom: Math.max(insets.bottom, 8),
+  }}
+>
               <TouchableOpacity
                 style={[styles.ghostBtn, { flex: 1 }]}
                 onPress={() => setShowEditModal(false)}
@@ -5444,22 +5583,26 @@ protocolButtons: {
   },
 
   modalOverlay: {
-    flex: 1,
-    backgroundColor: "#000000CC",
-    justifyContent: "flex-end",
-    paddingHorizontal: 10,
-  },
+  flex: 1,
+  backgroundColor: "#000000CC",
+  justifyContent: "flex-end",
+  paddingHorizontal: 10,
+  paddingTop: 60,
+},
   modalContainer: {
-    backgroundColor: COLORS.cardAlt,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    padding: 16,
-    maxHeight: "92%",
-    width: "100%",
-    alignSelf: "center",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
+  backgroundColor: COLORS.cardAlt,
+  borderTopLeftRadius: 22,
+  borderTopRightRadius: 22,
+  paddingHorizontal: 16,
+  paddingTop: 12,
+  paddingBottom: 10,
+  height: "78%",
+  width: "100%",
+  alignSelf: "center",
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  marginTop: "auto",
+},
   modalHandle: {
     width: 44,
     height: 5,

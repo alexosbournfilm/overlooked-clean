@@ -169,6 +169,33 @@ export default function AppNavigator({
   // --------------------------------------------------------------
   // ✅ We keep your original "global loading" behavior for app readiness + nav restore.
   // ✅ But we DO NOT block on membership fetch anymore (speed).
+    useEffect(() => {
+    if (!ready || !navReady) return;
+
+    if (!userId) {
+      navigationRef.resetRoot({
+        index: 0,
+        routes: [{ name: "Auth", params: { screen: "SignIn" } as never }],
+      });
+      return;
+    }
+
+    if (userId && !profileComplete) {
+      navigationRef.resetRoot({
+        index: 0,
+        routes: [{ name: "Auth", params: { screen: "CreateProfile" } as never }],
+      });
+      return;
+    }
+
+    if (userId && profileComplete) {
+      navigationRef.resetRoot({
+        index: 0,
+        routes: [{ name: "MainTabs" as never }],
+      });
+    }
+  }, [ready, navReady, userId, profileComplete]);
+
   if (!ready || !navReady) {
     return (
       <View
@@ -217,24 +244,24 @@ export default function AppNavigator({
         <Stack.Screen name="PaySuccess" component={PaySuccessScreen} />
 
         {/* AUTH / MAIN TREE */}
-        {!userId ? (
-          <Stack.Screen
-            name="Auth"
-            children={() => (
-              <AuthStack initialRouteName={initialAuthRouteName} />
-            )}
-          />
-        ) : mustShowPaywall ? (
-          // If you ever force paywall, it’s already registered above.
-          <Stack.Screen name="PaywallGate" component={PaywallScreen} />
-        ) : !profileComplete ? (
-          <Stack.Screen
-            name="Auth"
-            children={() => <AuthStack initialRouteName="CreateProfile" />}
-          />
-        ) : (
-          <Stack.Screen name="MainTabs" component={MainTabs} />
-        )}
+                <Stack.Screen
+  name="Auth"
+  children={() => (
+    <AuthStack
+      initialRouteName={!userId
+        ? initialAuthRouteName
+        : !profileComplete
+        ? "CreateProfile"
+        : "SignIn"}
+    />
+  )}
+/>
+
+<Stack.Screen name="MainTabs" component={MainTabs} />
+
+{mustShowPaywall && (
+  <Stack.Screen name="PaywallGate" component={PaywallScreen} />
+)}
 
 
 <Stack.Screen name="WorkshopSubmit" component={WorkshopSubmitScreen} />

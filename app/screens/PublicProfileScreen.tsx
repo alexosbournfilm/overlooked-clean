@@ -662,21 +662,22 @@ export default function PublicProfileScreen() {
   const displayBannerColor = profile?.banner_color || "#FFEDE4";
 
   const goToSignIn = () => {
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      window.location.href = "/signin";
-      return;
-    }
-    navigation.navigate("Auth", { screen: "SignIn" });
-  };
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.location.href = "/signin";
+    return;
+  }
 
-  const goToSignUp = () => {
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      window.location.href = "/signup";
-      return;
-    }
-    navigation.navigate("Auth", { screen: "SignUp" });
-  };
+  navigation.navigate("Auth" as never, { screen: "SignIn" } as never);
+};
 
+const goToSignUp = () => {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.location.href = "/signup";
+    return;
+  }
+
+  navigation.navigate("Auth" as never, { screen: "SignUp" } as never);
+};
   const closeShowreelModal = async () => {
     setShowreelModalOpen(false);
     setActiveShowreel(null);
@@ -875,27 +876,27 @@ export default function PublicProfileScreen() {
 
         if (pd.main_role_id != null) {
           const { data: roleData } = await supabase
-            .from("creative_roles")
-            .select("name")
-            .eq("id", Number(pd.main_role_id))
-            .maybeSingle<{ name: string }>();
+  .from("creative_roles")
+  .select("name")
+  .eq("id", Number(pd.main_role_id))
+  .maybeSingle();
 
-          if (!cancelled) setMainRoleName(roleData?.name ?? "");
+if (!cancelled) setMainRoleName((roleData as { name?: string } | null)?.name ?? "");
         }
 
         if (pd.city_id != null) {
           const { data: cityData } = await supabase
-            .from("cities")
-            .select("name, country_code")
-            .eq("id", Number(pd.city_id))
-            .maybeSingle<{ name?: string; country_code?: string }>();
+  .from("cities")
+  .select("name, country_code")
+  .eq("id", Number(pd.city_id))
+  .maybeSingle();
 
-          const label = cityData?.name ?? "";
-          if (!cancelled) {
-            setCityName(
-              label ? (cityData?.country_code ? `${label}, ${cityData.country_code}` : label) : ""
-            );
-          }
+const city = cityData as { name?: string; country_code?: string } | null;
+const label = city?.name ?? "";
+
+if (!cancelled) {
+  setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : label) : "");
+}
         }
 
         try {
@@ -992,7 +993,7 @@ export default function PublicProfileScreen() {
 
   const renderHero = () => {
     const avatarUrl = profile?.avatar_url || null;
-    const heroBg = avatarUrl ? addBuster(avatarUrl) : null;
+    const heroBg = avatarUrl || null;
     const bannerColor = displayBannerColor || GOLD;
     const heroPad = isMobileLike ? 14 : 20;
     const heroMaxW = isMobileLike ? 720 : PAGE_MAX;
@@ -1028,15 +1029,21 @@ export default function PublicProfileScreen() {
             ]}
           >
             <ImageBackground
-              source={heroBg ? { uri: heroBg } : undefined}
-              style={[
-                styles.heroImage,
-                isMobileLike ? styles.heroImageMobile : styles.heroImageDesktop,
-                isMobileLike ? { width: "100%" } : null,
-                { paddingBottom: isMobileLike ? 12 : 16 },
-              ]}
-              imageStyle={[styles.heroImageInner, { backgroundColor: bannerColor }]}
-            >
+  source={heroBg ? { uri: heroBg } : undefined}
+  style={[
+    styles.heroImage,
+    isMobileLike ? styles.heroImageMobile : styles.heroImageDesktop,
+    isMobileLike ? { width: "100%", alignSelf: "center" } : null,
+    { paddingBottom: isMobileLike ? 12 : 16 },
+  ]}
+  imageStyle={[
+  styles.heroImageInner,
+  {
+    backgroundColor: bannerColor,
+    transform: [{ translateY: Platform.OS === "android" ? 20 : 0 }],
+  },
+]}
+>
               <LinearGradient
                 colors={["rgba(0,0,0,0.2)", "rgba(0,0,0,0.65)", "rgba(0,0,0,0.95)"]}
                 style={styles.heroGradient}
@@ -1160,10 +1167,10 @@ export default function PublicProfileScreen() {
                     <View style={[styles.avatarInner, isCompact && styles.avatarInnerCompact]}>
                       {avatarUrl ? (
                         <Image
-                          source={{ uri: addBuster(avatarUrl) || avatarUrl }}
-                          style={styles.avatarImage}
-                          resizeMode="cover"
-                        />
+  source={{ uri: avatarUrl }}
+  style={styles.avatarImage}
+  resizeMode="cover"
+/>
                       ) : (
                         <View style={styles.avatarFallback}>
                           <Ionicons name="person-outline" size={26} color={COLORS.textSecondary} />
@@ -1176,85 +1183,10 @@ export default function PublicProfileScreen() {
             </ImageBackground>
           </View>
 
-          <View
-            style={[
-              styles.heroRight,
-              isMobileLike ? { marginTop: 0, width: "100%", flex: 0 } : null,
-            ]}
-          >
-            {!isMobileLike ? (
-              <View style={styles.infoCard}>
-                <Text style={styles.brandTitle}>Overlooked</Text>
-
-                <View style={[styles.infoCard, { marginTop: 12 }]}>
-                  <TouchableOpacity
-                    activeOpacity={0.9}
-                    onPress={goToSignIn}
-                    style={styles.authPrimaryButton}
-                  >
-                    <Text style={styles.authPrimaryButtonText}>Sign In</Text>
-                  </TouchableOpacity>
-
-                  <Text style={styles.protocolBody}>
-                    Join Overlooked to build your creative portfolio, connect with collaborators,
-                    and get your work seen.
-                  </Text>
-
-                  <TouchableOpacity
-                    activeOpacity={0.9}
-                    onPress={goToSignUp}
-                    style={styles.authSecondaryButton}
-                  >
-                    <TouchableOpacity
-  activeOpacity={0.9}
-  onPress={goToSignUp}
-  style={styles.authSecondaryButton}
->
-  <Text style={styles.authSecondaryButtonText}>Sign Up</Text>
-</TouchableOpacity>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <View style={{ width: "100%", marginTop: 12 }}>
-                <View style={[styles.infoCard, { marginTop: 12 }]}>
-                  <Text style={styles.brandTitle}>Overlooked</Text>
-
-                  <TouchableOpacity
-                    activeOpacity={0.9}
-                    onPress={goToSignIn}
-                    style={[styles.authPrimaryButton, { marginTop: 12 }]}
-                  >
-                    <Text style={styles.authPrimaryButtonText}>Sign In</Text>
-                  </TouchableOpacity>
-
-                  <Text style={styles.protocolBody}>
-                    Join Overlooked to build your creative portfolio, connect with collaborators,
-                    and get your work seen.
-                  </Text>
-
-                  <TouchableOpacity
-                    activeOpacity={0.9}
-                    onPress={goToSignUp}
-                    style={styles.authSecondaryButton}
-                  >
-                    <TouchableOpacity
-  activeOpacity={0.9}
-  onPress={goToSignUp}
-  style={styles.authSecondaryButton}
->
-  <Text style={styles.authSecondaryButtonText}>Sign Up</Text>
-</TouchableOpacity>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-          </View>
+          
         </View>
 
-        <View style={{ width: "100%", maxWidth: heroMaxW, alignSelf: "center" }}>
-          {renderAboutCard()}
-        </View>
+        
       </View>
     );
   };
@@ -1265,12 +1197,17 @@ export default function PublicProfileScreen() {
 
     const secondaryRows = showreels.filter((r) => r.id !== primaryRow.id).slice(0, 2);
 
-    const maxW = isMobile ? SHOWREEL_MAX_W_MOBILE : SHOWREEL_MAX_W;
-    const secondaryCols = isMobileLike ? 1 : 2;
-    const secondaryGap = 12;
-    const secondaryTileW =
-      secondaryCols === 1 ? maxW : Math.floor((maxW - secondaryGap) / 2);
-    const secondaryTileH = Math.floor(secondaryTileW * (9 / 16));
+    const maxW = isMobileLike
+  ? Math.min(width - horizontalPad * 2, 680)
+  : SHOWREEL_MAX_W;
+    const secondaryGap = isMobileLike ? 10 : 12;
+const availableWidth = Math.min(width - horizontalPad * 2, maxW);
+const secondaryTileW = isMobileLike
+  ? availableWidth
+  : Math.floor((availableWidth - secondaryGap) / 2);
+const secondaryTileH = isMobileLike
+  ? Math.floor(secondaryTileW * 0.64)
+  : Math.floor(secondaryTileW * (9 / 16));
 
     return (
       <View style={[block.section, { alignItems: "center" }]}>
@@ -1278,25 +1215,111 @@ export default function PublicProfileScreen() {
           {primaryRow.category ? `${primaryRow.category} Showreel` : "Showreel"}
         </Text>
 
-        <View
-          style={[
-            block.mediaCard,
-            {
-              width: "100%",
-              maxWidth: maxW,
-              alignSelf: "center",
-              padding: 0,
-              overflow: "hidden",
-            },
-          ]}
+        <TouchableOpacity
+  activeOpacity={0.92}
+  onPress={() => {
+    setActiveShowreel(primaryRow);
+    setShowreelModalOpen(true);
+  }}
+  style={[
+    block.mediaCard,
+    {
+      width: "100%",
+      maxWidth: maxW,
+      alignSelf: "center",
+      padding: 0,
+      overflow: "hidden",
+    },
+  ]}
+>
+  <View
+    style={{
+      paddingTop: isMobileLike ? 10 : 14,
+      paddingBottom: isMobileLike ? 8 : 10,
+      paddingHorizontal: isMobileLike ? 8 : 10,
+      alignItems: "center",
+      justifyContent: "center",
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.border,
+      backgroundColor: COLORS.card,
+      minHeight: isMobileLike ? 40 : 48,
+    }}
+  >
+    <Text
+      style={{
+        color: COLORS.primary,
+        fontSize: isMobileLike ? 10 : 14,
+        fontFamily: FONT_OBLIVION,
+        fontWeight: "900",
+        letterSpacing: isMobileLike ? 0.3 : 1,
+        textAlign: "center",
+        textTransform: "uppercase",
+      }}
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.8}
+    >
+      {primaryRow.category || "Showreel"}
+    </Text>
+  </View>
+
+  <View
+    style={{
+      width: "100%",
+      aspectRatio: 16 / 9,
+      backgroundColor: "#000",
+      alignItems: "center",
+      justifyContent: "center",
+      position: "relative",
+    }}
+  >
+    {primaryRow.thumbnail_url ? (
+      <Image
+        source={{ uri: primaryRow.thumbnail_url }}
+        style={{ width: "100%", height: "100%" }}
+        resizeMode="cover"
+      />
+    ) : (
+      <>
+        <Ionicons name="videocam" size={28} color={COLORS.textSecondary} />
+        <Text
+          style={{
+            marginTop: 6,
+            color: COLORS.textSecondary,
+            fontFamily: FONT_OBLIVION,
+            fontSize: 11,
+          }}
         >
-          <ShowreelVideoInline
-            playerId={`public_profile_showreel_primary_${primaryRow.id}`}
-            filePathOrUrl={primaryRow.file_path || primaryRow.url}
-            width={maxW}
-            autoPlay={false}
-          />
-        </View>
+          Tap to play showreel
+        </Text>
+      </>
+    )}
+
+    <View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        top: isMobileLike ? 6 : 10,
+        right: isMobileLike ? 6 : 10,
+        backgroundColor: "rgba(0,0,0,0.55)",
+        borderRadius: 999,
+        paddingHorizontal: isMobileLike ? 8 : 10,
+        paddingVertical: isMobileLike ? 4 : 6,
+      }}
+    >
+      <Text
+        style={{
+          color: "#fff",
+          fontSize: isMobileLike ? 9 : 11,
+          fontFamily: FONT_OBLIVION,
+          fontWeight: "800",
+        }}
+      >
+        ▶ Play
+      </Text>
+    </View>
+  </View>
+</TouchableOpacity>
 
         {secondaryRows.length > 0 && (
           <View
@@ -1317,7 +1340,7 @@ export default function PublicProfileScreen() {
               }}
             >
               {secondaryRows.map((r) => {
-                const thumb = r.thumbnail_url ? addBuster(r.thumbnail_url) : null;
+                const thumb = r.thumbnail_url || null;
 
                 return (
                   <View
@@ -1584,7 +1607,7 @@ export default function PublicProfileScreen() {
         <View style={[block.grid, { gap: GRID_GAP }]}>
           {submissions.map((s) => {
             const yt = s.youtube_url ? ytThumb(s.youtube_url) : null;
-            const mp4Thumb = s.thumbnail_url ? addBuster(s.thumbnail_url) : null;
+            const mp4Thumb = s.thumbnail_url || null;
 
             return (
               <Pressable
@@ -1783,6 +1806,37 @@ export default function PublicProfileScreen() {
     );
   };
 
+  const renderBottomCTA = () => {
+  return (
+    <View style={block.section}>
+      <View style={styles.bottomCtaCard}>
+        <Text style={styles.bottomCtaTitle}>Want to showcase your own work?</Text>
+        <Text style={styles.bottomCtaBody}>
+          Join Overlooked to upload your showreels, portfolio, and submissions.
+        </Text>
+
+        <View style={styles.bottomCtaButtons}>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={goToSignUp}
+            style={styles.bottomCtaPrimary}
+          >
+            <Text style={styles.bottomCtaPrimaryText}>Join Overlooked</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={goToSignIn}
+            style={styles.bottomCtaSecondary}
+          >
+            <Text style={styles.bottomCtaSecondaryText}>Sign In</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+};
+
   if (loading) {
     return (
       <View
@@ -1833,9 +1887,11 @@ export default function PublicProfileScreen() {
             }}
           >
             {renderHero()}
-            {renderFeaturedFilm()}
-            {renderEditorialPortfolio()}
-            {renderSubmissionsSection()}
+{renderFeaturedFilm()}
+{renderEditorialPortfolio()}
+{renderSubmissionsSection()}
+{renderAboutCard()}
+{renderBottomCTA()}
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -1935,13 +1991,15 @@ export default function PublicProfileScreen() {
             </Text>
 
             {activeShowreel ? (
-              <ShowreelVideoInline
-                playerId={`public_secondary_showreel_${activeShowreel.id}`}
-                filePathOrUrl={activeShowreel.file_path || activeShowreel.url}
-                width={Math.min(width - horizontalPad * 2 - 24, 760)}
-                autoPlay={true}
-              />
-            ) : null}
+  <View style={{ width: "100%", alignItems: "center", justifyContent: "center" }}>
+    <ShowreelVideoInline
+      playerId={`public_secondary_showreel_${activeShowreel.id}`}
+      filePathOrUrl={activeShowreel.file_path || activeShowreel.url}
+      width={Math.max(280, Math.min(width - horizontalPad * 2 - 24, 760))}
+      autoPlay={false}
+    />
+  </View>
+) : null}
 
             <TouchableOpacity
               onPress={closeShowreelModal}
@@ -1965,21 +2023,26 @@ const styles = StyleSheet.create({
   heroRight: { flex: 1, gap: GRID_GAP },
 
   heroImage: {
-    borderRadius: 14,
-    overflow: "hidden",
-    justifyContent: "flex-end",
-  },
+  borderRadius: 14,
+  overflow: "hidden",
+  justifyContent: "flex-end",
+  backgroundColor: "#000",
+},
   heroImageMobile: {
-    width: "100%",
-    aspectRatio: 16 / 9,
-    minHeight: 230,
-  },
+  width: "100%",
+  height: 230,
+  alignSelf: "center",
+},
   heroImageDesktop: {
     width: "100%",
     height: "100%",
     minHeight: 420,
   },
-  heroImageInner: { resizeMode: "cover", opacity: 0.98 },
+  heroImageInner: {
+  resizeMode: "cover",
+  opacity: 0.98,
+  backgroundColor: "#000",
+},
   heroGradient: { ...StyleSheet.absoluteFillObject },
 
   roleWrap: {
@@ -2189,7 +2252,81 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     textTransform: "uppercase",
   },
+  
+    bottomCtaCard: {
+    backgroundColor: COLORS.cardAlt,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    padding: 18,
+    alignItems: "center",
+    maxWidth: 760,
+    alignSelf: "center",
+  },
 
+  bottomCtaTitle: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_CINZEL,
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 1.6,
+    textAlign: "center",
+    textTransform: "uppercase",
+  },
+
+  bottomCtaBody: {
+    color: COLORS.textSecondary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: "center",
+    marginTop: 8,
+    maxWidth: 520,
+  },
+
+  bottomCtaButtons: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 16,
+    flexWrap: "wrap",
+    justifyContent: "center",
+  },
+
+  bottomCtaPrimary: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+
+  bottomCtaPrimaryText: {
+    color: "#000",
+    fontWeight: "900",
+    fontFamily: FONT_OBLIVION,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    fontSize: 12,
+  },
+
+  bottomCtaSecondary: {
+    backgroundColor: "transparent",
+    borderRadius: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  bottomCtaSecondaryText: {
+    color: COLORS.textPrimary,
+    fontWeight: "800",
+    fontFamily: FONT_OBLIVION,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    fontSize: 12,
+  },
   ghostBtn: {
     backgroundColor: "transparent",
     borderColor: COLORS.border,
@@ -2372,6 +2509,7 @@ const stylesShowreel = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.18)",
     overflow: "hidden",
   },
+
   progressFill: {
     height: "100%",
     borderRadius: 999,

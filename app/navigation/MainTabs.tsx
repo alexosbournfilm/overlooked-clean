@@ -542,11 +542,16 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
 >
       <View style={styles.lbOverlay}>
         <View
-          style={[
-            styles.lbCard,
-            { width: '100%', maxWidth: maxCardWidth, maxHeight: maxCardHeight, alignSelf: 'center' },
-          ]}
-        >
+  style={[
+    styles.lbCard,
+    {
+      width: '100%',
+      maxWidth: maxCardWidth,
+      height: maxCardHeight,
+      alignSelf: 'center',
+    },
+  ]}
+>
           <View style={styles.lbHeader}>
             <Text style={styles.lbTitle}>Leaderboard</Text>
             <Pressable onPress={onClose} hitSlop={10} style={styles.lbCloseBtn}>
@@ -1806,7 +1811,7 @@ lbCard: {
   lbEmptyWrap: { alignItems: 'center', paddingVertical: 14, paddingHorizontal: 10 },
   lbEmptyText: { fontSize: 9, color: TEXT_MUTED, textAlign: 'center', fontFamily: SYSTEM_SANS },
   lbScroll: { flex: 1 },
-  lbScrollContent: { paddingBottom: 4 },
+  lbScrollContent: { paddingBottom: 8, paddingTop: 4 },
   lbRow: {
     flexDirection: 'row',
     alignItems: 'center',
