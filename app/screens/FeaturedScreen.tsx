@@ -1487,8 +1487,12 @@ const FeaturedScreen = () => {
   const { width: winW, height: winH } = useWindowDimensions();
   const isNarrow = winW < 480;
 
-  const isWideWeb = Platform.OS === 'web' && winW >= 980;
-const isMobile = Platform.OS !== 'web';
+// web should use mobile layout too when the viewport is phone-like
+const isPhoneLikeWeb = Platform.OS === 'web' && winW <= 820;
+
+const isMobile = Platform.OS !== 'web' || isPhoneLikeWeb;
+const isWideWeb = Platform.OS === 'web' && !isPhoneLikeWeb && winW >= 980;
+
 const useTwoColumnMobile = isMobile;
 const gridColumns = isWideWeb || useTwoColumnMobile ? 2 : 1;
 
@@ -1698,6 +1702,8 @@ const gridCardW = isWideWeb
   : isMobile
   ? Math.floor((winW - MOBILE_GRID_SIDE_PAD * 2 - GRID_GAP) / 2) - MOBILE_CARD_SHRINK
   : cardW;
+const categoryHeaderTopOffset =
+  Platform.OS === 'web' && isMobile ? 6 : -20;
 
   // Fetch content when filters change
   useEffect(() => {
@@ -2943,15 +2949,15 @@ return (
   <View style={{ alignItems: 'center' }}>
     {/* CATEGORY ONLY — above winner */}
     <View
-      style={[
-        styles.subHeaderWrap,
-        {
-          width: isMobile ? winW - 20 : cardW,
-          marginTop: -20,
-          alignSelf: 'center',
-        },
-      ]}
-    >
+  style={[
+    styles.subHeaderWrap,
+    {
+      width: isMobile ? winW - 20 : cardW,
+      marginTop: categoryHeaderTopOffset,
+      alignSelf: 'center',
+    },
+  ]}
+>
       <HeaderControls
         compact={isNarrow}
         category={category}

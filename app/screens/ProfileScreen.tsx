@@ -3246,22 +3246,22 @@ const renderHero = () => {
   const ringColor = getRingColorForLevel(level);
 
   // ✅ Better mobile + mobile-web spacing: clamp hero width + consistent side padding
-  const heroPad = isMobileLike ? 14 : 20;
-  const heroMaxW = isMobileLike ? 720 : PAGE_MAX;
+  const heroPad = isMobileLike ? 0 : 20;
+const heroMaxW = "100%";
 
   return (
     <View
-      style={[
-        styles.heroWrap,
-        {
-          paddingTop: isMobileLike ? 8 : 18,
-          paddingHorizontal: heroPad,
-          alignSelf: "center",
-          width: "100%",
-          maxWidth: heroMaxW,
-        },
-      ]}
-    >
+  style={[
+    styles.heroWrap,
+    {
+      paddingTop: isMobileLike ? 8 : 18,
+      paddingHorizontal: heroPad,
+      alignSelf: "center",
+      width: "100%",
+      maxWidth: heroMaxW,
+    },
+  ]}
+>
       <View
         style={[
           styles.heroGrid,
@@ -3696,14 +3696,16 @@ const renderFeaturedFilm = () => {
     .filter((r) => r.id !== primaryRow.id)
     .slice(0, 2);
 
-  const maxW = isMobile ? SHOWREEL_MAX_W_MOBILE : SHOWREEL_MAX_W;
-  const secondaryCols = isMobileLike ? 1 : 2;
-  const secondaryGap = 12;
-  const secondaryTileW =
-    secondaryCols === 1
-      ? maxW
-      : Math.floor((maxW - secondaryGap) / 2);
-  const secondaryTileH = Math.floor(secondaryTileW * (9 / 16));
+  const maxW = isMobileLike
+  ? Math.min(width - horizontalPad * 2, 680)
+  : SHOWREEL_MAX_W;
+  const secondaryCols = 2;
+  const secondaryGap = isMobileLike ? 10 : 12;
+const availableWidth = Math.min(width - horizontalPad * 2, maxW);
+const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobileLike ? 2 : 0);
+  const secondaryTileH = isMobileLike
+  ? Math.floor(secondaryTileW * 0.64)
+  : Math.floor(secondaryTileW * (9 / 16));
 
   return (
     <View style={[block.section, { alignItems: "center" }]}>
@@ -3740,15 +3742,28 @@ const renderFeaturedFilm = () => {
             marginTop: 14,
           }}
         >
-          <Text style={block.h3Centered}>More Showreels</Text>
+          <Text
+  style={[
+    block.h3Centered,
+    isMobileLike && {
+      fontSize: 10,
+      letterSpacing: 1,
+      marginBottom: 8,
+    },
+  ]}
+>
+  More Showreels
+</Text>
 
           <View
-            style={{
-              flexDirection: isMobileLike ? "column" : "row",
-              gap: secondaryGap,
-              marginTop: 8,
-            }}
-          >
+  style={{
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: secondaryGap,
+    marginTop: 8,
+    justifyContent: "space-between",
+  }}
+>
             {secondaryRows.map((r) => {
               const thumb = r.thumbnail_url ? addBuster(r.thumbnail_url) : null;
 
@@ -3756,7 +3771,7 @@ const renderFeaturedFilm = () => {
                 <View
                   key={r.id}
                   style={{
-                    width: isMobileLike ? "100%" : secondaryTileW,
+                    width: secondaryTileW,
                   }}
                 >
                   <TouchableOpacity
@@ -3776,31 +3791,35 @@ const renderFeaturedFilm = () => {
   ]}
 >
   <View
-    style={{
-      paddingTop: 14,
-      paddingBottom: 10,
-      paddingHorizontal: 10,
-      alignItems: "center",
-      justifyContent: "center",
-      borderBottomWidth: 1,
-      borderBottomColor: COLORS.border,
-      backgroundColor: COLORS.card,
-    }}
+  style={{
+    paddingTop: isMobileLike ? 10 : 14,
+    paddingBottom: isMobileLike ? 8 : 10,
+    paddingHorizontal: isMobileLike ? 8 : 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.card,
+    minHeight: isMobileLike ? 40 : 48,
+  }}
+>
+  <Text
+  style={{
+    color: COLORS.primary,
+    fontSize: isMobileLike ? 10 : 14,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "900",
+    letterSpacing: isMobileLike ? 0.3 : 1,
+    textAlign: "center",
+    textTransform: "uppercase",
+  }}
+    numberOfLines={1}
+    adjustsFontSizeToFit
+    minimumFontScale={0.8}
   >
-    <Text
-      style={{
-        color: COLORS.primary,
-        fontSize: 14,
-        fontFamily: FONT_OBLIVION,
-        fontWeight: "900",
-        letterSpacing: 1,
-        textAlign: "center",
-        textTransform: "uppercase",
-      }}
-    >
-      {r.category || "Showreel"}
-    </Text>
-  </View>
+    {r.category || "Showreel"}
+  </Text>
+</View>
 
   <View
     style={{
@@ -3835,28 +3854,28 @@ const renderFeaturedFilm = () => {
     )}
 
     <View
-      pointerEvents="none"
-      style={{
-        position: "absolute",
-        top: 10,
-        right: 10,
-        backgroundColor: "rgba(0,0,0,0.55)",
-        borderRadius: 999,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-      }}
-    >
-      <Text
-        style={{
-          color: "#fff",
-          fontSize: 11,
-          fontFamily: FONT_OBLIVION,
-          fontWeight: "800",
-        }}
-      >
-        ▶ Play
-      </Text>
-    </View>
+  pointerEvents="none"
+  style={{
+    position: "absolute",
+    top: isMobileLike ? 6 : 10,
+    right: isMobileLike ? 6 : 10,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 999,
+    paddingHorizontal: isMobileLike ? 8 : 10,
+    paddingVertical: isMobileLike ? 4 : 6,
+  }}
+>
+  <Text
+    style={{
+      color: "#fff",
+      fontSize: isMobileLike ? 9 : 11,
+      fontFamily: FONT_OBLIVION,
+      fontWeight: "800",
+    }}
+  >
+    ▶ Play
+  </Text>
+</View>
   </View>
 </View>
                   </TouchableOpacity>
@@ -3864,47 +3883,86 @@ const renderFeaturedFilm = () => {
                   {isOwnProfile && (
                     <>
                       <View
-                        style={{
-                          flexDirection: "row",
-                          flexWrap: "wrap",
-                          gap: 8,
-                          marginTop: 10,
-                        }}
-                      >
-                        <TouchableOpacity onPress={() => setPrimaryShowreel(r)} style={block.rowBtn}>
-                          <Text style={block.rowBtnText}>Make Main</Text>
-                        </TouchableOpacity>
+  style={{
+    marginTop: isMobileLike ? 8 : 10,
+    gap: isMobileLike ? 6 : 8,
+  }}
+>
+  <TouchableOpacity
+    onPress={() => setPrimaryShowreel(r)}
+    style={[
+      block.rowBtn,
+      isMobileLike && { width: "100%", paddingVertical: 6, paddingHorizontal: 8 },
+    ]}
+  >
+    <Text
+      style={[
+        block.rowBtnText,
+        isMobileLike && { fontSize: 10, letterSpacing: 0.3 },
+      ]}
+      numberOfLines={1}
+    >
+      Make Main
+    </Text>
+  </TouchableOpacity>
 
-                        <TouchableOpacity onPress={() => changeShowreelThumbnail(r)} style={block.rowBtn}>
-                          <Text style={block.rowBtnText}>
-                            {pendingShowreelThumbs[r.id] || r.thumbnail_url
-                              ? "Change Thumbnail"
-                              : "Add Thumbnail"}
-                          </Text>
-                        </TouchableOpacity>
+  <TouchableOpacity
+    onPress={() => changeShowreelThumbnail(r)}
+    style={[
+      block.rowBtn,
+      isMobileLike && { width: "100%", paddingVertical: 6, paddingHorizontal: 8 },
+    ]}
+  >
+    <Text
+      style={[
+        block.rowBtnText,
+        isMobileLike && { fontSize: 10, letterSpacing: 0.3 },
+      ]}
+      numberOfLines={1}
+    >
+      {pendingShowreelThumbs[r.id] || r.thumbnail_url
+        ? "Change Thumb"
+        : "Add Thumb"}
+    </Text>
+  </TouchableOpacity>
 
-                        <TouchableOpacity onPress={() => deleteShowreel(r)} style={block.rowBtnGhost}>
-                          <Text style={block.rowBtnGhostText}>Delete</Text>
-                        </TouchableOpacity>
-                      </View>
+  <TouchableOpacity
+    onPress={() => deleteShowreel(r)}
+    style={[
+      block.rowBtnGhost,
+      isMobileLike && { width: "100%", paddingVertical: 6, paddingHorizontal: 8, marginLeft: 0 },
+    ]}
+  >
+    <Text
+      style={[
+        block.rowBtnGhostText,
+        isMobileLike && { fontSize: 10, letterSpacing: 0.3 },
+      ]}
+      numberOfLines={1}
+    >
+      Delete
+    </Text>
+  </TouchableOpacity>
+</View>
 
-                      <View style={{ marginTop: 10 }}>
-                        <Text
-                          style={{
-                            color: COLORS.textSecondary,
-                            fontSize: 11,
-                            fontFamily: FONT_OBLIVION,
-                            marginBottom: 6,
-                            letterSpacing: 0.6,
-                          }}
-                        >
-                          Category
-                        </Text>
+                      <View style={{ marginTop: isMobileLike ? 6 : 10 }}>
+  <Text
+    style={{
+      color: COLORS.textSecondary,
+      fontSize: isMobileLike ? 9 : 11,
+      fontFamily: FONT_OBLIVION,
+      marginBottom: 5,
+      letterSpacing: isMobileLike ? 0.3 : 0.6,
+    }}
+  >
+    Category
+  </Text>
 
-                        <ScrollView
-                          horizontal
-                          showsHorizontalScrollIndicator={false}
-                          contentContainerStyle={{ gap: 8 }}
+  <ScrollView
+    horizontal
+    showsHorizontalScrollIndicator={false}
+    contentContainerStyle={{ gap: isMobileLike ? 6 : 8, paddingRight: 4 }}
+  >
                         >
                           {SHOWREEL_CATEGORIES.map((cat) => {
                             const selected = r.category === cat;
@@ -3913,27 +3971,27 @@ const renderFeaturedFilm = () => {
                                 key={`${r.id}_${cat}`}
                                 onPress={() => updateShowreelCategory(r, cat)}
                                 style={{
-                                  paddingHorizontal: 10,
-                                  paddingVertical: 6,
-                                  borderRadius: 999,
-                                  backgroundColor: selected
-                                    ? "rgba(198,166,100,0.18)"
-                                    : "#111",
-                                  borderWidth: 1,
-                                  borderColor: selected
-                                    ? COLORS.primary
-                                    : COLORS.border,
-                                }}
+  paddingHorizontal: isMobileLike ? 7 : 10,
+  paddingVertical: isMobileLike ? 5 : 6,
+  borderRadius: 999,
+  backgroundColor: selected
+    ? "rgba(198,166,100,0.18)"
+    : "#111",
+  borderWidth: 1,
+  borderColor: selected
+    ? COLORS.primary
+    : COLORS.border,
+}}
                               >
                                 <Text
                                   style={{
-                                    color: selected
-                                      ? COLORS.primary
-                                      : COLORS.textSecondary,
-                                    fontSize: 11,
-                                    fontFamily: FONT_OBLIVION,
-                                    fontWeight: "700",
-                                  }}
+  color: selected
+    ? COLORS.primary
+    : COLORS.textSecondary,
+  fontSize: isMobileLike ? 9 : 11,
+  fontFamily: FONT_OBLIVION,
+  fontWeight: "700",
+}}
                                 >
                                   {cat}
                                 </Text>
@@ -4383,12 +4441,13 @@ return (
         }}
       >
         <View
-          style={{
-            width: "100%",
-            maxWidth: PAGE_MAX,
-            paddingHorizontal: horizontalPad,
-          }}
-        >
+  style={{
+    width: "100%",
+    maxWidth: isMobileLike ? "100%" : PAGE_MAX,
+    paddingHorizontal: horizontalPad,
+    alignSelf: "center",
+  }}
+>
           {renderHero()}
 
           {renderFeaturedFilm()}
@@ -5171,10 +5230,10 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   heroImageMobile: {
-    width: "100%",
-    aspectRatio: 16 / 9,
-    minHeight: 230,
-  },
+  width: "100%",
+  minHeight: 260,
+  borderRadius: 14,
+},
   heroImageDesktop: {
     width: "100%",
     height: "100%",
@@ -5669,38 +5728,38 @@ protocolButtons: {
   },
 
   rowBtn: {
-    backgroundColor: COLORS.primary,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-  },
-  rowBtnText: {
-    color: "#000",
-    fontWeight: "800",
-    fontFamily: FONT_OBLIVION,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    fontSize: 12,
-  },
-  rowBtnGhost: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    marginLeft: 6,
-    backgroundColor: "#0C0C0C",
-  },
-  rowBtnGhostText: {
-    color: COLORS.textPrimary,
-    fontWeight: "700",
-    fontFamily: FONT_OBLIVION,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-    fontSize: 12,
-  },
+  backgroundColor: COLORS.primary,
+  paddingVertical: 7,
+  paddingHorizontal: 10,
+  borderRadius: 9,
+  borderWidth: 1,
+  borderColor: COLORS.primary,
+},
+rowBtnText: {
+  color: "#000",
+  fontWeight: "800",
+  fontFamily: FONT_OBLIVION,
+  letterSpacing: 0.5,
+  textTransform: "uppercase",
+  fontSize: 11,
+},
+rowBtnGhost: {
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  paddingVertical: 7,
+  paddingHorizontal: 10,
+  borderRadius: 9,
+  marginLeft: 0,
+  backgroundColor: "#0C0C0C",
+},
+rowBtnGhostText: {
+  color: COLORS.textPrimary,
+  fontWeight: "700",
+  fontFamily: FONT_OBLIVION,
+  letterSpacing: 0.5,
+  textTransform: "uppercase",
+  fontSize: 11,
+},
 
   viewerOverlay: {
     flex: 1,
