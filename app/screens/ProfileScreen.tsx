@@ -1026,7 +1026,7 @@ export default function ProfileScreen() {
 
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const publicProfileUrl = profile?.public_slug
-  ? `${Platform.OS === "web" ? window.location.origin : "https://your-domain.com"}/creative/${profile.public_slug}`
+  ? `${Platform.OS === "web" ? window.location.origin : "https://overlooked.cloud"}/creative/${profile.public_slug}`
   : null;
   const [mainRoleName, setMainRoleName] = useState('');
   const [cityName, setCityName] = useState('');
@@ -3168,35 +3168,115 @@ const renderEditProfileCard = () => {
 };
 
 const renderCreativeProtocolCard = () => {
+  const compactMobile = isMobileLike;
+
   return (
-    <View style={[styles.infoCard, { marginTop: 12 }]}>
-      <Text style={styles.protocolTitle}>Share Creative Portfolio</Text>
-
-      <Text style={styles.protocolBody}>
-        Create a shareable link to your creative portfolio and showcase your films, showreels, and work across Instagram, TikTok, and beyond.
-      </Text>
-
+    <View
+      style={[
+        styles.infoCard,
+        {
+          marginTop: 12,
+          paddingVertical: compactMobile ? 10 : 16,
+          paddingHorizontal: compactMobile ? 12 : 16,
+        },
+      ]}
+    >
       <View
-        style={[
-          styles.protocolButtons,
-          isMobileLike ? { flexDirection: "column" } : null,
-        ]}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
       >
-        <TouchableOpacity
-          style={[styles.ghostBtn, isMobileLike ? { width: "100%" } : { flex: 1 }]}
-          onPress={copyCreativeProtocolLink}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.ghostBtnText}>Copy Link</Text>
-        </TouchableOpacity>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text
+            style={[
+              styles.protocolTitle,
+              {
+                textAlign: "left",
+                marginBottom: compactMobile ? 2 : 6,
+                fontSize: compactMobile ? 12 : 16,
+                letterSpacing: compactMobile ? 1 : 2,
+              },
+            ]}
+            numberOfLines={1}
+          >
+            Share Portfolio
+          </Text>
 
-        <TouchableOpacity
-          style={[styles.btnPrimary, isMobileLike ? { width: "100%" } : { flex: 1 }]}
-          onPress={previewCreativeProtocolLink}
-          activeOpacity={0.85}
+          {!compactMobile ? (
+            <Text style={styles.protocolBody}>
+              Create a shareable link to your creative portfolio and showcase your films,
+              showreels, and work across Instagram, TikTok, and beyond.
+            </Text>
+          ) : (
+            <Text
+              style={{
+                color: COLORS.textSecondary,
+                fontFamily: FONT_OBLIVION,
+                fontSize: 11,
+                lineHeight: 15,
+              }}
+              numberOfLines={1}
+            >
+              Copy or preview your public profile link.
+            </Text>
+          )}
+        </View>
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            flexShrink: 0,
+          }}
         >
-          <Text style={styles.btnPrimaryText}>Preview</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            onPress={copyCreativeProtocolLink}
+            activeOpacity={0.85}
+            style={[
+              styles.ghostBtn,
+              {
+                paddingVertical: compactMobile ? 8 : 12,
+                paddingHorizontal: compactMobile ? 10 : 14,
+                minWidth: compactMobile ? 70 : 96,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.ghostBtnText,
+                { fontSize: compactMobile ? 11 : 13 },
+              ]}
+            >
+              Copy
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={previewCreativeProtocolLink}
+            activeOpacity={0.85}
+            style={[
+              styles.btnPrimary,
+              {
+                paddingVertical: compactMobile ? 8 : 12,
+                paddingHorizontal: compactMobile ? 10 : 14,
+                minWidth: compactMobile ? 78 : 110,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.btnPrimaryText,
+                { fontSize: compactMobile ? 11 : 13 },
+              ]}
+            >
+              Preview
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -3759,14 +3839,14 @@ const heroMaxW = "100%";
       {isMobileLike ? (
   <View style={{ width: "100%", marginTop: 12 }}>
     {renderEditProfileCard()}
-    {renderCreativeProtocolCard()}
   </View>
 ) : null}
 
       {/* ✅ NOW: About/Streaks renders on BOTH web + mobile */}
       <View style={{ width: "100%", maxWidth: heroMaxW, alignSelf: "center" }}>
-        {renderAboutStreaksCard()}
-      </View>
+  {renderAboutStreaksCard()}
+  {isMobileLike ? renderCreativeProtocolCard() : null}
+</View>
     </View>
   );
 };
@@ -5370,7 +5450,7 @@ const styles = StyleSheet.create({
   },
   heroImageMobile: {
   width: "100%",
-  minHeight: 260,
+  minHeight: 300,
   borderRadius: 14,
 },
   heroImageDesktop: {
@@ -5437,24 +5517,22 @@ const styles = StyleSheet.create({
   fontFamily: FONT_CINZEL,
   fontSize: 16,
   fontWeight: "700",
-  letterSpacing: 2,
+  letterSpacing: 1.4,
   textTransform: "uppercase",
-  textAlign: "center",
-  marginBottom: 8,
+  marginBottom: 6,
 },
 
 protocolBody: {
   color: COLORS.textSecondary,
   fontFamily: FONT_OBLIVION,
-  fontSize: 13,
-  lineHeight: 20,
-  textAlign: "center",
-  marginBottom: 12,
+  fontSize: 12,
+  lineHeight: 18,
+  marginBottom: 10,
 },
 
 protocolButtons: {
   flexDirection: "row",
-  gap: 10,
+  gap: 8,
 },
   btnPrimary: {
     backgroundColor: COLORS.primary,

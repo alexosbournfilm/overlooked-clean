@@ -47,6 +47,8 @@ export type RootStackParamList = {
     | { userId?: string }
     | undefined;
 
+    PublicProfile: { slug: string };
+
   // (Optional) if you ever register ChatRoom at root, this keeps typing happy.
   ChatRoom: any;
 };

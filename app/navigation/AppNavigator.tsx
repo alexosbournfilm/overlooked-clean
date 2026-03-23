@@ -169,32 +169,6 @@ export default function AppNavigator({
   // --------------------------------------------------------------
   // ✅ We keep your original "global loading" behavior for app readiness + nav restore.
   // ✅ But we DO NOT block on membership fetch anymore (speed).
-    useEffect(() => {
-    if (!ready || !navReady) return;
-
-    if (!userId) {
-      navigationRef.resetRoot({
-        index: 0,
-        routes: [{ name: "Auth", params: { screen: "SignIn" } as never }],
-      });
-      return;
-    }
-
-    if (userId && !profileComplete) {
-      navigationRef.resetRoot({
-        index: 0,
-        routes: [{ name: "Auth", params: { screen: "CreateProfile" } as never }],
-      });
-      return;
-    }
-
-    if (userId && profileComplete) {
-      navigationRef.resetRoot({
-        index: 0,
-        routes: [{ name: "MainTabs" as never }],
-      });
-    }
-  }, [ready, navReady, userId, profileComplete]);
 
   if (!ready || !navReady) {
     return (
