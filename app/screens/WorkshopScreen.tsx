@@ -11,6 +11,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { giveXp, supabase, type UserTier } from '../lib/supabase';
@@ -4536,6 +4537,7 @@ function LessonBubble({
 /* -------------------------------- screen -------------------------------- */
 const WorkshopScreen: React.FC = () => {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const isDesktop = width >= 960;
   const navigation = useNavigation<any>();
 
@@ -4877,7 +4879,7 @@ const chapters = useMemo(() => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.pageWrap}>
+       <View style={[styles.pageWrap, { paddingTop: insets.top + 40 }]}>
           <View style={styles.heroBlock}>
   <Text style={styles.eyebrow}>Film Bootcamp</Text>
   <Text style={styles.pageTitle}>Learn the Craft of Film</Text>
@@ -5477,7 +5479,6 @@ const styles = StyleSheet.create({
   maxWidth: 1180,
   alignSelf: 'center',
   paddingHorizontal: 24,
-  paddingTop: 46,
 },
   heroBlock: {
   alignItems: 'center',

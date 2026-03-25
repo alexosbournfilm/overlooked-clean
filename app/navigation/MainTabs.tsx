@@ -150,11 +150,13 @@ function BrandWordmark({ compact }: { compact?: boolean }) {
 type TopBarStreakProgressProps = {
   variant: 'wide' | 'compact';
   compactUI?: boolean;
+  barHeight?: number;
 };
 
 const TopBarStreakProgress = memo(function TopBarStreakProgress({
   variant,
   compactUI,
+  barHeight,
 }: TopBarStreakProgressProps) {
   const isWide = variant === 'wide';
 
@@ -236,6 +238,9 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
     outputRange: [-320, 760],
   });
 
+  const resolvedHeight = barHeight ?? (compactUI ? 14 : 16);
+  const compactText = resolvedHeight <= 22;
+
   return (
     <View style={[styles.streakWrap, isWide ? styles.streakWrapWide : styles.streakWrapCompact]}>
       <View
@@ -243,10 +248,10 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
           styles.streakBarOuter,
           isWide && styles.streakBarOuterWide,
           compactUI && styles.streakBarOuterCompactUI,
+          { height: resolvedHeight },
         ]}
       >
         <Animated.View style={[styles.streakBarFill, { width: widthInterpolated }]} />
-
         <View pointerEvents="none" style={styles.streakGlass} />
 
         {Platform.OS === 'web' && (
@@ -261,19 +266,53 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
           />
         )}
 
-        <View style={[styles.streakBarOverlay, compactUI && { paddingHorizontal: 10 }]}>
+        <View
+          style={[
+            styles.streakBarOverlay,
+            compactUI && { paddingHorizontal: 9 },
+            compactText && { paddingHorizontal: 9 },
+          ]}
+        >
           <View style={styles.streakSidesRow}>
             <View style={styles.streakLeftGroup}>
-              <Text style={[styles.streakBarLeft, compactUI && { fontSize: 8, letterSpacing: 0.75 }]}>
+              <Text
+                style={[
+                  styles.streakBarLeft,
+                  compactUI && { fontSize: 7.5, letterSpacing: 0.8 },
+                  compactText && { fontSize: 7.5, letterSpacing: 0.8 },
+                ]}
+              >
                 STREAK
               </Text>
             </View>
 
-            <Text style={[styles.streakBarRight, compactUI && { fontSize: 8 }]}>Year {yearLabel}</Text>
+            <Text
+              style={[
+                styles.streakBarRight,
+                compactUI && { fontSize: 7.5 },
+                compactText && { fontSize: 7.5 },
+              ]}
+            >
+              Year {yearLabel}
+            </Text>
           </View>
 
-          <View pointerEvents="none" style={[styles.streakCenterAbs, compactUI && { paddingHorizontal: 64 }]}>
-            <Text style={[styles.streakBarCenter, compactUI && { fontSize: 8 }]} numberOfLines={1}>
+          <View
+            pointerEvents="none"
+            style={[
+              styles.streakCenterAbs,
+              compactUI && { paddingHorizontal: 52 },
+              compactText && { paddingHorizontal: 52 },
+            ]}
+          >
+            <Text
+              style={[
+                styles.streakBarCenter,
+                compactUI && { fontSize: 7.5 },
+                compactText && { fontSize: 7.5 },
+              ]}
+              numberOfLines={1}
+            >
               {loading ? '—' : `${displayStreak}/${targetMonths}`}
             </Text>
           </View>
@@ -533,25 +572,25 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
 
   return (
     <Modal
-  visible={visible}
-  animationType="fade"
-  transparent
-  statusBarTranslucent
-  presentationStyle="overFullScreen"
-  onRequestClose={onClose}
->
+      visible={visible}
+      animationType="fade"
+      transparent
+      statusBarTranslucent
+      presentationStyle="overFullScreen"
+      onRequestClose={onClose}
+    >
       <View style={styles.lbOverlay}>
         <View
-  style={[
-    styles.lbCard,
-    {
-      width: '100%',
-      maxWidth: maxCardWidth,
-      height: maxCardHeight,
-      alignSelf: 'center',
-    },
-  ]}
->
+          style={[
+            styles.lbCard,
+            {
+              width: '100%',
+              maxWidth: maxCardWidth,
+              height: maxCardHeight,
+              alignSelf: 'center',
+            },
+          ]}
+        >
           <View style={styles.lbHeader}>
             <Text style={styles.lbTitle}>Leaderboard</Text>
             <Pressable onPress={onClose} hitSlop={10} style={styles.lbCloseBtn}>
@@ -903,107 +942,198 @@ const TopBarXpProgress = memo(function TopBarXpProgress({ variant, onOpenLeaderb
 type TopBarProps = {
   topOffset: number;
   navHeight: number;
+  topInset: number;
   onOpenUpload: () => void;
   onOpenLeaderboard: () => void;
 };
 
-const TopBar = memo(function TopBar({ topOffset, navHeight, onOpenUpload, onOpenLeaderboard }: TopBarProps) {
+const TopBar = memo(function TopBar({
+  topOffset,
+  navHeight,
+  topInset,
+  onOpenUpload,
+  onOpenLeaderboard,
+}: TopBarProps) {
   const { width } = useWindowDimensions();
   const isWide = width >= 980;
   const isPhone = width < 420;
   const compactUI = !isWide;
 
-  return (
-    <View style={[styles.topBarWrapper, { top: topOffset }]}>
-      <View style={[styles.topBarInner, { height: navHeight, paddingHorizontal: isPhone ? 10 : 14 }]}>
-        <View style={styles.topBarLeft}>
-          <HoverPress style={{ borderRadius: 10 }} accessibilityLabel="Overlooked">
-            <BrandWordmark compact={compactUI} />
-          </HoverPress>
-        </View>
+  const controlHeight = Platform.OS === 'web'
+  ? (isWide ? 26 : 22)
+  : (isWide ? 16 : isPhone ? 14 : 15);
+const settingsSize = Platform.OS === 'web'
+  ? (isWide ? 28 : 30)
+  : (isPhone ? 30 : 28);
 
-        {isWide && (
-          <View style={styles.topBarCenter}>
-            <HoverPress
-              accessibilityLabel="Streak"
-              style={{
-                borderRadius: 999,
-                width: '100%',
-                maxWidth: 620,
-                alignSelf: 'center',
-              }}
-            >
-              <TopBarStreakProgress variant="wide" compactUI={compactUI} />
+  return (
+    <View style={[styles.topBarWrapper, { top: topOffset, paddingTop: topInset }]}>
+      <View
+  style={[
+    styles.topBarInner,
+    {
+      minHeight: navHeight,
+      paddingHorizontal: isPhone ? 10 : 14,
+      paddingTop: Platform.OS === 'web' ? 4 : 0,
+    },
+  ]}
+>
+        <View
+  style={[
+    styles.topBarRowContent,
+    {
+      minHeight: isPhone ? 30 : 28,
+      alignItems: 'center',
+    },
+  ]}
+>
+          <View style={styles.topBarLeft}>
+            <HoverPress style={{ borderRadius: 10 }} accessibilityLabel="Overlooked">
+              <BrandWordmark compact={compactUI} />
             </HoverPress>
           </View>
-        )}
 
-        <View style={[styles.rightTools, { gap: isPhone ? 6 : 10 }]}>
-          <HoverPress onPress={onOpenUpload} hitSlop={6} accessibilityLabel="Upload film">
-            <View
-              style={[
-                styles.uploadBtn,
-                isPhone && styles.uploadBtnPhone,
-                compactUI && styles.uploadBtnCompact,
-              ]}
-            >
-              <Ionicons name="cloud-upload-outline" size={isPhone ? 15 : 16} color={GOLD} />
-              {!isPhone && (
-                <Text style={[styles.uploadBtnText, compactUI && styles.uploadBtnTextCompact]} numberOfLines={1}>
-                  UPLOAD FILM
-                </Text>
-              )}
+          {isWide && (
+            <View style={styles.topBarCenter}>
+              <HoverPress
+                accessibilityLabel="Streak"
+                style={{
+                  borderRadius: 999,
+                  width: '100%',
+                  maxWidth: 620,
+                  alignSelf: 'center',
+                }}
+              >
+                <TopBarStreakProgress variant="wide" compactUI={compactUI} barHeight={controlHeight} />
+              </HoverPress>
             </View>
-          </HoverPress>
+          )}
 
-          <HoverPress onPress={onOpenLeaderboard} hitSlop={6} accessibilityLabel="View leaderboard">
-            <View
-              style={[
-                styles.leaderboardBtn,
-                isPhone && styles.leaderboardBtnPhone,
-                compactUI && styles.leaderboardBtnCompact,
-              ]}
-            >
-              <Ionicons name="trophy-outline" size={isPhone ? 15 : 16} color={GOLD} />
-              {!isPhone && (
-                <Text
-                  style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]}
-                  numberOfLines={1}
-                >
-                  LEADERBOARD
-                </Text>
-              )}
-            </View>
-          </HoverPress>
-
-          <HoverPress disabled>
-            <View
-              style={[
-                styles.settingsChipSmall,
-                isPhone && styles.settingsChipSmallPhone,
-                compactUI && styles.settingsChipSmallCompact,
-              ]}
-            >
-              <View style={{ transform: [{ scale: isPhone ? 0.58 : compactUI ? 0.74 : 0.9 }] }}>
-                <SettingsButton absolute={false} />
+          <View style={[styles.rightTools, { gap: isPhone ? 8 : 10 }]}>
+            <HoverPress onPress={onOpenUpload} hitSlop={6} accessibilityLabel="Upload film">
+              <View
+  style={[
+    styles.topActionBtn,
+    styles.leaderboardBtn,
+    isPhone && styles.topActionBtnPhone,
+    compactUI && styles.topActionBtnCompact,
+  ]}
+>
+                <Ionicons name="cloud-upload-outline" size={isPhone ? 10 : 12} color={GOLD} />
+                {!isPhone && (
+                  <Text style={[styles.uploadBtnText, compactUI && styles.uploadBtnTextCompact]} numberOfLines={1}>
+                    UPLOAD FILM
+                  </Text>
+                )}
               </View>
-            </View>
-          </HoverPress>
+            </HoverPress>
+
+            <HoverPress onPress={onOpenLeaderboard} hitSlop={6} accessibilityLabel="View leaderboard">
+              <View
+  style={[
+    styles.topActionBtn,
+    styles.leaderboardBtn,
+    isPhone && styles.topActionBtnPhone,
+    compactUI && styles.topActionBtnCompact,
+  ]}
+>
+                <Ionicons name="trophy-outline" size={isPhone ? 10 : 12} color={GOLD} />
+                {!isPhone && (
+                  <Text
+                    style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]}
+                    numberOfLines={1}
+                  >
+                    LEADERBOARD
+                  </Text>
+                )}
+              </View>
+            </HoverPress>
+
+           {Platform.OS === 'web' ? (
+  <View
+    style={[
+      styles.settingsChipSmall,
+      compactUI && styles.settingsChipSmallCompact,
+      {
+        width: settingsSize,
+        height: settingsSize,
+        borderRadius: settingsSize / 2,
+      },
+    ]}
+  >
+    <View
+      style={{
+        alignItems: 'center',
+        justifyContent: 'center',
+        transform: [{ scale: 0.8 }],
+      }}
+      pointerEvents="box-none"
+    >
+      <SettingsButton absolute={false} />
+    </View>
+  </View>
+) : (
+  <View
+    style={{
+      width: settingsSize,
+      height: settingsSize,
+      borderRadius: settingsSize / 2,
+      alignItems: 'center',
+      justifyContent: 'center',
+      alignSelf: 'center',
+      backgroundColor: '#151515',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.10)',
+      overflow: 'hidden',
+      position: 'relative',
+    }}
+  >
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Ionicons name="settings-outline" size={16} color={TEXT_IVORY} />
+    </View>
+
+    <View
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        opacity: 0.02,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <SettingsButton absolute={false} />
+    </View>
+  </View>
+)}
+  
         </View>
       </View>
-
-      {!isWide && (
+    </View>
+    {!isWide && (
         <View style={[styles.topBarInnerStreakRow, { paddingHorizontal: isPhone ? 10 : 14 }]}>
           <HoverPress
             accessibilityLabel="Streak"
             style={{
               borderRadius: 999,
               width: '100%',
-              maxWidth: isPhone ? 420 : 520,
-              alignSelf: 'center',
+              alignSelf: 'stretch',
             }}
           >
-            <TopBarStreakProgress variant="compact" compactUI />
+           <TopBarStreakProgress variant="wide" compactUI={compactUI} barHeight={controlHeight} />
           </HoverPress>
         </View>
       )}
@@ -1174,15 +1304,19 @@ export default function MainTabs() {
 
   const isWide = width >= 980;
 
-  const NAV_HEIGHT = isWide ? 56 : isPhone ? 40 : 44;
-const topOffset = insets.top;
-const contentTopPadding = topOffset + NAV_HEIGHT + (isWide ? 0 : 12);
+const NAV_HEIGHT = isWide ? 40 : isPhone ? 44 : 42;
+const TOPBAR_EXTRA_ROW = isWide ? 0 : 26;
 
-  const TABBAR_HEIGHT = isPhone ? 54 : 56;
+const controlHeight = isWide ? 18 : isPhone ? 16 : 17;
+const settingsSize = isWide ? 28 : isPhone ? 28 : 26;
+const topOffset = Platform.OS === 'web' ? 6 : 0;
+const contentTopPadding = NAV_HEIGHT + TOPBAR_EXTRA_ROW + (Platform.OS === 'web' ? 6 : 0);
+
+const TABBAR_HEIGHT = isPhone ? 54 : 56;
 
   const handleOpenUpload = useCallback(() => {
-  navigation.navigate('WorkshopSubmit', { mode: 'monthly' });
-}, [navigation]);
+    navigation.navigate('WorkshopSubmit', { mode: 'monthly' });
+  }, [navigation]);
 
   const screenOptions = useCallback(
     ({ route }: any): BottomTabNavigationOptions =>
@@ -1195,21 +1329,21 @@ const contentTopPadding = topOffset + NAV_HEIGHT + (isWide ? 0 : 12);
         tabBarShowLabel: false,
 
         tabBarStyle:
-  route.name === 'WorkshopSubmit'
-    ? { display: 'none' }
-    : {
-        backgroundColor: DARK_BG,
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.06)',
-        height: TABBAR_HEIGHT,
-        paddingTop: isTiny ? 5 : 6,
-        paddingBottom: Platform.OS === 'ios' ? (isPhone ? 10 : 12) : 8,
-        shadowColor: 'transparent',
-        shadowOpacity: 0,
-        shadowOffset: { width: 0, height: 0 },
-        shadowRadius: 0,
-        elevation: 0,
-      },
+          route.name === 'WorkshopSubmit'
+            ? { display: 'none' }
+            : {
+                backgroundColor: DARK_BG,
+                borderTopWidth: 1,
+                borderTopColor: 'rgba(255,255,255,0.06)',
+                height: TABBAR_HEIGHT,
+                paddingTop: isTiny ? 5 : 6,
+                paddingBottom: Platform.OS === 'ios' ? (isPhone ? 10 : 12) : 8,
+                shadowColor: 'transparent',
+                shadowOpacity: 0,
+                shadowOffset: { width: 0, height: 0 },
+                shadowRadius: 0,
+                elevation: 0,
+              },
 
         tabBarItemStyle: {
           alignItems: 'center',
@@ -1268,52 +1402,53 @@ const contentTopPadding = topOffset + NAV_HEIGHT + (isWide ? 0 : 12);
         <TopBar
           topOffset={topOffset}
           navHeight={NAV_HEIGHT}
+          topInset={insets.top}
           onOpenUpload={handleOpenUpload}
           onOpenLeaderboard={() => {
-  console.log('leaderboard pressed');
-  setShowLeaderboard(true);
-}}
+            console.log('leaderboard pressed');
+            setShowLeaderboard(true);
+          }}
         />
 
         <SafeAreaView
-  style={[styles.safeArea, { paddingTop: contentTopPadding }]}
-  edges={['top', 'left', 'right', 'bottom']}
->
+          style={[styles.safeArea, { paddingTop: contentTopPadding }]}
+          edges={['left', 'right', 'bottom']}
+        >
           <Tab.Navigator screenOptions={screenOptions}>
-  <Tab.Screen name="Featured" component={FeaturedWrapped} />
-  <Tab.Screen name="Workshop" component={WorkshopWrapped} />
-  <Tab.Screen name="Challenge" component={ChallengeWrapped} />
-  <Tab.Screen name="Location" component={LocationWrapped} />
-  <Tab.Screen name="Jobs" component={JobsWrapped} />
+            <Tab.Screen name="Featured" component={FeaturedWrapped} />
+            <Tab.Screen name="Workshop" component={WorkshopWrapped} />
+            <Tab.Screen name="Challenge" component={ChallengeWrapped} />
+            <Tab.Screen name="Location" component={LocationWrapped} />
+            <Tab.Screen name="Jobs" component={JobsWrapped} />
 
-  <Tab.Screen
-    name="Chats"
-    component={ChatsWrapped}
-    options={{
-      unmountOnBlur: false,
-    }}
-  />
+            <Tab.Screen
+              name="Chats"
+              component={ChatsWrapped}
+              options={{
+                unmountOnBlur: false,
+              }}
+            />
 
-  <Tab.Screen
-    name="Profile"
-    component={ProfileWrapped}
-    listeners={({ navigation }) => ({
-      tabPress: (e) => {
-        e.preventDefault();
-        navigation.dispatch(TabActions.jumpTo('Profile', undefined));
-      },
-    })}
-  />
+            <Tab.Screen
+              name="Profile"
+              component={ProfileWrapped}
+              listeners={({ navigation }) => ({
+                tabPress: (e) => {
+                  e.preventDefault();
+                  navigation.dispatch(TabActions.jumpTo('Profile', undefined));
+                },
+              })}
+            />
 
-  <Tab.Screen
-    name="WorkshopSubmit"
-    component={WorkshopSubmitWrapped}
-    options={{
-      tabBarButton: () => null,
-      tabBarStyle: { display: 'none' },
-    }}
-  />
-</Tab.Navigator>
+            <Tab.Screen
+              name="WorkshopSubmit"
+              component={WorkshopSubmitWrapped}
+              options={{
+                tabBarButton: () => null,
+                tabBarStyle: { display: 'none' },
+              }}
+            />
+          </Tab.Navigator>
         </SafeAreaView>
 
         <SettingsModal />
@@ -1322,6 +1457,7 @@ const contentTopPadding = topOffset + NAV_HEIGHT + (isWide ? 0 : 12);
     </SettingsModalProvider>
   );
 }
+
 /* -------------------------------- Styles -------------------------------- */
 
 const styles = StyleSheet.create({
@@ -1335,27 +1471,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
+  topBarRowContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+
   topBarWrapper: {
-  position: 'absolute',
-  left: 0,
-  right: 0,
-  backgroundColor: DARK_BG,
-  borderBottomWidth: 0,
-  borderBottomColor: 'transparent',
-  zIndex: 20,
-},
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: DARK_BG,
+    borderBottomWidth: 0,
+    borderBottomColor: 'transparent',
+    zIndex: 20,
+  },
 
   topBarInner: {
     width: '100%',
     maxWidth: 1200,
     alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: DARK_BG,
   },
 
   topBarLeft: {
     flexShrink: 0,
     paddingRight: 8,
+    justifyContent: 'center',
   },
 
   topBarCenter: {
@@ -1367,16 +1512,20 @@ const styles = StyleSheet.create({
   },
 
   topBarInnerStreakRow: {
-  width: '100%',
-  maxWidth: 1200,
-  alignSelf: 'center',
-  paddingTop: 2,
-  paddingBottom: 4,
-},
-  brandWrap: {
-    paddingVertical: 4,
-    paddingRight: 8,
+    width: '100%',
+    maxWidth: 1200,
+    alignSelf: 'center',
+    paddingTop: 4,
+    paddingBottom: 0,
+    backgroundColor: DARK_BG,
   },
+
+  brandWrap: {
+    paddingVertical: 0,
+    paddingRight: 8,
+    justifyContent: 'center',
+  },
+
   brandTitle: {
     fontSize: 18,
     fontWeight: '900',
@@ -1384,17 +1533,47 @@ const styles = StyleSheet.create({
     letterSpacing: 2.2,
     fontFamily: SYSTEM_SANS,
   },
+
   brandTitleCompact: {
-    fontSize: 13,
-    letterSpacing: 1.4,
+    fontSize: 11,
+    letterSpacing: 1.2,
   },
 
   rightTools: {
-    marginLeft: 'auto',
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexShrink: 0,
-  },
+  marginLeft: 'auto',
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+},
+
+  topActionBtn: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: 999,
+  alignSelf: 'center',
+  minHeight: 28,
+},
+
+  topActionBtnPhone: {
+  width: 30,
+  minWidth: 30,
+  height: 30,
+  minHeight: 30,
+  paddingHorizontal: 0,
+  gap: 0,
+  backgroundColor: 'transparent',
+  borderColor: 'transparent',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+  topActionBtnCompact: {
+  minHeight: 28,
+  paddingHorizontal: 8,
+  gap: 5,
+},
 
   uploadBtn: {
     flexDirection: 'row',
@@ -1408,6 +1587,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(198,166,100,0.30)',
     maxWidth: 140,
   },
+
   uploadBtnPhone: {
     paddingVertical: 4,
     paddingHorizontal: 8,
@@ -1416,38 +1596,43 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderColor: 'transparent',
   },
+
   uploadBtnCompact: {
-    paddingVertical: 6,
-    paddingHorizontal: 9,
-    gap: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    gap: 4,
     maxWidth: 110,
   },
+
   uploadBtnText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '900',
-    letterSpacing: 1.2,
+    letterSpacing: 1.15,
     color: GOLD,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
     flexShrink: 1,
   },
+
   uploadBtnTextCompact: {
-    fontSize: 8.5,
-    letterSpacing: 0.9,
+    fontSize: 8,
+    letterSpacing: 0.85,
   },
 
   leaderboardBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    backgroundColor: 'rgba(198,166,100,0.10)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(198,166,100,0.30)',
-    maxWidth: 150,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  paddingVertical: 6,
+  paddingHorizontal: 12,
+  borderRadius: 999,
+  backgroundColor: 'rgba(198,166,100,0.10)',
+  borderWidth: 1,
+  borderColor: 'rgba(198,166,100,0.30)',
+  maxWidth: 150,
+},
+
   leaderboardBtnPhone: {
     paddingVertical: 4,
     paddingHorizontal: 8,
@@ -1456,68 +1641,83 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderColor: 'transparent',
   },
+
   leaderboardBtnCompact: {
-    paddingVertical: 6,
-    paddingHorizontal: 9,
-    gap: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    gap: 4,
     maxWidth: 120,
   },
+
   leaderboardBtnText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '900',
-    letterSpacing: 1.2,
+    letterSpacing: 1.15,
     color: GOLD,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
     flexShrink: 1,
   },
+
   leaderboardBtnTextCompact: {
-    fontSize: 8.5,
-    letterSpacing: 0.9,
+    fontSize: 8,
+    letterSpacing: 0.85,
   },
 
   settingsChipSmall: {
-    backgroundColor: '#2B2B2B',
-    borderRadius: 999,
-    padding: 4,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#3A3A3A',
-  },
+  backgroundColor: '#151515',
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.10)',
+  alignItems: 'center',
+  justifyContent: 'center',
+  alignSelf: 'center',
+  overflow: 'hidden',
+},
+
   settingsChipSmallPhone: {
-    backgroundColor: 'transparent',
-    borderColor: 'transparent',
-    padding: 0,
-  },
+  backgroundColor: '#151515',
+  borderColor: 'rgba(255,255,255,0.10)',
+},
+
   settingsChipSmallCompact: {
-    padding: 2.5,
+    backgroundColor: '#121212',
   },
 
-  streakWrap: { paddingVertical: 2, width: '100%' },
+  streakWrap: {
+    paddingVertical: 0,
+    width: '100%',
+  },
+
   streakWrapWide: {
     width: '100%',
     maxWidth: 2000,
     alignItems: 'center',
     alignSelf: 'center',
   },
+
   streakWrapCompact: {
     width: '100%',
     maxWidth: '100%',
     alignSelf: 'stretch',
-    alignItems: 'center',
+    alignItems: 'stretch',
   },
+
   streakBarOuter: {
     width: '100%',
-    height: 28,
     borderRadius: 999,
     backgroundColor: '#1F1F1F',
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#333333',
   },
-  streakBarOuterWide: { width: '100%' },
-  streakBarOuterCompactUI: {
-    height: 20,
+
+  streakBarOuterWide: {
+    width: '100%',
   },
+
+  streakBarOuterCompactUI: {},
+
   streakBarFill: {
     position: 'absolute',
     left: 0,
@@ -1528,14 +1728,14 @@ const styles = StyleSheet.create({
   },
 
   streakGlass: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: '55%',
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    opacity: 0.20,
-  },
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  top: 0,
+  height: '45%',
+  backgroundColor: 'rgba(255,255,255,0.08)',
+  opacity: 0.16,
+},
 
   streakShimmer: {
     position: 'absolute',
@@ -1543,14 +1743,14 @@ const styles = StyleSheet.create({
     bottom: -8,
     width: 140,
     backgroundColor: 'rgba(255,255,255,0.12)',
-    opacity: 0.20,
+    opacity: 0.2,
   },
 
   streakBarOverlay: {
-    flex: 1,
-    position: 'relative',
-    paddingHorizontal: 18,
-  },
+  flex: 1,
+  position: 'relative',
+  paddingHorizontal: 8,
+},
 
   streakSidesRow: {
     flex: 1,
@@ -1565,13 +1765,13 @@ const styles = StyleSheet.create({
   },
 
   streakBarLeft: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: TEXT_IVORY,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    fontFamily: SYSTEM_SANS,
-  },
+  fontSize: 7,
+  fontWeight: '900',
+  color: TEXT_IVORY,
+  letterSpacing: 0.8,
+  textTransform: 'uppercase',
+  fontFamily: SYSTEM_SANS,
+},
 
   streakCenterAbs: {
     position: 'absolute',
@@ -1585,22 +1785,22 @@ const styles = StyleSheet.create({
   },
 
   streakBarCenter: {
-    textAlign: 'center',
-    fontSize: 10,
-    fontWeight: '900',
-    color: TEXT_IVORY,
-    fontFamily: SYSTEM_SANS,
-    opacity: 0.92,
-  },
+  textAlign: 'center',
+  fontSize: 7,
+  fontWeight: '900',
+  color: TEXT_IVORY,
+  fontFamily: SYSTEM_SANS,
+  opacity: 0.92,
+},
 
   streakBarRight: {
-    marginLeft: 'auto',
-    textAlign: 'right',
-    fontSize: 10,
-    fontWeight: '900',
-    color: TEXT_MUTED,
-    fontFamily: SYSTEM_SANS,
-  },
+  marginLeft: 'auto',
+  textAlign: 'right',
+  fontSize: 7,
+  fontWeight: '900',
+  color: TEXT_MUTED,
+  fontFamily: SYSTEM_SANS,
+},
 
   leaderboardLinkRow: { marginBottom: 1 },
   leaderboardLinkRowWide: { alignItems: 'center' },
@@ -1742,25 +1942,25 @@ const styles = StyleSheet.create({
   },
 
   lbOverlay: {
-  flex: 1,
-  backgroundColor: 'rgba(0,0,0,0.9)',
-  justifyContent: 'center',
-  alignItems: 'center',
-  paddingHorizontal: 16,
-  zIndex: 9999,
-  elevation: 9999,
-},
-lbCard: {
-  borderRadius: 18,
-  backgroundColor: '#050505',
-  borderWidth: 1,
-  borderColor: DIVIDER,
-  paddingHorizontal: 14,
-  paddingTop: 10,
-  paddingBottom: 14,
-  zIndex: 10000,
-  elevation: 10000,
-},
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    zIndex: 9999,
+    elevation: 9999,
+  },
+  lbCard: {
+    borderRadius: 18,
+    backgroundColor: '#050505',
+    borderWidth: 1,
+    borderColor: DIVIDER,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 14,
+    zIndex: 10000,
+    elevation: 10000,
+  },
   lbHeader: {
     flexDirection: 'row',
     alignItems: 'center',

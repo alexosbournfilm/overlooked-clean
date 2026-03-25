@@ -1210,12 +1210,8 @@ const secondaryTileH = isMobileLike
   : Math.floor(secondaryTileW * (9 / 16));
 
     return (
-      <View style={[block.section, { alignItems: "center" }]}>
-        <Text style={block.sectionTitleCentered}>
-          {primaryRow.category ? `${primaryRow.category} Showreel` : "Showreel"}
-        </Text>
-
-        <TouchableOpacity
+  <View style={[block.section, { alignItems: "center" }]}>
+    <TouchableOpacity
   activeOpacity={0.92}
   onPress={() => {
     setActiveShowreel(primaryRow);
@@ -1837,6 +1833,57 @@ const secondaryTileH = isMobileLike
   );
 };
 
+const renderAboutAndCTA = () => {
+  const shouldShowAbout =
+    !!profile?.bio?.trim()?.length || (profile?.side_roles?.length || 0) > 0;
+
+  return (
+    <View style={[styles.aboutCard, { marginTop: 12 }]}>
+      {shouldShowAbout && (
+        <>
+          <Text style={styles.aboutTitle}>About</Text>
+
+          <Text style={[styles.aboutBody, isMobileLike ? { lineHeight: 18 } : null]}>
+            {profile?.bio || "—"}
+          </Text>
+
+          {!!profile?.side_roles?.length && (
+            <Text style={[styles.aboutBody, { marginTop: 8, fontStyle: "italic" }]}>
+              <Text style={{ fontWeight: "900" }}>Side roles: </Text>
+              {profile.side_roles.join(", ")}
+            </Text>
+          )}
+        </>
+      )}
+
+      <View style={{ marginTop: shouldShowAbout ? 22 : 0 }}>
+        <Text style={styles.bottomCtaTitle}>Want to showcase your own work?</Text>
+        <Text style={styles.bottomCtaBody}>
+          Join Overlooked to upload your showreels, portfolio, and submissions.
+        </Text>
+
+        <View style={styles.bottomCtaButtons}>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={goToSignUp}
+            style={styles.bottomCtaPrimary}
+          >
+            <Text style={styles.bottomCtaPrimaryText}>Join Overlooked</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={goToSignIn}
+            style={styles.bottomCtaSecondary}
+          >
+            <Text style={styles.bottomCtaSecondaryText}>Sign In</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+};
+
   if (loading) {
     return (
       <View
@@ -1890,8 +1937,7 @@ const secondaryTileH = isMobileLike
 {renderFeaturedFilm()}
 {renderEditorialPortfolio()}
 {renderSubmissionsSection()}
-{renderAboutCard()}
-{renderBottomCTA()}
+{renderAboutAndCTA()}
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -2254,15 +2300,9 @@ const styles = StyleSheet.create({
   },
   
     bottomCtaCard: {
-    backgroundColor: COLORS.cardAlt,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    padding: 18,
-    alignItems: "center",
-    maxWidth: 760,
-    alignSelf: "center",
-  },
+  paddingTop: 22,
+  alignItems: "center",
+},
 
   bottomCtaTitle: {
     color: COLORS.textPrimary,

@@ -24,7 +24,7 @@ import { supabase, type UserTier } from '../lib/supabase';
 import { UpgradeModal } from '../../components/UpgradeModal';
 
 /* ------------------------------- palette ------------------------------- */
-const DARK_BG = '#0D0D0D';
+const DARK_BG = '#000000';
 const DARK_ELEVATED = '#171717';
 const DARK_ELEVATED_2 = '#141414';
 const TEXT_IVORY = '#EDEBE6';
@@ -968,7 +968,9 @@ const WorkshopScreen: React.FC = () => {
 
                         {IS_WEB ? (
                           <audio
-                            ref={(el) => (webAudioRef.current = el)}
+                            ref={(el) => {
+  webAudioRef.current = el;
+}}
                             src={asset}
                             muted={isMuted}
                             preload="metadata"
@@ -1033,7 +1035,9 @@ const WorkshopScreen: React.FC = () => {
                       <View style={styles.videoWrap}>
                         {IS_WEB ? (
                           <video
-                            ref={(el) => (webVideoRef.current = el)}
+                            ref={(el) => {
+  webVideoRef.current = el;
+}}
                             src={asset}
                             style={
                               {
@@ -1064,7 +1068,9 @@ const WorkshopScreen: React.FC = () => {
                           />
                         ) : (
                           <Video
-                            ref={(r) => (videoRef.current = r)}
+                            ref={(r) => {
+  videoRef.current = r;
+}}
                             source={{ uri: asset }}
                             style={[styles.video, WEB_VIDEO_FIT]}
                             resizeMode={ResizeMode.CONTAIN}

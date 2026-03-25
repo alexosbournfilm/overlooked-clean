@@ -23,7 +23,7 @@ const IS_WEB = Platform.OS === 'web';
 /* ────────────────────────────────────────────────────────────
    Minimal palette (keeps your dark aesthetic but “ChatGPT-home” layout)
    ──────────────────────────────────────────────────────────── */
-const DARK_BG = '#0D0D0D';
+const DARK_BG = '#000000';
 const DARK_ELEVATED = '#141414';
 const DARK_PILL = '#111111';
 const TEXT_IVORY = '#EDEBE6';

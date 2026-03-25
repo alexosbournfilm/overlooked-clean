@@ -135,7 +135,7 @@ const FILM_CATEGORY_DB_MAP: Record<string, string> = Object.fromEntries(
 
 const TOP_BAR_OFFSET = Platform.OS === 'web' ? 76 : 16;
 const BOTTOM_TAB_H = Platform.OS === 'web' ? 64 : 64;
-const CONTENT_TOP_PAD = Platform.OS === 'web' ? 22 : 14;
+const CONTENT_TOP_PAD = Platform.OS === 'web' ? 22 : 26;
 
 /* 🔥 Gamification constants (kept) */
 const VOTES_PER_MONTH = 10;
@@ -1398,8 +1398,7 @@ justifyContent: 'center',
     compact && !isSidebar && { padding: 0 },
     !isSidebar && { alignItems: 'center' },
   ]}
->
-    <Text style={styles.sidePanelTitle}>CATEGORY</Text>
+> 
 
     {isSidebar ? (
       <ScrollView
@@ -1703,7 +1702,11 @@ const gridCardW = isWideWeb
   ? Math.floor((winW - MOBILE_GRID_SIDE_PAD * 2 - GRID_GAP) / 2) - MOBILE_CARD_SHRINK
   : cardW;
 const categoryHeaderTopOffset =
-  Platform.OS === 'web' && isMobile ? 6 : -20;
+  Platform.OS === 'web'
+    ? 18
+    : Platform.OS === 'ios'
+    ? 50
+    : 25;
 
   // Fetch content when filters change
   useEffect(() => {
@@ -3052,12 +3055,12 @@ return (
     : undefined
 }
   contentContainerStyle={[
-    styles.listContent,
-    {
-      paddingTop: CONTENT_TOP_PAD,
-      paddingBottom: BOTTOM_TAB_H + 8,
-    },
-  ]}
+  styles.listContent,
+  {
+    paddingTop: CONTENT_TOP_PAD + 10,
+    paddingBottom: BOTTOM_TAB_H + 8,
+  },
+]}
   showsVerticalScrollIndicator={false}
   keyboardShouldPersistTaps="always"
   keyboardDismissMode="none"

@@ -25,7 +25,7 @@ import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /* ------------------------------- Noir palette ------------------------------- */
-const DARK_BG = '#0D0D0D';
+const DARK_BG = '#000000';
 const ELEVATED = '#141414';
 const ELEVATED_2 = '#1B1B1B';
 const BORDER = '#2A2A2A';

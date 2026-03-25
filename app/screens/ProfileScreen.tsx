@@ -29,6 +29,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Audio, Video, ResizeMode, VideoFullscreenUpdate, AVPlaybackStatus } from 'expo-av';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useHeaderHeight } from '@react-navigation/elements';
 import { supabase } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import AvatarCropper from '../../components/AvatarCropper';
@@ -971,10 +972,11 @@ function withTimeout<T>(promise: Promise<T>, ms = 20000): Promise<T> {
   });
 }
 export default function ProfileScreen() {
-  const route = useRoute<any>();
+    const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
 
   // Responsive flags
   const isMobile = width < 768;
@@ -1065,6 +1067,9 @@ export default function ProfileScreen() {
     Array<{ label: string; value: number; country_code: string; name: string }>
   >([]);
   const [citySearch, setCitySearch] = useState('');
+  const [citySearchFocused, setCitySearchFocused] = useState(false);
+const [roleSearchFocused, setRoleSearchFocused] = useState(false);
+const [sideRoleSearchFocused, setSideRoleSearchFocused] = useState(false);
   const [roleSearchModalVisible, setRoleSearchModalVisible] = useState(false);
   const [sideRoleModalVisible, setSideRoleModalVisible] = useState(false);
   const [roleSearchTerm, setRoleSearchTerm] = useState('');
@@ -2975,7 +2980,7 @@ setActiveSubmission((prev: any) =>
   }
 
   await Clipboard.setStringAsync(publicProfileUrl);
-  Alert.alert("Copied", "Creative Protocol link copied.");
+  Alert.alert("Copied", "Portfolio has been copied.");
 };
 
 const previewCreativeProtocolLink = () => {
@@ -3066,39 +3071,56 @@ const renderEditProfileCard = () => {
   const level = displayLevel || 1;
   const xp = displayXp || 0;
   const ringColor = getRingColorForLevel(level);
-  const title = (displayTitle || defaultTitle).toUpperCase();
+  const compactMobile = isMobileLike;
 
   return (
-    <View style={[styles.infoCard, { marginTop: 12 }]}>
-      {/* Buttons */}
-      <View style={[styles.infoButtons, { marginTop: 0 }]}>
+    <View
+  style={[
+    styles.utilityCard,
+    {
+      marginTop: 0,
+paddingVertical: compactMobile ? 9 : 4,
+paddingHorizontal: compactMobile ? 10 : 0,
+    },
+  ]}
+>
+      <View
+  style={{
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: compactMobile ? 8 : 18,
+    flexWrap: "wrap",
+  }}
+>
         {isOwnProfile ? (
           <TouchableOpacity
-            style={styles.btnPrimary}
+            style={styles.utilityTextActionBtn}
             onPress={() => setShowEditModal(true)}
             activeOpacity={0.85}
           >
-            <Text style={styles.btnPrimaryText}>Edit Profile</Text>
+            <Text style={styles.utilityTextActionBtnText}>Edit Profile</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
-            style={styles.btnPrimary}
+            style={styles.utilityTextActionBtn}
             onPress={startOneToOneChat}
             disabled={startingChat}
             activeOpacity={0.85}
           >
             {startingChat ? (
-              <ActivityIndicator color="#000" />
+              <ActivityIndicator color="#000" size="small" />
             ) : (
-              <Text style={styles.btnPrimaryText}>Message</Text>
+              <Text
+  style={[styles.utilityTextActionBtnText, { color: COLORS.primary }]}
+>
+  Message
+</Text>
             )}
           </TouchableOpacity>
         )}
-      </View>
 
-      {/* Support button */}
-      {!isOwnProfile && profile && currentUserId && (
-        <View style={{ marginTop: 12 }}>
+        {!isOwnProfile && profile && currentUserId && (
           <TouchableOpacity
             activeOpacity={0.85}
             onPress={async () => {
@@ -3119,165 +3141,194 @@ const renderEditProfileCard = () => {
                 }
               }
             }}
-            style={[
-              {
-                paddingVertical: 12,
-                paddingHorizontal: 22,
-                borderRadius: 999,
-                alignItems: "center",
-                justifyContent: "center",
-                shadowColor: "#000",
-                shadowOpacity: 0.15,
-                shadowRadius: 6,
-                shadowOffset: { width: 0, height: 3 },
-                elevation: 3,
-                width: "100%",
-              },
-              isSupporting
-                ? { backgroundColor: "#1C1C1C", borderWidth: 1, borderColor: "#444" }
-                : { backgroundColor: COLORS.primary },
-            ]}
+            style={styles.utilityTextActionBtn}
           >
-            <Text
-              style={{
-                fontSize: 16,
-                fontWeight: "800",
-                color: isSupporting ? "#F7DFA6" : "#000",
-                letterSpacing: 0.5,
-              }}
-            >
+            <Text style={styles.utilityTextActionBtnText}>
               {isSupporting ? "Supporting" : "Support"}
             </Text>
           </TouchableOpacity>
-        </View>
-      )}
+        )}
+      </View>
 
-      {/* Gamification */}
-      <View style={{ marginTop: 10, alignItems: "center" }}>
-        <Text style={[styles.gamifyTitle, { color: ringColor }]} numberOfLines={1}>
-          {title}
+      <View style={{ height: compactMobile ? 0 : 8 }} />
+      <View
+  style={{
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: compactMobile ? 7 : 10,
+    flexWrap: "wrap",
+  }}
+>
+        <Text
+          style={{
+            color: ringColor,
+            fontSize: compactMobile ? 10 : 11,
+            fontFamily: FONT_OBLIVION,
+            letterSpacing: 1,
+            textTransform: "uppercase",
+            fontWeight: "700",
+          }}
+        >
+          Lv {level}
         </Text>
-        <View style={styles.gamifyRow}>
-          <Text style={styles.gamifyLevel}>Lv {level}</Text>
-          <View style={styles.gamifyDot} />
-          <Text style={styles.gamifyXp}>{xp} XP</Text>
-        </View>
+
+        <View
+          style={{
+            width: 3,
+            height: 3,
+            borderRadius: 2,
+            backgroundColor: COLORS.textSecondary,
+            opacity: 0.6,
+          }}
+        />
+
+        <Text
+          style={{
+            color: COLORS.textSecondary,
+            fontSize: compactMobile ? 10 : 11,
+            fontFamily: FONT_OBLIVION,
+            letterSpacing: 0.7,
+            textTransform: "uppercase",
+          }}
+        >
+          {xp} XP
+        </Text>
+
+        <View
+          style={{
+            width: 3,
+            height: 3,
+            borderRadius: 2,
+            backgroundColor: COLORS.textSecondary,
+            opacity: 0.6,
+          }}
+        />
+
+        <Text
+          style={{
+            color: COLORS.textSecondary,
+            fontSize: compactMobile ? 10 : 11,
+            fontFamily: FONT_OBLIVION,
+            letterSpacing: 0.7,
+            textTransform: "uppercase",
+          }}
+          numberOfLines={1}
+        >
+          {displayTitle || defaultTitle}
+        </Text>
       </View>
     </View>
   );
 };
-
 const renderCreativeProtocolCard = () => {
   const compactMobile = isMobileLike;
 
   return (
     <View
-      style={[
-        styles.infoCard,
-        {
-          marginTop: 12,
-          paddingVertical: compactMobile ? 10 : 16,
-          paddingHorizontal: compactMobile ? 12 : 16,
-        },
-      ]}
+  style={[
+    styles.utilityTopBar,
+    {
+      paddingVertical: compactMobile ? 0 : 2,
+paddingHorizontal: compactMobile ? 8 : 0,
+    },
+  ]}
+>
+       <View
+  style={{
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+  }}
+>
+  <TouchableOpacity
+    onPress={copyCreativeProtocolLink}
+    activeOpacity={0.85}
+    style={compactMobile ? styles.utilitySingleLinkBtnMobile : styles.utilitySingleLinkBtn}
+  >
+    <Text
+      style={
+        compactMobile
+          ? styles.utilitySingleLinkBtnTextMobile
+          : styles.utilitySingleLinkBtnText
+      }
     >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
-        }}
-      >
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text
-            style={[
-              styles.protocolTitle,
-              {
-                textAlign: "left",
-                marginBottom: compactMobile ? 2 : 6,
-                fontSize: compactMobile ? 12 : 16,
-                letterSpacing: compactMobile ? 1 : 2,
-              },
-            ]}
-            numberOfLines={1}
-          >
-            Share Portfolio
-          </Text>
+      Share Portfolio Link
+    </Text>
+  </TouchableOpacity>
+</View>
+    </View>
+  );
+};
+const renderMobileBannerActions = () => {
+  if (!isMobileLike) return null;
 
-          {!compactMobile ? (
-            <Text style={styles.protocolBody}>
-              Create a shareable link to your creative portfolio and showcase your films,
-              showreels, and work across Instagram, TikTok, and beyond.
-            </Text>
-          ) : (
-            <Text
-              style={{
-                color: COLORS.textSecondary,
-                fontFamily: FONT_OBLIVION,
-                fontSize: 11,
-                lineHeight: 15,
-              }}
-              numberOfLines={1}
-            >
-              Copy or preview your public profile link.
-            </Text>
-          )}
-        </View>
-
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 8,
-            flexShrink: 0,
-          }}
+  return (
+    <View style={styles.mobileBannerActions}>
+      {isOwnProfile ? (
+        <TouchableOpacity
+          style={styles.mobileBannerPrimaryBtn}
+          onPress={() => setShowEditModal(true)}
+          activeOpacity={0.85}
         >
+          <Text style={styles.mobileBannerPrimaryBtnText}>Edit Profile</Text>
+        </TouchableOpacity>
+      ) : (
+        <>
           <TouchableOpacity
-            onPress={copyCreativeProtocolLink}
+            style={styles.mobileBannerPrimaryBtn}
+            onPress={startOneToOneChat}
+            disabled={startingChat}
             activeOpacity={0.85}
-            style={[
-              styles.ghostBtn,
-              {
-                paddingVertical: compactMobile ? 8 : 12,
-                paddingHorizontal: compactMobile ? 10 : 14,
-                minWidth: compactMobile ? 70 : 96,
-              },
-            ]}
           >
-            <Text
-              style={[
-                styles.ghostBtnText,
-                { fontSize: compactMobile ? 11 : 13 },
-              ]}
-            >
-              Copy
-            </Text>
+            {startingChat ? (
+              <ActivityIndicator color="#000" size="small" />
+            ) : (
+              <Text
+  style={[styles.mobileBannerPrimaryBtnText, { color: COLORS.primary }]}
+>
+  Message
+</Text>
+            )}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={previewCreativeProtocolLink}
-            activeOpacity={0.85}
-            style={[
-              styles.btnPrimary,
-              {
-                paddingVertical: compactMobile ? 8 : 12,
-                paddingHorizontal: compactMobile ? 10 : 14,
-                minWidth: compactMobile ? 78 : 110,
-              },
-            ]}
-          >
-            <Text
+          {profile && currentUserId && (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={async () => {
+                const targetIdToSupport = profile?.id;
+                if (!targetIdToSupport) return;
+
+                if (isSupporting) {
+                  const { error } = await unsupportUser(targetIdToSupport);
+                  if (!error) {
+                    setIsSupporting(false);
+                    setSupportersCount((n) => Math.max(0, n - 1));
+                  }
+                } else {
+                  const { error } = await supportUser(targetIdToSupport);
+                  if (!error) {
+                    setIsSupporting(true);
+                    setSupportersCount((n) => n + 1);
+                  }
+                }
+              }}
               style={[
-                styles.btnPrimaryText,
-                { fontSize: compactMobile ? 11 : 13 },
+                styles.mobileBannerGhostBtn,
+                isSupporting && {
+                  backgroundColor: "rgba(198,166,100,0.14)",
+                  borderColor: "rgba(198,166,100,0.30)",
+                },
               ]}
             >
-              Preview
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+              <Text style={styles.mobileBannerGhostBtnText}>
+                {isSupporting ? "Supporting" : "Support"}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </>
+      )}
     </View>
   );
 };
@@ -3294,11 +3345,18 @@ const renderAboutStreaksCard = () => {
   if (!shouldShow) return null;
 
   return (
-    <View style={[styles.aboutCard, { marginTop: 12 }]}>
-      <Text style={styles.aboutTitle}>About</Text>
+  <View
+    style={[
+      styles.aboutCard,
+      {
+        marginTop: 0,
+paddingHorizontal: isMobileLike ? 4 : 0,
+      },
+    ]}
+  >
 
       {/* ✅ Streaks live INSIDE About */}
-      <View style={{ marginTop: 10 }}>
+      <View style={{ marginTop: isMobileLike ? 0 : 2 }}>
         {(() => {
           const s = streakLoading ? 0 : Math.max(0, Number(streak || 0));
           const fullYears = Math.floor(s / 12);
@@ -3312,7 +3370,10 @@ const renderAboutStreaksCard = () => {
             const pct = streakLoading ? 0 : Math.min((monthsThisYear / 12) * 100, 100);
 
             return (
-              <View key={`year-${yearNumber}`} style={{ marginTop: idx === 0 ? 0 : 12 }}>
+              <View
+  key={`year-${yearNumber}`}
+  style={{ marginTop: idx === 0 ? 0 : isMobileLike ? 8 : 12 }}
+>
                 <View
                   style={{
                     flexDirection: "row",
@@ -3336,7 +3397,7 @@ const renderAboutStreaksCard = () => {
 
                   <Text
                     style={{
-                      fontSize: 11,
+                      fontSize: isMobileLike ? 9 : 11,
                       color: COLORS.textSecondary,
                       letterSpacing: 1.4,
                       fontFamily: FONT_OBLIVION,
@@ -3351,8 +3412,8 @@ const renderAboutStreaksCard = () => {
                     <View
                       style={{
                         marginLeft: 10,
-                        paddingHorizontal: 10,
-                        paddingVertical: 4,
+                        paddingHorizontal: isMobileLike ? 8 : 10,
+paddingVertical: isMobileLike ? 3 : 4,
                         borderRadius: 999,
                         backgroundColor: "rgba(198,166,100,0.18)",
                         borderWidth: 1,
@@ -3361,7 +3422,7 @@ const renderAboutStreaksCard = () => {
                     >
                       <Text
                         style={{
-                          fontSize: 9,
+                          fontSize: isMobileLike ? 9 : 11,
                           color: "#C6A664",
                           letterSpacing: 1.2,
                           fontFamily: FONT_OBLIVION,
@@ -3380,12 +3441,12 @@ const renderAboutStreaksCard = () => {
 
                 <Text
                   style={{
-                    marginTop: 6,
-                    fontSize: 12,
-                    color: COLORS.textPrimary,
-                    fontFamily: FONT_OBLIVION,
-                    textAlign: "center",
-                  }}
+  marginTop: isMobileLike ? 4 : 6,
+  fontSize: isMobileLike ? 11 : 12,
+  color: COLORS.textPrimary,
+  fontFamily: FONT_OBLIVION,
+  textAlign: "center",
+}}
                 >
                   {streakLoading ? "—" : `${monthsThisYear} / 12 months`}
                 </Text>
@@ -3398,25 +3459,41 @@ const renderAboutStreaksCard = () => {
       {/* ✅ Subtle divider so streak feels “attached” */}
       <View
         style={{
-          height: 1,
-          backgroundColor: COLORS.border,
-          opacity: 0.7,
-          marginTop: 12,
-          marginBottom: 10,
-        }}
+  height: 1,
+  backgroundColor: COLORS.border,
+  opacity: 0.45,
+  marginTop: isMobileLike ? 8 : 12,
+  marginBottom: isMobileLike ? 8 : 10,
+}}
       />
 
       {/* ✅ Bio */}
-      <Text style={[styles.aboutBody, isMobileLike ? { lineHeight: 18 } : null]}>
+      <Text
+  style={[
+    styles.aboutBody,
+    isMobileLike ? { lineHeight: 16, fontSize: 12 } : null,
+  ]}
+>
         {bio || "—"}
       </Text>
 
       {!!sideRoles.length && (
-        <Text style={[styles.aboutBody, { marginTop: 8, fontStyle: "italic" }]}>
+        <Text
+  style={[
+    styles.aboutBody,
+    { marginTop: isMobileLike ? 6 : 8, fontStyle: "italic" },
+    isMobileLike ? { fontSize: 12, lineHeight: 16 } : null,
+  ]}
+>
           <Text style={{ fontWeight: "900" }}>Side roles: </Text>
           {sideRoles.join(", ")}
         </Text>
       )}
+      {isMobileLike ? (
+  <View style={{ marginTop: 10, alignItems: "flex-start" }}>
+    {renderCreativeProtocolCard()}
+  </View>
+) : null}
     </View>
   );
 };
@@ -3483,6 +3560,8 @@ const heroMaxW = "100%";
               colors={["rgba(0,0,0,0.2)", "rgba(0,0,0,0.65)", "rgba(0,0,0,0.95)"]}
               style={styles.heroGradient}
             />
+
+            {renderMobileBannerActions()}
 
             {/* ✔ ROLE + NAME BLOCK */}
             {!!mainRoleName && (
@@ -3716,137 +3795,54 @@ const heroMaxW = "100%";
         </View>
 
         {/* RIGHT SIDE */}
-        <View
-          style={[
-            styles.heroRight,
-            isMobileLike ? { marginTop: 0, width: "100%", flex: 0 } : null, // ✅ key line
-          ]}
-        >
-          {/* ✅ Desktop: show edit card at top (like before) */}
-          {!isMobileLike ? (
-            <View
-              style={[
-                styles.infoCard,
-                isMobileLike ? { paddingHorizontal: 14, paddingVertical: 14 } : null,
-              ]}
-            >
-              {/* Buttons */}
-              <View style={[styles.infoButtons, isMobileLike ? { marginTop: 0 } : null]}>
-                {isOwnProfile ? (
-                  <TouchableOpacity
-                    style={styles.btnPrimary}
-                    onPress={() => setShowEditModal(true)}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.btnPrimaryText}>Edit Profile</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.btnPrimary}
-                    onPress={startOneToOneChat}
-                    disabled={startingChat}
-                    activeOpacity={0.85}
-                  >
-                    {startingChat ? (
-                      <ActivityIndicator color="#000" />
-                    ) : (
-                      <Text style={styles.btnPrimaryText}>Message</Text>
-                    )}
-                  </TouchableOpacity>
-                )}
-              </View>
-              {renderCreativeProtocolCard()}
-
-              {/* Support button */}
-              {!isOwnProfile && profile && currentUserId && (
-                <View style={{ marginTop: isMobileLike ? 10 : 12 }}>
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    onPress={async () => {
-                      const targetIdToSupport = profile?.id; // ✅ always correct
-                      if (!targetIdToSupport) return;
-
-                      if (isSupporting) {
-                        const { error } = await unsupportUser(targetIdToSupport);
-                        if (!error) {
-                          setIsSupporting(false);
-                          setSupportersCount((n) => Math.max(0, n - 1));
-                        }
-                      } else {
-                        const { error } = await supportUser(targetIdToSupport);
-                        if (!error) {
-                          setIsSupporting(true);
-                          setSupportersCount((n) => n + 1);
-                        }
-                      }
-                    }}
-                    style={[
-                      {
-                        paddingVertical: isMobileLike ? 11 : 12,
-                        paddingHorizontal: isMobileLike ? 18 : 22,
-                        borderRadius: 999,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        shadowColor: "#000",
-                        shadowOpacity: 0.15,
-                        shadowRadius: 6,
-                        shadowOffset: { width: 0, height: 3 },
-                        elevation: 3,
-                        width: "100%",
-                      },
-                      isSupporting
-                        ? {
-                            backgroundColor: "#1C1C1C",
-                            borderWidth: 1,
-                            borderColor: "#444",
-                          }
-                        : {
-                            backgroundColor: COLORS.primary,
-                          },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 16,
-                        fontWeight: "800",
-                        color: isSupporting ? "#F7DFA6" : "#000",
-                        letterSpacing: 0.5,
-                      }}
-                    >
-                      {isSupporting ? "Supporting" : "Support"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {/* Gamification */}
-              <View style={[styles.gamifyWrap, isMobileLike ? { marginTop: 12 } : null]}>
-                <Text style={[styles.gamifyTitle, { color: ringColor }]} numberOfLines={1}>
-                  {title}
-                </Text>
-                <View style={styles.gamifyRow}>
-                  <Text style={styles.gamifyLevel}>Lv {level}</Text>
-                  <View style={styles.gamifyDot} />
-                  <Text style={styles.gamifyXp}>{xp} XP</Text>
-                </View>
-              </View>
-            </View>
-          ) : null}
-        </View>
-      </View>
-
-      {/* ✅ MOBILE: keep the edit card under hero like you had */}
-      {isMobileLike ? (
-  <View style={{ width: "100%", marginTop: 12 }}>
+<View
+  style={[
+    styles.heroRight,
+    isMobileLike ? { marginTop: 0, width: "100%", flex: 0 } : null,
+  ]}
+>
+  {!isMobileLike ? (
+  <View style={styles.webInfoRail}>
     {renderEditProfileCard()}
+
+    <View
+      style={{
+        height: 1,
+        backgroundColor: COLORS.border,
+        opacity: 0.35,
+        marginVertical: 14,
+      }}
+    />
+
+    {renderCreativeProtocolCard()}
+
+    <View
+      style={{
+        height: 1,
+        backgroundColor: COLORS.border,
+        opacity: 0.35,
+        marginVertical: 14,
+      }}
+    />
+
+    {renderAboutStreaksCard()}
   </View>
 ) : null}
-
-      {/* ✅ NOW: About/Streaks renders on BOTH web + mobile */}
-      <View style={{ width: "100%", maxWidth: heroMaxW, alignSelf: "center" }}>
-  {renderAboutStreaksCard()}
-  {isMobileLike ? renderCreativeProtocolCard() : null}
 </View>
+      </View>
+
+{isMobileLike ? (
+  <View
+    style={{
+      width: "100%",
+      maxWidth: heroMaxW,
+      alignSelf: "center",
+      marginTop: 2,
+    }}
+  >
+    {renderAboutStreaksCard()}
+  </View>
+) : null}
     </View>
   );
 };
@@ -3876,7 +3872,16 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
 
   return (
     <View style={[block.section, { alignItems: "center" }]}>
-      <Text style={block.sectionTitleCentered}>
+      <Text
+  style={[
+    block.sectionTitleCentered,
+    isMobileLike && {
+      fontSize: 12,
+      letterSpacing: 2.2,
+      marginBottom: 12,
+    },
+  ]}
+>
   {primaryRow.category ? `${primaryRow.category} Showreel` : "Showreel"}
 </Text>
 
@@ -4306,7 +4311,18 @@ const renderEditorialPortfolio = () => {
     <>
       {imgs.length > 0 && (
         <View style={block.section}>
-          <Text style={block.sectionTitleCentered}>Portfolio</Text>
+          <Text
+  style={[
+    block.sectionTitleCentered,
+    isMobileLike && {
+      fontSize: 12,
+      letterSpacing: 2.2,
+      marginBottom: 12,
+    },
+  ]}
+>
+  Portfolio
+</Text>
           <View style={[block.grid, { marginHorizontal: -4 }]}>
             {imgs.map((item) => (
               <View key={item.id} style={[block.tile, { width: tileW, margin: 4 }]}>
@@ -4364,7 +4380,18 @@ const renderSubmissionsSection = () => {
   if (loadingSubmissions) {
     return (
       <View style={block.section}>
-        <Text style={block.sectionTitleCentered}>Submissions</Text>
+        <Text
+  style={[
+    block.sectionTitleCentered,
+    isMobileLike && {
+      fontSize: 12,
+      letterSpacing: 2.2,
+      marginBottom: 12,
+    },
+  ]}
+>
+  Submissions
+</Text>
         <ActivityIndicator size="large" color={COLORS.primary} />
       </View>
     );
@@ -4641,28 +4668,31 @@ if (!profile) {
 return (
   <>
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }} edges={['top']}>
-      <ScrollView
-        style={{ flex: 1, backgroundColor: COLORS.background }}
-        contentContainerStyle={{
-          alignItems: "center",
-          paddingBottom: 40 + Math.max(insets.bottom, 8),
-        }}
-      >
-        <View
-  style={{
-    width: "100%",
-    maxWidth: isMobileLike ? "100%" : PAGE_MAX,
-    paddingHorizontal: horizontalPad,
-    alignSelf: "center",
+            <ScrollView
+  style={{ flex: 1, backgroundColor: COLORS.background }}
+  contentContainerStyle={{
+    alignItems: "center",
+    paddingTop: 20,
+    paddingBottom: 40 + Math.max(insets.bottom, 8),
   }}
 >
-          {renderHero()}
+    <View
+    style={{
+      width: "100%",
+      maxWidth: isMobileLike ? "100%" : PAGE_MAX,
+      paddingHorizontal: horizontalPad,
+      paddingTop: Math.max(headerHeight - insets.top, 0),
+      alignSelf: "center",
+    }}
+  >
+    
 
-          {renderFeaturedFilm()}
-          {renderEditorialPortfolio()}
-          {renderSubmissionsSection()}
-        </View>
-      </ScrollView>
+    {renderHero()}
+    {renderFeaturedFilm()}
+    {renderEditorialPortfolio()}
+    {renderSubmissionsSection()}
+  </View>
+</ScrollView>
     </SafeAreaView>
 
     {/* Fullscreen image viewer */}
@@ -4799,8 +4829,9 @@ return (
           <ScrollView
   style={{ flex: 1, width: "100%" }}
   contentContainerStyle={{
-    paddingBottom: Math.max(insets.bottom + 24, 36),
-  }}
+  paddingBottom: Math.max(insets.bottom + 36, 56),
+  paddingTop: 4,
+}}
   showsVerticalScrollIndicator={false}
   keyboardShouldPersistTaps="handled"
 >
@@ -4808,25 +4839,25 @@ return (
             {isOwnProfile && (
               <View style={[styles.field, { marginTop: 8 }]}>
                 <Text style={styles.fieldLabel}>Profile picture</Text>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 2 }}>
                   {image || profile.avatar_url ? (
                     <Image
   source={{ uri: image || profile.avatar_url || "" }}
   style={{
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "#111",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  }}
+  width: 50,
+  height: 50,
+  borderRadius: 25,
+  backgroundColor: "#111",
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.08)",
+}}
 />
                   ) : (
                     <View
                       style={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: 21,
+                        width: 50,
+                        height: 50,
+                        borderRadius: 25,
                         backgroundColor: "#111",
                         borderWidth: 1,
                         borderColor: COLORS.border,
@@ -5234,29 +5265,40 @@ return (
 
     {/* City search modal */}
     <Modal
-      visible={cityOpen}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setCityOpen(false)}
-    >
-      <View style={centered.overlay}>
-        <View style={centered.card}>
+  visible={cityOpen}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setCityOpen(false)}
+>
+  <KeyboardAvoidingView
+    style={centered.overlay}
+    behavior={Platform.OS === "ios" ? "padding" : undefined}
+  >
+    <View style={centered.card}>
           <Text style={centered.title}>Select City</Text>
 
           <TextInput
-            value={citySearch}
-            onChangeText={(t) => {
-              setCitySearch(t);
-              fetchCities(t);
-            }}
-            placeholder="Search city"
-            placeholderTextColor={COLORS.textSecondary}
-            style={styles.input}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
+  value={citySearch}
+  onChangeText={(t) => {
+    setCitySearch(t);
+    fetchCities(t);
+  }}
+  placeholder="Search city"
+  placeholderTextColor={COLORS.textSecondary}
+  style={[styles.input, citySearchFocused && styles.inputFocused]}
+  autoCapitalize="none"
+  autoCorrect={false}
+  autoFocus
+  blurOnSubmit={false}
+  returnKeyType="search"
+  onFocus={() => setCitySearchFocused(true)}
+  onBlur={() => setCitySearchFocused(false)}
+/>
 
-          <ScrollView style={{ maxHeight: 300, marginTop: 8 }}>
+          <ScrollView
+  style={{ maxHeight: 300, marginTop: 10 }}
+  keyboardShouldPersistTaps="handled"
+>
             {cityItems.length === 0 ? (
               <Text style={block.muted}>Type to search cities.</Text>
             ) : (
@@ -5290,78 +5332,107 @@ return (
             <Text style={styles.ghostBtnText}>Close</Text>
           </TouchableOpacity>
         </View>
-      </View>
-    </Modal>
+  </KeyboardAvoidingView>
+</Modal>
 
     {/* Main role search modal */}
     <Modal
-      visible={roleSearchModalVisible}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setRoleSearchModalVisible(false)}
-    >
-      <View style={centered.overlay}>
-        <View style={centered.card}>
+  visible={roleSearchModalVisible}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setRoleSearchModalVisible(false)}
+>
+  <KeyboardAvoidingView
+    style={centered.overlay}
+    behavior={Platform.OS === "ios" ? "padding" : undefined}
+  >
+    <View style={[centered.card, { minHeight: 390, maxHeight: 390 }]}>
           <Text style={centered.title}>Select Main Role</Text>
           <TextInput
-            value={roleSearchTerm}
-            onChangeText={(t) => {
-              setRoleSearchTerm(t);
-              fetchSearchRoles(t);
-            }}
-            placeholder="Search roles"
-            placeholderTextColor={COLORS.textSecondary}
-            style={styles.input}
-          />
-          <ScrollView style={{ maxHeight: 260, marginTop: 8 }}>
-            {searchingRoles && <ActivityIndicator color={COLORS.primary} />}
+  value={roleSearchTerm}
+  onChangeText={(t) => {
+    setRoleSearchTerm(t);
+    fetchSearchRoles(t);
+  }}
+  placeholder="Search roles"
+  placeholderTextColor={COLORS.textSecondary}
+  style={[styles.input, roleSearchFocused && styles.inputFocused]}
+  autoCapitalize="none"
+  autoCorrect={false}
+  autoFocus
+  blurOnSubmit={false}
+  returnKeyType="search"
+  onFocus={() => setRoleSearchFocused(true)}
+  onBlur={() => setRoleSearchFocused(false)}
+/>
+          <View style={{ height: 220, marginTop: 10 }}>
+  <ScrollView
+    style={{ flex: 1 }}
+    contentContainerStyle={{ paddingBottom: 6 }}
+    keyboardShouldPersistTaps="handled"
+    showsVerticalScrollIndicator={false}
+  >
+    {searchingRoles && <ActivityIndicator color={COLORS.primary} />}
 
-            {!searchingRoles &&
-              roleSearchItems.map((r) => (
-                <TouchableOpacity
-                  key={r.value}
-                  style={block.row}
-                  onPress={() => {
-                    setMainRole(r.value);
-                    setMainRoleName(r.label);
-                    setRoleSearchModalVisible(false);
-                  }}
-                >
-                  <Text style={{ color: COLORS.textPrimary, fontFamily: FONT_OBLIVION }}>
-                    {r.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+    {!searchingRoles &&
+      roleSearchItems.map((r) => (
+        <TouchableOpacity
+          key={r.value}
+          style={block.row}
+          onPress={() => {
+            setMainRole(r.value);
+            setMainRoleName(r.label);
+            setRoleSearchModalVisible(false);
+          }}
+        >
+          <Text style={{ color: COLORS.textPrimary, fontFamily: FONT_OBLIVION }}>
+            {r.label}
+          </Text>
+        </TouchableOpacity>
+      ))}
 
-            {!searchingRoles && !roleSearchItems.length && <Text style={block.muted}>Type to search roles.</Text>}
-          </ScrollView>
+    {!searchingRoles && !roleSearchItems.length && (
+      <Text style={block.muted}>Type to search roles.</Text>
+    )}
+  </ScrollView>
+</View>
           <TouchableOpacity style={[styles.ghostBtn, { marginTop: 10 }]} onPress={() => setRoleSearchModalVisible(false)}>
             <Text style={styles.ghostBtnText}>Close</Text>
           </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
+         </View>
+  </KeyboardAvoidingView>
+</Modal>
 
     {/* Side roles modal */}
     <Modal
-      visible={sideRoleModalVisible}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setSideRoleModalVisible(false)}
-    >
-      <View style={centered.overlay}>
-        <View style={centered.card}>
+  visible={sideRoleModalVisible}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setSideRoleModalVisible(false)}
+>
+  <KeyboardAvoidingView
+    style={centered.overlay}
+    behavior={Platform.OS === "ios" ? "padding" : undefined}
+  >
+    <View style={centered.card}>
           <Text style={centered.title}>Add Side Roles</Text>
           <TextInput
-            value={roleSearchTerm}
-            onChangeText={(t) => {
-              setRoleSearchTerm(t);
-              fetchSearchRoles(t);
-            }}
-            placeholder="Search roles"
-            placeholderTextColor={COLORS.textSecondary}
-            style={styles.input}
-          />
+  value={roleSearchTerm}
+  onChangeText={(t) => {
+    setRoleSearchTerm(t);
+    fetchSearchRoles(t);
+  }}
+  placeholder="Search roles"
+  placeholderTextColor={COLORS.textSecondary}
+  style={[styles.input, sideRoleSearchFocused && styles.inputFocused]}
+  autoCapitalize="none"
+  autoCorrect={false}
+  autoFocus
+  blurOnSubmit={false}
+  returnKeyType="search"
+  onFocus={() => setSideRoleSearchFocused(true)}
+  onBlur={() => setSideRoleSearchFocused(false)}
+/>
           <ScrollView style={{ maxHeight: 260, marginTop: 8 }}>
             {searchingRoles && <ActivityIndicator color={COLORS.primary} />}
 
@@ -5395,9 +5466,9 @@ return (
           <TouchableOpacity style={[styles.primaryBtn, { marginTop: 10 }]} onPress={() => setSideRoleModalVisible(false)}>
             <Text style={styles.primaryBtnText}>Done</Text>
           </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
+         </View>
+  </KeyboardAvoidingView>
+</Modal>
 
     {/* Avatar cropper */}
     <AvatarCropper
@@ -5434,14 +5505,24 @@ return (
 } // ✅ CLOSE THE COMPONENT HERE
 
 /* ======================= STYLES ======================= */
-/* ======================= STYLES ======================= */
 const styles = StyleSheet.create({
-  heroWrap: { paddingTop: 14, paddingBottom: 12 },
+  heroWrap: { paddingTop: 0, paddingBottom: 12 },
   heroGrid: { flexDirection: "row", gap: GRID_GAP },
   heroLeft: { flex: 2 },
   heroLeftMobile: { width: "100%" },
   heroLeftDesktop: { minHeight: 420 },
-  heroRight: { flex: 1, gap: GRID_GAP },
+  heroRight: { flex: 0.92, gap: GRID_GAP },
+
+  webInfoRail: {
+  backgroundColor: "rgba(255,255,255,0.02)",
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  borderRadius: 18,
+  paddingVertical: 22,
+  paddingHorizontal: 20,
+  minHeight: 420,
+  justifyContent: "flex-start",
+},
 
   heroImage: {
     borderRadius: 14,
@@ -5449,10 +5530,10 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   heroImageMobile: {
-  width: "100%",
-  minHeight: 300,
-  borderRadius: 14,
-},
+    width: "100%",
+    minHeight: 300,
+    borderRadius: 14,
+  },
   heroImageDesktop: {
     width: "100%",
     height: "100%",
@@ -5461,6 +5542,47 @@ const styles = StyleSheet.create({
   heroImageInner: { resizeMode: "cover", opacity: 0.98 },
   heroGradient: { ...StyleSheet.absoluteFillObject },
 
+    mobileBannerActions: {
+    position: "absolute",
+    right: 12,
+    bottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    zIndex: 20,
+  },
+  mobileBannerPrimaryBtn: {
+  backgroundColor: "transparent",
+  borderWidth: 0,
+  paddingVertical: 2,
+  paddingHorizontal: 0,
+  alignItems: "center",
+  justifyContent: "center",
+},
+  mobileBannerPrimaryBtnText: {
+  color: COLORS.textPrimary,
+  fontWeight: "700",
+  letterSpacing: 0.8,
+  fontFamily: FONT_OBLIVION,
+  fontSize: 11,
+  textTransform: "uppercase",
+},
+  mobileBannerGhostBtn: {
+  backgroundColor: "transparent",
+  borderWidth: 0,
+  paddingVertical: 2,
+  paddingHorizontal: 0,
+  alignItems: "center",
+  justifyContent: "center",
+},
+  mobileBannerGhostBtnText: {
+  color: COLORS.textPrimary,
+  fontWeight: "700",
+  letterSpacing: 0.8,
+  fontFamily: FONT_OBLIVION,
+  fontSize: 11,
+  textTransform: "uppercase",
+},
   roleWrap: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
@@ -5499,67 +5621,69 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
 
-  infoCard: {
-    backgroundColor: COLORS.cardAlt,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    padding: 16,
-  },
+  card: {
+  width: "100%",
+  maxWidth: 520,
+  backgroundColor: "#0A0A0A",
+  borderRadius: 22,
+  padding: 16,
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.08)",
+},
   infoButtons: {
     flexDirection: "row",
     gap: 10,
     justifyContent: "center",
     marginBottom: 8,
   },
+
   protocolTitle: {
-  color: COLORS.textPrimary,
-  fontFamily: FONT_CINZEL,
-  fontSize: 16,
-  fontWeight: "700",
-  letterSpacing: 1.4,
-  textTransform: "uppercase",
-  marginBottom: 6,
-},
+    color: COLORS.textPrimary,
+    fontFamily: FONT_CINZEL,
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  protocolBody: {
+    color: COLORS.textSecondary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 10,
+  },
+  protocolButtons: {
+    flexDirection: "row",
+    gap: 8,
+  },
 
-protocolBody: {
-  color: COLORS.textSecondary,
-  fontFamily: FONT_OBLIVION,
-  fontSize: 12,
-  lineHeight: 18,
-  marginBottom: 10,
-},
-
-protocolButtons: {
-  flexDirection: "row",
-  gap: 8,
-},
   btnPrimary: {
     backgroundColor: COLORS.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: COLORS.primary,
-    minWidth: 140,
+    minWidth: 0,
     alignItems: "center",
   },
   btnPrimaryText: {
     color: "#000",
     fontWeight: "800",
-    letterSpacing: 1,
+    letterSpacing: 0.7,
     fontFamily: FONT_OBLIVION,
-    fontSize: 13,
+    fontSize: 12,
     textTransform: "uppercase",
   },
 
   aboutCard: {
-    backgroundColor: COLORS.cardAlt,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    padding: 16,
-  },
+  backgroundColor: "transparent",
+  borderWidth: 0,
+  borderColor: "transparent",
+  borderRadius: 0,
+  padding: 0,
+},
   aboutTitle: {
     color: COLORS.textPrimary,
     fontWeight: "700",
@@ -5621,22 +5745,236 @@ protocolButtons: {
     textTransform: "uppercase",
   },
 
+  utilityCard: {
+  backgroundColor: "transparent",
+  borderWidth: 0,
+  borderColor: "transparent",
+  borderRadius: 0,
+},
+  utilityTopBar: {
+  backgroundColor: "transparent",
+  borderWidth: 0,
+  borderColor: "transparent",
+  borderRadius: 0,
+},
+
+  utilityPrimaryBtn: {
+    backgroundColor: COLORS.primary,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    minHeight: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  utilityPrimaryBtnText: {
+    color: "#000",
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+    textTransform: "uppercase",
+  },
+
+  utilityGhostBtn: {
+    backgroundColor: "#0C0C0C",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    minHeight: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  utilityGhostBtnText: {
+    color: COLORS.textSecondary,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+    textTransform: "uppercase",
+  },
+
+  utilityPrimaryBtnCompact: {
+    backgroundColor: COLORS.primary,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+    minHeight: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+  },
+  utilityGhostBtnCompact: {
+    backgroundColor: "#0C0C0C",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    minHeight: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+  },
+
+  utilityTextActionBtn: {
+  backgroundColor: "transparent",
+  borderWidth: 0,
+  paddingVertical: 4,
+  paddingHorizontal: 2,
+  minHeight: 0,
+  alignItems: "center",
+  justifyContent: "center",
+  alignSelf: "center",
+},
+
+utilityTextActionBtnText: {
+  color: COLORS.textPrimary,
+  fontWeight: "700",
+  letterSpacing: 0.8,
+  fontFamily: FONT_OBLIVION,
+  fontSize: 14,
+  textTransform: "uppercase",
+},
+
+  utilityPrimaryBtnMini: {
+    backgroundColor: COLORS.primary,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    minHeight: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  utilityGhostBtnMini: {
+    backgroundColor: "#0C0C0C",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    minHeight: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  utilityMiniBtnText: {
+    color: COLORS.textSecondary,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 10,
+    textTransform: "uppercase",
+  },
+  utilityMiniPrimaryBtnText: {
+    color: "#000",
+    fontWeight: "800",
+    letterSpacing: 0.4,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 10,
+    textTransform: "uppercase",
+  },
+  utilitySingleLinkBtn: {
+  backgroundColor: "transparent",
+  borderWidth: 0,
+  paddingVertical: 4,
+  paddingHorizontal: 0,
+  minHeight: 0,
+  alignItems: "center",
+  justifyContent: "center",
+  alignSelf: "center",
+},
+
+utilitySingleLinkBtnText: {
+  color: COLORS.primary,
+  fontWeight: "700",
+  letterSpacing: 1,
+  fontFamily: FONT_OBLIVION,
+  fontSize: 11,
+  textTransform: "uppercase",
+  opacity: 0.95,
+},
+
+utilitySingleLinkBtnMobile: {
+  backgroundColor: "transparent",
+  borderWidth: 0,
+  paddingVertical: 2,
+  paddingHorizontal: 0,
+  minHeight: 0,
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+utilitySingleLinkBtnTextMobile: {
+  color: COLORS.textSecondary,
+  fontWeight: "600",
+  letterSpacing: 0.4,
+  fontFamily: FONT_OBLIVION,
+  fontSize: 9,
+  textTransform: "uppercase",
+  opacity: 0.9,
+},
+utilityBareMiniBtn: {
+  backgroundColor: "transparent",
+  borderWidth: 0,
+  paddingVertical: 2,
+  paddingHorizontal: 0,
+  minHeight: 0,
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+utilityBareMiniBtnText: {
+  color: COLORS.textSecondary,
+  fontWeight: "600",
+  letterSpacing: 0.3,
+  fontFamily: FONT_OBLIVION,
+  fontSize: 9,
+  textTransform: "uppercase",
+  opacity: 0.9,
+},
+
+utilityBarePreviewBtn: {
+  backgroundColor: "transparent",
+  borderWidth: 0,
+  paddingVertical: 2,
+  paddingHorizontal: 0,
+  minHeight: 0,
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+utilityBarePreviewBtnText: {
+  color: COLORS.primary,
+  fontWeight: "700",
+  letterSpacing: 0.4,
+  fontFamily: FONT_OBLIVION,
+  fontSize: 9,
+  textTransform: "uppercase",
+},
   gamifyWrap: {
-    marginTop: 12,
+    marginTop: 10,
     alignItems: "center",
   },
   gamifyTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
-    letterSpacing: 2.8,
+    letterSpacing: 2,
     textTransform: "uppercase",
     fontFamily: FONT_CINZEL,
   },
   gamifyRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 6,
-    gap: 6,
+    marginTop: 4,
+    gap: 5,
   },
   gamifyLevel: {
     color: COLORS.textPrimary,
@@ -5665,91 +6003,125 @@ protocolButtons: {
   backgroundColor: "#000000CC",
   justifyContent: "flex-end",
   paddingHorizontal: 10,
-  paddingTop: 60,
+  paddingTop: 0,
 },
-  modalContainer: {
+ modalContainer: {
   backgroundColor: COLORS.cardAlt,
-  borderTopLeftRadius: 22,
-  borderTopRightRadius: 22,
-  paddingHorizontal: 16,
-  paddingTop: 12,
+  borderTopLeftRadius: 26,
+  borderTopRightRadius: 26,
+  paddingHorizontal: 18,
+  paddingTop: 14,
   paddingBottom: 10,
-  height: "78%",
+  height: "94%",
   width: "100%",
+maxWidth: Platform.OS === "web" ? 960 : "100%",
   alignSelf: "center",
   borderWidth: 1,
   borderColor: COLORS.border,
   marginTop: "auto",
 },
-  modalHandle: {
-    width: 44,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: COLORS.border,
-    alignSelf: "center",
-    marginBottom: 12,
+
+  compactSupportBtn: {
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderWidth: 1,
   },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: COLORS.textPrimary,
-    textAlign: "center",
-    letterSpacing: 3,
-    fontFamily: FONT_CINZEL,
+  compactSupportBtnActive: {
+    backgroundColor: "#1C1C1C",
+    borderColor: "#444",
+  },
+  compactSupportBtnInactive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  compactSupportBtnText: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    fontFamily: FONT_OBLIVION,
     textTransform: "uppercase",
   },
 
-  field: { marginTop: 14 },
+  modalHandle: {
+  width: 56,
+  height: 5,
+  borderRadius: 999,
+  backgroundColor: "rgba(255,255,255,0.18)",
+  alignSelf: "center",
+  marginBottom: 14,
+},
+  modalTitle: {
+  fontSize: 20,
+  fontWeight: "700",
+  color: COLORS.textPrimary,
+  textAlign: "center",
+  letterSpacing: 2.4,
+  fontFamily: FONT_CINZEL,
+  textTransform: "uppercase",
+  marginBottom: 6,
+},
+
+  field: { marginTop: 18 },
   fieldLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: COLORS.textSecondary,
-    marginBottom: 7,
-    marginLeft: 2,
-    fontFamily: FONT_OBLIVION,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
+  fontSize: 11,
+  fontWeight: "700",
+  color: COLORS.textSecondary,
+  marginBottom: 8,
+  marginLeft: 2,
+  fontFamily: FONT_OBLIVION,
+  letterSpacing: 1.1,
+  textTransform: "uppercase",
+  opacity: 0.92,
+},
   input: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    color: COLORS.textPrimary,
-    backgroundColor: "#0C0C0C",
-    fontFamily: FONT_OBLIVION,
-    fontSize: 14,
-    letterSpacing: 0.2,
-  },
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.08)",
+  borderRadius: 16,
+  paddingVertical: 14,
+  paddingHorizontal: 16,
+  color: COLORS.textPrimary,
+  backgroundColor: "#080808",
+  fontFamily: FONT_OBLIVION,
+  fontSize: 15,
+  letterSpacing: 0.2,
+  outlineStyle: "none" as any,
+},
   multiline: { minHeight: 100 },
 
   pickerBtn: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    backgroundColor: "#0C0C0C",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.08)",
+  borderRadius: 14,
+  paddingVertical: 14,
+  paddingHorizontal: 14,
+  backgroundColor: "#090909",
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+},
+
+inputFocused: {
+  borderColor: "rgba(198,166,100,0.45)",
+  backgroundColor: "#0A0A0A",
+},
   pickerBtnText: {
-    color: COLORS.textSecondary,
-    fontFamily: FONT_OBLIVION,
-    fontSize: 14,
-    letterSpacing: 0.2,
-  },
+  color: COLORS.textSecondary,
+  fontFamily: FONT_OBLIVION,
+  fontSize: 15,
+  letterSpacing: 0.2,
+},
 
   primaryBtn: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
+  backgroundColor: COLORS.primary,
+  borderColor: COLORS.primary,
+  borderWidth: 1,
+  borderRadius: 14,
+  paddingVertical: 13,
+  alignItems: "center",
+},
   primaryBtnText: {
     color: "#000",
     fontWeight: "800",
@@ -5758,21 +6130,22 @@ protocolButtons: {
     textTransform: "uppercase",
     fontSize: 13,
   },
+
   ghostBtn: {
-    backgroundColor: "transparent",
-    borderColor: COLORS.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
+  backgroundColor: "transparent",
+  borderColor: "rgba(255,255,255,0.10)",
+  borderWidth: 1,
+  borderRadius: 14,
+  paddingVertical: 13,
+  alignItems: "center",
+},
   ghostBtnText: {
     color: COLORS.textPrimary,
     fontWeight: "700",
     fontFamily: FONT_OBLIVION,
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
     textTransform: "uppercase",
-    fontSize: 13,
+    fontSize: 12,
   },
 
   uploadRow: {
@@ -5782,13 +6155,13 @@ protocolButtons: {
     marginTop: 8,
   },
   pillBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: "#0C0C0C",
-  },
+  paddingVertical: 11,
+  paddingHorizontal: 16,
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.10)",
+  backgroundColor: "#0A0A0A",
+},
   pillText: {
     color: COLORS.textPrimary,
     fontFamily: FONT_OBLIVION,
@@ -5800,19 +6173,19 @@ protocolButtons: {
 });
 
 const block = StyleSheet.create({
-  section: { marginTop: 24 },
+  section: { marginTop: 34 },
 
-  // same vibe as the “Filmmaking streak • Year 1” text
   h3Centered: {
-    color: COLORS.textSecondary,
-    fontSize: 11,
-    fontWeight: "700",
-    marginBottom: 12,
-    letterSpacing: 1.4,
-    textAlign: "center",
-    fontFamily: FONT_OBLIVION,
-    textTransform: "uppercase",
-  },
+  color: COLORS.textSecondary,
+  fontSize: 10,
+  fontWeight: "600",
+  marginBottom: 10,
+  letterSpacing: 2.1,
+  textAlign: "center",
+  fontFamily: FONT_CINZEL,
+  textTransform: "uppercase",
+  opacity: 0.9,
+},
   muted: {
     color: COLORS.textSecondary,
     fontSize: 13,
@@ -5820,17 +6193,17 @@ const block = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // same vibe as the streak label, just scaled up slightly
   sectionTitleCentered: {
-    color: COLORS.textPrimary,
-    fontSize: 17,
-    fontWeight: "800",
-    letterSpacing: 1.8,
-    marginBottom: 16,
-    textAlign: "center",
-    fontFamily: FONT_OBLIVION,
-    textTransform: "uppercase",
-  },
+  color: "rgba(255,255,255,0.92)",
+  fontSize: 15,
+  fontWeight: "600",
+  letterSpacing: 3.2,
+  marginBottom: 18,
+  textAlign: "center",
+  fontFamily: FONT_CINZEL,
+  textTransform: "uppercase",
+  opacity: 0.96,
+},
 
   mediaCard: {
     backgroundColor: "#000",
@@ -5874,27 +6247,27 @@ const block = StyleSheet.create({
   },
 
   protocolTitle: {
-  color: COLORS.textPrimary,
-  fontFamily: FONT_CINZEL,
-  fontSize: 16,
-  fontWeight: "700",
-  letterSpacing: 2,
-  textTransform: "uppercase",
-  textAlign: "center",
-  marginBottom: 8,
-},
-protocolBody: {
-  color: COLORS.textSecondary,
-  fontFamily: FONT_OBLIVION,
-  fontSize: 13,
-  lineHeight: 20,
-  textAlign: "center",
-  marginBottom: 12,
-},
-protocolButtons: {
-  flexDirection: "row",
-  gap: 10,
-},
+    color: COLORS.textPrimary,
+    fontFamily: FONT_CINZEL,
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  protocolBody: {
+    color: COLORS.textSecondary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  protocolButtons: {
+    flexDirection: "row",
+    gap: 10,
+  },
 
   mediaRowCard: {
     backgroundColor: COLORS.cardAlt,
@@ -5949,38 +6322,38 @@ protocolButtons: {
   },
 
   rowBtn: {
-  backgroundColor: COLORS.primary,
-  paddingVertical: 7,
-  paddingHorizontal: 10,
-  borderRadius: 9,
-  borderWidth: 1,
-  borderColor: COLORS.primary,
-},
-rowBtnText: {
-  color: "#000",
-  fontWeight: "800",
-  fontFamily: FONT_OBLIVION,
-  letterSpacing: 0.5,
-  textTransform: "uppercase",
-  fontSize: 11,
-},
-rowBtnGhost: {
-  borderWidth: 1,
-  borderColor: COLORS.border,
-  paddingVertical: 7,
-  paddingHorizontal: 10,
-  borderRadius: 9,
-  marginLeft: 0,
-  backgroundColor: "#0C0C0C",
-},
-rowBtnGhostText: {
-  color: COLORS.textPrimary,
-  fontWeight: "700",
-  fontFamily: FONT_OBLIVION,
-  letterSpacing: 0.5,
-  textTransform: "uppercase",
-  fontSize: 11,
-},
+    backgroundColor: COLORS.primary,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  rowBtnText: {
+    color: "#000",
+    fontWeight: "800",
+    fontFamily: FONT_OBLIVION,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    fontSize: 11,
+  },
+  rowBtnGhost: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 9,
+    marginLeft: 0,
+    backgroundColor: "#0C0C0C",
+  },
+  rowBtnGhostText: {
+    color: COLORS.textPrimary,
+    fontWeight: "700",
+    fontFamily: FONT_OBLIVION,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    fontSize: 11,
+  },
 
   viewerOverlay: {
     flex: 1,
