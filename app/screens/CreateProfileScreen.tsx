@@ -1,5 +1,5 @@
 // screens/CreateProfileScreen.tsx
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,7 @@ import { supabase } from '../lib/supabase';
 import { navigationRef } from '../navigation/navigationRef';
 import { useAuth } from '../context/AuthProvider';
 import { useGamification } from '../context/GamificationContext';
+import AvatarCropper from '../../components/AvatarCropper';
 
 // ---------------- THEME ----------------
 const DARK_BG = '#000000';
@@ -200,12 +201,18 @@ export default function CreateProfileScreen() {
 
   const isMobile = width < 768;
 
+  const roleSearchReq = useRef(0);
+  const citySearchReq = useRef(0);
+
   // ---------------- FORM STATE ----------------
   const [fullName, setFullName] = useState('');
 
   const [image, setImage] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+
+  const [cropperOpen, setCropperOpen] = useState(false);
+  const [cropSource, setCropSource] = useState<string | null>(null);
 
   const [mainRole, setMainRole] = useState<number | null>(null);
   const [mainRoleLabel, setMainRoleLabel] = useState<string | null>(null);
@@ -243,9 +250,6 @@ export default function CreateProfileScreen() {
 
   const [saving, setSaving] = useState(false);
 
-  // ---------------------------------------------------------
-  // FETCH CREATIVE ROLES
-  // ---------------------------------------------------------
   useEffect(() => {
     fetchCreativeRoles();
   }, []);
@@ -266,11 +270,9 @@ export default function CreateProfileScreen() {
     }
   };
 
-  // ---------------------------------------------------------
-  // ROLE SEARCH
-  // ---------------------------------------------------------
   const fetchSearchRoles = useCallback(async (text: string) => {
     const q = text.trim();
+    const reqId = ++roleSearchReq.current;
 
     if (!q) {
       setRoleSearchItems([]);
@@ -280,38 +282,44 @@ export default function CreateProfileScreen() {
 
     setIsSearchingRoles(true);
 
-    const { data, error } = await supabase
-      .from('creative_roles')
-      .select('id, name')
-      .ilike('name', `%${q}%`)
-      .order('name')
-      .limit(50);
+    try {
+      const { data, error } = await supabase
+        .from('creative_roles')
+        .select('id, name')
+        .ilike('name', `%${q}%`)
+        .order('name')
+        .limit(50);
 
-    setIsSearchingRoles(false);
+      if (reqId !== roleSearchReq.current) return;
 
-    if (error) {
-      console.error('Role fetch error:', error.message);
-      setRoleSearchItems([]);
-      return;
+      if (error) {
+        console.error('Role fetch error:', error.message);
+        setRoleSearchItems([]);
+        return;
+      }
+
+      setRoleSearchItems((data || []).map((r) => ({ label: r.name, value: r.id })));
+    } catch (e) {
+      console.error('Role fetch fatal:', e);
+      if (reqId === roleSearchReq.current) {
+        setRoleSearchItems([]);
+      }
+    } finally {
+      if (reqId === roleSearchReq.current) {
+        setIsSearchingRoles(false);
+      }
     }
-
-    setRoleSearchItems((data || []).map((r) => ({ label: r.name, value: r.id })));
   }, []);
 
-  // ---------------------------------------------------------
-  // FLAG UTILS
-  // ---------------------------------------------------------
   const getFlag = (countryCode: string) => {
     return countryCode
       .toUpperCase()
       .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
   };
 
-  // ---------------------------------------------------------
-  // CITY SEARCH
-  // ---------------------------------------------------------
   const fetchCities = useCallback(async (text: string) => {
     const q = text.trim();
+    const reqId = ++citySearchReq.current;
 
     if (!q) {
       setCityItems([]);
@@ -321,52 +329,61 @@ export default function CreateProfileScreen() {
 
     setIsSearchingCities(true);
 
-    const { data, error } = await supabase
-      .from('cities')
-      .select('id, name, country_code')
-      .ilike('name', `%${q}%`)
-      .limit(80);
+    try {
+      const { data, error } = await supabase
+        .from('cities')
+        .select('id, name, country_code')
+        .ilike('name', `%${q}%`)
+        .limit(80);
 
-    setIsSearchingCities(false);
+      if (reqId !== citySearchReq.current) return;
 
-    if (error) {
-      console.error('City fetch error:', error.message);
-      setCityItems([]);
-      return;
+      if (error) {
+        console.error('City fetch error:', error.message);
+        setCityItems([]);
+        return;
+      }
+
+      if (!data) {
+        setCityItems([]);
+        return;
+      }
+
+      const exactMatches = data.filter((c) => c.name.toLowerCase() === q.toLowerCase());
+      const prefixMatches = data.filter(
+        (c) =>
+          c.name.toLowerCase().startsWith(q.toLowerCase()) &&
+          c.name.toLowerCase() !== q.toLowerCase()
+      );
+      const containsMatches = data.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q.toLowerCase()) &&
+          !c.name.toLowerCase().startsWith(q.toLowerCase()) &&
+          c.name.toLowerCase() !== q.toLowerCase()
+      );
+
+      const ordered = [...exactMatches, ...prefixMatches, ...containsMatches];
+
+      setCityItems(
+        ordered.map((c) => ({
+          label: `${getFlag(c.country_code)} ${c.name}, ${c.country_code}`,
+          value: c.id,
+          country: c.country_code,
+        }))
+      );
+    } catch (e) {
+      console.error('City fetch fatal:', e);
+      if (reqId === citySearchReq.current) {
+        setCityItems([]);
+      }
+    } finally {
+      if (reqId === citySearchReq.current) {
+        setIsSearchingCities(false);
+      }
     }
-
-    if (!data) {
-      setCityItems([]);
-      return;
-    }
-
-    const exactMatches = data.filter((c) => c.name.toLowerCase() === q.toLowerCase());
-    const prefixMatches = data.filter(
-      (c) =>
-        c.name.toLowerCase().startsWith(q.toLowerCase()) &&
-        c.name.toLowerCase() !== q.toLowerCase()
-    );
-    const containsMatches = data.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q.toLowerCase()) &&
-        !c.name.toLowerCase().startsWith(q.toLowerCase()) &&
-        c.name.toLowerCase() !== q.toLowerCase()
-    );
-
-    const ordered = [...exactMatches, ...prefixMatches, ...containsMatches];
-
-    setCityItems(
-      ordered.map((c) => ({
-        label: `${getFlag(c.country_code)} ${c.name}, ${c.country_code}`,
-        value: c.id,
-        country: c.country_code,
-      }))
-    );
   }, []);
 
-  // ---------------------------------------------------------
-  // IMAGE UPLOAD - SAME STYLE AS PROFILE SCREEN
-  // ---------------------------------------------------------
+  // PROFILE IMAGE - SAME CROPPER FLOW AS PROFILE SCREEN
   const pickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -378,17 +395,19 @@ export default function CreateProfileScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 1,
       base64: false,
-      allowsEditing: true,
-      aspect: [1, 1],
     });
 
     if (result.canceled || !result.assets.length) return;
 
     const asset = result.assets[0];
+    setCropSource(asset.uri);
+    setCropperOpen(true);
+  };
 
-    setUploadingImage(true);
-
+  const handleAvatarCropped = async (croppedUri: string) => {
     try {
+      setUploadingImage(true);
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
@@ -398,7 +417,7 @@ export default function CreateProfileScreen() {
       const fileName = `${Date.now()}_avatar.jpg`;
       const path = `user_${user.id}/${fileName}`;
 
-      const response = await fetch(asset.uri);
+      const response = await fetch(croppedUri);
       const blob = await response.blob();
 
       const publicUrl = await uploadBlobToBucket({
@@ -408,18 +427,17 @@ export default function CreateProfileScreen() {
         contentType: 'image/jpeg',
       });
 
-      setImage(asset.uri);
+      setImage(croppedUri);
       setImageUrl(publicUrl);
     } catch (err: any) {
       Alert.alert('Upload Error', err?.message ?? 'Could not upload image.');
     } finally {
       setUploadingImage(false);
+      setCropperOpen(false);
+      setCropSource(null);
     }
   };
 
-  // ---------------------------------------------------------
-  // OPTIONAL SHOWREEL
-  // ---------------------------------------------------------
   const pickShowreel = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -479,9 +497,15 @@ export default function CreateProfileScreen() {
 
       if (result.canceled || !result.assets.length) return;
 
-      const asset = result.assets[0];
+      const asset: any = result.assets[0];
       setShowreelThumbAsset(asset);
-      setShowreelThumbPreview(asset.uri);
+
+      if (Platform.OS === 'web' && asset?.file) {
+        const previewUrl = URL.createObjectURL(asset.file as File);
+        setShowreelThumbPreview(previewUrl);
+      } else {
+        setShowreelThumbPreview(asset.uri);
+      }
     } catch (e: any) {
       Alert.alert('Thumbnail Error', e?.message ?? 'Could not select thumbnail.');
     }
@@ -538,13 +562,19 @@ export default function CreateProfileScreen() {
   };
 
   const uploadShowreelThumbnail = async (userId: string, filePath: string) => {
-    if (!showreelThumbAsset?.uri) return null;
+    if (!showreelThumbAsset) return null;
 
     setShowreelThumbUploading(true);
 
     try {
-      const response = await fetch(showreelThumbAsset.uri);
-      const blob = await response.blob();
+      let blob: Blob;
+
+      if (Platform.OS === 'web' && showreelThumbAsset?.file) {
+        blob = showreelThumbAsset.file as Blob;
+      } else {
+        const response = await fetch(showreelThumbAsset.uri);
+        blob = await response.blob();
+      }
 
       const safeBase = sanitizeFileName(filePath.split('/').pop() || 'showreel');
       const thumbPath = `showreels/${userId}/${safeBase}_${Date.now()}.jpg`;
@@ -553,7 +583,7 @@ export default function CreateProfileScreen() {
         bucket: THUMB_BUCKET,
         path: thumbPath,
         blob,
-        contentType: 'image/jpeg',
+        contentType: blob.type || 'image/jpeg',
       });
 
       return publicUrl;
@@ -564,9 +594,6 @@ export default function CreateProfileScreen() {
     }
   };
 
-  // ---------------------------------------------------------
-  // SUBMIT PROFILE
-  // ---------------------------------------------------------
   const handleSubmit = async () => {
     if (!fullName.trim() || !mainRole || !cityId) {
       Alert.alert('Missing Info', 'Please fill in your name, main role, and city.');
@@ -586,18 +613,6 @@ export default function CreateProfileScreen() {
 
       const userId = sessionData.user?.id;
       if (!userId) throw new Error('User not authenticated');
-
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id, full_name, main_role_id, city_id')
-        .eq('id', userId)
-        .maybeSingle();
-
-      const beforeComplete = !!(
-        existingUser?.full_name &&
-        existingUser?.main_role_id &&
-        existingUser?.city_id
-      );
 
       let uploadedShowreel: { publicUrl: string | null; path: string | null } = {
         publicUrl: null,
@@ -651,8 +666,6 @@ export default function CreateProfileScreen() {
         if (showreelErr) throw showreelErr;
       }
 
-      const afterComplete = !!(upserted?.full_name && upserted?.main_role_id && upserted?.city_id);
-
       await refreshProfile();
       await refreshGamification();
 
@@ -691,19 +704,16 @@ export default function CreateProfileScreen() {
   const searchInputWebFix =
     Platform.OS === 'web'
       ? ({
+          outlineWidth: 0,
           outlineStyle: 'none',
           boxShadow: 'none',
+          borderColor: BORDER,
         } as any)
       : null;
 
   const roleDataToShow =
     roleSearchTerm.trim().length > 0 ? roleSearchItems : roleItems;
 
-  const cityDataToShow = cityItems;
-
-  // ---------------------------------------------------------
-  // UI
-  // ---------------------------------------------------------
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -723,7 +733,6 @@ export default function CreateProfileScreen() {
             your creative presence.
           </Text>
 
-          {/* AVATAR */}
           <View style={styles.heroAvatarWrap}>
             <TouchableOpacity
               onPress={pickImage}
@@ -739,20 +748,26 @@ export default function CreateProfileScreen() {
                   <Text style={styles.avatarFallbackText}>Add Profile Image</Text>
                 </View>
               )}
+            </TouchableOpacity>
 
-              <View style={styles.avatarBadge}>
-                {uploadingImage ? (
-                  <ActivityIndicator color="#000" size="small" />
-                ) : (
-                  <Ionicons name="add" size={16} color="#000" />
-                )}
-              </View>
+            <TouchableOpacity
+              onPress={pickImage}
+              style={styles.avatarChangeBtn}
+              activeOpacity={0.85}
+              disabled={uploadingImage || saving}
+            >
+              {uploadingImage ? (
+                <ActivityIndicator color="#000" size="small" />
+              ) : (
+                <Text style={styles.avatarChangeBtnText}>
+                  {image ? 'Change Profile Image' : 'Upload Profile Image'}
+                </Text>
+              )}
             </TouchableOpacity>
 
             <Text style={styles.requiredLabel}>Required</Text>
           </View>
 
-          {/* NAME */}
           <View style={styles.fieldBlock}>
             <Text style={styles.fieldLabel}>Name</Text>
             <TextInput
@@ -764,7 +779,6 @@ export default function CreateProfileScreen() {
             />
           </View>
 
-          {/* ROLE */}
           <View style={styles.fieldBlock}>
             <Text style={styles.fieldLabel}>Main Role</Text>
             <TouchableOpacity
@@ -784,7 +798,6 @@ export default function CreateProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* CITY */}
           <View style={styles.fieldBlock}>
             <Text style={styles.fieldLabel}>City</Text>
             <TouchableOpacity
@@ -804,7 +817,6 @@ export default function CreateProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* OPTIONAL SHOWREEL */}
           <View style={styles.fieldBlock}>
             <View style={styles.optionalHeaderRow}>
               <Text style={styles.fieldLabel}>Showreel Piece</Text>
@@ -967,7 +979,6 @@ export default function CreateProfileScreen() {
         </View>
       </ScrollView>
 
-      {/* ---------------- CITY MODAL ---------------- */}
       <Modal
         visible={searchModalVisible}
         transparent
@@ -999,7 +1010,7 @@ export default function CreateProfileScreen() {
                 </View>
               ) : (
                 <FlatList
-                  data={cityDataToShow}
+                  data={cityItems}
                   keyExtractor={(item) => item.value.toString()}
                   style={styles.resultsList}
                   keyboardShouldPersistTaps="handled"
@@ -1034,7 +1045,6 @@ export default function CreateProfileScreen() {
         </View>
       </Modal>
 
-      {/* ---------------- ROLE MODAL ---------------- */}
       <Modal
         visible={roleSearchModalVisible}
         transparent
@@ -1066,7 +1076,7 @@ export default function CreateProfileScreen() {
                 </View>
               ) : (
                 <FlatList
-                  data={roleDataToShow}
+                  data={roleSearchTerm.trim().length > 0 ? roleDataToShow : roleItems}
                   keyExtractor={(item) => item.value.toString()}
                   style={styles.resultsList}
                   keyboardShouldPersistTaps="handled"
@@ -1100,13 +1110,24 @@ export default function CreateProfileScreen() {
           </View>
         </View>
       </Modal>
+
+      <AvatarCropper
+        visible={cropperOpen}
+        imageUri={cropSource || undefined}
+        onCancel={() => {
+          setCropperOpen(false);
+          setCropSource(null);
+        }}
+        onCropped={handleAvatarCropped}
+        fullName={fullName || ''}
+        mainRoleName={mainRoleLabel || ''}
+        cityName={cityLabel || ''}
+        level={1}
+      />
     </KeyboardAvoidingView>
   );
 }
 
-// ---------------------------------------------------------
-// STYLES
-// ---------------------------------------------------------
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
@@ -1198,16 +1219,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  avatarBadge: {
-    position: 'absolute',
-    right: 8,
-    bottom: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  avatarChangeBtn: {
+    marginTop: 12,
     backgroundColor: GOLD,
+    borderRadius: 999,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  avatarChangeBtnText: {
+    color: '#000',
+    fontSize: 12,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
 
   requiredLabel: {
