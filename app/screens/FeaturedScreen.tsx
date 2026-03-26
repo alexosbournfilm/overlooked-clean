@@ -133,9 +133,9 @@ const FILM_CATEGORY_DB_MAP: Record<string, string> = Object.fromEntries(
   FILM_CATEGORIES.filter((c) => c !== 'All').map((c) => [c, c])
 );
 
-const TOP_BAR_OFFSET = Platform.OS === 'web' ? 76 : 16;
+const TOP_BAR_OFFSET = Platform.OS === 'web' ? 68 : 10;
 const BOTTOM_TAB_H = Platform.OS === 'web' ? 64 : 64;
-const CONTENT_TOP_PAD = Platform.OS === 'web' ? 22 : 26;
+const CONTENT_TOP_PAD = Platform.OS === 'web' ? 5 : 9;
 
 /* 🔥 Gamification constants (kept) */
 const VOTES_PER_MONTH = 10;

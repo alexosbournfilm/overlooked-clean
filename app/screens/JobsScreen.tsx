@@ -26,6 +26,8 @@ import
   ScrollView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { decode } from 'html-entities';
 import { COLORS as THEME_COLORS } from '../theme/colors';
@@ -293,6 +295,9 @@ const IconText: React.FC<{
 export default function JobsScreen() {
   const navigation = useNavigation();
   const { show, ToastView } = useToast();
+  const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
+
 
   // Shared gamification context (from GamificationProvider / TopBar)
   const {
@@ -1245,13 +1250,7 @@ export default function JobsScreen() {
     () => (
       <View style={{ paddingTop: HEADER_GAP }}>
         {/* Gamification helper text only (bubble removed) */}
-        {!gamifyLoading && (
-          <View style={styles.levelBannerWrap}>
-            <Text style={styles.levelHint}>
-              Post roles & apply through Overlooked to climb your level and unlock new titles.
-            </Text>
-          </View>
-        )}
+        
 
         {/* Category-style text tabs */}
         <View style={styles.categoryTabsRow}>
@@ -1373,7 +1372,8 @@ export default function JobsScreen() {
   const listData = activeTab === 'my' ? myJobs : jobs;
 
   return (
-    <View style={styles.container}>
+  <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <View style={[styles.container, { paddingTop: insets.top > 0 ? 6 : 12 }]}>
       <ToastView />
 
       <Animated.FlatList
@@ -1420,7 +1420,9 @@ export default function JobsScreen() {
             )}
           </View>
         }
-        contentContainerStyle={{ paddingBottom: 120 }}
+        contentContainerStyle={{
+  paddingBottom: Platform.OS === 'web' ? 120 : 220,
+}}
         refreshing={activeTab === 'my' ? loadingMyJobs : isRefreshing}
         onRefresh={() => {
           if (activeTab === 'my') {
@@ -1438,7 +1440,12 @@ export default function JobsScreen() {
 
       {/* Post a Job */}
       <TouchableOpacity
-        style={styles.postButton}
+        style={[
+  styles.postButton,
+  {
+    bottom: Platform.OS === 'web' ? 30 : 80,
+  },
+]}
         onPress={() => setJobFormVisible(true)}
         activeOpacity={0.92}
       >
@@ -1516,7 +1523,7 @@ export default function JobsScreen() {
             </View>
 
             <ScrollView
-              contentContainerStyle={{ paddingBottom: 140 }}
+              contentContainerStyle={{ paddingBottom: Platform.OS === 'ios' ? 180 : 160 }}
               keyboardShouldPersistTaps="always"
               showsVerticalScrollIndicator={false}
             >
@@ -2144,7 +2151,8 @@ export default function JobsScreen() {
     show('Pro upgrade flow coming soon.', 'info');
   }}
 />
-    </View>
+        </View>
+  </SafeAreaView>
   );
 }
 
@@ -2154,6 +2162,10 @@ export default function JobsScreen() {
 const RADIUS = 8;
 
 const styles = StyleSheet.create({
+  safeArea: {
+  flex: 1,
+  backgroundColor: T.bg,
+},
   container: { flex: 1, backgroundColor: T.bg },
 
   /* Toast */
@@ -2341,10 +2353,9 @@ const styles = StyleSheet.create({
   /* Post Job button */
   postButton: {
   position: 'absolute',
-  bottom: 32,
   left: 16,
   right: 16,
-  backgroundColor: GOLD,      // ✅ match Challenge gold button
+  backgroundColor: GOLD,
   padding: 14,
   borderRadius: RADIUS,
   alignItems: 'center',
@@ -2352,7 +2363,7 @@ const styles = StyleSheet.create({
   justifyContent: 'center',
   gap: 8,
   borderWidth: 1,
-  borderColor: '#000000',     // ✅ same “gold button” border style as Challenge
+  borderColor: '#000000',
 },
   postButtonText: {
     color: '#000',

@@ -59,12 +59,12 @@ const FONT_CINEMATIC =
     default: 'Cinzel',
   }) || 'Cinzel';
 
-const FONT_OBLIVION =
-  Platform.select({
-    ios: 'Avenir Next',
-    android: 'sans-serif-light',
-    default: 'Avenir Next',
-  }) || 'Avenir Next';
+const SYSTEM_SANS = Platform.select({
+  ios: 'System',
+  android: 'Roboto',
+  web: undefined,
+  default: undefined,
+});
 
 /* ---------------- Film Grain ---------------- */
 const GRAIN_PNG =
@@ -1825,19 +1825,15 @@ export default function ChatsScreen() {
 
   return (
     <SafeAreaView
-      style={[
-        styles.container,
-        {
-          paddingTop: 6,
-          paddingBottom:
-            Math.max(
-              insets.bottom,
-              8
-            ),
-        },
-      ]}
-      edges={['left', 'right']}
-    >
+  style={[
+    styles.container,
+    {
+      paddingTop: insets.top > 0 ? 6 : 12,
+      paddingBottom: Math.max(insets.bottom, 8),
+    },
+  ]}
+  edges={['top', 'left', 'right']}
+>
       <LinearGradient
         colors={[T.bg, T.bg]}
         start={{ x: 0, y: 0 }}
@@ -2134,9 +2130,10 @@ export default function ChatsScreen() {
   );
 }
 
-const RADIUS = 12;
 
-// keep your styles below...
+
+const RADIUS = 8;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -2146,14 +2143,13 @@ const styles = StyleSheet.create({
 
   /* Search header / tabs */
   searchHeader: {
-    backgroundColor:
-      'transparent',
-    paddingBottom: 8,
+    backgroundColor: 'transparent',
+    paddingBottom: 10,
   },
   tabsRow: {
     flexDirection: 'row',
     backgroundColor: T.card,
-    borderRadius: 12,
+    borderRadius: RADIUS,
     borderWidth: 1,
     borderColor: T.border,
     padding: 4,
@@ -2163,29 +2159,23 @@ const styles = StyleSheet.create({
   },
   tabPill: {
     flex: 1,
-    borderRadius: 8,
+    borderRadius: RADIUS,
     paddingVertical: 9,
     alignItems: 'center',
-    justifyContent:
-      'center',
+    justifyContent: 'center',
   },
   tabPillActive: {
-    backgroundColor:
-      '#121212',
+    backgroundColor: '#121212',
     borderWidth: 1,
     borderColor: T.olive,
   },
   tabText: {
     color: T.sub,
-    fontFamily:
-      FONT_OBLIVION,
-    letterSpacing: 2.5,
-    fontSize: 12,
-    fontWeight:
-      Platform.OS ===
-      'android'
-        ? ('300' as any)
-        : '400',
+    fontFamily: SYSTEM_SANS,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    fontSize: 13,
+    fontWeight: '800',
   },
   tabTextActive: {
     color: T.text,
@@ -2194,7 +2184,7 @@ const styles = StyleSheet.create({
   createGroupPill: {
     width: 38,
     height: 38,
-    borderRadius: 10,
+    borderRadius: RADIUS,
     borderWidth: 1,
     borderColor: T.olive,
     backgroundColor: '#121212',
@@ -2205,24 +2195,24 @@ const styles = StyleSheet.create({
   searchInput: {
     height: 40,
     backgroundColor: T.card,
-    borderRadius: 10,
+    borderRadius: RADIUS,
     paddingHorizontal: 12,
     marginTop: 8,
     borderWidth: 1,
     borderColor: T.border,
     color: T.text,
-    // @ts-ignore
-    outlineStyle: 'none',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 14,
   },
 
   /* Chat rows */
   chatCard: {
     flexDirection: 'row',
-    justifyContent:
-      'space-between',
+    justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: T.card,
-    padding: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     borderRadius: RADIUS,
     marginBottom: 10,
     borderWidth: 1,
@@ -2242,23 +2232,19 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     borderWidth: 2,
     alignItems: 'center',
-    justifyContent:
-      'center',
+    justifyContent: 'center',
     marginRight: 10,
   },
   avatar: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor:
-      '#111',
+    backgroundColor: '#111',
   },
   fallbackAvatar: {
-    backgroundColor:
-      T.card2,
+    backgroundColor: T.card2,
     alignItems: 'center',
-    justifyContent:
-      'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: T.border,
   },
@@ -2266,8 +2252,10 @@ const styles = StyleSheet.create({
   chatName: {
     fontSize: 15,
     color: T.text,
-    fontWeight: '800',
-    letterSpacing: 0.3,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
   },
   chatMessage: {
     fontSize: 13,
@@ -2275,6 +2263,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
     maxWidth: 240,
     flexShrink: 1,
+    lineHeight: 18,
+    fontFamily: SYSTEM_SANS,
   },
   timeText: {
     fontSize: 11,
@@ -2283,12 +2273,11 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     textAlign: 'right',
     letterSpacing: 0.2,
+    fontFamily: SYSTEM_SANS,
   },
   rightMeta: {
-    alignItems:
-      'flex-end',
-    justifyContent:
-      'center',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   memberPill: {
     flexDirection: 'row',
@@ -2298,24 +2287,24 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: T.border,
-    backgroundColor:
-      T.card2,
+    backgroundColor: T.card2,
     marginBottom: 6,
   },
   memberPillText: {
     marginLeft: 4,
     fontSize: 12,
     color: T.sub,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '600',
   },
 
   trashHitBox: {
     alignSelf: 'flex-end',
     padding: 10,
-    borderRadius: 10,
+    borderRadius: RADIUS,
     borderWidth: 1,
     borderColor: T.border,
-    backgroundColor:
-      T.card2,
+    backgroundColor: T.card2,
   },
 
   /* Loading overlay */
@@ -2326,10 +2315,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor:
-      '#000000cc',
-    justifyContent:
-      'center',
+    backgroundColor: '#000000cc',
+    justifyContent: 'center',
     alignItems: 'center',
   },
   loadingText: {
@@ -2337,15 +2324,19 @@ const styles = StyleSheet.create({
     color: T.text,
     fontWeight: '900',
     letterSpacing: 0.4,
+    fontFamily: SYSTEM_SANS,
+    textTransform: 'uppercase',
   },
 
   emptyText: {
     color: T.mute,
     textAlign: 'center',
     marginTop: 40,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
   },
 
-  // user search items
+  /* user search items */
   userCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2354,18 +2345,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: T.border,
     borderRadius: RADIUS,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     marginBottom: 10,
   },
   userName: {
     flex: 1,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '900',
     color: T.text,
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
   },
 
-  /* ───────── Modal styles ───────── */
+  /* Modal styles */
   modalBackdrop: {
     flex: 1,
     backgroundColor: '#00000088',
@@ -2400,14 +2394,18 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 16,
+    fontFamily: SYSTEM_SANS,
     fontWeight: '900',
+    textAlign: 'center',
+    marginBottom: 8,
     color: T.text,
-    letterSpacing: 0.3,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
   modalCloseBtn: {
     padding: 8,
-    borderRadius: 10,
+    borderRadius: RADIUS,
     borderWidth: 1,
     borderColor: T.border,
     backgroundColor: T.card2,
@@ -2415,22 +2413,23 @@ const styles = StyleSheet.create({
   modalLabel: {
     marginTop: 12,
     marginBottom: 6,
-    fontSize: 12,
-    color: T.sub,
-    letterSpacing: 1.8,
+    fontSize: 11,
     fontWeight: '800',
-    fontFamily: FONT_OBLIVION,
+    color: T.text,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
   },
   modalInput: {
     height: 42,
     backgroundColor: T.card,
-    borderRadius: 10,
+    borderRadius: RADIUS,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: T.border,
     color: T.text,
-    // @ts-ignore
-    outlineStyle: 'none',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 14,
   },
 
   avatarPickRow: {
@@ -2442,7 +2441,7 @@ const styles = StyleSheet.create({
   avatarPickBtn: {
     flex: 1,
     height: 42,
-    borderRadius: 10,
+    borderRadius: RADIUS,
     borderWidth: 1,
     borderColor: T.border,
     backgroundColor: T.card,
@@ -2455,6 +2454,9 @@ const styles = StyleSheet.create({
     color: T.text,
     fontWeight: '800',
     letterSpacing: 0.2,
+    fontFamily: SYSTEM_SANS,
+    textTransform: 'uppercase',
+    fontSize: 12,
   },
   avatarPreviewRing: {
     width: 52,
@@ -2477,7 +2479,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 10,
-    borderRadius: 12,
+    borderRadius: RADIUS,
     borderWidth: 1,
     borderColor: T.border,
     backgroundColor: T.card,
@@ -2503,6 +2505,10 @@ const styles = StyleSheet.create({
     flex: 1,
     color: T.text,
     fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   checkCircle: {
     width: 28,
@@ -2521,23 +2527,27 @@ const styles = StyleSheet.create({
   selectedCountText: {
     color: T.mute,
     fontSize: 12,
+    fontFamily: SYSTEM_SANS,
   },
 
   createBtn: {
     marginTop: 14,
     height: 46,
-    borderRadius: 12,
+    borderRadius: RADIUS,
     backgroundColor: T.olive,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
     borderWidth: 1,
-    borderColor: T.olive,
+    borderColor: '#000000',
   },
   createBtnText: {
     color: '#000',
     fontWeight: '900',
-    letterSpacing: 0.3,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 14,
   },
 });

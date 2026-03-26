@@ -1,7 +1,11 @@
 // app/navigation/MainTabs.tsx
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { TabActions, useNavigation } from '@react-navigation/native';
+import {
+  TabActions,
+  useNavigation,
+  getFocusedRouteNameFromRoute,
+} from '@react-navigation/native';
 import type { BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
 import {
   StyleSheet,
@@ -1019,7 +1023,7 @@ const settingsSize = Platform.OS === 'web'
     compactUI && styles.topActionBtnCompact,
   ]}
 >
-                <Ionicons name="cloud-upload-outline" size={isPhone ? 10 : 12} color={GOLD} />
+                <Ionicons name="cloud-upload-outline" size={isPhone ? 16 : 18} color={GOLD} />
                 {!isPhone && (
                   <Text style={[styles.uploadBtnText, compactUI && styles.uploadBtnTextCompact]} numberOfLines={1}>
                     UPLOAD FILM
@@ -1037,7 +1041,7 @@ const settingsSize = Platform.OS === 'web'
     compactUI && styles.topActionBtnCompact,
   ]}
 >
-                <Ionicons name="trophy-outline" size={isPhone ? 10 : 12} color={GOLD} />
+                <Ionicons name="trophy-outline" size={isPhone ? 16 : 18} color={GOLD} />
                 {!isPhone && (
                   <Text
                     style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]}
@@ -1217,6 +1221,8 @@ export default function MainTabs() {
   const isTiny = width < 360;
 
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [hideTopBar, setHideTopBar] = useState(false);
+const shouldHideTopBar = Platform.OS !== 'web' && hideTopBar;
 
   const lastResumeAt = useRef(0);
 
@@ -1398,22 +1404,169 @@ const TABBAR_HEIGHT = isPhone ? 54 : 56;
 
   return (
     <SettingsModalProvider>
-      <View style={{ flex: 1, backgroundColor: DARK_BG, overflow: 'hidden' }}>
-        <TopBar
-          topOffset={topOffset}
-          navHeight={NAV_HEIGHT}
-          topInset={insets.top}
-          onOpenUpload={handleOpenUpload}
-          onOpenLeaderboard={() => {
-            console.log('leaderboard pressed');
-            setShowLeaderboard(true);
+      <View
+  style={{
+    flex: 1,
+    backgroundColor: DARK_BG,
+    overflow: 'hidden',
+    position: 'relative',
+  }}
+>
+        {Platform.OS === 'web' ? (
+  <View
+    style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 9999,
+      backgroundColor: '#000',
+      paddingTop: 6,
+    }}
+  >
+    <View
+      style={{
+        width: '100%',
+        maxWidth: 1200,
+        alignSelf: 'center',
+        minHeight: 46,
+        paddingHorizontal: 14,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}
+    >
+      <Text
+        style={{
+          color: '#EDEBE6',
+          fontSize: 18,
+          fontWeight: '900',
+          letterSpacing: 2.2,
+        }}
+      >
+        OVERLOOKED
+      </Text>
+
+      <View
+        style={{
+          flex: 1,
+          marginHorizontal: 18,
+          height: 18,
+          borderRadius: 999,
+          backgroundColor: '#1F1F1F',
+          borderWidth: 1,
+          borderColor: '#333333',
+          overflow: 'hidden',
+          justifyContent: 'center',
+        }}
+      >
+        <View
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: '16.7%',
+            backgroundColor: '#C6A664',
           }}
         />
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            paddingHorizontal: 10,
+          }}
+        >
+          <Text style={{ color: '#EDEBE6', fontSize: 7, fontWeight: '900' }}>STREAK</Text>
+          <Text style={{ color: '#EDEBE6', fontSize: 7, fontWeight: '900' }}>2/12</Text>
+          <Text style={{ color: '#A7A6A2', fontSize: 7, fontWeight: '900' }}>Year 1</Text>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Pressable
+          onPress={handleOpenUpload}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            paddingVertical: 6,
+            paddingHorizontal: 12,
+            borderRadius: 999,
+            backgroundColor: 'rgba(198,166,100,0.10)',
+            borderWidth: 1,
+            borderColor: 'rgba(198,166,100,0.30)',
+          }}
+        >
+          <Ionicons name="cloud-upload-outline" size={18} color="#C6A664" />
+          <Text style={{ color: '#C6A664', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }}>
+            UPLOAD FILM
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => setShowLeaderboard(true)}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            paddingVertical: 6,
+            paddingHorizontal: 12,
+            borderRadius: 999,
+            backgroundColor: 'rgba(198,166,100,0.10)',
+            borderWidth: 1,
+            borderColor: 'rgba(198,166,100,0.30)',
+          }}
+        >
+          <Ionicons name="trophy-outline" size={18} color="#C6A664" />
+          <Text style={{ color: '#C6A664', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }}>
+            LEADERBOARD
+          </Text>
+        </Pressable>
+
+        <View
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 15,
+            backgroundColor: '#151515',
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.10)',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="settings-outline" size={16} color="#EDEBE6" />
+        </View>
+      </View>
+    </View>
+  </View>
+) : (
+  <View
+    pointerEvents={shouldHideTopBar ? 'none' : 'auto'}
+    style={{
+      opacity: shouldHideTopBar ? 0 : 1,
+    }}
+  >
+    <TopBar
+      topOffset={topOffset}
+      navHeight={NAV_HEIGHT}
+      topInset={insets.top}
+      onOpenUpload={handleOpenUpload}
+      onOpenLeaderboard={() => {
+        setShowLeaderboard(true);
+      }}
+    />
+  </View>
+)}
 
         <SafeAreaView
-          style={[styles.safeArea, { paddingTop: contentTopPadding }]}
-          edges={['left', 'right', 'bottom']}
-        >
+  style={[
+    styles.safeArea,
+    { paddingTop: shouldHideTopBar ? 0 : contentTopPadding },
+  ]}
+  edges={['left', 'right', 'bottom']}
+> 
           <Tab.Navigator screenOptions={screenOptions}>
             <Tab.Screen name="Featured" component={FeaturedWrapped} />
             <Tab.Screen name="Workshop" component={WorkshopWrapped} />
@@ -1422,12 +1575,18 @@ const TABBAR_HEIGHT = isPhone ? 54 : 56;
             <Tab.Screen name="Jobs" component={JobsWrapped} />
 
             <Tab.Screen
-              name="Chats"
-              component={ChatsWrapped}
-              options={{
-                unmountOnBlur: false,
-              }}
-            />
+  name="Chats"
+  component={ChatsWrapped}
+  listeners={({ route }) => ({
+    state: () => {
+      const nestedRouteName = getFocusedRouteNameFromRoute(route) ?? 'Chats';
+      setHideTopBar(Platform.OS !== 'web' && nestedRouteName === 'ChatRoom');
+    },
+  })}
+  options={{
+    unmountOnBlur: false,
+  }}
+/>
 
             <Tab.Screen
               name="Profile"
@@ -1462,9 +1621,10 @@ const TABBAR_HEIGHT = isPhone ? 54 : 56;
 
 const styles = StyleSheet.create({
   safeArea: {
-    flex: 1,
-    backgroundColor: DARK_BG,
-  },
+  flex: 1,
+  backgroundColor: DARK_BG,
+  zIndex: 1,
+},
 
   tabIconOnly: {
     alignItems: 'center',
@@ -1479,15 +1639,16 @@ const styles = StyleSheet.create({
   },
 
   topBarWrapper: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: DARK_BG,
-    borderBottomWidth: 0,
-    borderBottomColor: 'transparent',
-    zIndex: 20,
-  },
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  backgroundColor: DARK_BG,
+  borderBottomWidth: 0,
+  borderBottomColor: 'transparent',
+  zIndex: 9999,
+  elevation: 9999,
+},
 
   topBarInner: {
     width: '100%',
@@ -1554,19 +1715,21 @@ const styles = StyleSheet.create({
   borderRadius: 999,
   alignSelf: 'center',
   minHeight: 28,
+  overflow: 'visible',
 },
 
   topActionBtnPhone: {
-  width: 30,
-  minWidth: 30,
-  height: 30,
-  minHeight: 30,
+  width: 36,
+  minWidth: 36,
+  height: 36,
+  minHeight: 36,
   paddingHorizontal: 0,
   gap: 0,
   backgroundColor: 'transparent',
   borderColor: 'transparent',
   alignItems: 'center',
   justifyContent: 'center',
+  overflow: 'visible',
 },
 
   topActionBtnCompact: {

@@ -438,21 +438,24 @@ export default function ChatRoom() {
     if (loadState !== 'ready' || !conversation)
       return;
 
-    const headerLeft = () => (
-      <TouchableOpacity
-        onPress={goBackToChats}
-        style={{
-          paddingHorizontal: 8,
-          paddingVertical: 4,
-        }}
-      >
-        <Ionicons
-          name="chevron-back"
-          size={24}
-          color={TEXT}
-        />
-      </TouchableOpacity>
-    );
+    const headerLeft =
+  Platform.OS === 'android'
+    ? undefined
+    : () => (
+        <TouchableOpacity
+          onPress={goBackToChats}
+          style={{
+            paddingHorizontal: Platform.OS === 'ios' ? 2 : 8,
+            paddingVertical: 4,
+          }}
+        >
+          <Ionicons
+            name="chevron-back"
+            size={24}
+            color={TEXT}
+          />
+        </TouchableOpacity>
+      );
 
     // Direct 1:1
     if (!conversation.is_group) {
@@ -591,13 +594,13 @@ export default function ChatRoom() {
       );
 
       const headerRight = () => (
-        <TouchableOpacity
-          onPress={openMembers}
-          style={{
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-          }}
-        >
+  <TouchableOpacity
+    onPress={openMembers}
+    style={{
+      paddingHorizontal: Platform.OS === 'ios' ? 2 : 8,
+      paddingVertical: 4,
+    }}
+  >
           <Ionicons
             name="people-outline"
             size={22}
@@ -1694,10 +1697,11 @@ const styles = StyleSheet.create({
 
   // Header bits
   headerTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    maxWidth: 260,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  maxWidth: Platform.OS === 'ios' ? 170 : 260,
+  flexShrink: 1,
+},
   headerAvatarRing: {
     width: 32,
     height: 32,
@@ -1718,10 +1722,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitleText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: TEXT,
-  },
+  fontSize: 15,
+  fontWeight: '800',
+  color: TEXT,
+  flexShrink: 1,
+},
   memberCountText: {
     fontSize: 13,
     fontWeight: '800',

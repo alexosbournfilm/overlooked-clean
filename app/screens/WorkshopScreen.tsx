@@ -3740,6 +3740,540 @@ const COMMUNITY_FILMS: SurgeryFilm[] = [
   { id: 9, title: 'June Without Sound', creator: 'Rhea D.', type: 'Experimental', hook: 'Silence as a turning point.' },
 ];
 
+/* ------------------------------ BOSS BANKS ------------------------------ */
+
+const BOSS_COMMUNITY_NOTE =
+  'Before starting this challenge, take a moment to support the community by leaving thoughtful feedback on another filmmaker’s submission. Showing support and offering constructive feedback helps everyone grow stronger together.';
+
+const ACTING_BOSSES: Record<number, LessonSeed> = {
+  8: makeSeed(
+    'Acting Boss 1 — The Train Station Return',
+    'Boss',
+    'Play a reunion scene where too much history is already in the air before the first line.',
+    'Create a 4–6 minute scene set at a train platform or station bench. Two former lovers have not seen each other in 3 years. One of them already knows the other is leaving the country tonight, but does not reveal that immediately. The scene must begin with at least 20 seconds of behavior before the first line. Use the line: “You shouldn’t have come yourself.”',
+    'Prove you can play previous circumstances, restraint, listening, and subtext inside a complete dramatic scene.',
+    'A finished reunion scene where history is readable from behavior, silence, and shifting emotional temperature.',
+    [
+      'Two actors only.',
+      'Start with at least 20 seconds before the first line.',
+      'Use the line: “You shouldn’t have come yourself.”',
+      'One actor must begin cold and lose control gradually.',
+      'No crying until the final 30 seconds, if at all.',
+    ],
+    'boss',
+    `This should feel like a real film scene, not an acting class sketch. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  16: makeSeed(
+    'Acting Boss 2 — The Kitchen Confession',
+    'Boss',
+    'Play a confession scene where a practical task keeps colliding with unbearable truth.',
+    'Create a 4–6 minute scene in a kitchen. One character has come to ask for help, but halfway through reveals they were directly responsible for a family betrayal. One actor must continue a practical task such as washing dishes, chopping food, making tea, or cleaning while the scene escalates. Use the line: “I was going to tell you.”',
+    'Prove you can combine independent activity, objective, emotional leakage, and tactical change under pressure.',
+    'A finished kitchen confrontation where the practical task deepens the tension instead of distracting from it.',
+    [
+      'The scene must be filmed in a kitchen.',
+      'One actor must continue a real task for at least half the scene.',
+      'Use the line: “I was going to tell you.”',
+      'Include one silence longer than 8 seconds.',
+      'The confession must change the power of the scene.',
+    ],
+    'boss',
+    `The task should make the scene more truthful, not more busy. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  24: makeSeed(
+    'Acting Boss 3 — The Calm Interrogation',
+    'Boss',
+    'Play a scene where the person pressing for truth never raises their voice.',
+    'Create a 3–5 minute confrontation where one character knows the other is lying, but stays calm the entire time. The liar must change tactics at least 3 times without fully confessing. End the scene on the line: “That’s not what happened.”',
+    'Prove you can play status loss, lying behavior, tactical change, and rising danger without relying on shouting.',
+    'A finished interrogation scene where the emotional pressure keeps increasing through restraint.',
+    [
+      'No shouting from either actor.',
+      'The liar must switch tactics at least 3 times.',
+      'No full confession is allowed.',
+      'End on the line: “That’s not what happened.”',
+      'The calmer character must become more dangerous over time.',
+    ],
+    'boss',
+    `Cold pressure is harder and more cinematic than loud pressure. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  32: makeSeed(
+    'Acting Boss 4 — The Waiting Room Secret',
+    'Boss',
+    'Play a family waiting-room scene where one person is carrying the unforgivable truth.',
+    'Create a 5–8 minute hospital or clinic waiting-room scene between 2 siblings. They are waiting for news about a parent. One of them secretly signed the DNR papers without telling the other. For the first half, that character must try to keep the scene socially normal. The scene must include one failed apology and one moment where a memory almost comes out but is stopped.',
+    'Prove you can play shame, suppression, contradiction, and emotional collapse with precision rather than melodrama.',
+    'A finished dramatic scene where guilt and restraint carry more weight than overt breakdown.',
+    [
+      'No music.',
+      'No phones in hand.',
+      'The guilty character must try to keep things normal for the first half.',
+      'Include one failed apology.',
+      'No one may say “I’m sorry” more than once.',
+    ],
+    'boss',
+    `This should hurt because of what is withheld, not because of how loudly it is played. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  40: makeSeed(
+    'Acting Boss 5 — The Two-Version Break Scene',
+    'Boss',
+    'Play the same breakup scene twice with the exact same words and opposite hidden actions.',
+    'Film the same 4–6 minute breakup scene twice using the exact same script, same framing, and same basic blocking. In Version A, your hidden action is to win them back without admitting that directly. In Version B, your hidden action is to make them hate you so they leave first. Include the line: “You can stop pretending now.”',
+    'Prove total control of action, subtext, adjustment, and reinterpretation of text without changing the writing.',
+    'Two contrasting versions of the same scene where the hidden action completely changes the meaning.',
+    [
+      'Same script in both versions.',
+      'Same framing and same basic blocking.',
+      'Use the line: “You can stop pretending now.”',
+      'Only the hidden action and behavior may change.',
+      'Both versions must feel truthful and fully playable.',
+    ],
+    'boss',
+    `This is actor-proof work: the same text must become two different realities. ${BOSS_COMMUNITY_NOTE}`
+  ),
+};
+
+const CINEMATOGRAPHY_BOSSES: Record<number, LessonSeed> = {
+  8: makeSeed(
+    'Cinematography Boss 1 — One Room, Three Moods',
+    'Boss',
+    'Shoot the same room and same blocking three completely different ways.',
+    'Use one room and one short piece of action: a person enters, sits, reads a note, and looks toward the door. Shoot it 3 times so the room reads as intimacy, threat, and grief. Keep the same blocking and performance beats. Only framing, lens choice, camera height, lighting, and distance may change.',
+    'Prove you can create emotional meaning through image design rather than script changes.',
+    'Three short visual versions of the same scene with clearly different emotional readings.',
+    [
+      'Same room and same blocking in all 3 versions.',
+      'No dialogue changes.',
+      'Only image choices may change the mood.',
+      'Each version must include one wide, one medium, and one close-up.',
+      'The three moods must be instantly distinguishable.',
+    ],
+    'boss',
+    `This proves whether you can tell story with image, not just coverage. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  16: makeSeed(
+    'Cinematography Boss 2 — The Window Light Decision',
+    'Boss',
+    'Build a morning decision scene around natural light and one motivated practical.',
+    'Film a 2–4 minute scene where a person wakes before sunrise, reads a text, and decides whether to leave. Window light must be the main source. You may use one practical lamp only. The scene must include one wide, two mediums, two close-ups, and one insert of the phone or hand.',
+    'Prove you can control motivated light, exposure, continuity, and emotional image design in a limited setup.',
+    'A finished low-light morning scene that feels believable, intentional, and cinematic.',
+    [
+      'Window light must be the main source.',
+      'Only one practical lamp is allowed.',
+      'Include one wide, two mediums, two close-ups, and one insert.',
+      'The room must stay believable.',
+      'Faces must remain readable without killing the mood.',
+    ],
+    'boss',
+    `This should feel like lived-in light, not obviously lit light. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  24: makeSeed(
+    'Cinematography Boss 3 — The Hallway Reveal',
+    'Boss',
+    'Reveal danger through framing and duration instead of cutting to coverage.',
+    'Film a 2–4 minute hallway or doorway suspense scene where a person hears something outside a bedroom or apartment door. The source of danger must be revealed through reframing or movement inside the shot, not through a cutaway insert. Hold at least one shot for 12 seconds or longer.',
+    'Prove you can create suspense and reveal information through composition, withholding, and visual patience.',
+    'A finished suspense scene where the reveal lands because of framing and timing.',
+    [
+      'No cutaway insert for the reveal.',
+      'Hold at least one shot for 12 seconds or longer.',
+      'Use one foreground obstruction in at least 2 shots.',
+      'Handheld is only allowed if clearly motivated by fear.',
+      'The reveal must change how the audience reads the scene.',
+    ],
+    'boss',
+    `You are directing the viewer’s fear through the frame itself. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  32: makeSeed(
+    'Cinematography Boss 4 — The Lens Distance Test',
+    'Boss',
+    'Shoot the same emotional beat with radically different lens relationships.',
+    'Film the same short exchange 3 ways using the line: “You’re late.” Version 1: physically close on a wider lens. Version 2: physically distant on a longer lens. Version 3: a balanced neutral coverage version. The emotional read of the line must feel different in each version.',
+    'Prove you understand how focal length, camera distance, and composition affect psychology.',
+    'Three versions of the same beat where lensing changes the emotional relationship.',
+    [
+      'Use the same line in all 3 versions.',
+      'One version must be wide and physically close.',
+      'One version must be long lens and physically far.',
+      'One version must be neutral.',
+      'The emotional reading must change between versions.',
+    ],
+    'boss',
+    `The audience should feel the lens choice, even if they do not know why. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  40: makeSeed(
+    'Cinematography Boss 5 — The Stairwell Descent',
+    'Boss',
+    'Build a complete visual sequence around regret, descent, and aftermath.',
+    'Film a 3–5 minute no-dialogue sequence in which a character walks down a stairwell immediately after doing something they regret. The sequence must include one top angle, one profile moving shot, one hand or shoe insert, one close-up pause, and one final locked-off frame at the bottom.',
+    'Prove you can author a full emotional sequence through image progression, movement, and visual control.',
+    'A finished no-dialogue visual sequence with a clear emotional arc from the first step to the final frame.',
+    [
+      'No dialogue.',
+      'Include one top angle, one profile moving shot, one insert, one close-up pause, and one final locked-off frame.',
+      'Color temperature must help the mood.',
+      'The final frame must land emotionally.',
+      'The sequence must feel complete without explanatory text.',
+    ],
+    'boss',
+    `This should feel like visual storytelling with real authorship. ${BOSS_COMMUNITY_NOTE}`
+  ),
+};
+
+const DIRECTING_BOSSES: Record<number, LessonSeed> = {
+  8: makeSeed(
+    'Directing Boss 1 — The No Line Reading Scene',
+    'Boss',
+    'Direct actors toward playable behavior without telling them how to say the lines.',
+    'Direct a 3–5 minute scene where one friend asks another to lie in court tomorrow. In rehearsal, you are not allowed to give line readings. You may only direct using objective, tactic, stakes, what changed, and who has power now. Halfway through the scene, the person resisting must become the more dangerous one.',
+    'Prove you can direct actors through intention and dramatic action rather than performance imitation.',
+    'A finished scene where the performances feel alive, not indicated.',
+    [
+      'No line readings in rehearsal.',
+      'You may only direct through objective, tactic, stakes, change, and power.',
+      'The resisting character must become more dangerous halfway through.',
+      'The scene must be 3–5 minutes.',
+      'The turn must feel behavioral, not announced.',
+    ],
+    'boss',
+    `This is directing, not puppeteering. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  16: makeSeed(
+    'Directing Boss 2 — The Blocking Rewrite',
+    'Boss',
+    'Discover the best version of a scene by staging it three different ways.',
+    'Take one short 2-page scene and stage it 3 ways: Version 1 with both actors seated the entire time, Version 2 with one standing and one seated, Version 3 with both moving and one attempted exit through a doorway. Choose the strongest version and film that version only.',
+    'Prove you can use blocking to reveal power, pressure, and scene shape.',
+    'A finished scene whose blocking clearly supports the dramatic engine.',
+    [
+      'Use the same scene text in all 3 rehearsed versions.',
+      'Stage it seated, split-level, and moving.',
+      'One version must include an attempted exit.',
+      'Film only the strongest version.',
+      'The final staging must clearly support the power dynamic.',
+    ],
+    'boss',
+    `The room should direct the scene as much as the dialogue does. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  24: makeSeed(
+    'Directing Boss 3 — Dinner Table Pressure',
+    'Boss',
+    'Direct an ensemble scene where accusation lives under politeness until it can no longer stay hidden.',
+    'Direct a 4–6 minute dinner table scene with 4 actors. One character knows another has stolen money, but no one may state the accusation directly until the final minute. At least 2 silent reactions must matter, and one actor must leave and re-enter the table.',
+    'Prove you can manage subtext, ensemble behavior, silent story beats, and scene escalation.',
+    'A finished ensemble scene where pressure moves around the table before the accusation surfaces.',
+    [
+      '4 actors required.',
+      'No direct accusation until the final minute.',
+      'At least 2 silent reactions must matter.',
+      'One actor must leave and re-enter.',
+      'The scene must end before full resolution.',
+    ],
+    'boss',
+    `This should feel alive in every corner of the frame, not just where the lines are. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  32: makeSeed(
+    'Directing Boss 4 — Table Read to Rewrite',
+    'Boss',
+    'Diagnose what is weak in a scene, then improve it through direction and rewrite.',
+    'Write or choose a short confrontation scene, do a table read with actors, note where the scene drags or confuses them, then rewrite no more than 20 percent of the dialogue before filming the improved version. The filmed version must include one major turn where the power dynamic changes.',
+    'Prove you can use rehearsal and actor response to improve a scene before the camera rolls.',
+    'A finished confrontation scene that clearly benefits from diagnosis and revision.',
+    [
+      'Do a table read before filming.',
+      'Rewrite no more than 20 percent of the dialogue.',
+      'The filmed version must include one major power shift.',
+      'Do not solve everything through new lines.',
+      'The improvement must come from both rewrite and direction.',
+    ],
+    'boss',
+    `Real directing includes rewriting with the actors and the room in mind. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  40: makeSeed(
+    'Directing Boss 5 — The Unequal Power Scene',
+    'Boss',
+    'Direct a scene where one person holds structural power from frame one, but loses one crucial beat by the end.',
+    'Direct a 3–4 minute scene between a teacher and student, boss and employee, parent and child, or older sibling and younger sibling. The stronger character asks a question the weaker character cannot answer honestly. No one may cry or yell. By the end, the weaker character must win one beat of control without fully taking over the scene.',
+    'Prove you can direct tonal restraint, power imbalance, and a precise shift in scene authority.',
+    'A finished power scene where the imbalance is strong from the first frame and still evolves.',
+    [
+      'Use a structurally unequal relationship.',
+      'No crying or yelling.',
+      'The stronger character must hold power from frame one.',
+      'The weaker character must win one beat by the end.',
+      'The shift must feel earned, not sentimental.',
+    ],
+    'boss',
+    `The scene should feel sharp, adult, and controlled. ${BOSS_COMMUNITY_NOTE}`
+  ),
+};
+
+const SOUND_BOSSES: Record<number, LessonSeed> = {
+  8: makeSeed(
+    'Sound Boss 1 — Rebuild the Kitchen Scene',
+    'Boss',
+    'Rebuild a simple everyday scene entirely through clean layered sound.',
+    'Take a 20–40 second scene of someone entering a kitchen and making tea or coffee. Mute the production sound and rebuild it from scratch using room tone, footsteps, kettle handle, water pour, mug or spoon detail, chair scrape, and distant outside ambience.',
+    'Prove you can create believable sonic space through layering and detail rather than raw production audio.',
+    'A finished domestic scene whose sound world feels specific, clean, and fully rebuilt.',
+    [
+      'Mute the production sound completely.',
+      'Use at least 6 sound layers.',
+      'No music.',
+      'The sequence must remain natural and readable.',
+      'The final mix must feel believable, not exaggerated.',
+    ],
+    'boss',
+    `This should sound like a real place with emotional texture, not a pile of effects. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  16: makeSeed(
+    'Sound Boss 2 — The Offscreen Threat',
+    'Boss',
+    'Create dread through sound without ever showing the threat.',
+    'Build a 1–3 minute apartment or hallway suspense scene where a character waits while someone may or may not be outside the door. The threat is never shown. Use at least 4 offscreen sounds, and one repeated sound must change meaning each time it returns.',
+    'Prove you can use offscreen space, repetition, and sonic perspective to tell story.',
+    'A finished suspense scene where sound carries the danger more than image does.',
+    [
+      'The threat must never be shown.',
+      'Use at least 4 offscreen sounds.',
+      'One repeated sound must change meaning each time.',
+      'No musical sting allowed.',
+      'The audience must feel the threat through sound design.',
+    ],
+    'boss',
+    `The unseen world should become more vivid than the visible one. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  24: makeSeed(
+    'Sound Boss 3 — Dialogue Cleanup Rescue',
+    'Boss',
+    'Take imperfect dialogue and make it emotionally playable without flattening the life out of it.',
+    'Record or use a 45–90 second two-person scene with deliberately imperfect sound: one steady appliance hum, one bit of traffic bleed, and one handling or chair scrape problem. Clean the scene so it plays naturally, keeps room tone under the edit, and still feels alive.',
+    'Prove you can solve practical sound problems while preserving the truth of the scene.',
+    'A cleaned and repaired dialogue scene that feels smooth, natural, and emotionally usable.',
+    [
+      'Include at least 3 deliberate sound problems.',
+      'Keep room tone under the full scene.',
+      'No dead silence between cuts.',
+      'Do not over-process the dialogue.',
+      'The repaired scene must still feel human.',
+    ],
+    'boss',
+    `This is craft under constraint, not just sound polish. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  32: makeSeed(
+    'Sound Boss 4 — Memory Trigger Motif',
+    'Boss',
+    'Use a tiny sound as a recurring emotional trigger that changes meaning each time.',
+    'Build a 1–3 minute scene where a small sound such as a voicemail beep, spoon in a glass, train brake squeal, or key in a lock occurs 3 times. Each recurrence must land differently and reveal more about the character’s private emotional state without being explained in dialogue.',
+    'Prove you can build sonic motif, psychological meaning, and emotional progression through repetition.',
+    'A finished scene where one sound becomes a memory trigger with evolving meaning.',
+    [
+      'Use one small recurring sound exactly 3 times.',
+      'Each repetition must feel different.',
+      'Do not explain the sound’s meaning in dialogue.',
+      'The audience should understand the shift through context and design.',
+      'The final repetition must land hardest.',
+    ],
+    'boss',
+    `The sound should become story, not decoration. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  40: makeSeed(
+    'Sound Boss 5 — The Silence Drop',
+    'Boss',
+    'Design a scene where removing sound becomes the most powerful storytelling move.',
+    'Create a 1–3 minute confrontation in a hallway, car, kitchen, or bedroom. At the key emotional beat, remove almost all environmental sound for 2–3 seconds, then bring the world back in a way that changes the feeling of the scene. Build the whole scene toward that moment.',
+    'Prove you can use subtraction, contrast, and dynamic control as intentional storytelling tools.',
+    'A finished dramatic scene where the silence drop feels earned and transforms the moment.',
+    [
+      'Build toward one key silence-drop moment.',
+      'Remove almost all environmental sound for 2–3 seconds.',
+      'Bring the world back with intention.',
+      'Do not use the silence moment as a gimmick.',
+      'The silence must change the emotional reading of the scene.',
+    ],
+    'boss',
+    `The absence of sound should hit harder than any effect you could add. ${BOSS_COMMUNITY_NOTE}`
+  ),
+};
+
+const EDITING_BOSSES: Record<number, LessonSeed> = {
+  8: makeSeed(
+    'Editing Boss 1 — The Door Scene Recut',
+    'Boss',
+    'Use the exact same footage to create 3 completely different scene meanings.',
+    'Shoot or gather this exact footage: 1) wide of a woman entering an apartment, 2) medium dropping keys, 3) insert of voicemail notification, 4) close-up listening, 5) reaction, 6) empty hallway, 7) sitting down. Create 3 edits from that material only: thriller, breakup drama, and dark comedy.',
+    'Prove you can author meaning through timing, order, sound, and emphasis rather than reshoots.',
+    'Three finished edits of the same source material with clearly different tones and story readings.',
+    [
+      'Use the same footage in all 3 versions.',
+      'No reshoots.',
+      'Each version must be 45–90 seconds.',
+      'Only edit, sound, timing, and order may change.',
+      'All 3 versions must feel intentional and complete.',
+    ],
+    'boss',
+    `This is the proof that editing can rewrite reality. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  16: makeSeed(
+    'Editing Boss 2 — The Reaction Timing Test',
+    'Boss',
+    'Show how meaning changes when you change only when we see the reaction.',
+    'Use one dialogue scene where a character says: “He knew the whole time.” Create 3 edits: one with an immediate reaction cut, one with a delayed reaction cut, and one with no reaction cut at all.',
+    'Prove you understand emotional emphasis, withholding, and scene meaning through reaction timing.',
+    'Three short versions of the same scene where the reaction placement changes the emotional result.',
+    [
+      'Use the same source footage in all 3 versions.',
+      'No music.',
+      'Do not change the dialogue order.',
+      'Only change the reaction timing and shot emphasis.',
+      'You should be able to describe how each version changes the meaning.',
+    ],
+    'boss',
+    `A single reaction cut can rewrite the scene. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  24: makeSeed(
+    'Editing Boss 3 — The Bad Performance Rescue',
+    'Boss',
+    'Take flawed material and cut it into the strongest scene possible.',
+    'Shoot or use 3 intentionally uneven takes of the same short scene: one rushed, one flat, and one overacted. Build the strongest possible finished version using at least 2 of those flawed takes. The final scene must still feel truthful.',
+    'Prove you can rescue material through selection, trimming, reaction use, and editorial judgment.',
+    'A finished short dramatic scene that feels stronger than the raw takes have any right to be.',
+    [
+      'Use at least 2 flawed takes.',
+      'No ADR.',
+      'No music.',
+      'Maximum 90 seconds.',
+      'The final cut must feel playable and emotionally coherent.',
+    ],
+    'boss',
+    `Real editors do not always get perfect footage. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  32: makeSeed(
+    'Editing Boss 4 — Pack the Bag / Miss the Bus',
+    'Boss',
+    'Control time by turning the same practical sequence into compression and suspense.',
+    'Shoot this exact action: open drawer, grab passport, miss one item, zip bag, check phone, sprint out, arrive too late at bus stop. Build 2 edits from that same material: a 25-second compressed version and a 75-second suspense version.',
+    'Prove you can shape time, clarity, and emotional experience through editorial structure.',
+    'Two finished edits of the same sequence with radically different temporal feeling.',
+    [
+      'Use the same source footage for both versions.',
+      'One version must be 25 seconds.',
+      'One version must be 75 seconds.',
+      'The sequence must stay readable in both versions.',
+      'The suspense version must build real pressure, not just run longer.',
+    ],
+    'boss',
+    `Time is one of the editor’s strongest weapons. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  40: makeSeed(
+    'Editing Boss 5 — Recut an Old Film',
+    'Boss',
+    'Take an older piece of your own and transform its meaning or quality through re-editing.',
+    'Choose an old short film, scene, trailer, or montage you already made. You may reshoot no more than 20 percent of it. Rebuild the rest through re-editing, restructuring, sound changes, pacing, and emphasis so the final piece feels clearly stronger or differently authored.',
+    'Prove you can diagnose weak material and fully reshape it through editorial authorship.',
+    'A finished before-and-after transformation piece built around your own older work.',
+    [
+      'Use an existing old piece you already made.',
+      'You may reshoot no more than 20 percent.',
+      'The transformation must come mainly from re-editing.',
+      'The final piece must feel clearly stronger or more intentional.',
+      'It must stand on its own as a finished short piece.',
+    ],
+    'boss',
+    `This is editor-as-author work, not just cleanup. ${BOSS_COMMUNITY_NOTE}`
+  ),
+};
+
+const FILMMAKER_BOSSES: Record<number, LessonSeed> = {
+  8: makeSeed(
+    'Filmmaker Boss 1 — The Bus Stop Film',
+    'Boss',
+    'Build a complete short around one meeting, one withheld truth, and one irreversible ending.',
+    'Make a 5–7 minute short film set at one bus stop, train stop, or roadside bench. One person is waiting for someone who is not coming. Another person arrives with information they should not have. The film must include one silent opening stretch, one reveal at minute 3 or later, and one final image that changes how we read the scene.',
+    'Prove you can combine performance, directing, image, sound, and editing into one complete dramatic engine.',
+    'A finished one-location short film with a clear reveal structure and a strong final image.',
+    [
+      'One location only.',
+      'Two actors only.',
+      '5–7 minutes.',
+      'Include one silent opening stretch.',
+      'Place the reveal at minute 3 or later.',
+      'End on one final image that redefines the scene.',
+    ],
+    'boss',
+    `This should feel like a real short film built from pressure, not filler. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  16: makeSeed(
+    'Filmmaker Boss 2 — The Missed Call Film',
+    'Boss',
+    'Tell a complete present-tense short about one call that should have been answered.',
+    'Make a short film where a character ignores a call, then gradually realizes that was the wrong decision. The phone screen may appear only once. No flashbacks are allowed. The story must be told through present action, sound, behavior, and consequence only.',
+    'Prove you can build cause and effect through visual storytelling and restraint.',
+    'A finished short film where a missed call becomes the engine of the whole story.',
+    [
+      'The phone screen may appear only once.',
+      'No flashbacks.',
+      'Maximum 6 minutes.',
+      'The story must stay in the present.',
+      'The emotional meaning of the call must grow over time.',
+    ],
+    'boss',
+    `The audience should feel the wrong decision spreading through the film. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  24: makeSeed(
+    'Filmmaker Boss 3 — The Corridor Film',
+    'Boss',
+    'Build a film around a walk toward one conversation that changes before it begins.',
+    'Make a short film in which a character walks a corridor, hallway, or exterior path to ask for forgiveness, but by the time they arrive their objective has changed. The film must include one walking shot, one locked shot, one insert, one over-the-shoulder, and one close-up reaction. Use practical lighting only.',
+    'Prove you can design sequence, objective shift, image plan, and emotional structure across departments.',
+    'A finished short film where the walk itself becomes a dramatic build-up to the changed objective.',
+    [
+      'Use one walking shot, one locked shot, one insert, one over-the-shoulder, and one close-up reaction.',
+      'Practical lighting only.',
+      'The character’s objective must change before arrival.',
+      'No voiceover.',
+      'The final conversation must feel changed by the walk.',
+    ],
+    'boss',
+    `The journey should do dramatic work, not just connect two scenes. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  32: makeSeed(
+    'Filmmaker Boss 4 — The Re-Edit + Reshoot Film',
+    'Boss',
+    'Take an older short piece and turn it into a better film through both diagnosis and invention.',
+    'Choose one old film, scene, or abandoned piece you already made. Reshoot no more than 20 percent of it, then completely rebuild the piece through a new edit, revised structure, improved sound, and stronger emphasis. The new version should clearly outperform the old one.',
+    'Prove you can think like a total filmmaker by improving writing, directing, image, sound, and edit through revision.',
+    'A finished transformed film built from an old piece and a smarter new version of it.',
+    [
+      'Start from an existing older piece.',
+      'Reshoot no more than 20 percent.',
+      'The new version must clearly differ in meaning, quality, or structure.',
+      'Sound and pacing must be improved deliberately.',
+      'The final piece must stand alone as a finished film.',
+    ],
+    'boss',
+    `Revision is part of being a filmmaker, not a sign of failure. ${BOSS_COMMUNITY_NOTE}`
+  ),
+  40: makeSeed(
+    'Filmmaker Boss 5 — The Caregiver Room Film',
+    'Boss',
+    'Create a complete no-dialogue short where one room, one actor, and one object carry the entire story.',
+    'Make a short film about a caregiver preparing a room for someone who is never coming back. Use one actor, one room, and no dialogue. One object in the room must change meaning by the end. Sound must carry at least half the story. The film should build to one final action or non-action that lands emotionally.',
+    'Prove complete authorship across acting, directing, cinematography, editing, and sound under severe constraint.',
+    'A finished no-dialogue short film that feels precise, emotional, and fully authored.',
+    [
+      'One actor only.',
+      'One room only.',
+      'No dialogue.',
+      'Maximum 4 minutes.',
+      'One object must change meaning by the end.',
+      'Sound must carry at least half the story.',
+    ],
+    'boss',
+    `If this works, it will feel like real filmmaking with nothing to hide behind. ${BOSS_COMMUNITY_NOTE}`
+  ),
+};
 /* ------------------------------ helpers ------------------------------ */
 function durationForStep(step: number, boss?: boolean) {
   if (boss) {
@@ -3805,7 +4339,11 @@ function missionForStep(step: number): Mission | null {
   return null;
 }
 
-function buildLessonsFromBase(base: LessonSeed[], total = 40): Lesson[] {
+function buildLessonsFromBase(
+  base: LessonSeed[],
+  bosses: Record<number, LessonSeed>,
+  total = 40
+): Lesson[] {
   const lessons: Lesson[] = [];
 
   for (let step = 1; step <= total; step += 1) {
@@ -3813,27 +4351,24 @@ function buildLessonsFromBase(base: LessonSeed[], total = 40): Lesson[] {
     const mission = missionForStep(step);
 
     if (isBoss) {
+      const boss = bosses[step];
+
+      if (!boss) {
+        throw new Error(`Missing boss lesson for step ${step}`);
+      }
+
       lessons.push({
         id: step,
         step,
-        title: `Boss Challenge ${step / 8}`,
+        title: boss.title,
         subtitle: 'Boss',
-        description:
-          'A larger challenge combining the previous lessons into one polished mini-film or major exercise.',
-        prompt:
-          'Create a full piece that proves the previous training is now part of your instincts, not just theory.',
-        objective:
-          'Synthesize recent skills into one finished challenge with confidence and intention.',
-        deliverable:
-          'A major workshop submission that feels complete from beginning to end.',
-        bonusNote:
-          'This should feel like a statement piece for this stage of the path.',
+        description: boss.description,
+        prompt: boss.prompt,
+        objective: boss.objective,
+        deliverable: boss.deliverable,
+        bonusNote: boss.bonusNote,
         kind: 'boss',
-        constraints: [
-          'The piece must feel complete from beginning to end.',
-          'Use what the previous lessons trained.',
-          'The final moment must land emotionally or cinematically.',
-        ],
+        constraints: boss.constraints,
         xp: xpForStep(step, true),
         duration: durationForStep(step, true),
         isBoss: true,
@@ -3880,55 +4415,25 @@ function buildEditingLessons(total = 40): Lesson[] {
     const isBoss = step % 8 === 0;
     const mission = missionForStep(step);
 
-    let bank = EDITING_FOUNDATION;
-    if (step > 16 && step <= 32) bank = EDITING_INTERMEDIATE;
-    if (step > 32) bank = EDITING_ADVANCED;
-
     if (isBoss) {
-      const bossLabel =
-        step <= 8
-          ? 'Editing Boss 1'
-          : step <= 16
-          ? 'Editing Boss 2'
-          : step <= 24
-            ? 'Editing Boss 3'
-            : step <= 32
-              ? 'Editing Boss 4'
-              : 'Editing Boss 5';
+      const boss = EDITING_BOSSES[step];
+
+      if (!boss) {
+        throw new Error(`Missing editing boss lesson for step ${step}`);
+      }
 
       lessons.push({
         id: step,
         step,
-        title: bossLabel,
+        title: boss.title,
         subtitle: 'Boss',
-        description:
-          step <= 16
-            ? 'A bigger editing piece that proves you can assemble, clarify, and shape a sequence cleanly.'
-            : step <= 32
-              ? 'A larger challenge combining clarity, rhythm, reveals, and emotional control through the cut.'
-              : 'An advanced post challenge where editorial choices fully transform the material into something authored and cinematic.',
-        prompt:
-          step <= 16
-            ? 'Take raw or rough material and build the cleanest, strongest finished sequence you can.'
-            : step <= 32
-              ? 'Create a polished mini-piece where pacing, emotional emphasis, and structure feel fully intentional.'
-              : 'Transform existing material into a refined, emotionally authored piece using structure, sound, perspective, and post finish.',
-        objective:
-          step <= 16
-            ? 'Prove the user can edit for clarity and flow before moving into advanced reinterpretation.'
-            : step <= 32
-              ? 'Prove the user can shape experience, not just arrange footage.'
-              : 'Prove the user can fully author meaning in post like a true editor, not just a cutter.',
-        deliverable:
-          'A finished editing submission that feels complete, readable, and intentional from start to finish.',
-        bonusNote:
-          'Every boss should feel like the natural proof of the steps before it.',
+        description: boss.description,
+        prompt: boss.prompt,
+        objective: boss.objective,
+        deliverable: boss.deliverable,
+        bonusNote: boss.bonusNote,
         kind: 'boss',
-        constraints: [
-          'The piece must feel complete from beginning to end.',
-          'The cut must clearly show the lessons from this phase.',
-          'The final version must land emotionally or structurally.',
-        ],
+        constraints: boss.constraints,
         xp: xpForStep(step, true),
         duration: durationForStep(step, true),
         isBoss: true,
@@ -3978,28 +4483,24 @@ function buildFilmmakerLessons(total = 40): Lesson[] {
     const mission = missionForStep(step);
 
     if (isBoss) {
+      const boss = FILMMAKER_BOSSES[step];
+
+      if (!boss) {
+        throw new Error(`Missing filmmaker boss lesson for step ${step}`);
+      }
+
       lessons.push({
         id: step,
         step,
-        title: `Filmmaker Boss ${step / 8}`,
+        title: boss.title,
         subtitle: 'Boss',
-        description:
-          'A full mixed-discipline challenge combining acting, directing, cinematography, editing, sound, and collaboration.',
-        prompt:
-          'Make a short piece that feels authored across performance, image, sound, pacing, and emotional logic.',
-        objective:
-          'Prove you can think like a complete filmmaker instead of a single department specialist.',
-        deliverable:
-          'A finished mini-film or polished sequence where at least 3 disciplines clearly matter.',
-        bonusNote:
-          'Taste matters here just as much as effort.',
+        description: boss.description,
+        prompt: boss.prompt,
+        objective: boss.objective,
+        deliverable: boss.deliverable,
+        bonusNote: boss.bonusNote,
         kind: 'boss',
-        constraints: [
-          'Use at least 3 disciplines clearly.',
-          'The visual idea must be strong.',
-          'Sound and pacing must matter.',
-          'The piece must feel like a finished mini-film.',
-        ],
+        constraints: boss.constraints,
         xp: xpForStep(step, true) + 20,
         duration: durationForStep(step, true),
         isBoss: true,
@@ -4035,26 +4536,24 @@ function buildFilmmakerLessons(total = 40): Lesson[] {
 
   return lessons;
 }
-
 function buildPathLessons(path: WorkshopPathKey): Lesson[] {
   switch (path) {
     case 'acting':
-      return buildLessonsFromBase(ACTING_BASE);
+      return buildLessonsFromBase(ACTING_BASE, ACTING_BOSSES);
     case 'editing':
       return buildEditingLessons();
     case 'cinematography':
-      return buildLessonsFromBase(CINEMATOGRAPHY_BASE);
+      return buildLessonsFromBase(CINEMATOGRAPHY_BASE, CINEMATOGRAPHY_BOSSES);
     case 'directing':
-      return buildLessonsFromBase(DIRECTING_BASE);
+      return buildLessonsFromBase(DIRECTING_BASE, DIRECTING_BOSSES);
     case 'sound':
-      return buildLessonsFromBase(SOUND_BASE);
+      return buildLessonsFromBase(SOUND_BASE, SOUND_BOSSES);
     case 'filmmaker':
       return buildFilmmakerLessons();
     default:
-      return buildLessonsFromBase(ACTING_BASE);
+      return buildLessonsFromBase(ACTING_BASE, ACTING_BOSSES);
   }
 }
-
 function nodeState(step: number, completedSteps: number[]): NodeState {
   const done = new Set(completedSteps);
   const current =
@@ -5478,91 +5977,96 @@ const styles = StyleSheet.create({
   width: '100%',
   maxWidth: 1180,
   alignSelf: 'center',
-  paddingHorizontal: 24,
+  paddingHorizontal: 20,
+  paddingTop: 4,
 },
+
   heroBlock: {
   alignItems: 'center',
   justifyContent: 'center',
-  marginBottom: 10,
+  marginBottom: 8,
+  paddingTop: 2,
 },
 
-  eyebrow: {
+eyebrow: {
   color: GOLD,
-  fontSize: 11,
-  letterSpacing: 3,
+  fontSize: 10,
+  letterSpacing: 2.6,
   textTransform: 'uppercase',
-  marginBottom: 12,
+  marginBottom: 8,
   fontFamily: SYSTEM_SANS,
   fontWeight: '700',
-  opacity: 0.95,
+  opacity: 0.9,
   textAlign: 'center',
 },
 
- pageTitle: {
+pageTitle: {
   color: IVORY,
-  fontSize: 42,
+  fontSize: 24,
   fontWeight: '800',
-  letterSpacing: -1.2,
-  lineHeight: 46,
-  maxWidth: 760,
+  letterSpacing: -0.8,
+  lineHeight: 28,
+  maxWidth: 300,
   textAlign: 'center',
 },
 
-  pageSubtitle: {
-  color: '#B7AE9F',
-  fontSize: 15,
-  lineHeight: 24,
-  marginTop: 14,
-  marginBottom: 30,
-  maxWidth: 720,
+pageSubtitle: {
+  color: '#9E9689',
+  fontSize: 13,
+  lineHeight: 20,
+  marginTop: 10,
+  marginBottom: 18,
+  maxWidth: 310,
   fontWeight: '400',
   textAlign: 'center',
 },
 
-  mobileChipRow: {
+mobileChipScroll: {
+  marginBottom: 2,
+},
+
+mobileChipRow: {
   paddingRight: 6,
   gap: 8,
-  paddingBottom: 14,
+  paddingBottom: 8,
   paddingHorizontal: 2,
 },
 
-  mobileChip: {
+mobileChip: {
   flexDirection: 'row',
   alignItems: 'center',
-  gap: 8,
-  backgroundColor: PANEL,
-  borderWidth: 1,
-  borderColor: BORDER,
+  gap: 6,
+  backgroundColor: '#111113',
+  borderWidth: 0,
   borderRadius: 999,
-  paddingHorizontal: 14,
-  paddingVertical: 10,
-  marginRight: 10,
+  paddingHorizontal: 13,
+  paddingVertical: 8,
+  marginRight: 8,
   shadowColor: '#000',
-  shadowOpacity: 0.18,
-  shadowRadius: 10,
-  shadowOffset: { width: 0, height: 6 },
-  elevation: 4,
+  shadowOpacity: 0.14,
+  shadowRadius: 8,
+  shadowOffset: { width: 0, height: 4 },
+  elevation: 3,
 },
 
-  mobileChipActive: {
-    backgroundColor: GOLD,
-    borderColor: GOLD,
-  },
+mobileChipActive: {
+  backgroundColor: GOLD,
+},
 
-  mobileChipText: {
-    color: IVORY,
-    fontSize: 13,
-    fontWeight: '500',
-  },
+mobileChipText: {
+  color: IVORY,
+  fontSize: 12,
+  fontWeight: '500',
+},
 
-  mobileChipTextActive: {
-    color: BG,
-  },
+mobileChipTextActive: {
+  color: BG,
+},
 
   mainLayout: {
   flexDirection: 'row',
   gap: 24,
-  marginTop: 6,
+  marginTop: 2,
 },
 
   mainLayoutMobile: {
@@ -5575,157 +6079,30 @@ const styles = StyleSheet.create({
   },
 
   sidebarItemWrap: {
-    borderWidth: 1,
-    borderRadius: 16,
+    borderWidth: 0,
+    borderRadius: 18,
     overflow: 'hidden',
+    backgroundColor: '#0C0C0F',
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
-
-  chapterStack: {
-  gap: 18,
-},
-
-chapterCard: {
-  backgroundColor: '#09090C',
-  borderRadius: 20,
-  borderWidth: 1,
-  borderColor: BORDER,
-  padding: 18,
-  gap: 16,
-},
-
-chapterCardCurrent: {
-  borderColor: GOLD_BORDER,
-  backgroundColor: '#0B0A08',
-},
-
-chapterCardCompleted: {
-  borderColor: 'rgba(198,166,100,0.34)',
-  backgroundColor: '#0E0C08',
-},
-
-chapterCardLocked: {
-  opacity: 0.8,
-},
-
-chapterHeader: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'flex-start',
-  gap: 14,
-},
-
-chapterHeaderText: {
-  flex: 1,
-},
-
-chapterEyebrow: {
-  color: GOLD,
-  fontSize: 11,
-  letterSpacing: 1.6,
-  textTransform: 'uppercase',
-  fontWeight: '700',
-  marginBottom: 6,
-},
-
-chapterTitle: {
-  color: IVORY,
-  fontSize: 20,
-  fontWeight: '700',
-  lineHeight: 26,
-},
-mobileChipScroll: {
-  marginBottom: 4,
-},
-
-chapterSubtitle: {
-  color: MUTED,
-  fontSize: 13,
-  lineHeight: 20,
-  marginTop: 6,
-  maxWidth: 680,
-},
-
-chapterProgressWrap: {
-  alignItems: 'flex-end',
-},
-
-chapterStatusPill: {
-  backgroundColor: PANEL_2,
-  borderRadius: 999,
-  paddingHorizontal: 12,
-  paddingVertical: 7,
-  borderWidth: 1,
-  borderColor: BORDER,
-},
-
-chapterStatusPillCompleted: {
-  backgroundColor: GOLD_SOFT,
-  borderColor: GOLD_BORDER,
-},
-
-chapterStatusPillLocked: {
-  backgroundColor: PANEL_2,
-  borderColor: BORDER_SOFT,
-},
-
-chapterStatusText: {
-  color: IVORY,
-  fontSize: 12,
-  fontWeight: '700',
-},
-
-chapterStatusTextCompleted: {
-  color: GOLD,
-},
-
-chapterStatusTextLocked: {
-  color: MUTED_2,
-},
-
-chapterProgressTrack: {
-  height: 8,
-  backgroundColor: BORDER_SOFT,
-  borderRadius: 999,
-  overflow: 'hidden',
-},
-
-chapterProgressFill: {
-  height: 8,
-  backgroundColor: GOLD,
-  borderRadius: 999,
-},
-
-chapterLockedBox: {
-  minHeight: 84,
-  borderRadius: 16,
-  borderWidth: 1,
-  borderColor: BORDER,
-  backgroundColor: PANEL_2,
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 10,
-  paddingHorizontal: 16,
-},
-
-chapterLockedText: {
-  color: MUTED_2,
-  fontSize: 13,
-  fontWeight: '500',
-},
 
   sidebarItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
     gap: 12,
+    backgroundColor: 'transparent',
   },
 
   sidebarIcon: {
     width: 36,
     height: 36,
-    borderRadius: 10,
-    backgroundColor: PANEL_2,
+    borderRadius: 11,
+    backgroundColor: '#151519',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -5755,7 +6132,7 @@ chapterLockedText: {
   },
 
   sidebarProgressPill: {
-    backgroundColor: PANEL_3,
+    backgroundColor: '#141418',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
@@ -5776,20 +6153,24 @@ chapterLockedText: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#0A0A0D',
-    borderRadius: 18,
+    backgroundColor: '#0B0B0E',
+    borderRadius: 22,
     padding: 18,
-    borderWidth: 1,
-    borderColor: BORDER,
+    borderWidth: 0,
     gap: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
   },
 
   topSummaryMobile: {
-  flexDirection: 'column',
-  alignItems: 'stretch',
-  padding: 14,
-  gap: 12,
-},
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    padding: 14,
+    gap: 12,
+  },
 
   topSummaryLeft: {
     flexDirection: 'row',
@@ -5797,30 +6178,34 @@ chapterLockedText: {
     gap: 14,
     flexShrink: 1,
   },
-topSummaryLeftMobile: {
-  alignItems: 'center',
-  gap: 10,
-},
+
+  topSummaryLeftMobile: {
+    alignItems: 'center',
+    gap: 10,
+  },
+
   activePathBadge: {
     width: 44,
     height: 44,
-    borderRadius: 12,
-    backgroundColor: PANEL_2,
+    borderRadius: 14,
+    backgroundColor: '#151519',
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   activePathBadgeMobile: {
-  width: 40,
-  height: 40,
-  borderRadius: 12,
-},
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+  },
 
   topSummaryTextWrap: {
     flexShrink: 1,
   },
+
   topSummaryTextWrapMobile: {
-  flex: 1,
-},
+    flex: 1,
+  },
 
   topSummaryTitle: {
     color: IVORY,
@@ -5829,8 +6214,8 @@ topSummaryLeftMobile: {
   },
 
   topSummaryTitleMobile: {
-  fontSize: 16,
-},
+    fontSize: 16,
+  },
 
   topSummarySubtitle: {
     color: MUTED,
@@ -5839,9 +6224,9 @@ topSummaryLeftMobile: {
   },
 
   topSummarySubtitleMobile: {
-  fontSize: 11,
-  lineHeight: 16,
-},
+    fontSize: 11,
+    lineHeight: 16,
+  },
 
   summaryPillsRow: {
     flexDirection: 'row',
@@ -5850,50 +6235,190 @@ topSummaryLeftMobile: {
     gap: 10,
     flexShrink: 1,
   },
+
   summaryPillsRowMobile: {
-  justifyContent: 'space-between',
-  gap: 8,
-},
+    justifyContent: 'space-between',
+    gap: 8,
+  },
 
   summaryPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: PANEL_2,
+    backgroundColor: '#141418',
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 999,
   },
+
   summaryPillMobile: {
-  width: '48%',
-  paddingHorizontal: 10,
-  paddingVertical: 9,
-  borderRadius: 12,
-  backgroundColor: '#121216',
-},
+    width: '48%',
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: '#121216',
+  },
 
   summaryPillText: {
     color: IVORY,
     fontSize: 11,
     fontWeight: '600',
   },
+
   summaryPillTextMobile: {
-  fontSize: 10,
-},
+    fontSize: 10,
+  },
+
+  chapterStack: {
+    gap: 18,
+  },
+
+  chapterCard: {
+    backgroundColor: '#0A0A0D',
+    borderRadius: 24,
+    borderWidth: 0,
+    padding: 20,
+    gap: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
+  },
+
+  chapterCardCurrent: {
+    backgroundColor: '#0B0A08',
+    shadowColor: GOLD,
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+  },
+
+  chapterCardCompleted: {
+    backgroundColor: '#0D0C09',
+  },
+
+  chapterCardLocked: {
+    opacity: 0.82,
+  },
+
+  chapterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 14,
+  },
+
+  chapterHeaderText: {
+    flex: 1,
+  },
+
+  chapterEyebrow: {
+    color: GOLD,
+    fontSize: 11,
+    letterSpacing: 1.8,
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+
+  chapterTitle: {
+    color: IVORY,
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 26,
+  },
+
+  chapterSubtitle: {
+    color: MUTED,
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 6,
+    maxWidth: 680,
+  },
+
+  chapterProgressWrap: {
+    alignItems: 'flex-end',
+  },
+
+  chapterStatusPill: {
+    backgroundColor: '#141418',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: 0,
+  },
+
+  chapterStatusPillCompleted: {
+    backgroundColor: GOLD_SOFT,
+  },
+
+  chapterStatusPillLocked: {
+    backgroundColor: '#121216',
+  },
+
+  chapterStatusText: {
+    color: IVORY,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  chapterStatusTextCompleted: {
+    color: GOLD,
+  },
+
+  chapterStatusTextLocked: {
+    color: MUTED_2,
+  },
+
+  chapterProgressTrack: {
+    height: 8,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+
+  chapterProgressFill: {
+    height: 8,
+    backgroundColor: GOLD,
+    borderRadius: 999,
+  },
+
+  chapterLockedBox: {
+    minHeight: 84,
+    borderRadius: 18,
+    borderWidth: 0,
+    backgroundColor: '#111114',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+  },
+
+  chapterLockedText: {
+    color: MUTED_2,
+    fontSize: 13,
+    fontWeight: '500',
+  },
 
   currentMissionCard: {
-    backgroundColor: '#0A0A0D',
-    borderRadius: 18,
+    backgroundColor: '#0B0B0E',
+    borderRadius: 22,
     padding: 20,
-    borderWidth: 1,
-    borderColor: BORDER,
+    borderWidth: 0,
     gap: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
   },
 
   currentMissionEyebrow: {
     color: GOLD,
     fontSize: 11,
-    letterSpacing: 1.2,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
 
@@ -5911,8 +6436,7 @@ topSummaryLeftMobile: {
     alignItems: 'center',
     gap: 6,
     backgroundColor: GOLD_SOFT,
-    borderWidth: 1,
-    borderColor: GOLD_BORDER,
+    borderWidth: 0,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
@@ -5942,15 +6466,14 @@ topSummaryLeftMobile: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: PANEL_2,
+    backgroundColor: '#141418',
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 999,
   },
 
   currentSurveyMetaPill: {
-    borderWidth: 1,
-    borderColor: PURPLE_SOFT,
+    backgroundColor: '#181320',
   },
 
   currentMetaText: {
@@ -5961,7 +6484,7 @@ topSummaryLeftMobile: {
 
   progressTrack: {
     height: 7,
-    backgroundColor: BORDER_SOFT,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 999,
     overflow: 'hidden',
     marginTop: 8,
@@ -5974,12 +6497,16 @@ topSummaryLeftMobile: {
   },
 
   missionCard: {
-    backgroundColor: PANEL,
-    borderRadius: 18,
+    backgroundColor: '#0C0C10',
+    borderRadius: 20,
     padding: 18,
-    borderWidth: 1,
-    borderColor: BORDER,
+    borderWidth: 0,
     gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
 
   missionHeader: {
@@ -6044,12 +6571,16 @@ topSummaryLeftMobile: {
   },
 
   surveyGateCard: {
-    backgroundColor: PANEL,
-    borderRadius: 18,
+    backgroundColor: '#0C0C10',
+    borderRadius: 20,
     padding: 18,
-    borderWidth: 1,
-    borderColor: BORDER,
+    borderWidth: 0,
     gap: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
 
   surveyGateHeader: {
@@ -6103,12 +6634,16 @@ topSummaryLeftMobile: {
 
   treeCard: {
     marginTop: 6,
-    backgroundColor: PANEL,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: BORDER,
+    backgroundColor: '#0A0A0D',
+    borderRadius: 24,
+    borderWidth: 0,
     paddingVertical: 30,
     paddingHorizontal: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
   },
 
   treeInner: {
@@ -6128,27 +6663,32 @@ topSummaryLeftMobile: {
   },
 
   lessonBubbleShadowWrap: {
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    shadowRadius: 20,
+    shadowOpacity: 0.22,
     elevation: 8,
   },
 
   lessonBubble: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
+    borderWidth: 0,
   },
 
   lessonInfoCard: {
-    backgroundColor: PANEL_2,
-    borderRadius: 14,
+    backgroundColor: '#111114',
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 11,
-    borderWidth: 1,
-    borderColor: BORDER,
+    borderWidth: 0,
     alignItems: 'center',
     width: 168,
     minHeight: 82,
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
 
   lessonInfoCardLocked: {
@@ -6170,7 +6710,7 @@ topSummaryLeftMobile: {
   },
 
   treeKindPill: {
-    backgroundColor: PANEL_3,
+    backgroundColor: '#17171C',
     paddingHorizontal: 7,
     paddingVertical: 3,
     borderRadius: 999,
@@ -6214,7 +6754,7 @@ topSummaryLeftMobile: {
 
   modalBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.72)',
+    backgroundColor: 'rgba(0,0,0,0.8)',
   },
 
   modalCenter: {
@@ -6228,11 +6768,15 @@ topSummaryLeftMobile: {
     width: '100%',
     maxWidth: 680,
     maxHeight: '90%',
-    backgroundColor: PANEL,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: BORDER,
+    backgroundColor: '#0B0B0E',
+    borderRadius: 24,
+    borderWidth: 0,
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.32,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 10,
   },
 
   surveyModalCard: {
@@ -6244,7 +6788,7 @@ topSummaryLeftMobile: {
     justifyContent: 'space-between',
     padding: 20,
     borderBottomWidth: 1,
-    borderColor: BORDER,
+    borderColor: 'rgba(255,255,255,0.06)',
     gap: 16,
   },
 
@@ -6258,7 +6802,7 @@ topSummaryLeftMobile: {
     width: 46,
     height: 46,
     borderRadius: 14,
-    backgroundColor: PANEL_2,
+    backgroundColor: '#151519',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -6298,7 +6842,7 @@ topSummaryLeftMobile: {
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: PANEL_2,
+    backgroundColor: '#151519',
   },
 
   modalScroll: {
@@ -6334,7 +6878,7 @@ topSummaryLeftMobile: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: PANEL_2,
+    backgroundColor: '#141418',
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 999,
@@ -6347,22 +6891,19 @@ topSummaryLeftMobile: {
   },
 
   modalMetaLocked: {
-    borderWidth: 1,
-    borderColor: 'rgba(180,140,255,0.22)',
+    backgroundColor: '#181320',
   },
 
   modalMetaDone: {
-    borderWidth: 1,
-    borderColor: 'rgba(71,214,111,0.24)',
+    backgroundColor: '#101712',
   },
 
   lockCard: {
     marginHorizontal: 20,
     marginTop: 14,
     backgroundColor: '#15111B',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(180,140,255,0.22)',
+    borderRadius: 18,
+    borderWidth: 0,
     padding: 16,
     gap: 10,
   },
@@ -6403,21 +6944,18 @@ topSummaryLeftMobile: {
   },
 
   detailCard: {
-    backgroundColor: PANEL_2,
-    borderRadius: 14,
+    backgroundColor: '#111114',
+    borderRadius: 16,
     padding: 15,
-    borderWidth: 1,
-    borderColor: BORDER,
+    borderWidth: 0,
   },
 
   detailCardSoft: {
     backgroundColor: '#17140F',
-    borderColor: GOLD_BORDER,
   },
 
   detailCardBlue: {
     backgroundColor: '#0F1520',
-    borderColor: 'rgba(107,167,255,0.22)',
   },
 
   detailLabel: {
@@ -6436,11 +6974,10 @@ topSummaryLeftMobile: {
   },
 
   rulesCard: {
-    backgroundColor: PANEL_2,
-    borderRadius: 14,
+    backgroundColor: '#111114',
+    borderRadius: 16,
     padding: 15,
-    borderWidth: 1,
-    borderColor: BORDER,
+    borderWidth: 0,
   },
 
   rulesTitle: {
@@ -6468,7 +7005,7 @@ topSummaryLeftMobile: {
 
   surveyProgressTrack: {
     height: 8,
-    backgroundColor: BORDER_SOFT,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 999,
     overflow: 'hidden',
     marginHorizontal: 20,
@@ -6501,16 +7038,14 @@ topSummaryLeftMobile: {
   },
 
   surveyFilmCard: {
-    backgroundColor: PANEL_2,
-    borderRadius: 16,
+    backgroundColor: '#111114',
+    borderRadius: 18,
     padding: 14,
-    borderWidth: 1,
-    borderColor: BORDER,
+    borderWidth: 0,
     gap: 10,
   },
 
   surveyFilmCardDone: {
-    borderColor: 'rgba(71,214,111,0.28)',
     backgroundColor: '#101712',
   },
 
@@ -6556,11 +7091,10 @@ topSummaryLeftMobile: {
   },
 
   feedbackHintCard: {
-    backgroundColor: PANEL_3,
+    backgroundColor: '#17171C',
     borderRadius: 12,
     padding: 12,
-    borderWidth: 1,
-    borderColor: BORDER_SOFT,
+    borderWidth: 0,
   },
 
   feedbackHintTitle: {
@@ -6583,17 +7117,15 @@ topSummaryLeftMobile: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: PANEL_3,
+    backgroundColor: '#17171C',
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 999,
-    borderWidth: 1,
-    borderColor: BORDER,
+    borderWidth: 0,
   },
 
   feedbackButtonDone: {
     backgroundColor: GREEN,
-    borderColor: GREEN,
   },
 
   feedbackButtonText: {
@@ -6611,8 +7143,8 @@ topSummaryLeftMobile: {
     gap: 12,
     padding: 20,
     borderTopWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: PANEL,
+    borderColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: '#0B0B0E',
   },
 
   modalButton: {
@@ -6627,7 +7159,7 @@ topSummaryLeftMobile: {
   },
 
   modalGhostButton: {
-    backgroundColor: PANEL_2,
+    backgroundColor: '#151519',
   },
 
   modalGhostText: {
@@ -6647,9 +7179,7 @@ topSummaryLeftMobile: {
   },
 
   modalDisabledButton: {
-    backgroundColor: PANEL_2,
-    borderWidth: 1,
-    borderColor: BORDER,
+    backgroundColor: '#151519',
   },
 
   modalDisabledText: {

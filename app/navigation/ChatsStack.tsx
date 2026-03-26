@@ -13,11 +13,9 @@ export type ChatsStackParamList = {
 
 const Stack = createNativeStackNavigator<ChatsStackParamList>();
 
-/* ------------------------------- palette ------------------------------- */
 const DARK_BG = '#0D0D0D';
 const TEXT_IVORY = '#EDEBE6';
 
-/* ------------------------------- fonts --------------------------------- */
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
   android: 'Roboto',
@@ -32,29 +30,35 @@ export default function ChatsStack() {
         headerStyle: { backgroundColor: DARK_BG },
         headerShadowVisible: false,
         headerTintColor: TEXT_IVORY,
-
-        // ✅ FIX: keep this minimal — some native-stack typings reject letterSpacing/textTransform
         headerTitleStyle: {
           color: TEXT_IVORY,
           fontFamily: SYSTEM_SANS,
           fontSize: 14,
           fontWeight: '900',
         },
-
         headerTitleAlign: 'center',
         headerBackTitleVisible: false,
       }}
     >
-      {/* ✅ MainTabs provides the global TopBar, so Chats list should NOT render a native header */}
-      <Stack.Screen name="Chats" component={ChatsScreen} options={{ headerShown: false }} />
+      <Stack.Screen
+        name="Chats"
+        component={ChatsScreen}
+        options={{ headerShown: false }}
+      />
 
-      {/* ✅ Keep a lightweight native header here for back navigation (sits UNDER the global TopBar) */}
       <Stack.Screen
         name="ChatRoom"
         component={ChatRoomScreen}
         options={{
-          title: 'Chat',
           headerShown: true,
+          title: '',
+          headerBackTitleVisible: false,
+          headerStyle: {
+            backgroundColor: DARK_BG,
+          },
+          headerShadowVisible: false,
+          headerTintColor: TEXT_IVORY,
+          headerTitleAlign: 'center',
         }}
       />
     </Stack.Navigator>
