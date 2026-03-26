@@ -20,8 +20,6 @@ import {
 const Toast = Platform.OS === 'android' ? require('react-native').ToastAndroid : null;
 
 import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
-import { Upload } from 'tus-js-client';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CommonActions } from '@react-navigation/native';
@@ -34,7 +32,6 @@ import AvatarCropper from '../../components/AvatarCropper';
 // ---------------- THEME ----------------
 const DARK_BG = '#000000';
 const CARD = '#0A0A0A';
-const CARD_ALT = '#0E0E0E';
 const ELEVATED = '#111111';
 const TEXT_IVORY = '#F5F2EA';
 const TEXT_MUTED = '#A7A6A2';
@@ -49,30 +46,11 @@ const SYSTEM_SANS = Platform.select({
   default: undefined,
 });
 
-const ONE_GB = 1024 * 1024 * 1024;
-const SHOWREEL_BUCKET = 'portfolios';
-const THUMB_BUCKET = 'thumbnails';
-
 type DropdownOption = {
   label: string;
   value: number;
   country?: string;
 };
-
-const SHOWREEL_CATEGORIES = [
-  'Acting',
-  'Editing',
-  'Directing',
-  'Sound',
-  'Cinematography',
-  'All-in-one Filmmaker',
-] as const;
-
-type ShowreelCategory = typeof SHOWREEL_CATEGORIES[number];
-
-const sanitizeFileName = (name: string) => name.replace(/[^\w.\-]+/g, '_').slice(-120);
-const addBuster = (url?: string | null) =>
-  url ? `${url}${/\?/.test(url) ? '&' : '?'}t=${Date.now()}` : null;
 
 const showToast = (msg: string) => {
   if (Platform.OS === 'android' && Toast) {
@@ -81,97 +59,6 @@ const showToast = (msg: string) => {
     Alert.alert(msg);
   }
 };
-
-async function getResumableEndpoint(bucket = SHOWREEL_BUCKET) {
-  const { data } = supabase.storage.from(bucket).getPublicUrl('__probe__');
-  const url = new URL(data.publicUrl);
-  return `${url.protocol}//${url.host}/storage/v1/upload/resumable`;
-}
-
-async function uploadResumableToBucket(opts: {
-  userId: string;
-  fileBlob?: Blob | File | null;
-  localUri?: string | null;
-  onProgress?: (pct: number) => void;
-  onPhase?: (label: string) => void;
-  objectName?: string;
-  bucket?: string;
-  contentType?: string;
-}): Promise<{ path: string; contentType: string }> {
-  const {
-    userId,
-    fileBlob,
-    localUri,
-    onProgress,
-    onPhase,
-    objectName = `user_${userId}/${Date.now()}_showreel`,
-    bucket = SHOWREEL_BUCKET,
-    contentType,
-  } = opts;
-
-  onPhase?.('Preparing showreel…');
-
-  let file: Blob;
-  let type = contentType || 'video/mp4';
-
-  if (fileBlob) {
-    file = fileBlob as Blob;
-    // @ts-ignore
-    if ((fileBlob as any)?.type) type = (fileBlob as any).type as string;
-  } else if (localUri) {
-    const resp = await fetch(localUri);
-    file = await resp.blob();
-    // @ts-ignore
-    if ((file as any)?.type) type = (file as any).type as string;
-  } else {
-    throw new Error('No file selected');
-  }
-
-  const ext = '.mp4';
-  type = 'video/mp4';
-  const finalObjectName = `${objectName}${ext}`;
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session) throw new Error('Not signed in');
-
-  const endpoint = await getResumableEndpoint(bucket);
-
-  return new Promise<{ path: string; contentType: string }>((resolve, reject) => {
-    const upload = new Upload(file, {
-      endpoint,
-      retryDelays: [0, 2000, 5000, 10000, 20000],
-      chunkSize: 6 * 1024 * 1024,
-      uploadDataDuringCreation: true,
-      removeFingerprintOnSuccess: true,
-      headers: {
-        authorization: `Bearer ${session.access_token}`,
-        'x-upsert': 'true',
-      },
-      metadata: {
-        bucketName: bucket,
-        objectName: finalObjectName,
-        contentType: type,
-        cacheControl: '3600',
-      },
-      onProgress: (sent, total) => {
-        if (!total) return;
-        const pct = Math.max(0, Math.min(100, Math.round((sent / total) * 100)));
-        onProgress?.(pct);
-      },
-      onError: (err) => reject(err),
-      onSuccess: () => resolve({ path: finalObjectName, contentType: type }),
-    });
-
-    onPhase?.('Uploading showreel…');
-    upload.findPreviousUploads().then((prev) => {
-      if (prev.length) upload.resumeFromPreviousUpload(prev[0]);
-      upload.start();
-    });
-  });
-}
 
 async function uploadBlobToBucket(opts: {
   bucket: string;
@@ -204,7 +91,6 @@ export default function CreateProfileScreen() {
   const roleSearchReq = useRef(0);
   const citySearchReq = useRef(0);
 
-  // ---------------- FORM STATE ----------------
   const [fullName, setFullName] = useState('');
 
   const [image, setImage] = useState<string | null>(null);
@@ -226,27 +112,10 @@ export default function CreateProfileScreen() {
   const [roleSearchItems, setRoleSearchItems] = useState<DropdownOption[]>([]);
   const [isSearchingRoles, setIsSearchingRoles] = useState(false);
 
-  const [searchModalVisible, setSearchModalVisible] = useState(false);
+  const [citySearchModalVisible, setCitySearchModalVisible] = useState(false);
   const [citySearchTerm, setCitySearchTerm] = useState('');
   const [cityItems, setCityItems] = useState<DropdownOption[]>([]);
   const [isSearchingCities, setIsSearchingCities] = useState(false);
-
-  // optional showreel
-  const [selectedShowreelCategory, setSelectedShowreelCategory] =
-    useState<ShowreelCategory>('Acting');
-  const [showreelName, setShowreelName] = useState('');
-  const [pendingShowreelAsset, setPendingShowreelAsset] = useState<any | null>(null);
-  const [showreelPreviewLabel, setShowreelPreviewLabel] = useState<string | null>(null);
-  const [showreelUploading, setShowreelUploading] = useState(false);
-  const [showreelProgress, setShowreelProgress] = useState(0);
-  const [showreelStatus, setShowreelStatus] = useState('');
-  const [showreelPublicUrl, setShowreelPublicUrl] = useState<string | null>(null);
-  const [showreelPath, setShowreelPath] = useState<string | null>(null);
-
-  // showreel thumbnail
-  const [showreelThumbAsset, setShowreelThumbAsset] = useState<any | null>(null);
-  const [showreelThumbPreview, setShowreelThumbPreview] = useState<string | null>(null);
-  const [showreelThumbUploading, setShowreelThumbUploading] = useState(false);
 
   const [saving, setSaving] = useState(false);
 
@@ -301,13 +170,9 @@ export default function CreateProfileScreen() {
       setRoleSearchItems((data || []).map((r) => ({ label: r.name, value: r.id })));
     } catch (e) {
       console.error('Role fetch fatal:', e);
-      if (reqId === roleSearchReq.current) {
-        setRoleSearchItems([]);
-      }
+      if (reqId === roleSearchReq.current) setRoleSearchItems([]);
     } finally {
-      if (reqId === roleSearchReq.current) {
-        setIsSearchingRoles(false);
-      }
+      if (reqId === roleSearchReq.current) setIsSearchingRoles(false);
     }
   }, []);
 
@@ -332,8 +197,8 @@ export default function CreateProfileScreen() {
     try {
       const { data, error } = await supabase
         .from('cities')
-        .select('id, name, country_code')
-        .ilike('name', `%${q}%`)
+        .select('id, city, name, country_code')
+        .or(`city.ilike.%${q}%,name.ilike.%${q}%`)
         .limit(80);
 
       if (reqId !== citySearchReq.current) return;
@@ -344,46 +209,36 @@ export default function CreateProfileScreen() {
         return;
       }
 
-      if (!data) {
-        setCityItems([]);
-        return;
-      }
-
-      const exactMatches = data.filter((c) => c.name.toLowerCase() === q.toLowerCase());
-      const prefixMatches = data.filter(
-        (c) =>
-          c.name.toLowerCase().startsWith(q.toLowerCase()) &&
-          c.name.toLowerCase() !== q.toLowerCase()
-      );
-      const containsMatches = data.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q.toLowerCase()) &&
-          !c.name.toLowerCase().startsWith(q.toLowerCase()) &&
-          c.name.toLowerCase() !== q.toLowerCase()
-      );
-
-      const ordered = [...exactMatches, ...prefixMatches, ...containsMatches];
-
-      setCityItems(
-        ordered.map((c) => ({
-          label: `${getFlag(c.country_code)} ${c.name}, ${c.country_code}`,
+      const mapped = (data || []).map((c: any) => {
+        const cityName = c.city || c.name || '';
+        return {
+          label: `${getFlag(c.country_code)} ${cityName}, ${c.country_code}`,
           value: c.id,
           country: c.country_code,
-        }))
-      );
+        };
+      });
+
+      const ordered = mapped.sort((a, b) => {
+        const aName = a.label.toLowerCase();
+        const bName = b.label.toLowerCase();
+        const ql = q.toLowerCase();
+
+        const aScore = aName.includes(ql) ? 0 : 1;
+        const bScore = bName.includes(ql) ? 0 : 1;
+
+        if (aScore !== bScore) return aScore - bScore;
+        return aName.localeCompare(bName);
+      });
+
+      setCityItems(ordered);
     } catch (e) {
       console.error('City fetch fatal:', e);
-      if (reqId === citySearchReq.current) {
-        setCityItems([]);
-      }
+      if (reqId === citySearchReq.current) setCityItems([]);
     } finally {
-      if (reqId === citySearchReq.current) {
-        setIsSearchingCities(false);
-      }
+      if (reqId === citySearchReq.current) setIsSearchingCities(false);
     }
   }, []);
 
-  // PROFILE IMAGE - SAME CROPPER FLOW AS PROFILE SCREEN
   const pickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -438,162 +293,6 @@ export default function CreateProfileScreen() {
     }
   };
 
-  const pickShowreel = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['video/mp4'],
-        multiple: false,
-        copyToCacheDirectory: true,
-      });
-
-      if (result.canceled || !result.assets?.length) return;
-
-      const asset: any = result.assets[0];
-      const name = (asset.name || '').toLowerCase();
-      const mime = (asset.mime_type || asset.mimeType || '').toLowerCase() || 'video/mp4';
-      const size = asset.size ?? asset.fileSize ?? asset.bytes ?? null;
-
-      const isMp4 = name.endsWith('.mp4') || mime === 'video/mp4';
-
-      if (!isMp4) {
-        Alert.alert('MP4 only', 'Please select an .mp4 video.');
-        return;
-      }
-
-      if (size && size > ONE_GB) {
-        Alert.alert('Too large', 'Please select a video that is 1 GB or less.');
-        return;
-      }
-
-      setPendingShowreelAsset(asset);
-      setShowreelPreviewLabel(asset.name || 'Selected showreel');
-      setShowreelPublicUrl(null);
-      setShowreelPath(null);
-
-      if (!showreelName.trim()) {
-        const fallbackName = (asset.name || '').replace(/\.mp4$/i, '').trim();
-        setShowreelName(fallbackName || 'My Showreel');
-      }
-    } catch (e: any) {
-      Alert.alert('Showreel Error', e?.message ?? 'Could not select showreel.');
-    }
-  };
-
-  const pickShowreelThumbnail = async () => {
-    try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert('Permission required', 'Please allow access to your photos.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.9,
-        base64: false,
-        allowsEditing: true,
-        aspect: [16, 9],
-      });
-
-      if (result.canceled || !result.assets.length) return;
-
-      const asset: any = result.assets[0];
-      setShowreelThumbAsset(asset);
-
-      if (Platform.OS === 'web' && asset?.file) {
-        const previewUrl = URL.createObjectURL(asset.file as File);
-        setShowreelThumbPreview(previewUrl);
-      } else {
-        setShowreelThumbPreview(asset.uri);
-      }
-    } catch (e: any) {
-      Alert.alert('Thumbnail Error', e?.message ?? 'Could not select thumbnail.');
-    }
-  };
-
-  const removeShowreel = () => {
-    setPendingShowreelAsset(null);
-    setShowreelPreviewLabel(null);
-    setShowreelProgress(0);
-    setShowreelStatus('');
-    setShowreelPublicUrl(null);
-    setShowreelPath(null);
-    setShowreelThumbAsset(null);
-    setShowreelThumbPreview(null);
-  };
-
-  const ensureShowreelUploaded = async (userId: string) => {
-    if (!pendingShowreelAsset) return { publicUrl: null, path: null };
-    if (showreelPublicUrl && showreelPath) {
-      return { publicUrl: showreelPublicUrl, path: showreelPath };
-    }
-
-    setShowreelUploading(true);
-    setShowreelProgress(0);
-    setShowreelStatus('Preparing showreel…');
-
-    try {
-      const asset: any = pendingShowreelAsset;
-
-      const { path } = await uploadResumableToBucket({
-        userId,
-        fileBlob: Platform.OS === 'web' ? ((asset.file as File | Blob | null) ?? undefined) : undefined,
-        localUri: Platform.OS !== 'web' ? (asset.uri as string) : undefined,
-        onProgress: (pct) => setShowreelProgress(pct),
-        onPhase: (label) => setShowreelStatus(label),
-        objectName: `user_${userId}/${Date.now()}_${sanitizeFileName(
-          (asset.name || showreelName || 'showreel').replace(/\.mp4$/i, '')
-        )}`,
-        bucket: SHOWREEL_BUCKET,
-      });
-
-      const { data: pub } = supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(path);
-      const publicUrl = pub.publicUrl;
-
-      setShowreelPublicUrl(publicUrl);
-      setShowreelPath(path);
-
-      return { publicUrl, path };
-    } catch (e: any) {
-      throw new Error(e?.message ?? 'Could not upload showreel.');
-    } finally {
-      setShowreelUploading(false);
-    }
-  };
-
-  const uploadShowreelThumbnail = async (userId: string, filePath: string) => {
-    if (!showreelThumbAsset) return null;
-
-    setShowreelThumbUploading(true);
-
-    try {
-      let blob: Blob;
-
-      if (Platform.OS === 'web' && showreelThumbAsset?.file) {
-        blob = showreelThumbAsset.file as Blob;
-      } else {
-        const response = await fetch(showreelThumbAsset.uri);
-        blob = await response.blob();
-      }
-
-      const safeBase = sanitizeFileName(filePath.split('/').pop() || 'showreel');
-      const thumbPath = `showreels/${userId}/${safeBase}_${Date.now()}.jpg`;
-
-      const publicUrl = await uploadBlobToBucket({
-        bucket: THUMB_BUCKET,
-        path: thumbPath,
-        blob,
-        contentType: blob.type || 'image/jpeg',
-      });
-
-      return publicUrl;
-    } catch (e: any) {
-      throw new Error(e?.message ?? 'Could not upload showreel thumbnail.');
-    } finally {
-      setShowreelThumbUploading(false);
-    }
-  };
-
   const handleSubmit = async () => {
     if (!fullName.trim() || !mainRole || !cityId) {
       Alert.alert('Missing Info', 'Please fill in your name, main role, and city.');
@@ -614,23 +313,6 @@ export default function CreateProfileScreen() {
       const userId = sessionData.user?.id;
       if (!userId) throw new Error('User not authenticated');
 
-      let uploadedShowreel: { publicUrl: string | null; path: string | null } = {
-        publicUrl: null,
-        path: null,
-      };
-
-      let uploadedThumbUrl: string | null = null;
-
-      if (pendingShowreelAsset) {
-        uploadedShowreel = await ensureShowreelUploaded(userId);
-
-        if (uploadedShowreel.path && showreelThumbAsset) {
-          uploadedThumbUrl = await uploadShowreelThumbnail(userId, uploadedShowreel.path);
-        }
-      }
-
-      const portfolioUrl = uploadedShowreel.publicUrl || null;
-
       const { data: upserted, error } = await supabase
         .from('users')
         .upsert(
@@ -640,7 +322,6 @@ export default function CreateProfileScreen() {
             main_role_id: mainRole,
             city_id: cityId,
             avatar_url: imageUrl,
-            portfolio_url: portfolioUrl,
           },
           { onConflict: 'id' }
         )
@@ -648,23 +329,6 @@ export default function CreateProfileScreen() {
         .maybeSingle();
 
       if (error) throw error;
-
-      if (uploadedShowreel.path) {
-        const { error: showreelErr } = await supabase.from('user_showreels').upsert(
-          {
-            user_id: userId,
-            file_path: uploadedShowreel.path,
-            title: showreelName.trim() || showreelPreviewLabel || 'Showreel',
-            category: selectedShowreelCategory,
-            thumbnail_url: uploadedThumbUrl,
-            is_primary: true,
-            sort_order: 0,
-          },
-          { onConflict: 'user_id,file_path' }
-        );
-
-        if (showreelErr) throw showreelErr;
-      }
 
       await refreshProfile();
       await refreshGamification();
@@ -699,7 +363,7 @@ export default function CreateProfileScreen() {
     }
   };
 
-  const loading = saving || uploadingImage || showreelUploading || showreelThumbUploading;
+  const loading = saving || uploadingImage;
 
   const searchInputWebFix =
     Platform.OS === 'web'
@@ -710,9 +374,6 @@ export default function CreateProfileScreen() {
           borderColor: BORDER,
         } as any)
       : null;
-
-  const roleDataToShow =
-    roleSearchTerm.trim().length > 0 ? roleSearchItems : roleItems;
 
   return (
     <KeyboardAvoidingView
@@ -803,7 +464,7 @@ export default function CreateProfileScreen() {
             <TouchableOpacity
               style={styles.selectButton}
               onPress={() => {
-                setSearchModalVisible(true);
+                setCitySearchModalVisible(true);
                 setCitySearchTerm('');
                 setCityItems([]);
                 setIsSearchingCities(false);
@@ -817,152 +478,12 @@ export default function CreateProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.fieldBlock}>
-            <View style={styles.optionalHeaderRow}>
-              <Text style={styles.fieldLabel}>Showreel Piece</Text>
-              <Text style={styles.optionalText}>Optional</Text>
-            </View>
-
-            <Text style={styles.helperTextTop}>
-              Add one MP4 showreel now, or skip it and upload more later from your Profile page.
+          <View style={styles.infoBox}>
+            <Text style={styles.infoBoxTitle}>Showreels and portfolio</Text>
+            <Text style={styles.infoBoxText}>
+              You can add showreels, thumbnails, and more portfolio content once your account is created from your Profile page.
             </Text>
-
-            {!pendingShowreelAsset ? (
-              <TouchableOpacity
-                onPress={pickShowreel}
-                style={styles.showreelPicker}
-                activeOpacity={0.9}
-                disabled={loading}
-              >
-                <Ionicons name="videocam-outline" size={22} color={GOLD} />
-                <Text style={styles.showreelPickerTitle}>Add a showreel piece</Text>
-                <Text style={styles.showreelPickerSub}>MP4 only</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.showreelCard}>
-                <View style={styles.showreelRowTop}>
-                  <View style={styles.showreelIconWrap}>
-                    <Ionicons name="film-outline" size={18} color={GOLD} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.showreelFileName} numberOfLines={1}>
-                      {showreelPreviewLabel || 'Selected showreel'}
-                    </Text>
-                    <Text style={styles.showreelMetaText}>Ready to upload</Text>
-                  </View>
-                  <TouchableOpacity onPress={removeShowreel} activeOpacity={0.8}>
-                    <Ionicons name="close-circle" size={22} color={TEXT_MUTED} />
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.fieldBlockInner}>
-                  <Text style={styles.fieldLabelSmall}>Showreel Title</Text>
-                  <TextInput
-                    placeholder="e.g. Dramatic Showreel"
-                    value={showreelName}
-                    onChangeText={setShowreelName}
-                    style={[styles.inputSmall, searchInputWebFix]}
-                    placeholderTextColor={TEXT_MUTED}
-                  />
-                </View>
-
-                <View style={styles.fieldBlockInner}>
-                  <Text style={styles.fieldLabelSmall}>Category</Text>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={{ gap: 8, paddingRight: 4 }}
-                  >
-                    {SHOWREEL_CATEGORIES.map((cat) => {
-                      const selected = selectedShowreelCategory === cat;
-                      return (
-                        <TouchableOpacity
-                          key={cat}
-                          onPress={() => setSelectedShowreelCategory(cat)}
-                          style={[
-                            styles.categoryChip,
-                            selected && styles.categoryChipSelected,
-                          ]}
-                          activeOpacity={0.9}
-                        >
-                          <Text
-                            style={[
-                              styles.categoryChipText,
-                              selected && styles.categoryChipTextSelected,
-                            ]}
-                          >
-                            {cat}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-
-                <View style={styles.fieldBlockInner}>
-                  <Text style={styles.fieldLabelSmall}>Showreel Thumbnail</Text>
-
-                  {!showreelThumbPreview ? (
-                    <TouchableOpacity
-                      onPress={pickShowreelThumbnail}
-                      style={styles.thumbnailPicker}
-                      activeOpacity={0.9}
-                      disabled={loading}
-                    >
-                      <Ionicons name="image-outline" size={20} color={GOLD} />
-                      <Text style={styles.thumbnailPickerTitle}>Add Thumbnail</Text>
-                      <Text style={styles.thumbnailPickerSub}>Optional cover image</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={styles.thumbnailCard}>
-                      <Image
-                        source={{ uri: addBuster(showreelThumbPreview) || showreelThumbPreview }}
-                        style={styles.thumbnailImage}
-                        resizeMode="cover"
-                      />
-                      <View style={styles.thumbnailActions}>
-                        <TouchableOpacity
-                          onPress={pickShowreelThumbnail}
-                          style={styles.thumbnailActionBtn}
-                          activeOpacity={0.85}
-                        >
-                          <Text style={styles.thumbnailActionText}>Change</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          onPress={() => {
-                            setShowreelThumbAsset(null);
-                            setShowreelThumbPreview(null);
-                          }}
-                          style={styles.thumbnailActionBtnGhost}
-                          activeOpacity={0.85}
-                        >
-                          <Text style={styles.thumbnailActionTextGhost}>Remove</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-                </View>
-
-                {showreelUploading && (
-                  <View style={styles.progressWrap}>
-                    {!!showreelStatus && <Text style={styles.progressLabel}>{showreelStatus}</Text>}
-                    <View style={styles.progressRail}>
-                      <View
-                        style={[styles.progressFill, { width: `${showreelProgress}%` }]}
-                      />
-                    </View>
-                    <Text style={styles.progressPercent}>{showreelProgress}%</Text>
-                  </View>
-                )}
-              </View>
-            )}
           </View>
-
-          <Text style={styles.helperText}>
-            You can build on your profile later — add more details, credits, and media anytime from
-            your Profile page.
-          </Text>
 
           <TouchableOpacity
             onPress={handleSubmit}
@@ -980,10 +501,10 @@ export default function CreateProfileScreen() {
       </ScrollView>
 
       <Modal
-        visible={searchModalVisible}
+        visible={citySearchModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setSearchModalVisible(false)}
+        onRequestClose={() => setCitySearchModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCardFixed}>
@@ -1020,7 +541,7 @@ export default function CreateProfileScreen() {
                       onPress={() => {
                         setCityId(item.value);
                         setCityLabel(item.label);
-                        setSearchModalVisible(false);
+                        setCitySearchModalVisible(false);
                       }}
                       activeOpacity={0.8}
                     >
@@ -1028,14 +549,16 @@ export default function CreateProfileScreen() {
                     </TouchableOpacity>
                   )}
                   ListEmptyComponent={
-                    <Text style={styles.emptyText}>Start typing to search cities.</Text>
+                    <Text style={styles.emptyText}>
+                      No cities found yet. Try a broader search like “Rome” or “Lon”.
+                    </Text>
                   }
                 />
               )}
             </View>
 
             <TouchableOpacity
-              onPress={() => setSearchModalVisible(false)}
+              onPress={() => setCitySearchModalVisible(false)}
               style={styles.closeModalButton}
               activeOpacity={0.8}
             >
@@ -1076,7 +599,7 @@ export default function CreateProfileScreen() {
                 </View>
               ) : (
                 <FlatList
-                  data={roleSearchTerm.trim().length > 0 ? roleDataToShow : roleItems}
+                  data={roleSearchTerm.trim().length > 0 ? roleSearchItems : roleItems}
                   keyExtractor={(item) => item.value.toString()}
                   style={styles.resultsList}
                   keyboardShouldPersistTaps="handled"
@@ -1196,7 +719,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    position: 'relative',
   },
 
   avatarImage: {
@@ -1252,25 +774,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
 
-  fieldBlockInner: {
-    marginTop: 12,
-  },
-
   fieldLabel: {
     color: TEXT_MUTED,
     fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 1.4,
-    marginBottom: 8,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '700',
-  },
-
-  fieldLabelSmall: {
-    color: TEXT_MUTED,
-    fontSize: 10,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
     marginBottom: 8,
     fontFamily: SYSTEM_SANS,
     fontWeight: '700',
@@ -1287,19 +795,6 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     fontFamily: SYSTEM_SANS,
     fontSize: 15,
-  },
-
-  inputSmall: {
-    width: '100%',
-    backgroundColor: '#121212',
-    borderRadius: 14,
-    paddingVertical: 13,
-    paddingHorizontal: 14,
-    color: TEXT_IVORY,
-    borderWidth: 1,
-    borderColor: BORDER,
-    fontFamily: SYSTEM_SANS,
-    fontSize: 14,
   },
 
   selectButton: {
@@ -1323,245 +818,31 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
 
-  optionalHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-
-  optionalText: {
-    color: GOLD,
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '700',
-  },
-
-  helperTextTop: {
-    color: TEXT_MUTED,
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 12,
-    fontFamily: SYSTEM_SANS,
-  },
-
-  showreelPicker: {
-    backgroundColor: CARD_ALT,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: BORDER,
-    paddingVertical: 18,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  showreelPickerTitle: {
-    color: TEXT_IVORY,
-    fontSize: 15,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
-    marginTop: 10,
-  },
-
-  showreelPickerSub: {
-    color: TEXT_MUTED,
-    fontSize: 12,
+  infoBox: {
     marginTop: 4,
-    fontFamily: SYSTEM_SANS,
-  },
-
-  showreelCard: {
-    backgroundColor: CARD_ALT,
+    marginBottom: 18,
+    backgroundColor: ELEVATED,
     borderRadius: 18,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 14,
-  },
-
-  showreelRowTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-
-  showreelIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#121212',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-
-  showreelFileName: {
-    color: TEXT_IVORY,
-    fontSize: 14,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
-  },
-
-  showreelMetaText: {
-    color: TEXT_MUTED,
-    fontSize: 12,
-    marginTop: 2,
-    fontFamily: SYSTEM_SANS,
-  },
-
-  categoryChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: '#111111',
-    borderWidth: 1,
-    borderColor: BORDER,
-  },
-
-  categoryChipSelected: {
-    backgroundColor: 'rgba(198,166,100,0.16)',
-    borderColor: GOLD,
-  },
-
-  categoryChipText: {
-    color: TEXT_MUTED,
-    fontSize: 12,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '700',
-  },
-
-  categoryChipTextSelected: {
-    color: GOLD,
-  },
-
-  thumbnailPicker: {
-    backgroundColor: '#121212',
-    borderRadius: 14,
     borderWidth: 1,
     borderColor: BORDER,
     paddingVertical: 16,
-    paddingHorizontal: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 16,
   },
 
-  thumbnailPickerTitle: {
-    color: TEXT_IVORY,
-    fontSize: 14,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
-    marginTop: 8,
-  },
-
-  thumbnailPickerSub: {
-    color: TEXT_MUTED,
-    fontSize: 12,
-    marginTop: 4,
-    fontFamily: SYSTEM_SANS,
-  },
-
-  thumbnailCard: {
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 14,
-    overflow: 'hidden',
-    backgroundColor: '#121212',
-  },
-
-  thumbnailImage: {
-    width: '100%',
-    height: 160,
-    backgroundColor: '#000',
-  },
-
-  thumbnailActions: {
-    flexDirection: 'row',
-    gap: 10,
-    padding: 12,
-  },
-
-  thumbnailActionBtn: {
-    flex: 1,
-    backgroundColor: 'rgba(198,166,100,0.16)',
-    borderWidth: 1,
-    borderColor: GOLD,
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-
-  thumbnailActionBtnGhost: {
-    flex: 1,
-    backgroundColor: '#111111',
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-
-  thumbnailActionText: {
+  infoBoxTitle: {
     color: GOLD,
     fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 1.3,
     fontFamily: SYSTEM_SANS,
     fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-
-  thumbnailActionTextGhost: {
-    color: TEXT_IVORY,
-    fontSize: 12,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-
-  progressWrap: {
-    marginTop: 14,
-  },
-
-  progressLabel: {
-    color: TEXT_MUTED,
-    fontSize: 12,
     marginBottom: 8,
-    textAlign: 'center',
-    fontFamily: SYSTEM_SANS,
   },
 
-  progressRail: {
-    height: 6,
-    borderRadius: 999,
-    backgroundColor: '#131313',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    overflow: 'hidden',
-  },
-
-  progressFill: {
-    height: '100%',
-    backgroundColor: GOLD,
-  },
-
-  progressPercent: {
-    color: TEXT_MUTED,
-    fontSize: 12,
-    marginTop: 8,
-    textAlign: 'center',
-    fontFamily: SYSTEM_SANS,
-  },
-
-  helperText: {
-    width: '100%',
-    textAlign: 'center',
+  infoBoxText: {
     color: TEXT_MUTED,
     fontSize: 13,
     lineHeight: 19,
-    marginTop: 4,
-    marginBottom: 18,
     fontFamily: SYSTEM_SANS,
   },
 
@@ -1660,6 +941,7 @@ const styles = StyleSheet.create({
     color: TEXT_MUTED,
     fontSize: 13,
     fontFamily: SYSTEM_SANS,
+    lineHeight: 18,
   },
 
   closeModalButton: {
