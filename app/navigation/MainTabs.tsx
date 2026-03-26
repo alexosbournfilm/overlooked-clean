@@ -1525,19 +1525,29 @@ const TABBAR_HEIGHT = isPhone ? 54 : 56;
         </Pressable>
 
         <View
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: 15,
-            backgroundColor: '#151515',
-            borderWidth: 1,
-            borderColor: 'rgba(255,255,255,0.10)',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Ionicons name="settings-outline" size={16} color="#EDEBE6" />
-        </View>
+  style={{
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#151515',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  }}
+>
+  <View
+    style={{
+      alignItems: 'center',
+      justifyContent: 'center',
+      transform: [{ scale: 0.8 }],
+    }}
+    pointerEvents="box-none"
+  >
+    <SettingsButton absolute={false} />
+  </View>
+</View>
       </View>
     </View>
   </View>
