@@ -81,6 +81,26 @@ async function uploadBlobToBucket(opts: {
   return data.publicUrl;
 }
 
+const normalizeText = (text: string) => text.trim().toLowerCase();
+
+const rankMatch = (candidate: string, query: string) => {
+  const c = normalizeText(candidate);
+  const q = normalizeText(query);
+
+  if (!q) return 999;
+
+  if (c === q) return 0;
+  if (c.startsWith(q)) return 1;
+
+  const words = c.split(/\s+/);
+  if (words.includes(q)) return 2;
+  if (words.some((word) => word.startsWith(q))) return 3;
+
+  if (c.includes(q)) return 4;
+
+  return 999;
+};
+
 export default function CreateProfileScreen() {
   const { width } = useWindowDimensions();
   const { profileComplete, refreshProfile } = useAuth();
@@ -156,8 +176,7 @@ export default function CreateProfileScreen() {
         .from('creative_roles')
         .select('id, name')
         .ilike('name', `%${q}%`)
-        .order('name')
-        .limit(50);
+        .limit(100);
 
       if (reqId !== roleSearchReq.current) return;
 
@@ -167,7 +186,21 @@ export default function CreateProfileScreen() {
         return;
       }
 
-      setRoleSearchItems((data || []).map((r) => ({ label: r.name, value: r.id })));
+      const mapped = (data || []).map((r) => ({
+        label: r.name,
+        value: r.id,
+      }));
+
+      const ordered = mapped.sort((a, b) => {
+        const aRank = rankMatch(a.label, q);
+        const bRank = rankMatch(b.label, q);
+
+        if (aRank !== bRank) return aRank - bRank;
+
+        return a.label.localeCompare(b.label);
+      });
+
+      setRoleSearchItems(ordered);
     } catch (e) {
       console.error('Role fetch fatal:', e);
       if (reqId === roleSearchReq.current) setRoleSearchItems([]);
@@ -197,9 +230,9 @@ export default function CreateProfileScreen() {
     try {
       const { data, error } = await supabase
         .from('cities')
-        .select('id, city, name, country_code')
-        .or(`city.ilike.%${q}%,name.ilike.%${q}%`)
-        .limit(80);
+        .select('id, name, country_code')
+        .ilike('name', `%${q}%`)
+        .limit(100);
 
       if (reqId !== citySearchReq.current) return;
 
@@ -209,26 +242,23 @@ export default function CreateProfileScreen() {
         return;
       }
 
-      const mapped = (data || []).map((c: any) => {
-        const cityName = c.city || c.name || '';
-        return {
-          label: `${getFlag(c.country_code)} ${cityName}, ${c.country_code}`,
-          value: c.id,
-          country: c.country_code,
-        };
-      });
+      const mapped = (data || []).map((c: any) => ({
+        label: `${getFlag(c.country_code)} ${c.name}, ${c.country_code}`,
+        value: c.id,
+        country: c.country_code,
+        rawName: c.name,
+      }));
 
-      const ordered = mapped.sort((a, b) => {
-        const aName = a.label.toLowerCase();
-        const bName = b.label.toLowerCase();
-        const ql = q.toLowerCase();
+      const ordered = mapped
+        .sort((a: any, b: any) => {
+          const aRank = rankMatch(a.rawName, q);
+          const bRank = rankMatch(b.rawName, q);
 
-        const aScore = aName.includes(ql) ? 0 : 1;
-        const bScore = bName.includes(ql) ? 0 : 1;
+          if (aRank !== bRank) return aRank - bRank;
 
-        if (aScore !== bScore) return aScore - bScore;
-        return aName.localeCompare(bName);
-      });
+          return a.rawName.localeCompare(b.rawName);
+        })
+        .map(({ rawName, ...rest }: any) => rest);
 
       setCityItems(ordered);
     } catch (e) {
