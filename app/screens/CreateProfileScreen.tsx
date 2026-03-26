@@ -11,10 +11,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Modal,
   FlatList,
   Image,
   useWindowDimensions,
+  Animated,
 } from 'react-native';
 
 const Toast = Platform.OS === 'android' ? require('react-native').ToastAndroid : null;
@@ -52,6 +52,8 @@ type DropdownOption = {
   country?: string;
 };
 
+type Step = 1 | 2 | 3 | 4 | 5;
+
 const showToast = (msg: string) => {
   if (Platform.OS === 'android' && Toast) {
     Toast.show(msg, Toast.SHORT);
@@ -88,14 +90,12 @@ const rankMatch = (candidate: string, query: string) => {
   const q = normalizeText(query);
 
   if (!q) return 999;
-
   if (c === q) return 0;
   if (c.startsWith(q)) return 1;
 
   const words = c.split(/\s+/);
   if (words.includes(q)) return 2;
   if (words.some((word) => word.startsWith(q))) return 3;
-
   if (c.includes(q)) return 4;
 
   return 999;
@@ -110,6 +110,12 @@ export default function CreateProfileScreen() {
 
   const roleSearchReq = useRef(0);
   const citySearchReq = useRef(0);
+
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const translateAnim = useRef(new Animated.Value(0)).current;
+
+  const [currentStep, setCurrentStep] = useState<Step>(1);
+  const [isTransitioning, setIsTransitioning] = useState(false);
 
   const [fullName, setFullName] = useState('');
 
@@ -126,13 +132,11 @@ export default function CreateProfileScreen() {
   const [cityId, setCityId] = useState<number | null>(null);
   const [cityLabel, setCityLabel] = useState<string | null>(null);
 
-  const [roleSearchModalVisible, setRoleSearchModalVisible] = useState(false);
   const [roleSearchTerm, setRoleSearchTerm] = useState('');
   const [roleItems, setRoleItems] = useState<DropdownOption[]>([]);
   const [roleSearchItems, setRoleSearchItems] = useState<DropdownOption[]>([]);
   const [isSearchingRoles, setIsSearchingRoles] = useState(false);
 
-  const [citySearchModalVisible, setCitySearchModalVisible] = useState(false);
   const [citySearchTerm, setCitySearchTerm] = useState('');
   const [cityItems, setCityItems] = useState<DropdownOption[]>([]);
   const [isSearchingCities, setIsSearchingCities] = useState(false);
@@ -158,6 +162,46 @@ export default function CreateProfileScreen() {
       setRoleItems(data.map((r) => ({ label: r.name, value: r.id })));
     }
   };
+
+  const transitionToStep = useCallback(
+    (nextStep: Step) => {
+      if (isTransitioning || nextStep === currentStep) return;
+
+      setIsTransitioning(true);
+
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateAnim, {
+          toValue: -10,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setCurrentStep(nextStep);
+        translateAnim.setValue(18);
+
+        Animated.parallel([
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 240,
+            useNativeDriver: true,
+          }),
+          Animated.timing(translateAnim, {
+            toValue: 0,
+            duration: 240,
+            useNativeDriver: true,
+          }),
+        ]).start(() => {
+          setIsTransitioning(false);
+        });
+      });
+    },
+    [currentStep, fadeAnim, translateAnim, isTransitioning]
+  );
 
   const fetchSearchRoles = useCallback(async (text: string) => {
     const q = text.trim();
@@ -196,7 +240,6 @@ export default function CreateProfileScreen() {
         const bRank = rankMatch(b.label, q);
 
         if (aRank !== bRank) return aRank - bRank;
-
         return a.label.localeCompare(b.label);
       });
 
@@ -255,7 +298,6 @@ export default function CreateProfileScreen() {
           const bRank = rankMatch(b.rawName, q);
 
           if (aRank !== bRank) return aRank - bRank;
-
           return a.rawName.localeCompare(b.rawName);
         })
         .map(({ rawName, ...rest }: any) => rest);
@@ -314,6 +356,7 @@ export default function CreateProfileScreen() {
 
       setImage(croppedUri);
       setImageUrl(publicUrl);
+      transitionToStep(5);
     } catch (err: any) {
       Alert.alert('Upload Error', err?.message ?? 'Could not upload image.');
     } finally {
@@ -393,8 +436,6 @@ export default function CreateProfileScreen() {
     }
   };
 
-  const loading = saving || uploadingImage;
-
   const searchInputWebFix =
     Platform.OS === 'web'
       ? ({
@@ -404,6 +445,383 @@ export default function CreateProfileScreen() {
           borderColor: BORDER,
         } as any)
       : null;
+
+  const loading = saving || uploadingImage;
+  const roleData = roleSearchTerm.trim().length > 0 ? roleSearchItems : roleItems;
+  const canContinueName = fullName.trim().length >= 2;
+
+  const renderProgress = () => {
+    const steps = [
+      { key: 1, label: 'Role' },
+      { key: 2, label: 'Location' },
+      { key: 3, label: 'Name' },
+      { key: 4, label: 'Photo' },
+      { key: 5, label: 'Confirm' },
+    ];
+
+    return (
+      <View style={styles.progressWrap}>
+        <Text style={styles.progressText}>Step {currentStep} of 5</Text>
+        <View style={styles.progressRow}>
+          {steps.map((step) => {
+            const active = currentStep >= step.key;
+            const current = currentStep === step.key;
+
+            return (
+              <View key={step.key} style={styles.progressItem}>
+                <View
+                  style={[
+                    styles.progressDot,
+                    active && styles.progressDotActive,
+                    current && styles.progressDotCurrent,
+                  ]}
+                />
+                <Text style={[styles.progressLabel, active && styles.progressLabelActive]}>
+                  {step.label}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
+  const renderBackButton = (toStep: Step) => (
+    <TouchableOpacity
+      onPress={() => transitionToStep(toStep)}
+      style={styles.backButton}
+      activeOpacity={0.85}
+      disabled={isTransitioning}
+    >
+      <Ionicons name="chevron-back" size={16} color={TEXT_MUTED} />
+      <Text style={styles.backButtonText}>Back</Text>
+    </TouchableOpacity>
+  );
+
+  const renderRoleStep = () => (
+    <View style={[styles.stepCard, !isMobile && styles.stepCardDesktop]}>
+      {renderProgress()}
+      <Text style={styles.stepTitle}>Select your main role</Text>
+      <Text style={styles.stepSubtitle}>
+        Start by choosing the role that best represents how you create.
+      </Text>
+
+      <TextInput
+        placeholder="Search for your role..."
+        placeholderTextColor={TEXT_MUTED}
+        value={roleSearchTerm}
+        onChangeText={(text) => {
+          setRoleSearchTerm(text);
+          fetchSearchRoles(text);
+        }}
+        style={[styles.searchInput, searchInputWebFix]}
+        autoFocus
+        autoCorrect={false}
+        autoCapitalize="none"
+      />
+
+      <View style={styles.stepResultsArea}>
+        {isSearchingRoles ? (
+          <View style={styles.modalLoadingWrap}>
+            <ActivityIndicator color={GOLD} />
+          </View>
+        ) : (
+          <FlatList
+            data={roleData}
+            keyExtractor={(item) => item.value.toString()}
+            style={styles.resultsList}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.listItem}
+                onPress={() => {
+                  setMainRole(item.value);
+                  setMainRoleLabel(item.label);
+                  setRoleSearchTerm(item.label);
+                  transitionToStep(2);
+                }}
+                activeOpacity={0.82}
+              >
+                <Text style={styles.listItemText}>{item.label}</Text>
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>
+                Start typing to find your role. Exact and closest matches will appear first.
+              </Text>
+            }
+          />
+        )}
+      </View>
+    </View>
+  );
+
+  const renderCityStep = () => (
+    <View style={[styles.stepCard, !isMobile && styles.stepCardDesktop]}>
+      {renderBackButton(1)}
+      {renderProgress()}
+      <Text style={styles.stepTitle}>Choose your location</Text>
+      <Text style={styles.stepSubtitle}>
+        Search for your city and select the best match from the list.
+      </Text>
+
+      <TextInput
+        placeholder="Start typing your city..."
+        placeholderTextColor={TEXT_MUTED}
+        value={citySearchTerm}
+        onChangeText={(text) => {
+          setCitySearchTerm(text);
+          fetchCities(text);
+        }}
+        style={[styles.searchInput, searchInputWebFix]}
+        autoFocus
+        autoCorrect={false}
+        autoCapitalize="words"
+      />
+
+      <View style={styles.stepResultsArea}>
+        {isSearchingCities ? (
+          <View style={styles.modalLoadingWrap}>
+            <ActivityIndicator color={GOLD} />
+          </View>
+        ) : (
+          <FlatList
+            data={cityItems}
+            keyExtractor={(item) => item.value.toString()}
+            style={styles.resultsList}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.listItem}
+                onPress={() => {
+                  setCityId(item.value);
+                  setCityLabel(item.label);
+                  setCitySearchTerm(item.label);
+                  transitionToStep(3);
+                }}
+                activeOpacity={0.82}
+              >
+                <Text style={styles.listItemText}>{item.label}</Text>
+              </TouchableOpacity>
+            )}
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>
+                Search for a city like “Rome”, “Paris”, or “Lon”.
+              </Text>
+            }
+          />
+        )}
+      </View>
+    </View>
+  );
+
+  const renderNameStep = () => (
+    <View style={[styles.stepCardSmall, !isMobile && styles.stepCardSmallDesktop]}>
+      {renderBackButton(2)}
+      {renderProgress()}
+      <Text style={styles.stepTitle}>What should people call you?</Text>
+      <Text style={styles.stepSubtitle}>
+        Enter the name you want shown on your profile.
+      </Text>
+
+      <TextInput
+        placeholder="Your full name"
+        placeholderTextColor={TEXT_MUTED}
+        value={fullName}
+        onChangeText={setFullName}
+        style={[styles.searchInput, searchInputWebFix]}
+        autoFocus
+      />
+
+      <TouchableOpacity
+        onPress={() => {
+          if (!canContinueName) {
+            Alert.alert('Name required', 'Please enter your full name before continuing.');
+            return;
+          }
+          transitionToStep(4);
+        }}
+        style={[styles.continueButton, !canContinueName && styles.continueButtonDisabled]}
+        activeOpacity={0.9}
+      >
+        <Text style={styles.continueButtonText}>Continue</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderImageStep = () => (
+    <View style={[styles.stepCardSmall, !isMobile && styles.stepCardSmallDesktop]}>
+      {renderBackButton(3)}
+      {renderProgress()}
+      <Text style={styles.stepTitle}>Add your profile image</Text>
+      <Text style={styles.stepSubtitle}>
+        A clear profile image helps you make a stronger first impression.
+      </Text>
+
+      <View style={styles.heroAvatarWrap}>
+        <TouchableOpacity
+          onPress={pickImage}
+          activeOpacity={0.9}
+          style={styles.avatarButton}
+          disabled={uploadingImage || saving}
+        >
+          {image ? (
+            <Image source={{ uri: image }} style={styles.avatarImage} resizeMode="cover" />
+          ) : (
+            <View style={styles.avatarFallback}>
+              <Ionicons name="camera-outline" size={28} color={GOLD} />
+              <Text style={styles.avatarFallbackText}>Add Profile Image</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={pickImage}
+          style={styles.avatarChangeBtn}
+          activeOpacity={0.85}
+          disabled={uploadingImage || saving}
+        >
+          {uploadingImage ? (
+            <ActivityIndicator color="#000" size="small" />
+          ) : (
+            <Text style={styles.avatarChangeBtnText}>
+              {image ? 'Change Profile Image' : 'Upload Profile Image'}
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        <Text style={styles.requiredLabel}>Required</Text>
+      </View>
+
+      <TouchableOpacity
+        onPress={() => {
+          if (!imageUrl) {
+            Alert.alert('Profile image required', 'Please upload a profile image before continuing.');
+            return;
+          }
+          transitionToStep(5);
+        }}
+        style={[styles.continueButton, !imageUrl && styles.continueButtonDisabled]}
+        activeOpacity={0.9}
+        disabled={uploadingImage}
+      >
+        {uploadingImage ? (
+          <ActivityIndicator color="#000" />
+        ) : (
+          <Text style={styles.continueButtonText}>Continue</Text>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderReviewStep = () => (
+    <ScrollView
+      contentContainerStyle={styles.reviewScrollContent}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={[styles.card, !isMobile && styles.cardDesktop]}>
+        {renderBackButton(4)}
+        {renderProgress()}
+
+        <Text style={styles.eyebrow}>Join Overlooked</Text>
+        <Text style={styles.title}>Create Your Profile</Text>
+        <Text style={styles.subtitle}>
+          Review your details below, then confirm to enter Overlooked.
+        </Text>
+
+        <View style={styles.heroAvatarWrap}>
+          <TouchableOpacity
+            onPress={() => transitionToStep(4)}
+            activeOpacity={0.9}
+            style={styles.avatarButton}
+            disabled={uploadingImage || saving}
+          >
+            {image ? (
+              <Image source={{ uri: image }} style={styles.avatarImage} resizeMode="cover" />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Ionicons name="camera-outline" size={28} color={GOLD} />
+                <Text style={styles.avatarFallbackText}>Add Profile Image</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => transitionToStep(4)}
+            style={styles.avatarChangeBtn}
+            activeOpacity={0.85}
+            disabled={uploadingImage || saving}
+          >
+            <Text style={styles.avatarChangeBtnText}>
+              {image ? 'Edit Profile Image' : 'Upload Profile Image'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.fieldBlock}>
+          <Text style={styles.fieldLabel}>Name</Text>
+          <TouchableOpacity style={styles.selectButton} onPress={() => transitionToStep(3)} activeOpacity={0.9}>
+            <Text style={styles.selectButtonText}>{fullName || 'Enter your name'}</Text>
+            <Ionicons name="create-outline" size={16} color={TEXT_MUTED} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.fieldBlock}>
+          <Text style={styles.fieldLabel}>Main Role</Text>
+          <TouchableOpacity style={styles.selectButton} onPress={() => transitionToStep(1)} activeOpacity={0.9}>
+            <Text style={styles.selectButtonText}>{mainRoleLabel ?? 'Select your role'}</Text>
+            <Ionicons name="search" size={16} color={TEXT_MUTED} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.fieldBlock}>
+          <Text style={styles.fieldLabel}>City</Text>
+          <TouchableOpacity style={styles.selectButton} onPress={() => transitionToStep(2)} activeOpacity={0.9}>
+            <Text style={styles.selectButtonText}>{cityLabel ?? 'Select your city'}</Text>
+            <Ionicons name="location-outline" size={16} color={TEXT_MUTED} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.infoBox}>
+          <Text style={styles.infoBoxTitle}>Showreels and portfolio</Text>
+          <Text style={styles.infoBoxText}>
+            You can add showreels, thumbnails, and more portfolio content once your account is created from your Profile page.
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          onPress={handleSubmit}
+          style={[styles.submitButton, loading && { opacity: 0.6 }]}
+          disabled={loading}
+          activeOpacity={0.9}
+        >
+          {loading ? (
+            <ActivityIndicator color="#000" />
+          ) : (
+            <Text style={styles.submitText}>Confirm</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  );
+
+  const renderCurrentStep = () => {
+    switch (currentStep) {
+      case 1:
+        return renderRoleStep();
+      case 2:
+        return renderCityStep();
+      case 3:
+        return renderNameStep();
+      case 4:
+        return renderImageStep();
+      case 5:
+      default:
+        return renderReviewStep();
+    }
+  };
 
   return (
     <KeyboardAvoidingView
@@ -415,254 +833,19 @@ export default function CreateProfileScreen() {
         style={StyleSheet.absoluteFillObject}
       />
 
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <View style={[styles.card, !isMobile && styles.cardDesktop]}>
-          <Text style={styles.eyebrow}>Join Overlooked</Text>
-          <Text style={styles.title}>Create Your Profile</Text>
-          <Text style={styles.subtitle}>
-            Make a strong first impression. Add your image, choose your role, and start building
-            your creative presence.
-          </Text>
-
-          <View style={styles.heroAvatarWrap}>
-            <TouchableOpacity
-              onPress={pickImage}
-              activeOpacity={0.9}
-              style={styles.avatarButton}
-              disabled={uploadingImage || saving}
-            >
-              {image ? (
-                <Image source={{ uri: image }} style={styles.avatarImage} resizeMode="cover" />
-              ) : (
-                <View style={styles.avatarFallback}>
-                  <Ionicons name="camera-outline" size={28} color={GOLD} />
-                  <Text style={styles.avatarFallbackText}>Add Profile Image</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={pickImage}
-              style={styles.avatarChangeBtn}
-              activeOpacity={0.85}
-              disabled={uploadingImage || saving}
-            >
-              {uploadingImage ? (
-                <ActivityIndicator color="#000" size="small" />
-              ) : (
-                <Text style={styles.avatarChangeBtnText}>
-                  {image ? 'Change Profile Image' : 'Upload Profile Image'}
-                </Text>
-              )}
-            </TouchableOpacity>
-
-            <Text style={styles.requiredLabel}>Required</Text>
-          </View>
-
-          <View style={styles.fieldBlock}>
-            <Text style={styles.fieldLabel}>Name</Text>
-            <TextInput
-              placeholder="Your full name"
-              value={fullName}
-              onChangeText={setFullName}
-              style={[styles.input, searchInputWebFix]}
-              placeholderTextColor={TEXT_MUTED}
-            />
-          </View>
-
-          <View style={styles.fieldBlock}>
-            <Text style={styles.fieldLabel}>Main Role</Text>
-            <TouchableOpacity
-              style={styles.selectButton}
-              onPress={() => {
-                setRoleSearchModalVisible(true);
-                setRoleSearchTerm('');
-                setRoleSearchItems([]);
-                setIsSearchingRoles(false);
-              }}
-              activeOpacity={0.9}
-            >
-              <Text style={styles.selectButtonText}>
-                {mainRoleLabel ?? 'Search your main creative role'}
-              </Text>
-              <Ionicons name="search" size={16} color={TEXT_MUTED} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.fieldBlock}>
-            <Text style={styles.fieldLabel}>City</Text>
-            <TouchableOpacity
-              style={styles.selectButton}
-              onPress={() => {
-                setCitySearchModalVisible(true);
-                setCitySearchTerm('');
-                setCityItems([]);
-                setIsSearchingCities(false);
-              }}
-              activeOpacity={0.9}
-            >
-              <Text style={styles.selectButtonText}>
-                {cityLabel ?? 'Search for your city'}
-              </Text>
-              <Ionicons name="location-outline" size={16} color={TEXT_MUTED} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.infoBox}>
-            <Text style={styles.infoBoxTitle}>Showreels and portfolio</Text>
-            <Text style={styles.infoBoxText}>
-              You can add showreels, thumbnails, and more portfolio content once your account is created from your Profile page.
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            onPress={handleSubmit}
-            style={[styles.submitButton, loading && { opacity: 0.6 }]}
-            disabled={loading}
-            activeOpacity={0.9}
-          >
-            {loading ? (
-              <ActivityIndicator color="#000" />
-            ) : (
-              <Text style={styles.submitText}>Finish</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-
-      <Modal
-        visible={citySearchModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setCitySearchModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCardFixed}>
-            <Text style={styles.modalTitle}>Select City</Text>
-
-            <TextInput
-              placeholder="Start typing your city..."
-              placeholderTextColor={TEXT_MUTED}
-              value={citySearchTerm}
-              onChangeText={(text) => {
-                setCitySearchTerm(text);
-                fetchCities(text);
-              }}
-              style={[styles.searchInput, searchInputWebFix]}
-              autoFocus
-              autoCorrect={false}
-              autoCapitalize="none"
-            />
-
-            <View style={styles.modalResultsArea}>
-              {isSearchingCities ? (
-                <View style={styles.modalLoadingWrap}>
-                  <ActivityIndicator color={GOLD} />
-                </View>
-              ) : (
-                <FlatList
-                  data={cityItems}
-                  keyExtractor={(item) => item.value.toString()}
-                  style={styles.resultsList}
-                  keyboardShouldPersistTaps="handled"
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={styles.listItem}
-                      onPress={() => {
-                        setCityId(item.value);
-                        setCityLabel(item.label);
-                        setCitySearchModalVisible(false);
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.listItemText}>{item.label}</Text>
-                    </TouchableOpacity>
-                  )}
-                  ListEmptyComponent={
-                    <Text style={styles.emptyText}>
-                      No cities found yet. Try a broader search like “Rome” or “Lon”.
-                    </Text>
-                  }
-                />
-              )}
-            </View>
-
-            <TouchableOpacity
-              onPress={() => setCitySearchModalVisible(false)}
-              style={styles.closeModalButton}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.closeModalText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={roleSearchModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setRoleSearchModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCardFixed}>
-            <Text style={styles.modalTitle}>Select Main Role</Text>
-
-            <TextInput
-              placeholder="Start typing a role..."
-              placeholderTextColor={TEXT_MUTED}
-              value={roleSearchTerm}
-              onChangeText={(text) => {
-                setRoleSearchTerm(text);
-                fetchSearchRoles(text);
-              }}
-              style={[styles.searchInput, searchInputWebFix]}
-              autoFocus
-              autoCorrect={false}
-              autoCapitalize="none"
-            />
-
-            <View style={styles.modalResultsArea}>
-              {isSearchingRoles ? (
-                <View style={styles.modalLoadingWrap}>
-                  <ActivityIndicator color={GOLD} />
-                </View>
-              ) : (
-                <FlatList
-                  data={roleSearchTerm.trim().length > 0 ? roleSearchItems : roleItems}
-                  keyExtractor={(item) => item.value.toString()}
-                  style={styles.resultsList}
-                  keyboardShouldPersistTaps="handled"
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={styles.listItem}
-                      onPress={() => {
-                        setMainRole(item.value);
-                        setMainRoleLabel(item.label);
-                        setRoleSearchModalVisible(false);
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.listItemText}>{item.label}</Text>
-                    </TouchableOpacity>
-                  )}
-                  ListEmptyComponent={
-                    <Text style={styles.emptyText}>Start typing to search roles.</Text>
-                  }
-                />
-              )}
-            </View>
-
-            <TouchableOpacity
-              onPress={() => setRoleSearchModalVisible(false)}
-              style={styles.closeModalButton}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.closeModalText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <View style={styles.screen}>
+        <Animated.View
+          style={[
+            styles.animatedWrap,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: translateAnim }],
+            },
+          ]}
+        >
+          {renderCurrentStep()}
+        </Animated.View>
+      </View>
 
       <AvatarCropper
         visible={cropperOpen}
@@ -682,12 +865,125 @@ export default function CreateProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    padding: 18,
+  screen: {
+    flex: 1,
+    paddingHorizontal: 18,
+    paddingVertical: 22,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: DARK_BG,
+  },
+
+  animatedWrap: {
+    width: '100%',
+    maxWidth: 620,
+    alignSelf: 'center',
+  },
+
+  reviewScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+
+  progressWrap: {
+    marginBottom: 18,
+  },
+
+  progressText: {
+    color: TEXT_MUTED,
+    fontSize: 12,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
+    marginBottom: 12,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+
+  progressItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+
+  progressDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginBottom: 8,
+  },
+
+  progressDotActive: {
+    backgroundColor: 'rgba(198,166,100,0.45)',
+  },
+
+  progressDotCurrent: {
+    backgroundColor: GOLD,
+    transform: [{ scale: 1.15 }],
+  },
+
+  progressLabel: {
+    color: TEXT_MUTED,
+    fontSize: 10,
+    fontFamily: SYSTEM_SANS,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+
+  progressLabelActive: {
+    color: TEXT_IVORY,
+  },
+
+  backButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingVertical: 6,
+    paddingRight: 10,
+  },
+
+  backButtonText: {
+    color: TEXT_MUTED,
+    fontSize: 13,
+    fontFamily: SYSTEM_SANS,
+    marginLeft: 2,
+  },
+
+  stepCard: {
+    width: '100%',
+    height: 560,
+    backgroundColor: CARD,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: BORDER_SOFT,
+    padding: 22,
+    justifyContent: 'flex-start',
+  },
+
+  stepCardDesktop: {
+    padding: 28,
+    height: 610,
+  },
+
+  stepCardSmall: {
+    width: '100%',
+    backgroundColor: CARD,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: BORDER_SOFT,
+    padding: 22,
+  },
+
+  stepCardSmallDesktop: {
+    padding: 28,
   },
 
   card: {
@@ -726,6 +1022,25 @@ const styles = StyleSheet.create({
   },
 
   subtitle: {
+    color: TEXT_MUTED,
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+    marginBottom: 22,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  stepTitle: {
+    fontSize: 30,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    marginBottom: 10,
+    letterSpacing: 0.3,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  stepSubtitle: {
     color: TEXT_MUTED,
     fontSize: 14,
     lineHeight: 21,
@@ -814,17 +1129,77 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  input: {
-    width: '100%',
+  searchInput: {
     backgroundColor: ELEVATED,
     borderRadius: 16,
-    paddingVertical: 15,
-    paddingHorizontal: 16,
-    color: TEXT_IVORY,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     borderWidth: 1,
     borderColor: BORDER,
+    color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
     fontSize: 15,
+  },
+
+  stepResultsArea: {
+    flex: 1,
+    minHeight: 0,
+    marginTop: 12,
+    backgroundColor: 'transparent',
+  },
+
+  modalLoadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  resultsList: {
+    width: '100%',
+    flex: 1,
+  },
+
+  listItem: {
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderColor: BORDER_SOFT,
+  },
+
+  listItemText: {
+    fontSize: 15,
+    color: TEXT_IVORY,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  emptyText: {
+    marginTop: 24,
+    textAlign: 'center',
+    color: TEXT_MUTED,
+    fontSize: 13,
+    fontFamily: SYSTEM_SANS,
+    lineHeight: 18,
+  },
+
+  continueButton: {
+    marginTop: 16,
+    backgroundColor: GOLD,
+    width: '100%',
+    paddingVertical: 15,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+
+  continueButtonDisabled: {
+    opacity: 0.55,
+  },
+
+  continueButtonText: {
+    color: '#000',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 16,
+    letterSpacing: 0.3,
   },
 
   selectButton: {
@@ -891,105 +1266,5 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontSize: 16,
     letterSpacing: 0.4,
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: '#000000CC',
-    justifyContent: 'center',
-    padding: 18,
-  },
-
-  modalCardFixed: {
-    width: '100%',
-    maxWidth: 620,
-    height: 460,
-    alignSelf: 'center',
-    backgroundColor: CARD,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 18,
-  },
-
-  modalTitle: {
-    fontSize: 19,
-    fontWeight: '900',
-    color: TEXT_IVORY,
-    marginBottom: 14,
-    textAlign: 'center',
-    letterSpacing: 0.8,
-    fontFamily: SYSTEM_SANS,
-    textTransform: 'uppercase',
-  },
-
-  searchInput: {
-    backgroundColor: ELEVATED,
-    borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderColor: BORDER,
-    color: TEXT_IVORY,
-    fontFamily: SYSTEM_SANS,
-    fontSize: 15,
-  },
-
-  modalResultsArea: {
-    flex: 1,
-    minHeight: 0,
-    marginTop: 10,
-  },
-
-  modalLoadingWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  resultsList: {
-    width: '100%',
-    flex: 1,
-  },
-
-  listItem: {
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderColor: BORDER_SOFT,
-  },
-
-  listItemText: {
-    fontSize: 15,
-    color: TEXT_IVORY,
-    textAlign: 'center',
-    fontFamily: SYSTEM_SANS,
-  },
-
-  emptyText: {
-    marginTop: 24,
-    textAlign: 'center',
-    color: TEXT_MUTED,
-    fontSize: 13,
-    fontFamily: SYSTEM_SANS,
-    lineHeight: 18,
-  },
-
-  closeModalButton: {
-    marginTop: 16,
-    paddingVertical: 13,
-    borderRadius: 14,
-    backgroundColor: ELEVATED,
-    borderWidth: 1,
-    borderColor: BORDER,
-    alignItems: 'center',
-  },
-
-  closeModalText: {
-    fontSize: 14,
-    color: TEXT_MUTED,
-    fontWeight: '700',
-    fontFamily: SYSTEM_SANS,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
   },
 });
