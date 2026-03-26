@@ -1107,6 +1107,7 @@ const [sideRoleSearchFocused, setSideRoleSearchFocused] = useState(false);
   const [supportingCount, setSupportingCount] = useState(0); // people YOU support
   const [isSupporting, setIsSupporting] = useState(false);   // whether YOU support THIS profile
   const [connectionsModalVisible, setConnectionsModalVisible] = useState(false);
+  const [connectionsTab, setConnectionsTab] = useState<"supporters" | "supporting">("supporters");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const [imageViewerIndex, setImageViewerIndex] = useState<number | null>(null);
@@ -3314,13 +3315,7 @@ const renderMobileBannerActions = () => {
                   }
                 }
               }}
-              style={[
-                styles.mobileBannerGhostBtn,
-                isSupporting && {
-                  backgroundColor: "rgba(198,166,100,0.14)",
-                  borderColor: "rgba(198,166,100,0.30)",
-                },
-              ]}
+              style={styles.mobileBannerGhostBtn}
             >
               <Text style={styles.mobileBannerGhostBtnText}>
                 {isSupporting ? "Supporting" : "Support"}
@@ -3617,7 +3612,10 @@ const heroMaxW = "100%";
                       }}
                     >
                       <TouchableOpacity
-                        onPress={() => setConnectionsModalVisible(true)}
+                        onPress={() => {
+  setConnectionsTab("supporters");
+  setConnectionsModalVisible(true);
+}}
                         style={{ alignItems: "center", minWidth: 92, paddingVertical: 4 }}
                         activeOpacity={0.85}
                       >
@@ -3644,7 +3642,10 @@ const heroMaxW = "100%";
                       </TouchableOpacity>
 
                       <TouchableOpacity
-                        onPress={() => setConnectionsModalVisible(true)}
+                        onPress={() => {
+  setConnectionsTab("supporting");
+  setConnectionsModalVisible(true);
+}}
                         style={{ alignItems: "center", minWidth: 92, paddingVertical: 4 }}
                         activeOpacity={0.85}
                       >
@@ -3735,10 +3736,13 @@ const heroMaxW = "100%";
                     }}
                   >
                     <TouchableOpacity
-                      onPress={() => setConnectionsModalVisible(true)}
-                      style={{ alignItems: "center", minWidth: 92, paddingVertical: 4 }}
-                      activeOpacity={0.85}
-                    >
+  onPress={() => {
+    setConnectionsTab("supporters");
+    setConnectionsModalVisible(true);
+  }}
+  style={{ alignItems: "center", minWidth: 92, paddingVertical: 4 }}
+  activeOpacity={0.85}
+>
                       <Text
                         style={{
                           color: COLORS.textPrimary,
@@ -3762,10 +3766,13 @@ const heroMaxW = "100%";
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                      onPress={() => setConnectionsModalVisible(true)}
-                      style={{ alignItems: "center", minWidth: 92, paddingVertical: 4 }}
-                      activeOpacity={0.85}
-                    >
+  onPress={() => {
+    setConnectionsTab("supporting");
+    setConnectionsModalVisible(true);
+  }}
+  style={{ alignItems: "center", minWidth: 92, paddingVertical: 4 }}
+  activeOpacity={0.85}
+>
                       <Text
                         style={{
                           color: COLORS.textPrimary,
@@ -5487,19 +5494,15 @@ return (
 
     {/* Supporters / Supporting Modal */}
     <ConnectionsModal
-      visible={connectionsModalVisible}
-      onClose={() => setConnectionsModalVisible(false)}
-      userId={(viewedUserId || currentUserId) ?? ""}
-      profileOwnerName={
-        viewedUserId && viewedUserId !== currentUserId
-          ? profile?.full_name || "This user"
-          : "You"
-      }
-      onSelectUser={(id) => {
-        setConnectionsModalVisible(false);
-        navigation.navigate("Profile", { userId: id });
-      }}
-    />
+  visible={connectionsModalVisible}
+  onClose={() => setConnectionsModalVisible(false)}
+  userId={profile?.id ?? ""}
+  profileOwnerName={isOwnProfile ? "You" : profile?.full_name || "This user"}
+  onSelectUser={(id) => {
+    setConnectionsModalVisible(false);
+    navigation.navigate("Profile", { userId: id });
+  }}
+/>
   </>
 );
 } // ✅ CLOSE THE COMPONENT HERE
@@ -5543,14 +5546,15 @@ const styles = StyleSheet.create({
   heroGradient: { ...StyleSheet.absoluteFillObject },
 
     mobileBannerActions: {
-    position: "absolute",
-    right: 12,
-    bottom: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    zIndex: 20,
-  },
+  position: "absolute",
+  right: 12,
+  bottom: 12,
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 8,
+  zIndex: 50,
+  elevation: 50,
+},
   mobileBannerPrimaryBtn: {
   backgroundColor: "transparent",
   borderWidth: 0,
@@ -5558,6 +5562,7 @@ const styles = StyleSheet.create({
   paddingHorizontal: 0,
   alignItems: "center",
   justifyContent: "center",
+  borderRadius: 0,
 },
   mobileBannerPrimaryBtnText: {
   color: COLORS.textPrimary,
@@ -5574,6 +5579,7 @@ const styles = StyleSheet.create({
   paddingHorizontal: 0,
   alignItems: "center",
   justifyContent: "center",
+  borderRadius: 0,
 },
   mobileBannerGhostBtnText: {
   color: COLORS.textPrimary,
@@ -5913,13 +5919,13 @@ utilitySingleLinkBtnMobile: {
 },
 
 utilitySingleLinkBtnTextMobile: {
-  color: COLORS.textSecondary,
-  fontWeight: "600",
+  color: COLORS.primary,
+  fontWeight: "700",
   letterSpacing: 0.4,
   fontFamily: FONT_OBLIVION,
   fontSize: 9,
   textTransform: "uppercase",
-  opacity: 0.9,
+  opacity: 0.95,
 },
 utilityBareMiniBtn: {
   backgroundColor: "transparent",

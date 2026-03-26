@@ -14,6 +14,7 @@ import {
   Alert,
   Image,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,8 +38,6 @@ const SYSTEM_SANS = Platform.select({
   web: undefined,
   default: undefined,
 });
-
-const TOP_BAR_OFFSET = Platform.OS === 'web' ? 24 : 12;
 
 const WEB_NO_OUTLINE =
   Platform.OS === 'web'
@@ -106,22 +105,22 @@ type LocatedJobLite = {
   id: string;
   title?: string | null;
   is_closed?: boolean | null;
-  creative_roles?: JoinedRole; // creative_roles(name)
+  creative_roles?: JoinedRole;
 };
 
 type JobDetail = {
   id: string;
   description: string | null;
-  type: string | null; // 'Paid' | 'Free'
+  type: string | null;
   currency: string | null;
   amount: string | number | null;
   rate: string | null;
   time: string | null;
   created_at: string;
   is_closed?: boolean | null;
-  creative_roles?: JoinedRole; // creative_roles(name)
-  cities?: JoinedCity; // cities(name, country_code)
-  users?: JoinedUser; // users(id, full_name)
+  creative_roles?: JoinedRole;
+  cities?: JoinedCity;
+  users?: JoinedUser;
 };
 
 /* -------------------------------------------
@@ -139,7 +138,6 @@ const getFlag = (countryCode: string) =>
     .toUpperCase()
     .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
 
-/* ✅ Same level ring logic as Chats */
 const getLevelRingColor = (level?: number | null): string => {
   if (!level || level < 25) return '#FFFFFF';
   if (level < 50) return '#C0C0C0';
@@ -242,6 +240,8 @@ const IconText: React.FC<{
 );
 
 export default function LocationScreen() {
+  const insets = useSafeAreaInsets();
+
   const [city, setCity] = useState<DropdownOption | null>(null);
   const [cityItems, setCityItems] = useState<DropdownOption[]>([]);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
@@ -263,7 +263,6 @@ export default function LocationScreen() {
 
   const navigation = useNavigation<any>();
 
-  // race-condition fix
   const cityReqIdRef = useRef(0);
   const latestCityTermRef = useRef('');
 
@@ -562,311 +561,348 @@ export default function LocationScreen() {
   }, [selectedJob]);
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: DARK_BG }}
-      contentContainerStyle={[styles.container, { paddingTop: TOP_BAR_OFFSET }]}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-      showsVerticalScrollIndicator={false}
-    >
-      {/* ChatGPT-home style center block */}
-      <View style={styles.hero}>
-        <Text style={styles.heroTitle}>What’s your city?</Text>
-        <Text style={styles.heroSub}>
-          Search your city to find creatives, jobs, and join the local group chat.
-        </Text>
-
-        <TouchableOpacity
-          style={styles.cityPill}
-          onPress={() => setSearchModalVisible(true)}
-          activeOpacity={0.92}
-        >
-          <Ionicons name="search-outline" size={18} color={city ? GOLD : TEXT_MUTED} />
-          <Text style={[styles.cityPillText, city && styles.cityPillTextSelected]} numberOfLines={1}>
-            {city ? city.label : 'Type a city… (e.g. Rome, IT)'}
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={[styles.container, { paddingTop: insets.top > 0 ? 6 : 12 }]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.hero}>
+          <Text style={styles.heroTitle}>What’s your city?</Text>
+          <Text style={styles.heroSub}>
+            Search your city to find creatives, jobs, and join the local group chat.
           </Text>
-        </TouchableOpacity>
 
-        {city ? (
-          <TouchableOpacity style={styles.primaryPillBtn} onPress={handleSearch} activeOpacity={0.92}>
-            {searching ? (
-              <ActivityIndicator color={DARK_BG} />
-            ) : (
-              <Text style={styles.primaryPillBtnText}>Search</Text>
-            )}
-          </TouchableOpacity>
-        ) : null}
-      </View>
-
-      {searched && (
-        <View style={styles.resultsSection}>
-          <View style={styles.tabsRow}>
-            {(['creatives', 'jobs'] as const).map((tab) => {
-              const active = activeTab === tab;
-              const count = tab === 'creatives' ? users.length : jobs.length;
-              return (
-                <TouchableOpacity
-                  key={tab}
-                  style={[styles.tabBtn, active && styles.tabBtnActive]}
-                  onPress={() => setActiveTab(tab)}
-                  activeOpacity={0.92}
-                >
-                  <Text style={[styles.tabText, active && styles.tabTextActive]}>
-                    {tab === 'creatives' ? 'Creatives' : 'Jobs'}
-                    {typeof count === 'number' ? ` (${count})` : ''}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>
-              {activeTab === 'creatives' ? 'Creatives' : 'Jobs'} in {city?.label}
+          <TouchableOpacity
+            style={styles.cityPill}
+            onPress={() => setSearchModalVisible(true)}
+            activeOpacity={0.92}
+          >
+            <Ionicons name="search-outline" size={18} color={city ? GOLD : TEXT_MUTED} />
+            <Text style={[styles.cityPillText, city && styles.cityPillTextSelected]} numberOfLines={1}>
+              {city ? city.label : 'Type a city… (e.g. Rome, IT)'}
             </Text>
+          </TouchableOpacity>
 
-            {activeTab === 'creatives' ? (
-              users.length === 0 ? (
-                <Text style={styles.emptyText}>No creatives here yet.</Text>
+          {city ? (
+            <TouchableOpacity style={styles.primaryPillBtn} onPress={handleSearch} activeOpacity={0.92}>
+              {searching ? (
+                <ActivityIndicator color={DARK_BG} />
               ) : (
-                users.map((user) => {
-                  const avatarUri = user.avatar_url || null;
-                  const ringColor = getLevelRingColor(user.level);
+                <Text style={styles.primaryPillBtnText}>Search</Text>
+              )}
+            </TouchableOpacity>
+          ) : null}
+        </View>
 
+        {searched && (
+          <View style={styles.resultsSection}>
+            <View style={styles.tabsRow}>
+              {(['creatives', 'jobs'] as const).map((tab) => {
+                const active = activeTab === tab;
+                const count = tab === 'creatives' ? users.length : jobs.length;
+                return (
+                  <TouchableOpacity
+                    key={tab}
+                    style={[styles.tabBtn, active && styles.tabBtnActive]}
+                    onPress={() => setActiveTab(tab)}
+                    activeOpacity={0.92}
+                  >
+                    <Text style={[styles.tabText, active && styles.tabTextActive]}>
+                      {tab === 'creatives' ? 'Creatives' : 'Jobs'}
+                      {typeof count === 'number' ? ` (${count})` : ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>
+                {activeTab === 'creatives' ? 'Creatives' : 'Jobs'} in {city?.label}
+              </Text>
+
+              {activeTab === 'creatives' ? (
+                users.length === 0 ? (
+                  <Text style={styles.emptyText}>No creatives here yet.</Text>
+                ) : (
+                  users.map((user) => {
+                    const avatarUri = user.avatar_url || null;
+                    const ringColor = getLevelRingColor(user.level);
+
+                    return (
+                      <TouchableOpacity
+                        key={user.id}
+                        onPress={() => goToProfile(user)}
+                        activeOpacity={0.85}
+                        style={styles.row}
+                      >
+                        <View style={[styles.avatarRing, { borderColor: ringColor }]}>
+                          {avatarUri ? (
+                            <Image source={{ uri: avatarUri }} style={styles.avatar} />
+                          ) : (
+                            <View style={[styles.avatar, styles.fallbackAvatar]}>
+                              <Ionicons name="person-outline" size={18} color={TEXT_MUTED} />
+                            </View>
+                          )}
+                        </View>
+
+                        <Text style={styles.rowPrimary} numberOfLines={1}>
+                          {user.full_name}
+                        </Text>
+
+                        <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
+                      </TouchableOpacity>
+                    );
+                  })
+                )
+              ) : jobs.length === 0 ? (
+                <Text style={styles.emptyText}>No jobs in this city yet.</Text>
+              ) : (
+                jobs.map((job) => {
+                  const roleName = getRoleFromJoin(job.creative_roles)?.name;
                   return (
                     <TouchableOpacity
-                      key={user.id}
-                      onPress={() => goToProfile(user)}
+                      key={job.id}
+                      onPress={() => onPressJob(job)}
                       activeOpacity={0.85}
                       style={styles.row}
                     >
-                      <View style={[styles.avatarRing, { borderColor: ringColor }]}>
-                        {avatarUri ? (
-                          <Image source={{ uri: avatarUri }} style={styles.avatar} />
-                        ) : (
-                          <View style={[styles.avatar, styles.fallbackAvatar]}>
-                            <Ionicons name="person-outline" size={18} color={TEXT_MUTED} />
-                          </View>
-                        )}
-                      </View>
-
+                      <Ionicons
+                        name="briefcase-outline"
+                        size={18}
+                        color={TEXT_MUTED}
+                        style={{ marginRight: 10 }}
+                      />
                       <Text style={styles.rowPrimary} numberOfLines={1}>
-                        {user.full_name}
+                        {roleName || job.title || 'Job'}
                       </Text>
-
                       <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
                     </TouchableOpacity>
                   );
                 })
-              )
-            ) : jobs.length === 0 ? (
-              <Text style={styles.emptyText}>No jobs in this city yet.</Text>
-            ) : (
-              jobs.map((job) => {
-                const roleName = getRoleFromJoin(job.creative_roles)?.name;
-                return (
-                  <TouchableOpacity
-                    key={job.id}
-                    onPress={() => onPressJob(job)}
-                    activeOpacity={0.85}
-                    style={styles.row}
-                  >
-                    <Ionicons name="briefcase-outline" size={18} color={TEXT_MUTED} style={{ marginRight: 10 }} />
-                    <Text style={styles.rowPrimary} numberOfLines={1}>
-                      {roleName || job.title || 'Job'}
-                    </Text>
-                    <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
-                  </TouchableOpacity>
-                );
-              })
-            )}
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={styles.joinPillBtn}
+              onPress={joinCityChat}
+              disabled={joining}
+              activeOpacity={0.92}
+            >
+              {joining ? (
+                <ActivityIndicator color={TEXT_IVORY} />
+              ) : (
+                <Text style={styles.joinPillBtnText}>Join City Group Chat</Text>
+              )}
+            </TouchableOpacity>
           </View>
+        )}
 
-          <TouchableOpacity style={styles.joinPillBtn} onPress={joinCityChat} disabled={joining} activeOpacity={0.92}>
-            {joining ? (
-              <ActivityIndicator color={TEXT_IVORY} />
-            ) : (
-              <Text style={styles.joinPillBtnText}>Join City Group Chat</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      )}
+        <Modal
+          visible={searchModalVisible}
+          animationType={IS_WEB ? 'none' : 'slide'}
+          onRequestClose={() => setSearchModalVisible(false)}
+        >
+          <SafeAreaView style={styles.modalSafeArea} edges={['top']}>
+            <View style={styles.modalContainer}>
+              <Text style={styles.modalTitle}>Search your city</Text>
 
-      {/* City Search Modal */}
-      <Modal
-        visible={searchModalVisible}
-        animationType={IS_WEB ? 'none' : 'slide'}
-        onRequestClose={() => setSearchModalVisible(false)}
-      >
-        <View style={styles.modalContainer}>
-          <Text style={styles.modalTitle}>Search your city</Text>
+              <TextInput
+                placeholder="Start typing..."
+                placeholderTextColor={TEXT_MUTED}
+                value={citySearchTerm}
+                onChangeText={(text) => {
+                  setCitySearchTerm(text);
+                  void fetchCities(text);
+                }}
+                style={[styles.searchInput, WEB_NO_OUTLINE]}
+                autoFocus
+              />
 
-          <TextInput
-            placeholder="Start typing..."
-            placeholderTextColor={TEXT_MUTED}
-            value={citySearchTerm}
-            onChangeText={(text) => {
-              setCitySearchTerm(text);
-              void fetchCities(text);
-            }}
-            style={[styles.searchInput, WEB_NO_OUTLINE]}
-            autoFocus
-          />
+              {isSearchingCities ? (
+                <ActivityIndicator style={{ marginTop: 20 }} color={GOLD} />
+              ) : (
+                <FlatList
+                  data={cityItems}
+                  keyExtractor={(item) => item.value.toString()}
+                  keyboardShouldPersistTaps="handled"
+                  renderItem={({ item, index }) => {
+                    const selected = city?.value === item.value;
+                    return (
+                      <TouchableOpacity
+                        style={[styles.cityItem, selected && styles.cityItemSelected]}
+                        onPress={() => {
+                          setCity(item);
+                          setSearchModalVisible(false);
+                        }}
+                        activeOpacity={0.9}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                          {selected ? (
+                            <Ionicons name="checkmark-outline" size={16} color={GOLD} />
+                          ) : null}
+                          <Text style={[styles.cityItemText, selected && { color: GOLD }]}>
+                            {item.label}
+                          </Text>
+                        </View>
 
-          {isSearchingCities ? (
-            <ActivityIndicator style={{ marginTop: 20 }} color={GOLD} />
-          ) : (
-            <FlatList
-              data={cityItems}
-              keyExtractor={(item) => item.value.toString()}
-              keyboardShouldPersistTaps="handled"
-              renderItem={({ item, index }) => {
-                const selected = city?.value === item.value;
-                return (
-                  <TouchableOpacity
-                    style={[styles.cityItem, selected && styles.cityItemSelected]}
-                    onPress={() => {
-                      setCity(item);
-                      setSearchModalVisible(false);
-                    }}
-                    activeOpacity={0.9}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-                      {selected ? <Ionicons name="checkmark-outline" size={16} color={GOLD} /> : null}
-                      <Text style={[styles.cityItemText, selected && { color: GOLD }]}>{item.label}</Text>
-                    </View>
+                        {index === 0 && effectiveCityQuery.cityQuery.length >= 3 ? (
+                          <View style={styles.bestMatchPill}>
+                            <Text style={styles.bestMatchText}>BEST MATCH</Text>
+                          </View>
+                        ) : null}
+                      </TouchableOpacity>
+                    );
+                  }}
+                />
+              )}
 
-                    {index === 0 && effectiveCityQuery.cityQuery.length >= 3 ? (
-                      <View style={styles.bestMatchPill}>
-                        <Text style={styles.bestMatchText}>BEST MATCH</Text>
-                      </View>
-                    ) : null}
-                  </TouchableOpacity>
-                );
-              }}
-            />
-          )}
+              <TouchableOpacity
+                onPress={() => setSearchModalVisible(false)}
+                style={styles.closeModalButton}
+                activeOpacity={0.92}
+              >
+                <Text style={styles.closeModalText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
+        </Modal>
 
-          <TouchableOpacity
-            onPress={() => setSearchModalVisible(false)}
-            style={styles.closeModalButton}
-            activeOpacity={0.92}
-          >
-            <Text style={styles.closeModalText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
-
-      {/* Job Details / Apply Modal */}
-      <Modal
-        visible={jobDetailModalOpen}
-        animationType={IS_WEB ? 'none' : 'slide'}
-        transparent
-        onRequestClose={() => {
-          setJobDetailModalOpen(false);
-          setSelectedJob(null);
-        }}
-      >
-        <View style={styles.dimOverlay}>
-          <View style={styles.jobModalCard}>
-            {loadingSelectedJob ? (
-              <View style={{ paddingVertical: 20 }}>
-                <ActivityIndicator size="large" color={GOLD} />
-              </View>
-            ) : selectedJob ? (
-              <>
-                <Text style={styles.jobTitleBig}>{getRoleFromJoin(selectedJob.creative_roles)?.name ?? 'Job'}</Text>
-
-                {selectedJob.is_closed ? (
-                  <View style={{ marginTop: 6 }}>
-                    <IconText name="alert-circle-outline" text="This job is closed." bold />
-                  </View>
-                ) : null}
-
-                {selectedJob.description ? <Text style={styles.jobBody}>{selectedJob.description}</Text> : null}
-
-                <View style={{ marginTop: 8 }}>
-                  <IconText
-                    name="location-outline"
-                    text={`${getCityFromJoin(selectedJob.cities)?.name ?? 'Unknown'}${
-                      getCityFromJoin(selectedJob.cities)?.country_code
-                        ? `, ${getCityFromJoin(selectedJob.cities)?.country_code}`
-                        : ''
-                    }`}
-                  />
-
-                  <View style={styles.iconTextRow}>
-                    <Ionicons name="person-outline" size={16} color={TEXT_MUTED} style={{ marginRight: 8 }} />
-                    <TouchableOpacity
-                      onPress={() => {
-                        const poster = getUserFromJoin(selectedJob.users);
-                        if (poster?.id) {
-                          // @ts-ignore
-                          navigation.navigate('Profile', {
-                            user: { id: poster.id, full_name: poster.full_name || 'Profile' },
-                          });
-                        }
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.link}>{getUserFromJoin(selectedJob.users)?.full_name || 'View Profile'}</Text>
-                    </TouchableOpacity>
-                  </View>
+        <Modal
+          visible={jobDetailModalOpen}
+          animationType={IS_WEB ? 'none' : 'slide'}
+          transparent
+          onRequestClose={() => {
+            setJobDetailModalOpen(false);
+            setSelectedJob(null);
+          }}
+        >
+          <View style={styles.dimOverlay}>
+            <View style={styles.jobModalCard}>
+              {loadingSelectedJob ? (
+                <View style={{ paddingVertical: 20 }}>
+                  <ActivityIndicator size="large" color={GOLD} />
                 </View>
+              ) : selectedJob ? (
+                <>
+                  <Text style={styles.jobTitleBig}>
+                    {getRoleFromJoin(selectedJob.creative_roles)?.name ?? 'Job'}
+                  </Text>
 
-                <View style={{ marginTop: 6 }}>
-                  {selectedJob.type === 'Paid' ? (
+                  {selectedJob.is_closed ? (
+                    <View style={{ marginTop: 6 }}>
+                      <IconText name="alert-circle-outline" text="This job is closed." bold />
+                    </View>
+                  ) : null}
+
+                  {selectedJob.description ? (
+                    <Text style={styles.jobBody}>{selectedJob.description}</Text>
+                  ) : null}
+
+                  <View style={{ marginTop: 8 }}>
                     <IconText
-                      name="cash-outline"
-                      bold
-                      text={`${selectedJob.currency ?? ''}${selectedJob.amount ?? ''}${
-                        selectedJob.rate ? ` / ${selectedJob.rate}` : ''
+                      name="location-outline"
+                      text={`${getCityFromJoin(selectedJob.cities)?.name ?? 'Unknown'}${
+                        getCityFromJoin(selectedJob.cities)?.country_code
+                          ? `, ${getCityFromJoin(selectedJob.cities)?.country_code}`
+                          : ''
                       }`}
                     />
-                  ) : (
-                    <IconText name="people-outline" bold text="Free / Collab" />
-                  )}
 
-                  {selectedJob.time ? <IconText name="time-outline" text={selectedJob.time} /> : null}
-                </View>
+                    <View style={styles.iconTextRow}>
+                      <Ionicons
+                        name="person-outline"
+                        size={16}
+                        color={TEXT_MUTED}
+                        style={{ marginRight: 8 }}
+                      />
+                      <TouchableOpacity
+                        onPress={() => {
+                          const poster = getUserFromJoin(selectedJob.users);
+                          if (poster?.id) {
+                            navigation.navigate('Profile', {
+                              user: { id: poster.id, full_name: poster.full_name || 'Profile' },
+                            });
+                          }
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.link}>
+                          {getUserFromJoin(selectedJob.users)?.full_name || 'View Profile'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
 
-                <View style={styles.applyBox}>
+                  <View style={{ marginTop: 6 }}>
+                    {selectedJob.type === 'Paid' ? (
+                      <IconText
+                        name="cash-outline"
+                        bold
+                        text={`${selectedJob.currency ?? ''}${selectedJob.amount ?? ''}${
+                          selectedJob.rate ? ` / ${selectedJob.rate}` : ''
+                        }`}
+                      />
+                    ) : (
+                      <IconText name="people-outline" bold text="Free / Collab" />
+                    )}
+
+                    {selectedJob.time ? <IconText name="time-outline" text={selectedJob.time} /> : null}
+                  </View>
+
+                  <View style={styles.applyBox}>
+                    <TouchableOpacity
+                      style={[styles.primaryBtn, (applyLoading || selectedJob.is_closed) && { opacity: 0.6 }]}
+                      onPress={applyToSelectedJob}
+                      disabled={applyLoading || !!selectedJob.is_closed}
+                      activeOpacity={0.9}
+                    >
+                      {applyLoading ? (
+                        <ActivityIndicator color={TEXT_IVORY} />
+                      ) : (
+                        <Text style={styles.primaryBtnText}>
+                          {selectedJob.is_closed ? 'Closed' : 'Apply'}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
                   <TouchableOpacity
-                    style={[styles.primaryBtn, (applyLoading || selectedJob.is_closed) && { opacity: 0.6 }]}
-                    onPress={applyToSelectedJob}
-                    disabled={applyLoading || !!selectedJob.is_closed}
+                    onPress={() => {
+                      setJobDetailModalOpen(false);
+                      setSelectedJob(null);
+                    }}
+                    style={styles.ghostBtn}
                     activeOpacity={0.9}
                   >
-                    {applyLoading ? (
-                      <ActivityIndicator color={TEXT_IVORY} />
-                    ) : (
-                      <Text style={styles.primaryBtnText}>{selectedJob.is_closed ? 'Closed' : 'Apply'}</Text>
-                    )}
+                    <Text style={styles.ghostBtnText}>Close</Text>
                   </TouchableOpacity>
-                </View>
-
-                <TouchableOpacity
-                  onPress={() => {
-                    setJobDetailModalOpen(false);
-                    setSelectedJob(null);
-                  }}
-                  style={styles.ghostBtn}
-                  activeOpacity={0.9}
-                >
-                  <Text style={styles.ghostBtnText}>Close</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <Text style={styles.emptyText}>Couldn’t load this job.</Text>
-            )}
+                </>
+              ) : (
+                <Text style={styles.emptyText}>Couldn’t load this job.</Text>
+              )}
+            </View>
           </View>
-        </View>
-      </Modal>
-    </ScrollView>
+        </Modal>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: DARK_BG,
+  },
+
+  screen: {
+    flex: 1,
+    backgroundColor: DARK_BG,
+  },
+
   container: {
     backgroundColor: DARK_BG,
     padding: 16,
@@ -1066,12 +1102,16 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  /* Modal */
+  modalSafeArea: {
+    flex: 1,
+    backgroundColor: DARK_BG,
+  },
+
   modalContainer: {
     flex: 1,
     backgroundColor: DARK_BG,
     padding: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingTop: 20,
   },
   modalTitle: {
     fontSize: 12,
@@ -1150,7 +1190,6 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  /* Job modal */
   dimOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.66)',

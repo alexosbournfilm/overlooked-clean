@@ -3,11 +3,11 @@
 import React, { useEffect, useState, useCallback } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   Image,
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -36,7 +36,8 @@ type ConnectionsModalProps = {
   visible: boolean;
   onClose: () => void;
   userId: string;
-  profileOwnerName: string;       // NEW
+  profileOwnerName: string;
+  initialTab?: "supporters" | "supporting";
   onSelectUser?: (id: string) => void;
 };
 
@@ -45,10 +46,11 @@ export const ConnectionsModal: React.FC<ConnectionsModalProps> = ({
   onClose,
   userId,
   profileOwnerName,
+  initialTab = "supporters",
   onSelectUser,
 }) => {
   const [activeTab, setActiveTab] =
-    useState<"supporters" | "supporting">("supporters");
+  useState<"supporters" | "supporting">(initialTab);
 
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<any[]>([]);
@@ -106,8 +108,14 @@ export const ConnectionsModal: React.FC<ConnectionsModalProps> = ({
   }, [visible, activeTab, userId]);
 
   useEffect(() => {
-    if (visible) load();
-  }, [visible, activeTab]);
+  if (visible) {
+    setActiveTab(initialTab);
+  }
+}, [visible, initialTab]);
+
+useEffect(() => {
+  if (visible) load();
+}, [visible, activeTab, userId, load]);
 
   /* ------------------------------------------------------
      RENDER ENTRY ROW
@@ -216,19 +224,26 @@ export const ConnectionsModal: React.FC<ConnectionsModalProps> = ({
           </View>
 
           {/* List */}
-          <View style={{ flex: 1 }}>
-            {loading ? (
-              <View style={styles.loadingWrap}>
-                <ActivityIndicator color={GOLD} />
-              </View>
-            ) : entries.length === 0 ? (
-              <View style={styles.emptyWrap}>
-                <Text style={styles.emptyText}>{emptyMsg}</Text>
-              </View>
-            ) : (
-              <ScrollView>{entries.map(renderRow)}</ScrollView>
-            )}
-          </View>
+<View style={styles.listWrap}>
+  {loading ? (
+    <View style={styles.loadingWrap}>
+      <ActivityIndicator color={GOLD} />
+    </View>
+  ) : entries.length === 0 ? (
+    <View style={styles.emptyWrap}>
+      <Text style={styles.emptyText}>{emptyMsg}</Text>
+    </View>
+  ) : (
+    <FlatList
+      data={entries}
+      keyExtractor={(item) => item.id}
+      renderItem={({ item }) => renderRow(item)}
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.listContent}
+      style={styles.list}
+    />
+  )}
+</View>
         </View>
       </View>
     </Modal>
@@ -245,13 +260,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   card: {
-    maxHeight: "82%",
-    borderRadius: 18,
-    backgroundColor: DARK_BG,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: DIVIDER,
-  },
+  width: "100%",
+  maxHeight: "82%",
+  minHeight: 320,
+  borderRadius: 18,
+  backgroundColor: DARK_BG,
+  padding: 14,
+  borderWidth: 1,
+  borderColor: DIVIDER,
+},
   header: {
     paddingVertical: 6,
     alignItems: "center",
@@ -276,6 +293,16 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 10,
   },
+  listWrap: {
+  flex: 1,
+  minHeight: 220,
+},
+list: {
+  flex: 1,
+},
+listContent: {
+  paddingBottom: 12,
+},
   tab: {
     paddingVertical: 6,
     paddingHorizontal: 12,
