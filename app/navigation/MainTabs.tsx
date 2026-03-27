@@ -289,7 +289,7 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
               <Text
                 style={[
                   styles.streakBarLeft,
-                  compactUI && { fontSize: 7.5, letterSpacing: 0.8 },
+                  compactUI && { fontSize: 6.8, letterSpacing: 0.7 },
                   compactText && { fontSize: 7.5, letterSpacing: 0.8 },
                 ]}
               >
@@ -1034,7 +1034,7 @@ const settingsSize =
             </View>
           )}
 
-          <View style={[styles.rightTools, { gap: isPhone ? 8 : 10 }]}>
+          <View style={[styles.rightTools, { gap: isPhone ? 6 : 10 }]}>
             <HoverPress onPress={onOpenUpload} hitSlop={6} accessibilityLabel="Upload film">
               <View
   style={[
@@ -1125,7 +1125,7 @@ const settingsSize =
         justifyContent: 'center',
       }}
     >
-      <Ionicons name="settings-outline" size={16} color={TEXT_IVORY} />
+      <Ionicons name="settings-outline" size={isPhone ? 14 : 16} color={TEXT_IVORY} />
     </View>
 
     <View
@@ -1255,7 +1255,7 @@ const WebTopBar = memo(function WebTopBar({
         right: 0,
         zIndex: 9999,
         backgroundColor: DARK_BG,
-        paddingTop: 6,
+        paddingTop: 10,
       }}
     >
       <View
@@ -1269,7 +1269,7 @@ const WebTopBar = memo(function WebTopBar({
       >
         <View
           style={{
-            minHeight: 46,
+            minHeight: 38,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -1278,9 +1278,9 @@ const WebTopBar = memo(function WebTopBar({
           <Text
             style={{
               color: TEXT_IVORY,
-              fontSize: isPhone ? 15 : 18,
+              fontSize: isPhone ? 12.5 : 18,
               fontWeight: '900',
-              letterSpacing: isPhone ? 1.6 : 2.2,
+              letterSpacing: isPhone ? 1.4 : 2.2, 
             }}
           >
             OVERLOOKED
@@ -1297,28 +1297,28 @@ const WebTopBar = memo(function WebTopBar({
             </View>
           )}
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: isPhone ? 8 : 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: isPhone ? 6 : 10}}>
             <Pressable
               onPress={onOpenUpload}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 6,
-                paddingVertical: 6,
-                paddingHorizontal: isPhone ? 10 : 12,
+                paddingVertical: 5,
+paddingHorizontal: isPhone ? 8 : 12,
                 borderRadius: 999,
                 backgroundColor: 'rgba(198,166,100,0.10)',
                 borderWidth: 1,
                 borderColor: 'rgba(198,166,100,0.30)',
               }}
             >
-              <Ionicons name="cloud-upload-outline" size={16} color={GOLD} />
+              <Ionicons name="cloud-upload-outline" size={isPhone ? 14 : 16}color={GOLD} />
               <Text
                 style={{
                   color: GOLD,
-                  fontSize: isPhone ? 8 : 9,
+                  fontSize: isPhone ? 7.2 : 9,
                   fontWeight: '900',
-                  letterSpacing: 1.05,
+                  letterSpacing: isPhone ? 0.9 : 1.05,
                 }}
               >
                 UPLOAD FILM
@@ -1331,21 +1331,21 @@ const WebTopBar = memo(function WebTopBar({
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 6,
-                paddingVertical: 6,
-                paddingHorizontal: isPhone ? 10 : 12,
+                paddingVertical: 5,
+paddingHorizontal: isPhone ? 8 : 12,
                 borderRadius: 999,
                 backgroundColor: 'rgba(198,166,100,0.10)',
                 borderWidth: 1,
                 borderColor: 'rgba(198,166,100,0.30)',
               }}
             >
-              <Ionicons name="trophy-outline" size={16} color={GOLD} />
+              <Ionicons name="trophy-outline" size={isPhone ? 14 : 16}color={GOLD} />
               <Text
                 style={{
                   color: GOLD,
-                  fontSize: isPhone ? 8 : 9,
+                  fontSize: isPhone ? 7.2 : 9,
                   fontWeight: '900',
-                  letterSpacing: 1.05,
+                  letterSpacing: isPhone ? 0.9 : 1.05,
                 }}
               >
                 LEADERBOARD
@@ -1354,9 +1354,9 @@ const WebTopBar = memo(function WebTopBar({
 
             <View
               style={{
-                width: 30,
-                height: 30,
-                borderRadius: 15,
+                width: isPhone ? 28 : 30,
+height: isPhone ? 28 : 30,
+borderRadius: isPhone ? 14 : 15,
                 backgroundColor: '#151515',
                 borderWidth: 1,
                 borderColor: 'rgba(255,255,255,0.10)',
@@ -1380,9 +1380,9 @@ const WebTopBar = memo(function WebTopBar({
         </View>
 
         {!isWide && (
-          <View style={{ paddingTop: 4 }}>
-            <TopBarStreakProgress variant="wide" compactUI barHeight={24} />
-          </View>
+          <View style={{ paddingTop: 6 }}>
+  <TopBarStreakProgress variant="wide" compactUI barHeight={20} />
+</View>
         )}
       </View>
     </View>
