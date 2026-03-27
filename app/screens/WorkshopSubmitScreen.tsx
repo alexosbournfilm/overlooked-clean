@@ -14,6 +14,7 @@ import {
   Pressable,
   useWindowDimensions,
   Image,
+  Share,
 } from "react-native";
 import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
 import { supabase, giveXp } from "../lib/supabase";
@@ -239,8 +240,8 @@ async function uploadThumbnailToStorage(opts: {
 
   if (Platform.OS !== "web" && thumbUri.startsWith("file://")) {
     const base64 = await FileSystem.readAsStringAsync(thumbUri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
+  encoding: "base64" as any,
+});
     const bytes = Buffer.from(base64, "base64");
     blob = new Blob([bytes], { type: "image/jpeg" });
   } else {
@@ -1240,29 +1241,43 @@ export default function WorkshopSubmitScreen() {
 
       const media_kind = mediaKindFromMime(contentType);
 
-      await insertSubmissionRobust(
-        {
-          user_id: user.id,
-          title: title.trim(),
-          description: description.trim(),
-          submitted_at: new Date().toISOString(),
-          word: null,
-          monthly_challenge_id: challengeToUse.id,
-          storage_path: path,
-          video_path: path,
-          mime_type: contentType,
-          media_kind,
-          duration_seconds: durationSec ?? null,
-          category: "film",
-          film_category: selectedTags[0] ?? null,
-          thumbnail_url: thumbRes.publicUrl,
-          source: isWorkshopMode ? "workshop" : "monthly_upload",
-          workshop_path: isWorkshopMode ? pathKey ?? null : null,
-          workshop_step: isWorkshopMode ? step ?? null : null,
-          workshop_lesson_title: isWorkshopMode ? lessonTitle ?? null : null,
-        },
-        ["user_id", "title", "submitted_at"]
-      );
+      const submissionInsert = await insertSubmissionRobust(
+  {
+    user_id: user.id,
+    title: title.trim(),
+    description: description.trim(),
+    submitted_at: new Date().toISOString(),
+    word: null,
+    monthly_challenge_id: challengeToUse.id,
+    storage_path: path,
+    video_path: path,
+    mime_type: contentType,
+    media_kind,
+    duration_seconds: durationSec ?? null,
+    category: "film",
+    film_category: selectedTags[0] ?? null,
+    thumbnail_url: thumbRes.publicUrl,
+    source: isWorkshopMode ? "workshop" : "monthly_upload",
+    workshop_path: isWorkshopMode ? pathKey ?? null : null,
+    workshop_step: isWorkshopMode ? step ?? null : null,
+    workshop_lesson_title: isWorkshopMode ? lessonTitle ?? null : null,
+  },
+  ["user_id", "title", "submitted_at"]
+);
+
+const createdSubmission = submissionInsert?.data?.[0];
+if (!createdSubmission?.id) {
+  throw new Error("Submission created, but no submission ID was returned.");
+}
+
+const shareSlug = await ensureSubmissionShareSlug({
+  id: createdSubmission.id,
+  title: createdSubmission.title ?? title.trim(),
+  share_slug: createdSubmission.share_slug ?? null,
+});
+
+const sharedFilmUrl = buildSharedFilmUrl(shareSlug);
+console.log("Shared film URL:", sharedFilmUrl);
 
       if (isWorkshopMode && pathKey && typeof step === "number") {
         setStatus("Marking lesson complete…");
@@ -1304,20 +1319,70 @@ export default function WorkshopSubmitScreen() {
 
       setStatus("Submitted! 🎉");
 
-      Alert.alert(
-        isWorkshopMode ? "Workshop submitted!" : "Film uploaded!",
-        isWorkshopMode
-          ? "Your film has been uploaded, added to Featured, entered into this month’s challenge, and your workshop lesson is now complete."
-          : "Your film has been uploaded, added to Featured, and entered into this month’s challenge.",
-        [
-          {
-            text: "OK",
-            onPress: () => {
-              navigation.goBack();
-            },
-          },
-        ]
-      );
+const successTitle = isWorkshopMode ? "Workshop submitted!" : "Film uploaded!";
+const successMessage = isWorkshopMode
+  ? "Your film has been uploaded, added to Featured, entered into this month’s challenge, and your workshop lesson is now complete."
+  : "Your film has been uploaded, added to Featured, and entered into this month’s challenge.";
+
+if (Platform.OS === "web") {
+  const shouldShare =
+    typeof window !== "undefined" &&
+    window.confirm(
+      `${successMessage}\n\nPress OK to share your film link now, or Cancel to continue.`
+    );
+
+  if (shouldShare) {
+    try {
+      await shareFilmLink({
+        title: createdSubmission.title ?? title.trim(),
+        shareSlug,
+      });
+    } catch (shareErr: any) {
+      console.warn("Share failed:", shareErr?.message || shareErr);
+    }
+  }
+
+  navigation.goBack();
+} else {
+  Alert.alert(successTitle, successMessage, [
+    {
+      text: "Share Story",
+      onPress: async () => {
+        try {
+          await shareFilmStoryPlaceholder({
+            title: createdSubmission.title ?? title.trim(),
+            shareSlug,
+          });
+        } catch (shareErr: any) {
+          console.warn("Story share failed:", shareErr?.message || shareErr);
+        } finally {
+          navigation.goBack();
+        }
+      },
+    },
+    {
+      text: "Share Link",
+      onPress: async () => {
+        try {
+          await shareFilmLink({
+            title: createdSubmission.title ?? title.trim(),
+            shareSlug,
+          });
+        } catch (shareErr: any) {
+          console.warn("Share failed:", shareErr?.message || shareErr);
+        } finally {
+          navigation.goBack();
+        }
+      },
+    },
+    {
+      text: "Done",
+      onPress: () => {
+        navigation.goBack();
+      },
+    },
+  ]);
+}
     } catch (e: any) {
       console.warn("Workshop/monthly submit failed:", e?.message ?? e);
       notify("Submission failed", e?.message ?? "Please try again.", setStatus);
@@ -1946,6 +2011,69 @@ export default function WorkshopSubmitScreen() {
       />
     </View>
   );
+}
+function slugifyFilmTitle(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+}
+
+function buildSharedFilmUrl(shareSlug: string) {
+  return `https://overlooked.cloud/f/${shareSlug}`;
+}
+
+async function ensureSubmissionShareSlug(submission: {
+  id: string;
+  title?: string | null;
+  share_slug?: string | null;
+}) {
+  if (submission.share_slug) return submission.share_slug;
+
+  const base = slugifyFilmTitle(submission.title || "film");
+  const slug = `${base || "film"}-${String(submission.id).slice(0, 6)}`;
+
+  const { error } = await supabase
+    .from("submissions")
+    .update({ share_slug: slug })
+    .eq("id", submission.id);
+
+  if (error) throw error;
+
+  return slug;
+}
+
+async function shareFilmLink(opts: {
+  title?: string | null;
+  shareSlug: string;
+}) {
+  const url = buildSharedFilmUrl(opts.shareSlug);
+  const message = `${opts.title || "My film"}\n\nWatch on Overlooked:\n${url}`;
+
+  await Share.share({
+    message,
+    url,
+    title: opts.title || "Watch on Overlooked",
+  });
+
+  return url;
+}
+
+async function shareFilmStoryPlaceholder(opts: {
+  title?: string | null;
+  shareSlug: string;
+}) {
+  const url = buildSharedFilmUrl(opts.shareSlug);
+
+  await Share.share({
+    message: `${opts.title || "My film"}\n\nOpen this film in Overlooked:\n${url}`,
+    url,
+    title: opts.title || "Share to Story",
+  });
+
+  return url;
 }
 /* -------------------------------- styles -------------------------------- */
 const styles = StyleSheet.create({

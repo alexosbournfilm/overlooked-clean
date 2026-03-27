@@ -17,6 +17,9 @@ export const linking: LinkingOptions<any> = {
       NewPassword: "reset-password",
       PublicProfile: "creative/:slug",
 
+      // ✅ NEW SHARED FILM LINK
+      SharedFilm: "f/:shareSlug",
+
       // AUTH STACK
       Auth: {
         screens: {

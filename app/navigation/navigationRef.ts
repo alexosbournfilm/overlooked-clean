@@ -47,7 +47,10 @@ export type RootStackParamList = {
     | { userId?: string }
     | undefined;
 
-    PublicProfile: { slug: string };
+  PublicProfile: { slug: string };
+
+  // ✅ NEW SHARED FILM ROUTE
+  SharedFilm: { shareSlug: string };
 
   // (Optional) if you ever register ChatRoom at root, this keeps typing happy.
   ChatRoom: any;
@@ -159,15 +162,12 @@ export function resetToMain() {
    CHAT HELPER (FIXES YOUR ProfileScreen IMPORT ERROR)
    ===================================================== */
 export function openChat(params: ChatRoomParams) {
-  // Most apps have ChatRoom inside the Chats stack.
-  // This works whether Chats is a stack or tab-stack.
   try {
     store.ref.navigate("Chats" as any, {
       screen: "ChatRoom",
       params,
     });
   } catch (e) {
-    // Fallback: if ChatRoom exists at root in some builds
     try {
       store.ref.navigate("ChatRoom" as any, params as any);
     } catch (err) {

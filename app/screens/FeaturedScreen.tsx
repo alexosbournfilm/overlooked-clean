@@ -26,8 +26,9 @@ import {
   ImageBackground,
   LayoutChangeEvent,
   Modal,
+  Share,
 } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import {
   Video,
   ResizeMode,
@@ -161,6 +162,7 @@ type RawSubmission = Omit<Submission, 'users'> & {
   mime_type?: string | null;
   duration_seconds?: number | null;
   category?: Category | null;
+  share_slug?: string | null;
   videos?: {
     original_path?: string | null;
     thumbnail_path?: string | null;
@@ -1180,6 +1182,39 @@ async function countUserVotesInRange(uid: string, range: { start: string; end: s
   }
 }
 
+function slugifyFilmTitle(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+}
+
+function buildSharedFilmUrl(shareSlug: string) {
+  return `https://overlooked.cloud/f/${shareSlug}`;
+}
+
+async function ensureSubmissionShareSlug(submission: {
+  id: string;
+  title?: string | null;
+  share_slug?: string | null;
+}) {
+  if (submission.share_slug) return submission.share_slug;
+
+  const base = slugifyFilmTitle(submission.title || 'film');
+  const slug = `${base || 'film'}-${String(submission.id).slice(0, 6)}`;
+
+  const { error } = await supabase
+    .from('submissions')
+    .update({ share_slug: slug })
+    .eq('id', submission.id);
+
+  if (error) throw error;
+
+  return slug;
+}
+
 /* ---------------- Memoized Header Controls ---------------- */
 type HeaderControlsProps = {
   category: Category;
@@ -1483,6 +1518,9 @@ justifyContent: 'center',
 
 const FeaturedScreen = () => {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+const openShareSlug = route.params?.openShareSlug ?? null;
+const openSubmissionId = route.params?.openSubmissionId ?? null;
   const { width: winW, height: winH } = useWindowDimensions();
   const isNarrow = winW < 480;
 
@@ -1623,6 +1661,7 @@ const repliesByParent = useMemo(() => {
   const lastOffsetY = useRef(0);
 
   const longPressTriggeredRef = useRef<Record<string, boolean>>({});
+  const deepLinkHandledRef = useRef<string | null>(null);
 
   const { userId: gamUserId, refresh: refreshGamification } = useGamification();
 
@@ -1720,17 +1759,17 @@ const categoryHeaderTopOffset =
   }, [sort, searchQ, filmCategory]);
 
   useFocusEffect(
-    useCallback(() => {
-      (async () => {
-        const { data: auth } = await supabase.auth.getUser();
-        const uid = auth?.user?.id ?? null;
-        await fetchContent(uid, category, searchQ);
-      })();
-    }, [sort, searchQ])
-  );
+  useCallback(() => {
+    (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth?.user?.id ?? null;
+      await fetchContent(uid, category, searchQ);
+    })();
+  }, [sort, searchQ, filmCategory])
+);
 
   const baseCols =
-  'id, user_id, title, votes, submitted_at, is_winner, users ( id, full_name ), video_id, storage_path, video_path, thumbnail_url, media_kind, mime_type, duration_seconds, category';
+  'id, user_id, title, votes, submitted_at, is_winner, share_slug, users ( id, full_name ), video_id, storage_path, video_path, thumbnail_url, media_kind, mime_type, duration_seconds, category';
 
   const fetchWinnerSafe = async (id: string, desired: Category) => {
     const sel = `
@@ -1952,6 +1991,102 @@ const goToProfile = (user?: { id: string; full_name: string }) => {
       full_name: user.full_name,
     },
   });
+};
+const shareSubmissionLink = async (
+  s: Submission & {
+    description?: string | null;
+    storage_path?: string | null;
+    thumbnail_url?: string | null;
+    media_kind?: RawSubmission['media_kind'];
+    category?: Category | null;
+    share_slug?: string | null;
+  }
+) => {
+  try {
+    const shareSlug = await ensureSubmissionShareSlug({
+      id: s.id,
+      title: s.title,
+      share_slug: (s as any).share_slug ?? null,
+    });
+
+    const url = buildSharedFilmUrl(shareSlug);
+    const message = `${s.title || 'My film'}\n\nWatch on Overlooked:\n${url}`;
+
+    await Share.share({
+      title: s.title || 'Watch on Overlooked',
+      message,
+      url,
+    });
+
+    setSubmissions((prev) =>
+      prev.map((row) =>
+        row.id === s.id ? { ...row, share_slug: shareSlug } as any : row
+      )
+    );
+
+    setPreviewItem((prev) =>
+      prev && prev.id === s.id
+        ? ({ ...prev, share_slug: shareSlug } as any)
+        : prev
+    );
+
+    if (winner && winner.id === s.id) {
+      setWinner((prev) =>
+        prev ? ({ ...prev, share_slug: shareSlug } as any) : prev
+      );
+    }
+  } catch (e: any) {
+    console.warn('Share failed:', e?.message || e);
+    Alert.alert('Share failed', 'Could not create or share the film link.');
+  }
+};
+
+const shareSubmissionStoryPlaceholder = async (
+  s: Submission & {
+    description?: string | null;
+    storage_path?: string | null;
+    thumbnail_url?: string | null;
+    media_kind?: RawSubmission['media_kind'];
+    category?: Category | null;
+    share_slug?: string | null;
+  }
+) => {
+  try {
+    const shareSlug = await ensureSubmissionShareSlug({
+      id: s.id,
+      title: s.title,
+      share_slug: (s as any).share_slug ?? null,
+    });
+
+    const url = buildSharedFilmUrl(shareSlug);
+
+    await Share.share({
+      title: s.title || 'Share to Story',
+      message: `${s.title || 'My film'}\n\nOpen this film in Overlooked:\n${url}`,
+      url,
+    });
+
+    setSubmissions((prev) =>
+      prev.map((row) =>
+        row.id === s.id ? { ...row, share_slug: shareSlug } as any : row
+      )
+    );
+
+    setPreviewItem((prev) =>
+      prev && prev.id === s.id
+        ? ({ ...prev, share_slug: shareSlug } as any)
+        : prev
+    );
+
+    if (winner && winner.id === s.id) {
+      setWinner((prev) =>
+        prev ? ({ ...prev, share_slug: shareSlug } as any) : prev
+      );
+    }
+  } catch (e: any) {
+    console.warn('Story share failed:', e?.message || e);
+    Alert.alert('Share failed', 'Could not prepare this story share yet.');
+  }
 };
   // ✅ open/close preview modal for compact cards
   const openPreview = (s: any) => {
@@ -2222,6 +2357,51 @@ useEffect(() => {
     await pauseAllExcept(targetId);
   })();
 }, [activeId, winner]);
+useEffect(() => {
+  if (loading) return;
+  if (!submissions.length && !winner) return;
+
+  const deepLinkKey = openSubmissionId || openShareSlug || null;
+  if (!deepLinkKey) return;
+
+  if (deepLinkHandledRef.current === deepLinkKey) return;
+
+  let target:
+    | (Submission & {
+        description?: string | null;
+        storage_path?: string | null;
+        thumbnail_url?: string | null;
+        media_kind?: RawSubmission['media_kind'];
+        category?: Category | null;
+      })
+    | null = null;
+
+  if (openSubmissionId) {
+    if (winner?.id === openSubmissionId) {
+      target = winner as any;
+    } else {
+      target = submissions.find((s) => s.id === openSubmissionId) || null;
+    }
+  } else if (openShareSlug) {
+    if ((winner as any)?.share_slug === openShareSlug) {
+      target = winner as any;
+    } else {
+      target =
+        submissions.find((s: any) => (s as any).share_slug === openShareSlug) || null;
+    }
+  }
+
+  if (target) {
+    deepLinkHandledRef.current = deepLinkKey;
+
+    openPreview(target as any);
+
+    navigation.setParams?.({
+      openSubmissionId: undefined,
+      openShareSlug: undefined,
+    });
+  }
+}, [loading, submissions, winner, openSubmissionId, openShareSlug, navigation]);
 
   const onItemLayout = (id: string, playable: boolean) => (e: LayoutChangeEvent) => {
   const { y, height } = e.nativeEvent.layout;
@@ -2655,6 +2835,29 @@ const renderMobileYouTubeCard = useCallback(
               </Text>
             </TouchableOpacity>
 
+            <TouchableOpacity
+  activeOpacity={0.9}
+  onPress={() => {
+    Alert.alert('Share', 'Choose how you want to share this film.', [
+      {
+        text: 'Share Story',
+        onPress: () => shareSubmissionStoryPlaceholder(s as any),
+      },
+      {
+        text: 'Share Link',
+        onPress: () => shareSubmissionLink(s as any),
+      },
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+    ]);
+  }}
+  style={styles.mobilePillGhost}
+>
+  <Text style={styles.mobilePillGhostText}>Share</Text>
+</TouchableOpacity>
+
             {mine ? (
               <TouchableOpacity
                 style={[
@@ -2780,6 +2983,29 @@ const renderCard = useCallback(
                       >
                         <Text style={styles.feedActionText}>COMMENTS ({commentCounts[s.id] ?? 0})</Text>
                       </TouchableOpacity>
+
+                      <TouchableOpacity
+  onPress={() => {
+    Alert.alert('Share', 'Choose how you want to share this film.', [
+      {
+        text: 'Share Story',
+        onPress: () => shareSubmissionStoryPlaceholder(s as any),
+      },
+      {
+        text: 'Share Link',
+        onPress: () => shareSubmissionLink(s as any),
+      },
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+    ]);
+  }}
+  activeOpacity={0.9}
+  style={styles.feedActionBtnGhost}
+>
+  <Text style={styles.feedActionGhostText}>Share</Text>
+</TouchableOpacity>
 
                       {currentUserId && (s as any).user_id === currentUserId ? (
                         <TouchableOpacity
@@ -3147,6 +3373,29 @@ return (
                 {votedIds.has(previewItem.id) ? 'Voted' : 'Vote'} ({previewItem.votes ?? 0})
               </Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+  activeOpacity={0.9}
+  onPress={() => {
+    Alert.alert('Share', 'Choose how you want to share this film.', [
+      {
+        text: 'Share Story',
+        onPress: () => shareSubmissionStoryPlaceholder(previewItem as any),
+      },
+      {
+        text: 'Share Link',
+        onPress: () => shareSubmissionLink(previewItem as any),
+      },
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+    ]);
+  }}
+  style={styles.previewActionPillGhost}
+>
+  <Text style={styles.previewActionTextGhost}>Share</Text>
+</TouchableOpacity>
 
             <TouchableOpacity
               activeOpacity={0.9}

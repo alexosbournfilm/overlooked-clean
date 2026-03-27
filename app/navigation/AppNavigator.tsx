@@ -22,6 +22,11 @@ import NewPassword from "../screens/NewPassword";
 import WorkshopSubmitScreen from "../screens/WorkshopSubmitScreen";
 import PublicProfileScreen from "../screens/PublicProfileScreen";
 
+// ✅ IMPORTANT:
+// If TS still complains here, temporarily comment this line out,
+// save SharedFilmScreen.tsx, then uncomment it.
+import SharedFilmScreen from "../screens/SharedFilmScreen";
+
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator({
@@ -53,8 +58,8 @@ export default function AppNavigator({
         const savedState = await AsyncStorage.getItem(
           `NAVIGATION_STATE_v2:${userId}`
         );
+
         if (savedState && mounted) {
-          // JSON.parse can be expensive on web if state grows; keep it guarded.
           setInitialState(JSON.parse(savedState));
         }
       } catch {}
@@ -63,46 +68,35 @@ export default function AppNavigator({
     };
 
     restoreNav();
+
     return () => {
       mounted = false;
     };
   }, [ready, userId, profileComplete]);
 
   // --------------------------------------------------------------
-  // Paid / membership check (same logic, but made non-blocking)
+  // Paid / membership check (non-blocking)
   // --------------------------------------------------------------
   const [isPaid, setIsPaid] = useState<boolean | null>(null);
   const [expired, setExpired] = useState(false);
-
-  // ✅ key improvement:
-  // Do not block rendering/navigation while this loads.
-  // We still compute isPaid exactly the same way, and we still sign out on expired.
   const [membershipChecked, setMembershipChecked] = useState(false);
-
-  // Prevent duplicate requests for same userId (fast tab switching / auth churn)
   const lastCheckedUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!userId) {
       setIsPaid(null);
       setExpired(false);
-      setMembershipChecked(true); // nothing to check if logged out
+      setMembershipChecked(true);
       lastCheckedUserIdRef.current = null;
       return;
     }
 
     let mounted = true;
-
-    // Start a fresh check state for this user
     setMembershipChecked(false);
 
-    // If we already checked this userId recently and still have a value,
-    // keep UI responsive and just re-check in the background.
-    // (No logic change: isPaid will still end up correct.)
     const sameUserAsLast = lastCheckedUserIdRef.current === userId;
 
     if (sameUserAsLast && isPaid !== null) {
-      // allow navigation to proceed instantly while we refresh quietly
       setMembershipChecked(true);
     }
 
@@ -119,7 +113,6 @@ export default function AppNavigator({
         if (!mounted) return;
 
         if (error) {
-          // keep previous value if any; just mark check complete so UI isn't blocked
           setMembershipChecked(true);
           return;
         }
@@ -131,10 +124,8 @@ export default function AppNavigator({
         const expiredNow = exp ? Date.now() >= exp : false;
         const stat = (data?.subscription_status || "").toLowerCase();
 
-        // ✅ PRIMARY: tier (because membership.ts gates off tier)
         const paidByTier = (data?.tier || "").toLowerCase() === "pro";
 
-        // ✅ FALLBACK: keep your existing logic
         const paidByStatus =
           !expiredNow &&
           (stat === "active" ||
@@ -156,20 +147,18 @@ export default function AppNavigator({
     return () => {
       mounted = false;
     };
-    // Intentionally NOT including isPaid in deps; we don't want extra re-runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   useEffect(() => {
-    if (userId && expired) supabase.auth.signOut();
+    if (userId && expired) {
+      supabase.auth.signOut();
+    }
   }, [userId, expired]);
 
   // --------------------------------------------------------------
   // Global loading
   // --------------------------------------------------------------
-  // ✅ We keep your original "global loading" behavior for app readiness + nav restore.
-  // ✅ But we DO NOT block on membership fetch anymore (speed).
-
   if (!ready || !navReady) {
     return (
       <View
@@ -185,13 +174,8 @@ export default function AppNavigator({
     );
   }
 
-  // If you ever want to force paywall globally, set this.
-  // But Paywall is now always registered so you can navigate to it anytime.
   const mustShowPaywall = false;
 
-  // ✅ CRITICAL FIX:
-  // If no deep-link matches, React Navigation uses the first screen in the stack
-  // unless initialRouteName is set.
   const rootInitialRouteName =
     !userId || !profileComplete
       ? "Auth"
@@ -213,41 +197,47 @@ export default function AppNavigator({
         screenOptions={{ headerShown: false }}
         initialRouteName={rootInitialRouteName as any}
       >
-        {/* ✅ Always register these so UpgradeModal can nav.navigate('Paywall') */}
         <Stack.Screen name="Paywall" component={PaywallScreen} />
         <Stack.Screen name="PaySuccess" component={PaySuccessScreen} />
 
-        {/* AUTH / MAIN TREE */}
-                <Stack.Screen
-  name="Auth"
-  children={() => (
-    <AuthStack
-      initialRouteName={!userId
-        ? initialAuthRouteName
-        : !profileComplete
-        ? "CreateProfile"
-        : "SignIn"}
-    />
-  )}
-/>
+        <Stack.Screen
+          name="Auth"
+          children={() => (
+            <AuthStack
+              initialRouteName={
+                !userId
+                  ? initialAuthRouteName
+                  : !profileComplete
+                  ? "CreateProfile"
+                  : "SignIn"
+              }
+            />
+          )}
+        />
 
-<Stack.Screen name="MainTabs" component={MainTabs} />
+        <Stack.Screen name="MainTabs" component={MainTabs} />
 
-{mustShowPaywall && (
-  <Stack.Screen name="PaywallGate" component={PaywallScreen} />
-)}
+        {mustShowPaywall && (
+          <Stack.Screen name="PaywallGate" component={PaywallScreen} />
+        )}
 
-
-<Stack.Screen name="WorkshopSubmit" component={WorkshopSubmitScreen} />
-<Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
-{/* Always keep NewPassword accessible (deep link + manual nav) */}
-<Stack.Screen name="NewPassword" component={NewPassword} />
+        <Stack.Screen
+          name="WorkshopSubmit"
+          component={WorkshopSubmitScreen}
+        />
+        <Stack.Screen
+          name="PublicProfile"
+          component={PublicProfileScreen}
+        />
+        <Stack.Screen
+          name="SharedFilm"
+          component={SharedFilmScreen}
+        />
+        <Stack.Screen
+          name="NewPassword"
+          component={NewPassword}
+        />
       </Stack.Navigator>
-
-      {/* ✅ Optional: keep invisible, but ensures membership check doesn't "feel stuck".
-          No logic change; just a non-blocking background check indicator if you want later.
-          We are NOT rendering anything here to avoid UI changes.
-      */}
     </NavigationContainer>
   );
 }
