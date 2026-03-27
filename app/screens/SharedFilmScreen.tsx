@@ -39,8 +39,17 @@ type FilmRow = {
   votes?: number | null;
   submitted_at?: string | null;
   thumbnail_url?: string | null;
+
   storage_path?: string | null;
   video_path?: string | null;
+  video_url?: string | null;
+  file_url?: string | null;
+  file_path?: string | null;
+  mp4_url?: string | null;
+  mp4_path?: string | null;
+  url?: string | null;
+  path?: string | null;
+
   youtube_url?: string | null;
   mime_type?: string | null;
   media_kind?: "file_audio" | "file_video" | "youtube" | null;
@@ -53,6 +62,8 @@ type FilmRow = {
     public_slug?: string | null;
   } | null;
 };
+
+const WebVideo: any = "video";
 
 function formatDate(dateString?: string | null) {
   if (!dateString) return "";
@@ -112,6 +123,23 @@ function pathFromPublicUrl(url: string) {
   };
 }
 
+function pickMediaField(row: FilmRow) {
+  return (
+    row.storage_path ||
+    row.video_path ||
+    row.video_url ||
+    row.file_url ||
+    row.file_path ||
+    row.mp4_url ||
+    row.mp4_path ||
+    row.url ||
+    row.path ||
+    ""
+  )
+    .toString()
+    .trim();
+}
+
 async function signFilmMediaPath(pathOrUrl?: string | null) {
   if (!pathOrUrl) return null;
 
@@ -119,12 +147,12 @@ async function signFilmMediaPath(pathOrUrl?: string | null) {
     const parsed = pathFromPublicUrl(pathOrUrl);
     if (!parsed) return pathOrUrl;
 
-    const { data, error } = await supabase.storage
+    const signedFromPublic = await supabase.storage
       .from(parsed.bucket)
       .createSignedUrl(parsed.path, 60 * 60);
 
-    if (!error && data?.signedUrl) {
-      return data.signedUrl;
+    if (!signedFromPublic.error && signedFromPublic.data?.signedUrl) {
+      return signedFromPublic.data.signedUrl;
     }
 
     return pathOrUrl;
@@ -132,16 +160,16 @@ async function signFilmMediaPath(pathOrUrl?: string | null) {
 
   const cleanPath = stripQuery(pathOrUrl);
 
-  const tryFilms = await supabase.storage.from("films").createSignedUrl(cleanPath, 60 * 60);
-  if (!tryFilms.error && tryFilms.data?.signedUrl) {
-    return tryFilms.data.signedUrl;
+  const filmsSigned = await supabase.storage.from("films").createSignedUrl(cleanPath, 60 * 60);
+  if (!filmsSigned.error && filmsSigned.data?.signedUrl) {
+    return filmsSigned.data.signedUrl;
   }
 
-  const tryPortfolios = await supabase.storage
+  const portfoliosSigned = await supabase.storage
     .from("portfolios")
     .createSignedUrl(cleanPath, 60 * 60);
-  if (!tryPortfolios.error && tryPortfolios.data?.signedUrl) {
-    return tryPortfolios.data.signedUrl;
+  if (!portfoliosSigned.error && portfoliosSigned.data?.signedUrl) {
+    return portfoliosSigned.data.signedUrl;
   }
 
   return null;
@@ -169,18 +197,18 @@ export default function SharedFilmScreen() {
   }, [routeShareSlug, pathShareSlug]);
 
   const isWide = width >= 900;
-  const isMobile = width < 768;
-
-  const [loading, setLoading] = useState(true);
-  const [film, setFilm] = useState<FilmRow | null>(null);
-  const [signedVideoUrl, setSignedVideoUrl] = useState<string | null>(null);
-  const [errorText, setErrorText] = useState("");
-  const [isSignedIn, setIsSignedIn] = useState(false);
-
   const cardWidth = useMemo(() => {
     if (isWide) return Math.min(960, width - 48);
     return width - 20;
   }, [isWide, width]);
+
+  const mediaHeight = Math.max(220, Math.floor((cardWidth * 9) / 16));
+
+  const [loading, setLoading] = useState(true);
+  const [film, setFilm] = useState<FilmRow | null>(null);
+  const [playableVideoUrl, setPlayableVideoUrl] = useState<string | null>(null);
+  const [errorText, setErrorText] = useState("");
+  const [isSignedIn, setIsSignedIn] = useState(false);
 
   const goToSignIn = () => {
     if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -221,7 +249,7 @@ export default function SharedFilmScreen() {
 
     setLoading(true);
     setErrorText("");
-    setSignedVideoUrl(null);
+    setPlayableVideoUrl(null);
 
     try {
       const { data, error } = await supabase
@@ -238,6 +266,13 @@ export default function SharedFilmScreen() {
           thumbnail_url,
           storage_path,
           video_path,
+          video_url,
+          file_url,
+          file_path,
+          mp4_url,
+          mp4_path,
+          url,
+          path,
           youtube_url,
           mime_type,
           media_kind,
@@ -254,9 +289,7 @@ export default function SharedFilmScreen() {
         .eq("share_slug", shareSlug)
         .maybeSingle();
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       if (!data) {
         setFilm(null);
@@ -275,15 +308,14 @@ export default function SharedFilmScreen() {
       setFilm(row);
 
       const youtubeId = extractYoutubeId(row.youtube_url);
-      const isYoutube =
-        row.media_kind === "youtube" || (!!row.youtube_url && !!youtubeId);
+      const isYoutube = row.media_kind === "youtube" || (!!row.youtube_url && !!youtubeId);
 
       if (!isYoutube) {
-        const mediaPath = row.storage_path || row.video_path;
-        const signed = await signFilmMediaPath(mediaPath);
-        setSignedVideoUrl(signed);
+        const rawMedia = pickMediaField(row);
+        const signed = await signFilmMediaPath(rawMedia);
+        setPlayableVideoUrl(signed);
       } else {
-        setSignedVideoUrl(null);
+        setPlayableVideoUrl(null);
       }
     } catch (e: any) {
       console.warn("SharedFilmScreen fetch error:", e?.message || e);
@@ -347,6 +379,8 @@ export default function SharedFilmScreen() {
   const shouldShowYoutube =
     !!film && (film.media_kind === "youtube" || (!!film.youtube_url && !!youtubeId));
 
+  const shouldShowFileVideo = !!playableVideoUrl;
+
   return (
     <SafeAreaView style={styles.container}>
       <LinearGradient
@@ -400,10 +434,10 @@ export default function SharedFilmScreen() {
           ) : film ? (
             <>
               <View style={styles.card}>
-                <View style={styles.mediaWrap}>
+                <View style={[styles.mediaWrap, { height: mediaHeight }]}>
                   {shouldShowYoutube && youtubeId ? (
                     <YoutubePlayer
-                      height={Math.max(220, Math.floor((cardWidth * 9) / 16))}
+                      height={mediaHeight}
                       width={cardWidth}
                       videoId={youtubeId}
                       play={false}
@@ -416,25 +450,41 @@ export default function SharedFilmScreen() {
                       }}
                       initialPlayerParams={{ rel: false }}
                     />
-                  ) : signedVideoUrl ? (
-                    <Video
-                      source={{ uri: signedVideoUrl }}
-                      style={styles.video}
-                      resizeMode={ResizeMode.CONTAIN}
-                      useNativeControls
-                      shouldPlay={false}
-                      isLooping={false}
-                      posterSource={
-                        film.thumbnail_url ? { uri: film.thumbnail_url } : undefined
-                      }
-                      usePoster={!!film.thumbnail_url}
-                    />
+                  ) : shouldShowFileVideo && playableVideoUrl ? (
+                    Platform.OS === "web" ? (
+                      <WebVideo
+                        src={playableVideoUrl}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        poster={film.thumbnail_url || undefined}
+                        style={styles.video}
+                      />
+                    ) : (
+                      <Video
+                        source={{ uri: playableVideoUrl }}
+                        style={styles.video}
+                        resizeMode={ResizeMode.CONTAIN}
+                        useNativeControls
+                        shouldPlay={false}
+                        isLooping={false}
+                        posterSource={
+                          film.thumbnail_url ? { uri: film.thumbnail_url } : undefined
+                        }
+                        usePoster={!!film.thumbnail_url}
+                      />
+                    )
                   ) : film.thumbnail_url ? (
-                    <Image
-                      source={{ uri: film.thumbnail_url }}
-                      style={styles.video}
-                      resizeMode="cover"
-                    />
+                    <View style={styles.mediaFallback}>
+                      <Image
+                        source={{ uri: film.thumbnail_url }}
+                        style={styles.video}
+                        resizeMode="cover"
+                      />
+                      <View style={styles.noVideoOverlay}>
+                        <Text style={styles.noVideoOverlayText}>Film file not available</Text>
+                      </View>
+                    </View>
                   ) : (
                     <View style={[styles.video, styles.mediaFallback]}>
                       <Text style={styles.mediaFallbackText}>No preview available</Text>
@@ -615,25 +665,46 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   mediaWrap: {
-    width: "100%",
-    backgroundColor: "#000",
-    aspectRatio: 16 / 9,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  video: {
-    width: "100%",
-    height: "100%",
-    backgroundColor: "#000",
-  },
-  mediaFallback: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  width: "100%",
+  backgroundColor: "#000",
+  alignItems: "center",
+  justifyContent: "center",
+  overflow: "hidden",
+},
+video: {
+  width: "100%",
+  height: "100%",
+  backgroundColor: "#000",
+},
+mediaFallback: {
+  width: "100%",
+  height: "100%",
+  alignItems: "center",
+  justifyContent: "center",
+  backgroundColor: "#000",
+  position: "relative",
+}, 
   mediaFallbackText: {
     color: MUTE,
     fontSize: 14,
     fontWeight: "700",
+  },
+  noVideoOverlay: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    bottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    alignSelf: "center",
+  },
+  noVideoOverlayText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "center",
   },
   metaBlock: {
     paddingHorizontal: 18,
