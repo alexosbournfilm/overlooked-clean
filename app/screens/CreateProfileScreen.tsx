@@ -115,8 +115,15 @@ export default function CreateProfileScreen() {
   const roleSearchReq = useRef(0);
   const citySearchReq = useRef(0);
 
+  // Whole-page cinematic transition
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  // Smooth mobile image section entrance
+  const imageSectionOpacity = useRef(new Animated.Value(0)).current;
+  const imageSectionTranslate = useRef(new Animated.Value(18)).current;
+
   const hasStartedSequence = useRef(false);
 
   const [stage, setStage] = useState<OnboardingStage>('role');
@@ -159,41 +166,77 @@ export default function CreateProfileScreen() {
 
     const timer = setTimeout(() => {
       openRoleSelector();
-    }, 500);
+    }, 350);
 
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (stage === 'image' || stage === 'review') {
+      imageSectionOpacity.setValue(0);
+      imageSectionTranslate.setValue(18);
+
+      Animated.parallel([
+        Animated.timing(imageSectionOpacity, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(imageSectionTranslate, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [stage, imageSectionOpacity, imageSectionTranslate]);
 
   const animateStageChange = (nextStage: OnboardingStage, cb?: () => void) => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
+        duration: 2400,
+        easing: Easing.inOut(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.timing(slideAnim, {
-        toValue: -6,
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
+        toValue: -12,
+        duration: 2400,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 0.985,
+        duration: 2400,
+        easing: Easing.inOut(Easing.cubic),
         useNativeDriver: true,
       }),
     ]).start(() => {
       setStage(nextStage);
       cb?.();
-      slideAnim.setValue(10);
+
+      slideAnim.setValue(16);
+      scaleAnim.setValue(1.015);
 
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 520,
-          easing: Easing.out(Easing.exp),
+          duration: 3400,
+          easing: Easing.inOut(Easing.exp),
           useNativeDriver: true,
         }),
         Animated.timing(slideAnim, {
           toValue: 0,
-          duration: 520,
-          easing: Easing.out(Easing.exp),
+          duration: 3400,
+          easing: Easing.inOut(Easing.exp),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 3400,
+          easing: Easing.inOut(Easing.exp),
           useNativeDriver: true,
         }),
       ]).start();
@@ -385,10 +428,7 @@ export default function CreateProfileScreen() {
 
       setImage(croppedUri);
       setImageUrl(publicUrl);
-
-      setTimeout(() => {
-        animateStageChange('review');
-      }, 120);
+      animateStageChange('review');
     } catch (err: any) {
       Alert.alert('Upload Error', err?.message ?? 'Could not upload image.');
     } finally {
@@ -502,7 +542,7 @@ export default function CreateProfileScreen() {
             styles.animatedWrap,
             {
               opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
+              transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
             },
           ]}
         >
@@ -619,13 +659,22 @@ export default function CreateProfileScreen() {
               )}
 
               {imageStepVisible && (
-                <View style={styles.heroAvatarWrap}>
+                <Animated.View
+                  style={[
+                    styles.heroAvatarWrap,
+                    {
+                      opacity: imageSectionOpacity,
+                      transform: [{ translateY: imageSectionTranslate }],
+                    },
+                  ]}
+                >
                   <TouchableOpacity
                     onPress={pickImage}
-                    activeOpacity={0.9}
+                    activeOpacity={0.92}
                     style={[
                       styles.avatarButton,
                       stage === 'image' && styles.avatarButtonActive,
+                      isMobile && styles.avatarButtonMobile,
                     ]}
                     disabled={uploadingImage || saving}
                   >
@@ -633,7 +682,7 @@ export default function CreateProfileScreen() {
                       <Image source={{ uri: image }} style={styles.avatarImage} resizeMode="cover" />
                     ) : (
                       <View style={styles.avatarFallback}>
-                        <Ionicons name="camera-outline" size={28} color={GOLD} />
+                        <Ionicons name="camera-outline" size={30} color={GOLD} />
                         <Text style={styles.avatarFallbackText}>Add Profile Image</Text>
                       </View>
                     )}
@@ -641,8 +690,8 @@ export default function CreateProfileScreen() {
 
                   <TouchableOpacity
                     onPress={pickImage}
-                    style={styles.avatarChangeBtn}
-                    activeOpacity={0.85}
+                    style={[styles.avatarChangeBtn, isMobile && styles.avatarChangeBtnMobile]}
+                    activeOpacity={0.88}
                     disabled={uploadingImage || saving}
                   >
                     {uploadingImage ? (
@@ -665,7 +714,7 @@ export default function CreateProfileScreen() {
                       <Text style={styles.inlineContinueButtonText}>Continue</Text>
                     </TouchableOpacity>
                   )}
-                </View>
+                </Animated.View>
               )}
 
               {reviewVisible && (
@@ -740,9 +789,7 @@ export default function CreateProfileScreen() {
                         setCitySearchModalVisible(false);
 
                         if (stage === 'city') {
-                          setTimeout(() => {
-                            animateStageChange('name');
-                          }, 120);
+                          animateStageChange('name');
                         }
                       }}
                       activeOpacity={0.8}
@@ -814,13 +861,11 @@ export default function CreateProfileScreen() {
                         setRoleSearchModalVisible(false);
 
                         if (stage === 'role') {
-                          setTimeout(() => {
-                            animateStageChange('city', () => {
-                              setTimeout(() => {
-                                openCitySelector();
-                              }, 320);
-                            });
-                          }, 120);
+                          animateStageChange('city', () => {
+                            setTimeout(() => {
+                              openCitySelector();
+                            }, 180);
+                          });
                         }
                       }}
                       activeOpacity={0.8}
@@ -979,6 +1024,7 @@ const styles = StyleSheet.create({
   heroAvatarWrap: {
     alignItems: 'center',
     marginBottom: 20,
+    paddingTop: 6,
   },
 
   avatarButton: {
@@ -991,6 +1037,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+
+  avatarButtonMobile: {
+    width: 146,
+    height: 146,
+    borderRadius: 73,
+    shadowColor: GOLD,
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
 
   avatarButtonActive: {
@@ -1022,13 +1079,21 @@ const styles = StyleSheet.create({
   },
 
   avatarChangeBtn: {
-    marginTop: 12,
+    marginTop: 14,
     backgroundColor: GOLD,
     borderRadius: 999,
     paddingVertical: 10,
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: 188,
+  },
+
+  avatarChangeBtnMobile: {
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    minWidth: 210,
   },
 
   avatarChangeBtnText: {
@@ -1041,7 +1106,7 @@ const styles = StyleSheet.create({
   },
 
   requiredLabel: {
-    marginTop: 10,
+    marginTop: 12,
     color: GOLD,
     fontSize: 11,
     textTransform: 'uppercase',

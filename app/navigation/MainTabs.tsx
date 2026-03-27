@@ -998,7 +998,7 @@ const settingsSize =
     styles.topBarInner,
     {
       minHeight: navHeight,
-      paddingHorizontal: isPhone ? 10 : 14,
+      paddingHorizontal: isPhone ? 8 : 14,
       paddingTop: Platform.OS === 'web' ? 4 : 0,
     },
   ]}
@@ -1034,7 +1034,7 @@ const settingsSize =
             </View>
           )}
 
-          <View style={[styles.rightTools, { gap: isPhone ? 6 : 10 }]}>
+          <View style={[styles.rightTools, { gap: isPhone ? 5 : 10 }]}>
             <HoverPress onPress={onOpenUpload} hitSlop={6} accessibilityLabel="Upload film">
               <View
   style={[
@@ -1125,7 +1125,7 @@ const settingsSize =
         justifyContent: 'center',
       }}
     >
-      <Ionicons name="settings-outline" size={isPhone ? 14 : 16} color={TEXT_IVORY} />
+      <Ionicons name="settings-outline" size={isPhone ? 13 : 16} color={TEXT_IVORY} />
     </View>
 
     <View
@@ -1255,7 +1255,7 @@ const WebTopBar = memo(function WebTopBar({
         right: 0,
         zIndex: 9999,
         backgroundColor: DARK_BG,
-        paddingTop: 10,
+        paddingTop: 8,
       }}
     >
       <View
@@ -1263,13 +1263,13 @@ const WebTopBar = memo(function WebTopBar({
           width: '100%',
           maxWidth: 1200,
           alignSelf: 'center',
-          paddingHorizontal: isPhone ? 10 : 14,
+          paddingHorizontal: isPhone ? 8 : 14,
           paddingBottom: isWide ? 0 : 6,
         }}
       >
         <View
           style={{
-            minHeight: 38,
+            minHeight: 34,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -1278,9 +1278,9 @@ const WebTopBar = memo(function WebTopBar({
           <Text
             style={{
               color: TEXT_IVORY,
-              fontSize: isPhone ? 12.5 : 18,
+              fontSize: isPhone ? 11.5 : 18,
               fontWeight: '900',
-              letterSpacing: isPhone ? 1.4 : 2.2, 
+              letterSpacing: isPhone ? 1.15 : 2.2,
             }}
           >
             OVERLOOKED
@@ -1297,28 +1297,28 @@ const WebTopBar = memo(function WebTopBar({
             </View>
           )}
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: isPhone ? 6 : 10}}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: isPhone ? 5 : 10}}>
             <Pressable
               onPress={onOpenUpload}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 6,
-                paddingVertical: 5,
-paddingHorizontal: isPhone ? 8 : 12,
+                paddingVertical: 4,
+paddingHorizontal: isPhone ? 7 : 12,
                 borderRadius: 999,
                 backgroundColor: 'rgba(198,166,100,0.10)',
                 borderWidth: 1,
                 borderColor: 'rgba(198,166,100,0.30)',
               }}
             >
-              <Ionicons name="cloud-upload-outline" size={isPhone ? 14 : 16}color={GOLD} />
+              <Ionicons name="cloud-upload-outline" size={isPhone ? 13 : 16}color={GOLD} />
               <Text
                 style={{
                   color: GOLD,
-                  fontSize: isPhone ? 7.2 : 9,
+                  fontSize: isPhone ? 6.7 : 9,
                   fontWeight: '900',
-                  letterSpacing: isPhone ? 0.9 : 1.05,
+                  letterSpacing: isPhone ? 0.75 : 1.05,
                 }}
               >
                 UPLOAD FILM
@@ -1331,21 +1331,22 @@ paddingHorizontal: isPhone ? 8 : 12,
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 6,
-                paddingVertical: 5,
-paddingHorizontal: isPhone ? 8 : 12,
+                paddingVertical: 4,
+paddingHorizontal: isPhone ? 7 : 12,
+
                 borderRadius: 999,
                 backgroundColor: 'rgba(198,166,100,0.10)',
                 borderWidth: 1,
                 borderColor: 'rgba(198,166,100,0.30)',
               }}
             >
-              <Ionicons name="trophy-outline" size={isPhone ? 14 : 16}color={GOLD} />
+              <Ionicons name="trophy-outline" size={isPhone ? 13 : 16}color={GOLD} />
               <Text
                 style={{
                   color: GOLD,
-                  fontSize: isPhone ? 7.2 : 9,
+                  fontSize: isPhone ? 6.7 : 9,
                   fontWeight: '900',
-                  letterSpacing: isPhone ? 0.9 : 1.05,
+                  letterSpacing: isPhone ? 0.75 : 1.05,
                 }}
               >
                 LEADERBOARD
@@ -1354,9 +1355,9 @@ paddingHorizontal: isPhone ? 8 : 12,
 
             <View
               style={{
-                width: isPhone ? 28 : 30,
-height: isPhone ? 28 : 30,
-borderRadius: isPhone ? 14 : 15,
+                width: isPhone ? 26 : 30,
+height: isPhone ? 26 : 30,
+borderRadius: isPhone ? 13 : 15,
                 backgroundColor: '#151515',
                 borderWidth: 1,
                 borderColor: 'rgba(255,255,255,0.10)',
@@ -1380,8 +1381,8 @@ borderRadius: isPhone ? 14 : 15,
         </View>
 
         {!isWide && (
-          <View style={{ paddingTop: 6 }}>
-  <TopBarStreakProgress variant="wide" compactUI barHeight={20} />
+          <View style={{ paddingTop: 5 }}>
+  <TopBarStreakProgress variant="wide" compactUI barHeight={18} />
 </View>
         )}
       </View>
