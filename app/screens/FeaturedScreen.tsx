@@ -1647,6 +1647,18 @@ const repliesByParent = useMemo(() => {
       })
     | null
   >(null);
+  const [storyModeOpen, setStoryModeOpen] = useState(false);
+const [storyModeItem, setStoryModeItem] = useState<
+  | (Submission & {
+      description?: string | null;
+      storage_path?: string | null;
+      thumbnail_url?: string | null;
+      media_kind?: RawSubmission['media_kind'];
+      category?: Category | null;
+      share_slug?: string | null;
+    })
+  | null
+>(null);
 
   const layoutMap = useRef(
     new Map<
@@ -1992,6 +2004,24 @@ const goToProfile = (user?: { id: string; full_name: string }) => {
     },
   });
 };
+const openStoryMode = (
+  s: Submission & {
+    description?: string | null;
+    storage_path?: string | null;
+    thumbnail_url?: string | null;
+    media_kind?: RawSubmission['media_kind'];
+    category?: Category | null;
+    share_slug?: string | null;
+  }
+) => {
+  setStoryModeItem(s);
+  setStoryModeOpen(true);
+};
+
+const closeStoryMode = () => {
+  setStoryModeOpen(false);
+  setStoryModeItem(null);
+};
 const shareSubmissionLink = async (
   s: Submission & {
     description?: string | null;
@@ -2010,17 +2040,20 @@ const shareSubmissionLink = async (
     });
 
     const url = buildSharedFilmUrl(shareSlug);
-    const message = `${s.title || 'My film'}\n\nWatch on Overlooked:\n${url}`;
 
-    await Share.share({
-      title: s.title || 'Watch on Overlooked',
-      message,
-      url,
-    });
+    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+      await navigator.clipboard.writeText(url);
+    } else {
+      await Share.share({
+        message: url,
+        url,
+        title: s.title || 'Watch on Overlooked',
+      });
+    }
 
     setSubmissions((prev) =>
       prev.map((row) =>
-        row.id === s.id ? { ...row, share_slug: shareSlug } as any : row
+        row.id === s.id ? ({ ...row, share_slug: shareSlug } as any) : row
       )
     );
 
@@ -2033,6 +2066,37 @@ const shareSubmissionLink = async (
     if (winner && winner.id === s.id) {
       setWinner((prev) =>
         prev ? ({ ...prev, share_slug: shareSlug } as any) : prev
+      );
+    }
+
+    if (Platform.OS === 'web') {
+      const proceed = window.confirm(
+        'Link copied. Screenshot the next screen and post it to your story?'
+      );
+      if (proceed) {
+        openStoryMode({
+          ...(s as any),
+          share_slug: shareSlug,
+        });
+      }
+    } else {
+      Alert.alert(
+        'Link ready',
+        'Your watch link is ready. Do you want to open story mode for a screenshot?',
+        [
+          {
+            text: 'Not now',
+            style: 'cancel',
+          },
+          {
+            text: 'Open story mode',
+            onPress: () =>
+              openStoryMode({
+                ...(s as any),
+                share_slug: shareSlug,
+              }),
+          },
+        ]
       );
     }
   } catch (e: any) {
@@ -2041,53 +2105,6 @@ const shareSubmissionLink = async (
   }
 };
 
-const shareSubmissionStoryPlaceholder = async (
-  s: Submission & {
-    description?: string | null;
-    storage_path?: string | null;
-    thumbnail_url?: string | null;
-    media_kind?: RawSubmission['media_kind'];
-    category?: Category | null;
-    share_slug?: string | null;
-  }
-) => {
-  try {
-    const shareSlug = await ensureSubmissionShareSlug({
-      id: s.id,
-      title: s.title,
-      share_slug: (s as any).share_slug ?? null,
-    });
-
-    const url = buildSharedFilmUrl(shareSlug);
-
-    await Share.share({
-      title: s.title || 'Share to Story',
-      message: `${s.title || 'My film'}\n\nOpen this film in Overlooked:\n${url}`,
-      url,
-    });
-
-    setSubmissions((prev) =>
-      prev.map((row) =>
-        row.id === s.id ? { ...row, share_slug: shareSlug } as any : row
-      )
-    );
-
-    setPreviewItem((prev) =>
-      prev && prev.id === s.id
-        ? ({ ...prev, share_slug: shareSlug } as any)
-        : prev
-    );
-
-    if (winner && winner.id === s.id) {
-      setWinner((prev) =>
-        prev ? ({ ...prev, share_slug: shareSlug } as any) : prev
-      );
-    }
-  } catch (e: any) {
-    console.warn('Story share failed:', e?.message || e);
-    Alert.alert('Share failed', 'Could not prepare this story share yet.');
-  }
-};
   // ✅ open/close preview modal for compact cards
   const openPreview = (s: any) => {
     setPreviewItem(s);
@@ -2510,7 +2527,7 @@ const frameH = fitted.h;
           <Image
             source={{ uri: 'https://picsum.photos/1600/900' }}
             style={{ width: '100%', height: '100%', borderRadius: RADIUS_XL }}
-            resizeMode="cover"
+            resizeMode="contain"
           />
         </View>
       </View>
@@ -2838,25 +2855,7 @@ const renderMobileYouTubeCard = useCallback(
             <TouchableOpacity
   activeOpacity={0.9}
   onPress={() => {
-    if (Platform.OS === 'web') {
-      shareSubmissionLink(s as any);
-      return;
-    }
-
-    Alert.alert('Share', 'Choose how you want to share this film.', [
-      {
-        text: 'Share Story',
-        onPress: () => shareSubmissionStoryPlaceholder(s as any),
-      },
-      {
-        text: 'Share Link',
-        onPress: () => shareSubmissionLink(s as any),
-      },
-      {
-        text: 'Cancel',
-        style: 'cancel',
-      },
-    ]);
+    shareSubmissionLink(s as any);
   }}
   style={styles.mobilePillGhost}
 >
@@ -2991,25 +2990,7 @@ const renderCard = useCallback(
 
                       <TouchableOpacity
   onPress={() => {
-  if (Platform.OS === 'web') {
-    shareSubmissionLink(s as any);
-    return;
-  }
-
-  Alert.alert('Share', 'Choose how you want to share this film.', [
-    {
-      text: 'Share Story',
-      onPress: () => shareSubmissionStoryPlaceholder(s as any),
-    },
-    {
-      text: 'Share Link',
-      onPress: () => shareSubmissionLink(s as any),
-    },
-    {
-      text: 'Cancel',
-      style: 'cancel',
-    },
-  ]);
+  shareSubmissionLink(s as any);
 }}
   activeOpacity={0.9}
   style={styles.feedActionBtnGhost}
@@ -3313,6 +3294,75 @@ return (
       </View>
     )}
 
+    {storyModeOpen && storyModeItem && (
+  <Modal visible transparent animationType="fade" onRequestClose={closeStoryMode}>
+    <View style={styles.storyOverlay}>
+      <View style={styles.storyCard}>
+  <View style={styles.storyPoster}>
+    <TouchableOpacity
+      onPress={closeStoryMode}
+      activeOpacity={0.9}
+      style={styles.storyCloseBtnFloating}
+    >
+      <Text style={styles.storyCloseText}>×</Text>
+    </TouchableOpacity>
+  <Image
+    source={{
+      uri:
+        storyModeItem.thumbnail_url || 'https://picsum.photos/900/1600',
+    }}
+    style={styles.storyPosterImage}
+    resizeMode="contain"
+  />
+
+  <View style={styles.storyCenterPanel} />
+
+  <LinearGradient
+  colors={['rgba(0,0,0,0.04)', 'rgba(0,0,0,0.10)', 'rgba(0,0,0,0.28)']}
+  start={{ x: 0.5, y: 0 }}
+  end={{ x: 0.5, y: 1 }}
+  style={StyleSheet.absoluteFillObject}
+/>
+<LinearGradient
+  colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.0)', 'rgba(0,0,0,0.72)']}
+  start={{ x: 0.5, y: 0.45 }}
+  end={{ x: 0.5, y: 1 }}
+  style={styles.storyBottomFade}
+/>
+
+          <View style={styles.storyBrandTop}>
+            <Text style={styles.storyBrandText}>OVERLOOKED</Text>
+          </View>
+
+          <View style={styles.storyContent}>
+            <Text style={styles.storyTitle} numberOfLines={3}>
+              {storyModeItem.title || 'Untitled Film'}
+            </Text>
+
+            {storyModeItem.users?.full_name ? (
+              <Text style={styles.storyByline} numberOfLines={1}>
+                by {storyModeItem.users.full_name}
+              </Text>
+            ) : null}
+
+            {!!(storyModeItem as any).film_category ? (
+              <Text style={styles.storyMeta}>
+                {(storyModeItem as any).film_category}
+              </Text>
+            ) : null}
+
+            {!!(storyModeItem as any).share_slug ? (
+              <Text style={styles.storyLink} numberOfLines={1}>
+                {buildSharedFilmUrl((storyModeItem as any).share_slug)}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+      </View>
+    </View>
+  </Modal>
+)}
+
     {/* ✅ Preview modal (wide web): full player + actions */}
     {previewOpen && previewItem && (
   <Modal visible transparent animationType="fade" onRequestClose={closePreview}>
@@ -3387,25 +3437,7 @@ return (
             <TouchableOpacity
   activeOpacity={0.9}
   onPress={() => {
-    if (Platform.OS === 'web') {
-      shareSubmissionLink(previewItem as any);
-      return;
-    }
-
-    Alert.alert('Share', 'Choose how you want to share this film.', [
-      {
-        text: 'Share Story',
-        onPress: () => shareSubmissionStoryPlaceholder(previewItem as any),
-      },
-      {
-        text: 'Share Link',
-        onPress: () => shareSubmissionLink(previewItem as any),
-      },
-      {
-        text: 'Cancel',
-        style: 'cancel',
-      },
-    ]);
+    shareSubmissionLink(previewItem as any);
   }}
   style={styles.previewActionPillGhost}
 >
@@ -3610,6 +3642,160 @@ const styles = StyleSheet.create({
   container: {
   flex: 1,
   backgroundColor: '#000000',
+},
+
+storyOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0,0,0,0.94)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  padding: 20,
+},
+
+storyCard: {
+  width: '100%',
+  maxWidth: 420,
+  alignItems: 'center',
+},
+storyCloseBtnFloating: {
+  position: 'absolute',
+  top: 16,
+  right: 16,
+  width: 40,
+  height: 40,
+  borderRadius: 999,
+  backgroundColor: 'rgba(0,0,0,0.55)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.12)',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 20,
+},
+storyCloseBtn: {
+  alignSelf: 'flex-end',
+  width: 40,
+  height: 40,
+  borderRadius: 999,
+  backgroundColor: 'rgba(255,255,255,0.06)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.08)',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginBottom: 12,
+},
+
+storyCloseText: {
+  color: '#FFFFFF',
+  fontSize: 22,
+  fontWeight: '900',
+  lineHeight: 22,
+  textAlign: 'center',
+},
+
+storyPoster: {
+  width: '100%',
+  aspectRatio: 9 / 16,
+  borderRadius: 28,
+  overflow: 'hidden',
+  backgroundColor: '#050505',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.06)',
+  position: 'relative',
+},
+
+storyPosterImage: {
+  width: '100%',
+  height: '100%',
+  position: 'absolute',
+  opacity: 1,
+},
+storyCenterPanel: {
+  position: 'absolute',
+  top: '14%',
+  bottom: '14%',
+  left: '8%',
+  right: '8%',
+  borderRadius: 24,
+  backgroundColor: 'rgba(0,0,0,0.10)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.04)',
+},
+
+storyBrandTop: {
+  position: 'absolute',
+  top: 28,
+  left: 24,
+  right: 24,
+  alignItems: 'center',
+},
+storyBottomFade: {
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  bottom: 0,
+  height: '34%',
+},
+
+storyBrandText: {
+  color: '#FFFFFF',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 18,
+  letterSpacing: 3,
+  textTransform: 'uppercase',
+},
+
+storyContent: {
+  position: 'absolute',
+  left: 26,
+  right: 26,
+  bottom: 36,
+  alignItems: 'center',
+},
+
+storyTitle: {
+  color: '#FFFFFF',
+  fontFamily: FONT_CINEMATIC,
+  fontWeight: '900',
+  fontSize: 24,
+  lineHeight: 28,
+  textAlign: 'center',
+  textTransform: 'uppercase',
+  letterSpacing: 0.8,
+  textShadowColor: 'rgba(0,0,0,0.45)',
+  textShadowOffset: { width: 0, height: 2 },
+  textShadowRadius: 8,
+},
+
+storyByline: {
+  marginTop: 12,
+  color: GOLD,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 12,
+  letterSpacing: 1.2,
+  textTransform: 'uppercase',
+  textAlign: 'center',
+},
+
+storyMeta: {
+  marginTop: 8,
+  color: 'rgba(255,255,255,0.70)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  fontSize: 11,
+  letterSpacing: 1,
+  textTransform: 'uppercase',
+  textAlign: 'center',
+},
+
+storyLink: {
+  marginTop: 18,
+  color: 'rgba(255,255,255,0.46)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  fontSize: 10,
+  textAlign: 'center',
 },
 
   wideLayout: {

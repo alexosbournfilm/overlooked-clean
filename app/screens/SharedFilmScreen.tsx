@@ -144,32 +144,14 @@ async function signFilmMediaPath(pathOrUrl?: string | null) {
   if (!pathOrUrl) return null;
 
   if (isAbsoluteUrl(pathOrUrl)) {
-    const parsed = pathFromPublicUrl(pathOrUrl);
-    if (!parsed) return pathOrUrl;
-
-    const signedFromPublic = await supabase.storage
-      .from(parsed.bucket)
-      .createSignedUrl(parsed.path, 60 * 60);
-
-    if (!signedFromPublic.error && signedFromPublic.data?.signedUrl) {
-      return signedFromPublic.data.signedUrl;
-    }
-
     return pathOrUrl;
   }
 
   const cleanPath = stripQuery(pathOrUrl);
 
-  const filmsSigned = await supabase.storage.from("films").createSignedUrl(cleanPath, 60 * 60);
-  if (!filmsSigned.error && filmsSigned.data?.signedUrl) {
-    return filmsSigned.data.signedUrl;
-  }
-
-  const portfoliosSigned = await supabase.storage
-    .from("portfolios")
-    .createSignedUrl(cleanPath, 60 * 60);
-  if (!portfoliosSigned.error && portfoliosSigned.data?.signedUrl) {
-    return portfoliosSigned.data.signedUrl;
+  const { data } = supabase.storage.from("films").getPublicUrl(cleanPath);
+  if (data?.publicUrl) {
+    return data.publicUrl;
   }
 
   return null;
