@@ -144,7 +144,14 @@ const HoverPress = memo(function HoverPress({
 function BrandWordmark({ compact }: { compact?: boolean }) {
   return (
     <View style={styles.brandWrap}>
-      <Text style={[styles.brandTitle, compact && styles.brandTitleCompact]}>OVERLOOKED</Text>
+      <Text
+  style={[
+    styles.brandTitle,
+    compact && (Platform.OS === 'web' ? styles.brandTitleCompactWeb : styles.brandTitleCompact),
+  ]}
+>
+  OVERLOOKED
+</Text>
     </View>
   );
 }
@@ -963,12 +970,26 @@ const TopBar = memo(function TopBar({
   const isPhone = width < 420;
   const compactUI = !isWide;
 
-  const controlHeight = Platform.OS === 'web'
-  ? (isWide ? 26 : 22)
-  : (isWide ? 16 : isPhone ? 14 : 15);
-const settingsSize = Platform.OS === 'web'
-  ? (isWide ? 28 : 30)
-  : (isPhone ? 30 : 28);
+  const controlHeight =
+  Platform.OS === 'web'
+    ? isWide
+      ? 26
+      : isPhone
+        ? 24
+        : 24
+    : isWide
+      ? 16
+      : isPhone
+        ? 14
+        : 15;
+const settingsSize =
+  Platform.OS === 'web'
+    ? isWide
+      ? 30
+      : 30
+    : isPhone
+      ? 30
+      : 28;
 
   return (
     <View style={[styles.topBarWrapper, { top: topOffset, paddingTop: topInset }]}>
@@ -1017,41 +1038,41 @@ const settingsSize = Platform.OS === 'web'
             <HoverPress onPress={onOpenUpload} hitSlop={6} accessibilityLabel="Upload film">
               <View
   style={[
-    styles.topActionBtn,
-    styles.leaderboardBtn,
-    isPhone && styles.topActionBtnPhone,
-    compactUI && styles.topActionBtnCompact,
-  ]}
+  styles.topActionBtn,
+  styles.leaderboardBtn,
+  Platform.OS !== 'web' && isPhone && styles.topActionBtnPhone,
+  compactUI && styles.topActionBtnCompact,
+]}
 >
                 <Ionicons name="cloud-upload-outline" size={isPhone ? 16 : 18} color={GOLD} />
-                {!isPhone && (
-                  <Text style={[styles.uploadBtnText, compactUI && styles.uploadBtnTextCompact]} numberOfLines={1}>
-                    UPLOAD FILM
-                  </Text>
-                )}
+                {!(Platform.OS !== 'web' && isPhone) && (
+  <Text style={[styles.uploadBtnText, compactUI && styles.uploadBtnTextCompact]} numberOfLines={1}>
+    UPLOAD FILM
+  </Text>
+)}
               </View>
             </HoverPress>
 
             <HoverPress onPress={onOpenLeaderboard} hitSlop={6} accessibilityLabel="View leaderboard">
-              <View
-  style={[
-    styles.topActionBtn,
-    styles.leaderboardBtn,
-    isPhone && styles.topActionBtnPhone,
-    compactUI && styles.topActionBtnCompact,
-  ]}
->
-                <Ionicons name="trophy-outline" size={isPhone ? 16 : 18} color={GOLD} />
-                {!isPhone && (
-                  <Text
-                    style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]}
-                    numberOfLines={1}
-                  >
-                    LEADERBOARD
-                  </Text>
-                )}
-              </View>
-            </HoverPress>
+  <View
+    style={[
+      styles.topActionBtn,
+      styles.leaderboardBtn,
+      Platform.OS !== 'web' && isPhone && styles.topActionBtnPhone,
+      compactUI && styles.topActionBtnCompact,
+    ]}
+  >
+    <Ionicons name="trophy-outline" size={isPhone ? 16 : 18} color={GOLD} />
+    {!(Platform.OS !== 'web' && isPhone) && (
+      <Text
+        style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]}
+        numberOfLines={1}
+      >
+        LEADERBOARD
+      </Text>
+    )}
+  </View>
+</HoverPress>
 
            {Platform.OS === 'web' ? (
   <View
@@ -1211,6 +1232,162 @@ const TabBarButton = memo(function TabBarButton(props: any) {
 });
 
 /* --------------------------------- Tabs -------------------------------- */
+type WebTopBarProps = {
+  onOpenUpload: () => void;
+  onOpenLeaderboard: () => void;
+};
+
+const WebTopBar = memo(function WebTopBar({
+  onOpenUpload,
+  onOpenLeaderboard,
+}: WebTopBarProps) {
+  const { width } = useWindowDimensions();
+
+  const isWide = width >= 980;
+  const isPhone = width < 700;
+
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 9999,
+        backgroundColor: DARK_BG,
+        paddingTop: 6,
+      }}
+    >
+      <View
+        style={{
+          width: '100%',
+          maxWidth: 1200,
+          alignSelf: 'center',
+          paddingHorizontal: isPhone ? 10 : 14,
+          paddingBottom: isWide ? 0 : 6,
+        }}
+      >
+        <View
+          style={{
+            minHeight: 46,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Text
+            style={{
+              color: TEXT_IVORY,
+              fontSize: isPhone ? 15 : 18,
+              fontWeight: '900',
+              letterSpacing: isPhone ? 1.6 : 2.2,
+            }}
+          >
+            OVERLOOKED
+          </Text>
+
+          {isWide && (
+            <View
+              style={{
+                flex: 1,
+                marginHorizontal: 18,
+              }}
+            >
+              <TopBarStreakProgress variant="wide" compactUI={false} barHeight={26} />
+            </View>
+          )}
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: isPhone ? 8 : 10 }}>
+            <Pressable
+              onPress={onOpenUpload}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingVertical: 6,
+                paddingHorizontal: isPhone ? 10 : 12,
+                borderRadius: 999,
+                backgroundColor: 'rgba(198,166,100,0.10)',
+                borderWidth: 1,
+                borderColor: 'rgba(198,166,100,0.30)',
+              }}
+            >
+              <Ionicons name="cloud-upload-outline" size={16} color={GOLD} />
+              <Text
+                style={{
+                  color: GOLD,
+                  fontSize: isPhone ? 8 : 9,
+                  fontWeight: '900',
+                  letterSpacing: 1.05,
+                }}
+              >
+                UPLOAD FILM
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={onOpenLeaderboard}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingVertical: 6,
+                paddingHorizontal: isPhone ? 10 : 12,
+                borderRadius: 999,
+                backgroundColor: 'rgba(198,166,100,0.10)',
+                borderWidth: 1,
+                borderColor: 'rgba(198,166,100,0.30)',
+              }}
+            >
+              <Ionicons name="trophy-outline" size={16} color={GOLD} />
+              <Text
+                style={{
+                  color: GOLD,
+                  fontSize: isPhone ? 8 : 9,
+                  fontWeight: '900',
+                  letterSpacing: 1.05,
+                }}
+              >
+                LEADERBOARD
+              </Text>
+            </Pressable>
+
+            <View
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 15,
+                backgroundColor: '#151515',
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.10)',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden',
+              }}
+            >
+              <View
+                style={{
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transform: [{ scale: 0.8 }],
+                }}
+                pointerEvents="box-none"
+              >
+                <SettingsButton absolute={false} />
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {!isWide && (
+          <View style={{ paddingTop: 4 }}>
+            <TopBarStreakProgress variant="wide" compactUI barHeight={24} />
+          </View>
+        )}
+      </View>
+    </View>
+  );
+});
 
 export default function MainTabs() {
   const navigation = useNavigation<any>();
@@ -1315,8 +1492,12 @@ const TOPBAR_EXTRA_ROW = isWide ? 0 : 26;
 
 const controlHeight = isWide ? 18 : isPhone ? 16 : 17;
 const settingsSize = isWide ? 28 : isPhone ? 28 : 26;
-const topOffset = Platform.OS === 'web' ? 6 : 0;
-const contentTopPadding = NAV_HEIGHT + TOPBAR_EXTRA_ROW + (Platform.OS === 'web' ? 6 : 0);
+const topOffset = 0;
+
+const contentTopPadding =
+  Platform.OS === 'web'
+    ? NAV_HEIGHT + TOPBAR_EXTRA_ROW + 10
+    : NAV_HEIGHT + TOPBAR_EXTRA_ROW;
 
 const TABBAR_HEIGHT = isPhone ? 54 : 56;
 
@@ -1413,144 +1594,10 @@ const TABBAR_HEIGHT = isPhone ? 54 : 56;
   }}
 >
         {Platform.OS === 'web' ? (
-  <View
-    style={{
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      zIndex: 9999,
-      backgroundColor: '#000',
-      paddingTop: 6,
-    }}
-  >
-    <View
-      style={{
-        width: '100%',
-        maxWidth: 1200,
-        alignSelf: 'center',
-        minHeight: 46,
-        paddingHorizontal: 14,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-      }}
-    >
-      <Text
-        style={{
-          color: '#EDEBE6',
-          fontSize: 18,
-          fontWeight: '900',
-          letterSpacing: 2.2,
-        }}
-      >
-        OVERLOOKED
-      </Text>
-
-      <View
-        style={{
-          flex: 1,
-          marginHorizontal: 18,
-          height: 18,
-          borderRadius: 999,
-          backgroundColor: '#1F1F1F',
-          borderWidth: 1,
-          borderColor: '#333333',
-          overflow: 'hidden',
-          justifyContent: 'center',
-        }}
-      >
-        <View
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: '16.7%',
-            backgroundColor: '#C6A664',
-          }}
-        />
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            paddingHorizontal: 10,
-          }}
-        >
-          <Text style={{ color: '#EDEBE6', fontSize: 7, fontWeight: '900' }}>STREAK</Text>
-          <Text style={{ color: '#EDEBE6', fontSize: 7, fontWeight: '900' }}>2/12</Text>
-          <Text style={{ color: '#A7A6A2', fontSize: 7, fontWeight: '900' }}>Year 1</Text>
-        </View>
-      </View>
-
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <Pressable
-          onPress={handleOpenUpload}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            paddingVertical: 6,
-            paddingHorizontal: 12,
-            borderRadius: 999,
-            backgroundColor: 'rgba(198,166,100,0.10)',
-            borderWidth: 1,
-            borderColor: 'rgba(198,166,100,0.30)',
-          }}
-        >
-          <Ionicons name="cloud-upload-outline" size={18} color="#C6A664" />
-          <Text style={{ color: '#C6A664', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }}>
-            UPLOAD FILM
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={() => setShowLeaderboard(true)}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            paddingVertical: 6,
-            paddingHorizontal: 12,
-            borderRadius: 999,
-            backgroundColor: 'rgba(198,166,100,0.10)',
-            borderWidth: 1,
-            borderColor: 'rgba(198,166,100,0.30)',
-          }}
-        >
-          <Ionicons name="trophy-outline" size={18} color="#C6A664" />
-          <Text style={{ color: '#C6A664', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }}>
-            LEADERBOARD
-          </Text>
-        </Pressable>
-
-        <View
-  style={{
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#151515',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  }}
->
-  <View
-    style={{
-      alignItems: 'center',
-      justifyContent: 'center',
-      transform: [{ scale: 0.8 }],
-    }}
-    pointerEvents="box-none"
-  >
-    <SettingsButton absolute={false} />
-  </View>
-</View>
-      </View>
-    </View>
-  </View>
+  <WebTopBar
+    onOpenUpload={handleOpenUpload}
+    onOpenLeaderboard={() => setShowLeaderboard(true)}
+  />
 ) : (
   <View
     pointerEvents={shouldHideTopBar ? 'none' : 'auto'}
@@ -1706,9 +1753,9 @@ const styles = StyleSheet.create({
   },
 
   brandTitleCompact: {
-    fontSize: 11,
-    letterSpacing: 1.2,
-  },
+  fontSize: 15,
+  letterSpacing: 1.6,
+},
 
   rightTools: {
   marginLeft: 'auto',
@@ -2045,6 +2092,10 @@ const styles = StyleSheet.create({
     color: '#0D0D0D',
     fontFamily: SYSTEM_SANS,
   },
+  brandTitleCompactWeb: {
+  fontSize: 15,
+  letterSpacing: 1.6,
+},
   xpGainBubble: {
     position: 'absolute',
     right: 0,
