@@ -16,6 +16,7 @@ import {
   Image,
   useWindowDimensions,
   Animated,
+  Easing,
 } from 'react-native';
 
 const Toast = Platform.OS === 'android' ? require('react-native').ToastAndroid : null;
@@ -158,7 +159,7 @@ export default function CreateProfileScreen() {
 
     const timer = setTimeout(() => {
       openRoleSelector();
-    }, 350);
+    }, 500);
 
     return () => clearTimeout(timer);
   }, []);
@@ -167,28 +168,32 @@ export default function CreateProfileScreen() {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 180,
+        duration: 300,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.timing(slideAnim, {
-        toValue: -8,
-        duration: 180,
+        toValue: -6,
+        duration: 300,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
     ]).start(() => {
       setStage(nextStage);
       cb?.();
-      slideAnim.setValue(12);
+      slideAnim.setValue(10);
 
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 240,
+          duration: 520,
+          easing: Easing.out(Easing.exp),
           useNativeDriver: true,
         }),
         Animated.timing(slideAnim, {
           toValue: 0,
-          duration: 240,
+          duration: 520,
+          easing: Easing.out(Easing.exp),
           useNativeDriver: true,
         }),
       ]).start();
@@ -380,7 +385,10 @@ export default function CreateProfileScreen() {
 
       setImage(croppedUri);
       setImageUrl(publicUrl);
-      animateStageChange('review');
+
+      setTimeout(() => {
+        animateStageChange('review');
+      }, 120);
     } catch (err: any) {
       Alert.alert('Upload Error', err?.message ?? 'Could not upload image.');
     } finally {
@@ -732,7 +740,9 @@ export default function CreateProfileScreen() {
                         setCitySearchModalVisible(false);
 
                         if (stage === 'city') {
-                          animateStageChange('name');
+                          setTimeout(() => {
+                            animateStageChange('name');
+                          }, 120);
                         }
                       }}
                       activeOpacity={0.8}
@@ -804,11 +814,13 @@ export default function CreateProfileScreen() {
                         setRoleSearchModalVisible(false);
 
                         if (stage === 'role') {
-                          animateStageChange('city', () => {
-                            setTimeout(() => {
-                              openCitySelector();
-                            }, 180);
-                          });
+                          setTimeout(() => {
+                            animateStageChange('city', () => {
+                              setTimeout(() => {
+                                openCitySelector();
+                              }, 320);
+                            });
+                          }, 120);
                         }
                       }}
                       activeOpacity={0.8}
