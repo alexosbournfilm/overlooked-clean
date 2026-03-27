@@ -2838,6 +2838,11 @@ const renderMobileYouTubeCard = useCallback(
             <TouchableOpacity
   activeOpacity={0.9}
   onPress={() => {
+    if (Platform.OS === 'web') {
+      shareSubmissionLink(s as any);
+      return;
+    }
+
     Alert.alert('Share', 'Choose how you want to share this film.', [
       {
         text: 'Share Story',
@@ -2986,21 +2991,26 @@ const renderCard = useCallback(
 
                       <TouchableOpacity
   onPress={() => {
-    Alert.alert('Share', 'Choose how you want to share this film.', [
-      {
-        text: 'Share Story',
-        onPress: () => shareSubmissionStoryPlaceholder(s as any),
-      },
-      {
-        text: 'Share Link',
-        onPress: () => shareSubmissionLink(s as any),
-      },
-      {
-        text: 'Cancel',
-        style: 'cancel',
-      },
-    ]);
-  }}
+  if (Platform.OS === 'web') {
+    shareSubmissionLink(s as any);
+    return;
+  }
+
+  Alert.alert('Share', 'Choose how you want to share this film.', [
+    {
+      text: 'Share Story',
+      onPress: () => shareSubmissionStoryPlaceholder(s as any),
+    },
+    {
+      text: 'Share Link',
+      onPress: () => shareSubmissionLink(s as any),
+    },
+    {
+      text: 'Cancel',
+      style: 'cancel',
+    },
+  ]);
+}}
   activeOpacity={0.9}
   style={styles.feedActionBtnGhost}
 >
@@ -3377,6 +3387,11 @@ return (
             <TouchableOpacity
   activeOpacity={0.9}
   onPress={() => {
+    if (Platform.OS === 'web') {
+      shareSubmissionLink(previewItem as any);
+      return;
+    }
+
     Alert.alert('Share', 'Choose how you want to share this film.', [
       {
         text: 'Share Story',
