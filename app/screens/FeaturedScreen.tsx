@@ -41,6 +41,7 @@ import { Submission } from '../types';
 import { supabase, giveXp, XP_VALUES } from '../lib/supabase';
 import { useGamification } from '../context/GamificationContext';
 import * as Clipboard from 'expo-clipboard';
+import { useAuth } from '../context/AuthProvider';
 
 
 const SYSTEM_SANS = Platform.select({
@@ -1521,6 +1522,8 @@ justifyContent: 'center',
 const FeaturedScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const { userId } = useAuth();
+const isGuest = !userId;
 const openShareSlug = route.params?.openShareSlug ?? null;
 const openSubmissionId = route.params?.openSubmissionId ?? null;
   const { width: winW, height: winH } = useWindowDimensions();
@@ -1997,6 +2000,24 @@ setActiveId(firstPlayable as string | null);
   }
 };
 
+const promptSignIn = (message: string) => {
+  Alert.alert(
+    'Sign in required',
+    message,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign In',
+        onPress: () => navigation.navigate('Auth', { screen: 'SignIn' }),
+      },
+      {
+        text: 'Create Account',
+        onPress: () => navigation.navigate('Auth', { screen: 'SignUp' }),
+      },
+    ]
+  );
+};
+
 const goToProfile = (user?: { id: string; full_name: string }) => {
   if (!user) return;
   navigation.navigate('Profile', {
@@ -2238,11 +2259,12 @@ if (error) {
   };
 
   const postComment = async () => {
-    const uid = currentUserId || gamUserId || null;
-    if (!uid || !commentsFor) {
-      Alert.alert('Please sign in', 'You need to be signed in to comment.');
-      return;
-    }
+  const uid = currentUserId || gamUserId || null;
+
+  if (isGuest || !uid || !commentsFor) {
+    promptSignIn('Create an account or sign in to comment on films.');
+    return;
+  }
 
     const text = commentText.trim();
     if (!text) return;
@@ -2291,12 +2313,12 @@ await fetchComments(commentsFor.id);
   };
 
   const toggleVote = async (s: Submission & { description?: string | null }) => {
-    const uid = currentUserId || gamUserId || null;
+  const uid = currentUserId || gamUserId || null;
 
-    if (!uid) {
-      Alert.alert('Please sign in', 'You need to be signed in to vote.');
-      return;
-    }
+  if (isGuest || !uid) {
+    promptSignIn('Create an account or sign in to vote for films.');
+    return;
+  }
 
     const creatorId = (s as any).user_id as string | undefined;
     if (creatorId && creatorId === uid) {
@@ -2861,8 +2883,8 @@ const renderMobileYouTubeCard = useCallback(
               style={[styles.mobilePill, (busy || mine) && { opacity: 0.5 }]}
             >
               <Text style={[styles.mobilePillText, voted && { color: GOLD }]}>
-                {busy ? '…' : `Votes ${s.votes ?? 0}`}
-              </Text>
+  {isGuest ? `Sign In to Vote (${s.votes ?? 0})` : busy ? '…' : `Votes ${s.votes ?? 0}`}
+</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -3446,10 +3468,7 @@ return (
             <TouchableOpacity
               activeOpacity={0.9}
               onPress={() => toggleVote(previewItem)}
-              disabled={
-                !!voteBusy[previewItem.id] ||
-                (!!currentUserId && (previewItem as any).user_id === currentUserId)
-              }
+              disabled={!!voteBusy[previewItem.id] || (!!currentUserId && (previewItem as any).user_id === currentUserId)}
               style={[
                 styles.previewActionPill,
                 (voteBusy[previewItem.id] ||
@@ -3459,8 +3478,10 @@ return (
               ]}
             >
               <Text style={styles.previewActionText}>
-                {votedIds.has(previewItem.id) ? 'Voted' : 'Vote'} ({previewItem.votes ?? 0})
-              </Text>
+  {isGuest
+    ? `Sign In to Vote (${previewItem.votes ?? 0})`
+    : `${votedIds.has(previewItem.id) ? 'Voted' : 'Vote'} (${previewItem.votes ?? 0})`}
+</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -3479,8 +3500,10 @@ return (
               style={styles.previewActionPillGhost}
             >
               <Text style={styles.previewActionTextGhost}>
-                Comments ({commentCounts[previewItem.id] ?? 0})
-              </Text>
+  {isGuest
+    ? `Comments (${commentCounts[previewItem.id] ?? 0})`
+    : `Comments (${commentCounts[previewItem.id] ?? 0})`}
+</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -3565,12 +3588,18 @@ return (
 
                         <View style={styles.commentActionsRow}>
                           <TouchableOpacity
-                            activeOpacity={0.9}
-                            onPress={() => setReplyingTo(item)}
-                            style={styles.replyBtn}
-                          >
-                            <Text style={styles.replyBtnText}>Reply</Text>
-                          </TouchableOpacity>
+  activeOpacity={0.9}
+  onPress={() => {
+    if (isGuest) {
+      promptSignIn('Create an account or sign in to reply to comments.');
+      return;
+    }
+    setReplyingTo(item);
+  }}
+  style={styles.replyBtn}
+>
+  <Text style={styles.replyBtnText}>{isGuest ? 'Sign In to Reply' : 'Reply'}</Text>
+</TouchableOpacity>
                         </View>
                       </View>
                     </View>
@@ -3632,24 +3661,38 @@ return (
 
           <View style={styles.commentComposer}>
             <TextInput
-              value={commentText}
-              onChangeText={setCommentText}
-              placeholder={replyingTo ? 'Write a reply…' : 'Add a comment…'}
+  value={commentText}
+  onChangeText={(txt) => {
+    if (isGuest) {
+      promptSignIn('Create an account or sign in to comment on films.');
+      return;
+    }
+    setCommentText(txt);
+  }}
+  placeholder={
+    isGuest
+      ? 'Sign in to comment…'
+      : replyingTo
+      ? 'Write a reply…'
+      : 'Add a comment…'
+  }
               placeholderTextColor="#777"
               style={styles.commentInput}
               multiline
             />
             <TouchableOpacity
-              onPress={postComment}
-              disabled={commentPosting || !commentText.trim()}
-              activeOpacity={0.9}
-              style={[
-                styles.commentSendBtn,
-                (commentPosting || !commentText.trim()) && { opacity: 0.5 },
-              ]}
-            >
-              <Text style={styles.commentSendText}>{commentPosting ? '…' : 'Post'}</Text>
-            </TouchableOpacity>
+  onPress={postComment}
+  disabled={commentPosting || (!isGuest && !commentText.trim())}
+  activeOpacity={0.9}
+  style={[
+    styles.commentSendBtn,
+    (commentPosting || (!isGuest && !commentText.trim())) && { opacity: 0.5 },
+  ]}
+>
+  <Text style={styles.commentSendText}>
+    {isGuest ? 'Sign In' : commentPosting ? '…' : 'Post'}
+  </Text>
+</TouchableOpacity>
           </View>
         </View>
       </View>
