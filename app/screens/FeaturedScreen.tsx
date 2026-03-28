@@ -40,6 +40,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Submission } from '../types';
 import { supabase, giveXp, XP_VALUES } from '../lib/supabase';
 import { useGamification } from '../context/GamificationContext';
+import * as Clipboard from 'expo-clipboard';
 
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
@@ -2004,6 +2005,31 @@ const goToProfile = (user?: { id: string; full_name: string }) => {
     },
   });
 };
+const openStoryModeSafely = (
+  s: Submission & {
+    description?: string | null;
+    storage_path?: string | null;
+    thumbnail_url?: string | null;
+    media_kind?: RawSubmission['media_kind'];
+    category?: Category | null;
+    share_slug?: string | null;
+  }
+) => {
+  if (Platform.OS === 'ios' && previewOpen) {
+    setPreviewOpen(false);
+    setPreviewItem(null);
+    setActiveId(null);
+
+    setTimeout(() => {
+      setStoryModeItem(s);
+      setStoryModeOpen(true);
+    }, 250);
+    return;
+  }
+
+  setStoryModeItem(s);
+  setStoryModeOpen(true);
+};
 const openStoryMode = (
   s: Submission & {
     description?: string | null;
@@ -2042,14 +2068,10 @@ const shareSubmissionLink = async (
     const url = buildSharedFilmUrl(shareSlug);
 
     if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
-      await navigator.clipboard.writeText(url);
-    } else {
-      await Share.share({
-        message: url,
-        url,
-        title: s.title || 'Watch on Overlooked',
-      });
-    }
+  await navigator.clipboard.writeText(url);
+} else {
+  await Clipboard.setStringAsync(url);
+}
 
     setSubmissions((prev) =>
       prev.map((row) =>
@@ -2074,7 +2096,7 @@ const shareSubmissionLink = async (
         'Link copied. Screenshot the next screen and post it to your story?'
       );
       if (proceed) {
-        openStoryMode({
+        openStoryModeSafely({
           ...(s as any),
           share_slug: shareSlug,
         });
@@ -2091,7 +2113,7 @@ const shareSubmissionLink = async (
           {
             text: 'Open story mode',
             onPress: () =>
-              openStoryMode({
+              openStoryModeSafely({
                 ...(s as any),
                 share_slug: shareSlug,
               }),
@@ -3295,7 +3317,13 @@ return (
     )}
 
     {storyModeOpen && storyModeItem && (
-  <Modal visible transparent animationType="fade" onRequestClose={closeStoryMode}>
+  <Modal
+  visible
+  transparent
+  animationType="fade"
+  presentationStyle="overFullScreen"
+  onRequestClose={closeStoryMode}
+>
     <View style={styles.storyOverlay}>
       <View style={styles.storyCard}>
   <View style={styles.storyPoster}>
@@ -3665,8 +3693,8 @@ storyCloseBtnFloating: {
   height: 40,
   borderRadius: 999,
   backgroundColor: 'rgba(0,0,0,0.55)',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.12)',
+  borderWidth: 0,
+  borderColor: 'transparent',
   alignItems: 'center',
   justifyContent: 'center',
   zIndex: 20,
@@ -3698,8 +3726,8 @@ storyPoster: {
   borderRadius: 28,
   overflow: 'hidden',
   backgroundColor: '#050505',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.06)',
+  borderWidth: 0,
+  borderColor: 'transparent',
   position: 'relative',
 },
 
@@ -3716,9 +3744,9 @@ storyCenterPanel: {
   left: '8%',
   right: '8%',
   borderRadius: 24,
-  backgroundColor: 'rgba(0,0,0,0.10)',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.04)',
+  backgroundColor: 'transparent',
+  borderWidth: 0,
+  borderColor: 'transparent',
 },
 
 storyBrandTop: {

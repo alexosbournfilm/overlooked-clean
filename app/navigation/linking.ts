@@ -18,7 +18,7 @@ export const linking: LinkingOptions<any> = {
       PublicProfile: "creative/:slug",
 
       // ✅ NEW SHARED FILM LINK
-      SharedFilm: "f/:shareSlug",
+    
 
       // AUTH STACK
       Auth: {
@@ -33,7 +33,12 @@ export const linking: LinkingOptions<any> = {
       // MAIN TABS
       MainTabs: {
         screens: {
-          Featured: "featured",
+          Featured: {
+  path: "f/:openShareSlug",
+  parse: {
+    openShareSlug: (value: string) => decodeURIComponent(value),
+  },
+},
           Jobs: "jobs",
           Challenge: "challenge",
           Location: "location",
