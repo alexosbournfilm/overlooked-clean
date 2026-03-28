@@ -514,6 +514,28 @@ export default function SignInScreen() {
     };
   }, [displayText, isDeleting, fullLine, showSignIn]);
 
+    const handleEnterAsGuest = () => {
+    try {
+      const parentNav = navigation.getParent?.();
+
+      if (parentNav) {
+        parentNav.reset({
+          index: 0,
+          routes: [{ name: 'MainTabs' }],
+        });
+        return;
+      }
+
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'MainTabs' }],
+      });
+    } catch (e) {
+      console.log('Guest navigation error:', e);
+      showError('Navigation Error', 'Could not enter as guest.');
+    }
+  };
+
   const handleSignIn = async () => {
   const trimmedEmail = email.trim();
 
@@ -633,17 +655,24 @@ export default function SignInScreen() {
                 </Pressable>
 
                 <View style={styles.actionsRow}>
-                  <TouchableOpacity
-                    onPress={() => navigation.navigate('SignUp')}
-                    style={styles.primaryChip}
-                  >
-                    <Text style={styles.primaryChipText}>Create an account</Text>
-                  </TouchableOpacity>
+  <TouchableOpacity
+    onPress={handleEnterAsGuest}
+    style={styles.textAction}
+  >
+    <Text style={styles.textActionText}>Enter without account</Text>
+  </TouchableOpacity>
 
-                  <TouchableOpacity onPress={() => setShowSignIn(true)} style={styles.textAction}>
-                    <Text style={styles.textActionText}>Sign in</Text>
-                  </TouchableOpacity>
-                </View>
+  <TouchableOpacity
+    onPress={() => navigation.navigate('SignUp')}
+    style={styles.primaryChip}
+  >
+    <Text style={styles.primaryChipText}>Create an account</Text>
+  </TouchableOpacity>
+
+  <TouchableOpacity onPress={() => setShowSignIn(true)} style={styles.textAction}>
+    <Text style={styles.textActionText}>Sign in</Text>
+  </TouchableOpacity>
+</View>
               </>
             )}
 
@@ -668,28 +697,37 @@ export default function SignInScreen() {
 
                 <View style={styles.navRowBottom}>
                   <View style={styles.actionsRowNarrow}>
-                    <TouchableOpacity
-                      onPress={() => navigation.navigate('SignUp')}
-                      style={[
-                        styles.primaryChip,
-                        styles.primaryChipNarrow,
-                        isTinyNav && styles.primaryChipTiny,
-                      ]}
-                    >
-                      <Text style={[styles.primaryChipText, isTinyNav && styles.primaryChipTextTiny]}>
-                        Create an account
-                      </Text>
-                    </TouchableOpacity>
+  <TouchableOpacity
+    onPress={handleEnterAsGuest}
+    style={[styles.textAction, styles.textActionNarrow]}
+  >
+    <Text style={[styles.textActionText, isTinyNav && styles.textActionTextTiny]}>
+      Enter without account
+    </Text>
+  </TouchableOpacity>
 
-                    <TouchableOpacity
-                      onPress={() => setShowSignIn(true)}
-                      style={[styles.textAction, styles.textActionNarrow]}
-                    >
-                      <Text style={[styles.textActionText, isTinyNav && styles.textActionTextTiny]}>
-                        Sign in
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+  <TouchableOpacity
+    onPress={() => navigation.navigate('SignUp')}
+    style={[
+      styles.primaryChip,
+      styles.primaryChipNarrow,
+      isTinyNav && styles.primaryChipTiny,
+    ]}
+  >
+    <Text style={[styles.primaryChipText, isTinyNav && styles.primaryChipTextTiny]}>
+      Create an account
+    </Text>
+  </TouchableOpacity>
+
+  <TouchableOpacity
+    onPress={() => setShowSignIn(true)}
+    style={[styles.textAction, styles.textActionNarrow]}
+  >
+    <Text style={[styles.textActionText, isTinyNav && styles.textActionTextTiny]}>
+      Sign in
+    </Text>
+  </TouchableOpacity>
+</View>
                 </View>
               </>
             )}
@@ -1104,6 +1142,18 @@ export default function SignInScreen() {
               <Text style={styles.buttonText}>Sign In</Text>
             )}
           </TouchableOpacity>
+
+          <TouchableOpacity
+  onPress={() => {
+    setShowSignIn(false);
+    handleEnterAsGuest();
+  }}
+  style={{ marginTop: 12 }}
+>
+  <Text style={styles.link}>
+    <Text style={{ textDecorationLine: 'underline' }}>Enter without an account</Text>
+  </Text>
+</TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => {
