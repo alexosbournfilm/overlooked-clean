@@ -14,7 +14,6 @@ import {
   Pressable,
   useWindowDimensions,
   Image,
-  Share,
 } from "react-native";
 import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
 import { supabase, giveXp } from "../lib/supabase";
@@ -29,6 +28,7 @@ import { useGamification } from "../context/GamificationContext";
 import { useMonthlyStreak } from "../lib/useMonthlyStreak";
 import { UpgradeModal } from "../../components/UpgradeModal";
 import dayjs from "dayjs";
+import * as Clipboard from "expo-clipboard";
 
 /* ------------------------------- palette ------------------------------- */
 const GOLD = "#C6A664";
@@ -622,6 +622,12 @@ export default function WorkshopSubmitScreen() {
 
   const [upgradeVisible, setUpgradeVisible] = useState(false);
   const [userTier, setUserTier] = useState<string | null>(null);
+  const [storyModeOpen, setStoryModeOpen] = useState(false);
+const [storyModeItem, setStoryModeItem] = useState<{
+  title?: string | null;
+  shareSlug: string;
+  thumbnailUrl?: string | null;
+} | null>(null);
 
   const videoRef = useRef<Video>(null);
   const previewPlayerRef = useRef<Video>(null);
@@ -756,22 +762,36 @@ export default function WorkshopSubmitScreen() {
   };
 
   const closePreview = () => {
-    setPreviewVisible(false);
-    setPreviewLoading(false);
-    setPreviewError(null);
-    clearPreviewTimer();
+  setPreviewVisible(false);
+  setPreviewLoading(false);
+  setPreviewError(null);
+  clearPreviewTimer();
 
-    stopWebPreviewIfAny();
+  stopWebPreviewIfAny();
 
-    (async () => {
-      try {
-        await previewPlayerRef.current?.stopAsync?.();
-      } catch {}
-      try {
-        await previewPlayerRef.current?.unloadAsync?.();
-      } catch {}
-    })();
-  };
+  (async () => {
+    try {
+      await previewPlayerRef.current?.stopAsync?.();
+    } catch {}
+    try {
+      await previewPlayerRef.current?.unloadAsync?.();
+    } catch {}
+  })();
+};
+
+const openStoryMode = (item: {
+  title?: string | null;
+  shareSlug: string;
+  thumbnailUrl?: string | null;
+}) => {
+  setStoryModeItem(item);
+  setStoryModeOpen(true);
+};
+
+const closeStoryMode = () => {
+  setStoryModeOpen(false);
+  setStoryModeItem(null);
+};
 
   const resetSelectedFile = () => {
     closePreview();
@@ -1324,61 +1344,69 @@ const successMessage = isWorkshopMode
   ? "Your film has been uploaded, added to Featured, entered into this month’s challenge, and your workshop lesson is now complete."
   : "Your film has been uploaded, added to Featured, and entered into this month’s challenge.";
 
+const uploadedTitle = createdSubmission.title ?? title.trim();
+const uploadedThumb = thumbRes.publicUrl;
+
 if (Platform.OS === "web") {
-  const shouldShare =
+  try {
+    await copyFilmLink({ shareSlug });
+  } catch (err: any) {
+    console.warn("Copy failed:", err?.message || err);
+  }
+
+  const shouldOpenStory =
     typeof window !== "undefined" &&
     window.confirm(
-      `${successMessage}\n\nPress OK to share your film link now, or Cancel to continue.`
+      `${successMessage}\n\nYour link has been copied. Press OK to open story mode, or Cancel to finish.`
     );
 
-  if (shouldShare) {
-    try {
-      await shareFilmLink({
-        title: createdSubmission.title ?? title.trim(),
-        shareSlug,
-      });
-    } catch (shareErr: any) {
-      console.warn("Share failed:", shareErr?.message || shareErr);
-    }
+  if (shouldOpenStory) {
+    openStoryMode({
+      title: uploadedTitle,
+      shareSlug,
+      thumbnailUrl: uploadedThumb,
+    });
+    return;
   }
 
   navigation.goBack();
 } else {
   Alert.alert(successTitle, successMessage, [
     {
-      text: "Share Story",
-      onPress: async () => {
-        try {
-          await shareFilmStoryPlaceholder({
-            title: createdSubmission.title ?? title.trim(),
-            shareSlug,
-          });
-        } catch (shareErr: any) {
-          console.warn("Story share failed:", shareErr?.message || shareErr);
-        } finally {
-          navigation.goBack();
-        }
-      },
-    },
-    {
-      text: "Share Link",
-      onPress: async () => {
-        try {
-          await shareFilmLink({
-            title: createdSubmission.title ?? title.trim(),
-            shareSlug,
-          });
-        } catch (shareErr: any) {
-          console.warn("Share failed:", shareErr?.message || shareErr);
-        } finally {
-          navigation.goBack();
-        }
-      },
-    },
-    {
       text: "Done",
-      onPress: () => {
-        navigation.goBack();
+      onPress: () => navigation.goBack(),
+    },
+    {
+      text: "Copy Link",
+      onPress: async () => {
+        try {
+          await copyFilmLink({ shareSlug });
+
+          Alert.alert(
+            "Link copied",
+            "Your watch link has been copied. Do you want to open story mode for a screenshot?",
+            [
+              {
+                text: "Not now",
+                style: "cancel",
+                onPress: () => navigation.goBack(),
+              },
+              {
+                text: "Open story mode",
+                onPress: () => {
+                  openStoryMode({
+                    title: uploadedTitle,
+                    shareSlug,
+                    thumbnailUrl: uploadedThumb,
+                  });
+                },
+              },
+            ]
+          );
+        } catch (err: any) {
+          console.warn("Copy failed:", err?.message || err);
+          navigation.goBack();
+        }
       },
     },
   ]);
@@ -2004,6 +2032,65 @@ if (Platform.OS === "web") {
         </View>
       </ScrollView>
 
+      <Modal
+  visible={storyModeOpen}
+  transparent
+  animationType="fade"
+  onRequestClose={closeStoryMode}
+>
+  <View style={styles.storyOverlay}>
+    <View style={styles.storyCard}>
+      <View style={styles.storyPoster}>
+        <TouchableOpacity
+          onPress={closeStoryMode}
+          activeOpacity={0.9}
+          style={styles.storyCloseBtnFloating}
+        >
+          <Text style={styles.storyCloseText}>×</Text>
+        </TouchableOpacity>
+
+        <Image
+          source={{
+            uri: storyModeItem?.thumbnailUrl || "https://picsum.photos/900/1600",
+          }}
+          style={styles.storyPosterImage}
+          resizeMode="contain"
+        />
+
+        <LinearGradient
+          colors={["rgba(0,0,0,0.04)", "rgba(0,0,0,0.10)", "rgba(0,0,0,0.28)"]}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+
+        <LinearGradient
+          colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.0)", "rgba(0,0,0,0.72)"]}
+          start={{ x: 0.5, y: 0.45 }}
+          end={{ x: 0.5, y: 1 }}
+          style={styles.storyBottomFade}
+        />
+
+        <View style={styles.storyBrandTop}>
+          <Text style={styles.storyBrandText}>OVERLOOKED</Text>
+        </View>
+
+        <View style={styles.storyContent}>
+          <Text style={styles.storyTitle} numberOfLines={3}>
+            {storyModeItem?.title || "Untitled Film"}
+          </Text>
+
+          <Text style={styles.storyLink} numberOfLines={1}>
+            {storyModeItem?.shareSlug
+              ? buildSharedFilmUrl(storyModeItem.shareSlug)
+              : ""}
+          </Text>
+        </View>
+      </View>
+    </View>
+  </View>
+</Modal>
+
       <UpgradeModal
         visible={upgradeVisible}
         context="challenge"
@@ -2045,33 +2132,16 @@ async function ensureSubmissionShareSlug(submission: {
   return slug;
 }
 
-async function shareFilmLink(opts: {
-  title?: string | null;
-  shareSlug: string;
-}) {
-  const url = buildSharedFilmUrl(opts.shareSlug);
-  const message = `${opts.title || "My film"}\n\nWatch on Overlooked:\n${url}`;
-
-  await Share.share({
-    message,
-    url,
-    title: opts.title || "Watch on Overlooked",
-  });
-
-  return url;
-}
-
-async function shareFilmStoryPlaceholder(opts: {
-  title?: string | null;
+async function copyFilmLink(opts: {
   shareSlug: string;
 }) {
   const url = buildSharedFilmUrl(opts.shareSlug);
 
-  await Share.share({
-    message: `${opts.title || "My film"}\n\nOpen this film in Overlooked:\n${url}`,
-    url,
-    title: opts.title || "Share to Story",
-  });
+  if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
+    await navigator.clipboard.writeText(url);
+  } else {
+    await Clipboard.setStringAsync(url);
+  }
 
   return url;
 }
@@ -2081,6 +2151,110 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: T.bg,
   },
+  storyOverlay: {
+  flex: 1,
+  backgroundColor: "rgba(0,0,0,0.94)",
+  justifyContent: "center",
+  alignItems: "center",
+  padding: 20,
+},
+
+storyCard: {
+  width: "100%",
+  maxWidth: 420,
+  alignItems: "center",
+},
+
+storyPoster: {
+  width: "100%",
+  aspectRatio: 9 / 16,
+  borderRadius: 28,
+  overflow: "hidden",
+  backgroundColor: "#050505",
+  borderWidth: 0,
+  borderColor: "transparent",
+  position: "relative",
+},
+
+storyPosterImage: {
+  width: "100%",
+  height: "100%",
+  position: "absolute",
+  opacity: 1,
+},
+
+storyCloseBtnFloating: {
+  position: "absolute",
+  top: 16,
+  right: 16,
+  width: 40,
+  height: 40,
+  borderRadius: 999,
+  backgroundColor: "rgba(0,0,0,0.55)",
+  borderWidth: 0,
+  borderColor: "transparent",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 20,
+},
+
+storyCloseText: {
+  color: "#FFFFFF",
+  fontSize: 22,
+  fontWeight: "900",
+  lineHeight: 22,
+  textAlign: "center",
+},
+
+storyBrandTop: {
+  position: "absolute",
+  top: 28,
+  left: 24,
+  right: 24,
+  alignItems: "center",
+},
+
+storyBrandText: {
+  color: "#FFFFFF",
+  fontWeight: "900",
+  fontSize: 18,
+  letterSpacing: 3,
+  textTransform: "uppercase",
+},
+
+storyBottomFade: {
+  position: "absolute",
+  left: 0,
+  right: 0,
+  bottom: 0,
+  height: "34%",
+},
+
+storyContent: {
+  position: "absolute",
+  left: 26,
+  right: 26,
+  bottom: 36,
+  alignItems: "center",
+},
+
+storyTitle: {
+  color: "#FFFFFF",
+  fontWeight: "900",
+  fontSize: 24,
+  lineHeight: 28,
+  textAlign: "center",
+  textTransform: "uppercase",
+  letterSpacing: 0.8,
+},
+
+storyLink: {
+  marginTop: 18,
+  color: "rgba(255,255,255,0.46)",
+  fontWeight: "700",
+  fontSize: 10,
+  textAlign: "center",
+},
   scroll: {
     paddingHorizontal: 18,
     paddingTop: 24,
