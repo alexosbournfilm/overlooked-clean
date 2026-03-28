@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Audio, Video, ResizeMode } from 'expo-av';
 import { supabase, type UserTier } from '../lib/supabase';
 import { UpgradeModal } from '../../components/UpgradeModal';
@@ -210,6 +210,28 @@ const ThumbMedia: React.FC<{ uri: string }> = ({ uri }) => {
 
 /* ------------------------------- screen -------------------------------- */
 const WorkshopScreen: React.FC = () => {
+    const navigation = useNavigation<any>();
+  
+
+  
+
+const promptSignIn = (message: string) => {
+  Alert.alert(
+    'Sign in required',
+    message,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign In',
+        onPress: () => navigation.navigate('Auth', { screen: 'SignIn' }),
+      },
+      {
+        text: 'Create Account',
+        onPress: () => navigation.navigate('Auth', { screen: 'SignUp' }),
+      },
+    ]
+  );
+};
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -219,6 +241,7 @@ const WorkshopScreen: React.FC = () => {
 
   const [purchases, setPurchases] = useState<WorkshopPurchase[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const isGuest = !userProfile?.id;
 
   const [upgradeVisible, setUpgradeVisible] = useState(false);
 
@@ -482,7 +505,12 @@ const WorkshopScreen: React.FC = () => {
     return userProfile?.tier === 'pro';
   };
 
-  const openProductContent = (product: WorkshopProduct) => {
+    const openProductContent = (product: WorkshopProduct) => {
+    if (isGuest) {
+      promptSignIn('Create an account or sign in to access Workshop products.');
+      return;
+    }
+
     if (!hasAccess(product)) {
       setUpgradeVisible(true);
       return;
@@ -501,8 +529,22 @@ const WorkshopScreen: React.FC = () => {
     });
   };
 
-  const renderCTA = (product: WorkshopProduct) => {
+    const renderCTA = (product: WorkshopProduct) => {
     const access = hasAccess(product);
+
+    if (isGuest) {
+      return (
+        <TouchableOpacity
+          style={styles.ctaButton}
+          onPress={() => promptSignIn('Create an account or sign in to access Workshop products.')}
+          activeOpacity={0.9}
+        >
+          <Text style={styles.ctaText} numberOfLines={1}>
+            Sign In to Access
+          </Text>
+        </TouchableOpacity>
+      );
+    }
 
     if (access) {
       return (
@@ -1122,7 +1164,19 @@ const WorkshopScreen: React.FC = () => {
                     <Text style={styles.modalButtonGhostText}>Close</Text>
                   </TouchableOpacity>
 
-                  {hasAccess(selectedProduct) ? (
+                                    {isGuest ? (
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.modalButtonGold]}
+                      onPress={() => {
+                        closePreview();
+                        promptSignIn('Create an account or sign in to access Workshop products.');
+                      }}
+                      activeOpacity={0.9}
+                    >
+                      <Ionicons name="person-outline" size={16} color="#050505" />
+                      <Text style={styles.modalButtonGoldText}>Sign In to Access</Text>
+                    </TouchableOpacity>
+                  ) : hasAccess(selectedProduct) ? (
                     <TouchableOpacity
                       style={[styles.modalButton, styles.modalButtonGold]}
                       onPress={() => {

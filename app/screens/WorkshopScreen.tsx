@@ -5293,21 +5293,21 @@ const chapters = useMemo(() => {
   ).length;
 
     const handleOpenLesson = (lesson: Lesson) => {
-    const state = nodeState(lesson.step, completedSteps);
-    if (state === 'locked') return;
+  const state = nodeState(lesson.step, completedSteps);
+  if (state === 'locked') return;
 
-    if (isGuest) {
-      promptSignIn('Create an account or sign in to open workshop challenges.');
-      return;
-    }
+  if (isGuest) {
+    promptSignIn('Create an account or sign in to open workshop challenges.');
+    return;
+  }
 
-    if (!hasProAccess) {
-      setUpgradeVisible(true);
-      return;
-    }
+  if (!hasProAccess) {
+    setUpgradeVisible(true);
+    return;
+  }
 
-    setSelectedLesson(lesson);
-  };
+  setSelectedLesson(lesson);
+};
 
     const handleOpenSurgeryGate = (lesson: Lesson) => {
     if (isGuest) {
@@ -5698,11 +5698,11 @@ const chapters = useMemo(() => {
                       ]}
                     >
                       <LessonBubble
-                        lesson={lesson}
-                        state={state}
-                        size={actualNodeSize}
-                        onPress={() => handleOpenLesson(lesson)}
-                      />
+  lesson={lesson}
+  state={state}
+  size={actualNodeSize}
+  onPress={() => handleOpenLesson(lesson)}
+/>
 
                       <View
                         style={[
