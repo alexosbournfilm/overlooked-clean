@@ -158,12 +158,71 @@ function SectionButton(props: {
 export default function SettingsModal() {
   const { isOpen, close } = useSettingsModal();
   const navigation = useNavigation<any>();
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const isGuest = !currentUserId;
 
   const [deleting, setDeleting] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [debug, setDebug] = useState<string | null>(null);
 
   const [showUpgrade, setShowUpgrade] = useState(false);
+
+    React.useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (mounted) {
+        setCurrentUserId(user?.id ?? null);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [isOpen]);
+
+    const promptSignIn = (message: string) => {
+    if (Platform.OS === 'web') {
+      const goToSignIn = window.confirm(
+        `${message}\n\nPress OK for Sign In, or Cancel for Create Account.`
+      );
+
+      close();
+
+      if (goToSignIn) {
+        navigation.navigate('Auth', { screen: 'SignIn' });
+      } else {
+        navigation.navigate('Auth', { screen: 'SignUp' });
+      }
+      return;
+    }
+
+    Alert.alert(
+      'Sign in required',
+      message,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign In',
+          onPress: () => {
+            close();
+            navigation.navigate('Auth', { screen: 'SignIn' });
+          },
+        },
+        {
+          text: 'Create Account',
+          onPress: () => {
+            close();
+            navigation.navigate('Auth', { screen: 'SignUp' });
+          },
+        },
+      ]
+    );
+  };
 
   const resetToAuthSignIn = () => {
     const action = CommonActions.reset({
@@ -285,10 +344,20 @@ export default function SettingsModal() {
 
             <Text style={styles.title}>Settings</Text>
 
-            <SectionButton
+                        <SectionButton
               title="Manage membership"
-              subtitle="View or change your Overlooked plan."
-              onPress={() => setShowUpgrade(true)}
+              subtitle={
+                isGuest
+                  ? "Sign in to view or change your Overlooked plan."
+                  : "View or change your Overlooked plan."
+              }
+              onPress={() => {
+                if (isGuest) {
+                  promptSignIn('Sign in or create an account to manage membership.');
+                  return;
+                }
+                setShowUpgrade(true);
+              }}
               disabled={deleting || signingOut}
             />
 
