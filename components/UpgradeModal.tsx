@@ -11,11 +11,14 @@ import {
   ActivityIndicator,
   ScrollView,
   useWindowDimensions,
-  SafeAreaView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { type UserTier } from '../app/lib/supabase';
-import { getCurrentUserTierOrFree, invalidateMembershipCache } from '../app/lib/membership';
+import {
+  getCurrentUserTierOrFree,
+  invalidateMembershipCache,
+} from '../app/lib/membership';
 import { supabase } from '../app/lib/supabase';
 
 type UpgradeContext =
@@ -47,10 +50,6 @@ const HAIRLINE_2 = 'rgba(255,255,255,0.06)';
 
 const GOLD = '#C6A664';
 
-// ✅ Premium offer styling (calm, not neon)
-const OFFER_ACCENT = '#2ED47A';
-const OFFER_STRIP_BG = 'rgba(46,212,122,0.10)';
-const OFFER_STRIP_BORDER = 'rgba(46,212,122,0.18)';
 const OFFER_TILE_BG = 'rgba(46,212,122,0.12)';
 const OFFER_TILE_BORDER = 'rgba(46,212,122,0.22)';
 
@@ -66,9 +65,8 @@ const HUMAN_TIER_LONG: Record<UserTier, string> = {
   pro: 'Pro',
 };
 
-// Countdown to Jan 25, 2026 (end of day local time)
 function getOfferRemaining() {
-  const end = new Date(2026, 0, 31, 23, 59, 59); // Jan 31, 2026
+  const end = new Date(2026, 0, 31, 23, 59, 59);
   const now = new Date();
   const ms = end.getTime() - now.getTime();
 
@@ -86,12 +84,15 @@ function getOfferRemaining() {
   return { expired: false, short, long };
 }
 
-// Friendly date formatter (keeps it simple + consistent across platforms)
 function formatEndDate(iso: string) {
   try {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return null;
-    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    return d.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
   } catch {
     return null;
   }
@@ -105,8 +106,8 @@ export const UpgradeModal: React.FC<Props> = ({
 }) => {
   const nav = useNavigation<any>();
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
-  // ✅ Mobile responsiveness switches
   const isMobile = width < 520;
   const isTiny = width < 360;
 
@@ -121,7 +122,6 @@ export const UpgradeModal: React.FC<Props> = ({
   const [downgradeConfirmVisible, setDowngradeConfirmVisible] = useState(false);
   const [downgradeConfirmError, setDowngradeConfirmError] = useState<string | null>(null);
 
-  // NEW: show what will happen on downgrade
   const [periodEndIso, setPeriodEndIso] = useState<string | null>(null);
   const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState<boolean>(false);
   const [hasStripeSubscription, setHasStripeSubscription] = useState<boolean>(false);
@@ -134,12 +134,10 @@ export const UpgradeModal: React.FC<Props> = ({
     const tick = () => setOfferCountdown(getOfferRemaining());
     tick();
 
-    // ✅ Clean countdown: update every minute (no seconds)
     const id = setInterval(tick, 60 * 1000);
     return () => clearInterval(id);
   }, [visible]);
 
-  // Load tier + billing status for better downgrade UX
   useEffect(() => {
     if (!visible) return;
 
@@ -150,13 +148,11 @@ export const UpgradeModal: React.FC<Props> = ({
         setErrorText(null);
         setDowngradeConfirmError(null);
 
-        // Tier (cache ok)
         const tier = await getCurrentUserTierOrFree();
         if (!mounted) return;
         setCurrentTier(tier);
         setSelectedTier(tier);
 
-        // Billing snapshot (best effort)
         const { data: userRes, error: userErr } = await supabase.auth.getUser();
         if (userErr) throw userErr;
         if (!userRes?.user?.id) return;
@@ -184,22 +180,21 @@ export const UpgradeModal: React.FC<Props> = ({
     };
   }, [visible]);
 
-  const title = 'Upgrade to unlock everything';
-  const subtitle =
-    'Submit films to the Monthly Film Challenge, apply for paid jobs, and get full access to Workshop tools & downloads.';
+  const title = 'Unlock your full filmmaking access';
+const subtitle =
+  'Upload your films, apply for paid jobs, and unlock the full Filmmaking Bootcamp — a premium space to train across every major film discipline through high-level lessons, practical exercises, and powerful Workshop tools built to help you actually make films.';
 
   const currentTierLabel = currentTier ? HUMAN_TIER_LONG[currentTier] : 'Free';
   const isProDisabled = currentTier === 'pro';
-
   const endDateLabel = periodEndIso ? formatEndDate(periodEndIso) : null;
 
   const downgradeLossBullets = useMemo(() => {
-    // NOTE: This is now “what happens after your Pro ends”.
     return [
-      'Monthly Film Challenge submissions will be locked (Pro only).',
-      'Paid job applications will be locked (Pro only).',
-      'Workshop tools & downloads will be locked (Pro only).',
-    ];
+  'Uploading films to the Monthly Film Challenge will be locked (Pro only).',
+  'Paid job applications will be locked (Pro only).',
+  'The full Filmmaking Bootcamp will be locked (Pro only).',
+  'Workshop tools and film resources that help you make films will be locked (Pro only).',
+];
   }, [context]);
 
   const doUpgradeToPro = async () => {
@@ -238,8 +233,6 @@ export const UpgradeModal: React.FC<Props> = ({
       if (userErr) throw userErr;
       if (!userRes?.user?.id) throw new Error('Not signed in');
 
-      // If user is Pro but has no Stripe subscription, they’re likely Lifetime (or manually granted).
-      // In that case, there is nothing to "stop paying".
       if (!hasStripeSubscription) {
         setDowngradeConfirmError(
           "You're on Pro without an active subscription. If this is Lifetime Pro, there’s nothing to cancel."
@@ -247,13 +240,11 @@ export const UpgradeModal: React.FC<Props> = ({
         return;
       }
 
-      // ✅ IMPORTANT: cancel in Stripe (so next payment does NOT happen)
       const { error: fnError } = await supabase.functions.invoke('cancel-subscription', {
         body: {},
       });
       if (fnError) throw fnError;
 
-      // Refresh local tier cache + reload billing snapshot
       invalidateMembershipCache();
 
       const { data: row, error: rowErr } = await supabase
@@ -263,14 +254,11 @@ export const UpgradeModal: React.FC<Props> = ({
         .single();
 
       if (rowErr) {
-        // Even if DB read fails, close UI; Stripe cancellation already happened
         setDowngradeConfirmVisible(false);
         onClose();
         return;
       }
 
-      // IMPORTANT:
-      // After cancelling at period end, user usually stays "pro" until premium_access_expires_at.
       const newTier = (row as any)?.tier as UserTier | undefined;
       const expires = (row as any)?.premium_access_expires_at ?? null;
 
@@ -278,7 +266,6 @@ export const UpgradeModal: React.FC<Props> = ({
       setCancelAtPeriodEnd(Boolean((row as any)?.cancel_at_period_end));
       setHasStripeSubscription(Boolean((row as any)?.stripe_subscription_id));
 
-      // Keep UI consistent with DB
       setCurrentTier(newTier ?? 'pro');
       setSelectedTier(newTier ?? 'pro');
 
@@ -295,24 +282,53 @@ export const UpgradeModal: React.FC<Props> = ({
   const ctaLabel = isProDisabled
     ? "You're on Pro"
     : upgrading
-      ? 'Opening checkout…'
-      : 'See Pro plans';
+    ? 'Opening checkout…'
+    : 'See Pro plans';
 
-  // ✅ Make the modal fit on mobile: clamp height + scroll content
-  const cardMaxHeight = Math.min(height * 0.92, 760);
+  const horizontalPad = isMobile ? 14 : 20;
+  const verticalPadTop = Math.max(insets.top + 12, 20);
+  const verticalPadBottom = Math.max(insets.bottom + 12, 20);
+
+  const cardMaxHeight = Math.min(
+    height - verticalPadTop - verticalPadBottom,
+    isMobile ? 680 : 760
+  );
 
   return (
     <>
-      <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-        <SafeAreaView style={styles.backdrop}>
-          <View style={[styles.card, { maxHeight: cardMaxHeight }, isMobile && styles.cardMobile]}>
+      <Modal
+        visible={visible}
+        transparent
+        animationType="fade"
+        onRequestClose={onClose}
+        presentationStyle="overFullScreen"
+        statusBarTranslucent
+      >
+        <Pressable
+          style={[
+            styles.backdrop,
+            {
+              paddingTop: verticalPadTop,
+              paddingBottom: verticalPadBottom,
+              paddingHorizontal: horizontalPad,
+            },
+          ]}
+          onPress={onClose}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={[
+              styles.card,
+              { maxHeight: cardMaxHeight },
+              isMobile && styles.cardMobile,
+            ]}
+          >
             <ScrollView
-              style={{ flex: 1 }}
+              style={styles.scroll}
               contentContainerStyle={styles.cardScrollContent}
               showsVerticalScrollIndicator={false}
               bounces={false}
             >
-              {/* Header */}
               <View style={styles.header}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.kicker}>UPGRADE</Text>
@@ -321,19 +337,18 @@ export const UpgradeModal: React.FC<Props> = ({
                 </View>
               </View>
 
-              {currentTier && (
+              {currentTier ? (
                 <Text style={styles.currentTierText}>
                   Current plan: <Text style={styles.currentTierName}>{currentTierLabel}</Text>
                   {currentTier === 'pro' && cancelAtPeriodEnd && endDateLabel ? (
                     <Text style={{ color: TEXT_MUTED }}>{`  •  Cancels ${endDateLabel}`}</Text>
                   ) : null}
                 </Text>
-              )}
+              ) : null}
 
               {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
               <View style={[styles.tiersRow, isMobile && styles.tiersRowMobile]}>
-                {/* Free */}
                 <TouchableOpacity
                   activeOpacity={0.9}
                   onPress={() => {
@@ -368,14 +383,21 @@ export const UpgradeModal: React.FC<Props> = ({
                   <View style={styles.dividerSoft} />
 
                   <View style={styles.featureList}>
-                    <Text style={styles.featureItemMuted}>✓ Discover and connect with filmmakers worldwide</Text>
-                    <Text style={styles.featureItemMuted}>✓ Browse profiles and message other creatives</Text>
-                    <Text style={styles.featureItemMuted}>✓ Join city-based group chats and find local crews</Text>
-                    <Text style={styles.featureItemMuted}>✓ Apply for free jobs and post your own gigs</Text>
+                    <Text style={styles.featureItemMuted}>
+                      ✓ Discover and connect with filmmakers worldwide
+                    </Text>
+                    <Text style={styles.featureItemMuted}>
+                      ✓ Browse profiles and message other creatives
+                    </Text>
+                    <Text style={styles.featureItemMuted}>
+                      ✓ Join city-based group chats and find local crews
+                    </Text>
+                    <Text style={styles.featureItemMuted}>
+                      ✓ Apply for free jobs and post your own gigs
+                    </Text>
                   </View>
                 </TouchableOpacity>
 
-                {/* Pro */}
                 <TouchableOpacity
                   activeOpacity={0.92}
                   onPress={() => {
@@ -391,11 +413,17 @@ export const UpgradeModal: React.FC<Props> = ({
                   ]}
                 >
                   <Text style={styles.tierName}>Pro</Text>
-                  <Text style={styles.tierTagline}>Submit, apply, unlock everything</Text>
+                  <Text style={styles.tierTagline}>Create, train, and make films with full access</Text>
 
                   <View style={styles.plansArea}>
                     <View style={[styles.planRow, isMobile && styles.planRowMobile]}>
-                      <View style={[styles.planTile, styles.planTileHero, isTiny && styles.planTileTiny]}>
+                      <View
+                        style={[
+                          styles.planTile,
+                          styles.planTileHero,
+                          isTiny && styles.planTileTiny,
+                        ]}
+                      >
                         <Text style={[styles.planKicker, styles.planKickerHero]}>MONTHLY</Text>
 
                         <View style={styles.planPriceRow}>
@@ -411,29 +439,37 @@ export const UpgradeModal: React.FC<Props> = ({
                   <View style={styles.dividerUltraSoft} />
 
                   <View style={styles.featureList}>
-                    <Text style={styles.featureItem}>✓ Submit films to the Monthly Film Challenge</Text>
-                    <Text style={styles.featureItem}>✓ Apply for all paid jobs</Text>
-                    <Text style={styles.featureItem}>✓ Full access to Workshop tools & downloads</Text>
-                  </View>
+  <Text style={styles.featureItem}>✓ Upload films to the Monthly Film Challenge</Text>
+  <Text style={styles.featureItem}>✓ Apply for paid jobs across Overlooked</Text>
+  <Text style={styles.featureItem}>✓ Unlock the full Filmmaking Bootcamp</Text>
+  <Text style={styles.featureItem}>✓ Learn every major film discipline through focused lessons and exercises</Text>
+  <Text style={styles.featureItem}>✓ Train with practical exercises inspired by academic film and acting courses</Text>
+  <Text style={styles.featureItem}>✓ Use all Workshop tools and resources to help you develop, plan, and make films</Text>
+</View>
                 </TouchableOpacity>
               </View>
 
-              {/* CTA */}
               <TouchableOpacity
                 style={[
                   styles.buttonBase,
                   styles.proButton,
-                  (selectedTier !== 'pro' || isProDisabled || upgrading) && styles.buttonDisabled,
+                  (selectedTier !== 'pro' || isProDisabled || upgrading) &&
+                    styles.buttonDisabled,
                 ]}
                 onPress={
-                  selectedTier !== 'pro' || isProDisabled || upgrading ? undefined : doUpgradeToPro
+                  selectedTier !== 'pro' || isProDisabled || upgrading
+                    ? undefined
+                    : doUpgradeToPro
                 }
-                activeOpacity={selectedTier !== 'pro' || isProDisabled || upgrading ? 1 : 0.92}
+                activeOpacity={
+                  selectedTier !== 'pro' || isProDisabled || upgrading ? 1 : 0.92
+                }
               >
                 <Text
                   style={[
                     styles.buttonText,
-                    (selectedTier !== 'pro' || isProDisabled || upgrading) && styles.buttonTextDisabled,
+                    (selectedTier !== 'pro' || isProDisabled || upgrading) &&
+                      styles.buttonTextDisabled,
                   ]}
                 >
                   {ctaLabel}
@@ -448,21 +484,41 @@ export const UpgradeModal: React.FC<Props> = ({
                 <Text style={styles.laterText}>Maybe later</Text>
               </TouchableOpacity>
             </ScrollView>
-          </View>
-        </SafeAreaView>
+          </Pressable>
+        </Pressable>
       </Modal>
 
-      {/* Downgrade confirmation */}
       <Modal
         visible={downgradeConfirmVisible}
         transparent
         animationType="fade"
         onRequestClose={() => (downgrading ? null : setDowngradeConfirmVisible(false))}
+        presentationStyle="overFullScreen"
+        statusBarTranslucent
       >
-        <SafeAreaView style={styles.backdrop}>
-          <View style={[styles.confirmCard, { maxHeight: Math.min(height * 0.9, 620) }, isMobile && styles.confirmCardMobile]}>
+        <Pressable
+          style={[
+            styles.backdrop,
+            {
+              paddingTop: verticalPadTop,
+              paddingBottom: verticalPadBottom,
+              paddingHorizontal: horizontalPad,
+            },
+          ]}
+          onPress={() => {
+            if (!downgrading) setDowngradeConfirmVisible(false);
+          }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={[
+              styles.confirmCard,
+              { maxHeight: Math.min(height - verticalPadTop - verticalPadBottom, 620) },
+              isMobile && styles.confirmCardMobile,
+            ]}
+          >
             <ScrollView
-              style={{ flex: 1 }}
+              style={styles.scroll}
               contentContainerStyle={styles.confirmScrollContent}
               showsVerticalScrollIndicator={false}
               bounces={false}
@@ -489,7 +545,7 @@ export const UpgradeModal: React.FC<Props> = ({
                 <Text style={styles.errorText}>{downgradeConfirmError}</Text>
               ) : null}
 
-              <View style={styles.confirmButtonsRow}>
+              <View style={[styles.confirmButtonsRow, isMobile && styles.confirmButtonsRowMobile]}>
                 <Pressable
                   disabled={downgrading}
                   onPress={() => setDowngradeConfirmVisible(false)}
@@ -513,8 +569,10 @@ export const UpgradeModal: React.FC<Props> = ({
                     downgrading ? { opacity: 0.7 } : null,
                   ]}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    {downgrading ? <ActivityIndicator size="small" color="#0B0B0B" /> : null}
+                  <View style={styles.confirmDangerInner}>
+                    {downgrading ? (
+                      <ActivityIndicator size="small" color="#0B0B0B" />
+                    ) : null}
                     <Text style={styles.confirmBtnDangerText}>
                       {downgrading ? 'Cancelling…' : 'Cancel renewal'}
                     </Text>
@@ -524,36 +582,39 @@ export const UpgradeModal: React.FC<Props> = ({
 
               <Text style={styles.confirmFoot}>Tip: you can re-subscribe any time.</Text>
             </ScrollView>
-          </View>
-        </SafeAreaView>
+          </Pressable>
+        </Pressable>
       </Modal>
     </>
   );
 };
 
-/* --------------------------------- styles -------------------------------- */
-
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: 'rgba(0,0,0,0.88)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 16,
+  },
+
+  scroll: {
+    flexGrow: 0,
+    width: '100%',
   },
 
   card: {
     width: '100%',
     maxWidth: 920,
+    alignSelf: 'center',
     borderRadius: 22,
     paddingVertical: 14,
     paddingHorizontal: 14,
     backgroundColor: DARK_ELEVATED,
     borderWidth: 1,
     borderColor: HAIRLINE,
+    overflow: 'hidden',
   },
 
-  // ✅ Mobile: slightly tighter + ensures the scroll area feels intentional
   cardMobile: {
     borderRadius: 20,
     paddingVertical: 12,
@@ -562,14 +623,13 @@ const styles = StyleSheet.create({
 
   cardScrollContent: {
     paddingBottom: 8,
+    flexGrow: 1,
   },
 
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: 12,
-    flexWrap: 'wrap',
     marginBottom: 8,
   },
 
@@ -627,7 +687,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
 
-  // ✅ Mobile: stack cards vertically so nothing gets squashed
   tiersRowMobile: {
     flexDirection: 'column',
     flexWrap: 'nowrap',
@@ -644,7 +703,6 @@ const styles = StyleSheet.create({
     borderColor: HAIRLINE_2,
   },
 
-  // ✅ Mobile: remove minWidth so it fits perfectly, and tighten padding
   tierCardMobile: {
     minWidth: 0,
     width: '100%',
@@ -789,7 +847,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
-  // ✅ Mobile: keep as row but allow narrower tiles to wrap nicely; Tiny devices stack.
   planRowMobile: {
     flexWrap: 'wrap',
   },
@@ -805,7 +862,7 @@ const styles = StyleSheet.create({
   },
 
   planTileTiny: {
-    minWidth: '100%' as any, // forces stack on very small screens
+    minWidth: '100%' as any,
   },
 
   planTileHero: {
@@ -895,17 +952,17 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  /* -------- confirm modal -------- */
-
   confirmCard: {
     width: '100%',
     maxWidth: 620,
+    alignSelf: 'center',
     borderRadius: 20,
     paddingVertical: 16,
     paddingHorizontal: 16,
     backgroundColor: DARK_ELEVATED,
     borderWidth: 1,
     borderColor: HAIRLINE,
+    overflow: 'hidden',
   },
 
   confirmCardMobile: {
@@ -916,6 +973,7 @@ const styles = StyleSheet.create({
 
   confirmScrollContent: {
     paddingBottom: 8,
+    flexGrow: 1,
   },
 
   confirmTitle: {
@@ -952,6 +1010,10 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 
+  confirmButtonsRowMobile: {
+    flexDirection: 'column',
+  },
+
   confirmBtn: {
     flex: 1,
     paddingVertical: 12,
@@ -977,6 +1039,12 @@ const styles = StyleSheet.create({
     backgroundColor: GOLD,
     borderWidth: 1,
     borderColor: '#000000',
+  },
+
+  confirmDangerInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
 
   confirmBtnDangerText: {

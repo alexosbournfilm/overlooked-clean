@@ -137,12 +137,12 @@ export default function PaywallScreen() {
   );
 
   const planLabel = useMemo(() => {
-    return 'Choose Monthly';
-  }, []);
+  return 'Unlock Monthly Access';
+}, []);
 
   const selectedSubLabel = useMemo(() => {
-    return 'Selected: £4.99 / month';
-  }, []);
+  return 'Monthly access • £4.99 / month';
+}, []);
 
   const selectedPlanPayload = useMemo(() => {
     return { plan: 'monthly' as const, priceId: STRIPE_PRICE_MONTHLY };
@@ -466,10 +466,10 @@ export default function PaywallScreen() {
           bounces={false}
         >
           <Text style={styles.kicker}>UPGRADE</Text>
-          <Text style={styles.title}>Upgrade to Pro</Text>
-          <Text style={styles.subtitle}>
-            Submit films to the Monthly Film Challenge, apply for paid jobs, and unlock Workshop tools.
-          </Text>
+          <Text style={styles.title}>Unlock your full filmmaking access</Text>
+<Text style={styles.subtitle}>
+  Upload your films, apply for paid jobs, and unlock the full Filmmaking Bootcamp — a premium space to train across every major film discipline through high-level lessons, practical exercises, and powerful Workshop tools built to help you actually make films.
+</Text>
 
           {/* Monthly plan tile */}
           <View style={styles.plansArea}>
@@ -516,10 +516,13 @@ export default function PaywallScreen() {
           <View style={styles.divider} />
 
           <View style={styles.benefits}>
-            <Text style={styles.benefitItem}>✓ Submit films to the Monthly Film Challenge</Text>
-            <Text style={styles.benefitItem}>✓ Apply for all paid jobs</Text>
-            <Text style={styles.benefitItem}>✓ Full access to Workshop tools & downloads</Text>
-          </View>
+  <Text style={styles.benefitItem}>✓ Upload films to the Monthly Film Challenge</Text>
+  <Text style={styles.benefitItem}>✓ Apply for paid jobs across Overlooked</Text>
+  <Text style={styles.benefitItem}>✓ Unlock the full Filmmaking Bootcamp</Text>
+  <Text style={styles.benefitItem}>✓ Learn every major film discipline through focused lessons and exercises</Text>
+  <Text style={styles.benefitItem}>✓ Train with practical exercises inspired by academic film and acting courses</Text>
+  <Text style={styles.benefitItem}>✓ Use all Workshop tools and resources to help you develop, plan, and make films</Text>
+</View>
 
           {!!message && <Text style={styles.errorText}>{message}</Text>}
 
