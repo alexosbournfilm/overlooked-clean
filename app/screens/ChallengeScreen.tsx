@@ -216,6 +216,19 @@ const WorkshopScreen: React.FC = () => {
   
 
 const promptSignIn = (message: string) => {
+  if (Platform.OS === 'web') {
+    const goToSignIn = window.confirm(
+      `${message}\n\nPress OK for Sign In, or Cancel for Create Account.`
+    );
+
+    if (goToSignIn) {
+      navigation.navigate('Auth', { screen: 'SignIn' });
+    } else {
+      navigation.navigate('Auth', { screen: 'SignUp' });
+    }
+    return;
+  }
+
   Alert.alert(
     'Sign in required',
     message,
@@ -530,48 +543,48 @@ const promptSignIn = (message: string) => {
   };
 
     const renderCTA = (product: WorkshopProduct) => {
-    const access = hasAccess(product);
+  const access = hasAccess(product);
 
-    if (isGuest) {
-      return (
-        <TouchableOpacity
-          style={styles.ctaButton}
-          onPress={() => promptSignIn('Create an account or sign in to access Workshop products.')}
-          activeOpacity={0.9}
-        >
-          <Text style={styles.ctaText} numberOfLines={1}>
-            Sign In to Access
-          </Text>
-        </TouchableOpacity>
-      );
-    }
-
-    if (access) {
-      return (
-        <TouchableOpacity
-          style={[styles.ctaButton, styles.ctaButtonOutline]}
-          onPress={() => openProductContent(product)}
-          activeOpacity={0.9}
-        >
-          <Text style={[styles.ctaText, styles.ctaTextOutline]} numberOfLines={1}>
-            Download / Access
-          </Text>
-        </TouchableOpacity>
-      );
-    }
-
+  if (isGuest) {
     return (
       <TouchableOpacity
         style={styles.ctaButton}
-        onPress={() => setUpgradeVisible(true)}
+        onPress={() => promptSignIn('Create an account or sign in to access Workshop products.')}
         activeOpacity={0.9}
       >
         <Text style={styles.ctaText} numberOfLines={1}>
-          Unlock with Pro
+          Sign In to Access
         </Text>
       </TouchableOpacity>
     );
-  };
+  }
+
+  if (access) {
+    return (
+      <TouchableOpacity
+        style={[styles.ctaButton, styles.ctaButtonOutline]}
+        onPress={() => openProductContent(product)}
+        activeOpacity={0.9}
+      >
+        <Text style={[styles.ctaText, styles.ctaTextOutline]} numberOfLines={1}>
+          Download / Access
+        </Text>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <TouchableOpacity
+      style={styles.ctaButton}
+      onPress={() => setUpgradeVisible(true)}
+      activeOpacity={0.9}
+    >
+      <Text style={styles.ctaText} numberOfLines={1}>
+        Unlock with Pro
+      </Text>
+    </TouchableOpacity>
+  );
+};
 
   const isAudio = (url: string) => {
     const lower = url.toLowerCase();
@@ -1165,42 +1178,42 @@ const promptSignIn = (message: string) => {
                   </TouchableOpacity>
 
                                     {isGuest ? (
-                    <TouchableOpacity
-                      style={[styles.modalButton, styles.modalButtonGold]}
-                      onPress={() => {
-                        closePreview();
-                        promptSignIn('Create an account or sign in to access Workshop products.');
-                      }}
-                      activeOpacity={0.9}
-                    >
-                      <Ionicons name="person-outline" size={16} color="#050505" />
-                      <Text style={styles.modalButtonGoldText}>Sign In to Access</Text>
-                    </TouchableOpacity>
-                  ) : hasAccess(selectedProduct) ? (
-                    <TouchableOpacity
-                      style={[styles.modalButton, styles.modalButtonGold]}
-                      onPress={() => {
-                        closePreview();
-                        openProductContent(selectedProduct);
-                      }}
-                      activeOpacity={0.9}
-                    >
-                      <Ionicons name="download-outline" size={16} color="#050505" />
-                      <Text style={styles.modalButtonGoldText}>Download / Access</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity
-                      style={[styles.modalButton, styles.modalButtonGold]}
-                      onPress={() => {
-                        closePreview();
-                        setUpgradeVisible(true);
-                      }}
-                      activeOpacity={0.9}
-                    >
-                      <Ionicons name="sparkles-outline" size={16} color="#050505" />
-                      <Text style={styles.modalButtonGoldText}>Unlock with Pro</Text>
-                    </TouchableOpacity>
-                  )}
+  <TouchableOpacity
+    style={[styles.modalButton, styles.modalButtonGold]}
+    onPress={() => {
+      closePreview();
+      promptSignIn('Create an account or sign in to access Workshop products.');
+    }}
+    activeOpacity={0.9}
+  >
+    <Ionicons name="person-outline" size={16} color="#050505" />
+    <Text style={styles.modalButtonGoldText}>Sign In to Access</Text>
+  </TouchableOpacity>
+) : hasAccess(selectedProduct) ? (
+  <TouchableOpacity
+    style={[styles.modalButton, styles.modalButtonGold]}
+    onPress={() => {
+      closePreview();
+      openProductContent(selectedProduct);
+    }}
+    activeOpacity={0.9}
+  >
+    <Ionicons name="download-outline" size={16} color="#050505" />
+    <Text style={styles.modalButtonGoldText}>Download / Access</Text>
+  </TouchableOpacity>
+) : (
+  <TouchableOpacity
+    style={[styles.modalButton, styles.modalButtonGold]}
+    onPress={() => {
+      closePreview();
+      setUpgradeVisible(true);
+    }}
+    activeOpacity={0.9}
+  >
+    <Ionicons name="sparkles-outline" size={16} color="#050505" />
+    <Text style={styles.modalButtonGoldText}>Unlock with Pro</Text>
+  </TouchableOpacity>
+)}
                 </View>
               )}
             </View>
