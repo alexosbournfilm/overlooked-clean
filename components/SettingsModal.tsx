@@ -15,7 +15,6 @@ import { useSettingsModal } from '../app/context/SettingsModalContext';
 import { supabase, FUNCTIONS_URL } from '../app/lib/supabase';
 import { UpgradeModal } from './UpgradeModal';
 
-
 /* ------------------------------- palette -------------------------------- */
 const DARK_BG = '#0D0D0D';
 const DARK_CARD = '#050505';
@@ -93,8 +92,9 @@ async function callFunction(
   fnName: 'delete-account'
 ): Promise<{ status: number; text: string; data?: any }> {
   const token = await getAccessToken();
-  if (!token)
+  if (!token) {
     return { status: 401, text: 'No active session (not signed in)' };
+  }
 
   const url = `${FUNCTIONS_URL}/${fnName}`;
   const res = await withTimeout(
@@ -141,7 +141,7 @@ function SectionButton(props: {
       <Text
         style={[
           styles.sectionTitle,
-          danger && { color: TEXT_MUTED }, // subtle, not attention-grabbing
+          danger && { color: TEXT_MUTED },
         ]}
       >
         {title}
@@ -149,7 +149,9 @@ function SectionButton(props: {
 
       {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
 
-      {loading && <ActivityIndicator color={GOLD} style={{ marginTop: 10 }} />}
+      {loading ? (
+        <ActivityIndicator color={GOLD} style={{ marginTop: 10 }} />
+      ) : null}
     </Pressable>
   );
 }
@@ -158,7 +160,8 @@ function SectionButton(props: {
 export default function SettingsModal() {
   const { isOpen, close } = useSettingsModal();
   const navigation = useNavigation<any>();
-    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const isGuest = !currentUserId;
 
   const [deleting, setDeleting] = useState(false);
@@ -167,7 +170,7 @@ export default function SettingsModal() {
 
   const [showUpgrade, setShowUpgrade] = useState(false);
 
-    React.useEffect(() => {
+  React.useEffect(() => {
     let mounted = true;
 
     (async () => {
@@ -185,7 +188,7 @@ export default function SettingsModal() {
     };
   }, [isOpen]);
 
-    const promptSignIn = (message: string) => {
+  const promptSignIn = (message: string) => {
     if (Platform.OS === 'web') {
       const goToSignIn = window.confirm(
         `${message}\n\nPress OK for Sign In, or Cancel for Create Account.`
@@ -201,27 +204,23 @@ export default function SettingsModal() {
       return;
     }
 
-    Alert.alert(
-      'Sign in required',
-      message,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign In',
-          onPress: () => {
-            close();
-            navigation.navigate('Auth', { screen: 'SignIn' });
-          },
+    Alert.alert('Sign in required', message, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign In',
+        onPress: () => {
+          close();
+          navigation.navigate('Auth', { screen: 'SignIn' });
         },
-        {
-          text: 'Create Account',
-          onPress: () => {
-            close();
-            navigation.navigate('Auth', { screen: 'SignUp' });
-          },
+      },
+      {
+        text: 'Create Account',
+        onPress: () => {
+          close();
+          navigation.navigate('Auth', { screen: 'SignUp' });
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const resetToAuthSignIn = () => {
@@ -235,6 +234,21 @@ export default function SettingsModal() {
     } catch {
       navigation.reset({ index: 0, routes: [{ name: 'Auth' }] });
     }
+  };
+
+  const openUpgradeFromSettings = () => {
+    close();
+
+    if (Platform.OS === 'web') {
+      setShowUpgrade(true);
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        setShowUpgrade(true);
+      }, 150);
+    });
   };
 
   const onSignOut = async () => {
@@ -255,16 +269,12 @@ export default function SettingsModal() {
         return;
       }
 
-      // ✅ IMPORTANT: if user is currently on /reset-password, linking will force NewPassword.
-      // So on web we MUST leave that URL completely.
       if (Platform.OS === 'web') {
         try {
-          // Clear recovery flag if it exists (your AuthProvider uses it)
           // @ts-ignore
           if (typeof window !== 'undefined') (window as any).__RECOVERY__ = false;
         } catch {}
 
-        // Hard navigate so the URL becomes /signin (not /reset-password)
         window.location.assign('/signin');
         return;
       }
@@ -306,7 +316,6 @@ export default function SettingsModal() {
 
       await supabase.auth.signOut().catch(() => {});
 
-      // ✅ Same issue on web: must leave /reset-password if that’s the current path
       if (Platform.OS === 'web') {
         try {
           // @ts-ignore
@@ -337,26 +346,26 @@ export default function SettingsModal() {
       >
         <Pressable style={styles.backdrop} onPress={close}>
           <Pressable style={styles.sheet} onPress={() => {}}>
-            {/* Handle bar */}
             <View style={styles.handleWrap}>
               <View style={styles.handle} />
             </View>
 
             <Text style={styles.title}>Settings</Text>
 
-                        <SectionButton
+            <SectionButton
               title="Manage membership"
               subtitle={
                 isGuest
-                  ? "Sign in to view or change your Overlooked plan."
-                  : "View or change your Overlooked plan."
+                  ? 'Sign in to view or change your Overlooked plan.'
+                  : 'View or change your Overlooked plan.'
               }
               onPress={() => {
                 if (isGuest) {
                   promptSignIn('Sign in or create an account to manage membership.');
                   return;
                 }
-                setShowUpgrade(true);
+
+                openUpgradeFromSettings();
               }}
               disabled={deleting || signingOut}
             />
@@ -378,9 +387,8 @@ export default function SettingsModal() {
               disabled={signingOut}
             />
 
-            {debug && <Text style={styles.debugText}>{debug}</Text>}
+            {debug ? <Text style={styles.debugText}>{debug}</Text> : null}
 
-            {/* Close button */}
             <Pressable
               onPress={close}
               style={({ pressed }) => [
@@ -445,8 +453,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     fontFamily: SYSTEM_SANS,
   },
-
-  /* SECTION BUTTONS */
   sectionButton: {
     backgroundColor: DARK_BG,
     borderRadius: 16,
@@ -468,7 +474,6 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     fontFamily: SYSTEM_SANS,
   },
-
   debugText: {
     fontSize: 11,
     color: GOLD,
@@ -476,7 +481,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontFamily: SYSTEM_SANS,
   },
-
   closeButton: {
     marginTop: 10,
     paddingVertical: 12,
