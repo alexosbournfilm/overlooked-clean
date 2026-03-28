@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Animated,
   Modal,
   Platform,
@@ -5049,6 +5050,26 @@ const WorkshopScreen: React.FC = () => {
     loading: gamificationLoading,
   } = useGamification();
 
+    const isGuest = !userId;
+
+  const promptSignIn = (message: string) => {
+    Alert.alert(
+      'Sign in required',
+      message,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign In',
+          onPress: () => navigation.navigate('Auth', { screen: 'SignIn' }),
+        },
+        {
+          text: 'Create Account',
+          onPress: () => navigation.navigate('Auth', { screen: 'SignUp' }),
+        },
+      ]
+    );
+  };
+
   const { streak, refreshStreak } = useMonthlyStreak();
 
   const hasLoadedOnceRef = useRef(false);
@@ -5271,9 +5292,14 @@ const chapters = useMemo(() => {
     (film) => surgeryFeedbackState[film.id]
   ).length;
 
-  const handleOpenLesson = (lesson: Lesson) => {
+    const handleOpenLesson = (lesson: Lesson) => {
     const state = nodeState(lesson.step, completedSteps);
     if (state === 'locked') return;
+
+    if (isGuest) {
+      promptSignIn('Create an account or sign in to open workshop challenges.');
+      return;
+    }
 
     if (!hasProAccess) {
       setUpgradeVisible(true);
@@ -5283,7 +5309,12 @@ const chapters = useMemo(() => {
     setSelectedLesson(lesson);
   };
 
-  const handleOpenSurgeryGate = (lesson: Lesson) => {
+    const handleOpenSurgeryGate = (lesson: Lesson) => {
+    if (isGuest) {
+      promptSignIn('Create an account or sign in to continue this workshop challenge.');
+      return;
+    }
+
     if (!hasProAccess) {
       setUpgradeVisible(true);
       return;
@@ -5882,11 +5913,17 @@ const chapters = useMemo(() => {
 
           <TouchableOpacity
             style={[styles.modalButton, styles.modalGoldButton]}
-            onPress={() => {
+                        onPress={() => {
               if (!selectedLesson) return;
 
               if (completedSet.has(selectedLesson.step)) {
                 setSelectedLesson(null);
+                return;
+              }
+
+              if (isGuest) {
+                setSelectedLesson(null);
+                promptSignIn('Create an account or sign in to submit workshop challenges.');
                 return;
               }
 
