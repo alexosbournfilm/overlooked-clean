@@ -147,11 +147,45 @@ const unhideKeyFor = (userId: string) =>
   `OVERLOOKED_UNHIDE_SET:${userId}`;
 
 export default function ChatsScreen() {
-  const navigation = useNavigation<any>();
+    const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
 
   const [meId, setMeId] = useState<string | null>(null);
+  const isGuest = !meId;
+
+  const promptSignIn = (message: string) => {
+    if (Platform.OS === 'web') {
+      const goToSignIn = window.confirm(
+        `${message}\n\nPress OK for Sign In, or Cancel for Create Account.`
+      );
+
+      if (goToSignIn) {
+        navigation.navigate('Auth', { screen: 'SignIn' });
+      } else {
+        navigation.navigate('Auth', { screen: 'SignUp' });
+      }
+      return;
+    }
+
+    Alert.alert(
+      'Sign in required',
+      message,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign In',
+          onPress: () => navigation.navigate('Auth', { screen: 'SignIn' }),
+        },
+        {
+          text: 'Create Account',
+          onPress: () => navigation.navigate('Auth', { screen: 'SignUp' }),
+        },
+      ]
+    );
+  };
+
+  
   const [loadingCityChat, setLoadingCityChat] = useState(false);
   const [loadingChats, setLoadingChats] = useState(true);
   const [chats, setChats] = useState<any[]>([]);
@@ -768,6 +802,10 @@ export default function ChatsScreen() {
   // users search
   const fetchUsers = useCallback(
     async (q: string) => {
+            if (isGuest) {
+        if (mountedRef.current) setUsers([]);
+        return;
+      }
       try {
         setLoadingUsers(true);
 
@@ -815,7 +853,7 @@ export default function ChatsScreen() {
           setLoadingUsers(false);
       }
     },
-    [meId]
+        [meId, isGuest]
   );
 
   useEffect(() => {
@@ -844,12 +882,21 @@ export default function ChatsScreen() {
     setGroupUsers([]);
   };
 
-  const openCreateGroup = () => {
+    const openCreateGroup = () => {
+    if (isGuest) {
+      promptSignIn('Create an account or sign in to create group chats.');
+      return;
+    }
+
     resetGroupModal();
     setCreateGroupOpen(true);
   };
 
   const pickGroupAvatar = async () => {
+        if (isGuest) {
+      promptSignIn('Create an account or sign in to create group chats.');
+      return;
+    }
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
@@ -966,6 +1013,10 @@ export default function ChatsScreen() {
   };
 
   const fetchGroupUsers = useCallback(async (q: string) => {
+        if (isGuest) {
+      setGroupUsers([]);
+      return;
+    }
     try {
       setLoadingGroupUsers(true);
 
@@ -993,7 +1044,7 @@ export default function ChatsScreen() {
     } finally {
       setLoadingGroupUsers(false);
     }
-  }, [meId]);
+    }, [meId, isGuest]);
 
   useEffect(() => {
     if (!createGroupOpen) return;
@@ -1004,6 +1055,10 @@ export default function ChatsScreen() {
   }, [groupUserQuery, createGroupOpen, fetchGroupUsers]);
 
   const toggleMember = (id: string) => {
+        if (isGuest) {
+      promptSignIn('Create an account or sign in to add people to a group.');
+      return;
+    }
     setGroupMemberIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -1013,6 +1068,10 @@ export default function ChatsScreen() {
   };
 
   const createGroupChat = async () => {
+        if (isGuest) {
+      promptSignIn('Create an account or sign in to create group chats.');
+      return;
+    }
     try {
       if (!groupName.trim()) {
         showAlert('Group name needed', 'Enter a name for the group.');
@@ -1091,6 +1150,10 @@ export default function ChatsScreen() {
   const handleJoinCityById = async (
     cityId: number
   ) => {
+        if (isGuest) {
+      promptSignIn('Create an account or sign in to join city chats.');
+      return;
+    }
     try {
       setLoadingCityChat(true);
       const {
@@ -1143,6 +1206,10 @@ export default function ChatsScreen() {
 
   const handleGroupChatJoinLegacy =
     async (cityLabel: string) => {
+            if (isGuest) {
+        promptSignIn('Create an account or sign in to join group chats.');
+        return;
+      }
       try {
         setLoadingCityChat(true);
         const {
@@ -1411,19 +1478,19 @@ export default function ChatsScreen() {
             opacity: 0.6,
           },
         ]}
-        onPress={async () => {
+                onPress={async () => {
           if (isDeleting) return;
-          await markConversationActive(
-            String(item.id)
-          );
-          navigation.navigate(
-            'ChatRoom',
-            {
-              conversation: item,
-              peerUser:
-                item.peerUser,
-            }
-          );
+
+          if (isGuest) {
+            promptSignIn('Create an account or sign in to open chats.');
+            return;
+          }
+
+          await markConversationActive(String(item.id));
+          navigation.navigate('ChatRoom', {
+            conversation: item,
+            peerUser: item.peerUser,
+          });
         }}
         onLongPress={() =>
           removeChatForMe(item)
@@ -1585,11 +1652,13 @@ export default function ChatsScreen() {
             onStartShouldSetResponder={() =>
               true
             }
-            onResponderRelease={() =>
-              removeChatForMe(
-                item
-              )
-            }
+                        onResponderRelease={() => {
+              if (isGuest) {
+                promptSignIn('Create an account or sign in to manage chats.');
+                return;
+              }
+              removeChatForMe(item);
+            }}
           >
             {isDeleting ? (
               <ActivityIndicator
@@ -1653,7 +1722,12 @@ export default function ChatsScreen() {
     return (
       <Pressable
         style={styles.userCard}
-        onPress={() => {
+         onPress={() => {
+          if (isGuest) {
+            promptSignIn('Create an account or sign in to message or view users.');
+            return;
+          }
+
           navigation.navigate(
             'Profile',
             {
@@ -1750,17 +1824,17 @@ export default function ChatsScreen() {
           </Text>
         </Pressable>
 
-        <Pressable
-          onPress={() =>
-            setActiveTab(
-              'users'
-            )
-          }
+                <Pressable
+          onPress={() => {
+            if (isGuest) {
+              promptSignIn('Create an account or sign in to search for users.');
+              return;
+            }
+            setActiveTab('users');
+          }}
           style={[
             styles.tabPill,
-            activeTab ===
-              'users' &&
-              styles.tabPillActive,
+            activeTab === 'users' && styles.tabPillActive,
           ]}
         >
           <Text
@@ -1777,7 +1851,13 @@ export default function ChatsScreen() {
 
         {/* Create group button */}
         <Pressable
-          onPress={openCreateGroup}
+                    onPress={() => {
+            if (isGuest) {
+              promptSignIn('Create an account or sign in to create group chats.');
+              return;
+            }
+            openCreateGroup();
+          }}
           style={styles.createGroupPill}
         >
           <Ionicons name="add" size={18} color={T.text} />
@@ -1802,18 +1882,23 @@ export default function ChatsScreen() {
           autoCapitalize="none"
         />
       ) : (
-        <TextInput
+                <TextInput
+          onFocus={() => {
+            if (isGuest) {
+              promptSignIn('Create an account or sign in to search for users.');
+            }
+          }}
           placeholder="Search users by name…"
-          placeholderTextColor={
-            T.mute
-          }
-          style={
-            styles.searchInput
-          }
+          placeholderTextColor={T.mute}
+          style={styles.searchInput}
           value={userQuery}
-          onChangeText={
-            setUserQuery
-          }
+          onChangeText={(text) => {
+            if (isGuest) {
+              promptSignIn('Create an account or sign in to search for users.');
+              return;
+            }
+            setUserQuery(text);
+          }}
           autoCapitalize="words"
           autoCorrect={false}
         />
