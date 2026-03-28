@@ -14,9 +14,7 @@ import { useNavigation, CommonActions } from '@react-navigation/native';
 import { useSettingsModal } from '../app/context/SettingsModalContext';
 import { supabase, FUNCTIONS_URL } from '../app/lib/supabase';
 import { UpgradeModal } from './UpgradeModal';
-import { useAuth } from '../app/context/AuthProvider';
-const { userId } = useAuth();
-const isGuest = !userId;
+
 
 /* ------------------------------- palette -------------------------------- */
 const DARK_BG = '#0D0D0D';
@@ -167,16 +165,6 @@ export default function SettingsModal() {
 
   const [showUpgrade, setShowUpgrade] = useState(false);
 
-  const goToSignIn = () => {
-  close();
-  navigation.navigate('Auth', { screen: 'SignIn' });
-};
-
-const goToSignUp = () => {
-  close();
-  navigation.navigate('Auth', { screen: 'SignUp' });
-};
-
   const resetToAuthSignIn = () => {
     const action = CommonActions.reset({
       index: 0,
@@ -297,53 +285,29 @@ const goToSignUp = () => {
 
             <Text style={styles.title}>Settings</Text>
 
-            {isGuest ? (
-  <>
-    <SectionButton
-      title="You are not signed in"
-      subtitle="Create an account or sign in to upload films, message creatives, comment, and build your profile."
-      disabled
-    />
+            <SectionButton
+              title="Manage membership"
+              subtitle="View or change your Overlooked plan."
+              onPress={() => setShowUpgrade(true)}
+              disabled={deleting || signingOut}
+            />
 
-    <SectionButton
-      title="Sign in"
-      subtitle="Access your account and continue where you left off."
-      onPress={goToSignIn}
-    />
+            <SectionButton
+              title="Sign out"
+              subtitle="Return to the login screen."
+              onPress={onSignOut}
+              loading={signingOut}
+              disabled={deleting}
+            />
 
-    <SectionButton
-      title="Create account"
-      subtitle="Join Overlooked and start building your profile."
-      onPress={goToSignUp}
-    />
-  </>
-) : (
-  <>
-    <SectionButton
-      title="Manage membership"
-      subtitle="View or change your Overlooked plan."
-      onPress={() => setShowUpgrade(true)}
-      disabled={deleting || signingOut}
-    />
-
-    <SectionButton
-      title="Sign out"
-      subtitle="Return to the login screen."
-      onPress={onSignOut}
-      loading={signingOut}
-      disabled={deleting}
-    />
-
-    <SectionButton
-      title="Delete account"
-      subtitle="Permanently remove your account and data."
-      onPress={onDeleteAccount}
-      danger
-      loading={deleting}
-      disabled={signingOut}
-    />
-  </>
-)}
+            <SectionButton
+              title="Delete account"
+              subtitle="Permanently remove your account and data."
+              onPress={onDeleteAccount}
+              danger
+              loading={deleting}
+              disabled={signingOut}
+            />
 
             {debug && <Text style={styles.debugText}>{debug}</Text>}
 
@@ -362,10 +326,10 @@ const goToSignUp = () => {
       </Modal>
 
       <UpgradeModal
-  visible={!isGuest && showUpgrade}
-  onClose={() => setShowUpgrade(false)}
-  context="workshop"
-/>
+        visible={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+        context="workshop"
+      />
     </>
   );
 }
