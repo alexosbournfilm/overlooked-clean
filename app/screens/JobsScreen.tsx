@@ -24,6 +24,7 @@ import
   Easing,
   FlatList,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -297,6 +298,45 @@ export default function JobsScreen() {
   const { show, ToastView } = useToast();
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
+
+  const promptSignIn = (message: string) => {
+  if (Platform.OS === 'web') {
+    const goToSignIn = window.confirm(
+      `${message}\n\nPress OK for Sign In, or Cancel for Create Account.`
+    );
+
+    if (goToSignIn) {
+      // @ts-ignore
+      navigation.navigate('Auth', { screen: 'SignIn' });
+    } else {
+      // @ts-ignore
+      navigation.navigate('Auth', { screen: 'SignUp' });
+    }
+    return;
+  }
+
+  Alert.alert(
+    'Sign in required',
+    message,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign In',
+        onPress: () => {
+          // @ts-ignore
+          navigation.navigate('Auth', { screen: 'SignIn' });
+        },
+      },
+      {
+        text: 'Create Account',
+        onPress: () => {
+          // @ts-ignore
+          navigation.navigate('Auth', { screen: 'SignUp' });
+        },
+      },
+    ]
+  );
+};
 
 
   // Shared gamification context (from GamificationProvider / TopBar)
@@ -821,14 +861,22 @@ export default function JobsScreen() {
 
   /* -------------------------------- actions -------------------------------- */
   const handlePostJob = async () => {
-    const user = (await supabase.auth.getUser()).data.user;
-    if (!user || !formData.role_id || (!formData.city && !formData.remote)) {
-      show(
-        formData.remote ? 'Please select a role.' : 'Please select a role and a city.',
-        'error'
-      );
-      return;
-    }
+    const {
+  data: { user },
+} = await supabase.auth.getUser();
+
+if (!user) {
+  promptSignIn('Create an account or sign in to post a job.');
+  return;
+}
+
+if (!formData.role_id || (!formData.city && !formData.remote)) {
+  show(
+    formData.remote ? 'Please select a role.' : 'Please select a role and a city.',
+    'error'
+  );
+  return;
+}
 
     const payload: Partial<JobRow> & {
       time?: string | null;
@@ -913,10 +961,10 @@ export default function JobsScreen() {
     }
 
     const me = (await supabase.auth.getUser()).data.user;
-    if (!me) {
-      show('Please log in to apply.', 'info');
-      return;
-    }
+if (!me) {
+  promptSignIn('Create an account or sign in to apply for jobs.');
+  return;
+}
 
     if (applyLoading) return;
     setApplyLoading(true);
@@ -1446,7 +1494,18 @@ export default function JobsScreen() {
     bottom: Platform.OS === 'web' ? 30 : 80,
   },
 ]}
-        onPress={() => setJobFormVisible(true)}
+        onPress={async () => {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    promptSignIn('Create an account or sign in to post a job.');
+    return;
+  }
+
+  setJobFormVisible(true);
+}}
         activeOpacity={0.92}
       >
         <Ionicons
