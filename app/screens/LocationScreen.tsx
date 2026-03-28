@@ -18,6 +18,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../context/AuthProvider';
 
 const IS_WEB = Platform.OS === 'web';
 
@@ -262,6 +263,8 @@ export default function LocationScreen() {
   const [applyLoading, setApplyLoading] = useState(false);
 
   const navigation = useNavigation<any>();
+  const { userId } = useAuth();
+const isGuest = !userId;
 
   const cityReqIdRef = useRef(0);
   const latestCityTermRef = useRef('');
@@ -419,12 +422,14 @@ export default function LocationScreen() {
 
       setJoining(true);
 
-      const { data: auth } = await supabase.auth.getUser();
-      const userId = auth?.user?.id;
-      if (!userId) {
-        Alert.alert('You need to be signed in to join the city chat.');
-        return;
-      }
+      if (isGuest) {
+  Alert.alert(
+    'Sign in required',
+    'Create an account or sign in to join your city group chat.'
+  );
+  navigation.navigate('Auth', { screen: 'SignIn' });
+  return;
+}
 
       const { data: rpcResult, error: rpcError } = await supabase.rpc('join_city_group', {
         city_id_input: city.value,
@@ -501,9 +506,25 @@ export default function LocationScreen() {
   const applyToSelectedJob = useCallback(async () => {
     if (!selectedJob) return;
 
-    const { data: auth } = await supabase.auth.getUser();
-    const me = auth?.user;
-    if (!me) return Alert.alert('Please log in to apply.');
+    if (isGuest) {
+  Alert.alert(
+    'Sign in required',
+    'Create an account or sign in to apply for jobs.'
+  );
+  navigation.navigate('Auth', { screen: 'SignIn' });
+  return;
+}
+
+const { data: auth } = await supabase.auth.getUser();
+const me = auth?.user;
+if (!me) {
+  Alert.alert(
+    'Sign in required',
+    'Create an account or sign in to apply for jobs.'
+  );
+  navigation.navigate('Auth', { screen: 'SignIn' });
+  return;
+}
 
     const { data: latest, error: latestErr } = await supabase
       .from('jobs')
@@ -695,7 +716,9 @@ export default function LocationScreen() {
               {joining ? (
                 <ActivityIndicator color={TEXT_IVORY} />
               ) : (
-                <Text style={styles.joinPillBtnText}>Join City Group Chat</Text>
+                <Text style={styles.joinPillBtnText}>
+  {isGuest ? 'Sign In to Join City Group Chat' : 'Join City Group Chat'}
+</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -864,8 +887,8 @@ export default function LocationScreen() {
                         <ActivityIndicator color={TEXT_IVORY} />
                       ) : (
                         <Text style={styles.primaryBtnText}>
-                          {selectedJob.is_closed ? 'Closed' : 'Apply'}
-                        </Text>
+  {selectedJob.is_closed ? 'Closed' : isGuest ? 'Sign In to Apply' : 'Apply'}
+</Text>
                       )}
                     </TouchableOpacity>
                   </View>

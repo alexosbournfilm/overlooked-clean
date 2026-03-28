@@ -36,6 +36,7 @@ import ChatsStack from './ChatsStack';
 import ProfileScreen from '../screens/ProfileScreen';
 import WorkshopScreen from '../screens/WorkshopScreen';
 import WorkshopSubmitScreen from '../screens/WorkshopSubmitScreen';
+import { useAuth } from '../context/AuthProvider';
 
 import { SettingsModalProvider } from '../context/SettingsModalContext';
 import SettingsButton from '../../components/SettingsButton';
@@ -1394,6 +1395,8 @@ export default function MainTabs() {
   const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const { userId } = useAuth();
+const isGuest = !userId;
 
   const isPhone = width < 420;
   const isTiny = width < 360;
@@ -1503,8 +1506,13 @@ const contentTopPadding =
 const TABBAR_HEIGHT = isPhone ? 54 : 56;
 
   const handleOpenUpload = useCallback(() => {
-    navigation.navigate('WorkshopSubmit', { mode: 'monthly' });
-  }, [navigation]);
+  if (isGuest) {
+    navigation.navigate('Auth', { screen: 'SignIn' });
+    return;
+  }
+
+  navigation.navigate('WorkshopSubmit', { mode: 'monthly' });
+}, [navigation, isGuest]);
 
   const screenOptions = useCallback(
     ({ route }: any): BottomTabNavigationOptions =>
