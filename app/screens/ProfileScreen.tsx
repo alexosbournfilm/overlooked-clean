@@ -2,7 +2,7 @@
 // UPDATED PROFILESCREEN WITH LINKEDIN-STYLE CONNECTIONS (placeholder)
 // app/screens/ProfileScreen.tsx — Noir portfolio refit + Showreels manager
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -1001,7 +1001,36 @@ export default function ProfileScreen() {
 
   const { refreshProfile } = useAuth();
   const savingRef = useRef(false);
+  const promptSignIn = useCallback((message: string) => {
+    if (Platform.OS === "web") {
+      const goToSignIn = window.confirm(
+        `${message}\n\nPress OK for Sign In, or Cancel for Create Account.`
+      );
 
+      if (goToSignIn) {
+        navigation.navigate("Auth", { screen: "SignIn" });
+      } else {
+        navigation.navigate("Auth", { screen: "SignUp" });
+      }
+      return;
+    }
+
+    Alert.alert(
+      "Sign in required",
+      message,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign In",
+          onPress: () => navigation.navigate("Auth", { screen: "SignIn" }),
+        },
+        {
+          text: "Create Account",
+          onPress: () => navigation.navigate("Auth", { screen: "SignUp" }),
+        },
+      ]
+    );
+  }, [navigation]);
   // ✅ 1) figure out which profile we're viewing FIRST
   const viewedUserFromObj = route.params?.user;
   const viewedUserId: string | undefined =
@@ -1204,22 +1233,24 @@ if (data) row = data as LevelRow;
     setIsLoading(true);
     try {
       // 1) GET AUTH USER
-      const {
+            const {
         data: { user: authUser },
-        error: authErr,
       } = await supabase.auth.getUser();
 
-      // If auth isn't ready yet → STOP here
-      if (authErr || !authUser || !authUser.id) {
-        console.log("Auth not ready yet — delaying profile load...");
-        return; // <-- IMPORTANT: no setIsLoading(false) here anymore
+      setCurrentUserId(authUser?.id ?? null);
+
+      const targetId = targetIdParam ?? authUser?.id ?? null;
+
+      if (!targetId) {
+        setProfile(null);
+        setIsOwnProfile(false);
+        setMyJobs([]);
+        setUserJobs([]);
+        setAlreadyAppliedJobIds([]);
+        return;
       }
 
-      // Auth is valid now
-      setCurrentUserId(authUser.id);
-
-      const targetId = targetIdParam ?? authUser.id;
-      const own = !viewedUserId || viewedUserId === authUser.id;
+      const own = !!authUser && targetId === authUser.id;
       setIsOwnProfile(own);
 
       // 2) LOAD PROFILE DATA
@@ -2994,6 +3025,10 @@ const previewCreativeProtocolLink = () => {
 };
 
   const startOneToOneChat = async () => {
+        if (!currentUserId) {
+      promptSignIn("Create an account or sign in to message users.");
+      return;
+    }
     if (!profile) return;
     try {
       setStartingChat(true);
@@ -3121,10 +3156,15 @@ paddingHorizontal: compactMobile ? 10 : 0,
           </TouchableOpacity>
         )}
 
-        {!isOwnProfile && profile && currentUserId && (
+                {!isOwnProfile && profile && (
           <TouchableOpacity
             activeOpacity={0.85}
-            onPress={async () => {
+                        onPress={async () => {
+              if (!currentUserId) {
+                promptSignIn("Create an account or sign in to support users.");
+                return;
+              }
+
               const targetIdToSupport = profile?.id;
               if (!targetIdToSupport) return;
 
@@ -3294,10 +3334,15 @@ const renderMobileBannerActions = () => {
             )}
           </TouchableOpacity>
 
-          {profile && currentUserId && (
+                    {profile && (
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={async () => {
+                            onPress={async () => {
+                if (!currentUserId) {
+                  promptSignIn("Create an account or sign in to support users.");
+                  return;
+                }
+
                 const targetIdToSupport = profile?.id;
                 if (!targetIdToSupport) return;
 
@@ -4653,6 +4698,61 @@ if (isLoading) {
       }}
     >
       <ActivityIndicator size="large" color={COLORS.primary} />
+    </View>
+  );
+}
+
+if (!profile && !currentUserId && !targetIdParam) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: COLORS.background,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: 24,
+      }}
+    >
+      <Text
+        style={{
+          color: COLORS.textPrimary,
+          fontSize: 20,
+          fontFamily: FONT_CINZEL,
+          letterSpacing: 2,
+          textTransform: "uppercase",
+          textAlign: "center",
+          marginBottom: 12,
+        }}
+      >
+        Sign in to view your profile
+      </Text>
+
+      <Text
+        style={{
+          color: COLORS.textSecondary,
+          fontSize: 13,
+          fontFamily: FONT_OBLIVION,
+          textAlign: "center",
+          marginBottom: 20,
+          lineHeight: 20,
+        }}
+      >
+        Create an account or sign in to edit your profile, upload work, and connect with other creatives.
+      </Text>
+
+      <TouchableOpacity
+        style={[styles.primaryBtn, { width: 220, marginBottom: 10 }]}
+        onPress={() => navigation.navigate("Auth", { screen: "SignIn" })}
+      >
+        <Text style={styles.primaryBtnText}>Sign In</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.ghostBtn, { width: 220 }]}
+        onPress={() => navigation.navigate("Auth", { screen: "SignUp" })}
+      >
+        <Text style={styles.ghostBtnText}>Create Account</Text>
+      </TouchableOpacity>
     </View>
   );
 }
