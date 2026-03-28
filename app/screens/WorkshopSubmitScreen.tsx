@@ -793,6 +793,23 @@ const closeStoryMode = () => {
   setStoryModeItem(null);
 };
 
+const copyCurrentStoryLink = async () => {
+  if (!storyModeItem?.shareSlug) return;
+
+  try {
+    await copyFilmLink({ shareSlug: storyModeItem.shareSlug });
+
+    if (Platform.OS === "web") {
+      window.alert("Link copied");
+    } else {
+      Alert.alert("Link copied", "Your watch link has been copied.");
+    }
+  } catch (err: any) {
+    console.warn("Copy failed:", err?.message || err);
+    Alert.alert("Copy failed", "Could not copy the link.");
+  }
+};
+
   const resetSelectedFile = () => {
     closePreview();
 
@@ -2076,16 +2093,24 @@ if (Platform.OS === "web") {
         </View>
 
         <View style={styles.storyContent}>
-          <Text style={styles.storyTitle} numberOfLines={3}>
-            {storyModeItem?.title || "Untitled Film"}
-          </Text>
+  <Text style={styles.storyTitle} numberOfLines={3}>
+    {storyModeItem?.title || "Untitled Film"}
+  </Text>
 
-          <Text style={styles.storyLink} numberOfLines={1}>
-            {storyModeItem?.shareSlug
-              ? buildSharedFilmUrl(storyModeItem.shareSlug)
-              : ""}
-          </Text>
-        </View>
+  <Text style={styles.storyLink} numberOfLines={1}>
+    {storyModeItem?.shareSlug
+      ? buildSharedFilmUrl(storyModeItem.shareSlug)
+      : ""}
+  </Text>
+
+  <TouchableOpacity
+    onPress={copyCurrentStoryLink}
+    activeOpacity={0.9}
+    style={styles.storyCopyBtn}
+  >
+    <Text style={styles.storyCopyBtnText}>Copy Link</Text>
+  </TouchableOpacity>
+</View>
       </View>
     </View>
   </View>
@@ -2259,6 +2284,25 @@ storyLink: {
     paddingHorizontal: 18,
     paddingTop: 24,
   },
+  storyCopyBtn: {
+  marginTop: 14,
+  minHeight: 38,
+  paddingHorizontal: 16,
+  borderRadius: 999,
+  backgroundColor: "rgba(0,0,0,0.55)",
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.10)",
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+storyCopyBtnText: {
+  color: "#FFFFFF",
+  fontWeight: "800",
+  fontSize: 12,
+  textTransform: "uppercase",
+  letterSpacing: 0.6,
+},
   pageWrap: {
     width: "100%",
     maxWidth: 1180,
