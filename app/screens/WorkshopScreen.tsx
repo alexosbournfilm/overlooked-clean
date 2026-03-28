@@ -5053,22 +5053,35 @@ const WorkshopScreen: React.FC = () => {
     const isGuest = !userId;
 
   const promptSignIn = (message: string) => {
-    Alert.alert(
-      'Sign in required',
-      message,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign In',
-          onPress: () => navigation.navigate('Auth', { screen: 'SignIn' }),
-        },
-        {
-          text: 'Create Account',
-          onPress: () => navigation.navigate('Auth', { screen: 'SignUp' }),
-        },
-      ]
+  if (Platform.OS === 'web') {
+    const goToSignIn = window.confirm(
+      `${message}\n\nPress OK to go to Sign In, or Cancel to go to Create Account.`
     );
-  };
+
+    if (goToSignIn) {
+      navigation.navigate('Auth', { screen: 'SignIn' });
+    } else {
+      navigation.navigate('Auth', { screen: 'SignUp' });
+    }
+    return;
+  }
+
+  Alert.alert(
+    'Sign in required',
+    message,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign In',
+        onPress: () => navigation.navigate('Auth', { screen: 'SignIn' }),
+      },
+      {
+        text: 'Create Account',
+        onPress: () => navigation.navigate('Auth', { screen: 'SignUp' }),
+      },
+    ]
+  );
+};
 
   const { streak, refreshStreak } = useMonthlyStreak();
 
