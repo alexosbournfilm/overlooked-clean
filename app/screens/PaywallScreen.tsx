@@ -10,7 +10,6 @@ import {
   AppState,
   AppStateStatus,
   ScrollView,
-  SafeAreaView,
   useWindowDimensions,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
@@ -21,11 +20,12 @@ import {
   useNavigation,
   CommonActions,
 } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
 import { FUNCTIONS_URL } from '../lib/supabase';
 import { invalidateMembershipCache } from '../lib/membership';
 
-/* -------------------------- Stripe Price IDs (authoritative) -------------------------- */
+/* -------------------------- Stripe Price IDs -------------------------- */
 const STRIPE_PRICE_MONTHLY = 'price_1S1jLxIaba42c4jIsVBQneb0';
 
 type PlanKey = 'monthly';
@@ -58,13 +58,17 @@ function formatEndDate(iso: string) {
   try {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return null;
-    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    return d.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
   } catch {
     return null;
   }
 }
 
-/* -------------------------- match UpgradeModal UI -------------------------- */
+/* -------------------------- theme -------------------------- */
 
 const DARK_ELEVATED = '#171717';
 const TEXT_IVORY = '#EDEBE6';
@@ -98,6 +102,7 @@ export default function PaywallScreen() {
   const nav = useNavigation<any>();
   const isFocused = useIsFocused();
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const isMobile = width < 520;
   const isTiny = width < 360;
@@ -107,10 +112,8 @@ export default function PaywallScreen() {
 
   const [selectedPlan, setSelectedPlan] = useState<PlanKey>('monthly');
 
-  // prevents "flash" by not rendering until we confirm user isn't already Pro
   const [gateChecking, setGateChecking] = useState(true);
 
-  // NEW: if they’re already Pro or cancelled-but-still-Pro, show a friendly screen
   const [alreadyPro, setAlreadyPro] = useState(false);
   const [proEndsIso, setProEndsIso] = useState<string | null>(null);
   const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState<boolean>(false);
@@ -125,7 +128,6 @@ export default function PaywallScreen() {
     }
   };
 
-  // Disable native back gesture & header back while on paywall
   useFocusEffect(
     useCallback(() => {
       const parent = nav.getParent?.();
@@ -137,12 +139,12 @@ export default function PaywallScreen() {
   );
 
   const planLabel = useMemo(() => {
-  return 'Unlock Monthly Access';
-}, []);
+    return 'Unlock Monthly Access';
+  }, []);
 
   const selectedSubLabel = useMemo(() => {
-  return 'Monthly access • £4.99 / month';
-}, []);
+    return 'Monthly access • £4.99 / month';
+  }, []);
 
   const selectedPlanPayload = useMemo(() => {
     return { plan: 'monthly' as const, priceId: STRIPE_PRICE_MONTHLY };
@@ -176,7 +178,6 @@ export default function PaywallScreen() {
     return data as any;
   }, []);
 
-  // If user is already pro (or cancelled-but-still-pro), don't show paywall UI
   const fastGate = useCallback(async () => {
     try {
       const row = await fetchBillingRow();
@@ -188,15 +189,12 @@ export default function PaywallScreen() {
       const pro = hasProAccess(row);
       if (pro) {
         invalidateMembershipCache();
-        // Instead of instantly bouncing (which can feel jarring),
-        // show a small "Already Pro" state with a button to enter.
         setAlreadyPro(true);
         return;
       }
 
       setAlreadyPro(false);
     } catch {
-      // ignore
       setAlreadyPro(false);
     }
   }, [fetchBillingRow]);
@@ -212,8 +210,6 @@ export default function PaywallScreen() {
     })();
   }, [isFocused, fastGate]);
 
-  // ✅ Best path: supabase.functions.invoke (auto headers/auth handled)
-  // ✅ Fallback path: direct fetch to FUNCTIONS_URL with access token
   const openCheckout = async () => {
     setSubmitting(true);
     setMessage(null);
@@ -312,7 +308,6 @@ export default function PaywallScreen() {
     }
   };
 
-  // Check status -> enter app (only if focused & not exited)
   const checkStatusAndMaybeEnter = useCallback(async () => {
     if (!isFocused || hasExited.current) return;
 
@@ -332,7 +327,6 @@ export default function PaywallScreen() {
     }
   }, [isFocused, enterFeatured, fetchBillingRow]);
 
-  // Auto-poll only while focused (gives webhook time to update DB)
   useEffect(() => {
     if (!isFocused || hasExited.current) {
       clearPoll();
@@ -356,7 +350,6 @@ export default function PaywallScreen() {
     return () => clearPoll();
   }, [isFocused, checkStatusAndMaybeEnter]);
 
-  // ✅ Native: when returning from browser/Stripe, AppState becomes active -> re-check immediately
   useEffect(() => {
     if (Platform.OS === 'web') return;
 
@@ -370,7 +363,6 @@ export default function PaywallScreen() {
     return () => sub.remove();
   }, [checkStatusAndMaybeEnter]);
 
-  // "Maybe later" back
   const handleBack = useCallback(() => {
     hasExited.current = true;
     clearPoll();
@@ -382,7 +374,6 @@ export default function PaywallScreen() {
       }
     } catch {}
 
-    // Fallback: go to SignIn (do NOT sign out)
     if (Platform.OS === 'web') {
       const signInUrl = Linking.createURL('signin');
       (window as any).location.replace(signInUrl);
@@ -397,31 +388,65 @@ export default function PaywallScreen() {
     );
   }, [nav]);
 
-  // ✅ Paywall-fit: clamp height so CTA/benefits never push off-screen
-  const cardMaxHeight = Math.min(height * 0.92, 760);
+  const horizontalPad = isMobile ? 14 : 20;
+  const topPad = Math.max(insets.top + 12, 20);
+  const bottomPad = Math.max(insets.bottom + 12, 20);
+
+  const cardMaxHeight = Math.min(
+    height - topPad - bottomPad,
+    isMobile ? 700 : 760
+  );
 
   if (gateChecking) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={[styles.card, { alignItems: 'center', maxHeight: cardMaxHeight }, styles.cardMobileClamp]}>
+      <View
+        style={[
+          styles.container,
+          {
+            paddingTop: topPad,
+            paddingBottom: bottomPad,
+            paddingHorizontal: horizontalPad,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.card,
+            styles.cardLoading,
+            { maxHeight: cardMaxHeight },
+            isMobile && styles.cardMobile,
+          ]}
+        >
           <ActivityIndicator color={GOLD} />
-          <Text style={{ marginTop: 10, color: TEXT_MUTED, fontFamily: SYSTEM_SANS }}>
-            Loading…
-          </Text>
+          <Text style={styles.loadingText}>Loading…</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
-  // ✅ If already pro (or pro until date), don’t show checkout tiles
   if (alreadyPro) {
     const endLabel = proEndsIso ? formatEndDate(proEndsIso) : null;
 
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={[styles.card, { maxHeight: cardMaxHeight }, isMobile && styles.cardMobile]}>
+      <View
+        style={[
+          styles.container,
+          {
+            paddingTop: topPad,
+            paddingBottom: bottomPad,
+            paddingHorizontal: horizontalPad,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.card,
+            { maxHeight: cardMaxHeight },
+            isMobile && styles.cardMobile,
+          ]}
+        >
           <ScrollView
-            style={{ flex: 1 }}
+            style={styles.scroll}
             contentContainerStyle={styles.cardScrollContent}
             showsVerticalScrollIndicator={false}
             bounces={false}
@@ -452,28 +477,48 @@ export default function PaywallScreen() {
             </TouchableOpacity>
           </ScrollView>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={[styles.card, { maxHeight: cardMaxHeight }, isMobile && styles.cardMobile]}>
+    <View
+      style={[
+        styles.container,
+        {
+          paddingTop: topPad,
+          paddingBottom: bottomPad,
+          paddingHorizontal: horizontalPad,
+        },
+      ]}
+    >
+      <View
+        style={[
+          styles.card,
+          { maxHeight: cardMaxHeight },
+          isMobile && styles.cardMobile,
+        ]}
+      >
         <ScrollView
-          style={{ flex: 1 }}
+          style={styles.scroll}
           contentContainerStyle={styles.cardScrollContent}
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
           <Text style={styles.kicker}>UPGRADE</Text>
           <Text style={styles.title}>Unlock your full filmmaking access</Text>
-<Text style={styles.subtitle}>
-  Upload your films, apply for paid jobs, and unlock the full Filmmaking Bootcamp — a premium space to train across every major film discipline through high-level lessons, practical exercises, and powerful Workshop tools built to help you actually make films.
-</Text>
+          <Text style={styles.subtitle}>
+            Upload your films, apply for paid jobs, and unlock the full Filmmaking Bootcamp — a premium space to train across every major film discipline through high-level lessons, practical exercises, and powerful Workshop tools built to help you actually make films.
+          </Text>
 
-          {/* Monthly plan tile */}
           <View style={styles.plansArea}>
-            <View style={[styles.planRow, isMobile && styles.planRowMobile, isTiny && styles.planRowTiny]}>
+            <View
+              style={[
+                styles.planRow,
+                isMobile && styles.planRowMobile,
+                isTiny && styles.planRowTiny,
+              ]}
+            >
               <TouchableOpacity
                 activeOpacity={0.92}
                 onPress={() => setSelectedPlan('monthly')}
@@ -494,7 +539,6 @@ export default function PaywallScreen() {
             </View>
           </View>
 
-          {/* CTA */}
           <TouchableOpacity
             onPress={openCheckout}
             style={[styles.buttonBase, styles.proButton, submitting && styles.buttonDisabled]}
@@ -502,7 +546,7 @@ export default function PaywallScreen() {
             activeOpacity={submitting ? 1 : 0.9}
           >
             {submitting ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={styles.buttonRow}>
                 <ActivityIndicator color="#0B0B0B" />
                 <Text style={styles.buttonText}>Opening checkout…</Text>
               </View>
@@ -516,13 +560,13 @@ export default function PaywallScreen() {
           <View style={styles.divider} />
 
           <View style={styles.benefits}>
-  <Text style={styles.benefitItem}>✓ Upload films to the Monthly Film Challenge</Text>
-  <Text style={styles.benefitItem}>✓ Apply for paid jobs across Overlooked</Text>
-  <Text style={styles.benefitItem}>✓ Unlock the full Filmmaking Bootcamp</Text>
-  <Text style={styles.benefitItem}>✓ Learn every major film discipline through focused lessons and exercises</Text>
-  <Text style={styles.benefitItem}>✓ Train with practical exercises inspired by academic film and acting courses</Text>
-  <Text style={styles.benefitItem}>✓ Use all Workshop tools and resources to help you develop, plan, and make films</Text>
-</View>
+            <Text style={styles.benefitItem}>✓ Upload films to the Monthly Film Challenge</Text>
+            <Text style={styles.benefitItem}>✓ Apply for paid jobs across Overlooked</Text>
+            <Text style={styles.benefitItem}>✓ Unlock the full Filmmaking Bootcamp</Text>
+            <Text style={styles.benefitItem}>✓ Learn every major film discipline through focused lessons and exercises</Text>
+            <Text style={styles.benefitItem}>✓ Train with practical exercises inspired by academic film and acting courses</Text>
+            <Text style={styles.benefitItem}>✓ Use all Workshop tools and resources to help you develop, plan, and make films</Text>
+          </View>
 
           {!!message && <Text style={styles.errorText}>{message}</Text>}
 
@@ -536,44 +580,57 @@ export default function PaywallScreen() {
           </TouchableOpacity>
         </ScrollView>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: 'rgba(0,0,0,0.88)',
+  },
+
+  scroll: {
+    width: '100%',
+    flexGrow: 0,
   },
 
   card: {
     width: '100%',
     maxWidth: 920,
+    alignSelf: 'center',
     borderRadius: 24,
     paddingVertical: 18,
     paddingHorizontal: 16,
     backgroundColor: DARK_ELEVATED,
     borderWidth: 1,
     borderColor: HAIRLINE,
+    overflow: 'hidden',
   },
 
-  // ✅ Slightly tighter on mobile
   cardMobile: {
     borderRadius: 20,
     paddingVertical: 14,
     paddingHorizontal: 14,
   },
 
-  // used in the loading card too
-  cardMobileClamp: {
-    width: '100%',
+  cardLoading: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 160,
   },
 
   cardScrollContent: {
     paddingBottom: 10,
+    flexGrow: 1,
+  },
+
+  loadingText: {
+    marginTop: 10,
+    color: TEXT_MUTED,
+    fontFamily: SYSTEM_SANS,
   },
 
   kicker: {
@@ -617,12 +674,10 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
 
-  // ✅ Mobile: allow nicer wrapping
   planRowMobile: {
     flexWrap: 'wrap',
   },
 
-  // ✅ Tiny phones: force stack so nothing is cramped
   planRowTiny: {
     flexDirection: 'column',
   },
@@ -638,7 +693,6 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
 
-  // ✅ When stacking on tiny screens
   planTileTinyStack: {
     minWidth: '100%' as any,
   },
@@ -708,6 +762,12 @@ const styles = StyleSheet.create({
 
   buttonDisabled: {
     opacity: 0.75,
+  },
+
+  buttonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
 
   buttonText: {
