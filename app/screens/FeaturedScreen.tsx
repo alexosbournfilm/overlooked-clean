@@ -2875,11 +2875,15 @@ const renderMobileYouTubeCard = useCallback(
 
           <View style={styles.mobileActionRow}>
             <TouchableOpacity
-              activeOpacity={0.9}
-              disabled={busy || mine}
-              onPress={() => {
-                if (!mine) toggleVote(s);
-              }}
+  activeOpacity={0.9}
+  disabled={busy || mine}
+  onPress={() => {
+    if (isGuest) {
+      navigation.navigate('Auth', { screen: 'SignIn' });
+      return;
+    }
+    if (!mine) toggleVote(s);
+  }}
               style={[styles.mobilePill, (busy || mine) && { opacity: 0.5 }]}
             >
               <Text style={[styles.mobilePillText, voted && { color: GOLD }]}>
@@ -3466,8 +3470,14 @@ return (
 
           <View style={styles.previewActions}>
             <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => toggleVote(previewItem)}
+  activeOpacity={0.9}
+  onPress={() => {
+    if (isGuest) {
+      navigation.navigate('Auth', { screen: 'SignIn' });
+      return;
+    }
+    toggleVote(previewItem);
+  }}
               disabled={!!voteBusy[previewItem.id] || (!!currentUserId && (previewItem as any).user_id === currentUserId)}
               style={[
                 styles.previewActionPill,
@@ -3591,7 +3601,7 @@ return (
   activeOpacity={0.9}
   onPress={() => {
     if (isGuest) {
-      promptSignIn('Create an account or sign in to reply to comments.');
+      navigation.navigate('Auth', { screen: 'SignIn' });
       return;
     }
     setReplyingTo(item);
@@ -3681,7 +3691,13 @@ return (
               multiline
             />
             <TouchableOpacity
-  onPress={postComment}
+  onPress={() => {
+    if (isGuest) {
+      navigation.navigate('Auth', { screen: 'SignIn' });
+      return;
+    }
+    postComment();
+  }}
   disabled={commentPosting || (!isGuest && !commentText.trim())}
   activeOpacity={0.9}
   style={[
