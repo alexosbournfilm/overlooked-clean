@@ -26,13 +26,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /* ------------------------------- Noir palette ------------------------------- */
 const DARK_BG = '#000000';
-const ELEVATED = '#141414';
-const ELEVATED_2 = '#1B1B1B';
-const BORDER = '#2A2A2A';
+const ELEVATED = '#000000';
+const ELEVATED_2 = '#000000';
+const BORDER = '#111111';
 const TEXT = '#EDEBE6';
-const SUBTLE = '#A7A6A2';
+const SUBTLE = '#8F8F8F';
 const GOLD = '#C6A664';
-const BUBBLE_IN = '#161616';
+const BUBBLE_IN = '#111111';   // or '#0D0D0D'
 const BUBBLE_OUT = GOLD;
 
 /* ------------------------------- sizing ------------------------------------ */
@@ -470,57 +470,42 @@ export default function ChatRoom() {
         );
 
       navigation.setOptions({
-        headerLeft,
-        headerTitleAlign: 'center',
-        headerTitle: () => (
-          <TouchableOpacity
-            onPress={openPeerProfile}
-            activeOpacity={0.85}
-            style={
-              styles.headerTitleRow
-            }
-          >
-            <View
-              style={[
-                styles.headerAvatarRing,
-                { borderColor: ringColor },
-              ]}
-            >
-              {avatarUri ? (
-                <Image
-                  source={{
-                    uri: avatarUri,
-                  }}
-                  style={
-                    styles.headerAvatar
-                  }
-                />
-              ) : (
-                <View
-                  style={[
-                    styles.headerAvatar,
-                    styles.headerAvatarFallback,
-                  ]}
-                >
-                  <Ionicons
-                    name="person-outline"
-                    size={16}
-                    color={SUBTLE}
-                  />
-                </View>
-              )}
-            </View>
-            <Text
-              style={
-                styles.headerTitleText
-              }
-              numberOfLines={1}
-            >
-              {name}
-            </Text>
-          </TouchableOpacity>
-        ),
-      });
+  headerStyle: {
+    backgroundColor: '#000000',
+  },
+  headerShadowVisible: false,
+  headerTintColor: TEXT,
+  contentStyle: {
+    backgroundColor: '#000000',
+  },
+  headerLeft,
+  headerTitleAlign: 'center',
+  headerTitle: () => (
+    <TouchableOpacity
+      onPress={openPeerProfile}
+      activeOpacity={0.85}
+      style={styles.headerTitleRow}
+    >
+      <View
+        style={[
+          styles.headerAvatarRing,
+          { borderColor: ringColor },
+        ]}
+      >
+        {avatarUri ? (
+          <Image source={{ uri: avatarUri }} style={styles.headerAvatar} />
+        ) : (
+          <View style={[styles.headerAvatar, styles.headerAvatarFallback]}>
+            <Ionicons name="person-outline" size={16} color={SUBTLE} />
+          </View>
+        )}
+      </View>
+      <Text style={styles.headerTitleText} numberOfLines={1}>
+        {name}
+      </Text>
+    </TouchableOpacity>
+  ),
+});
     } else {
       // Group
       const memberCount =
@@ -610,11 +595,19 @@ export default function ChatRoom() {
       );
 
       navigation.setOptions({
-        headerLeft,
-        headerRight,
-        headerTitleAlign: 'center',
-        headerTitle: () => <TitleRow />,
-      });
+  headerStyle: {
+    backgroundColor: '#000000',
+  },
+  headerShadowVisible: false,
+  headerTintColor: TEXT,
+  contentStyle: {
+    backgroundColor: '#000000',
+  },
+  headerLeft,
+  headerRight,
+  headerTitleAlign: 'center',
+  headerTitle: () => <TitleRow />,
+});
     }
   }, [
     navigation,
@@ -1717,10 +1710,10 @@ const styles = StyleSheet.create({
     borderRadius: 13,
   },
   headerAvatarFallback: {
-    backgroundColor: ELEVATED,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  backgroundColor: '#000000',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
   headerTitleText: {
   fontSize: 15,
   fontWeight: '800',
@@ -1735,15 +1728,14 @@ const styles = StyleSheet.create({
 
   // System message chip
   systemMsgWrap: {
-    alignSelf: 'center',
-    backgroundColor: ELEVATED,
-    borderRadius: 14,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginVertical: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: BORDER,
-  },
+  alignSelf: 'center',
+  backgroundColor: '#0A0A0A',
+  borderRadius: 14,
+  paddingVertical: 6,
+  paddingHorizontal: 12,
+  marginVertical: 8,
+  borderWidth: 0,
+},
   systemMsgText: {
     fontSize: 12,
     color: SUBTLE,
@@ -1768,10 +1760,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   incoming: {
-    backgroundColor: BUBBLE_IN,
-    borderColor: '#202020',
-    alignSelf: 'flex-start',
-  },
+  backgroundColor: '#111111',
+  borderColor: '#111111',
+  alignSelf: 'flex-start',
+},
   outgoing: {
     backgroundColor: BUBBLE_OUT,
     borderColor: GOLD,
@@ -1786,10 +1778,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   imageIncoming: {
-    alignSelf: 'flex-start',
-    backgroundColor: BUBBLE_IN,
-    borderColor: '#202020',
-  },
+  alignSelf: 'flex-start',
+  backgroundColor: '#111111',
+  borderColor: '#111111',
+},
   imageOutgoing: {
     alignSelf: 'flex-end',
     backgroundColor: BUBBLE_OUT,
@@ -1845,32 +1837,28 @@ const styles = StyleSheet.create({
 
   // Composer
   inputBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    backgroundColor: ELEVATED,
-    borderTopWidth: 1,
-    borderTopColor: BORDER,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  paddingHorizontal: 10,
+  paddingVertical: 10,
+  backgroundColor: DARK_BG,
+  borderTopWidth: 0, // remove line if you want it to fully blend
+},
   iconBtn: {
     padding: 6,
   },
   input: {
-    flex: 1,
-    backgroundColor: ELEVATED_2,
-    color: TEXT,
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical:
-      Platform.OS === 'ios'
-        ? 12
-        : 10,
-    marginHorizontal: 8,
-    borderWidth: 1,
-    borderColor: BORDER,
-    fontSize: 16,
-  },
+  flex: 1,
+  backgroundColor: '#0A0A0A', // slightly lifted from black, but still blends
+  color: TEXT,
+  borderRadius: 999,
+  paddingHorizontal: 16,
+  paddingVertical: Platform.OS === 'ios' ? 12 : 10,
+  marginHorizontal: 8,
+  borderWidth: 1,
+  borderColor: '#111111',
+  fontSize: 16,
+},
   sendBtn: {
     backgroundColor: GOLD,
     paddingHorizontal: 14,

@@ -51,13 +51,13 @@ const SYSTEM_SANS = Platform.select({
 const GOLD = '#C6A664';
 
 const T = {
-  bg: '#0B0B0B',
-  surface: '#111111',
+  bg: '#000000',
+  surface: '#0A0A0A',
   text: '#FFFFFF',
   sub: '#C9C9C9',
-  mute: '#9A9A1A',
+  mute: '#9A9A9A',
   accent: '#FFFFFF',
-  line: '#1A1A1A',
+  line: '#141414',
 };
 T.mute = '#9A9A9A'; // keep original mute
 
@@ -460,7 +460,10 @@ export default function JobsScreen() {
           <Ionicons name="settings-outline" size={22} color={T.text} />
         </TouchableOpacity>
       ),
-      headerStyle: { backgroundColor: T.bg },
+      headerStyle: { backgroundColor: '#000000' },
+headerShadowVisible: false,
+headerTintColor: T.text,
+contentStyle: { backgroundColor: '#000000' },
     });
   }, [navigation, show]);
 
