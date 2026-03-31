@@ -32,6 +32,7 @@
     },
     "android": {
       "package": "com.overlooked.app",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./app/assets/adaptive-icon.png",
         "backgroundColor": "#0D0D0D"
@@ -67,12 +68,12 @@
       ]
     },
     "web": {
-  "bundler": "metro",
-  "favicon": "./public/ol-favicon-999.png",
-  "display": "browser",
-  "themeColor": "#0D0D0D",
-  "backgroundColor": "#0D0D0D"
-},
+      "bundler": "metro",
+      "favicon": "./public/ol-favicon-999.png",
+      "display": "browser",
+      "themeColor": "#0D0D0D",
+      "backgroundColor": "#0D0D0D"
+    },
     "extra": {
       "supabaseRedirectUrl": "overlooked://callback",
       "eas": {

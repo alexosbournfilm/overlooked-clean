@@ -1,10 +1,10 @@
 // App.tsx
 import "./app/polyfills"; // must stay first
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import { View, Linking, Platform } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
-import { Linking, Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { Provider as PaperProvider } from "react-native-paper";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -130,7 +130,6 @@ export default function App() {
       return;
     }
 
-    // PKCE flow: ?code=...
     if (code) {
       const { error } = await supabase.auth.exchangeCodeForSession(url);
       if (error) {
@@ -140,9 +139,6 @@ export default function App() {
       console.log("✅ Session exchanged from code");
     }
 
-    // ✅ IMPORTANT FIX:
-    // If tokens exist in the URL hash, setSession MUST run on WEB too.
-    // Otherwise NewPassword will never be able to update the password.
     if (access_token && refresh_token) {
       const { error } = await supabase.auth.setSession({
         access_token,
@@ -156,15 +152,12 @@ export default function App() {
       console.log("✅ Session restored from tokens (web + native)");
     }
 
-    // ✅ If this is a recovery link, go to NewPassword.
-    // DO NOT clean the URL here — NewPassword needs token_hash/email OR hash tokens.
     if (type === "recovery") {
       console.log("🔐 Recovery link detected → navigating to NewPassword");
       navigate("NewPassword");
       return;
     }
 
-    // Clean URL on web (prevents re-processing) — ONLY for non-recovery flows
     if (Platform.OS === "web" && typeof window !== "undefined") {
       const clean = window.location.origin + window.location.pathname;
       window.history.replaceState({}, document.title, clean);
@@ -174,22 +167,17 @@ export default function App() {
   // --------------------------------------------------------------
   // PASSWORD_RECOVERY event → NewPassword
   // --------------------------------------------------------------
-  // ✅ Speed-only: prevent duplicate listeners and duplicate navigations
-  // (No logic change: still navigates to NewPassword on PASSWORD_RECOVERY.)
   const recoveryNavArmedRef = useRef(true);
 
   useEffect(() => {
     const { data: subscription } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
-        // Guard: sometimes both App.tsx + AuthProvider receive it.
-        // This prevents double reset / churn that can look like "stuck loading".
         if (!recoveryNavArmedRef.current) return;
         recoveryNavArmedRef.current = false;
 
         console.log("🚨 PASSWORD_RECOVERY event received");
         navigate("NewPassword");
 
-        // Re-arm shortly so a future, real recovery flow still works.
         setTimeout(() => {
           recoveryNavArmedRef.current = true;
         }, 800);
@@ -204,16 +192,14 @@ export default function App() {
   // --------------------------------------------------------------
   useEffect(() => {
     let mounted = true;
+    let linkSub: { remove: () => void } | null = null;
 
     async function init() {
       try {
-        // ✅ HARD GUARD:
-        // If someone loads /reset-password without any recovery tokens, kick to /signin.
         if (Platform.OS === "web" && typeof window !== "undefined") {
           const path = window.location.pathname || "";
           const href = window.location.href || "";
 
-          // include token= too (Supabase verify links use token=)
           const hasRecoveryStuff =
             href.includes("type=recovery") ||
             href.includes("access_token=") ||
@@ -227,7 +213,7 @@ export default function App() {
               "🛑 Loaded /reset-password without tokens → redirecting to /signin"
             );
             window.location.replace("/signin");
-            return; // stop init
+            return;
           }
         }
 
@@ -238,10 +224,6 @@ export default function App() {
           await handleDeepLink(initialUrl);
         }
 
-        // ✅ Speed-only: remove duplicate profile fetch here.
-        // AuthProvider already loads profile completeness, and AppNavigator uses that.
-        // We still decide initialAuthRouteName (same logic), but we do it without
-        // re-querying users table—unless absolutely needed.
         const { data: sessionData } = await supabase.auth.getSession();
         const session = sessionData?.session ?? null;
 
@@ -251,10 +233,6 @@ export default function App() {
             JSON.stringify(session)
           );
 
-          // Try to avoid a network request:
-          // If the session already has user metadata that indicates profile is complete,
-          // keep behavior identical by falling back to DB check when missing.
-          // (This does not change logic; it only skips the DB call when not needed.)
           const meta: any = (session.user as any)?.user_metadata || {};
           const metaHasProfileBits =
             !!meta?.full_name && !!meta?.main_role_id && !!meta?.city_id;
@@ -280,12 +258,11 @@ export default function App() {
           setInitialAuthRouteName("SignIn");
         }
 
-        const sub = Linking.addEventListener("url", async (ev) => {
+        linkSub = Linking.addEventListener("url", async (ev) => {
           await handleDeepLink(ev.url);
         });
 
         if (mounted) setAppIsReady(true);
-        return () => sub.remove();
       } catch (err) {
         console.error("INIT ERROR:", err);
         if (mounted) setAppIsReady(true);
@@ -293,8 +270,10 @@ export default function App() {
     }
 
     init();
+
     return () => {
       mounted = false;
+      linkSub?.remove();
     };
   }, [handleDeepLink]);
 
@@ -307,22 +286,31 @@ export default function App() {
     }
   }, [appIsReady, fontsLoaded]);
 
-  if (!appIsReady || !fontsLoaded) return null;
+  // ✅ DO NOT return null — keep startup black
+  if (!appIsReady || !fontsLoaded) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#0D0D0D" }}>
+        <StatusBar style="light" />
+      </View>
+    );
+  }
 
   return (
-    <AppErrorBoundary>
-      <PaperProvider>
-        <SafeAreaProvider>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <StatusBar style="dark" />
-            <AuthProvider>
-              <GamificationProvider>
-                <AppNavigator initialAuthRouteName={initialAuthRouteName} />
-              </GamificationProvider>
-            </AuthProvider>
-          </GestureHandlerRootView>
-        </SafeAreaProvider>
-      </PaperProvider>
-    </AppErrorBoundary>
+    <View style={{ flex: 1, backgroundColor: "#0D0D0D" }}>
+      <AppErrorBoundary>
+        <PaperProvider>
+          <SafeAreaProvider>
+            <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#0D0D0D" }}>
+              <StatusBar style="light" />
+              <AuthProvider>
+                <GamificationProvider>
+                  <AppNavigator initialAuthRouteName={initialAuthRouteName} />
+                </GamificationProvider>
+              </AuthProvider>
+            </GestureHandlerRootView>
+          </SafeAreaProvider>
+        </PaperProvider>
+      </AppErrorBoundary>
+    </View>
   );
 }

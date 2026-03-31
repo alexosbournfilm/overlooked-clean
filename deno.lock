@@ -47,6 +47,7 @@
         "npm:expo-clipboard@~8.0.8",
         "npm:expo-constants@~18.0.13",
         "npm:expo-crypto@~15.0.8",
+        "npm:expo-dev-client@~6.0.20",
         "npm:expo-device@~8.0.10",
         "npm:expo-document-picker@~14.0.8",
         "npm:expo-file-system@~19.0.21",
