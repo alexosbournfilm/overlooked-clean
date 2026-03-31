@@ -1,16 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <!-- Force favicon -->
+    <link rel="icon" href="/ol-favicon-999.png?v=999" />
+
     <!-- Basics -->
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
 
-    <!-- ⭐ SAFARI DEEP LINK FIX — MUST COME BEFORE ANY JS BUNDLE LOADS -->
+    <!-- Safari deep link fix -->
     <script>
-      // Safari delay fix: capture URL BEFORE React loads
-      window.__INITIAL_URL__ =
-        window.location.href || document.URL || null;
+      window.__INITIAL_URL__ = window.location.href || document.URL || null;
     </script>
 
     <!-- Title -->
@@ -20,61 +24,62 @@
     <meta property="og:site_name" content="Overlooked" />
 
     <!-- SEO -->
-    <meta name="description" content="Overlooked is the home of indie filmmaking — monthly challenges, jobs, reels, and a community built for filmmakers." />
+    <meta
+      name="description"
+      content="Overlooked is the home of indie filmmaking — monthly challenges, jobs, reels, and a community built for filmmakers."
+    />
     <link rel="canonical" href="https://www.overlooked.cloud/" />
     <meta name="robots" content="index,follow" />
 
     <!-- Theme -->
-    <meta name="theme-color" content="#ffffff" />
-    <meta name="msapplication-TileColor" content="#ffffff" />
-
-    <!-- Favicons / App Icons -->
-    <link rel="icon" href="/favicon.ico" sizes="any" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png" />
-    <link rel="icon" type="image/png" sizes="192x192" href="/android-chrome-192x192.png" />
-    <link rel="icon" type="image/png" sizes="512x512" href="/android-chrome-512x512.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#F8A998" />
-    <meta name="msapplication-TileImage" content="/mstile-144x144.png" />
-    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="msapplication-TileColor" content="#000000" />
 
     <!-- Social -->
-    <meta property="og:title" content="Overlooked — The Home of Indie Filmmaking" />
-    <meta property="og:description" content="Monthly challenges, jobs, and a community for filmmakers." />
+    <meta
+      property="og:title"
+      content="Overlooked — The Home of Indie Filmmaking"
+    />
+    <meta
+      property="og:description"
+      content="Monthly challenges, jobs, and a community for filmmakers."
+    />
     <meta property="og:url" content="https://www.overlooked.cloud/" />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://www.overlooked.cloud/social-card.png" />
+    <meta
+      property="og:image"
+      content="https://www.overlooked.cloud/social-card.png"
+    />
     <meta name="twitter:card" content="summary_large_image" />
 
     <!-- Structured Data -->
     <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "Overlooked",
-      "url": "https://www.overlooked.cloud/",
-      "logo": "https://www.overlooked.cloud/social-card.png",
-      "sameAs": [
-        "https://www.youtube.com/@yourhandle",
-        "https://www.instagram.com/yourhandle",
-        "https://x.com/yourhandle"
-      ]
-    }
-    </script>
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "Overlooked",
-      "url": "https://www.overlooked.cloud/",
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": "https://www.overlooked.cloud/search?q={query}",
-        "query-input": "required name=query"
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "Overlooked",
+        "url": "https://www.overlooked.cloud/",
+        "logo": "https://www.overlooked.cloud/social-card.png",
+        "sameAs": [
+          "https://www.youtube.com/@yourhandle",
+          "https://www.instagram.com/yourhandle",
+          "https://x.com/yourhandle"
+        ]
       }
-    }
+    </script>
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Overlooked",
+        "url": "https://www.overlooked.cloud/",
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://www.overlooked.cloud/search?q={query}",
+          "query-input": "required name=query"
+        }
+      }
     </script>
 
     <!-- Simple crawlable content -->
@@ -85,9 +90,20 @@
         margin: 40px auto;
         padding: 24px;
       }
-      .nojs-hero h1 { font-size: 2rem; margin: 0 0 8px; }
-      .nojs-hero p { margin: 0 0 12px; line-height: 1.5; }
-      .nojs-hero a { text-decoration: underline; }
+
+      .nojs-hero h1 {
+        font-size: 2rem;
+        margin: 0 0 8px;
+      }
+
+      .nojs-hero p {
+        margin: 0 0 12px;
+        line-height: 1.5;
+      }
+
+      .nojs-hero a {
+        text-decoration: underline;
+      }
     </style>
   </head>
 
@@ -95,10 +111,14 @@
     <noscript>
       <div class="nojs-hero">
         <h1>Overlooked — The Home of Indie Filmmaking</h1>
-        <p>Monthly filmmaking challenges, a dedicated job board, reels, and a community built for filmmakers.</p>
+        <p>
+          Monthly filmmaking challenges, a dedicated job board, reels, and a
+          community built for filmmakers.
+        </p>
         <p><a href="/app">Open the app</a></p>
       </div>
     </noscript>
+
     <div id="root"></div>
   </body>
 </html>

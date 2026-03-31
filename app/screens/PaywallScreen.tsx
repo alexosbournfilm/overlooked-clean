@@ -21,9 +21,11 @@ import {
   CommonActions,
 } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useIAP } from 'expo-iap';
 import { supabase } from '../lib/supabase';
 import { FUNCTIONS_URL } from '../lib/supabase';
 import { invalidateMembershipCache } from '../lib/membership';
+import { ANDROID_SUBSCRIPTION_PRODUCT_ID } from '../lib/androidBilling';
 
 /* -------------------------- Stripe Price IDs -------------------------- */
 const STRIPE_PRICE_MONTHLY = 'price_1S1jLxIaba42c4jIsVBQneb0';
@@ -121,6 +123,33 @@ export default function PaywallScreen() {
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasExited = useRef(false);
 
+  const {
+    connected: iapConnected,
+    products,
+    fetchProducts,
+  } = useIAP({
+    onPurchaseSuccess: async () => {
+      setMessage(
+        'Purchase callback received, but backend verification is not connected yet.'
+      );
+    },
+    onPurchaseError: (error) => {
+      console.error('[iap] purchase error', error);
+      setMessage(error?.message || 'Google Play purchase failed.');
+    },
+  });
+
+  const androidProduct = useMemo(() => {
+    if (Platform.OS !== 'android') return null;
+    return (
+      products?.find(
+        (product: any) =>
+          product?.id === ANDROID_SUBSCRIPTION_PRODUCT_ID ||
+          product?.productId === ANDROID_SUBSCRIPTION_PRODUCT_ID
+      ) ?? null
+    );
+  }, [products]);
+
   const clearPoll = () => {
     if (pollTimerRef.current) {
       clearTimeout(pollTimerRef.current);
@@ -138,13 +167,43 @@ export default function PaywallScreen() {
     }, [nav])
   );
 
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    if (!iapConnected) return;
+
+    let mounted = true;
+
+    (async () => {
+      try {
+        await fetchProducts({
+          skus: [ANDROID_SUBSCRIPTION_PRODUCT_ID],
+          type: 'in-app',
+        });
+      } catch (err: any) {
+        if (!mounted) return;
+        console.warn('[iap] fetchProducts error', err);
+        setMessage(
+          err?.message || 'Could not load Google Play product information.'
+        );
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [iapConnected, fetchProducts]);
+
   const planLabel = useMemo(() => {
+    if (Platform.OS === 'android') return 'Continue with Google Play';
     return 'Unlock Monthly Access';
   }, []);
 
   const selectedSubLabel = useMemo(() => {
+    if (Platform.OS === 'android' && androidProduct?.displayPrice) {
+      return `Monthly access • ${androidProduct.displayPrice}`;
+    }
     return 'Monthly access • £4.99 / month';
-  }, []);
+  }, [androidProduct]);
 
   const selectedPlanPayload = useMemo(() => {
     return { plan: 'monthly' as const, priceId: STRIPE_PRICE_MONTHLY };
@@ -210,96 +269,119 @@ export default function PaywallScreen() {
     })();
   }, [isFocused, fastGate]);
 
+  const openStripeCheckout = async () => {
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr) throw authErr;
+
+    const user = auth?.user;
+    if (!user?.id) {
+      throw new Error('Not signed in.');
+    }
+
+    if (!selectedPlanPayload?.priceId) {
+      throw new Error('Missing Stripe price id for this plan.');
+    }
+
+    const invokeRes = await supabase.functions.invoke('create-checkout-session', {
+      body: {
+        user_id: user.id,
+        email: user.email ?? undefined,
+        plan: selectedPlanPayload.plan,
+        priceId: selectedPlanPayload.priceId,
+      },
+    });
+
+    if (invokeRes.error) {
+      const primaryMsg = extractInvokeError(invokeRes.error);
+      console.warn('[paywall] invoke error:', invokeRes.error);
+
+      if (typeof FUNCTIONS_URL === 'string' && FUNCTIONS_URL.length > 0) {
+        try {
+          const { data: sessionRes } = await supabase.auth.getSession();
+          const token = sessionRes?.session?.access_token;
+
+          const endpoint = `${FUNCTIONS_URL}/create-checkout-session`;
+
+          const resp = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              ...(token ? { authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+              user_id: user.id,
+              email: user.email ?? undefined,
+              plan: selectedPlanPayload.plan,
+              priceId: selectedPlanPayload.priceId,
+            }),
+          });
+
+          const json = await resp.json().catch(() => ({}));
+          if (!resp.ok) {
+            const msg =
+              json?.error ||
+              json?.message ||
+              `Checkout session failed (HTTP ${resp.status}).`;
+            throw new Error(msg);
+          }
+
+          const url = json?.url as string | undefined;
+          if (!url) throw new Error('No checkout URL returned.');
+
+          if (Platform.OS === 'web') {
+            (window as any).location.assign(url);
+          } else {
+            await WebBrowser.openBrowserAsync(url);
+          }
+          return;
+        } catch (fallbackErr: any) {
+          console.warn('[paywall] fallback fetch error:', fallbackErr);
+          throw new Error(
+            `Checkout failed.\n\nPrimary: ${primaryMsg}\nFallback: ${fallbackErr?.message || 'Unknown error'}`
+          );
+        }
+      }
+
+      throw new Error(primaryMsg);
+    }
+
+    const url = (invokeRes.data as any)?.url as string | undefined;
+    if (!url) throw new Error('No checkout URL returned.');
+
+    if (Platform.OS === 'web') {
+      (window as any).location.assign(url);
+    } else {
+      await WebBrowser.openBrowserAsync(url);
+    }
+  };
+
   const openCheckout = async () => {
     setSubmitting(true);
     setMessage(null);
 
     try {
-      const { data: auth, error: authErr } = await supabase.auth.getUser();
-      if (authErr) throw authErr;
-
-      const user = auth?.user;
-      if (!user?.id) {
-        setMessage('Not signed in.');
+      if (Platform.OS === 'web') {
+        await openStripeCheckout();
         return;
       }
 
-      if (!selectedPlanPayload?.priceId) {
-        setMessage('Missing Stripe price id for this plan.');
-        return;
-      }
-
-      const invokeRes = await supabase.functions.invoke('create-checkout-session', {
-        body: {
-          user_id: user.id,
-          email: user.email ?? undefined,
-          plan: selectedPlanPayload.plan,
-          priceId: selectedPlanPayload.priceId,
-        },
-      });
-
-      if (invokeRes.error) {
-        const primaryMsg = extractInvokeError(invokeRes.error);
-        console.warn('[paywall] invoke error:', invokeRes.error);
-
-        if (typeof FUNCTIONS_URL === 'string' && FUNCTIONS_URL.length > 0) {
-          try {
-            const { data: sessionRes } = await supabase.auth.getSession();
-            const token = sessionRes?.session?.access_token;
-
-            const endpoint = `${FUNCTIONS_URL}/create-checkout-session`;
-
-            const resp = await fetch(endpoint, {
-              method: 'POST',
-              headers: {
-                'content-type': 'application/json',
-                ...(token ? { authorization: `Bearer ${token}` } : {}),
-              },
-              body: JSON.stringify({
-                user_id: user.id,
-                email: user.email ?? undefined,
-                plan: selectedPlanPayload.plan,
-                priceId: selectedPlanPayload.priceId,
-              }),
-            });
-
-            const json = await resp.json().catch(() => ({}));
-            if (!resp.ok) {
-              const msg =
-                json?.error ||
-                json?.message ||
-                `Checkout session failed (HTTP ${resp.status}).`;
-              throw new Error(msg);
-            }
-
-            const url = json?.url as string | undefined;
-            if (!url) throw new Error('No checkout URL returned.');
-
-            if (Platform.OS === 'web') {
-              (window as any).location.assign(url);
-            } else {
-              await WebBrowser.openBrowserAsync(url);
-            }
-            return;
-          } catch (fallbackErr: any) {
-            console.warn('[paywall] fallback fetch error:', fallbackErr);
-            throw new Error(
-              `Checkout failed.\n\nPrimary: ${primaryMsg}\nFallback: ${fallbackErr?.message || 'Unknown error'}`
-            );
-          }
+      if (Platform.OS === 'android') {
+        if (!iapConnected) {
+          throw new Error('Google Play Billing is not connected yet.');
         }
 
-        throw new Error(primaryMsg);
+        if (!androidProduct) {
+          throw new Error(
+            'Google Play product not found yet. Finish Play verification, create the Pro subscription in Play Console, and use the exact product ID in androidBilling.ts.'
+          );
+        }
+
+        throw new Error(
+          'Google Play product was found, but backend verification is not connected yet.'
+        );
       }
 
-      const url = (invokeRes.data as any)?.url as string | undefined;
-      if (!url) throw new Error('No checkout URL returned.');
-
-      if (Platform.OS === 'web') {
-        (window as any).location.assign(url);
-      } else {
-        await WebBrowser.openBrowserAsync(url);
-      }
+      throw new Error('Subscriptions for this platform are not set up yet.');
     } catch (e: any) {
       console.error('checkout redirect error', e);
       setMessage(e?.message || 'Could not open checkout.');
@@ -532,9 +614,17 @@ export default function PaywallScreen() {
                 <Text style={[styles.planKicker, styles.planKickerHero]}>MONTHLY</Text>
                 <View style={styles.planPriceRow}>
                   <Text style={styles.planCurrency}>£</Text>
-                  <Text style={styles.planPriceHero}>4.99</Text>
+                  <Text style={styles.planPriceHero}>
+                    {Platform.OS === 'android' && androidProduct?.displayPrice
+                      ? androidProduct.displayPrice.replace(/[^\d.,]/g, '')
+                      : '4.99'}
+                  </Text>
                 </View>
-                <Text style={styles.planSubHero}>Cancel anytime</Text>
+                <Text style={styles.planSubHero}>
+                  {Platform.OS === 'android'
+                    ? 'Google Play subscription'
+                    : 'Cancel anytime'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -548,14 +638,25 @@ export default function PaywallScreen() {
             {submitting ? (
               <View style={styles.buttonRow}>
                 <ActivityIndicator color="#0B0B0B" />
-                <Text style={styles.buttonText}>Opening checkout…</Text>
+                <Text style={styles.buttonText}>
+                  {Platform.OS === 'android' ? 'Checking Google Play…' : 'Opening checkout…'}
+                </Text>
               </View>
             ) : (
               <Text style={styles.buttonText}>{planLabel}</Text>
             )}
           </TouchableOpacity>
 
-          <Text style={styles.selectedText}>{selectedSubLabel}</Text>
+          <Text style={styles.selectedText}>
+            {selectedSubLabel}
+            {Platform.OS === 'android'
+              ? iapConnected
+                ? androidProduct
+                  ? ' • Google Play product found'
+                  : ' • Waiting for Play product'
+                : ' • Connecting to Google Play'
+              : ''}
+          </Text>
 
           <View style={styles.divider} />
 
@@ -824,4 +925,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: SYSTEM_SANS,
   },
-});
+}); 

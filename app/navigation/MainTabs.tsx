@@ -43,6 +43,7 @@ import SettingsButton from '../../components/SettingsButton';
 import SettingsModal from '../../components/SettingsModal';
 
 import { useMonthlyStreak } from '../lib/useMonthlyStreak';
+import { registerAndSavePushToken } from '../lib/pushRegistration';
 
 // NOTE: keeping this import because your file already has it.
 import { useGamification } from '../context/GamificationContext';
@@ -1397,6 +1398,11 @@ export default function MainTabs() {
   const insets = useSafeAreaInsets();
   const { userId } = useAuth();
 const isGuest = !userId;
+  useEffect(() => {
+    if (!userId) return;
+
+    registerAndSavePushToken(userId);
+  }, [userId]);
 
   const isPhone = width < 420;
   const isTiny = width < 360;

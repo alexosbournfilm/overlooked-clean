@@ -14,10 +14,14 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourname.overlooked",
+      "bundleIdentifier": "com.overlooked.app",
       "infoPlist": {
         "CFBundleURLTypes": [
-          { "CFBundleURLSchemes": ["overlooked"] }
+          {
+            "CFBundleURLSchemes": [
+              "overlooked"
+            ]
+          }
         ],
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library for profile uploads."
       },
@@ -27,7 +31,7 @@
       ]
     },
     "android": {
-      "package": "com.yourname.overlooked",
+      "package": "com.overlooked.app",
       "adaptiveIcon": {
         "foregroundImage": "./app/assets/adaptive-icon.png",
         "backgroundColor": "#0D0D0D"
@@ -35,31 +39,65 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "category": ["DEFAULT", "BROWSABLE"],
+          "category": [
+            "DEFAULT",
+            "BROWSABLE"
+          ],
           "data": [
-            { "scheme": "overlooked", "host": "callback" },
-            { "scheme": "overlooked", "host": "reset-password" },
-            { "scheme": "https", "host": "overlooked.cloud", "pathPrefix": "/" },
-            { "scheme": "https", "host": "www.overlooked.cloud", "pathPrefix": "/" }
+            {
+              "scheme": "overlooked",
+              "host": "callback"
+            },
+            {
+              "scheme": "overlooked",
+              "host": "reset-password"
+            },
+            {
+              "scheme": "https",
+              "host": "overlooked.cloud",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.overlooked.cloud",
+              "pathPrefix": "/"
+            }
           ]
         }
       ]
     },
     "web": {
-      "bundler": "metro",
-      "favicon": "./favicon.png",
-      "display": "browser",
-      "themeColor": "#0D0D0D",
-      "backgroundColor": "#0D0D0D"
-    },
+  "bundler": "metro",
+  "favicon": "./public/ol-favicon-999.png",
+  "display": "browser",
+  "themeColor": "#0D0D0D",
+  "backgroundColor": "#0D0D0D"
+},
     "extra": {
-      "supabaseRedirectUrl": "overlooked://callback"
+      "supabaseRedirectUrl": "overlooked://callback",
+      "eas": {
+        "projectId": "d572b8e6-d8d0-451e-bd76-df662912df85"
+      }
     },
     "plugins": [
       "expo-secure-store",
-      "expo-font"
+      "expo-font",
+      "expo-iap",
+      [
+        "expo-notifications",
+        {
+          "color": "#F8A998",
+          "defaultChannel": "default"
+        }
+      ]
     ],
-    "platforms": ["ios", "android", "web"],
-    "assetBundlePatterns": ["**/*"]
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "assetBundlePatterns": [
+      "**/*"
+    ]
   }
 }
