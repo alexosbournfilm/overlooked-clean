@@ -2136,7 +2136,7 @@ const styles = StyleSheet.create({
     backgroundColor: T.bg,
     ...(Platform.OS === "web"
       ? ({
-          minHeight: "100vh",
+           
         } as any)
       : {}),
   },
@@ -2146,7 +2146,7 @@ const styles = StyleSheet.create({
     ...(Platform.OS === "web"
       ? ({
           height: "100dvh",
-          overflow: "hidden",
+          
         } as any)
       : {}),
   },
@@ -2227,7 +2227,7 @@ const styles = StyleSheet.create({
     width: "100%",
     aspectRatio: 9 / 16,
     borderRadius: 28,
-    overflow: "hidden",
+    
     backgroundColor: "#050505",
     borderWidth: 0,
     borderColor: "transparent",
@@ -2611,7 +2611,7 @@ const styles = StyleSheet.create({
   previewWrap: {
     marginTop: 12,
     borderRadius: 18,
-    overflow: "hidden",
+    
     borderWidth: 1,
     borderColor: T.line,
     backgroundColor: "#0B0B0B",
@@ -2746,7 +2746,7 @@ const styles = StyleSheet.create({
     width: "100%",
     backgroundColor: "#1C1C1C",
     borderRadius: 999,
-    overflow: "hidden",
+    
   },
 
   progressFill: {
@@ -3034,7 +3034,7 @@ const styles = StyleSheet.create({
 
   previewVideoWrap: {
     borderRadius: 18,
-    overflow: "hidden",
+    
     borderWidth: 1,
     borderColor: T.line,
     backgroundColor: "#0A0A0A",
