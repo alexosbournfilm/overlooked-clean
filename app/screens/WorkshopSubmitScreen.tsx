@@ -570,6 +570,7 @@ export default function WorkshopSubmitScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<WorkshopSubmitRouteParams, "WorkshopSubmit">>();
   const { width } = useWindowDimensions();
+  const isMobileWeb = Platform.OS === "web" && width < 768;
   const isWide = width >= 1100;
   const isDesktopPreview = width >= 900;
 
@@ -1458,14 +1459,14 @@ export default function WorkshopSubmitScreen() {
       style={StyleSheet.absoluteFill}
     />
 
-    <View style={styles.webScrollShell}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={true}
-        keyboardShouldPersistTaps="handled"
-        bounces={false}
-      >
+    <View style={[styles.webScrollShell, isMobileWeb && styles.webScrollShellMobileWeb]}>
+  <ScrollView
+    style={[styles.scrollView, isMobileWeb && styles.scrollViewMobileWeb]}
+    contentContainerStyle={[styles.scroll, isMobileWeb && styles.scrollMobileWeb]}
+    showsVerticalScrollIndicator={true}
+    keyboardShouldPersistTaps="handled"
+    bounces={false}
+  >
         <View style={[styles.pageWrap, isWide && styles.pageWrapWide]}>
           <View style={styles.topNavRow}>
             <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -2135,8 +2136,7 @@ const styles = StyleSheet.create({
     backgroundColor: T.bg,
     ...(Platform.OS === "web"
       ? ({
-          height: "100vh",
-          overflow: "hidden",
+          minHeight: "100vh",
         } as any)
       : {}),
   },
@@ -2145,8 +2145,17 @@ const styles = StyleSheet.create({
     flex: 1,
     ...(Platform.OS === "web"
       ? ({
-          height: "100vh",
+          height: "100dvh",
           overflow: "hidden",
+        } as any)
+      : {}),
+  },
+
+  webScrollShellMobileWeb: {
+    ...(Platform.OS === "web"
+      ? ({
+          height: "auto",
+          overflow: "visible",
         } as any)
       : {}),
   },
@@ -2155,20 +2164,38 @@ const styles = StyleSheet.create({
     flex: 1,
     ...(Platform.OS === "web"
       ? ({
-          height: "100vh",
-          overflowY: "scroll",
+          height: "100dvh",
+          overflowY: "auto",
           overflowX: "hidden",
           WebkitOverflowScrolling: "touch",
         } as any)
       : {}),
   },
 
+  scrollViewMobileWeb: {
+    ...(Platform.OS === "web"
+      ? ({
+          height: "auto",
+          overflowY: "visible",
+          overflowX: "visible",
+        } as any)
+      : {}),
+  },
+
   scroll: {
-  paddingHorizontal: 18,
-  paddingTop: 24,
-  paddingBottom: 40,
-  minHeight: "100%",
-},
+    paddingHorizontal: 18,
+    paddingTop: 24,
+    paddingBottom: 40,
+    flexGrow: 1,
+  },
+
+  scrollMobileWeb: {
+    ...(Platform.OS === "web"
+      ? ({
+          minHeight: "auto",
+        } as any)
+      : {}),
+  },
 
   pageWrap: {
     width: "100%",
