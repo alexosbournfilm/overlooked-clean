@@ -2164,11 +2164,11 @@ const styles = StyleSheet.create({
   },
 
   scroll: {
-    paddingHorizontal: 18,
-    paddingTop: 24,
-    paddingBottom: 40,
-    flexGrow: 1,
-  },
+  paddingHorizontal: 18,
+  paddingTop: 24,
+  paddingBottom: 40,
+  minHeight: "100%",
+},
 
   pageWrap: {
     width: "100%",
