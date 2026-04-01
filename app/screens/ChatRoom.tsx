@@ -610,35 +610,50 @@ export default function ChatRoom() {
 });
     }
   }, [
-    navigation,
-    loadState,
-    conversation,
-    peerUser,
-    cityMeta,
+  navigation,
+  loadState,
+  conversation?.id,
+  conversation?.is_group,
+  conversation?.is_city_group,
+  conversation?.label,
+  conversation?.group_avatar_url,
+  conversation?.participant_ids,
+  peerUser?.id,
+  peerUser?.full_name,
+  peerUser?.avatar_url,
+  peerUser?.level,
+  cityMeta.name,
+  cityMeta.flagUri,
   ]);
 
   /* -------------------------- messages + realtime ------------------------- */
   useEffect(() => {
-    if (loadState !== 'ready' || !conversation?.id)
-      return;
+  if (loadState !== 'ready' || !conversation?.id) return;
+
+  let active = true;
+
+  const timer = setTimeout(() => {
+    if (!active) return;
     fetchUserAndMessages();
     setupRealtime(conversation.id);
-    return () => {
-      if (messageChannelRef.current)
-        supabase.removeChannel(
-          messageChannelRef.current
-        );
-      if (typingChannelRef.current)
-        supabase.removeChannel(
-          typingChannelRef.current
-        );
-      if (convoChannelRef.current)
-        supabase.removeChannel(
-          convoChannelRef.current
-        );
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadState, conversation?.id]);
+  }, 80);
+
+  return () => {
+    active = false;
+    clearTimeout(timer);
+
+    if (messageChannelRef.current) {
+      supabase.removeChannel(messageChannelRef.current);
+    }
+    if (typingChannelRef.current) {
+      supabase.removeChannel(typingChannelRef.current);
+    }
+    if (convoChannelRef.current) {
+      supabase.removeChannel(convoChannelRef.current);
+    }
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [loadState, conversation?.id]);
 
   const fetchUserAndMessages = async () => {
     const { data: userData } =
@@ -1034,24 +1049,18 @@ export default function ChatRoom() {
   };
 
   const handleTyping = (text: string) => {
-    setInput(text);
-    if (
-      text.trim() &&
-      conversation?.id
-    ) {
-      supabase
-        .channel(
-          `typing-${conversation.id}`
-        )
-        .send({
-          type: 'broadcast',
-          event: 'typing',
-          payload: {
-            sender: userId,
-          },
-        });
-    }
-  };
+  setInput(text);
+
+  if (!text.trim() || !conversation?.id || !typingChannelRef.current) return;
+
+  typingChannelRef.current.send({
+    type: 'broadcast',
+    event: 'typing',
+    payload: {
+      sender: userId,
+    },
+  });
+};
 
   // Web: Enter send, Shift+Enter newline
   const handleWebKeyPress = (e: any) => {
@@ -1272,23 +1281,8 @@ export default function ChatRoom() {
     );
   };
 
-  if (
-    loadState !== 'ready' ||
-    !conversation?.id
-  ) {
-    return (
-      <View
-        style={
-          styles.loaderWrap
-        }
-      >
-        <ActivityIndicator
-          color={TEXT}
-        />
-      </View>
-    );
-  }
-
+  
+const isScreenReady = loadState === 'ready' && !!conversation?.id;
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -1302,93 +1296,62 @@ export default function ChatRoom() {
         90
       }
     >
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderItem}
-        keyExtractor={(item) =>
-          item.id
-        }
-        contentContainerStyle={{
-          padding: 16,
-        }}
-        onContentSizeChange={
-          scrollToBottom
-        }
+      {!isScreenReady ? (
+  <View style={styles.loaderWrap}>
+    <ActivityIndicator color={TEXT} />
+  </View>
+) : (
+  <>
+    <FlatList
+      ref={flatListRef}
+      data={messages}
+      renderItem={renderItem}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={{ padding: 16, paddingTop: 12 }}
+      onContentSizeChange={() => {
+        requestAnimationFrame(scrollToBottom);
+      }}
+      removeClippedSubviews={Platform.OS !== 'ios'}
+      initialNumToRender={12}
+      maxToRenderPerBatch={8}
+      windowSize={7}
+      updateCellsBatchingPeriod={16}
+      keyboardShouldPersistTaps="handled"
+    />
+
+    {typingUser && (
+      <Text style={styles.typingText}>Someone is typing…</Text>
+    )}
+
+    <View style={styles.inputBar}>
+      <TouchableOpacity
+        onPress={sendFile}
+        style={styles.iconBtn}
+        disabled={sendingImage}
+      >
+        {sendingImage ? (
+          <ActivityIndicator color={TEXT} />
+        ) : (
+          <Ionicons name="attach" size={22} color={SUBTLE} />
+        )}
+      </TouchableOpacity>
+
+      <TextInput
+        value={input}
+        onChangeText={handleTyping}
+        placeholder="Type a message…"
+        placeholderTextColor={SUBTLE}
+        style={styles.input}
+        multiline={Platform.OS === 'web'}
+        onKeyPress={handleWebKeyPress}
       />
 
-      {typingUser && (
-        <Text
-          style={
-            styles.typingText
-          }
-        >
-          Someone is
-          typing…
-        </Text>
-      )}
-
-      <View
-        style={
-          styles.inputBar
-        }
-      >
-        <TouchableOpacity
-          onPress={sendFile}
-          style={
-            styles.iconBtn
-          }
-          disabled={
-            sendingImage
-          }
-        >
-          {sendingImage ? (
-            <ActivityIndicator
-              color={TEXT}
-            />
-          ) : (
-            <Ionicons
-              name="attach"
-              size={22}
-              color={SUBTLE}
-            />
-          )}
-        </TouchableOpacity>
-
-        <TextInput
-          value={input}
-          onChangeText={
-            handleTyping
-          }
-          placeholder="Type a message…"
-          placeholderTextColor={
-            SUBTLE
-          }
-          style={
-            styles.input
-          }
-          multiline={
-            Platform.OS ===
-            'web'
-          }
-          onKeyPress={
-            handleWebKeyPress
-          }
-        />
-
-        <TouchableOpacity
-          onPress={sendMessage}
-          style={
-            styles.sendBtn
-          }
-        >
-          <Ionicons
-            name="send"
-            size={18}
-            color="#000"
-          />
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity onPress={sendMessage} style={styles.sendBtn}>
+        <Ionicons name="send" size={18} color="#000" />
+      </TouchableOpacity>
+    </View>
+  </>
+)}
 
       {/* Full-screen image preview */}
       <Modal

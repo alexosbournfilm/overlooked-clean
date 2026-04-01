@@ -27,6 +27,7 @@ export const COLORS = {
 
   // Misc
   border: '#EAEAEA',
+  loader: '#C6A664'
 };
 
 export default COLORS;

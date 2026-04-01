@@ -1,7 +1,7 @@
 // app/navigation/ChatsStack.tsx
 import React from 'react';
 import { Platform } from 'react-native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 
 import ChatsScreen from '../screens/ChatsScreen';
 import ChatRoomScreen from '../screens/ChatRoom';
@@ -11,7 +11,7 @@ export type ChatsStackParamList = {
   ChatRoom: { conversation?: any; conversationId?: string };
 };
 
-const Stack = createNativeStackNavigator<ChatsStackParamList>();
+const Stack = createStackNavigator<ChatsStackParamList>();
 
 const DARK_BG = '#0D0D0D';
 const TEXT_IVORY = '#EDEBE6';
@@ -27,8 +27,7 @@ export default function ChatsStack() {
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: DARK_BG },
-        headerShadowVisible: false,
+        headerStyle: { backgroundColor: DARK_BG, shadowColor: 'transparent', elevation: 0 },
         headerTintColor: TEXT_IVORY,
         headerTitleStyle: {
           color: TEXT_IVORY,
@@ -37,13 +36,43 @@ export default function ChatsStack() {
           fontWeight: '900',
         },
         headerTitleAlign: 'center',
-        headerBackTitleVisible: false,
+        cardStyle: { backgroundColor: DARK_BG },
+        gestureEnabled: true,
+        ...(Platform.OS === 'ios'
+          ? {
+              cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+              transitionSpec: {
+                open: {
+                  animation: 'timing',
+                  config: { duration: 220 },
+                },
+                close: {
+                  animation: 'timing',
+                  config: { duration: 220 },
+                },
+              },
+            }
+          : {
+              cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid,
+              transitionSpec: {
+                open: {
+                  animation: 'timing',
+                  config: { duration: 220 },
+                },
+                close: {
+                  animation: 'timing',
+                  config: { duration: 220 },
+                },
+              },
+            }),
       }}
     >
       <Stack.Screen
         name="Chats"
         component={ChatsScreen}
-        options={{ headerShown: false }}
+        options={{
+          headerShown: false,
+        }}
       />
 
       <Stack.Screen
@@ -53,12 +82,6 @@ export default function ChatsStack() {
           headerShown: true,
           title: '',
           headerBackTitleVisible: false,
-          headerStyle: {
-            backgroundColor: DARK_BG,
-          },
-          headerShadowVisible: false,
-          headerTintColor: TEXT_IVORY,
-          headerTitleAlign: 'center',
         }}
       />
     </Stack.Navigator>

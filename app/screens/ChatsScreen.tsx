@@ -48,7 +48,7 @@ const T = {
   sub: '#DADADA',
   mute: '#9A9A9A',
   border: '#ffffff14',
-  accent: '#FFFFFF',
+  accent: GOLD,
   olive: GOLD,
 };
 
@@ -1472,26 +1472,31 @@ export default function ChatsScreen() {
 
     return (
       <Pressable
-        style={[
-          styles.chatCard,
-          isDeleting && {
-            opacity: 0.6,
-          },
-        ]}
-                onPress={async () => {
-          if (isDeleting) return;
+  android_ripple={{ color: '#1A1A1A' }}
+  style={({ pressed }) => [
+    styles.chatCard,
+    pressed && styles.chatCardPressed,
+    isDeleting && {
+      opacity: 0.6,
+    },
+  ]}
+                onPress={() => {
+  if (isDeleting) return;
 
-          if (isGuest) {
-            promptSignIn('Create an account or sign in to open chats.');
-            return;
-          }
+  if (isGuest) {
+    promptSignIn('Create an account or sign in to open chats.');
+    return;
+  }
 
-          await markConversationActive(String(item.id));
-          navigation.navigate('ChatRoom', {
-            conversation: item,
-            peerUser: item.peerUser,
-          });
-        }}
+  navigation.navigate('ChatRoom', {
+    conversation: item,
+    peerUser: item.peerUser,
+  });
+
+  requestAnimationFrame(() => {
+    markConversationActive(String(item.id));
+  });
+}}
         onLongPress={() =>
           removeChatForMe(item)
         }
@@ -1719,8 +1724,12 @@ export default function ChatsScreen() {
 
     return (
       <Pressable
-        style={styles.userCard}
-         onPress={() => {
+  android_ripple={{ color: '#1A1A1A' }}
+  style={({ pressed }) => [
+    styles.userCard,
+    pressed && styles.userCardPressed,
+  ]}
+  onPress={() => {
           if (isGuest) {
             promptSignIn('Create an account or sign in to message or view users.');
             return;
@@ -1975,6 +1984,8 @@ export default function ChatsScreen() {
             }
             contentInsetAdjustmentBehavior="automatic"
             keyboardShouldPersistTaps="handled"
+            maxToRenderPerBatch={8}
+updateCellsBatchingPeriod={16}
             contentContainerStyle={{
               paddingTop: 4,
               paddingBottom:
@@ -2023,6 +2034,8 @@ export default function ChatsScreen() {
           }
           contentInsetAdjustmentBehavior="automatic"
           keyboardShouldPersistTaps="handled"
+          maxToRenderPerBatch={8}
+updateCellsBatchingPeriod={16}
           contentContainerStyle={{
             paddingTop: 4,
             paddingBottom:
@@ -2198,8 +2211,8 @@ export default function ChatsScreen() {
               ]}
             >
               {creatingGroup ? (
-                <ActivityIndicator color="#000" />
-              ) : (
+  <ActivityIndicator color={GOLD} />
+) : (
                 <>
                   <Ionicons name="chatbubble-ellipses-outline" size={18} color="#000" />
                   <Text style={styles.createBtnText}>Create Group</Text>
@@ -2299,6 +2312,10 @@ const styles = StyleSheet.create({
     borderColor: '#111111',
     minHeight: 78,
   },
+  chatCardPressed: {
+  opacity: 0.88,
+  transform: [{ scale: 0.995 }],
+},
   leftRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2442,6 +2459,10 @@ const styles = StyleSheet.create({
     textTransform: 'none',
     fontFamily: SYSTEM_SANS,
   },
+  userCardPressed: {
+  opacity: 0.88,
+  transform: [{ scale: 0.995 }],
+},
 
   /* Modal styles */
   modalBackdrop: {

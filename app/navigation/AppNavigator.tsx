@@ -2,9 +2,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   NavigationContainer,
+  DefaultTheme,
   type InitialState,
 } from "@react-navigation/native";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { createStackNavigator } from "@react-navigation/stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { View, ActivityIndicator } from "react-native";
 
@@ -21,13 +22,22 @@ import PaySuccessScreen from "../screens/PaySuccessScreen";
 import NewPassword from "../screens/NewPassword";
 import WorkshopSubmitScreen from "../screens/WorkshopSubmitScreen";
 import PublicProfileScreen from "../screens/PublicProfileScreen";
-
-// ✅ IMPORTANT:
-// If TS still complains here, temporarily comment this line out,
-// save SharedFilmScreen.tsx, then uncomment it.
 import SharedFilmScreen from "../screens/SharedFilmScreen";
 
-const Stack = createNativeStackNavigator();
+const Stack = createStackNavigator();
+
+const NAV_THEME = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: "#0D0D0D",
+    card: "#0D0D0D",
+    text: "#EDEBE6",
+    border: "transparent",
+    primary: "#EDEBE6",
+    notification: DefaultTheme.colors.notification,
+  },
+};
 
 export default function AppNavigator({
   initialAuthRouteName,
@@ -164,12 +174,12 @@ export default function AppNavigator({
       <View
         style={{
           flex: 1,
-          backgroundColor: COLORS.background,
+          backgroundColor: "#0D0D0D",
           justifyContent: "center",
           alignItems: "center",
         }}
       >
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <ActivityIndicator color={COLORS.loader} />
       </View>
     );
   }
@@ -192,11 +202,15 @@ export default function AppNavigator({
       linking={linking}
       initialState={initialState}
       onReady={() => setNavigatorReady(true)}
+      theme={NAV_THEME}
     >
       <Stack.Navigator
-        screenOptions={{ headerShown: false }}
-        initialRouteName={rootInitialRouteName as any}
-      >
+  screenOptions={{
+    headerShown: false,
+    cardStyle: { backgroundColor: "#0D0D0D" },
+  }}
+  initialRouteName={rootInitialRouteName as any}
+>
         <Stack.Screen name="Paywall" component={PaywallScreen} />
         <Stack.Screen name="PaySuccess" component={PaySuccessScreen} />
 

@@ -34,6 +34,7 @@
         "npm:@react-navigation/bottom-tabs@6.5.20",
         "npm:@react-navigation/native-stack@6.9.25",
         "npm:@react-navigation/native@6.1.18",
+        "npm:@react-navigation/stack@^6.4.1",
         "npm:@supabase/supabase-js@^2.57.4",
         "npm:@types/react-dom@~19.1.7",
         "npm:@types/react@~19.1.10",

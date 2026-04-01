@@ -1,10 +1,13 @@
 // app/screens/SignInScreen.tsx
 // ------------------------------------------------------------
-// FULL PAYWALL-FREE VERSION (UPDATED SIGN-IN LOGIC)
-// + ✅ Handles email-confirm deep links (PKCE exchange) on /signin
+// MOBILE-FIRST SIGN IN
+// - Native mobile: direct sign-in screen (no website-like landing)
+// - Web: keeps the richer landing layout
+// - Removes blue cursor/selection highlight
+// - Smoother input focus + submit flow
 // ------------------------------------------------------------
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -29,24 +32,12 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
-
-// NOTE: kept for your file structure stability
 import { resetToMain } from '../navigation/navigationRef';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-/*
- ────────────────────────────────────────────────────────────
-   REQUESTED CHANGE
- ────────────────────────────────────────────────────────────
-   ✅ Removed "FILM FESTIVAL 2026" entirely (no logic changes)
-   ✅ Made page more aesthetic/cinematic via styling only
- ────────────────────────────────────────────────────────────
-*/
-
-// --- THEME --------------------------------------------------
 const DARK_BG = '#0D0D0D';
 const DARK_ELEVATED = '#171717';
 const TEXT_IVORY = '#EDEBE6';
@@ -69,10 +60,8 @@ const T = {
   border: '#2E2E2E',
 };
 
-// --- REMOVE GRAIN COMPLETELY (safe for all platforms) ---
 const Grain = () => null;
 
-// --- Typing animation text ---------------------------------
 const MANIFESTO_LINES = [
   'Meet your crew this month. Make a film together.',
   'No gatekeepers. Just collaborators, jobs, and a deadline.',
@@ -95,7 +84,6 @@ const HOLD_EMPTY_MS = 280;
 const CARET_BLINK_MS = 530;
 const TITLE_FADE_MS = 700;
 
-// --- Feature cards -----------------------------------------
 type FeatureKey = 'profile' | 'location' | 'jobs' | 'festival';
 
 type Feature = {
@@ -148,7 +136,6 @@ const FEATURES: Feature[] = [
   },
 ];
 
-// --- FAQ data ----------------------------------------------
 const EXTRA_FAQS = [
   {
     title: 'Is Overlooked free?',
@@ -187,7 +174,6 @@ const EXTRA_FAQS = [
   },
 ];
 
-// --- Hover/press animation ----------------------------------
 function useHoverScale() {
   const scale = useRef(new Animated.Value(1)).current;
   const [hovered, setHovered] = useState(false);
@@ -238,17 +224,17 @@ export default function SignInScreen() {
   const isPhone = width < 420;
   const isNarrowNav = width < 520;
   const isTinyNav = width < 360;
-
-  // Helps “short phones” fit modals properly
   const isShort = height < 720;
 
-  // Mobile nav was getting cramped/overflowing.
+  const isNativeMobile = Platform.OS === 'ios' || Platform.OS === 'android';
+  const useSimpleMobileLayout = isNativeMobile;
+
   const NAV_HEIGHT = isWide ? 56 : isNarrowNav ? 108 : 48;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showSignIn, setShowSignIn] = useState(false);
+  const [showSignIn, setShowSignIn] = useState(!useSimpleMobileLayout);
   const [activeFeature, setActiveFeature] = useState<FeatureKey | null>(null);
 
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -272,9 +258,11 @@ export default function SignInScreen() {
   const [caretVisible, setCaretVisible] = useState(true);
   const [focus, setFocus] = useState<'email' | 'password' | null>(null);
 
-  // ✅ NEW: prevent double-running redirects (common cause of flashes)
   const didFinishRedirectRef = useRef(false);
   const deepLinkHandledRef = useRef<string | null>(null);
+
+  const emailInputRef = useRef<TextInput>(null);
+  const passwordInputRef = useRef<TextInput>(null);
 
   const showError = (title: string, message: string) => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -286,78 +274,64 @@ export default function SignInScreen() {
     Alert.alert(title, message);
   };
 
-  /**
-   * ✅ IMPORTANT CHANGE (flash fix):
-   * SignInScreen should NOT reset navigation to MainTabs/CreateProfile.
-   * AppNavigator owns switching between Auth/Main based on useAuth().
-   *
-   * This function now only:
-   * - checks if a profile exists
-   * - (optionally) navigates to CreateProfile INSIDE Auth stack
-   * - otherwise does NOTHING and lets AppNavigator swap trees.
-   */
   const finishPostAuthRedirect = async () => {
-  if (didFinishRedirectRef.current) return;
-  didFinishRedirectRef.current = true;
+    if (didFinishRedirectRef.current) return;
+    didFinishRedirectRef.current = true;
 
-  const { data: u } = await supabase.auth.getUser();
-  const userId = u?.user?.id;
+    const { data: u } = await supabase.auth.getUser();
+    const userId = u?.user?.id;
 
-  if (!userId) {
-    showError('Error', 'No active session found after sign-in.');
-    return;
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from('users')
-    .select('id')
-    .eq('id', userId)
-    .maybeSingle();
-
-  if (profileError) {
-    console.log('Profile fetch error:', profileError);
-    showError('Error', 'Could not load your profile. Please try again.');
-    return;
-  }
-
-  // No profile yet -> stay in Auth stack and go to CreateProfile
-  if (!profile) {
-    try {
-      navigation.navigate('CreateProfile');
-    } catch (e) {
-      console.log('CreateProfile navigation error:', e);
-    }
-    return;
-  }
-
-  // Profile exists -> leave Auth stack and go to MainTabs
-  try {
-    const parentNav = navigation.getParent?.();
-
-    if (parentNav) {
-      parentNav.reset({
-        index: 0,
-        routes: [{ name: 'MainTabs' }],
-      });
+    if (!userId) {
+      showError('Error', 'No active session found after sign-in.');
       return;
     }
 
-    // fallback
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'MainTabs' }],
-    });
-  } catch (e) {
-    console.log('MainTabs navigation error:', e);
-    showError('Navigation Error', 'Signed in, but could not open the app.');
-  }
-};
+    const { data: profile, error: profileError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (profileError) {
+      console.log('Profile fetch error:', profileError);
+      showError('Error', 'Could not load your profile. Please try again.');
+      return;
+    }
+
+    if (!profile) {
+      try {
+        navigation.navigate('CreateProfile');
+      } catch (e) {
+        console.log('CreateProfile navigation error:', e);
+      }
+      return;
+    }
+
+    try {
+      const parentNav = navigation.getParent?.();
+
+      if (parentNav) {
+        parentNav.reset({
+          index: 0,
+          routes: [{ name: 'MainTabs' }],
+        });
+        return;
+      }
+
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'MainTabs' }],
+      });
+    } catch (e) {
+      console.log('MainTabs navigation error:', e);
+      showError('Navigation Error', 'Signed in, but could not open the app.');
+    }
+  };
 
   const handleAuthDeepLink = async (url: string) => {
     try {
       if (!url || !url.includes('code=')) return;
 
-      // ✅ Deduplicate same deep link (prevents double exchange + flicker)
       if (deepLinkHandledRef.current === url) return;
       deepLinkHandledRef.current = url;
 
@@ -388,8 +362,6 @@ export default function SignInScreen() {
     let mounted = true;
 
     const init = async () => {
-      // ✅ If there's already a session, don't hard-reset navigation.
-      // Just make sure CreateProfile is reachable if needed.
       try {
         const { data: sessionData } = await supabase.auth.getSession();
         if (!mounted) return;
@@ -426,11 +398,12 @@ export default function SignInScreen() {
   }, []);
 
   useEffect(() => {
+  if (useSimpleMobileLayout) return;
   if (showSignIn) return;
 
   const id = setInterval(() => setCaretVisible((v) => !v), CARET_BLINK_MS);
   return () => clearInterval(id);
-}, [showSignIn]); 
+}, [showSignIn, useSimpleMobileLayout]);
 
   useEffect(() => {
     Animated.parallel([
@@ -450,71 +423,73 @@ export default function SignInScreen() {
   }, []);
 
   useEffect(() => {
-    let mounted = true;
-    let timer: any;
-    if (showSignIn) return;
+  if (useSimpleMobileLayout) return;
+  if (showSignIn) return;
 
-    const rand = (a: number, b: number) =>
-      Math.floor(Math.random() * (b - a + 1)) + a;
+  let mounted = true;
+  let timer: any;
 
-    const nextTypeDelay = (typed: string) => {
-      let d = rand(TYPE_MIN_MS, TYPE_MAX_MS);
-      const last = typed.slice(-1);
-      if (last === ' ') d += WORD_PAUSE_MS;
-      if (['.', ',', '!', '?', ';', ':'].includes(last)) d += PUNCT_PAUSE_MS;
-      if (Math.random() < 0.14) d += rand(100, 320);
-      return d;
-    };
+  const rand = (a: number, b: number) =>
+    Math.floor(Math.random() * (b - a + 1)) + a;
 
-    const nextDeleteDelay = () => rand(DELETE_MIN_MS, DELETE_MAX_MS);
+  const nextTypeDelay = (typed: string) => {
+    let d = rand(TYPE_MIN_MS, TYPE_MAX_MS);
+    const last = typed.slice(-1);
+    if (last === ' ') d += WORD_PAUSE_MS;
+    if (['.', ',', '!', '?', ';', ':'].includes(last)) d += PUNCT_PAUSE_MS;
+    if (Math.random() < 0.14) d += rand(100, 320);
+    return d;
+  };
 
-    const pickNext = (prev: number) => {
-      let n = prev;
-      while (n === prev) n = Math.floor(Math.random() * MANIFESTO_LINES.length);
-      return n;
-    };
+  const nextDeleteDelay = () => rand(DELETE_MIN_MS, DELETE_MAX_MS);
 
-    const tick = () => {
-      if (!mounted) return;
-      const current = displayText;
-      const target = fullLine;
+  const pickNext = (prev: number) => {
+    let n = prev;
+    while (n === prev) n = Math.floor(Math.random() * MANIFESTO_LINES.length);
+    return n;
+  };
 
-      if (!isDeleting) {
-        if (current.length < target.length) {
-          const next = target.slice(0, current.length + 1);
-          setDisplayText(next);
-          timer = setTimeout(tick, nextTypeDelay(next));
-        } else {
-          timer = setTimeout(() => {
-            if (!mounted) return;
-            setIsDeleting(true);
-            timer = setTimeout(tick, nextDeleteDelay());
-          }, HOLD_FULL_MS);
-        }
+  const tick = () => {
+    if (!mounted) return;
+    const current = displayText;
+    const target = fullLine;
+
+    if (!isDeleting) {
+      if (current.length < target.length) {
+        const next = target.slice(0, current.length + 1);
+        setDisplayText(next);
+        timer = setTimeout(tick, nextTypeDelay(next));
       } else {
-        if (current.length > 0) {
-          const next = target.slice(0, current.length - 1);
-          setDisplayText(next);
+        timer = setTimeout(() => {
+          if (!mounted) return;
+          setIsDeleting(true);
           timer = setTimeout(tick, nextDeleteDelay());
-        } else {
-          timer = setTimeout(() => {
-            if (!mounted) return;
-            setIsDeleting(false);
-            setLineIndex((prev) => pickNext(prev));
-          }, HOLD_EMPTY_MS);
-        }
+        }, HOLD_FULL_MS);
       }
-    };
+    } else {
+      if (current.length > 0) {
+        const next = target.slice(0, current.length - 1);
+        setDisplayText(next);
+        timer = setTimeout(tick, nextDeleteDelay());
+      } else {
+        timer = setTimeout(() => {
+          if (!mounted) return;
+          setIsDeleting(false);
+          setLineIndex((prev) => pickNext(prev));
+        }, HOLD_EMPTY_MS);
+      }
+    }
+  };
 
-    timer = setTimeout(tick, TYPE_MIN_MS);
+  timer = setTimeout(tick, TYPE_MIN_MS);
 
-    return () => {
-      mounted = false;
-      if (timer) clearTimeout(timer);
-    };
-  }, [displayText, isDeleting, fullLine, showSignIn]);
+  return () => {
+    mounted = false;
+    if (timer) clearTimeout(timer);
+  };
+}, [displayText, isDeleting, fullLine, showSignIn, useSimpleMobileLayout]);
 
-    const handleEnterAsGuest = () => {
+  const handleEnterAsGuest = () => {
     try {
       const parentNav = navigation.getParent?.();
 
@@ -537,73 +512,358 @@ export default function SignInScreen() {
   };
 
   const handleSignIn = async () => {
-  const trimmedEmail = email.trim();
+    const trimmedEmail = email.trim();
 
-  if (!trimmedEmail || !password) {
-    showError('Sign in to continue', 'Enter your email and password.');
-    return;
-  }
-
-  if (loading) return;
-  setLoading(true);
-
-  try {
-    didFinishRedirectRef.current = false;
-
-    console.log('[SignIn] attempting sign-in', { email: trimmedEmail });
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: trimmedEmail,
-      password,
-    });
-
-    console.log('[SignIn] result', {
-      userId: data?.user?.id,
-      hasSession: !!data?.session,
-      error: error?.message,
-    });
-
-    if (error) {
-      showError('Login Error', error.message);
+    if (!trimmedEmail || !password) {
+      showError('Sign in to continue', 'Enter your email and password.');
       return;
     }
 
-    const userId = data?.user?.id;
-    if (!userId) {
-      showError('Error', 'Login failed. Please try again.');
-      return;
+    if (loading) return;
+    setLoading(true);
+
+    try {
+      didFinishRedirectRef.current = false;
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password,
+      });
+
+      if (error) {
+        showError('Login Error', error.message);
+        return;
+      }
+
+      const userId = data?.user?.id;
+      if (!userId) {
+        showError('Error', 'Login failed. Please try again.');
+        return;
+      }
+
+      const isConfirmed = !!data?.user?.email_confirmed_at;
+      if (!isConfirmed) {
+        showError(
+          'Email not confirmed',
+          'Please confirm your email first, then try signing in again.'
+        );
+        return;
+      }
+
+      if (!useSimpleMobileLayout) {
+        setShowSignIn(false);
+      }
+
+      await finishPostAuthRedirect();
+    } catch (err: any) {
+      console.log('SignIn exception:', err);
+      showError('Login Error', 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
     }
+  };
 
-    const isConfirmed = !!data?.user?.email_confirmed_at;
-    if (!isConfirmed) {
-      showError(
-        'Email not confirmed',
-        'Please confirm your email first, then try signing in again.'
-      );
-      return;
-    }
-
-    setShowSignIn(false);
-
-    await finishPostAuthRedirect();
-  } catch (err: any) {
-    console.log('SignIn exception:', err);
-    showError('Login Error', 'Something went wrong. Please try again.');
-  } finally {
-    setLoading(false);
-  }
-};
-
-  // ✅ Modal sizing helpers (prevents falling out of frame)
   const MODAL_SIDE_PAD = isPhone ? 14 : 18;
   const maxModalWidth = (cap: number) => Math.min(cap, Math.max(260, width - MODAL_SIDE_PAD * 2));
   const modalMaxHeight = Math.max(260, height - insets.top - insets.bottom - 24);
+
+  const renderAuthForm = (mobileMode = false) => (
+    <View
+      style={[
+        styles.authCard,
+        mobileMode ? styles.authCardMobile : null,
+        {
+          width: mobileMode ? '100%' : maxModalWidth(460),
+          maxHeight: mobileMode ? undefined : modalMaxHeight,
+          alignSelf: 'center',
+          padding: mobileMode ? 22 : isShort ? 16 : 20,
+        },
+      ]}
+    >
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        overScrollMode="never"
+        contentContainerStyle={{ paddingBottom: mobileMode ? 0 : 14 }}
+      >
+        {!mobileMode && (
+          <View style={styles.authHeader}>
+            <Text style={[styles.authTitle, isShort && styles.authTitleShort]}>
+              WELCOME BACK
+            </Text>
+            <Pressable onPress={() => setShowSignIn(false)} hitSlop={10}>
+              <Ionicons name="close" size={20} color={T.sub} />
+            </Pressable>
+          </View>
+        )}
+
+        {mobileMode && (
+          <View style={styles.mobileHeader}>
+            <Animated.Text
+              style={[
+                styles.mobileBrand,
+                { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
+              ]}
+            >
+              OVERLOOKED
+            </Animated.Text>
+
+            <Text style={styles.mobileTitle}>Sign in</Text>
+            <Text style={styles.mobileSubtitle}>
+              Welcome back. Get straight into your account.
+            </Text>
+          </View>
+        )}
+
+        {!mobileMode && <Text style={styles.subtitle}>Sign in to join this month’s journey.</Text>}
+
+        <View style={[styles.inputWrap, focus === 'email' && styles.inputWrapFocused]}>
+          <Ionicons name="mail" size={16} color={focus === 'email' ? T.olive : T.mute} />
+          <TextInput
+  ref={emailInputRef}
+  style={styles.input}
+  placeholder="Email"
+  placeholderTextColor={T.mute}
+  autoCapitalize="none"
+  autoCorrect={false}
+  keyboardType="email-address"
+  autoComplete="email"
+  textContentType="emailAddress"
+  keyboardAppearance="dark"
+  selectionColor={GOLD}
+  cursorColor={GOLD}
+  underlineColorAndroid="transparent"
+  value={email}
+  onChangeText={setEmail}
+  onFocus={() => setFocus('email')}
+  onBlur={() => setFocus(null)}
+  returnKeyType="next"
+  onSubmitEditing={() => passwordInputRef.current?.focus()}
+/>
+        </View>
+
+        <View
+          style={[
+            styles.inputWrap,
+            { marginTop: 12 },
+            focus === 'password' && styles.inputWrapFocused,
+          ]}
+        >
+          <Ionicons
+            name="lock-closed"
+            size={16}
+            color={focus === 'password' ? T.olive : T.mute}
+          />
+          <TextInput
+  ref={passwordInputRef}
+  style={styles.input}
+  placeholder="Password"
+  placeholderTextColor={T.mute}
+  secureTextEntry
+  autoCorrect={false}
+  autoComplete="password"
+  textContentType="password"
+  keyboardAppearance="dark"
+  selectionColor={GOLD}
+  cursorColor={GOLD}
+  underlineColorAndroid="transparent"
+  value={password}
+  onChangeText={setPassword}
+  onFocus={() => setFocus('password')}
+  onBlur={() => setFocus(null)}
+  returnKeyType="done"
+  onSubmitEditing={handleSignIn}
+/>      
+        </View>
+
+        <TouchableOpacity
+          onPress={() => {
+            if (!mobileMode) setShowSignIn(false);
+            navigation.navigate('ForgotPassword');
+          }}
+          style={{ marginTop: 10, alignSelf: mobileMode ? 'flex-start' : 'auto' }}
+        >
+          <Text style={styles.forgotText}>Forgot password?</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, loading && { opacity: 0.9 }, mobileMode && { marginTop: 18 }]}
+          onPress={handleSignIn}
+          disabled={loading}
+          activeOpacity={0.9}
+        >
+          {loading ? (
+            <ActivityIndicator color={DARK_BG} />
+          ) : (
+            <Text style={styles.buttonText}>Sign In</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => {
+            if (!mobileMode) setShowSignIn(false);
+            handleEnterAsGuest();
+          }}
+          style={{ marginTop: 14 }}
+        >
+          <Text style={styles.link}>
+            <Text style={{ textDecorationLine: 'underline' }}>Enter without an account</Text>
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => {
+            if (!mobileMode) setShowSignIn(false);
+            navigation.navigate('SignUp');
+          }}
+          style={{ marginTop: 16 }}
+        >
+          <Text style={styles.link}>
+            New to OverLooked?{' '}
+            <Text style={{ textDecorationLine: 'underline' }}>Create an account</Text>
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+
+  if (useSimpleMobileLayout) {
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <View style={styles.bgSolid} />
+        <View style={styles.radialGlowTop} pointerEvents="none" />
+        <View style={styles.radialGlowBottom} pointerEvents="none" />
+
+        <View
+          style={[
+            styles.mobileContainer,
+            {
+              paddingTop: Math.max(insets.top, 20),
+              paddingBottom: Math.max(insets.bottom, 20),
+            },
+          ]}
+        >
+          <View style={styles.authCardMobile}>
+            <View style={styles.mobileHeader}>
+              <Animated.Text
+                style={[
+                  styles.mobileBrand,
+                  { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
+                ]}
+              >
+                OVERLOOKED
+              </Animated.Text>
+
+              <Text style={styles.mobileTitle}>Sign in</Text>
+              <Text style={styles.mobileSubtitle}>
+                Welcome back. Get straight into your account.
+              </Text>
+            </View>
+
+            <View style={styles.inputWrap}>
+              <Ionicons name="mail" size={16} color={T.mute} />
+              <TextInput
+                ref={emailInputRef}
+                style={styles.input}
+                placeholder="Email"
+                placeholderTextColor={T.mute}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                autoComplete="email"
+                textContentType="emailAddress"
+                keyboardAppearance="dark"
+                selectionColor={GOLD}
+                cursorColor={GOLD}
+                underlineColorAndroid="transparent"
+                value={email}
+                onChangeText={setEmail}
+                returnKeyType="next"
+                blurOnSubmit={false}
+                onSubmitEditing={() => passwordInputRef.current?.focus()}
+              />
+            </View>
+
+            <View style={[styles.inputWrap, { marginTop: 12 }]}>
+              <Ionicons name="lock-closed" size={16} color={T.mute} />
+              <TextInput
+                ref={passwordInputRef}
+                style={styles.input}
+                placeholder="Password"
+                placeholderTextColor={T.mute}
+                secureTextEntry
+                autoCorrect={false}
+                autoComplete="password"
+                textContentType="password"
+                keyboardAppearance="dark"
+                selectionColor={GOLD}
+                cursorColor={GOLD}
+                underlineColorAndroid="transparent"
+                value={password}
+                onChangeText={setPassword}
+                returnKeyType="done"
+                onSubmitEditing={handleSignIn}
+              />
+            </View>
+
+            <TouchableOpacity
+              onPress={() => navigation.navigate('ForgotPassword')}
+              style={{ marginTop: 10, alignSelf: 'flex-start' }}
+            >
+              <Text style={styles.forgotText}>Forgot password?</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.button, loading && { opacity: 0.9 }, { marginTop: 18 }]}
+              onPress={handleSignIn}
+              disabled={loading}
+              activeOpacity={0.9}
+            >
+              {loading ? (
+                <ActivityIndicator color={DARK_BG} />
+              ) : (
+                <Text style={styles.buttonText}>Sign In</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleEnterAsGuest}
+              style={{ marginTop: 14 }}
+            >
+              <Text style={styles.link}>
+                <Text style={{ textDecorationLine: 'underline' }}>
+                  Enter without an account
+                </Text>
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => navigation.navigate('SignUp')}
+              style={{ marginTop: 16 }}
+            >
+              <Text style={styles.link}>
+                New to OverLooked?{' '}
+                <Text style={{ textDecorationLine: 'underline' }}>
+                  Create an account
+                </Text>
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
 
   return (
     <SafeAreaView
       style={[
         { flex: 1, backgroundColor: T.bg },
-        // ✅ Prevent horizontal scroll / white space on RN-web (mobile browser)
         Platform.OS === 'web'
           ? ({
               minHeight: '100vh',
@@ -616,14 +876,12 @@ export default function SignInScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        {/* BG */}
         <View style={styles.bgSolid} />
         <View style={styles.radialGlowTop} pointerEvents="none" />
         <View style={styles.radialGlowBottom} pointerEvents="none" />
         <View style={styles.vignette} pointerEvents="none" />
         <View style={styles.topSheen} pointerEvents="none" />
 
-        {/* TOP BAR */}
         <View
           style={[
             styles.topBarWrapper,
@@ -637,7 +895,6 @@ export default function SignInScreen() {
               isTinyNav && styles.topBarInnerTiny,
               width < 420 && { paddingHorizontal: 12 },
               { height: NAV_HEIGHT },
-              // ✅ ensure no accidental horizontal overflow
               Platform.OS === 'web' ? ({ overflowX: 'hidden' } as any) : null,
             ]}
           >
@@ -655,24 +912,21 @@ export default function SignInScreen() {
                 </Pressable>
 
                 <View style={styles.actionsRow}>
-  <TouchableOpacity
-    onPress={handleEnterAsGuest}
-    style={styles.textAction}
-  >
-    <Text style={styles.textActionText}>Enter without account</Text>
-  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleEnterAsGuest} style={styles.textAction}>
+                    <Text style={styles.textActionText}>Enter without account</Text>
+                  </TouchableOpacity>
 
-  <TouchableOpacity
-    onPress={() => navigation.navigate('SignUp')}
-    style={styles.primaryChip}
-  >
-    <Text style={styles.primaryChipText}>Create an account</Text>
-  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate('SignUp')}
+                    style={styles.primaryChip}
+                  >
+                    <Text style={styles.primaryChipText}>Create an account</Text>
+                  </TouchableOpacity>
 
-  <TouchableOpacity onPress={() => setShowSignIn(true)} style={styles.textAction}>
-    <Text style={styles.textActionText}>Sign in</Text>
-  </TouchableOpacity>
-</View>
+                  <TouchableOpacity onPress={() => setShowSignIn(true)} style={styles.textAction}>
+                    <Text style={styles.textActionText}>Sign in</Text>
+                  </TouchableOpacity>
+                </View>
               </>
             )}
 
@@ -697,48 +951,48 @@ export default function SignInScreen() {
 
                 <View style={styles.navRowBottom}>
                   <View style={styles.actionsRowNarrow}>
-  <TouchableOpacity
-    onPress={handleEnterAsGuest}
-    style={[styles.textAction, styles.textActionNarrow]}
-  >
-    <Text style={[styles.textActionText, isTinyNav && styles.textActionTextTiny]}>
-      Enter without account
-    </Text>
-  </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleEnterAsGuest}
+                      style={[styles.textAction, styles.textActionNarrow]}
+                    >
+                      <Text style={[styles.textActionText, isTinyNav && styles.textActionTextTiny]}>
+                        Enter without account
+                      </Text>
+                    </TouchableOpacity>
 
-  <TouchableOpacity
-    onPress={() => navigation.navigate('SignUp')}
-    style={[
-      styles.primaryChip,
-      styles.primaryChipNarrow,
-      isTinyNav && styles.primaryChipTiny,
-    ]}
-  >
-    <Text style={[styles.primaryChipText, isTinyNav && styles.primaryChipTextTiny]}>
-      Create an account
-    </Text>
-  </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate('SignUp')}
+                      style={[
+                        styles.primaryChip,
+                        styles.primaryChipNarrow,
+                        isTinyNav && styles.primaryChipTiny,
+                      ]}
+                    >
+                      <Text
+                        style={[styles.primaryChipText, isTinyNav && styles.primaryChipTextTiny]}
+                      >
+                        Create an account
+                      </Text>
+                    </TouchableOpacity>
 
-  <TouchableOpacity
-    onPress={() => setShowSignIn(true)}
-    style={[styles.textAction, styles.textActionNarrow]}
-  >
-    <Text style={[styles.textActionText, isTinyNav && styles.textActionTextTiny]}>
-      Sign in
-    </Text>
-  </TouchableOpacity>
-</View>
+                    <TouchableOpacity
+                      onPress={() => setShowSignIn(true)}
+                      style={[styles.textAction, styles.textActionNarrow]}
+                    >
+                      <Text style={[styles.textActionText, isTinyNav && styles.textActionTextTiny]}>
+                        Sign in
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </>
             )}
           </View>
         </View>
 
-        {/* ---------------- MAIN SCROLL ---------------- */}
         <ScrollView
           style={[
             { flex: 1, backgroundColor: T.bg },
-            // ✅ Stop web overscroll revealing white + prevent horizontal scroll on mobile web
             Platform.OS === 'web'
               ? ({ overscrollBehavior: 'none', overflowX: 'hidden' } as any)
               : null,
@@ -751,7 +1005,6 @@ export default function SignInScreen() {
               paddingHorizontal: width < 420 ? 16 : 28,
               paddingBottom: 64 + Math.max(insets.bottom, 0),
               minHeight: Math.max(0, height - (NAV_HEIGHT + insets.top)),
-              // ✅ hard clamp to avoid any child causing sideways scroll
               width: '100%',
               overflow: 'hidden',
             } as any,
@@ -772,7 +1025,6 @@ export default function SignInScreen() {
               },
             ]}
           >
-            {/* HERO SECTION */}
             <View
               style={[
                 styles.heroCol,
@@ -785,7 +1037,6 @@ export default function SignInScreen() {
                 },
               ]}
             >
-              {/* TEXT */}
               <View
                 style={[
                   styles.heroIntro,
@@ -837,7 +1088,6 @@ export default function SignInScreen() {
                 </View>
               </View>
 
-              {/* HERO IMAGE */}
               <View
                 style={[
                   styles.heroImage,
@@ -861,7 +1111,6 @@ export default function SignInScreen() {
               </View>
             </View>
 
-            {/* FEATURES LIST */}
             <View
               style={[
                 styles.cardCol,
@@ -905,7 +1154,7 @@ export default function SignInScreen() {
                           <Text style={styles.featureTitle} numberOfLines={1}>
                             {f.title}
                           </Text>
-                          <Text style={[styles.featureSubtitle]} numberOfLines={1}>
+                          <Text style={styles.featureSubtitle} numberOfLines={1}>
                             {f.subtitle}
                           </Text>
                         </View>
@@ -923,7 +1172,6 @@ export default function SignInScreen() {
               </View>
             </View>
 
-            {/* --- EXPANDED CARDS (About, Why, FAQ) --- */}
             <View style={[styles.fullWidthRow, !isWide && { marginTop: 4 }]}>
               <View style={[styles.collapsibleCard, styles.fullCard]}>
                 <Pressable onPress={() => setAboutOpen((v) => !v)}>
@@ -1018,161 +1266,31 @@ export default function SignInScreen() {
           </View>
         </ScrollView>
 
-       {/* SIGN-IN PANEL */}
-{showSignIn && (
-  <View
-    style={[
-      styles.modalBackdrop,
-      isShort && styles.modalBackdropShort,
-      {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        zIndex: 9999,
-        elevation: 9999,
-      },
-    ]}
-  >
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ width: '100%', alignItems: 'center', justifyContent: 'center', flex: 1 }}
-    >
-      <View
-        style={[
-          styles.authCard,
-          {
-            width: maxModalWidth(460),
-            maxHeight: modalMaxHeight,
-            alignSelf: 'center',
-            padding: isShort ? 16 : 20,
-          },
-        ]}
-      >
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-          overScrollMode="never"
-          contentContainerStyle={{ paddingBottom: 14 }}
-        >
-          <View style={styles.authHeader}>
-            <Text style={[styles.authTitle, isShort && styles.authTitleShort]}>
-              WELCOME BACK
-            </Text>
-            <Pressable onPress={() => setShowSignIn(false)} hitSlop={10}>
-              <Ionicons name="close" size={20} color={T.sub} />
-            </Pressable>
-          </View>
-
-          <Text style={styles.subtitle}>Sign in to join this month’s journey.</Text>
-
-          <View style={[styles.inputWrap, focus === 'email' && styles.inputWrapFocused]}>
-            <Ionicons name="mail" size={16} color={focus === 'email' ? T.olive : T.mute} />
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              placeholderTextColor={T.mute}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              autoComplete="email"
-              value={email}
-              onChangeText={setEmail}
-              returnKeyType="next"
-              
-            />
-          </View>
-
+        {showSignIn && (
           <View
             style={[
-              styles.inputWrap,
-              { marginTop: 12 },
-              focus === 'password' && styles.inputWrapFocused,
+              styles.modalBackdrop,
+              isShort && styles.modalBackdropShort,
+              {
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                zIndex: 9999,
+                elevation: 9999,
+              },
             ]}
           >
-            <Ionicons
-              name="lock-closed"
-              size={16}
-              color={focus === 'password' ? T.olive : T.mute}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              placeholderTextColor={T.mute}
-              secureTextEntry
-              autoCorrect={false}
-              autoComplete="password"
-              value={password}
-              onChangeText={setPassword}
-              returnKeyType="done"
-              onSubmitEditing={handleSignIn}
-            
-            />
-          </View>
-
-          <TouchableOpacity
-            onPress={() => {
-              setShowSignIn(false);
-              navigation.navigate('ForgotPassword');
-            }}
-            style={{ marginTop: 8 }}
-          >
-            <Text
-              style={{
-                color: T.mute,
-                fontSize: 13,
-                textDecorationLine: 'underline',
-                fontFamily: SYSTEM_SANS,
-              }}
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ width: '100%', alignItems: 'center', justifyContent: 'center', flex: 1 }}
             >
-              Forgot password?
-            </Text>
-          </TouchableOpacity>
+              {renderAuthForm(false)}
+            </KeyboardAvoidingView>
+          </View>
+        )}
 
-          <TouchableOpacity
-            style={[styles.button, loading && { opacity: 0.9 }]}
-            onPress={handleSignIn}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color={DARK_BG} />
-            ) : (
-              <Text style={styles.buttonText}>Sign In</Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-  onPress={() => {
-    setShowSignIn(false);
-    handleEnterAsGuest();
-  }}
-  style={{ marginTop: 12 }}
->
-  <Text style={styles.link}>
-    <Text style={{ textDecorationLine: 'underline' }}>Enter without an account</Text>
-  </Text>
-</TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => {
-              setShowSignIn(false);
-              navigation.navigate('SignUp');
-            }}
-            style={{ marginTop: 16 }}
-          >
-            <Text style={styles.link}>
-              New to OverLooked?{' '}
-              <Text style={{ textDecorationLine: 'underline' }}>Create an account</Text>
-            </Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
-    </KeyboardAvoidingView>
-  </View>
-)}
-        {/* FEATURE DETAIL MODAL */}
         <Modal
           transparent
           visible={!!activeFeature}
@@ -1247,10 +1365,6 @@ export default function SignInScreen() {
   );
 }
 
-// ------------------------------------------------------------
-// STYLES
-// ------------------------------------------------------------
-
 const CARD_RADIUS = 16;
 
 const styles = StyleSheet.create({
@@ -1282,12 +1396,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(198,166,100,0.08)',
     opacity: 0.95,
   },
-
-  // cinematic vignette + sheen (styling only)
   vignette: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
-    // @ts-ignore web-only
+    // @ts-ignore
     backgroundImage:
       'radial-gradient(ellipse at center, rgba(0,0,0,0) 35%, rgba(0,0,0,0.55) 100%)',
     opacity: Platform.OS === 'web' ? 1 : 0,
@@ -1299,10 +1411,43 @@ const styles = StyleSheet.create({
     right: 0,
     height: 220,
     backgroundColor: 'rgba(255,255,255,0.02)',
-    // @ts-ignore web-only
+    // @ts-ignore
     backgroundImage:
       'radial-gradient(ellipse at top, rgba(198,166,100,0.12) 0%, rgba(13,13,13,0) 70%)',
     opacity: Platform.OS === 'web' ? 1 : 0,
+  },
+
+  mobileContainer: {
+  flex: 1,
+  paddingHorizontal: 18,
+  justifyContent: 'center',
+},
+    
+  mobileHeader: {
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  mobileBrand: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    letterSpacing: 2.6,
+    fontFamily: SYSTEM_SANS,
+  },
+  mobileTitle: {
+    marginTop: 18,
+    fontSize: 30,
+    fontWeight: '900',
+    color: T.text,
+    fontFamily: SYSTEM_SANS,
+  },
+  mobileSubtitle: {
+    marginTop: 8,
+    fontSize: 14,
+    lineHeight: 20,
+    color: T.sub,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
   },
 
   topBarWrapper: {
@@ -1325,12 +1470,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
     position: 'relative',
-    // @ts-ignore — web-only blur
+    // @ts-ignore
     backdropFilter: 'saturate(135%) blur(10px)',
     // @ts-ignore
     WebkitBackdropFilter: 'saturate(135%) blur(10px)',
   },
-
   topBarInnerNarrow: {
     flexDirection: 'column',
     justifyContent: 'center',
@@ -1343,7 +1487,6 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 8,
   },
-
   navRowTop: { alignItems: 'center', justifyContent: 'center' },
   navRowBottom: { alignItems: 'center', justifyContent: 'center' },
 
@@ -1467,7 +1610,7 @@ const styles = StyleSheet.create({
   heroEdgeFade: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
-    // @ts-ignore web-only
+    // @ts-ignore
     backgroundImage:
       'linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,0.55) 100%)',
     opacity: Platform.OS === 'web' ? 1 : 0,
@@ -1599,7 +1742,6 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  /* Modal backdrop */
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.72)',
@@ -1613,7 +1755,6 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
 
-  /* Auth card */
   authCard: {
     backgroundColor: T.card2,
     borderRadius: 18,
@@ -1625,6 +1766,15 @@ const styles = StyleSheet.create({
     shadowRadius: 26,
     shadowOffset: { width: 0, height: 18 },
   },
+  authCardMobile: {
+  width: '100%',
+  borderRadius: 20,
+  paddingHorizontal: 18,
+  paddingVertical: 24,
+  backgroundColor: '#101010',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.06)',
+},
   authHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   authTitle: {
     fontSize: 18,
@@ -1650,17 +1800,17 @@ const styles = StyleSheet.create({
     gap: 10,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.10)',
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'web' ? 12 : 10,
+    paddingVertical: Platform.OS === 'web' ? 12 : 12,
     backgroundColor: '#0C0C0C',
   },
   inputWrapFocused: {
     borderColor: T.olive,
     shadowColor: T.olive,
-    shadowOpacity: 0.35,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
   },
 
   input: {
@@ -1671,24 +1821,31 @@ const styles = StyleSheet.create({
   fontFamily: SYSTEM_SANS,
 },
 
+  forgotText: {
+    color: T.mute,
+    fontSize: 13,
+    textDecorationLine: 'underline',
+    fontFamily: SYSTEM_SANS,
+  },
+
   button: {
     backgroundColor: T.accent,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 15,
+    borderRadius: 14,
     alignItems: 'center',
     marginTop: 14,
     borderWidth: 1,
     borderColor: T.accent,
     shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
   },
   buttonText: {
     color: DARK_BG,
     fontSize: 15,
     fontWeight: '900',
-    letterSpacing: 2,
+    letterSpacing: 1.6,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
   },
@@ -1749,5 +1906,10 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 10 },
   },
-  modalPrimaryText: { color: DARK_BG, fontWeight: '900', letterSpacing: 1.2, fontFamily: SYSTEM_SANS },
+  modalPrimaryText: {
+    color: DARK_BG,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    fontFamily: SYSTEM_SANS,
+  },
 });

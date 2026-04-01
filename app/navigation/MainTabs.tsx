@@ -100,10 +100,14 @@ const HoverPress = memo(function HoverPress({
   hitSlop?: any;
   accessibilityLabel?: string;
 }) {
+  const shouldAnimate = Platform.OS === 'web';
+
   const scale = useRef(new Animated.Value(1)).current;
   const lift = useRef(new Animated.Value(0)).current;
 
-  const to = (s: number, y: number, dur: number) => {
+  const to = useCallback((s: number, y: number, dur: number) => {
+    if (!shouldAnimate) return;
+
     Animated.parallel([
       Animated.timing(scale, {
         toValue: s,
@@ -118,7 +122,22 @@ const HoverPress = memo(function HoverPress({
         useNativeDriver: true,
       }),
     ]).start();
-  };
+  }, [lift, scale, shouldAnimate]);
+
+  if (!shouldAnimate) {
+    return (
+      <Pressable
+        accessibilityLabel={accessibilityLabel}
+        disabled={disabled}
+        hitSlop={hitSlop}
+        onPress={onPress}
+        style={style}
+        android_ripple={{ color: 'rgba(255,255,255,0.06)', borderless: false }}
+      >
+        {children}
+      </Pressable>
+    );
+  }
 
   return (
     <Pressable
@@ -126,17 +145,15 @@ const HoverPress = memo(function HoverPress({
       disabled={disabled}
       hitSlop={hitSlop}
       onPress={onPress}
-      onHoverIn={() => {
-        if (Platform.OS === 'web') to(1.03, -1.5, 140);
-      }}
-      onHoverOut={() => {
-        if (Platform.OS === 'web') to(1.0, 0, 160);
-      }}
+      onHoverIn={() => to(1.03, -1.5, 140)}
+      onHoverOut={() => to(1.0, 0, 160)}
       onPressIn={() => to(0.98, 0, 90)}
       onPressOut={() => to(1.0, 0, 140)}
       style={style}
     >
-      <Animated.View style={{ transform: [{ translateY: lift }, { scale }] }}>{children}</Animated.View>
+      <Animated.View style={{ transform: [{ translateY: lift }, { scale }] }}>
+        {children}
+      </Animated.View>
     </Pressable>
   );
 });
@@ -1185,10 +1202,13 @@ const TabBarButton = memo(function TabBarButton(props: any) {
   const { children, onPress, accessibilityState } = props;
   const selected = !!accessibilityState?.selected;
 
+  const shouldAnimate = Platform.OS === 'web';
   const scale = useRef(new Animated.Value(1)).current;
   const lift = useRef(new Animated.Value(0)).current;
 
-  const to = (s: number, y: number, dur: number) => {
+  const to = useCallback((s: number, y: number, dur: number) => {
+    if (!shouldAnimate) return;
+
     Animated.parallel([
       Animated.timing(scale, {
         toValue: s,
@@ -1203,18 +1223,35 @@ const TabBarButton = memo(function TabBarButton(props: any) {
         useNativeDriver: true,
       }),
     ]).start();
-  };
+  }, [lift, scale, shouldAnimate]);
+
+  if (!shouldAnimate) {
+    return (
+      <Pressable
+        {...props}
+        onPress={onPress}
+        style={[props.style, { flex: 1, opacity: selected ? 1 : 0.96 }]}
+        android_ripple={{ color: 'rgba(198,166,100,0.10)', borderless: false }}
+      >
+        <View
+          style={{
+            alignItems: 'center',
+            justifyContent: 'center',
+            flex: 1,
+          }}
+        >
+          {children}
+        </View>
+      </Pressable>
+    );
+  }
 
   return (
     <Pressable
       {...props}
       onPress={onPress}
-      onHoverIn={() => {
-        if (Platform.OS === 'web') to(1.06, -2, 130);
-      }}
-      onHoverOut={() => {
-        if (Platform.OS === 'web') to(1.0, 0, 150);
-      }}
+      onHoverIn={() => to(1.06, -2, 130)}
+      onHoverOut={() => to(1.0, 0, 150)}
       onPressIn={() => to(0.97, 0, 90)}
       onPressOut={() => to(1.0, 0, 140)}
       style={[props.style, { flex: 1 }]}
@@ -1237,11 +1274,13 @@ const TabBarButton = memo(function TabBarButton(props: any) {
 type WebTopBarProps = {
   onOpenUpload: () => void;
   onOpenLeaderboard: () => void;
+  topInset?: number;
 };
 
 const WebTopBar = memo(function WebTopBar({
   onOpenUpload,
   onOpenLeaderboard,
+  topInset = 0,
 }: WebTopBarProps) {
   const { width } = useWindowDimensions();
 
@@ -1251,14 +1290,14 @@ const WebTopBar = memo(function WebTopBar({
   return (
     <View
       style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 9999,
-        backgroundColor: DARK_BG,
-        paddingTop: 8,
-      }}
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  zIndex: 9999,
+  backgroundColor: DARK_BG,
+  paddingTop: topInset + 8,
+}}
     >
       <View
         style={{
@@ -1408,8 +1447,17 @@ const isGuest = !userId;
   const isTiny = width < 360;
 
   const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [hideTopBar, setHideTopBar] = useState(false);
-const shouldHideTopBar = Platform.OS !== 'web' && hideTopBar;
+const [hideTopBar, setHideTopBar] = useState(false);
+
+const hideTopBarRef = useRef(false);
+
+const updateHideTopBar = useCallback((next: boolean) => {
+  if (hideTopBarRef.current === next) return;
+  hideTopBarRef.current = next;
+  setHideTopBar(next);
+}, []);
+
+const shouldHideTopBar = false;
 
   const lastResumeAt = useRef(0);
 
@@ -1511,6 +1559,18 @@ const contentTopPadding =
 
 const TABBAR_HEIGHT = isPhone ? 54 : 56;
 
+const topBarTranslateY = useRef(new Animated.Value(0)).current;
+
+useEffect(() => {
+  const hiddenOffset = -(NAV_HEIGHT + TOPBAR_EXTRA_ROW + insets.top + 8);
+
+  Animated.timing(topBarTranslateY, {
+    toValue: shouldHideTopBar ? hiddenOffset : 0,
+    duration: 180,
+    easing: Easing.out(Easing.cubic),
+    useNativeDriver: true,
+  }).start();
+}, [shouldHideTopBar, NAV_HEIGHT, TOPBAR_EXTRA_ROW, insets.top, topBarTranslateY]);
   const handleOpenUpload = useCallback(() => {
   if (isGuest) {
     navigation.navigate('Auth', { screen: 'SignIn' });
@@ -1521,82 +1581,63 @@ const TABBAR_HEIGHT = isPhone ? 54 : 56;
 }, [navigation, isGuest]);
 
   const screenOptions = useCallback(
-    ({ route }: any): BottomTabNavigationOptions =>
-      ({
-        headerShown: false,
-        sceneContainerStyle: { backgroundColor: DARK_BG },
+  ({ route }: any): BottomTabNavigationOptions => ({
+    headerShown: false,
+    tabBarActiveTintColor: GOLD,
+    tabBarInactiveTintColor: TEXT_MUTED,
+    tabBarShowLabel: false,
+    lazy: true,
+    tabBarStyle: {
+      backgroundColor: DARK_BG,
+      borderTopWidth: 1,
+      borderTopColor: 'rgba(255,255,255,0.06)',
+      height: TABBAR_HEIGHT,
+      paddingTop: isTiny ? 5 : 6,
+      paddingBottom: Platform.OS === 'ios' ? (isPhone ? 10 : 12) : 8,
+      elevation: 0,
+    },
+    tabBarItemStyle: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 0,
+    },
+    tabBarButton: (props: any) => <TabBarButton {...props} />,
+    tabBarIcon: ({ color }: { color: string; focused: boolean }) => {
+      let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
 
-        tabBarActiveTintColor: GOLD,
-        tabBarInactiveTintColor: TEXT_MUTED,
-        tabBarShowLabel: false,
+      switch (route.name) {
+        case 'Featured':
+          icon = 'star-outline';
+          break;
+        case 'Jobs':
+          icon = 'briefcase-outline';
+          break;
+        case 'Challenge':
+          icon = 'trophy-outline';
+          break;
+        case 'Workshop':
+          icon = 'cube-outline';
+          break;
+        case 'Location':
+          icon = 'location-outline';
+          break;
+        case 'Chats':
+          icon = 'chatbubble-ellipses-outline';
+          break;
+        case 'Profile':
+          icon = 'person-outline';
+          break;
+      }
 
-        tabBarStyle:
-          route.name === 'WorkshopSubmit'
-            ? { display: 'none' }
-            : {
-                backgroundColor: DARK_BG,
-                borderTopWidth: 1,
-                borderTopColor: 'rgba(255,255,255,0.06)',
-                height: TABBAR_HEIGHT,
-                paddingTop: isTiny ? 5 : 6,
-                paddingBottom: Platform.OS === 'ios' ? (isPhone ? 10 : 12) : 8,
-                shadowColor: 'transparent',
-                shadowOpacity: 0,
-                shadowOffset: { width: 0, height: 0 },
-                shadowRadius: 0,
-                elevation: 0,
-              },
-
-        tabBarItemStyle: {
-          alignItems: 'center',
-          justifyContent: 'center',
-          paddingVertical: 0,
-        },
-
-        lazy: true,
-        lazyPreloadDistance: 1,
-        detachInactiveScreens: Platform.OS !== 'web',
-        freezeOnBlur: Platform.OS !== 'web',
-        unmountOnBlur: false,
-
-        tabBarButton: route.name === 'WorkshopSubmit' ? () => null : (props: any) => <TabBarButton {...props} />,
-
-        tabBarIcon: ({ color }: { color: string; focused: boolean }) => {
-          let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
-
-          switch (route.name) {
-            case 'Featured':
-              icon = 'star-outline';
-              break;
-            case 'Jobs':
-              icon = 'briefcase-outline';
-              break;
-            case 'Challenge':
-              icon = 'trophy-outline';
-              break;
-            case 'Workshop':
-              icon = 'cube-outline';
-              break;
-            case 'Location':
-              icon = 'location-outline';
-              break;
-            case 'Chats':
-              icon = 'chatbubble-ellipses-outline';
-              break;
-            case 'Profile':
-              icon = 'person-outline';
-              break;
-          }
-
-          return (
-            <View style={styles.tabIconOnly}>
-              <Ionicons name={icon} size={isTiny ? 20 : 22} color={color} />
-            </View>
-          );
-        },
-      } as BottomTabNavigationOptions),
-    [TABBAR_HEIGHT, isPhone, isTiny]
-  );
+      return (
+        <View style={styles.tabIconOnly}>
+          <Ionicons name={icon} size={isTiny ? 20 : 22} color={color} />
+        </View>
+      );
+    },
+  }),
+  [TABBAR_HEIGHT, isPhone, isTiny]
+);
 
   return (
     <SettingsModalProvider>
@@ -1608,38 +1649,19 @@ const TABBAR_HEIGHT = isPhone ? 54 : 56;
     position: 'relative',
   }}
 >
-        {Platform.OS === 'web' ? (
-  <WebTopBar
-    onOpenUpload={handleOpenUpload}
-    onOpenLeaderboard={() => setShowLeaderboard(true)}
-  />
-) : (
-  <View
-    pointerEvents={shouldHideTopBar ? 'none' : 'auto'}
-    style={{
-      opacity: shouldHideTopBar ? 0 : 1,
-    }}
-  >
-    <TopBar
-      topOffset={topOffset}
-      navHeight={NAV_HEIGHT}
-      topInset={insets.top}
-      onOpenUpload={handleOpenUpload}
-      onOpenLeaderboard={() => {
-        setShowLeaderboard(true);
-      }}
-    />
-  </View>
-)}
+       
 
         <SafeAreaView
   style={[
     styles.safeArea,
-    { paddingTop: shouldHideTopBar ? 0 : contentTopPadding },
+    { paddingTop: contentTopPadding },
   ]}
   edges={['left', 'right', 'bottom']}
-> 
-          <Tab.Navigator screenOptions={screenOptions}>
+>
+          <Tab.Navigator
+  screenOptions={screenOptions}
+  detachInactiveScreens={true}
+>
             <Tab.Screen name="Featured" component={FeaturedWrapped} />
             <Tab.Screen name="Workshop" component={WorkshopWrapped} />
             <Tab.Screen name="Challenge" component={ChallengeWrapped} />
@@ -1649,41 +1671,56 @@ const TABBAR_HEIGHT = isPhone ? 54 : 56;
             <Tab.Screen
   name="Chats"
   component={ChatsWrapped}
-  listeners={({ route }) => ({
-    state: () => {
-      const nestedRouteName = getFocusedRouteNameFromRoute(route) ?? 'Chats';
-      setHideTopBar(Platform.OS !== 'web' && nestedRouteName === 'ChatRoom');
-    },
-  })}
   options={{
     unmountOnBlur: false,
   }}
+/>    
+
+            <Tab.Screen
+  name="Profile"
+  component={ProfileWrapped}
 />
 
-            <Tab.Screen
-              name="Profile"
-              component={ProfileWrapped}
-              listeners={({ navigation }) => ({
-                tabPress: (e) => {
-                  e.preventDefault();
-                  navigation.dispatch(TabActions.jumpTo('Profile', undefined));
-                },
-              })}
-            />
-
-            <Tab.Screen
-              name="WorkshopSubmit"
-              component={WorkshopSubmitWrapped}
-              options={{
-                tabBarButton: () => null,
-                tabBarStyle: { display: 'none' },
-              }}
-            />
+            
           </Tab.Navigator>
         </SafeAreaView>
+         {Platform.OS === 'web' ? (
+  <WebTopBar
+    onOpenUpload={handleOpenUpload}
+    onOpenLeaderboard={() => setShowLeaderboard(true)}
+  />
+) : (
+  <Animated.View
+  pointerEvents={shouldHideTopBar ? 'none' : 'auto'}
+  style={{
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 99999,
+    elevation: 99999,
+    transform: [{ translateY: topBarTranslateY }],
+  }}
+>
+  <TopBar
+    topOffset={topOffset}
+    navHeight={NAV_HEIGHT}
+    topInset={insets.top}
+    onOpenUpload={handleOpenUpload}
+    onOpenLeaderboard={() => {
+      setShowLeaderboard(true);
+    }}
+  />
+</Animated.View>
+)}
 
         <SettingsModal />
-        <LeaderboardModal visible={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
+        {showLeaderboard && (
+  <LeaderboardModal
+    visible={showLeaderboard}
+    onClose={() => setShowLeaderboard(false)}
+  />
+)}
       </View>
     </SettingsModalProvider>
   );
@@ -1695,7 +1732,7 @@ const styles = StyleSheet.create({
   safeArea: {
   flex: 1,
   backgroundColor: DARK_BG,
-  zIndex: 1,
+  zIndex: 0,
 },
 
   tabIconOnly: {
@@ -1711,15 +1748,9 @@ const styles = StyleSheet.create({
   },
 
   topBarWrapper: {
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  right: 0,
   backgroundColor: DARK_BG,
   borderBottomWidth: 0,
   borderBottomColor: 'transparent',
-  zIndex: 9999,
-  elevation: 9999,
 },
 
   topBarInner: {
