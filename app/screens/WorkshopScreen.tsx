@@ -6503,8 +6503,10 @@ const styles = StyleSheet.create({
   },
 
   scroll: {
-    flex: 1,
-  },
+  paddingHorizontal: 18,
+  paddingTop: 24,
+  flexGrow: 1,
+},
 
   scrollContent: {
     paddingBottom: 120,

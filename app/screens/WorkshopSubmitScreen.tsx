@@ -240,8 +240,8 @@ async function uploadThumbnailToStorage(opts: {
 
   if (Platform.OS !== "web" && thumbUri.startsWith("file://")) {
     const base64 = await FileSystem.readAsStringAsync(thumbUri, {
-  encoding: "base64" as any,
-});
+      encoding: "base64" as any,
+    });
     const bytes = Buffer.from(base64, "base64");
     blob = new Blob([bytes], { type: "image/jpeg" });
   } else {
@@ -569,13 +569,12 @@ async function fetchCurrentChallenge(): Promise<MonthlyChallenge> {
 export default function WorkshopSubmitScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<WorkshopSubmitRouteParams, "WorkshopSubmit">>();
-  const { width, height: winH } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const isWide = width >= 1100;
   const isDesktopPreview = width >= 900;
 
   const mode: SubmitMode = route.params?.mode ?? "workshop";
   const isWorkshopMode = mode === "workshop";
-  const isMonthlyMode = mode === "monthly";
 
   const pathKey = route.params?.pathKey;
   const step = route.params?.step;
@@ -623,11 +622,11 @@ export default function WorkshopSubmitScreen() {
   const [upgradeVisible, setUpgradeVisible] = useState(false);
   const [userTier, setUserTier] = useState<string | null>(null);
   const [storyModeOpen, setStoryModeOpen] = useState(false);
-const [storyModeItem, setStoryModeItem] = useState<{
-  title?: string | null;
-  shareSlug: string;
-  thumbnailUrl?: string | null;
-} | null>(null);
+  const [storyModeItem, setStoryModeItem] = useState<{
+    title?: string | null;
+    shareSlug: string;
+    thumbnailUrl?: string | null;
+  } | null>(null);
 
   const videoRef = useRef<Video>(null);
   const previewPlayerRef = useRef<Video>(null);
@@ -655,11 +654,7 @@ const [storyModeItem, setStoryModeItem] = useState<{
         } = await supabase.auth.getUser();
 
         if (user) {
-          const { data: profile } = await supabase
-            .from("users")
-            .select("tier")
-            .eq("id", user.id)
-            .single();
+          const { data: profile } = await supabase.from("users").select("tier").eq("id", user.id).single();
 
           if (alive) {
             setUserTier((profile?.tier ?? "").toLowerCase().trim() || null);
@@ -762,53 +757,53 @@ const [storyModeItem, setStoryModeItem] = useState<{
   };
 
   const closePreview = () => {
-  setPreviewVisible(false);
-  setPreviewLoading(false);
-  setPreviewError(null);
-  clearPreviewTimer();
+    setPreviewVisible(false);
+    setPreviewLoading(false);
+    setPreviewError(null);
+    clearPreviewTimer();
 
-  stopWebPreviewIfAny();
+    stopWebPreviewIfAny();
 
-  (async () => {
+    (async () => {
+      try {
+        await previewPlayerRef.current?.stopAsync?.();
+      } catch {}
+      try {
+        await previewPlayerRef.current?.unloadAsync?.();
+      } catch {}
+    })();
+  };
+
+  const openStoryMode = (item: {
+    title?: string | null;
+    shareSlug: string;
+    thumbnailUrl?: string | null;
+  }) => {
+    setStoryModeItem(item);
+    setStoryModeOpen(true);
+  };
+
+  const closeStoryMode = () => {
+    setStoryModeOpen(false);
+    setStoryModeItem(null);
+  };
+
+  const copyCurrentStoryLink = async () => {
+    if (!storyModeItem?.shareSlug) return;
+
     try {
-      await previewPlayerRef.current?.stopAsync?.();
-    } catch {}
-    try {
-      await previewPlayerRef.current?.unloadAsync?.();
-    } catch {}
-  })();
-};
+      await copyFilmLink({ shareSlug: storyModeItem.shareSlug });
 
-const openStoryMode = (item: {
-  title?: string | null;
-  shareSlug: string;
-  thumbnailUrl?: string | null;
-}) => {
-  setStoryModeItem(item);
-  setStoryModeOpen(true);
-};
-
-const closeStoryMode = () => {
-  setStoryModeOpen(false);
-  setStoryModeItem(null);
-};
-
-const copyCurrentStoryLink = async () => {
-  if (!storyModeItem?.shareSlug) return;
-
-  try {
-    await copyFilmLink({ shareSlug: storyModeItem.shareSlug });
-
-    if (Platform.OS === "web") {
-      window.alert("Link copied");
-    } else {
-      Alert.alert("Link copied", "Your watch link has been copied.");
+      if (Platform.OS === "web") {
+        window.alert("Link copied");
+      } else {
+        Alert.alert("Link copied", "Your watch link has been copied.");
+      }
+    } catch (err: any) {
+      console.warn("Copy failed:", err?.message || err);
+      Alert.alert("Copy failed", "Could not copy the link.");
     }
-  } catch (err: any) {
-    console.warn("Copy failed:", err?.message || err);
-    Alert.alert("Copy failed", "Could not copy the link.");
-  }
-};
+  };
 
   const resetSelectedFile = () => {
     closePreview();
@@ -882,7 +877,8 @@ const copyCurrentStoryLink = async () => {
       notify("Could not pick thumbnail", "Try a different image.", setStatus);
     }
   };
-    const pickFile = async () => {
+
+  const pickFile = async () => {
     try {
       if (Platform.OS === "web") {
         const tierNorm = (userTier ?? "").toLowerCase().trim();
@@ -899,11 +895,7 @@ const copyCurrentStoryLink = async () => {
 
               if (uErr || !user) return;
 
-              const { data: profile } = await supabase
-                .from("users")
-                .select("tier")
-                .eq("id", user.id)
-                .single();
+              const { data: profile } = await supabase.from("users").select("tier").eq("id", user.id).single();
 
               if (profile?.tier) {
                 setUserTier(String(profile.tier).toLowerCase().trim());
@@ -1011,11 +1003,7 @@ const copyCurrentStoryLink = async () => {
         return;
       }
 
-      const { data: profile, error: pErr } = await supabase
-        .from("users")
-        .select("tier")
-        .eq("id", user.id)
-        .single();
+      const { data: profile, error: pErr } = await supabase.from("users").select("tier").eq("id", user.id).single();
 
       if (pErr) {
         notify("Please try again", "We couldn’t verify your Pro status right now.", setStatus);
@@ -1183,11 +1171,7 @@ const copyCurrentStoryLink = async () => {
       if (userErr) throw userErr;
       if (!user) throw new Error("Not signed in");
 
-      const { data: profile, error: profileErr } = await supabase
-        .from("users")
-        .select("tier")
-        .eq("id", user.id)
-        .single();
+      const { data: profile, error: profileErr } = await supabase.from("users").select("tier").eq("id", user.id).single();
 
       if (profileErr) throw profileErr;
 
@@ -1211,10 +1195,9 @@ const copyCurrentStoryLink = async () => {
         throw new Error("Could not find the current monthly challenge.");
       }
 
-      const { data: monthlyCheck, error: monthlyCheckError } = await supabase.rpc(
-        "can_submit_this_month",
-        { p_user_id: user.id }
-      );
+      const { data: monthlyCheck, error: monthlyCheckError } = await supabase.rpc("can_submit_this_month", {
+        p_user_id: user.id,
+      });
 
       if (monthlyCheckError) throw monthlyCheckError;
 
@@ -1279,42 +1262,42 @@ const copyCurrentStoryLink = async () => {
       const media_kind = mediaKindFromMime(contentType);
 
       const submissionInsert = await insertSubmissionRobust(
-  {
-    user_id: user.id,
-    title: title.trim(),
-    description: description.trim(),
-    submitted_at: new Date().toISOString(),
-    word: null,
-    monthly_challenge_id: challengeToUse.id,
-    storage_path: path,
-    video_path: path,
-    mime_type: contentType,
-    media_kind,
-    duration_seconds: durationSec ?? null,
-    category: "film",
-    film_category: selectedTags[0] ?? null,
-    thumbnail_url: thumbRes.publicUrl,
-    source: isWorkshopMode ? "workshop" : "monthly_upload",
-    workshop_path: isWorkshopMode ? pathKey ?? null : null,
-    workshop_step: isWorkshopMode ? step ?? null : null,
-    workshop_lesson_title: isWorkshopMode ? lessonTitle ?? null : null,
-  },
-  ["user_id", "title", "submitted_at"]
-);
+        {
+          user_id: user.id,
+          title: title.trim(),
+          description: description.trim(),
+          submitted_at: new Date().toISOString(),
+          word: null,
+          monthly_challenge_id: challengeToUse.id,
+          storage_path: path,
+          video_path: path,
+          mime_type: contentType,
+          media_kind,
+          duration_seconds: durationSec ?? null,
+          category: "film",
+          film_category: selectedTags[0] ?? null,
+          thumbnail_url: thumbRes.publicUrl,
+          source: isWorkshopMode ? "workshop" : "monthly_upload",
+          workshop_path: isWorkshopMode ? pathKey ?? null : null,
+          workshop_step: isWorkshopMode ? step ?? null : null,
+          workshop_lesson_title: isWorkshopMode ? lessonTitle ?? null : null,
+        },
+        ["user_id", "title", "submitted_at"]
+      );
 
-const createdSubmission = submissionInsert?.data?.[0];
-if (!createdSubmission?.id) {
-  throw new Error("Submission created, but no submission ID was returned.");
-}
+      const createdSubmission = submissionInsert?.data?.[0];
+      if (!createdSubmission?.id) {
+        throw new Error("Submission created, but no submission ID was returned.");
+      }
 
-const shareSlug = await ensureSubmissionShareSlug({
-  id: createdSubmission.id,
-  title: createdSubmission.title ?? title.trim(),
-  share_slug: createdSubmission.share_slug ?? null,
-});
+      const shareSlug = await ensureSubmissionShareSlug({
+        id: createdSubmission.id,
+        title: createdSubmission.title ?? title.trim(),
+        share_slug: createdSubmission.share_slug ?? null,
+      });
 
-const sharedFilmUrl = buildSharedFilmUrl(shareSlug);
-console.log("Shared film URL:", sharedFilmUrl);
+      const sharedFilmUrl = buildSharedFilmUrl(shareSlug);
+      console.log("Shared film URL:", sharedFilmUrl);
 
       if (isWorkshopMode && pathKey && typeof step === "number") {
         setStatus("Marking lesson complete…");
@@ -1327,8 +1310,7 @@ console.log("Shared film URL:", sharedFilmUrl);
 
         if (progressInsertError) {
           const msg = String(progressInsertError.message || "").toLowerCase();
-          const alreadyExists =
-            msg.includes("duplicate") || msg.includes("unique") || msg.includes("already");
+          const alreadyExists = msg.includes("duplicate") || msg.includes("unique") || msg.includes("already");
 
           if (!alreadyExists) throw progressInsertError;
         }
@@ -1356,78 +1338,78 @@ console.log("Shared film URL:", sharedFilmUrl);
 
       setStatus("Submitted! 🎉");
 
-const successTitle = isWorkshopMode ? "Workshop submitted!" : "Film uploaded!";
-const successMessage = isWorkshopMode
-  ? "Your film has been uploaded, added to Featured, entered into this month’s challenge, and your workshop lesson is now complete."
-  : "Your film has been uploaded, added to Featured, and entered into this month’s challenge.";
+      const successTitle = isWorkshopMode ? "Workshop submitted!" : "Film uploaded!";
+      const successMessage = isWorkshopMode
+        ? "Your film has been uploaded, added to Featured, entered into this month’s challenge, and your workshop lesson is now complete."
+        : "Your film has been uploaded, added to Featured, and entered into this month’s challenge.";
 
-const uploadedTitle = createdSubmission.title ?? title.trim();
-const uploadedThumb = thumbRes.publicUrl;
+      const uploadedTitle = createdSubmission.title ?? title.trim();
+      const uploadedThumb = thumbRes.publicUrl;
 
-if (Platform.OS === "web") {
-  try {
-    await copyFilmLink({ shareSlug });
-  } catch (err: any) {
-    console.warn("Copy failed:", err?.message || err);
-  }
-
-  const shouldOpenStory =
-    typeof window !== "undefined" &&
-    window.confirm(
-      `${successMessage}\n\nYour link has been copied. Press OK to open story mode, or Cancel to finish.`
-    );
-
-  if (shouldOpenStory) {
-    openStoryMode({
-      title: uploadedTitle,
-      shareSlug,
-      thumbnailUrl: uploadedThumb,
-    });
-    return;
-  }
-
-  navigation.goBack();
-} else {
-  Alert.alert(successTitle, successMessage, [
-    {
-      text: "Done",
-      onPress: () => navigation.goBack(),
-    },
-    {
-      text: "Copy Link",
-      onPress: async () => {
+      if (Platform.OS === "web") {
         try {
           await copyFilmLink({ shareSlug });
-
-          Alert.alert(
-            "Link copied",
-            "Your watch link has been copied. Do you want to open story mode for a screenshot?",
-            [
-              {
-                text: "Not now",
-                style: "cancel",
-                onPress: () => navigation.goBack(),
-              },
-              {
-                text: "Open story mode",
-                onPress: () => {
-                  openStoryMode({
-                    title: uploadedTitle,
-                    shareSlug,
-                    thumbnailUrl: uploadedThumb,
-                  });
-                },
-              },
-            ]
-          );
         } catch (err: any) {
           console.warn("Copy failed:", err?.message || err);
-          navigation.goBack();
         }
-      },
-    },
-  ]);
-}
+
+        const shouldOpenStory =
+          typeof window !== "undefined" &&
+          window.confirm(
+            `${successMessage}\n\nYour link has been copied. Press OK to open story mode, or Cancel to finish.`
+          );
+
+        if (shouldOpenStory) {
+          openStoryMode({
+            title: uploadedTitle,
+            shareSlug,
+            thumbnailUrl: uploadedThumb,
+          });
+          return;
+        }
+
+        navigation.goBack();
+      } else {
+        Alert.alert(successTitle, successMessage, [
+          {
+            text: "Done",
+            onPress: () => navigation.goBack(),
+          },
+          {
+            text: "Copy Link",
+            onPress: async () => {
+              try {
+                await copyFilmLink({ shareSlug });
+
+                Alert.alert(
+                  "Link copied",
+                  "Your watch link has been copied. Do you want to open story mode for a screenshot?",
+                  [
+                    {
+                      text: "Not now",
+                      style: "cancel",
+                      onPress: () => navigation.goBack(),
+                    },
+                    {
+                      text: "Open story mode",
+                      onPress: () => {
+                        openStoryMode({
+                          title: uploadedTitle,
+                          shareSlug,
+                          thumbnailUrl: uploadedThumb,
+                        });
+                      },
+                    },
+                  ]
+                );
+              } catch (err: any) {
+                console.warn("Copy failed:", err?.message || err);
+                navigation.goBack();
+              }
+            },
+          },
+        ]);
+      }
     } catch (e: any) {
       console.warn("Workshop/monthly submit failed:", e?.message ?? e);
       notify("Submission failed", e?.message ?? "Please try again.", setStatus);
@@ -1468,22 +1450,21 @@ if (Platform.OS === "web") {
   const rulesTitle = isWorkshopMode ? "Workshop Rules & Terms" : "Upload Rules & Terms";
 
   return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={[T.bg, T.bg]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
+  <View style={styles.container}>
+    <LinearGradient
+      colors={[T.bg, T.bg]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 0, y: 1 }}
+      style={StyleSheet.absoluteFill}
+    />
 
+    <View style={styles.webScrollShell}>
       <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { minHeight: winH + 1, paddingBottom: isWide ? 56 : 40 },
-        ]}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={true}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        showsVerticalScrollIndicator={false}
+        bounces={false}
       >
         <View style={[styles.pageWrap, isWide && styles.pageWrapWide]}>
           <View style={styles.topNavRow}>
@@ -1612,16 +1593,12 @@ if (Platform.OS === "web") {
                         </Pressable>
                       </View>
                     ) : (
-                      <Text style={styles.helperText}>
-                        Pick 1 category so Featured can sort your film.
-                      </Text>
+                      <Text style={styles.helperText}>Pick 1 category so Featured can sort your film.</Text>
                     )}
                   </View>
 
                   <TouchableOpacity style={styles.primaryBtn} onPress={pickFile} activeOpacity={0.92}>
-                    <Text style={styles.primaryBtnText}>
-                      {localUri ? "Pick a different file" : "Pick a file"}
-                    </Text>
+                    <Text style={styles.primaryBtnText}>{localUri ? "Pick a different file" : "Pick a file"}</Text>
                     <Text style={styles.primaryBtnSub}>Pro required • Max file size: 5GB</Text>
                   </TouchableOpacity>
 
@@ -1642,7 +1619,8 @@ if (Platform.OS === "web") {
                       </Pressable>
                     </View>
                   ) : null}
-                                    {localUri ? (
+
+                  {localUri ? (
                     <Pressable
                       onPress={openPreview}
                       style={({ pressed }) => [styles.previewWrap, pressed && { opacity: 0.92 }]}
@@ -1809,328 +1787,312 @@ if (Platform.OS === "web") {
               </View>
             </View>
           </View>
-
-          <Modal
-            visible={tagModalVisible}
-            animationType="fade"
-            transparent
-            onRequestClose={() => setTagModalVisible(false)}
-          >
-            <View style={styles.modalOverlay}>
-              <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setTagModalVisible(false)} />
-              <View style={styles.categoryModal}>
-                <View style={styles.categoryModalHeader}>
-                  <Text style={styles.modalTitle}>Choose a category</Text>
-                  <Pressable onPress={() => setTagModalVisible(false)} style={styles.modalIconClose}>
-                    <Text style={styles.modalIconCloseText}>✕</Text>
-                  </Pressable>
-                </View>
-
-                <TextInput
-                  value={tagQuery}
-                  onChangeText={setTagQuery}
-                  placeholder="Search categories…"
-                  placeholderTextColor={T.mute}
-                  style={styles.modalSearch}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-
-                <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
-                  <View style={styles.tagList}>
-                    {filteredTags.map((tag) => {
-                      const active = selectedTags[0] === tag;
-                      return (
-                        <Pressable
-                          key={tag}
-                          onPress={() => {
-                            setSelectedTags([tag]);
-                            setTagModalVisible(false);
-                          }}
-                          style={({ pressed }) => [
-                            styles.tagRow,
-                            active && styles.tagRowActive,
-                            pressed && { opacity: 0.9 },
-                          ]}
-                        >
-                          <Text style={[styles.tagRowText, active && styles.tagRowTextActive]}>{tag}</Text>
-                          {active ? <Text style={styles.tagRowCheck}>✓</Text> : null}
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </ScrollView>
-
-                <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
-                  <Pressable
-                    onPress={() => setSelectedTags([])}
-                    style={({ pressed }) => [styles.modalAltBtn, pressed && { opacity: 0.9 }]}
-                  >
-                    <Text style={styles.modalAltText}>Clear</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setTagModalVisible(false)}
-                    style={({ pressed }) => [styles.modalPrimaryBtn, pressed && { opacity: 0.9 }]}
-                  >
-                    <Text style={styles.modalPrimaryText}>Done</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </View>
-          </Modal>
-
-          <Modal visible={rulesVisible} animationType="fade" transparent onRequestClose={() => setRulesVisible(false)}>
-            <View style={styles.modalOverlay}>
-              <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setRulesVisible(false)} />
-              <View style={styles.modalContent}>
-                <Text style={styles.modalTitle}>{rulesTitle}</Text>
-
-                <ScrollView style={{ marginBottom: 16 }}>
-                  <Text style={styles.modalText}>• File size: max 5GB.</Text>
-                  <Text style={styles.modalText}>• Pro Overlooked is required to upload videos.</Text>
-                  <Text style={styles.modalText}>• Keep it original. No stolen footage or unlicensed material.</Text>
-                  <Text style={styles.modalText}>• Keep it appropriate. No hate, harassment, or explicit harmful content.</Text>
-                  <Text style={styles.modalText}>• Thumbnail is required.</Text>
-                  <Text style={styles.modalText}>• You must choose a category.</Text>
-                  <Text style={styles.modalText}>• This upload will become a Featured submission.</Text>
-                  <Text style={styles.modalText}>• This upload will be entered into the current monthly challenge.</Text>
-                  {isWorkshopMode ? (
-                    <Text style={styles.modalText}>• In workshop mode, this also marks your lesson complete.</Text>
-                  ) : null}
-                </ScrollView>
-
-                <Pressable style={styles.modalCloseBtn} onPress={() => setRulesVisible(false)}>
-                  <Text style={styles.modalCloseText}>Close</Text>
-                </Pressable>
-              </View>
-            </View>
-          </Modal>
-
-          <Modal visible={previewVisible} animationType="fade" transparent onRequestClose={closePreview}>
-            <View style={styles.modalOverlay}>
-              <Pressable style={StyleSheet.absoluteFillObject} onPress={closePreview} />
-
-              <View
-                style={[
-                  styles.previewModal,
-                  isDesktopPreview ? styles.previewModalDesktop : styles.previewModalMobile,
-                ]}
-              >
-                <View style={styles.previewTopRow}>
-                  <Text style={styles.previewTitle}>Preview</Text>
-                  <TouchableOpacity
-                    onPress={closePreview}
-                    activeOpacity={0.9}
-                    style={styles.previewHeaderCloseBtn}
-                  >
-                    <Text style={styles.previewHeaderCloseText}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View
-                  style={[
-                    styles.previewVideoWrap,
-                    isDesktopPreview ? styles.previewVideoWrapDesktop : styles.previewVideoWrapMobile,
-                  ]}
-                >
-                  <View style={styles.previewVideoStage}>
-                    {localUri ? (
-                      Platform.OS === "web" ? (
-                        // @ts-ignore
-                        <video
-                          key={`web-preview-${previewNonce}-${localUri}`}
-                          ref={(el) => {
-                            // @ts-ignore
-                            webPreviewVideoRef.current = el;
-                          }}
-                          src={localUri}
-                          controls
-                          autoPlay
-                          playsInline
-                          onLoadStart={() => {
-                            setPreviewError(null);
-                            setPreviewLoading(true);
-                            startPreviewTimer();
-                          }}
-                          onCanPlay={() => {
-                            clearPreviewTimer();
-                            setPreviewLoading(false);
-                          }}
-                          onError={() => {
-                            clearPreviewTimer();
-                            setPreviewLoading(false);
-                            setPreviewError("Could not play this file. Try Retry or close it.");
-                          }}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "contain",
-                            background: "#0B0B0B",
-                            display: "block",
-                            borderRadius: 16,
-                          }}
-                        />
-                      ) : (
-                        <Video
-                          key={`native-preview-${previewNonce}-${localUri}`}
-                          ref={previewPlayerRef}
-                          source={{ uri: localUri }}
-                          style={styles.previewVideo}
-                          resizeMode={ResizeMode.CONTAIN}
-                          useNativeControls
-                          shouldPlay
-                          isLooping={false}
-                          onLoadStart={() => {
-                            setPreviewError(null);
-                            setPreviewLoading(true);
-                            startPreviewTimer();
-                          }}
-                          onReadyForDisplay={() => {
-                            clearPreviewTimer();
-                            setPreviewLoading(false);
-                          }}
-                          onLoad={() => {
-                            clearPreviewTimer();
-                            setPreviewLoading(false);
-                          }}
-                          onPlaybackStatusUpdate={(s: any) => {
-                            if (s?.isLoaded) {
-                              clearPreviewTimer();
-                              setPreviewLoading(false);
-                            }
-                          }}
-                          onError={() => {
-                            clearPreviewTimer();
-                            setPreviewLoading(false);
-                            setPreviewError("Could not play this file. Try Retry or close it.");
-                          }}
-                        />
-                      )
-                    ) : null}
-
-                    {previewLoading ? (
-                      <View style={styles.previewLoadingOverlay} pointerEvents="none">
-                        <ActivityIndicator size="large" color={T.olive} />
-                        <Text style={styles.previewLoadingText}>Loading preview…</Text>
-                      </View>
-                    ) : null}
-
-                    {previewError ? (
-                      <View style={styles.previewErrorOverlay}>
-                        <Text style={styles.previewErrorText}>{previewError}</Text>
-                        <View style={styles.previewErrorActions}>
-                          <Pressable style={styles.previewRetryBtn} onPress={retryPreview}>
-                            <Text style={styles.previewRetryText}>Retry</Text>
-                          </Pressable>
-                          <Pressable style={styles.previewAltBtn} onPress={closePreview}>
-                            <Text style={styles.previewAltText}>Close</Text>
-                          </Pressable>
-                        </View>
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-
-                <View style={styles.previewMetaRow}>
-                  <Text style={styles.previewMeta}>
-                    Duration: <Text style={styles.previewMetaStrong}>{formatDur(durationSec)}</Text>
-                  </Text>
-                  <Text style={styles.previewMeta}>
-                    Size: <Text style={styles.previewMetaStrong}>{formatBytes(fileSizeBytes)}</Text>
-                  </Text>
-                </View>
-
-                <Pressable style={styles.modalCloseBtn} onPress={closePreview}>
-                  <Text style={styles.modalCloseText}>Close Preview</Text>
-                </Pressable>
-              </View>
-            </View>
-          </Modal>
         </View>
       </ScrollView>
+    </View>
 
-      <Modal
-  visible={storyModeOpen}
-  transparent
-  animationType="fade"
-  onRequestClose={closeStoryMode}
->
-  <View style={styles.storyOverlay}>
-    <View style={styles.storyCard}>
-      <View style={styles.storyPoster}>
-        <TouchableOpacity
-          onPress={closeStoryMode}
-          activeOpacity={0.9}
-          style={styles.storyCloseBtnFloating}
-        >
-          <Text style={styles.storyCloseText}>×</Text>
-        </TouchableOpacity>
+    <Modal
+      visible={tagModalVisible}
+      animationType="fade"
+      transparent
+      onRequestClose={() => setTagModalVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setTagModalVisible(false)} />
+        <View style={styles.categoryModal}>
+          <View style={styles.categoryModalHeader}>
+            <Text style={styles.modalTitle}>Choose a category</Text>
+            <Pressable onPress={() => setTagModalVisible(false)} style={styles.modalIconClose}>
+              <Text style={styles.modalIconCloseText}>✕</Text>
+            </Pressable>
+          </View>
 
-        <Image
-          source={{
-            uri: storyModeItem?.thumbnailUrl || "https://picsum.photos/900/1600",
-          }}
-          style={styles.storyPosterImage}
-          resizeMode="contain"
-        />
+          <TextInput
+            value={tagQuery}
+            onChangeText={setTagQuery}
+            placeholder="Search categories…"
+            placeholderTextColor={T.mute}
+            style={styles.modalSearch}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
 
-        <LinearGradient
-          colors={["rgba(0,0,0,0.04)", "rgba(0,0,0,0.10)", "rgba(0,0,0,0.28)"]}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={StyleSheet.absoluteFillObject}
-        />
+          <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+            <View style={styles.tagList}>
+              {filteredTags.map((tag) => {
+                const active = selectedTags[0] === tag;
+                return (
+                  <Pressable
+                    key={tag}
+                    onPress={() => {
+                      setSelectedTags([tag]);
+                      setTagModalVisible(false);
+                    }}
+                    style={({ pressed }) => [
+                      styles.tagRow,
+                      active && styles.tagRowActive,
+                      pressed && { opacity: 0.9 },
+                    ]}
+                  >
+                    <Text style={[styles.tagRowText, active && styles.tagRowTextActive]}>{tag}</Text>
+                    {active ? <Text style={styles.tagRowCheck}>✓</Text> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
 
-        <LinearGradient
-          colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.0)", "rgba(0,0,0,0.72)"]}
-          start={{ x: 0.5, y: 0.45 }}
-          end={{ x: 0.5, y: 1 }}
-          style={styles.storyBottomFade}
-        />
-
-        <View style={styles.storyBrandTop}>
-          <Text style={styles.storyBrandText}>OVERLOOKED</Text>
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+            <Pressable
+              onPress={() => setSelectedTags([])}
+              style={({ pressed }) => [styles.modalAltBtn, pressed && { opacity: 0.9 }]}
+            >
+              <Text style={styles.modalAltText}>Clear</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setTagModalVisible(false)}
+              style={({ pressed }) => [styles.modalPrimaryBtn, pressed && { opacity: 0.9 }]}
+            >
+              <Text style={styles.modalPrimaryText}>Done</Text>
+            </Pressable>
+          </View>
         </View>
-
-        <View style={styles.storyContent}>
-  <Text style={styles.storyTitle} numberOfLines={3}>
-    {storyModeItem?.title || "Untitled Film"}
-  </Text>
-
-  <Text style={styles.storyLink} numberOfLines={1}>
-    {storyModeItem?.shareSlug
-      ? buildSharedFilmUrl(storyModeItem.shareSlug)
-      : ""}
-  </Text>
-
-  <TouchableOpacity
-    onPress={copyCurrentStoryLink}
-    activeOpacity={0.9}
-    style={styles.storyCopyBtn}
-  >
-    <Text style={styles.storyCopyBtnText}>Copy Link</Text>
-  </TouchableOpacity>
-</View>
       </View>
-    </View>
-  </View>
-</Modal>
+    </Modal>
 
-      <UpgradeModal
-        visible={upgradeVisible}
-        context="challenge"
-        onClose={() => setUpgradeVisible(false)}
-      />
-    </View>
-  );
+    <Modal visible={rulesVisible} animationType="fade" transparent onRequestClose={() => setRulesVisible(false)}>
+      <View style={styles.modalOverlay}>
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setRulesVisible(false)} />
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>{rulesTitle}</Text>
+
+          <ScrollView style={{ marginBottom: 16 }}>
+            <Text style={styles.modalText}>• File size: max 5GB.</Text>
+            <Text style={styles.modalText}>• Pro Overlooked is required to upload videos.</Text>
+            <Text style={styles.modalText}>• Keep it original. No stolen footage or unlicensed material.</Text>
+            <Text style={styles.modalText}>
+              • Keep it appropriate. No hate, harassment, or explicit harmful content.
+            </Text>
+            <Text style={styles.modalText}>• Thumbnail is required.</Text>
+            <Text style={styles.modalText}>• You must choose a category.</Text>
+            <Text style={styles.modalText}>• This upload will become a Featured submission.</Text>
+            <Text style={styles.modalText}>• This upload will be entered into the current monthly challenge.</Text>
+            {isWorkshopMode ? (
+              <Text style={styles.modalText}>• In workshop mode, this also marks your lesson complete.</Text>
+            ) : null}
+          </ScrollView>
+
+          <Pressable style={styles.modalCloseBtn} onPress={() => setRulesVisible(false)}>
+            <Text style={styles.modalCloseText}>Close</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+
+    <Modal visible={previewVisible} animationType="fade" transparent onRequestClose={closePreview}>
+      <View style={styles.modalOverlay}>
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={closePreview} />
+
+        <View
+          style={[
+            styles.previewModal,
+            isDesktopPreview ? styles.previewModalDesktop : styles.previewModalMobile,
+          ]}
+        >
+          <View style={styles.previewTopRow}>
+            <Text style={styles.previewTitle}>Preview</Text>
+            <TouchableOpacity onPress={closePreview} activeOpacity={0.9} style={styles.previewHeaderCloseBtn}>
+              <Text style={styles.previewHeaderCloseText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View
+            style={[
+              styles.previewVideoWrap,
+              isDesktopPreview ? styles.previewVideoWrapDesktop : styles.previewVideoWrapMobile,
+            ]}
+          >
+            <View style={styles.previewVideoStage}>
+              {localUri ? (
+                Platform.OS === "web" ? (
+                  // @ts-ignore
+                  <video
+                    key={`web-preview-${previewNonce}-${localUri}`}
+                    ref={(el) => {
+                      // @ts-ignore
+                      webPreviewVideoRef.current = el;
+                    }}
+                    src={localUri}
+                    controls
+                    autoPlay
+                    playsInline
+                    onLoadStart={() => {
+                      setPreviewError(null);
+                      setPreviewLoading(true);
+                      startPreviewTimer();
+                    }}
+                    onCanPlay={() => {
+                      clearPreviewTimer();
+                      setPreviewLoading(false);
+                    }}
+                    onError={() => {
+                      clearPreviewTimer();
+                      setPreviewLoading(false);
+                      setPreviewError("Could not play this file. Try Retry or close it.");
+                    }}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "contain",
+                      background: "#0B0B0B",
+                      display: "block",
+                      borderRadius: 16,
+                    }}
+                  />
+                ) : (
+                  <Video
+                    key={`native-preview-${previewNonce}-${localUri}`}
+                    ref={previewPlayerRef}
+                    source={{ uri: localUri }}
+                    style={styles.previewVideo}
+                    resizeMode={ResizeMode.CONTAIN}
+                    useNativeControls
+                    shouldPlay
+                    isLooping={false}
+                    onLoadStart={() => {
+                      setPreviewError(null);
+                      setPreviewLoading(true);
+                      startPreviewTimer();
+                    }}
+                    onReadyForDisplay={() => {
+                      clearPreviewTimer();
+                      setPreviewLoading(false);
+                    }}
+                    onLoad={() => {
+                      clearPreviewTimer();
+                      setPreviewLoading(false);
+                    }}
+                    onPlaybackStatusUpdate={(s: any) => {
+                      if (s?.isLoaded) {
+                        clearPreviewTimer();
+                        setPreviewLoading(false);
+                      }
+                    }}
+                    onError={() => {
+                      clearPreviewTimer();
+                      setPreviewLoading(false);
+                      setPreviewError("Could not play this file. Try Retry or close it.");
+                    }}
+                  />
+                )
+              ) : null}
+
+              {previewLoading ? (
+                <View style={styles.previewLoadingOverlay} pointerEvents="none">
+                  <ActivityIndicator size="large" color={T.olive} />
+                  <Text style={styles.previewLoadingText}>Loading preview…</Text>
+                </View>
+              ) : null}
+
+              {previewError ? (
+                <View style={styles.previewErrorOverlay}>
+                  <Text style={styles.previewErrorText}>{previewError}</Text>
+                  <View style={styles.previewErrorActions}>
+                    <Pressable style={styles.previewRetryBtn} onPress={retryPreview}>
+                      <Text style={styles.previewRetryText}>Retry</Text>
+                    </Pressable>
+                    <Pressable style={styles.previewAltBtn} onPress={closePreview}>
+                      <Text style={styles.previewAltText}>Close</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          </View>
+
+          <View style={styles.previewMetaRow}>
+            <Text style={styles.previewMeta}>
+              Duration: <Text style={styles.previewMetaStrong}>{formatDur(durationSec)}</Text>
+            </Text>
+            <Text style={styles.previewMeta}>
+              Size: <Text style={styles.previewMetaStrong}>{formatBytes(fileSizeBytes)}</Text>
+            </Text>
+          </View>
+
+          <Pressable style={styles.modalCloseBtn} onPress={closePreview}>
+            <Text style={styles.modalCloseText}>Close Preview</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+
+    <Modal visible={storyModeOpen} transparent animationType="fade" onRequestClose={closeStoryMode}>
+      <View style={styles.storyOverlay}>
+        <View style={styles.storyCard}>
+          <View style={styles.storyPoster}>
+            <TouchableOpacity
+              onPress={closeStoryMode}
+              activeOpacity={0.9}
+              style={styles.storyCloseBtnFloating}
+            >
+              <Text style={styles.storyCloseText}>×</Text>
+            </TouchableOpacity>
+
+            <Image
+              source={{
+                uri: storyModeItem?.thumbnailUrl || "https://picsum.photos/900/1600",
+              }}
+              style={styles.storyPosterImage}
+              resizeMode="contain"
+            />
+
+            <LinearGradient
+              colors={["rgba(0,0,0,0.04)", "rgba(0,0,0,0.10)", "rgba(0,0,0,0.28)"]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+
+            <LinearGradient
+              colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.0)", "rgba(0,0,0,0.72)"]}
+              start={{ x: 0.5, y: 0.45 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.storyBottomFade}
+            />
+
+            <View style={styles.storyBrandTop}>
+              <Text style={styles.storyBrandText}>OVERLOOKED</Text>
+            </View>
+
+            <View style={styles.storyContent}>
+              <Text style={styles.storyTitle} numberOfLines={3}>
+                {storyModeItem?.title || "Untitled Film"}
+              </Text>
+
+              <Text style={styles.storyLink} numberOfLines={1}>
+                {storyModeItem?.shareSlug ? buildSharedFilmUrl(storyModeItem.shareSlug) : ""}
+              </Text>
+
+              <TouchableOpacity onPress={copyCurrentStoryLink} activeOpacity={0.9} style={styles.storyCopyBtn}>
+                <Text style={styles.storyCopyBtnText}>Copy Link</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </View>
+    </Modal>
+
+    <UpgradeModal
+      visible={upgradeVisible}
+      context="challenge"
+      onClose={() => setUpgradeVisible(false)}
+    />
+  </View>
+);
 }
+
 function slugifyFilmTitle(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
+  return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
 }
 
 function buildSharedFilmUrl(shareSlug: string) {
@@ -2147,19 +2109,14 @@ async function ensureSubmissionShareSlug(submission: {
   const base = slugifyFilmTitle(submission.title || "film");
   const slug = `${base || "film"}-${String(submission.id).slice(0, 6)}`;
 
-  const { error } = await supabase
-    .from("submissions")
-    .update({ share_slug: slug })
-    .eq("id", submission.id);
+  const { error } = await supabase.from("submissions").update({ share_slug: slug }).eq("id", submission.id);
 
   if (error) throw error;
 
   return slug;
 }
 
-async function copyFilmLink(opts: {
-  shareSlug: string;
-}) {
+async function copyFilmLink(opts: { shareSlug: string }) {
   const url = buildSharedFilmUrl(opts.shareSlug);
 
   if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
@@ -2170,139 +2127,49 @@ async function copyFilmLink(opts: {
 
   return url;
 }
+
 /* -------------------------------- styles -------------------------------- */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: T.bg,
+    ...(Platform.OS === "web"
+      ? ({
+          height: "100vh",
+          overflow: "hidden",
+        } as any)
+      : {}),
   },
-  storyOverlay: {
-  flex: 1,
-  backgroundColor: "rgba(0,0,0,0.94)",
-  justifyContent: "center",
-  alignItems: "center",
-  padding: 20,
-},
 
-storyCard: {
-  width: "100%",
-  maxWidth: 420,
-  alignItems: "center",
-},
+  webScrollShell: {
+    flex: 1,
+    ...(Platform.OS === "web"
+      ? ({
+          height: "100vh",
+          overflow: "hidden",
+        } as any)
+      : {}),
+  },
 
-storyPoster: {
-  width: "100%",
-  aspectRatio: 9 / 16,
-  borderRadius: 28,
-  overflow: "hidden",
-  backgroundColor: "#050505",
-  borderWidth: 0,
-  borderColor: "transparent",
-  position: "relative",
-},
+  scrollView: {
+    flex: 1,
+    ...(Platform.OS === "web"
+      ? ({
+          height: "100vh",
+          overflowY: "scroll",
+          overflowX: "hidden",
+          WebkitOverflowScrolling: "touch",
+        } as any)
+      : {}),
+  },
 
-storyPosterImage: {
-  width: "100%",
-  height: "100%",
-  position: "absolute",
-  opacity: 1,
-},
-
-storyCloseBtnFloating: {
-  position: "absolute",
-  top: 16,
-  right: 16,
-  width: 40,
-  height: 40,
-  borderRadius: 999,
-  backgroundColor: "rgba(0,0,0,0.55)",
-  borderWidth: 0,
-  borderColor: "transparent",
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 20,
-},
-
-storyCloseText: {
-  color: "#FFFFFF",
-  fontSize: 22,
-  fontWeight: "900",
-  lineHeight: 22,
-  textAlign: "center",
-},
-
-storyBrandTop: {
-  position: "absolute",
-  top: 28,
-  left: 24,
-  right: 24,
-  alignItems: "center",
-},
-
-storyBrandText: {
-  color: "#FFFFFF",
-  fontWeight: "900",
-  fontSize: 18,
-  letterSpacing: 3,
-  textTransform: "uppercase",
-},
-
-storyBottomFade: {
-  position: "absolute",
-  left: 0,
-  right: 0,
-  bottom: 0,
-  height: "34%",
-},
-
-storyContent: {
-  position: "absolute",
-  left: 26,
-  right: 26,
-  bottom: 36,
-  alignItems: "center",
-},
-
-storyTitle: {
-  color: "#FFFFFF",
-  fontWeight: "900",
-  fontSize: 24,
-  lineHeight: 28,
-  textAlign: "center",
-  textTransform: "uppercase",
-  letterSpacing: 0.8,
-},
-
-storyLink: {
-  marginTop: 18,
-  color: "rgba(255,255,255,0.46)",
-  fontWeight: "700",
-  fontSize: 10,
-  textAlign: "center",
-},
   scroll: {
     paddingHorizontal: 18,
     paddingTop: 24,
+    paddingBottom: 40,
+    flexGrow: 1,
   },
-  storyCopyBtn: {
-  marginTop: 14,
-  minHeight: 38,
-  paddingHorizontal: 16,
-  borderRadius: 999,
-  backgroundColor: "rgba(0,0,0,0.55)",
-  borderWidth: 1,
-  borderColor: "rgba(255,255,255,0.10)",
-  alignItems: "center",
-  justifyContent: "center",
-},
 
-storyCopyBtnText: {
-  color: "#FFFFFF",
-  fontWeight: "800",
-  fontSize: 12,
-  textTransform: "uppercase",
-  letterSpacing: 0.6,
-},
   pageWrap: {
     width: "100%",
     maxWidth: 1180,
@@ -2310,8 +2177,134 @@ storyCopyBtnText: {
     paddingHorizontal: 24,
     paddingTop: 44,
   },
+
   pageWrapWide: {
     paddingHorizontal: 8,
+  },
+
+  storyOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.94)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+
+  storyCard: {
+    width: "100%",
+    maxWidth: 420,
+    alignItems: "center",
+  },
+
+  storyPoster: {
+    width: "100%",
+    aspectRatio: 9 / 16,
+    borderRadius: 28,
+    overflow: "hidden",
+    backgroundColor: "#050505",
+    borderWidth: 0,
+    borderColor: "transparent",
+    position: "relative",
+  },
+
+  storyPosterImage: {
+    width: "100%",
+    height: "100%",
+    position: "absolute",
+    opacity: 1,
+  },
+
+  storyCloseBtnFloating: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderWidth: 0,
+    borderColor: "transparent",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 20,
+  },
+
+  storyCloseText: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontWeight: "900",
+    lineHeight: 22,
+    textAlign: "center",
+  },
+
+  storyBrandTop: {
+    position: "absolute",
+    top: 28,
+    left: 24,
+    right: 24,
+    alignItems: "center",
+  },
+
+  storyBrandText: {
+    color: "#FFFFFF",
+    fontWeight: "900",
+    fontSize: 18,
+    letterSpacing: 3,
+    textTransform: "uppercase",
+  },
+
+  storyBottomFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: "34%",
+  },
+
+  storyContent: {
+    position: "absolute",
+    left: 26,
+    right: 26,
+    bottom: 36,
+    alignItems: "center",
+  },
+
+  storyTitle: {
+    color: "#FFFFFF",
+    fontWeight: "900",
+    fontSize: 24,
+    lineHeight: 28,
+    textAlign: "center",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+
+  storyLink: {
+    marginTop: 18,
+    color: "rgba(255,255,255,0.46)",
+    fontWeight: "700",
+    fontSize: 10,
+    textAlign: "center",
+  },
+
+  storyCopyBtn: {
+    marginTop: 14,
+    minHeight: 38,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  storyCopyBtnText: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
 
   topNavRow: {
@@ -2319,6 +2312,7 @@ storyCopyBtnText: {
     flexDirection: "row",
     alignItems: "center",
   },
+
   backBtn: {
     height: 40,
     paddingHorizontal: 14,
@@ -2329,6 +2323,7 @@ storyCopyBtnText: {
     alignItems: "center",
     justifyContent: "center",
   },
+
   backBtnText: {
     color: T.text,
     fontWeight: "800",
@@ -2338,36 +2333,45 @@ storyCopyBtnText: {
   topHeader: {
     marginBottom: 18,
   },
+
   topTitle: {
     color: T.text,
     fontSize: 32,
     fontWeight: "800",
   },
+
   topSub: {
     color: T.mute,
     fontSize: 15,
     marginTop: 6,
   },
+
   topSubStrong: {
     color: T.olive,
     fontWeight: "700",
   },
+
   twoCol: {
     gap: 18,
   },
+
   twoColWide: {
     flexDirection: "row",
     alignItems: "flex-start",
   },
+
   col: {
     width: "100%",
   },
+
   leftCol: {
     flex: 0.9,
   },
+
   rightCol: {
     flex: 1.1,
   },
+
   card: {
     backgroundColor: T.card,
     borderWidth: 1,
@@ -2375,6 +2379,7 @@ storyCopyBtnText: {
     borderRadius: 22,
     padding: 18,
   },
+
   sectionKicker: {
     color: T.olive,
     fontSize: 13,
@@ -2383,50 +2388,60 @@ storyCopyBtnText: {
     letterSpacing: 0.6,
     textTransform: "uppercase",
   },
+
   lessonTitle: {
     color: T.text,
     fontSize: 22,
     fontWeight: "800",
     marginBottom: 10,
   },
+
   lessonText: {
     color: T.sub,
     fontSize: 15,
     lineHeight: 22,
   },
+
   bullet: {
     color: T.sub,
     fontSize: 15,
     lineHeight: 24,
     marginBottom: 6,
   },
+
   divider: {
     height: 1,
     backgroundColor: T.line,
     marginVertical: 14,
   },
+
   formHeaderLite: {
     marginBottom: 12,
   },
+
   formTitle: {
     color: T.text,
     fontSize: 24,
     fontWeight: "800",
   },
+
   formSubtitle: {
     color: T.mute,
     fontSize: 14,
     marginTop: 4,
   },
+
   formBodyLite: {
     gap: 10,
   },
+
   label: {
     color: T.text,
     fontSize: 14,
     fontWeight: "700",
     marginBottom: 4,
   },
+
   input: {
     borderWidth: 1,
     borderColor: T.line,
@@ -2436,7 +2451,14 @@ storyCopyBtnText: {
     paddingHorizontal: 14,
     paddingVertical: 14,
     fontSize: 15,
+    ...(Platform.OS === "web"
+      ? ({
+          outlineStyle: "none",
+          boxShadow: "none",
+        } as any)
+      : {}),
   },
+
   selectBtn: {
     borderWidth: 1,
     borderColor: T.line,
@@ -2445,22 +2467,26 @@ storyCopyBtnText: {
     paddingHorizontal: 14,
     paddingVertical: 14,
   },
+
   selectBtnText: {
     color: T.text,
     fontSize: 15,
     fontWeight: "700",
   },
+
   selectBtnHint: {
     color: T.mute,
     fontSize: 12,
     marginTop: 4,
   },
+
   selectedRow: {
     marginTop: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
   },
+
   selectedChip: {
     backgroundColor: "rgba(198,166,100,0.18)",
     borderColor: "rgba(198,166,100,0.35)",
@@ -2469,10 +2495,12 @@ storyCopyBtnText: {
     paddingVertical: 8,
     borderRadius: 999,
   },
+
   selectedChipText: {
     color: T.text,
     fontWeight: "700",
   },
+
   clearChipBtn: {
     paddingHorizontal: 10,
     paddingVertical: 8,
@@ -2481,15 +2509,18 @@ storyCopyBtnText: {
     borderColor: T.line,
     backgroundColor: "#141414",
   },
+
   clearChipText: {
     color: T.sub,
     fontWeight: "700",
   },
+
   helperText: {
     color: T.mute,
     fontSize: 13,
     marginTop: 8,
   },
+
   primaryBtn: {
     marginTop: 12,
     backgroundColor: T.olive,
@@ -2498,22 +2529,26 @@ storyCopyBtnText: {
     paddingHorizontal: 16,
     alignItems: "center",
   },
+
   primaryBtnText: {
     color: "#111",
     fontSize: 16,
     fontWeight: "800",
   },
+
   primaryBtnSub: {
     color: "#221D11",
     fontSize: 12,
     fontWeight: "700",
     marginTop: 4,
   },
+
   fileActionsRow: {
     flexDirection: "row",
     gap: 10,
     marginTop: 10,
   },
+
   secondaryBtn: {
     flex: 1,
     borderRadius: 14,
@@ -2524,10 +2559,12 @@ storyCopyBtnText: {
     alignItems: "center",
     justifyContent: "center",
   },
+
   secondaryBtnText: {
     color: T.text,
     fontWeight: "700",
   },
+
   secondaryBtnDanger: {
     flex: 1,
     borderRadius: 14,
@@ -2538,10 +2575,12 @@ storyCopyBtnText: {
     alignItems: "center",
     justifyContent: "center",
   },
+
   secondaryBtnDangerText: {
     color: "#FFB2B2",
     fontWeight: "700",
   },
+
   previewWrap: {
     marginTop: 12,
     borderRadius: 18,
@@ -2550,22 +2589,26 @@ storyCopyBtnText: {
     borderColor: T.line,
     backgroundColor: "#0B0B0B",
   },
+
   previewStage: {
     width: "100%",
     backgroundColor: "#090909",
     justifyContent: "center",
     alignItems: "center",
   },
+
   previewImg: {
     width: "100%",
     height: "100%",
   },
+
   previewBadgeOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "flex-end",
     alignItems: "center",
     paddingBottom: 12,
   },
+
   playPill: {
     backgroundColor: "rgba(0,0,0,0.55)",
     borderRadius: 999,
@@ -2574,11 +2617,13 @@ storyCopyBtnText: {
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
   },
+
   playPillText: {
     color: T.text,
     fontWeight: "700",
     fontSize: 13,
   },
+
   previewModalDesktop: {
     width: "86%",
     maxWidth: 980,
@@ -2598,7 +2643,6 @@ storyCopyBtnText: {
   previewVideoWrapDesktop: {
     width: "100%",
     height: 520,
-    maxHeight: "72vh" as any,
   },
 
   previewVideoWrapMobile: {
@@ -2606,35 +2650,42 @@ storyCopyBtnText: {
     height: 240,
     minHeight: 220,
   },
+
   thumbLoading: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 30,
   },
+
   thumbLoadingText: {
     color: T.mute,
     marginTop: 8,
   },
+
   thumbFallback: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 40,
   },
+
   thumbFallbackText: {
     color: T.mute,
     fontWeight: "700",
   },
+
   thumbReqRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 10,
   },
+
   thumbReqTitle: {
     color: T.text,
     fontWeight: "800",
     fontSize: 14,
   },
+
   thumbReqBadge: {
     color: "#FFD8D8",
     borderColor: "rgba(255,120,120,0.28)",
@@ -2645,20 +2696,24 @@ storyCopyBtnText: {
     fontWeight: "700",
     fontSize: 12,
   },
+
   statusRow: {
     marginTop: 8,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
+
   statusText: {
     color: T.sub,
     fontSize: 13,
     flex: 1,
   },
+
   progressWrap: {
     marginTop: 10,
   },
+
   progressBar: {
     height: 10,
     width: "100%",
@@ -2666,29 +2721,35 @@ storyCopyBtnText: {
     borderRadius: 999,
     overflow: "hidden",
   },
+
   progressFill: {
     height: "100%",
     backgroundColor: T.olive,
     borderRadius: 999,
   },
+
   progressLabels: {
     marginTop: 6,
     flexDirection: "row",
     justifyContent: "flex-end",
   },
+
   progressText: {
     color: T.text,
     fontSize: 13,
     fontWeight: "700",
   },
+
   agreeBlock: {
     marginTop: 10,
   },
+
   agreeRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
   },
+
   checkbox: {
     width: 22,
     height: 22,
@@ -2699,31 +2760,38 @@ storyCopyBtnText: {
     alignItems: "center",
     justifyContent: "center",
   },
+
   checkboxChecked: {
     backgroundColor: T.olive,
     borderColor: T.olive,
   },
+
   checkGlyph: {
     color: "#111",
     fontWeight: "900",
   },
+
   agreeText: {
     color: T.sub,
     flex: 1,
     lineHeight: 21,
   },
+
   termsLink: {
     color: T.olive,
     fontWeight: "800",
   },
+
   termsHintRow: {
     marginTop: 8,
     marginLeft: 32,
   },
+
   termsHintText: {
     color: T.mute,
     textDecorationLine: "underline",
   },
+
   submitBtn: {
     marginTop: 14,
     backgroundColor: T.olive,
@@ -2731,23 +2799,27 @@ storyCopyBtnText: {
     paddingVertical: 16,
     alignItems: "center",
   },
+
   submitText: {
     color: "#111",
     fontWeight: "900",
     fontSize: 16,
   },
+
   formFootnote: {
     color: T.mute,
     fontSize: 13,
     marginTop: 10,
     textAlign: "center",
   },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.72)",
     justifyContent: "center",
     padding: 20,
   },
+
   categoryModal: {
     backgroundColor: "#111",
     borderRadius: 22,
@@ -2755,16 +2827,19 @@ storyCopyBtnText: {
     borderColor: T.line,
     padding: 16,
   },
+
   categoryModalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
+
   modalTitle: {
     color: T.text,
     fontSize: 22,
     fontWeight: "800",
   },
+
   modalIconClose: {
     width: 34,
     height: 34,
@@ -2773,11 +2848,13 @@ storyCopyBtnText: {
     alignItems: "center",
     justifyContent: "center",
   },
+
   modalIconCloseText: {
     color: T.text,
     fontSize: 16,
     fontWeight: "800",
   },
+
   modalSearch: {
     marginTop: 14,
     borderWidth: 1,
@@ -2788,11 +2865,19 @@ storyCopyBtnText: {
     paddingHorizontal: 14,
     paddingVertical: 14,
     fontSize: 15,
+    ...(Platform.OS === "web"
+      ? ({
+          outlineStyle: "none",
+          boxShadow: "none",
+        } as any)
+      : {}),
   },
+
   tagList: {
     marginTop: 12,
     gap: 8,
   },
+
   tagRow: {
     borderWidth: 1,
     borderColor: T.line,
@@ -2804,22 +2889,27 @@ storyCopyBtnText: {
     justifyContent: "space-between",
     alignItems: "center",
   },
+
   tagRowActive: {
     borderColor: T.olive,
     backgroundColor: "rgba(198,166,100,0.12)",
   },
+
   tagRowText: {
     color: T.text,
     fontWeight: "700",
   },
+
   tagRowTextActive: {
     color: T.text,
   },
+
   tagRowCheck: {
     color: T.olive,
     fontWeight: "900",
     fontSize: 16,
   },
+
   modalAltBtn: {
     flex: 1,
     borderRadius: 14,
@@ -2829,10 +2919,12 @@ storyCopyBtnText: {
     paddingVertical: 14,
     alignItems: "center",
   },
+
   modalAltText: {
     color: T.text,
     fontWeight: "700",
   },
+
   modalPrimaryBtn: {
     flex: 1,
     borderRadius: 14,
@@ -2840,10 +2932,12 @@ storyCopyBtnText: {
     paddingVertical: 14,
     alignItems: "center",
   },
+
   modalPrimaryText: {
     color: "#111",
     fontWeight: "900",
   },
+
   modalContent: {
     backgroundColor: "#111",
     borderRadius: 22,
@@ -2851,12 +2945,14 @@ storyCopyBtnText: {
     borderColor: T.line,
     padding: 18,
   },
+
   modalText: {
     color: T.sub,
     fontSize: 15,
     lineHeight: 24,
     marginBottom: 10,
   },
+
   modalCloseBtn: {
     backgroundColor: T.olive,
     borderRadius: 14,
@@ -2864,11 +2960,13 @@ storyCopyBtnText: {
     alignItems: "center",
     marginTop: 8,
   },
+
   modalCloseText: {
     color: "#111",
     fontWeight: "900",
     fontSize: 15,
   },
+
   previewModal: {
     backgroundColor: "#111",
     borderRadius: 22,
@@ -2876,17 +2974,20 @@ storyCopyBtnText: {
     borderColor: T.line,
     padding: 18,
   },
+
   previewTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 12,
   },
+
   previewTitle: {
     color: T.text,
     fontSize: 22,
     fontWeight: "800",
   },
+
   previewHeaderCloseBtn: {
     width: 36,
     height: 36,
@@ -2897,11 +2998,13 @@ storyCopyBtnText: {
     borderWidth: 1,
     borderColor: T.line,
   },
+
   previewHeaderCloseText: {
     color: T.text,
     fontSize: 16,
     fontWeight: "800",
   },
+
   previewVideoWrap: {
     borderRadius: 18,
     overflow: "hidden",
@@ -2909,6 +3012,7 @@ storyCopyBtnText: {
     borderColor: T.line,
     backgroundColor: "#0A0A0A",
   },
+
   previewVideoStage: {
     width: "100%",
     aspectRatio: 16 / 9,
@@ -2917,21 +3021,25 @@ storyCopyBtnText: {
     justifyContent: "center",
     alignItems: "center",
   },
+
   previewVideo: {
     width: "100%",
     height: "100%",
   },
+
   previewLoadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.45)",
     justifyContent: "center",
     alignItems: "center",
   },
+
   previewLoadingText: {
     color: T.text,
     marginTop: 10,
     fontWeight: "700",
   },
+
   previewErrorOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.62)",
@@ -2939,26 +3047,31 @@ storyCopyBtnText: {
     alignItems: "center",
     paddingHorizontal: 20,
   },
+
   previewErrorText: {
     color: T.text,
     textAlign: "center",
     lineHeight: 22,
     marginBottom: 14,
   },
+
   previewErrorActions: {
     flexDirection: "row",
     gap: 10,
   },
+
   previewRetryBtn: {
     backgroundColor: T.olive,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
+
   previewRetryText: {
     color: "#111",
     fontWeight: "900",
   },
+
   previewAltBtn: {
     borderWidth: 1,
     borderColor: T.line,
@@ -2967,10 +3080,12 @@ storyCopyBtnText: {
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
+
   previewAltText: {
     color: T.text,
     fontWeight: "700",
   },
+
   previewMetaRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -2978,10 +3093,12 @@ storyCopyBtnText: {
     marginBottom: 8,
     gap: 12,
   },
+
   previewMeta: {
     color: T.sub,
     fontSize: 13,
   },
+
   previewMetaStrong: {
     color: T.text,
     fontWeight: "800",
