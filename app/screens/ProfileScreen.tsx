@@ -999,7 +999,7 @@ export default function ProfileScreen() {
   // ✅ A little extra bottom breathing room on mobile (esp. Safari / notches)
   const bottomPad = (isMobileLike ? 52 : 40) + Math.max(insets.bottom, 10);
 
-  const { refreshProfile } = useAuth();
+  const { refreshProfile, userId: authUserId, ready: authReady } = useAuth();
   const savingRef = useRef(false);
   const promptSignIn = useCallback((message: string) => {
     if (Platform.OS === "web") {
@@ -1231,27 +1231,25 @@ if (data) row = data as LevelRow;
     if (savingRef.current) return;
 
     setIsLoading(true);
-    try {
-      // 1) GET AUTH USER
-            const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
+try {
+  if (!authReady) return;
 
-      setCurrentUserId(authUser?.id ?? null);
+  const authUserIdLocal = authUserId ?? null;
+  setCurrentUserId(authUserIdLocal);
 
-      const targetId = targetIdParam ?? authUser?.id ?? null;
+  const targetId = targetIdParam ?? authUserIdLocal ?? null;
 
-      if (!targetId) {
-        setProfile(null);
-        setIsOwnProfile(false);
-        setMyJobs([]);
-        setUserJobs([]);
-        setAlreadyAppliedJobIds([]);
-        return;
-      }
+  if (!targetId) {
+    setProfile(null);
+    setIsOwnProfile(false);
+    setMyJobs([]);
+    setUserJobs([]);
+    setAlreadyAppliedJobIds([]);
+    return;
+  }
 
-      const own = !!authUser && targetId === authUser.id;
-      setIsOwnProfile(own);
+  const own = !!authUserIdLocal && targetId === authUserIdLocal;
+  setIsOwnProfile(own);
 
       // 2) LOAD PROFILE DATA
       const { data, error: userError } = await supabase
@@ -1284,17 +1282,17 @@ if (data) row = data as LevelRow;
 
         setSupportingCount(supportingRaw ?? 0);
 
-        if (!own) {
-          const { count: supportCheck } = await supabase
-            .from("user_supports")
-            .select("supported_id", { count: "exact", head: true })
-            .eq("supporter_id", authUser.id)
-            .eq("supported_id", targetId);
+        if (!own && authUserIdLocal) {
+  const { count: supportCheck } = await supabase
+    .from("user_supports")
+    .select("supported_id", { count: "exact", head: true })
+    .eq("supporter_id", authUserIdLocal)
+    .eq("supported_id", targetId);
 
-          setIsSupporting((supportCheck ?? 0) > 0);
-        } else {
-          setIsSupporting(false);
-        }
+  setIsSupporting((supportCheck ?? 0) > 0);
+} else {
+  setIsSupporting(false);
+}
       } catch (e) {
         console.log("Support load error:", e);
       }
@@ -1366,21 +1364,21 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
         ]);
       }
 
-      if (own) {
-        await fetchMyJobsWithApplicants(authUser.id);
-        setUserJobs([]);
-        setLoadingUserJobs(false);
-        setAlreadyAppliedJobIds([]);
-      } else {
-        setMyJobs([]);
-        await fetchUserJobs(targetId, authUser.id);
-      }
+      if (own && authUserIdLocal) {
+  await fetchMyJobsWithApplicants(authUserIdLocal);
+  setUserJobs([]);
+  setLoadingUserJobs(false);
+  setAlreadyAppliedJobIds([]);
+} else {
+  setMyJobs([]);
+  await fetchUserJobs(targetId, authUserIdLocal ?? "");
+}
     } catch (e) {
       console.log("fetchProfile fatal:", e);
     } finally {
       setIsLoading(false);
     }
-  }, [targetIdParam, loadGamificationMeta]);
+ }, [targetIdParam, loadGamificationMeta, authUserId, authReady]);
 
   useFocusEffect(
     useCallback(() => {
@@ -4687,7 +4685,7 @@ const renderSubmissionsSection = () => {
 
 /* ---------- MAIN RENDER ---------- */
 
-if (isLoading) {
+if (!authReady || isLoading) {
   return (
     <View
       style={{

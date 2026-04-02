@@ -575,7 +575,7 @@ function HostedVideoInline({
     (async () => {
       if (!src) return;
 
-      if (autoPlay && (Platform.OS !== 'web' || posterReady)) {
+      if (autoPlay) {
         if (Platform.OS === 'web') {
           if (htmlRef.current) {
             htmlRef.current.muted = true;
@@ -605,7 +605,7 @@ function HostedVideoInline({
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, autoPlay, posterReady]);
+  }, [src, autoPlay]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;

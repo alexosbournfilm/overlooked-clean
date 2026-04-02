@@ -7,8 +7,12 @@ import ChatsScreen from '../screens/ChatsScreen';
 import ChatRoomScreen from '../screens/ChatRoom';
 
 export type ChatsStackParamList = {
-  Chats: undefined;
-  ChatRoom: { conversation?: any; conversationId?: string };
+  ChatsHome: undefined;
+  ChatRoom: {
+    conversation?: any;
+    conversationId?: string;
+    peerUser?: any;
+  };
 };
 
 const Stack = createStackNavigator<ChatsStackParamList>();
@@ -68,12 +72,12 @@ export default function ChatsStack() {
       }}
     >
       <Stack.Screen
-        name="Chats"
-        component={ChatsScreen}
-        options={{
-          headerShown: false,
-        }}
-      />
+  name="ChatsHome"
+  component={ChatsScreen}
+  options={{
+    headerShown: false,
+  }}
+/>
 
       <Stack.Screen
         name="ChatRoom"

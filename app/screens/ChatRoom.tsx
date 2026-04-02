@@ -15,14 +15,16 @@ import {
   ActivityIndicator,
   Dimensions,
   RefreshControl,
+  BackHandler,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useGamification } from '../context/GamificationContext';
 import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { emitChatBadgeRefresh } from '../lib/chatBadgeEvents';
 
 /* ------------------------------- Noir palette ------------------------------- */
 const DARK_BG = '#000000';
@@ -86,10 +88,11 @@ const unhideKeyFor = (userId: string) => `OVERLOOKED_UNHIDE_SET:${userId}`;
 
 /* ---------------- Level-based ring color ---------------- */
 const getLevelRingColor = (level?: number | null): string => {
-  if (!level || level < 25) return '#FFFFFF'; // 1–24 or unknown
-  if (level < 50) return '#C0C0C0'; // 25–49
-  return '#FFD700'; // 50+
+  if (!level || level < 25) return '#FFFFFF';
+  if (level < 50) return '#C0C0C0';
+  return GOLD;
 };
+
 
 /* ------------------ keep chats visible after opening ------------------ */
 async function markConversationActive(conversationId: string) {
@@ -136,6 +139,7 @@ export default function ChatRoom() {
     conversationId: routeConversationId,
     peerUser: routePeerUser,
   } = route.params || {};
+    const routePeerUserId = routePeerUser?.id ?? null;
 
   const [conversation, setConversation] = useState<Conversation | null>(
     routeConversation ?? null
@@ -169,6 +173,8 @@ export default function ChatRoom() {
   const [members, setMembers] = useState<Member[]>([]);
   const [membersRefreshing, setMembersRefreshing] =
     useState(false);
+    const [isBlockedByPeer, setIsBlockedByPeer] = useState(false);
+const [haveIBlockedPeer, setHaveIBlockedPeer] = useState(false);
 
   const [loadState, setLoadState] =
     useState<LoadState>(() =>
@@ -193,71 +199,147 @@ export default function ChatRoom() {
 
   /* --------------------------- bootstrap convo --------------------------- */
   useEffect(() => {
-    const nextId: string | null =
-      (routeConversationId as string | undefined) ??
-      (routeConversation?.id as string | undefined) ??
-      null;
+  const nextId: string | null =
+    (routeConversationId as string | undefined) ??
+    (routeConversation?.id as string | undefined) ??
+    null;
 
-    if (!nextId) {
-      setLoadState('missing');
-      return;
-    }
+  let cancelled = false;
 
-    if (conversation?.id === nextId) {
-      if (routePeerUser) setPeerUser(routePeerUser);
-      if (loadState !== 'ready') setLoadState('ready');
-      return;
-    }
-
-    let cancelled = false;
-    setMessages([]);
-    setPeerUser(routePeerUser ?? null);
-
-    if (
-      routeConversation &&
-      routeConversation.id === nextId
-    ) {
+  const bootstrapConversation = async () => {
+    if (routeConversation && routeConversation.id) {
       if (!cancelled) {
-        setConversation(
-          routeConversation as Conversation
-        );
+        setConversation(routeConversation as Conversation);
+        if (routePeerUser) setPeerUser(routePeerUser);
         setLoadState('ready');
       }
       return;
     }
 
-    setLoadState('checking');
-    (async () => {
+    if (nextId) {
+      if (conversation?.id === nextId) {
+        if (routePeerUser) setPeerUser(routePeerUser);
+        if (loadState !== 'ready') setLoadState('ready');
+        return;
+      }
+
+      if (!cancelled) {
+        setMessages([]);
+        setPeerUser(routePeerUser ?? null);
+        setLoadState('checking');
+      }
+
       const { data, error } = await supabase
         .from('conversations')
         .select(
-          // ✅ ADDED: group_avatar_url + created_by
           'id,label,is_group,is_city_group,city_id,participant_ids,last_message_content,last_message_sent_at,created_at,group_avatar_url,created_by'
         )
         .eq('id', nextId)
         .single();
+
       if (cancelled) return;
+
       if (error || !data) {
         setLoadState('missing');
         return;
       }
+
       setConversation(data as Conversation);
       setLoadState('ready');
-    })();
+      return;
+    }
 
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    routeConversationId,
-    routeConversation,
-    routePeerUser,
-  ]);
+    // If opened from Profile with only peerUser, find existing DM
+    if (routePeerUserId) {
+      if (!cancelled) {
+        setMessages([]);
+        setPeerUser(routePeerUser ?? null);
+        setLoadState('checking');
+      }
+
+      const { data: meData } = await supabase.auth.getUser();
+      const myId = meData?.user?.id;
+
+      if (!myId) {
+        if (!cancelled) setLoadState('missing');
+        return;
+      }
+
+      const { data: conversationsData, error } = await supabase
+        .from('conversations')
+        .select(
+          'id,label,is_group,is_city_group,city_id,participant_ids,last_message_content,last_message_sent_at,created_at,group_avatar_url,created_by'
+        )
+        .eq('is_group', false)
+        .contains('participant_ids', [myId, routePeerUserId]);
+
+      if (cancelled) return;
+
+      if (error) {
+        setLoadState('missing');
+        return;
+      }
+
+      const existingDm = (conversationsData || []).find(
+        (c: any) =>
+          Array.isArray(c.participant_ids) &&
+          c.participant_ids.length === 2 &&
+          c.participant_ids.includes(myId) &&
+          c.participant_ids.includes(routePeerUserId)
+      );
+
+      if (existingDm) {
+        setConversation(existingDm as Conversation);
+        setLoadState('ready');
+        return;
+      }
+
+      // Create DM if none exists
+      const { data: createdDm, error: createError } = await supabase
+        .from('conversations')
+        .insert([
+          {
+            is_group: false,
+            is_city_group: false,
+            participant_ids: [myId, routePeerUserId],
+            label: null,
+            last_message_content: null,
+            last_message_sent_at: null,
+          },
+        ])
+        .select(
+          'id,label,is_group,is_city_group,city_id,participant_ids,last_message_content,last_message_sent_at,created_at,group_avatar_url,created_by'
+        )
+        .single();
+
+      if (cancelled) return;
+
+      if (createError || !createdDm) {
+        setLoadState('missing');
+        return;
+      }
+
+      setConversation(createdDm as Conversation);
+      setLoadState('ready');
+      return;
+    }
+
+    if (!cancelled) {
+      setLoadState('missing');
+    }
+  };
+
+  bootstrapConversation();
+
+  return () => {
+    cancelled = true;
+  };
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [routeConversationId, routeConversation, routePeerUser]);
 
   useEffect(() => {
     if (loadState === 'missing') {
-      navigation.replace('Chats' as any);
+      navigation.replace('ChatsHome' as never);
       setTimeout(() => {
         try {
           Alert.alert(
@@ -270,9 +352,82 @@ export default function ChatRoom() {
   }, [loadState, navigation]);
 
   useEffect(() => {
-    if (loadState === 'ready' && conversation?.id)
-      markConversationActive(conversation.id);
-  }, [loadState, conversation?.id]);
+  if (loadState !== 'ready' || !conversation?.id || !userId) return;
+
+  markConversationActive(conversation.id);
+
+  supabase
+    .from('conversation_reads')
+    .upsert(
+      {
+        user_id: userId,
+        conversation_id: conversation.id,
+        last_read_at: new Date().toISOString(),
+      },
+      {
+        onConflict: 'user_id,conversation_id',
+      }
+    )
+    .then(({ error }) => {
+      if (error) {
+        console.error('Failed to mark conversation read:', error.message);
+        return;
+      }
+
+      emitChatBadgeRefresh();
+    });
+}, [loadState, conversation?.id, userId]);
+
+useFocusEffect(
+  React.useCallback(() => {
+    if (loadState !== 'ready' || !conversation?.id || !userId) return;
+
+    supabase
+      .from('conversation_reads')
+      .upsert(
+        {
+          user_id: userId,
+          conversation_id: conversation.id,
+          last_read_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'user_id,conversation_id',
+        }
+      )
+      .then(({ error }) => {
+        if (error) {
+          console.error('Failed to mark conversation read on focus:', error.message);
+          return;
+        }
+
+        emitChatBadgeRefresh();
+      });
+  }, [loadState, conversation?.id, userId])
+);
+
+useFocusEffect(
+  React.useCallback(() => {
+    const onBackPress = () => {
+  if (navigation.canGoBack()) {
+    navigation.goBack();
+  } else {
+    navigation.navigate('ChatsHome' as never);
+  }
+  return true;
+};
+
+    if (Platform.OS === 'android') {
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        onBackPress
+      );
+
+      return () => subscription.remove();
+    }
+
+    return undefined;
+  }, [navigation])
+);
 
   /* ------------------------------ peer / city ----------------------------- */
   // Load peer with level & avatar if DM
@@ -313,6 +468,26 @@ export default function ChatRoom() {
   }, [loadState, conversation, peerUser?.id]);
 
   useEffect(() => {
+  (async () => {
+    if (loadState !== 'ready') return;
+    if (!conversation || conversation.is_group) {
+      setIsBlockedByPeer(false);
+      setHaveIBlockedPeer(false);
+      return;
+    }
+
+    const { data: meData } = await supabase.auth.getUser();
+    const myId = meData?.user?.id;
+    if (!myId) return;
+
+    const otherId = conversation.participant_ids?.find((pid) => pid !== myId);
+    if (!otherId) return;
+
+    await checkBlockStatus(myId, otherId);
+  })();
+}, [loadState, conversation?.id, conversation?.is_group, conversation?.participant_ids]);
+
+  useEffect(() => {
     (async () => {
       if (loadState !== 'ready') return;
       if (
@@ -347,12 +522,41 @@ export default function ChatRoom() {
     conversation?.city_id,
   ]);
 
-  /* ------------------------------- header UI ------------------------------ */
-  const goBackToChats = () =>
-    navigation.canGoBack()
-      ? navigation.goBack()
-      : navigation.navigate('Chats' as any);
+  const checkBlockStatus = async (myId: string, otherId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('blocked_users')
+      .select('blocker_id, blocked_id')
+      .or(
+        `and(blocker_id.eq.${otherId},blocked_id.eq.${myId}),and(blocker_id.eq.${myId},blocked_id.eq.${otherId})`
+      );
 
+    if (error) {
+      console.error('Block status error:', error.message);
+      return;
+    }
+
+    const rows = data || [];
+
+    const blockedByThem = rows.some(
+      (r: any) => r.blocker_id === otherId && r.blocked_id === myId
+    );
+
+    const blockedByMe = rows.some(
+      (r: any) => r.blocker_id === myId && r.blocked_id === otherId
+    );
+
+    setIsBlockedByPeer(blockedByThem);
+    setHaveIBlockedPeer(blockedByMe);
+  } catch (e) {
+    console.error('checkBlockStatus error:', e);
+  }
+};
+
+  /* ------------------------------- header UI ------------------------------ */
+  const goBackToChats = () => {
+  navigation.navigate('ChatsHome' as never);
+};
   const openPeerProfile = async () => {
     if (peerUser?.id) {
       navigation.navigate('Profile', {
@@ -438,24 +642,21 @@ export default function ChatRoom() {
     if (loadState !== 'ready' || !conversation)
       return;
 
-    const headerLeft =
-  Platform.OS === 'android'
-    ? undefined
-    : () => (
-        <TouchableOpacity
-          onPress={goBackToChats}
-          style={{
-            paddingHorizontal: Platform.OS === 'ios' ? 2 : 8,
-            paddingVertical: 4,
-          }}
-        >
-          <Ionicons
-            name="chevron-back"
-            size={24}
-            color={TEXT}
-          />
-        </TouchableOpacity>
-      );
+    const headerLeft = () => (
+  <TouchableOpacity
+    onPress={goBackToChats}
+    style={{
+      paddingHorizontal: Platform.OS === 'ios' ? 2 : 8,
+      paddingVertical: 4,
+    }}
+  >
+    <Ionicons
+      name="chevron-back"
+      size={24}
+      color={TEXT}
+    />
+  </TouchableOpacity>
+);
 
     // Direct 1:1
     if (!conversation.is_group) {
@@ -733,6 +934,18 @@ export default function ChatRoom() {
         () => scrollToBottom(),
         100
       );
+      if (userData?.user?.id && conversation?.id) {
+  await supabase.from('conversation_reads').upsert(
+    {
+      user_id: userData.user.id,
+      conversation_id: conversation.id,
+      last_read_at: new Date().toISOString(),
+    },
+    {
+      onConflict: 'user_id,conversation_id',
+    }
+  );
+}
     }
   };
 
@@ -741,55 +954,19 @@ export default function ChatRoom() {
       supabase
         .channel(`chat-room-${convId}`)
         .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-            filter: `conversation_id=eq.${convId}`,
-          },
-          async (payload) => {
-            const newMessage =
-              payload.new as Message;
-            setMessages((prev) => [
-              ...prev,
-              newMessage,
-            ]);
-            if (
-              newMessage.sender_id &&
-              !userLookup[
-                newMessage
-                  .sender_id
-              ]
-            ) {
-              const { data: u } =
-                await supabase
-                  .from(
-                    'users'
-                  )
-                  .select(
-                    'id, full_name'
-                  )
-                  .eq(
-                    'id',
-                    newMessage.sender_id
-                  )
-                  .single();
-              if (u)
-                setUserLookup(
-                  (m) => ({
-                    ...m,
-                    [u.id]: {
-                      id: u.id,
-                      full_name:
-                        u.full_name,
-                    },
-                  })
-                );
-            }
-            scrollToBottom();
-          }
-        )
+  'postgres_changes',
+  {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'messages',
+    filter: `conversation_id=eq.${convId}`,
+  },
+  async () => {
+    await fetchUserAndMessages();
+    scrollToBottom();
+    emitChatBadgeRefresh();
+  }
+)
         .subscribe();
     messageChannelRef.current =
       messageChannel;
@@ -884,12 +1061,22 @@ export default function ChatRoom() {
 
   /* -------------------------------- sending -------------------------------- */
   const sendMessage = async () => {
-    if (
-      !input.trim() ||
-      !userId ||
-      !conversation?.id
-    )
-      return;
+  if (conversation?.is_group === false && isBlockedByPeer) {
+    Alert.alert('Cannot message user', "You can't message this user.");
+    return;
+  }
+
+  if (conversation?.is_group === false && haveIBlockedPeer) {
+    Alert.alert('User blocked', 'Unblock this user to send messages.');
+    return;
+  }
+
+  if (
+    !input.trim() ||
+    !userId ||
+    !conversation?.id
+  )
+    return;
     const text = input.trim();
     setInput('');
     const { error } =
@@ -910,10 +1097,25 @@ export default function ChatRoom() {
       );
       return;
     }
-    updateConversationLastMessage(
-      conversation.id,
-      text
-    );
+    await updateConversationLastMessage(
+  conversation.id,
+  text
+);
+
+await supabase.from('conversation_reads').upsert(
+  {
+    user_id: userId,
+    conversation_id: conversation.id,
+    last_read_at: new Date().toISOString(),
+  },
+  {
+    onConflict: 'user_id,conversation_id',
+  }
+);
+
+await fetchUserAndMessages();
+scrollToBottom();
+emitChatBadgeRefresh();
   };
 
   const uploadImageAndGetUrl = async (
@@ -945,7 +1147,17 @@ export default function ChatRoom() {
   };
 
   const sendFile = async () => {
-    try {
+  if (conversation?.is_group === false && isBlockedByPeer) {
+    Alert.alert('Cannot message user', "You can't message this user.");
+    return;
+  }
+
+  if (conversation?.is_group === false && haveIBlockedPeer) {
+    Alert.alert('User blocked', 'Unblock this user to send messages.');
+    return;
+  }
+
+  try {
       const result =
         await DocumentPicker.getDocumentAsync(
           {
@@ -1002,10 +1214,28 @@ export default function ChatRoom() {
           );
           return;
         }
-        updateConversationLastMessage(
-          conversation.id,
-          '[Photo]'
-        );
+        await updateConversationLastMessage(
+  conversation.id,
+  '[Photo]'
+);
+
+await supabase.from('conversation_reads').upsert(
+  {
+    user_id: userId,
+    conversation_id: conversation.id,
+    last_read_at: new Date().toISOString(),
+  },
+  {
+    onConflict: 'user_id,conversation_id',
+  }
+);
+
+await fetchUserAndMessages();
+scrollToBottom();
+emitChatBadgeRefresh();
+await fetchUserAndMessages();
+scrollToBottom();
+emitChatBadgeRefresh();
       } else {
         const fileName =
           asset.name ||
@@ -1033,10 +1263,28 @@ export default function ChatRoom() {
           );
           return;
         }
-        updateConversationLastMessage(
-          conversation.id,
-          content
-        );
+        await updateConversationLastMessage(
+  conversation.id,
+  content
+);
+
+await supabase.from('conversation_reads').upsert(
+  {
+    user_id: userId,
+    conversation_id: conversation.id,
+    last_read_at: new Date().toISOString(),
+  },
+  {
+    onConflict: 'user_id,conversation_id',
+  }
+);
+
+await fetchUserAndMessages();
+scrollToBottom();
+emitChatBadgeRefresh();
+await fetchUserAndMessages();
+scrollToBottom();
+emitChatBadgeRefresh();
       }
     } catch (e: any) {
       setSendingImage(false);
@@ -1281,7 +1529,8 @@ export default function ChatRoom() {
     );
   };
 
-  
+  const messagingDisabled =
+  conversation?.is_group === false && (isBlockedByPeer || haveIBlockedPeer);
 const isScreenReady = loadState === 'ready' && !!conversation?.id;
   return (
     <KeyboardAvoidingView
@@ -1325,10 +1574,10 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
 
     <View style={styles.inputBar}>
       <TouchableOpacity
-        onPress={sendFile}
-        style={styles.iconBtn}
-        disabled={sendingImage}
-      >
+  onPress={sendFile}
+  style={styles.iconBtn}
+  disabled={sendingImage || messagingDisabled}
+>
         {sendingImage ? (
           <ActivityIndicator color={TEXT} />
         ) : (
@@ -1337,18 +1586,30 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
       </TouchableOpacity>
 
       <TextInput
-        value={input}
-        onChangeText={handleTyping}
-        placeholder="Type a message…"
-        placeholderTextColor={SUBTLE}
-        style={styles.input}
-        multiline={Platform.OS === 'web'}
-        onKeyPress={handleWebKeyPress}
-      />
+  value={input}
+  onChangeText={handleTyping}
+  placeholder={
+    isBlockedByPeer
+      ? "You can't message this user"
+      : haveIBlockedPeer
+      ? 'Unblock this user to message them'
+      : 'Type a message…'
+  }
+  placeholderTextColor={SUBTLE}
+  style={styles.input}
+  multiline={Platform.OS === 'web'}
+  onKeyPress={handleWebKeyPress}
+  editable={!messagingDisabled}
+  {...(Platform.OS === 'web' ? ({ tabIndex: 0 } as any) : {})}
+/>
 
-      <TouchableOpacity onPress={sendMessage} style={styles.sendBtn}>
-        <Ionicons name="send" size={18} color="#000" />
-      </TouchableOpacity>
+      <TouchableOpacity
+  onPress={sendMessage}
+  style={[styles.sendBtn, messagingDisabled && { opacity: 0.5 }]}
+  disabled={messagingDisabled}
+>
+  <Ionicons name="send" size={18} color="#000" />
+</TouchableOpacity>
     </View>
   </>
 )}
@@ -1416,15 +1677,13 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
         </View>
       </Modal>
 
-      {/* Members sheet */}
+            {/* Members sheet */}
       <Modal
-        visible={membersVisible}
+        visible={membersVisible && !!conversation}
         transparent
         animationType="slide"
         onRequestClose={() =>
-          setMembersVisible(
-            false
-          )
+          setMembersVisible(false)
         }
       >
         <Pressable
@@ -1451,30 +1710,21 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
             }
           >
             <Text
-              style={
-                styles.sheetTitle
-              }
-            >
-              {conversation.is_city_group
-                ? cityMeta.name ||
-                  'City Members'
-                : conversation.label ||
-                  'Group Members'}
-            </Text>
-            <Text
-              style={
-                styles.sheetCount
-              }
-            >
-              {Array.isArray(
-                conversation.participant_ids
-              )
-                ? conversation
-                    .participant_ids
-                    .length
-                : 0}{' '}
-              members
-            </Text>
+  style={styles.sheetTitle}
+>
+  {conversation?.is_city_group
+    ? cityMeta.name || 'City Members'
+    : conversation?.label || 'Group Members'}
+</Text>
+
+<Text
+  style={styles.sheetCount}
+>
+  {Array.isArray(conversation?.participant_ids)
+    ? conversation?.participant_ids.length
+    : 0}{' '}
+  members
+</Text>
           </View>
 
           {membersLoading ? (
@@ -1812,7 +2062,7 @@ const styles = StyleSheet.create({
   },
   input: {
   flex: 1,
-  backgroundColor: '#0A0A0A', // slightly lifted from black, but still blends
+  backgroundColor: '#0A0A0A',
   color: TEXT,
   borderRadius: 999,
   paddingHorizontal: 16,
@@ -1821,6 +2071,12 @@ const styles = StyleSheet.create({
   borderWidth: 1,
   borderColor: '#111111',
   fontSize: 16,
+  ...(Platform.OS === 'web'
+    ? ({
+        outlineStyle: 'none',
+        boxShadow: 'none',
+      } as any)
+    : {}),
 },
   sendBtn: {
     backgroundColor: GOLD,

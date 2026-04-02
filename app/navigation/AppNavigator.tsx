@@ -160,11 +160,7 @@ export default function AppNavigator({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  useEffect(() => {
-    if (userId && expired) {
-      supabase.auth.signOut();
-    }
-  }, [userId, expired]);
+  
 
   // --------------------------------------------------------------
   // Global loading

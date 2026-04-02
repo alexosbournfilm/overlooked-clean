@@ -21,8 +21,7 @@ import {
   Image,
   ActivityIndicator,
   InteractionManager,
-  AppState,
-  AppStateStatus,
+  
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,6 +36,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 import WorkshopScreen from '../screens/WorkshopScreen';
 import WorkshopSubmitScreen from '../screens/WorkshopSubmitScreen';
 import { useAuth } from '../context/AuthProvider';
+import { subscribeChatBadgeRefresh } from '../lib/chatBadgeEvents';
 
 import { SettingsModalProvider } from '../context/SettingsModalContext';
 import SettingsButton from '../../components/SettingsButton';
@@ -1436,12 +1436,132 @@ export default function MainTabs() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { userId } = useAuth();
+const [chatUnreadCount, setChatUnreadCount] = useState(0);
+const [badgeUserId, setBadgeUserId] = useState<string | null>(null);
+const navUnreadRefreshTimeout = useRef<any>(null);
+const unreadRequestInFlight = useRef(false);
+const unreadRefreshTimeout = useRef<any>(null);
 const isGuest = !userId;
-  useEffect(() => {
-    if (!userId) return;
+useEffect(() => {
+  let mounted = true;
 
-    registerAndSavePushToken(userId);
-  }, [userId]);
+  const syncUser = async () => {
+    const { data } = await supabase.auth.getUser();
+    if (mounted) {
+      setBadgeUserId(data?.user?.id ?? null);
+    }
+  };
+
+  syncUser();
+
+  const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
+    setBadgeUserId(session?.user?.id ?? null);
+  });
+
+  return () => {
+    mounted = false;
+    authSub?.subscription?.unsubscribe?.();
+  };
+}, []);
+const loadChatUnreadCount = useCallback(async () => {
+  if (!badgeUserId) {
+    setChatUnreadCount(0);
+    return;
+  }
+
+  if (unreadRequestInFlight.current) {
+    return;
+  }
+
+  unreadRequestInFlight.current = true;
+
+  try {
+    const { data: conversations, error: convoError } = await supabase
+      .from('conversations')
+      .select('id')
+      .contains('participant_ids', [badgeUserId]);
+
+    if (convoError) {
+      console.error('Unread count conversations error:', convoError.message);
+      return;
+    }
+
+    const conversationIds = (conversations || []).map((c: any) => c.id);
+
+    if (!conversationIds.length) {
+      setChatUnreadCount(0);
+      return;
+    }
+
+    const { data: reads, error: readsError } = await supabase
+      .from('conversation_reads')
+      .select('conversation_id, last_read_at')
+      .eq('user_id', badgeUserId)
+      .in('conversation_id', conversationIds);
+
+    if (readsError) {
+      console.error('Unread count reads error:', readsError.message);
+      return;
+    }
+
+    const readsMap = new Map<string, string>();
+    (reads || []).forEach((row: any) => {
+      readsMap.set(row.conversation_id, row.last_read_at);
+    });
+
+    const { data: messages, error: msgError } = await supabase
+      .from('messages')
+      .select('conversation_id, sent_at, sender_id')
+      .in('conversation_id', conversationIds)
+      .neq('sender_id', badgeUserId);
+
+    if (msgError) {
+      console.error('Unread count messages error:', msgError.message);
+      return;
+    }
+
+    const unreadConversationIds = new Set<string>();
+
+    (messages || []).forEach((msg: any) => {
+      const lastReadAt = readsMap.get(msg.conversation_id);
+      if (!lastReadAt || new Date(msg.sent_at).getTime() > new Date(lastReadAt).getTime()) {
+        unreadConversationIds.add(msg.conversation_id);
+      }
+    });
+
+    setChatUnreadCount(unreadConversationIds.size);
+  } catch (e: any) {
+    console.error('loadChatUnreadCount error:', e?.message || e);
+  } finally {
+    unreadRequestInFlight.current = false;
+  }
+}, [badgeUserId]);
+const queueUnreadRefresh = useCallback(() => {
+  if (unreadRefreshTimeout.current) {
+    clearTimeout(unreadRefreshTimeout.current);
+  }
+
+  unreadRefreshTimeout.current = setTimeout(() => {
+    loadChatUnreadCount();
+  }, 250);
+}, [loadChatUnreadCount]);
+useEffect(() => {
+  const unsubscribe = subscribeChatBadgeRefresh(() => {
+    queueUnreadRefresh();
+  });
+
+  return unsubscribe;
+}, [queueUnreadRefresh]);
+    
+  useEffect(() => {
+  if (!badgeUserId) {
+    setChatUnreadCount(0);
+    return;
+  }
+
+  registerAndSavePushToken(badgeUserId);
+  loadChatUnreadCount();
+}, [badgeUserId, loadChatUnreadCount]);
 
   const isPhone = width < 420;
   const isTiny = width < 360;
@@ -1459,69 +1579,57 @@ const updateHideTopBar = useCallback((next: boolean) => {
 
 const shouldHideTopBar = false;
 
-  const lastResumeAt = useRef(0);
+  
 
-  const resumeWarmAuth = useCallback(async () => {
-    const now = Date.now();
-    if (now - lastResumeAt.current < 800) return;
-    lastResumeAt.current = now;
 
-    try {
-      await supabase.auth.getSession();
-    } catch {}
-
-    try {
-      supabase.auth.startAutoRefresh();
-    } catch {}
-  }, []);
-
-  const pauseAuth = useCallback(() => {
-    try {
-      supabase.auth.stopAutoRefresh();
-    } catch {}
-  }, []);
 
   useEffect(() => {
-    resumeWarmAuth();
+  if (!badgeUserId) return;
 
-    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
-      if (state === 'active') resumeWarmAuth();
-      else pauseAuth();
-    });
+  const channel = supabase
+    .channel(`main-tabs-chat-badge-${badgeUserId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+      },
+      () => {
+        queueUnreadRefresh();
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'conversations',
+      },
+      () => {
+        queueUnreadRefresh();
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'conversation_reads',
+        filter: `user_id=eq.${badgeUserId}`,
+      },
+      () => {
+        queueUnreadRefresh();
+      }
+    )
+    .subscribe();
 
-    return () => {
-      try {
-        sub.remove();
-      } catch {}
-      pauseAuth();
-    };
-  }, [pauseAuth, resumeWarmAuth]);
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [badgeUserId, queueUnreadRefresh]);
 
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-
-    const onVisibility = () => {
-      try {
-        if (document.visibilityState === 'visible') resumeWarmAuth();
-        else pauseAuth();
-      } catch {}
-    };
-
-    const onFocus = () => resumeWarmAuth();
-    const onBlur = () => pauseAuth();
-
-    document.addEventListener('visibilitychange', onVisibility);
-    window.addEventListener('focus', onFocus);
-    window.addEventListener('blur', onBlur);
-
-    onVisibility();
-
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-      window.removeEventListener('focus', onFocus);
-      window.removeEventListener('blur', onBlur);
-    };
-  }, [pauseAuth, resumeWarmAuth]);
+  
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -1601,42 +1709,68 @@ useEffect(() => {
       justifyContent: 'center',
       paddingVertical: 0,
     },
-    tabBarButton: (props: any) => <TabBarButton {...props} />,
+    tabBarButton: (props: any) => {
+  const isChatsTab = route.name === 'Chats';
+
+  return (
+    <TabBarButton
+      {...props}
+      onPress={() => {
+        props.onPress?.();
+
+        if (isChatsTab) {
+          setTimeout(() => {
+            loadChatUnreadCount();
+          }, 250);
+        }
+      }}
+    />
+  );
+},
     tabBarIcon: ({ color }: { color: string; focused: boolean }) => {
-      let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
+  let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
 
-      switch (route.name) {
-        case 'Featured':
-          icon = 'star-outline';
-          break;
-        case 'Jobs':
-          icon = 'briefcase-outline';
-          break;
-        case 'Challenge':
-          icon = 'trophy-outline';
-          break;
-        case 'Workshop':
-          icon = 'cube-outline';
-          break;
-        case 'Location':
-          icon = 'location-outline';
-          break;
-        case 'Chats':
-          icon = 'chatbubble-ellipses-outline';
-          break;
-        case 'Profile':
-          icon = 'person-outline';
-          break;
-      }
+  switch (route.name) {
+    case 'Featured':
+      icon = 'star-outline';
+      break;
+    case 'Jobs':
+      icon = 'briefcase-outline';
+      break;
+    case 'Challenge':
+      icon = 'trophy-outline';
+      break;
+    case 'Workshop':
+      icon = 'cube-outline';
+      break;
+    case 'Location':
+      icon = 'location-outline';
+      break;
+    case 'Chats':
+      icon = 'chatbubble-ellipses-outline';
+      break;
+    case 'Profile':
+      icon = 'person-outline';
+      break;
+  }
 
-      return (
-        <View style={styles.tabIconOnly}>
-          <Ionicons name={icon} size={isTiny ? 20 : 22} color={color} />
+  const showChatBadge = route.name === 'Chats' && chatUnreadCount > 0;
+  const badgeText = chatUnreadCount > 99 ? '99+' : String(chatUnreadCount);
+
+  return (
+    <View style={styles.tabIconOnly}>
+      <Ionicons name={icon} size={isTiny ? 20 : 22} color={color} />
+
+      {showChatBadge && (
+        <View style={styles.chatBadge}>
+          <Text style={styles.chatBadgeText}>{badgeText}</Text>
         </View>
-      );
-    },
+      )}
+    </View>
+  );
+},
   }),
-  [TABBAR_HEIGHT, isPhone, isTiny]
+  [TABBAR_HEIGHT, isPhone, isTiny, chatUnreadCount]
 );
 
   return (
@@ -1660,7 +1794,7 @@ useEffect(() => {
 >
           <Tab.Navigator
   screenOptions={screenOptions}
-  detachInactiveScreens={true}
+  detachInactiveScreens={false}
 >
             <Tab.Screen name="Featured" component={FeaturedWrapped} />
             <Tab.Screen name="Workshop" component={WorkshopWrapped} />
@@ -1736,9 +1870,33 @@ const styles = StyleSheet.create({
 },
 
   tabIconOnly: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  alignItems: 'center',
+  justifyContent: 'center',
+  position: 'relative',
+},
+
+chatBadge: {
+  position: 'absolute',
+  top: -6,
+  right: -10,
+  minWidth: 16,
+  height: 16,
+  borderRadius: 999,
+  backgroundColor: GOLD,
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingHorizontal: 4,
+  borderWidth: 1,
+  borderColor: '#000000',
+},
+
+chatBadgeText: {
+  color: '#000000',
+  fontSize: 9,
+  fontWeight: '900',
+  fontFamily: SYSTEM_SANS,
+  lineHeight: 10,
+},
 
   topBarRowContent: {
     flexDirection: 'row',

@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Platform } from "react-native";
+import { Platform, AppState } from "react-native";
 import { supabase } from "../lib/supabase";
 import { navigationRef } from "../navigation/navigationRef";
 import { CommonActions } from "@react-navigation/native";
@@ -134,6 +134,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   ------------------------------------------------------------------ */
   useEffect(() => {
     let mounted = true;
+        try {
+      supabase.auth.startAutoRefresh();
+    } catch {}
+        const appStateSub = AppState.addEventListener("change", (state) => {
+      try {
+        if (state === "active") {
+          supabase.auth.startAutoRefresh();
+        } else {
+          supabase.auth.stopAutoRefresh();
+        }
+      } catch {}
+    });
 
     const init = async () => {
       // ✅ On app start, DO NOT stay in recovery mode unless URL proves it
@@ -253,9 +265,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 
     return () => {
-      listener?.subscription?.unsubscribe?.();
-      mounted = false;
-    };
+  try {
+    appStateSub.remove();
+  } catch {}
+
+  listener?.subscription?.unsubscribe?.();
+  mounted = false;
+};
     // NOTE: loadProfile references profile state; we intentionally keep deps empty
     // to preserve original behavior and avoid re-subscribing to auth events.
     // eslint-disable-next-line react-hooks/exhaustive-deps

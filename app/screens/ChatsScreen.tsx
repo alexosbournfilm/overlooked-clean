@@ -35,6 +35,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import { emitChatBadgeRefresh } from '../lib/chatBadgeEvents';
 
 /* ────────────────────────────────────────────────────────────
    CINEMATIC NOIR — black/white with gold accent
@@ -111,9 +112,9 @@ type SimpleUser = {
 
 /* Level-based ring colors */
 const getLevelRingColor = (level?: number | null): string => {
-  if (!level || level < 25) return '#FFFFFF'; // 1–24 (and unknown)
-  if (level < 50) return '#C0C0C0'; // 25–49 silver
-  return '#FFD700'; // 50+ gold
+  if (!level || level < 25) return '#FFFFFF';
+  if (level < 50) return '#C0C0C0';
+  return GOLD;
 };
 
 // throttle helper
@@ -201,6 +202,9 @@ export default function ChatsScreen() {
   const [deletingId, setDeletingId] = useState<string | null>(
     null
   );
+  const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
+  const [optionsModalVisible, setOptionsModalVisible] = useState(false);
+const [selectedChat, setSelectedChat] = useState<any | null>(null);
 
   // create group modal
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
@@ -246,21 +250,32 @@ export default function ChatsScreen() {
     }
   };
 
-  // session -> meId
   useEffect(() => {
-    (async () => {
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
-      if (error) {
-        console.error('getSession error:', error.message);
-        return;
-      }
-      if (mountedRef.current)
-        setMeId(session?.user?.id ?? null);
-    })();
-  }, []);
+  let isMounted = true;
+
+  supabase.auth.getSession().then(({ data, error }) => {
+    if (error) {
+      console.error('getSession error:', error.message);
+      return;
+    }
+    if (isMounted) {
+      setMeId(data.session?.user?.id ?? null);
+    }
+  });
+
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((_event, session) => {
+    if (isMounted) {
+      setMeId(session?.user?.id ?? null);
+    }
+  });
+
+  return () => {
+    isMounted = false;
+    subscription.unsubscribe();
+  };
+}, []);
 
   // AsyncStorage helpers
   const loadLocalHides = useCallback(
@@ -395,6 +410,23 @@ export default function ChatsScreen() {
     },
     [loadLocalHides, loadUnhideSet]
   );
+  const fetchBlockedUsers = useCallback(async (uid: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('blocked_users')
+      .select('blocked_id')
+      .eq('blocker_id', uid);
+
+    if (error) {
+      console.error('Error fetching blocked users:', error.message);
+      return;
+    }
+
+    setBlockedUserIds(new Set((data || []).map((row: any) => row.blocked_id)));
+  } catch (e) {
+    console.error('fetchBlockedUsers error:', e);
+  }
+}, []);
 
   // Core fetch
   const fetchUserChats = useCallback(
@@ -424,6 +456,7 @@ export default function ChatsScreen() {
         }
 
         await fetchHides(uid);
+        await fetchBlockedUsers(uid);
 
         const { data: conversations, error } =
           await supabase
@@ -702,7 +735,7 @@ export default function ChatsScreen() {
         }
       }
     },
-    [meId, fetchHides]
+    [meId, fetchHides, fetchBlockedUsers]
   );
 
   // initial / focus fetch
@@ -1403,7 +1436,123 @@ export default function ChatsScreen() {
       setDeletingId(null);
     }
   };
+const blockUser = async (targetUserId: string) => {
+  if (!meId) return;
 
+  try {
+    const { error } = await supabase
+      .from('blocked_users')
+      .insert({
+        blocker_id: meId,
+        blocked_id: targetUserId,
+      });
+
+    if (error) {
+      showAlert('Could not block user', error.message);
+      return;
+    }
+
+    setBlockedUserIds((prev) => {
+      const next = new Set(prev);
+      next.add(targetUserId);
+      return next;
+    });
+
+    showAlert('User blocked', 'You have blocked this user.');
+  } catch (e: any) {
+    showAlert('Could not block user', String(e?.message ?? e));
+  }
+};
+
+const unblockUser = async (targetUserId: string) => {
+  if (!meId) return;
+
+  try {
+    const { error } = await supabase
+      .from('blocked_users')
+      .delete()
+      .eq('blocker_id', meId)
+      .eq('blocked_id', targetUserId);
+
+    if (error) {
+      showAlert('Could not unblock user', error.message);
+      return;
+    }
+
+    setBlockedUserIds((prev) => {
+      const next = new Set(prev);
+      next.delete(targetUserId);
+      return next;
+    });
+
+    showAlert('User unblocked', 'They can message you again.');
+  } catch (e: any) {
+    showAlert('Could not unblock user', String(e?.message ?? e));
+  }
+};
+
+const openChatOptions = (chat: any) => {
+  if (!chat?.peerUser?.id) {
+    removeChatForMe(chat);
+    return;
+  }
+
+  const targetUserId = chat.peerUser.id;
+  const isBlocked = blockedUserIds.has(targetUserId);
+  const displayName = chat.peerUser.full_name || 'User';
+
+  if (Platform.OS === 'web') {
+  setSelectedChat(chat);
+  setOptionsModalVisible(true);
+  return;
+}
+
+  Alert.alert(displayName, 'Choose an action', [
+  {
+  text: isBlocked ? 'Unblock' : 'Block',
+  onPress: () =>
+    isBlocked
+      ? unblockUser(targetUserId)
+      : blockUser(targetUserId),
+},
+  {
+    text: 'Delete',
+    style: 'destructive',
+    onPress: () => removeChatForMe(chat),
+  },
+  {
+    text: 'Cancel',
+    style: 'cancel',
+  },
+]);
+};
+
+const closeOptionsModal = () => {
+  setOptionsModalVisible(false);
+  setSelectedChat(null);
+};
+
+const handleWebBlockToggle = async () => {
+  if (!selectedChat?.peerUser?.id) return;
+
+  const targetUserId = selectedChat.peerUser.id;
+  const isBlocked = blockedUserIds.has(targetUserId);
+
+  closeOptionsModal();
+
+  if (isBlocked) {
+    await unblockUser(targetUserId);
+  } else {
+    await blockUser(targetUserId);
+  }
+};
+
+const handleWebDelete = async () => {
+  if (!selectedChat) return;
+  const chatToDelete = selectedChat;
+  closeOptionsModal();
+  await removeChatForMe(chatToDelete);
+};
   /* -------- row renderer: chats (with level rings) -------- */
 
   const renderItem = ({
@@ -1469,7 +1618,10 @@ export default function ChatsScreen() {
         : 0;
     const isDeleting =
       deletingId === item.id;
-
+const isDirectBlocked =
+  !item.is_group &&
+  !!item?.peerUser?.id &&
+  blockedUserIds.has(item.peerUser.id);
     return (
       <Pressable
   android_ripple={{ color: '#1A1A1A' }}
@@ -1480,12 +1632,41 @@ export default function ChatsScreen() {
       opacity: 0.6,
     },
   ]}
-                onPress={() => {
+                onPress={async () => {
   if (isDeleting) return;
 
   if (isGuest) {
     promptSignIn('Create an account or sign in to open chats.');
     return;
+  }
+
+  if (isDirectBlocked) {
+  showAlert(
+    'User blocked',
+    'You have blocked this user. Unblock them to open the chat.'
+  );
+  return;
+}
+
+  try {
+    if (meId && item?.id) {
+      await supabase
+        .from('conversation_reads')
+        .upsert(
+          {
+            user_id: meId,
+            conversation_id: item.id,
+            last_read_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'user_id,conversation_id',
+          }
+        );
+
+      emitChatBadgeRefresh();
+    }
+  } catch (e: any) {
+    console.error('Failed to mark read from ChatsScreen:', e?.message || e);
   }
 
   navigation.navigate('ChatRoom', {
@@ -1518,13 +1699,11 @@ export default function ChatsScreen() {
               >
                 {avatarUri ? (
                   <Image
-                    source={{
-                      uri: avatarUri,
-                    }}
-                    style={
-                      styles.avatar
-                    }
-                  />
+  source={{
+    uri: avatarUri,
+  }}
+  style={styles.avatar as any}
+/>
                 ) : (
                   <View
                     style={[
@@ -1546,13 +1725,11 @@ export default function ChatsScreen() {
           {isCityGroup &&
             (avatarUri ? (
               <Image
-                source={{
-                  uri: avatarUri,
-                }}
-                style={
-                  styles.avatar
-                }
-              />
+  source={{
+    uri: avatarUri,
+  }}
+  style={styles.avatar as any}
+/>
             ) : (
               <View
                 style={[
@@ -1572,9 +1749,9 @@ export default function ChatsScreen() {
           {isNormalGroup &&
             (avatarUri ? (
               <Image
-                source={{ uri: avatarUri }}
-                style={styles.avatar}
-              />
+  source={{ uri: avatarUri }}
+  style={styles.avatar as any}
+/>
             ) : (
               <View
                 style={[
@@ -1604,15 +1781,17 @@ export default function ChatsScreen() {
               {title}
             </Text>
             <Text
-              style={
-                styles.chatMessage
-              }
-              numberOfLines={1}
-            >
-              {item.isTyping
-                ? 'Typing…'
-                : item.lastMessage}
-            </Text>
+  style={
+    styles.chatMessage
+  }
+  numberOfLines={1}
+>
+  {isDirectBlocked
+    ? 'Blocked user'
+    : item.isTyping
+    ? 'Typing…'
+    : item.lastMessage}
+</Text>
           </View>
         </View>
 
@@ -1650,62 +1829,48 @@ export default function ChatsScreen() {
             {timeAgo}
           </Text>
 
-          <View
-            style={
-              styles.trashHitBox
-            }
-            onStartShouldSetResponder={() =>
-              true
-            }
-                        onResponderRelease={() => {
-              if (isGuest) {
-                promptSignIn('Create an account or sign in to manage chats.');
-                return;
-              }
-              removeChatForMe(item);
-            }}
-          >
-            {isDeleting ? (
-              <ActivityIndicator
-                size="small"
-                color={
-                  T.accent
-                }
-              />
-            ) : (
-              <Ionicons
-  name="ellipsis-horizontal"
-  size={16}
-  color="#8A8A8A"
-/>
-            )}
-          </View>
+          <Pressable
+  style={styles.trashHitBox}
+  onPress={(e) => {
+    e.stopPropagation?.();
+
+    if (isGuest) {
+      promptSignIn('Create an account or sign in to manage chats.');
+      return;
+    }
+
+    openChatOptions(item);
+  }}
+>
+  {isDeleting ? (
+    <ActivityIndicator
+      size="small"
+      color={T.accent}
+    />
+  ) : (
+    <Ionicons
+      name="ellipsis-horizontal"
+      size={16}
+      color="#8A8A8A"
+    />
+  )}
+</Pressable>
         </View>
       </Pressable>
     );
   };
 
-  const filteredChats =
-    chats.filter((chat) => {
-      const normalizedTitle =
-        chat.is_group
-          ? chat.is_city_group
-            ? chat
-                .cityInfo
-                ?.name ||
-              chat.label ||
-              ''
-            : chat.label ??
-              'group chat'
-          : chat
-              .derivedTitle?.toLowerCase?.() ||
-            'conversation';
-      return normalizedTitle
-        .toLowerCase()
-        .includes(
-          search.toLowerCase()
-        );
-    });
+  const filteredChats = chats.filter((chat) => {
+  const normalizedTitle = chat.is_group
+    ? chat.is_city_group
+      ? chat.cityInfo?.name || chat.label || ''
+      : chat.label ?? 'group chat'
+    : chat.derivedTitle?.toLowerCase?.() || 'conversation';
+
+  return normalizedTitle
+    .toLowerCase()
+    .includes(search.toLowerCase());
+});
 
   /* -------- row renderer: users (with rings) -------- */
 
@@ -1756,13 +1921,9 @@ export default function ChatsScreen() {
         >
           {avatarUri ? (
             <Image
-              source={{
-                uri: avatarUri,
-              }}
-              style={
-                styles.avatar
-              }
-            />
+  source={{ uri: avatarUri }}
+  style={styles.avatar as any}
+/>
           ) : (
             <View
               style={[
@@ -2077,6 +2238,52 @@ updateCellsBatchingPeriod={16}
         />
       )}
 
+      <Modal
+  visible={optionsModalVisible}
+  transparent
+  animationType="fade"
+  onRequestClose={closeOptionsModal}
+>
+  <Pressable
+    style={styles.modalBackdrop}
+    onPress={closeOptionsModal}
+  />
+  <View style={styles.optionsModalCard}>
+    <Text style={styles.optionsModalTitle}>
+      {selectedChat?.peerUser?.full_name || 'Chat options'}
+    </Text>
+
+    <TouchableOpacity
+      style={styles.optionsModalButton}
+      onPress={handleWebBlockToggle}
+      activeOpacity={0.85}
+    >
+      <Text style={styles.optionsModalButtonText}>
+        {selectedChat?.peerUser?.id &&
+        blockedUserIds.has(selectedChat.peerUser.id)
+          ? 'Unblock'
+          : 'Block'}
+      </Text>
+    </TouchableOpacity>
+
+    <TouchableOpacity
+      style={[styles.optionsModalButton, styles.optionsDeleteButton]}
+      onPress={handleWebDelete}
+      activeOpacity={0.85}
+    >
+      <Text style={styles.optionsDeleteButtonText}>Delete</Text>
+    </TouchableOpacity>
+
+    <TouchableOpacity
+      style={styles.optionsModalCancel}
+      onPress={closeOptionsModal}
+      activeOpacity={0.85}
+    >
+      <Text style={styles.optionsModalCancelText}>Cancel</Text>
+    </TouchableOpacity>
+  </View>
+</Modal>
+
       {/* ───────────── Create Group Modal ───────────── */}
       <Modal
         visible={createGroupOpen}
@@ -2132,9 +2339,9 @@ updateCellsBatchingPeriod={16}
               <View style={styles.avatarPreviewRing}>
                 {groupAvatarLocalUri ? (
                   <Image
-                    source={{ uri: groupAvatarLocalUri }}
-                    style={styles.avatarPreview}
-                  />
+  source={{ uri: groupAvatarLocalUri }}
+  style={styles.avatarPreview as any}
+/>
                 ) : (
                   <View style={[styles.avatarPreview, styles.fallbackAvatar]}>
                     <Ionicons name="people-outline" size={20} color={T.sub} />
@@ -2174,7 +2381,7 @@ updateCellsBatchingPeriod={16}
                 >
                   <View style={[styles.avatarRingSmall, { borderColor: ringColor }]}>
                     {u.avatar_url ? (
-                      <Image source={{ uri: u.avatar_url }} style={styles.avatarSmall} />
+                      <Image source={{ uri: u.avatar_url }} style={styles.avatarSmall as any} />
                     ) : (
                       <View style={[styles.avatarSmall, styles.fallbackAvatar]}>
                         <Ionicons name="person-outline" size={16} color={T.sub} />
@@ -2236,6 +2443,71 @@ const styles = StyleSheet.create({
     backgroundColor: T.bg,
     paddingHorizontal: 14,
   },
+optionsModalCard: {
+  position: 'absolute',
+  top: '50%',
+  left: '50%',
+  width: 320,
+  transform: [{ translateX: -160 }, { translateY: -120 }],
+  backgroundColor: '#050505',
+  borderRadius: 20,
+  padding: 18,
+  borderWidth: 1,
+  borderColor: '#151515',
+},
+
+optionsModalTitle: {
+  color: T.text,
+  fontSize: 18,
+  fontWeight: '700',
+  fontFamily: SYSTEM_SANS,
+  marginBottom: 14,
+  textAlign: 'center',
+},
+
+optionsModalButton: {
+  backgroundColor: '#111111',
+  borderRadius: 14,
+  paddingVertical: 14,
+  paddingHorizontal: 14,
+  marginBottom: 10,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+optionsModalButtonText: {
+  color: T.text,
+  fontSize: 15,
+  fontWeight: '700',
+  fontFamily: SYSTEM_SANS,
+},
+
+optionsDeleteButton: {
+  backgroundColor: '#1A1010',
+  borderWidth: 1,
+  borderColor: '#3A1C1C',
+},
+
+optionsDeleteButtonText: {
+  color: '#FF8A8A',
+  fontSize: 15,
+  fontWeight: '700',
+  fontFamily: SYSTEM_SANS,
+},
+
+optionsModalCancel: {
+  marginTop: 4,
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingVertical: 12,
+},
+
+optionsModalCancelText: {
+  color: '#8F8F8F',
+  fontSize: 14,
+  fontWeight: '600',
+  fontFamily: SYSTEM_SANS,
+},
 
   /* Search header / tabs */
   searchHeader: {
@@ -2630,6 +2902,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: SYSTEM_SANS,
   },
+  
 
   createBtn: {
     marginTop: 16,
