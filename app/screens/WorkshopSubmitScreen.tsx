@@ -29,6 +29,7 @@ import { useMonthlyStreak } from "../lib/useMonthlyStreak";
 import { UpgradeModal } from "../../components/UpgradeModal";
 import dayjs from "dayjs";
 import * as Clipboard from "expo-clipboard";
+import * as ImagePicker from "expo-image-picker";
 
 /* ------------------------------- palette ------------------------------- */
 const GOLD = "#C6A664";
@@ -573,6 +574,7 @@ export default function WorkshopSubmitScreen() {
   const isMobileWeb = Platform.OS === "web" && width < 768;
   const isWide = width >= 1100;
   const isDesktopPreview = width >= 900;
+  const isPhone = width < 520;
 
   const mode: SubmitMode = route.params?.mode ?? "workshop";
   const isWorkshopMode = mode === "workshop";
@@ -848,7 +850,8 @@ export default function WorkshopSubmitScreen() {
   }, []);
 
   const pickThumbnail = async () => {
-    try {
+  try {
+    if (Platform.OS === "web") {
       const pick = await DocumentPicker.getDocumentAsync({
         type: ["image/*"] as any,
         copyToCacheDirectory: true,
@@ -862,7 +865,7 @@ export default function WorkshopSubmitScreen() {
 
       revokeCustomThumbObjectUrlIfAny();
 
-      if (Platform.OS === "web" && asset.file) {
+      if (asset.file) {
         const f: File = asset.file;
         const objUrl = URL.createObjectURL(f);
         customThumbObjectUrlRef.current = objUrl;
@@ -873,146 +876,67 @@ export default function WorkshopSubmitScreen() {
       if (asset.uri) {
         setCustomThumbUri(asset.uri);
       }
-    } catch (e: any) {
-      console.warn("pickThumbnail failed:", e?.message ?? e);
-      notify("Could not pick thumbnail", "Try a different image.", setStatus);
+
+      return;
     }
-  };
 
-  const pickFile = async () => {
-    try {
-      if (Platform.OS === "web") {
-        const tierNorm = (userTier ?? "").toLowerCase().trim();
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      notify("Permission needed", "Please allow photo library access.", setStatus);
+      return;
+    }
 
-        if (!tierNorm) {
-          notify("Loading your account…", "Try again in 1 second.", setStatus);
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 1,
+      allowsEditing: false,
+      selectionLimit: 1,
+    });
 
-          (async () => {
-            try {
-              const {
-                data: { user },
-                error: uErr,
-              } = await supabase.auth.getUser();
+    if (result.canceled) return;
 
-              if (uErr || !user) return;
+    const asset = result.assets?.[0];
+    if (!asset?.uri) return;
 
-              const { data: profile } = await supabase.from("users").select("tier").eq("id", user.id).single();
+    revokeCustomThumbObjectUrlIfAny();
+    setCustomThumbUri(asset.uri);
+  } catch (e: any) {
+    console.warn("pickThumbnail failed:", e?.message ?? e);
+    notify("Could not pick thumbnail", "Try a different image.", setStatus);
+  }
+};
 
-              if (profile?.tier) {
-                setUserTier(String(profile.tier).toLowerCase().trim());
-              }
-            } catch {}
-          })();
+ const pickFile = async () => {
+  try {
+    if (Platform.OS === "web") {
+      const tierNorm = (userTier ?? "").toLowerCase().trim();
 
-          return;
-        }
+      if (!tierNorm) {
+        notify("Loading your account…", "Try again in 1 second.", setStatus);
 
-        if (tierNorm !== "pro") {
-          setUpgradeVisible(true);
-          return;
-        }
-
-        setStatus(alreadyCompleted ? "Already completed — You already completed this workshop lesson." : "");
-        setDurationSec(null);
-        setThumbUri(null);
-        setThumbAspect(16 / 9);
-        setThumbLoading(false);
-
-        removeCustomThumbnail();
-        closePreview();
-
-        setLocalUri(null);
-        setWebFile(null);
-        setProgressPct(0);
-
-        const pick = await DocumentPicker.getDocumentAsync({
-          type: ["video/*"] as any,
-          copyToCacheDirectory: true,
-        });
-
-        if (pick.canceled) return;
-
-        const asset: any = pick.assets?.[0];
-        if (!asset?.uri) {
-          notify("No file", "Please choose a file.", setStatus);
-          return;
-        }
-
-        if (!asset.file) {
-          notify(
-            "Picker issue",
-            "Your browser didn’t provide the actual file object. Try selecting from device storage or use Chrome.",
-            setStatus
-          );
-          return;
-        }
-
-        let bytes: number | null = null;
-        const f: File = asset.file;
-        bytes = typeof f.size === "number" ? f.size : null;
-
-        if (objectUrlRef.current) {
+        (async () => {
           try {
-            URL.revokeObjectURL(objectUrlRef.current);
+            const {
+              data: { user },
+              error: uErr,
+            } = await supabase.auth.getUser();
+
+            if (uErr || !user) return;
+
+            const { data: profile } = await supabase
+              .from("users")
+              .select("tier")
+              .eq("id", user.id)
+              .single();
+
+            if (profile?.tier) {
+              setUserTier(String(profile.tier).toLowerCase().trim());
+            }
           } catch {}
-        }
+        })();
 
-        const objUrl = URL.createObjectURL(f);
-        objectUrlRef.current = objUrl;
-
-        setWebFile(f);
-        setLocalUri(objUrl);
-        setFileSizeBytes(bytes);
-
-        if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
-          notify(
-            "File too large",
-            `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
-            setStatus
-          );
-          resetSelectedFile();
-          return;
-        }
-
-        setThumbLoading(true);
-        const src = objectUrlRef.current ?? asset.uri;
-        const thumb = await captureFirstFrameWeb(src);
-
-        if (thumb?.dataUrl) {
-          setThumbUri(thumb.dataUrl);
-          setThumbAspect(thumb.aspect || 16 / 9);
-        } else {
-          setThumbUri(null);
-        }
-
-        setThumbLoading(false);
-        setStatus(`Loaded file • ${formatBytes(bytes)}`);
         return;
       }
-
-      const {
-        data: { user },
-        error: uErr,
-      } = await supabase.auth.getUser();
-
-      if (uErr) {
-        notify("Please try again", "We couldn’t verify your account right now.", setStatus);
-        return;
-      }
-      if (!user) {
-        notify("Please sign in", "You must be logged in to upload.", setStatus);
-        return;
-      }
-
-      const { data: profile, error: pErr } = await supabase.from("users").select("tier").eq("id", user.id).single();
-
-      if (pErr) {
-        notify("Please try again", "We couldn’t verify your Pro status right now.", setStatus);
-        return;
-      }
-
-      const tierNorm = String(profile?.tier ?? "").toLowerCase().trim();
-      setUserTier(tierNorm || null);
 
       if (tierNorm !== "pro") {
         setUpgradeVisible(true);
@@ -1045,19 +969,30 @@ export default function WorkshopSubmitScreen() {
         return;
       }
 
-      let bytes: number | null = null;
+      if (!asset.file) {
+        notify(
+          "Picker issue",
+          "Your browser didn’t provide the actual file object. Try selecting from device storage or use Chrome.",
+          setStatus
+        );
+        return;
+      }
 
-      if (typeof asset.size === "number") bytes = asset.size;
-      if (bytes == null) {
+      let bytes: number | null = null;
+      const f: File = asset.file;
+      bytes = typeof f.size === "number" ? f.size : null;
+
+      if (objectUrlRef.current) {
         try {
-          const info = await FileSystem.getInfoAsync(asset.uri, { size: true } as any);
-          // @ts-ignore
-          if (info?.exists && typeof (info as any)?.size === "number") bytes = (info as any).size;
+          URL.revokeObjectURL(objectUrlRef.current);
         } catch {}
       }
 
-      setWebFile(null);
-      setLocalUri(asset.uri);
+      const objUrl = URL.createObjectURL(f);
+      objectUrlRef.current = objUrl;
+
+      setWebFile(f);
+      setLocalUri(objUrl);
       setFileSizeBytes(bytes);
 
       if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
@@ -1071,30 +1006,128 @@ export default function WorkshopSubmitScreen() {
       }
 
       setThumbLoading(true);
+      const src = objectUrlRef.current ?? asset.uri;
+      const thumb = await captureFirstFrameWeb(src);
 
-      try {
-        const thumb = await VideoThumbnails.getThumbnailAsync(asset.uri, { time: 120 });
-        if (thumb?.uri) setThumbUri(thumb.uri);
-
-        // @ts-ignore
-        const w = (thumb as any)?.width;
-        // @ts-ignore
-        const h = (thumb as any)?.height;
-        if (typeof w === "number" && typeof h === "number" && w > 0 && h > 0) {
-          setThumbAspect(w / h);
-        }
-      } catch {
+      if (thumb?.dataUrl) {
+        setThumbUri(thumb.dataUrl);
+        setThumbAspect(thumb.aspect || 16 / 9);
+      } else {
         setThumbUri(null);
-      } finally {
-        setThumbLoading(false);
       }
 
+      setThumbLoading(false);
       setStatus(`Loaded file • ${formatBytes(bytes)}`);
-    } catch (e: any) {
-      console.warn("pickFile failed:", e?.message ?? e);
-      notify("Could not open picker", "Try again.", setStatus);
+      return;
     }
-  };
+
+    const {
+      data: { user },
+      error: uErr,
+    } = await supabase.auth.getUser();
+
+    if (uErr) {
+      notify("Please try again", "We couldn’t verify your account right now.", setStatus);
+      return;
+    }
+
+    if (!user) {
+      notify("Please sign in", "You must be logged in to upload.", setStatus);
+      return;
+    }
+
+    const { data: profile, error: pErr } = await supabase
+      .from("users")
+      .select("tier")
+      .eq("id", user.id)
+      .single();
+
+    if (pErr) {
+      notify("Please try again", "We couldn’t verify your Pro status right now.", setStatus);
+      return;
+    }
+
+    const tierNorm = String(profile?.tier ?? "").toLowerCase().trim();
+    setUserTier(tierNorm || null);
+
+    if (tierNorm !== "pro") {
+      setUpgradeVisible(true);
+      return;
+    }
+
+    setStatus(alreadyCompleted ? "Already completed — You already completed this workshop lesson." : "");
+    setDurationSec(null);
+    setThumbUri(null);
+    setThumbAspect(16 / 9);
+    setThumbLoading(false);
+
+    removeCustomThumbnail();
+    closePreview();
+
+    setLocalUri(null);
+    setWebFile(null);
+    setProgressPct(0);
+
+    const pick = await DocumentPicker.getDocumentAsync({
+      type: ["video/*"] as any,
+      copyToCacheDirectory: true,
+    });
+
+    if (pick.canceled) return;
+
+    const asset: any = pick.assets?.[0];
+    if (!asset?.uri) {
+      notify("No file", "Please choose a file.", setStatus);
+      return;
+    }
+
+    let bytes: number | null = null;
+
+    if (typeof asset.size === "number") bytes = asset.size;
+    if (bytes == null) {
+      try {
+        const info = await FileSystem.getInfoAsync(asset.uri, { size: true } as any);
+        if (info?.exists && typeof (info as any)?.size === "number") bytes = (info as any).size;
+      } catch {}
+    }
+
+    setWebFile(null);
+    setLocalUri(asset.uri);
+    setFileSizeBytes(bytes);
+
+    if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
+      notify(
+        "File too large",
+        `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
+        setStatus
+      );
+      resetSelectedFile();
+      return;
+    }
+
+    setThumbLoading(true);
+
+    try {
+      const thumb = await VideoThumbnails.getThumbnailAsync(asset.uri, { time: 120 });
+      if (thumb?.uri) setThumbUri(thumb.uri);
+
+      const w = (thumb as any)?.width;
+      const h = (thumb as any)?.height;
+      if (typeof w === "number" && typeof h === "number" && w > 0 && h > 0) {
+        setThumbAspect(w / h);
+      }
+    } catch {
+      setThumbUri(null);
+    } finally {
+      setThumbLoading(false);
+    }
+
+    setStatus(`Loaded file • ${formatBytes(bytes)}`);
+  } catch (e: any) {
+    console.warn("pickFile failed:", e?.message ?? e);
+    notify("Could not open picker", "Try again.", setStatus);
+  }
+};
 
   const onVideoLoaded = (payload: any) => {
     const dMs = payload?.durationMillis ?? 0;
@@ -1467,7 +1500,13 @@ export default function WorkshopSubmitScreen() {
     keyboardShouldPersistTaps="handled"
     bounces={false}
   >
-        <View style={[styles.pageWrap, isWide && styles.pageWrapWide]}>
+        <View
+  style={[
+    styles.pageWrap,
+    isWide && styles.pageWrapWide,
+    isPhone && styles.pageWrapPhone,
+  ]}
+>
           <View style={styles.topNavRow}>
             <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.goBack()} style={styles.backBtn}>
               <Text style={styles.backBtnText}>← Back</Text>
@@ -1483,7 +1522,7 @@ export default function WorkshopSubmitScreen() {
 
           <View style={[styles.twoCol, isWide && styles.twoColWide]}>
             <View style={[styles.col, isWide && styles.leftCol]}>
-              <View style={styles.card}>
+              <View style={[styles.card, isPhone && styles.cardPhone]}>
                 <Text style={styles.sectionKicker}>{leftTitle}</Text>
 
                 {isWorkshopMode ? (
@@ -1537,13 +1576,13 @@ export default function WorkshopSubmitScreen() {
             </View>
 
             <View style={[styles.col, isWide && styles.rightCol]}>
-              <View style={styles.card}>
+              <View style={[styles.card, isPhone && styles.cardPhone]}>
                 <View style={styles.formHeaderLite}>
                   <Text style={styles.formTitle}>{rightTitle}</Text>
                   <Text style={styles.formSubtitle}>{rightSubtitle}</Text>
                 </View>
 
-                <View style={styles.formBodyLite}>
+                <View style={[styles.formBodyLite, isPhone && styles.formBodyLitePhone]}>
                   <Text style={styles.label}>Title</Text>
                   <TextInput
                     style={styles.input}
@@ -1604,7 +1643,7 @@ export default function WorkshopSubmitScreen() {
                   </TouchableOpacity>
 
                   {localUri ? (
-                    <View style={styles.fileActionsRow}>
+                    <View style={[styles.fileActionsRow, isPhone && styles.fileActionsRowPhone]}>
                       <Pressable
                         onPress={pickFile}
                         style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.9 }]}
@@ -1671,7 +1710,7 @@ export default function WorkshopSubmitScreen() {
                         )}
                       </View>
 
-                      <View style={{ flexDirection: "row", gap: 10 }}>
+                      <View style={[styles.thumbActionsRow, isPhone && styles.thumbActionsRowPhone]}>
                         <Pressable
                           onPress={pickThumbnail}
                           style={({ pressed }) => [
@@ -2660,12 +2699,13 @@ const styles = StyleSheet.create({
   },
 
   previewModalMobile: {
-    width: "94%",
-    maxWidth: 720,
-    maxHeight: "82%",
-    alignSelf: "center",
-    marginTop: 24,
-  },
+  width: "94%",
+  maxWidth: 720,
+  maxHeight: "74%",
+  alignSelf: "center",
+  marginTop: 12,
+  padding: 14,
+},
 
   previewVideoWrapDesktop: {
     width: "100%",
@@ -2673,10 +2713,10 @@ const styles = StyleSheet.create({
   },
 
   previewVideoWrapMobile: {
-    width: "100%",
-    height: 240,
-    minHeight: 220,
-  },
+  width: "100%",
+  height: 200,
+  minHeight: 180,
+},
 
   thumbLoading: {
     alignItems: "center",
@@ -3114,12 +3154,13 @@ const styles = StyleSheet.create({
   },
 
   previewMetaRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 12,
-    marginBottom: 8,
-    gap: 12,
-  },
+  flexDirection: "row",
+  justifyContent: "space-between",
+  marginTop: 12,
+  marginBottom: 8,
+  gap: 12,
+  flexWrap: "wrap",
+},
 
   previewMeta: {
     color: T.sub,
@@ -3129,5 +3170,31 @@ const styles = StyleSheet.create({
   previewMetaStrong: {
     color: T.text,
     fontWeight: "800",
+  },
+    pageWrapPhone: {
+    paddingHorizontal: 8,
+    paddingTop: 20,
+  },
+
+  cardPhone: {
+    padding: 14,
+    borderRadius: 18,
+  },
+
+  formBodyLitePhone: {
+    gap: 14,
+  },
+
+  fileActionsRowPhone: {
+    flexDirection: "column",
+  },
+
+  thumbActionsRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+
+  thumbActionsRowPhone: {
+    flexDirection: "column",
   },
 });

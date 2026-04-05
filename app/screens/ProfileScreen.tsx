@@ -2868,69 +2868,7 @@ if (up.error) throw up.error;
 }
   /* ---------- apply to job in viewed user's profile ---------- */
 
-  const changeSubmissionThumbnail = async (submission: any) => {
-    try {
-      setThumbUploadingId(submission.id);
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const pick = await DocumentPicker.getDocumentAsync({
-        type: ["image/*"] as any,
-        copyToCacheDirectory: true,
-        multiple: false,
-      });
-
-      if (pick.canceled) return;
-
-      const asset: any = pick.assets?.[0];
-      if (!asset?.uri && !asset?.file) throw new Error("No image selected");
-
-      let chosenUri: string | null = null;
-
-      // web: use object url
-      if (Platform.OS === "web" && asset.file) {
-        chosenUri = URL.createObjectURL(asset.file as File);
-      } else {
-        chosenUri = asset.uri;
-      }
-
-      if (!chosenUri) throw new Error("Could not read selected image");
-
-      const { publicUrl } = await uploadThumbnailToStorage({
-        userId: user.id,
-        thumbUri: chosenUri,
-        objectName: `submissions/${user.id}/${submission.id}_${Date.now()}`,
-        bucket: THUMB_BUCKET,
-      });
-
-      const { error: updErr } = await supabase
-        .from("submissions")
-        .update({ thumbnail_url: publicUrl })
-        .eq("id", submission.id);
-
-      if (updErr) throw updErr;
-
-      // ✅ update local submissions list immediately
-      const freshThumb = `${publicUrl}?t=${Date.now()}`;
-
-setSubmissions((prev) =>
-  prev.map((s) => (s.id === submission.id ? { ...s, thumbnail_url: freshThumb } : s))
-);
-
-setActiveSubmission((prev: any) =>
-  prev?.id === submission.id ? { ...prev, thumbnail_url: freshThumb } : prev
-);
-
-      Alert.alert("Updated", "Thumbnail updated.");
-    } catch (e: any) {
-      Alert.alert("Thumbnail update failed", e?.message ?? "Could not update thumbnail.");
-    } finally {
-      setThumbUploadingId(null);
-    }
-  };
 
   const applyToJob = async (job: MyJob) => {
     try {
@@ -3615,34 +3553,25 @@ const heroMaxW = "100%";
                 ]}
               >
                 <Text
-                  style={[
-                    styles.heroMeta,
-                    isMobileLike
-                      ? { fontSize: 12, marginTop: 8, letterSpacing: 1.2, lineHeight: 16 }
-                      : {
-                          fontSize: 16, // ✅ bigger on web
-                          letterSpacing: 3, // ✅ more cinematic
-                          marginBottom: 6,
-                          opacity: 0.95,
-                        },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {mainRoleName.toUpperCase()}
-                </Text>
+  style={[
+    styles.heroRoleBond,
+    isMobileLike ? styles.heroRoleBondMobile : styles.heroRoleBondDesktop,
+  ]}
+  numberOfLines={1}
+>
+  {mainRoleName.toUpperCase()}
+</Text>
 
-                <Text
-                  style={[
-                    styles.heroMeta,
-                    isMobileLike
-                      ? { fontSize: 16, marginTop: 8, letterSpacing: 1.2, lineHeight: 16 }
-                      : null,
-                  ]}
-                  numberOfLines={2}
-                >
-                  {profile?.full_name || "—"}
-                  {cityName ? `  •  ${cityName}` : ""}
-                </Text>
+<Text
+  style={[
+    styles.heroIdentityBond,
+    isMobileLike ? styles.heroIdentityBondMobile : styles.heroIdentityBondDesktop,
+  ]}
+  numberOfLines={2}
+>
+  {profile?.full_name || "—"}
+  {cityName ? `  •  ${cityName}` : ""}
+</Text>
 
                 {/* ✅ MOBILE: counts centered directly under name/city */}
                 {isMobileLike && (
@@ -4640,35 +4569,18 @@ const renderSubmissionsSection = () => {
               </View>
             </View>
 
-            {isOwnProfile && activeSubmission && (
-              <View style={{ gap: 10, marginTop: 12 }}>
-                {!activeSubmission.youtube_url && (
-                  <TouchableOpacity
-                    onPress={() => changeSubmissionThumbnail(activeSubmission)}
-                    style={styles.ghostBtn}
-                    disabled={thumbUploadingId === activeSubmission.id}
-                  >
-                    {thumbUploadingId === activeSubmission.id ? (
-                      <ActivityIndicator color={COLORS.textPrimary} />
-                    ) : (
-                      <Text style={styles.ghostBtnText}>
-                        {activeSubmission.thumbnail_url ? "Change thumbnail" : "Add thumbnail"}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                )}
-
-                <TouchableOpacity
-                  onPress={() => deleteSubmission(activeSubmission)}
-                  style={[styles.ghostBtn, { borderColor: COLORS.danger }]}
-                >
-                  <Text style={[styles.ghostBtnText, { color: COLORS.danger }]}>
-                    Delete submission
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
+           {isOwnProfile && activeSubmission && (
+  <View style={{ gap: 10, marginTop: 12 }}>
+    <TouchableOpacity
+      onPress={() => deleteSubmission(activeSubmission)}
+      style={[styles.ghostBtn, { borderColor: COLORS.danger }]}
+    >
+      <Text style={[styles.ghostBtnText, { color: COLORS.danger }]}>
+        Delete submission
+      </Text>
+    </TouchableOpacity>
+  </View>
+)}
             <TouchableOpacity
               onPress={() => {
                 setSubmissionModalOpen(false);
@@ -5617,15 +5529,15 @@ const styles = StyleSheet.create({
   heroRight: { flex: 0.92, gap: GRID_GAP },
 
   webInfoRail: {
-  backgroundColor: "rgba(255,255,255,0.02)",
-  borderWidth: 1,
-  borderColor: COLORS.border,
-  borderRadius: 18,
-  paddingVertical: 22,
-  paddingHorizontal: 20,
-  minHeight: 420,
-  justifyContent: "flex-start",
-},
+    backgroundColor: "rgba(255,255,255,0.02)",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 18,
+    paddingVertical: 22,
+    paddingHorizontal: 20,
+    minHeight: 420,
+    justifyContent: "flex-start",
+  },
 
   heroImage: {
     borderRadius: 14,
@@ -5645,50 +5557,50 @@ const styles = StyleSheet.create({
   heroImageInner: { resizeMode: "cover", opacity: 0.98 },
   heroGradient: { ...StyleSheet.absoluteFillObject },
 
-    mobileBannerActions: {
-  position: "absolute",
-  right: 12,
-  bottom: 12,
-  flexDirection: "row",
-  alignItems: "center",
-  gap: 8,
-  zIndex: 50,
-  elevation: 50,
-},
+  mobileBannerActions: {
+    position: "absolute",
+    right: 12,
+    bottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    zIndex: 50,
+    elevation: 50,
+  },
   mobileBannerPrimaryBtn: {
-  backgroundColor: "transparent",
-  borderWidth: 0,
-  paddingVertical: 2,
-  paddingHorizontal: 0,
-  alignItems: "center",
-  justifyContent: "center",
-  borderRadius: 0,
-},
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    paddingVertical: 2,
+    paddingHorizontal: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 0,
+  },
   mobileBannerPrimaryBtnText: {
-  color: COLORS.textPrimary,
-  fontWeight: "700",
-  letterSpacing: 0.8,
-  fontFamily: FONT_OBLIVION,
-  fontSize: 11,
-  textTransform: "uppercase",
-},
+    color: COLORS.textPrimary,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+    textTransform: "uppercase",
+  },
   mobileBannerGhostBtn: {
-  backgroundColor: "transparent",
-  borderWidth: 0,
-  paddingVertical: 2,
-  paddingHorizontal: 0,
-  alignItems: "center",
-  justifyContent: "center",
-  borderRadius: 0,
-},
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    paddingVertical: 2,
+    paddingHorizontal: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 0,
+  },
   mobileBannerGhostBtnText: {
-  color: COLORS.textPrimary,
-  fontWeight: "700",
-  letterSpacing: 0.8,
-  fontFamily: FONT_OBLIVION,
-  fontSize: 11,
-  textTransform: "uppercase",
-},
+    color: COLORS.textPrimary,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+    textTransform: "uppercase",
+  },
   roleWrap: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
@@ -5698,7 +5610,7 @@ const styles = StyleSheet.create({
 
   heroRoleThin: {
     color: COLORS.textPrimary,
-    fontFamily: FONT_CINZEL,
+    fontFamily: FONT_OBLIVION,
     fontSize: 52,
     letterSpacing: 3.2,
     fontWeight: "700",
@@ -5709,15 +5621,14 @@ const styles = StyleSheet.create({
     textShadowRadius: 10,
   },
   heroMeta: {
-    marginTop: 12,
-    color: COLORS.textSecondary,
-    fontFamily: FONT_CINZEL,
-    letterSpacing: 2.6,
-    fontSize: 12,
-    textAlign: "center",
-    textTransform: "uppercase",
-  },
-
+  marginTop: 12,
+  color: COLORS.textPrimary,
+  fontFamily: FONT_OBLIVION,
+  letterSpacing: 1.4,
+  fontSize: 12,
+  textAlign: "center",
+  textTransform: "uppercase",
+},
   heroBottomBar: {
     position: "relative",
     paddingHorizontal: 14,
@@ -5728,14 +5639,14 @@ const styles = StyleSheet.create({
   },
 
   card: {
-  width: "100%",
-  maxWidth: 520,
-  backgroundColor: "#0A0A0A",
-  borderRadius: 22,
-  padding: 16,
-  borderWidth: 1,
-  borderColor: "rgba(255,255,255,0.08)",
-},
+    width: "100%",
+    maxWidth: 520,
+    backgroundColor: "#0A0A0A",
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
   infoButtons: {
     flexDirection: "row",
     gap: 10,
@@ -5745,7 +5656,7 @@ const styles = StyleSheet.create({
 
   protocolTitle: {
     color: COLORS.textPrimary,
-    fontFamily: FONT_CINZEL,
+    fontFamily: FONT_OBLIVION,
     fontSize: 14,
     fontWeight: "700",
     letterSpacing: 1.2,
@@ -5784,18 +5695,18 @@ const styles = StyleSheet.create({
   },
 
   aboutCard: {
-  backgroundColor: "transparent",
-  borderWidth: 0,
-  borderColor: "transparent",
-  borderRadius: 0,
-  padding: 0,
-},
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    borderColor: "transparent",
+    borderRadius: 0,
+    padding: 0,
+  },
   aboutTitle: {
     color: COLORS.textPrimary,
     fontWeight: "700",
     letterSpacing: 4,
     marginBottom: 10,
-    fontFamily: FONT_CINZEL,
+    fontFamily: FONT_OBLIVION,
     fontSize: 16,
     textTransform: "uppercase",
   },
@@ -5852,17 +5763,17 @@ const styles = StyleSheet.create({
   },
 
   utilityCard: {
-  backgroundColor: "transparent",
-  borderWidth: 0,
-  borderColor: "transparent",
-  borderRadius: 0,
-},
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    borderColor: "transparent",
+    borderRadius: 0,
+  },
   utilityTopBar: {
-  backgroundColor: "transparent",
-  borderWidth: 0,
-  borderColor: "transparent",
-  borderRadius: 0,
-},
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    borderColor: "transparent",
+    borderRadius: 0,
+  },
 
   utilityPrimaryBtn: {
     backgroundColor: COLORS.primary,
@@ -5916,6 +5827,56 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignSelf: "center",
   },
+
+heroRoleEpic: {
+  textAlign: "center",
+  textTransform: "uppercase",
+  fontFamily: FONT_OBLIVION,
+  color: "#FFF8EE",
+  fontWeight: "900",
+  textShadowColor: "rgba(0,0,0,0.65)",
+  textShadowOffset: { width: 0, height: 3 },
+  textShadowRadius: 14,
+},
+
+heroRoleEpicMobile: {
+  fontSize: 22,
+  lineHeight: 26,
+  letterSpacing: 2.6,
+  marginTop: 8,
+},
+
+heroRoleEpicDesktop: {
+  fontSize: 42,
+  lineHeight: 46,
+  letterSpacing: 5,
+  marginBottom: 10,
+},
+
+heroIdentityEpic: {
+  textAlign: "center",
+  textTransform: "uppercase",
+  fontFamily: FONT_OBLIVION,
+  color: "#F3E7D0",
+  fontWeight: "800",
+  textShadowColor: "rgba(0,0,0,0.55)",
+  textShadowOffset: { width: 0, height: 2 },
+  textShadowRadius: 10,
+},
+
+heroIdentityEpicMobile: {
+  fontSize: 14,
+  lineHeight: 20,
+  letterSpacing: 1.4,
+  marginTop: 10,
+},
+
+heroIdentityEpicDesktop: {
+  fontSize: 22,
+  lineHeight: 28,
+  letterSpacing: 2.6,
+  marginTop: 8,
+},
   utilityGhostBtnCompact: {
     backgroundColor: "#0C0C0C",
     borderWidth: 1,
@@ -5930,24 +5891,24 @@ const styles = StyleSheet.create({
   },
 
   utilityTextActionBtn: {
-  backgroundColor: "transparent",
-  borderWidth: 0,
-  paddingVertical: 4,
-  paddingHorizontal: 2,
-  minHeight: 0,
-  alignItems: "center",
-  justifyContent: "center",
-  alignSelf: "center",
-},
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+    minHeight: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+  },
 
-utilityTextActionBtnText: {
-  color: COLORS.textPrimary,
-  fontWeight: "700",
-  letterSpacing: 0.8,
-  fontFamily: FONT_OBLIVION,
-  fontSize: 14,
-  textTransform: "uppercase",
-},
+  utilityTextActionBtnText: {
+    color: COLORS.textPrimary,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 14,
+    textTransform: "uppercase",
+  },
 
   utilityPrimaryBtnMini: {
     backgroundColor: COLORS.primary,
@@ -5988,83 +5949,83 @@ utilityTextActionBtnText: {
     textTransform: "uppercase",
   },
   utilitySingleLinkBtn: {
-  backgroundColor: "transparent",
-  borderWidth: 0,
-  paddingVertical: 4,
-  paddingHorizontal: 0,
-  minHeight: 0,
-  alignItems: "center",
-  justifyContent: "center",
-  alignSelf: "center",
-},
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    paddingVertical: 4,
+    paddingHorizontal: 0,
+    minHeight: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+  },
 
-utilitySingleLinkBtnText: {
-  color: COLORS.primary,
-  fontWeight: "700",
-  letterSpacing: 1,
-  fontFamily: FONT_OBLIVION,
-  fontSize: 11,
-  textTransform: "uppercase",
-  opacity: 0.95,
-},
+  utilitySingleLinkBtnText: {
+    color: COLORS.primary,
+    fontWeight: "700",
+    letterSpacing: 1,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+    textTransform: "uppercase",
+    opacity: 0.95,
+  },
 
-utilitySingleLinkBtnMobile: {
-  backgroundColor: "transparent",
-  borderWidth: 0,
-  paddingVertical: 2,
-  paddingHorizontal: 0,
-  minHeight: 0,
-  alignItems: "center",
-  justifyContent: "center",
-},
+  utilitySingleLinkBtnMobile: {
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    paddingVertical: 2,
+    paddingHorizontal: 0,
+    minHeight: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
-utilitySingleLinkBtnTextMobile: {
-  color: COLORS.primary,
-  fontWeight: "700",
-  letterSpacing: 0.4,
-  fontFamily: FONT_OBLIVION,
-  fontSize: 9,
-  textTransform: "uppercase",
-  opacity: 0.95,
-},
-utilityBareMiniBtn: {
-  backgroundColor: "transparent",
-  borderWidth: 0,
-  paddingVertical: 2,
-  paddingHorizontal: 0,
-  minHeight: 0,
-  alignItems: "center",
-  justifyContent: "center",
-},
+  utilitySingleLinkBtnTextMobile: {
+    color: COLORS.primary,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 9,
+    textTransform: "uppercase",
+    opacity: 0.95,
+  },
+  utilityBareMiniBtn: {
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    paddingVertical: 2,
+    paddingHorizontal: 0,
+    minHeight: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
-utilityBareMiniBtnText: {
-  color: COLORS.textSecondary,
-  fontWeight: "600",
-  letterSpacing: 0.3,
-  fontFamily: FONT_OBLIVION,
-  fontSize: 9,
-  textTransform: "uppercase",
-  opacity: 0.9,
-},
+  utilityBareMiniBtnText: {
+    color: COLORS.textSecondary,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 9,
+    textTransform: "uppercase",
+    opacity: 0.9,
+  },
 
-utilityBarePreviewBtn: {
-  backgroundColor: "transparent",
-  borderWidth: 0,
-  paddingVertical: 2,
-  paddingHorizontal: 0,
-  minHeight: 0,
-  alignItems: "center",
-  justifyContent: "center",
-},
+  utilityBarePreviewBtn: {
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    paddingVertical: 2,
+    paddingHorizontal: 0,
+    minHeight: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
-utilityBarePreviewBtnText: {
-  color: COLORS.primary,
-  fontWeight: "700",
-  letterSpacing: 0.4,
-  fontFamily: FONT_OBLIVION,
-  fontSize: 9,
-  textTransform: "uppercase",
-},
+  utilityBarePreviewBtnText: {
+    color: COLORS.primary,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 9,
+    textTransform: "uppercase",
+  },
   gamifyWrap: {
     marginTop: 10,
     alignItems: "center",
@@ -6074,7 +6035,7 @@ utilityBarePreviewBtnText: {
     fontWeight: "700",
     letterSpacing: 2,
     textTransform: "uppercase",
-    fontFamily: FONT_CINZEL,
+    fontFamily: FONT_OBLIVION,
   },
   gamifyRow: {
     flexDirection: "row",
@@ -6105,27 +6066,27 @@ utilityBarePreviewBtnText: {
   },
 
   modalOverlay: {
-  flex: 1,
-  backgroundColor: "#000000CC",
-  justifyContent: "flex-end",
-  paddingHorizontal: 10,
-  paddingTop: 0,
-},
- modalContainer: {
-  backgroundColor: COLORS.cardAlt,
-  borderTopLeftRadius: 26,
-  borderTopRightRadius: 26,
-  paddingHorizontal: 18,
-  paddingTop: 14,
-  paddingBottom: 10,
-  height: "94%",
-  width: "100%",
-maxWidth: Platform.OS === "web" ? 960 : "100%",
-  alignSelf: "center",
-  borderWidth: 1,
-  borderColor: COLORS.border,
-  marginTop: "auto",
-},
+    flex: 1,
+    backgroundColor: "#000000CC",
+    justifyContent: "flex-end",
+    paddingHorizontal: 10,
+    paddingTop: 0,
+  },
+  modalContainer: {
+    backgroundColor: COLORS.cardAlt,
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 10,
+    height: "94%",
+    width: "100%",
+    maxWidth: Platform.OS === "web" ? 960 : "100%",
+    alignSelf: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginTop: "auto",
+  },
 
   compactSupportBtn: {
     borderRadius: 999,
@@ -6152,82 +6113,82 @@ maxWidth: Platform.OS === "web" ? 960 : "100%",
   },
 
   modalHandle: {
-  width: 56,
-  height: 5,
-  borderRadius: 999,
-  backgroundColor: "rgba(255,255,255,0.18)",
-  alignSelf: "center",
-  marginBottom: 14,
-},
+    width: 56,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignSelf: "center",
+    marginBottom: 14,
+  },
   modalTitle: {
-  fontSize: 20,
-  fontWeight: "700",
-  color: COLORS.textPrimary,
-  textAlign: "center",
-  letterSpacing: 2.4,
-  fontFamily: FONT_CINZEL,
-  textTransform: "uppercase",
-  marginBottom: 6,
-},
+    fontSize: 20,
+    fontWeight: "700",
+    color: COLORS.textPrimary,
+    textAlign: "center",
+    letterSpacing: 2.4,
+    fontFamily: FONT_OBLIVION,
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
 
   field: { marginTop: 18 },
   fieldLabel: {
-  fontSize: 11,
-  fontWeight: "700",
-  color: COLORS.textSecondary,
-  marginBottom: 8,
-  marginLeft: 2,
-  fontFamily: FONT_OBLIVION,
-  letterSpacing: 1.1,
-  textTransform: "uppercase",
-  opacity: 0.92,
-},
+    fontSize: 11,
+    fontWeight: "700",
+    color: COLORS.textSecondary,
+    marginBottom: 8,
+    marginLeft: 2,
+    fontFamily: FONT_OBLIVION,
+    letterSpacing: 1.1,
+    textTransform: "uppercase",
+    opacity: 0.92,
+  },
   input: {
-  borderWidth: 1,
-  borderColor: "rgba(255,255,255,0.08)",
-  borderRadius: 16,
-  paddingVertical: 14,
-  paddingHorizontal: 16,
-  color: COLORS.textPrimary,
-  backgroundColor: "#080808",
-  fontFamily: FONT_OBLIVION,
-  fontSize: 15,
-  letterSpacing: 0.2,
-  outlineStyle: "none" as any,
-},
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    color: COLORS.textPrimary,
+    backgroundColor: "#080808",
+    fontFamily: FONT_OBLIVION,
+    fontSize: 15,
+    letterSpacing: 0.2,
+    outlineStyle: "none" as any,
+  },
   multiline: { minHeight: 100 },
 
   pickerBtn: {
-  borderWidth: 1,
-  borderColor: "rgba(255,255,255,0.08)",
-  borderRadius: 14,
-  paddingVertical: 14,
-  paddingHorizontal: 14,
-  backgroundColor: "#090909",
-  flexDirection: "row",
-  justifyContent: "space-between",
-  alignItems: "center",
-},
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    backgroundColor: "#090909",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
 
-inputFocused: {
-  borderColor: "rgba(198,166,100,0.45)",
-  backgroundColor: "#0A0A0A",
-},
+  inputFocused: {
+    borderColor: "rgba(198,166,100,0.45)",
+    backgroundColor: "#0A0A0A",
+  },
   pickerBtnText: {
-  color: COLORS.textSecondary,
-  fontFamily: FONT_OBLIVION,
-  fontSize: 15,
-  letterSpacing: 0.2,
-},
+    color: COLORS.textSecondary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 15,
+    letterSpacing: 0.2,
+  },
 
   primaryBtn: {
-  backgroundColor: COLORS.primary,
-  borderColor: COLORS.primary,
-  borderWidth: 1,
-  borderRadius: 14,
-  paddingVertical: 13,
-  alignItems: "center",
-},
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: "center",
+  },
   primaryBtnText: {
     color: "#000",
     fontWeight: "800",
@@ -6238,13 +6199,13 @@ inputFocused: {
   },
 
   ghostBtn: {
-  backgroundColor: "transparent",
-  borderColor: "rgba(255,255,255,0.10)",
-  borderWidth: 1,
-  borderRadius: 14,
-  paddingVertical: 13,
-  alignItems: "center",
-},
+    backgroundColor: "transparent",
+    borderColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: "center",
+  },
   ghostBtnText: {
     color: COLORS.textPrimary,
     fontWeight: "700",
@@ -6253,7 +6214,55 @@ inputFocused: {
     textTransform: "uppercase",
     fontSize: 12,
   },
+heroRoleBond: {
+  textAlign: "center",
+  textTransform: "uppercase",
+  fontFamily: FONT_OBLIVION,
+  color: "#F5EFE4",
+  fontWeight: "700",
+  textShadowColor: "rgba(0,0,0,0.38)",
+  textShadowOffset: { width: 0, height: 1 },
+  textShadowRadius: 6,
+},
 
+heroRoleBondMobile: {
+  fontSize: 17,
+  lineHeight: 20,
+  letterSpacing: 4.8,
+  marginTop: 6,
+},
+
+heroRoleBondDesktop: {
+  fontSize: 31,
+  lineHeight: 35,
+  letterSpacing: 8.5,
+  marginBottom: 10,
+},
+
+heroIdentityBond: {
+  textAlign: "center",
+  textTransform: "uppercase",
+  fontFamily: FONT_OBLIVION,
+  color: "#D2AE67",
+  fontWeight: "600",
+  textShadowColor: "rgba(0,0,0,0.28)",
+  textShadowOffset: { width: 0, height: 1 },
+  textShadowRadius: 4,
+},
+
+heroIdentityBondMobile: {
+  fontSize: 11,
+  lineHeight: 15,
+  letterSpacing: 2.2,
+  marginTop: 8,
+},
+
+heroIdentityBondDesktop: {
+  fontSize: 14,
+  lineHeight: 18,
+  letterSpacing: 4.6,
+  marginTop: 6,
+},
   uploadRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -6261,13 +6270,13 @@ inputFocused: {
     marginTop: 8,
   },
   pillBtn: {
-  paddingVertical: 11,
-  paddingHorizontal: 16,
-  borderRadius: 999,
-  borderWidth: 1,
-  borderColor: "rgba(255,255,255,0.10)",
-  backgroundColor: "#0A0A0A",
-},
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "#0A0A0A",
+  },
   pillText: {
     color: COLORS.textPrimary,
     fontFamily: FONT_OBLIVION,
@@ -6282,16 +6291,16 @@ const block = StyleSheet.create({
   section: { marginTop: 34 },
 
   h3Centered: {
-  color: COLORS.textSecondary,
-  fontSize: 10,
-  fontWeight: "600",
-  marginBottom: 10,
-  letterSpacing: 2.1,
-  textAlign: "center",
-  fontFamily: FONT_CINZEL,
-  textTransform: "uppercase",
-  opacity: 0.9,
-},
+    color: COLORS.textSecondary,
+    fontSize: 10,
+    fontWeight: "600",
+    marginBottom: 10,
+    letterSpacing: 2.1,
+    textAlign: "center",
+    fontFamily: FONT_OBLIVION,
+    textTransform: "uppercase",
+    opacity: 0.9,
+  },
   muted: {
     color: COLORS.textSecondary,
     fontSize: 13,
@@ -6300,16 +6309,16 @@ const block = StyleSheet.create({
   },
 
   sectionTitleCentered: {
-  color: "rgba(255,255,255,0.92)",
-  fontSize: 15,
-  fontWeight: "600",
-  letterSpacing: 3.2,
-  marginBottom: 18,
-  textAlign: "center",
-  fontFamily: FONT_CINZEL,
-  textTransform: "uppercase",
-  opacity: 0.96,
-},
+    color: "rgba(255,255,255,0.92)",
+    fontSize: 15,
+    fontWeight: "600",
+    letterSpacing: 3.2,
+    marginBottom: 18,
+    textAlign: "center",
+    fontFamily: FONT_OBLIVION,
+    textTransform: "uppercase",
+    opacity: 0.96,
+  },
 
   mediaCard: {
     backgroundColor: "#000",
@@ -6354,7 +6363,7 @@ const block = StyleSheet.create({
 
   protocolTitle: {
     color: COLORS.textPrimary,
-    fontFamily: FONT_CINZEL,
+    fontFamily: FONT_OBLIVION,
     fontSize: 16,
     fontWeight: "700",
     letterSpacing: 2,
@@ -6398,7 +6407,7 @@ const block = StyleSheet.create({
   mediaRowTitle: {
     color: COLORS.textPrimary,
     fontWeight: "700",
-    fontFamily: FONT_CINZEL,
+    fontFamily: FONT_OBLIVION,
     letterSpacing: 1.8,
     textTransform: "uppercase",
     fontSize: 13,
@@ -6510,7 +6519,7 @@ const centered = StyleSheet.create({
     fontSize: 18,
     textAlign: "center",
     marginBottom: 8,
-    fontFamily: FONT_CINZEL,
+    fontFamily: FONT_OBLIVION,
     letterSpacing: 2.6,
     textTransform: "uppercase",
   },
