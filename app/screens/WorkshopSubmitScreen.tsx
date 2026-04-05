@@ -21,7 +21,7 @@ import { Video, ResizeMode } from "expo-av";
 import * as DocumentPicker from "expo-document-picker";
 import { Upload } from "tus-js-client";
 import { LinearGradient } from "expo-linear-gradient";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import { Buffer } from "buffer";
 import { useGamification } from "../context/GamificationContext";
@@ -237,18 +237,8 @@ async function uploadThumbnailToStorage(opts: {
     bucket = THUMB_BUCKET,
   } = opts;
 
-  let blob: Blob;
-
-  if (Platform.OS !== "web" && thumbUri.startsWith("file://")) {
-    const base64 = await FileSystem.readAsStringAsync(thumbUri, {
-      encoding: "base64" as any,
-    });
-    const bytes = Buffer.from(base64, "base64");
-    blob = new Blob([bytes], { type: "image/jpeg" });
-  } else {
-    const resp = await fetch(thumbUri);
-    blob = await resp.blob();
-  }
+  const resp = await fetch(thumbUri);
+  const blob = await resp.blob();
 
   const ext =
     blob.type.includes("png")
@@ -2701,9 +2691,9 @@ const styles = StyleSheet.create({
   previewModalMobile: {
   width: "94%",
   maxWidth: 720,
-  maxHeight: "74%",
+  maxHeight: "78%",
   alignSelf: "center",
-  marginTop: 12,
+  marginTop: 16,
   padding: 14,
 },
 
@@ -2714,8 +2704,6 @@ const styles = StyleSheet.create({
 
   previewVideoWrapMobile: {
   width: "100%",
-  height: 200,
-  minHeight: 180,
 },
 
   thumbLoading: {
@@ -3073,21 +3061,22 @@ const styles = StyleSheet.create({
   },
 
   previewVideoWrap: {
-    borderRadius: 18,
-    
-    borderWidth: 1,
-    borderColor: T.line,
-    backgroundColor: "#0A0A0A",
-  },
+  borderRadius: 18,
+  borderWidth: 1,
+  borderColor: T.line,
+  backgroundColor: "#0A0A0A",
+  overflow: "hidden",
+},
 
   previewVideoStage: {
-    width: "100%",
-    aspectRatio: 16 / 9,
-    backgroundColor: "#0B0B0B",
-    position: "relative",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  width: "100%",
+  aspectRatio: 16 / 9,
+  backgroundColor: "#0B0B0B",
+  position: "relative",
+  justifyContent: "center",
+  alignItems: "center",
+  overflow: "hidden",
+},
 
   previewVideo: {
     width: "100%",
