@@ -237,8 +237,19 @@ async function uploadThumbnailToStorage(opts: {
     bucket = THUMB_BUCKET,
   } = opts;
 
-  const resp = await fetch(thumbUri);
-  const blob = await resp.blob();
+  let blob: Blob;
+
+  if (Platform.OS === "web") {
+    const resp = await fetch(thumbUri);
+    blob = await resp.blob();
+  } else {
+    const base64 = await FileSystem.readAsStringAsync(thumbUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    const bytes = Buffer.from(base64, "base64");
+    blob = new Blob([bytes], { type: "image/jpeg" });
+  }
 
   const ext =
     blob.type.includes("png")
@@ -293,13 +304,21 @@ async function uploadResumable(opts: {
 
   if (fileBlob) {
     file = fileBlob as Blob;
-    // @ts-ignore
     if ((fileBlob as any)?.type) type = (fileBlob as any).type as string;
   } else if (localUri) {
-    const resp = await fetch(localUri);
-    file = await resp.blob();
-    // @ts-ignore
-    if ((file as any)?.type) type = (file as any).type as string;
+    if (Platform.OS === "web") {
+      const resp = await fetch(localUri);
+      file = await resp.blob();
+      if ((file as any)?.type) type = (file as any).type as string;
+    } else {
+      const base64 = await FileSystem.readAsStringAsync(localUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      const bytes = Buffer.from(base64, "base64");
+      file = new Blob([bytes], { type: "video/mp4" });
+      type = "video/mp4";
+    }
   } else {
     throw new Error("No file to upload");
   }
@@ -321,7 +340,7 @@ async function uploadResumable(opts: {
       ? ".mp3"
       : type.startsWith("video/")
       ? ".mp4"
-      : "";
+      : ".mp4";
 
   const finalObjectName = objectName + ext;
 
