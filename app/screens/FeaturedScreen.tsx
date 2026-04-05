@@ -1107,20 +1107,6 @@ function normalizeIsoRange(start: string, end: string) {
 }
 
 async function fetchChallengesForFeatured() {
-  try {
-    const { error: finalizeErr } = await supabase.rpc('finalize_last_month_winner_if_needed');
-    if (finalizeErr) {
-      console.warn('finalize_last_month_winner_if_needed failed:', finalizeErr.message);
-    }
-  } catch {}
-
-  try {
-    const { error: insertErr } = await supabase.rpc('insert_monthly_challenge_if_not_exists');
-    if (insertErr) {
-      console.warn('insert_monthly_challenge_if_not_exists failed:', insertErr.message);
-    }
-  } catch {}
-
   const nowIso = new Date().toISOString();
 
   const { data: current, error: curErr } = await supabase
@@ -1679,7 +1665,7 @@ const [storyModeItem, setStoryModeItem] = useState<
 
   const longPressTriggeredRef = useRef<Record<string, boolean>>({});
   const deepLinkHandledRef = useRef<string | null>(null);
-
+const hasInitializedChallengesRef = useRef(false);
   const { userId: gamUserId, refresh: refreshGamification } = useGamification();
 
   // Track monthly votes used for cap enforcement (kept, even though feed is all-time)
@@ -1766,24 +1752,17 @@ const categoryHeaderTopOffset =
 
   // Fetch content when filters change
   useEffect(() => {
-    (async () => {
-      const { data: auth } = await supabase.auth.getUser();
-      const uid = auth?.user?.id ?? null;
-      setCurrentUserId(uid);
-      await fetchContent(uid, category, searchQ);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sort, searchQ, filmCategory]);
+  (async () => {
+    await initChallengesIfNeeded();
 
-  useFocusEffect(
-  useCallback(() => {
-    (async () => {
-      const { data: auth } = await supabase.auth.getUser();
-      const uid = auth?.user?.id ?? null;
-      await fetchContent(uid, category, searchQ);
-    })();
-  }, [sort, searchQ, filmCategory])
-);
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth?.user?.id ?? null;
+    setCurrentUserId(uid);
+    await fetchContent(uid, category, searchQ);
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [sort, searchQ, filmCategory]);
+
 
   const baseCols =
   'id, user_id, title, votes, submitted_at, is_winner, share_slug, users ( id, full_name ), video_id, storage_path, video_path, thumbnail_url, media_kind, mime_type, duration_seconds, category';
@@ -1907,6 +1886,25 @@ for (const r of rows) {
 return res;
 };
 
+const initChallengesIfNeeded = async () => {
+  if (hasInitializedChallengesRef.current) return;
+  hasInitializedChallengesRef.current = true;
+
+  try {
+    const { error } = await supabase.rpc('finalize_last_month_winner_if_needed');
+    if (error) {
+      console.warn('finalize_last_month_winner_if_needed failed:', error.message);
+    }
+  } catch {}
+
+  try {
+    const { error } = await supabase.rpc('insert_monthly_challenge_if_not_exists');
+    if (error) {
+      console.warn('insert_monthly_challenge_if_not_exists failed:', error.message);
+    }
+  } catch {}
+};
+
 const fetchContent = async (uid: string | null, cat: Category, searchTextQ: string) => {
   setLoading(true);
 
@@ -1946,19 +1944,21 @@ const fetchContent = async (uid: string | null, cat: Category, searchTextQ: stri
 
     // ✅ All-time submissions
     const resp = await fetchSubsSafe(sort, searchTextQ, cat, filmCategory);
-    const subs = (resp?.data || []) as RawSubmission[];
-    const normalized = subs.map(normalizeRow);
+const subs = (resp?.data || []) as RawSubmission[];
+const normalized = subs.map(normalizeRow);
 
-    fetchCommentCounts(normalized.map((s) => s.id));
+setWinner(winnerData);
+setSubmissions(normalized);
 
-    setWinner(winnerData);
-    setSubmissions(normalized);
+setTimeout(() => {
+  fetchCommentCounts(normalized.slice(0, 12).map((s) => s.id));
+}, 0);
 
-    normalized.slice(0, 10).forEach((s) => {
-      if (s.storage_path) {
-        signStoragePath(s.storage_path, 180).catch(() => {});
-      }
-    });
+    normalized.slice(0, 4).forEach((s) => {
+  if (s.storage_path) {
+    signStoragePath(s.storage_path, 180).catch(() => {});
+  }
+});
 
     if (uid && normalized.length) {
       const ids = normalized.map((s) => s.id);
@@ -3331,9 +3331,9 @@ return (
   keyboardShouldPersistTaps="always"
   keyboardDismissMode="none"
   removeClippedSubviews={Platform.OS !== 'web'}
-  windowSize={5}
-  initialNumToRender={3}
-  maxToRenderPerBatch={4}
+windowSize={3}
+initialNumToRender={2}
+maxToRenderPerBatch={2}
     onEndReachedThreshold={0.4}
   onScroll={onScrollImmediate}
   onMomentumScrollEnd={onMomentumEnd}

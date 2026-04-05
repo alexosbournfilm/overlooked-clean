@@ -198,7 +198,7 @@ const PATHS: PathMeta[] = [
 ];
 const PATH_IMAGES: Record<WorkshopPathKey, { uri: string }> = {
   acting: {
-  uri: 'https://wallpapercrafter.com/th8001/600668-audience-auditorium-back-view-crowd-curtain-dark.jpg',
+  uri: 'https://images.unsplash.com/photo-1513106580091-1d82408b8cd6?auto=format&fit=crop&w=1200&q=80',
 },
 editing: {
   uri: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1200&q=80',
