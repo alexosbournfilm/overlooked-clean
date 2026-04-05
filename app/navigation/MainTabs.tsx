@@ -1689,12 +1689,19 @@ useEffect(() => {
 }, [navigation, isGuest]);
 
   const screenOptions = useCallback(
-  ({ route }: any): BottomTabNavigationOptions => ({
+  ({ route }: any): any => ({
     headerShown: false,
     tabBarActiveTintColor: GOLD,
     tabBarInactiveTintColor: TEXT_MUTED,
     tabBarShowLabel: false,
     lazy: true,
+    animation: 'shift',
+transitionSpec: {
+  animation: 'timing',
+  config: {
+    duration: 220,
+  },
+},
     tabBarStyle: {
       backgroundColor: DARK_BG,
       borderTopWidth: 1,
@@ -1808,11 +1815,19 @@ useEffect(() => {
   options={{
     unmountOnBlur: false,
   }}
-/>    
+/>
 
-            <Tab.Screen
+<Tab.Screen
   name="Profile"
   component={ProfileWrapped}
+  listeners={({ navigation }) => ({
+    tabPress: () => {
+      navigation.navigate('Profile', {
+        userId: undefined,
+        user: undefined,
+      });
+    },
+  })}
 />
 
             

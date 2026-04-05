@@ -7,20 +7,20 @@
     "icon": "./app/assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "overlooked",
+
     "splash": {
       "image": "./app/assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0D0D0D"
+      "backgroundColor": "#FFF7F3"
     },
+
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.overlooked.app",
       "infoPlist": {
         "CFBundleURLTypes": [
           {
-            "CFBundleURLSchemes": [
-              "overlooked"
-            ]
+            "CFBundleURLSchemes": ["overlooked"]
           }
         ],
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library for profile uploads."
@@ -30,20 +30,18 @@
         "applinks:www.overlooked.cloud"
       ]
     },
+
     "android": {
       "package": "com.overlooked.app",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./app/assets/adaptive-icon.png",
-        "backgroundColor": "#0D0D0D"
+        "backgroundColor": "#FFF7F3"
       },
       "intentFilters": [
         {
           "action": "VIEW",
-          "category": [
-            "DEFAULT",
-            "BROWSABLE"
-          ],
+          "category": ["DEFAULT", "BROWSABLE"],
           "data": [
             {
               "scheme": "overlooked",
@@ -67,19 +65,22 @@
         }
       ]
     },
+
     "web": {
       "bundler": "metro",
       "favicon": "./public/ol-favicon-999.png",
       "display": "browser",
-      "themeColor": "#0D0D0D",
-      "backgroundColor": "#0D0D0D"
+      "themeColor": "#FFF7F3",
+      "backgroundColor": "#FFF7F3"
     },
+
     "extra": {
       "supabaseRedirectUrl": "overlooked://callback",
       "eas": {
         "projectId": "d572b8e6-d8d0-451e-bd76-df662912df85"
       }
     },
+
     "plugins": [
       "expo-secure-store",
       "expo-font",
@@ -92,13 +93,8 @@
         }
       ]
     ],
-    "platforms": [
-      "ios",
-      "android",
-      "web"
-    ],
-    "assetBundlePatterns": [
-      "**/*"
-    ]
+
+    "platforms": ["ios", "android", "web"],
+    "assetBundlePatterns": ["**/*"]
   }
 }

@@ -16,6 +16,7 @@ import {
   Dimensions,
   RefreshControl,
   BackHandler,
+  Keyboard,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -86,12 +87,6 @@ type Member = {
 const hideKeyFor = (userId: string) => `OVERLOOKED_HIDE_MAP:${userId}`;
 const unhideKeyFor = (userId: string) => `OVERLOOKED_UNHIDE_SET:${userId}`;
 
-/* ---------------- Level-based ring color ---------------- */
-const getLevelRingColor = (level?: number | null): string => {
-  if (!level || level < 25) return '#FFFFFF';
-  if (level < 50) return '#C0C0C0';
-  return GOLD;
-};
 
 
 /* ------------------ keep chats visible after opening ------------------ */
@@ -181,9 +176,11 @@ const [haveIBlockedPeer, setHaveIBlockedPeer] = useState(false);
       routeConversation?.id ? 'ready' : 'checking'
     );
 
-  const flatListRef = useRef<FlatList>(null);
-  const typingTimeoutRef =
-    useRef<ReturnType<typeof setTimeout> | null>(null);
+      const flatListRef = useRef<FlatList>(null);
+const typingTimeoutRef =
+  useRef<ReturnType<typeof setTimeout> | null>(null);
+
+const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const messageChannelRef = useRef<any>(null);
   const typingChannelRef = useRef<any>(null);
@@ -197,6 +194,7 @@ const [haveIBlockedPeer, setHaveIBlockedPeer] = useState(false);
         ).toLowerCase()}.png`
       : null;
 
+          
   /* --------------------------- bootstrap convo --------------------------- */
   useEffect(() => {
   const nextId: string | null =
@@ -553,6 +551,30 @@ useFocusEffect(
   }
 };
 
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      if (Platform.OS === 'android') {
+        setKeyboardHeight(e.endCoordinates?.height || 0);
+      }
+    });
+
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      if (Platform.OS === 'android') {
+        setKeyboardHeight(0);
+      }
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   /* ------------------------------- header UI ------------------------------ */
   const goBackToChats = () => {
   navigation.navigate('ChatsHome' as never);
@@ -665,12 +687,7 @@ useFocusEffect(
         'Conversation';
       const avatarUri =
         peerUser?.avatar_url || null;
-      const ringColor =
-        getLevelRingColor(
-          peerUser?.level
-        );
-
-      navigation.setOptions({
+           navigation.setOptions({
   headerStyle: {
     backgroundColor: '#000000',
   },
@@ -687,20 +704,13 @@ useFocusEffect(
       activeOpacity={0.85}
       style={styles.headerTitleRow}
     >
-      <View
-        style={[
-          styles.headerAvatarRing,
-          { borderColor: ringColor },
-        ]}
-      >
-        {avatarUri ? (
-          <Image source={{ uri: avatarUri }} style={styles.headerAvatar} />
-        ) : (
-          <View style={[styles.headerAvatar, styles.headerAvatarFallback]}>
-            <Ionicons name="person-outline" size={16} color={SUBTLE} />
-          </View>
-        )}
-      </View>
+      {avatarUri ? (
+        <Image source={{ uri: avatarUri }} style={styles.headerAvatar} />
+      ) : (
+        <View style={[styles.headerAvatar, styles.headerAvatarFallback]}>
+          <Ionicons name="person-outline" size={16} color={SUBTLE} />
+        </View>
+      )}
       <Text style={styles.headerTitleText} numberOfLines={1}>
         {name}
       </Text>
@@ -878,25 +888,29 @@ useFocusEffect(
 
     if (!error && data) {
       const normalized: Message[] =
-        (data as any[]).map(
-          (row: any) => ({
-            ...row,
-            sender: Array.isArray(
-              row.sender
-            )
-              ? row.sender[0] ??
-                null
-              : row.sender ?? null,
-          })
-        );
+  (data as any[]).map(
+    (row: any) => ({
+      ...row,
+      sender: Array.isArray(
+        row.sender
+      )
+        ? row.sender[0] ??
+          null
+        : row.sender ?? null,
+    })
+  );
 
-      setMessages(normalized);
+const reversed = [...normalized].reverse();
 
-      const fromMsgs: Record<
-        string,
-        { id: string; full_name: string }
-      > = {};
-      for (const m of normalized)
+setMessages(reversed);
+
+const fromMsgs: Record<
+  string,
+  { id: string; full_name: string }
+> = {};
+for (const m of reversed)
+
+      
         if (m.sender?.id)
           fromMsgs[m.sender.id] = {
             id: m.sender.id,
@@ -929,11 +943,8 @@ useFocusEffect(
         );
       }
 
-      setUserLookup(fromMsgs);
-      setTimeout(
-        () => scrollToBottom(),
-        100
-      );
+            setUserLookup(fromMsgs);
+
       if (userData?.user?.id && conversation?.id) {
   await supabase.from('conversation_reads').upsert(
     {
@@ -961,11 +972,12 @@ useFocusEffect(
     table: 'messages',
     filter: `conversation_id=eq.${convId}`,
   },
-  async () => {
-    await fetchUserAndMessages();
-    scrollToBottom();
-    emitChatBadgeRefresh();
-  }
+    
+    async () => {
+  await fetchUserAndMessages();
+  scrollToBottom(true);
+  emitChatBadgeRefresh();
+}
 )
         .subscribe();
     messageChannelRef.current =
@@ -1039,10 +1051,11 @@ useFocusEffect(
       convoChannel;
   };
 
-  const scrollToBottom = () =>
-    flatListRef.current?.scrollToEnd({
-      animated: true,
-    });
+      const scrollToBottom = (animated = true) =>
+  flatListRef.current?.scrollToOffset({
+    offset: 0,
+    animated,
+  });
 
   const updateConversationLastMessage = async (
     convId: string,
@@ -1114,7 +1127,7 @@ await supabase.from('conversation_reads').upsert(
 );
 
 await fetchUserAndMessages();
-scrollToBottom();
+scrollToBottom(true);
 emitChatBadgeRefresh();
   };
 
@@ -1231,10 +1244,7 @@ await supabase.from('conversation_reads').upsert(
 );
 
 await fetchUserAndMessages();
-scrollToBottom();
-emitChatBadgeRefresh();
-await fetchUserAndMessages();
-scrollToBottom();
+scrollToBottom(true);
 emitChatBadgeRefresh();
       } else {
         const fileName =
@@ -1280,10 +1290,7 @@ await supabase.from('conversation_reads').upsert(
 );
 
 await fetchUserAndMessages();
-scrollToBottom();
-emitChatBadgeRefresh();
-await fetchUserAndMessages();
-scrollToBottom();
+scrollToBottom(true);
 emitChatBadgeRefresh();
       }
     } catch (e: any) {
@@ -1533,17 +1540,10 @@ emitChatBadgeRefresh();
   conversation?.is_group === false && (isBlockedByPeer || haveIBlockedPeer);
 const isScreenReady = loadState === 'ready' && !!conversation?.id;
   return (
-    <KeyboardAvoidingView
+        <KeyboardAvoidingView
       style={styles.container}
-      behavior={
-        Platform.OS ===
-        'ios'
-          ? 'padding'
-          : undefined
-      }
-      keyboardVerticalOffset={
-        90
-      }
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       {!isScreenReady ? (
   <View style={styles.loaderWrap}>
@@ -1551,28 +1551,33 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
   </View>
 ) : (
   <>
-    <FlatList
-      ref={flatListRef}
-      data={messages}
-      renderItem={renderItem}
-      keyExtractor={(item) => item.id}
-      contentContainerStyle={{ padding: 16, paddingTop: 12 }}
-      onContentSizeChange={() => {
-        requestAnimationFrame(scrollToBottom);
-      }}
-      removeClippedSubviews={Platform.OS !== 'ios'}
-      initialNumToRender={12}
-      maxToRenderPerBatch={8}
-      windowSize={7}
-      updateCellsBatchingPeriod={16}
-      keyboardShouldPersistTaps="handled"
-    />
+        <FlatList
+  ref={flatListRef}
+  data={messages}
+  renderItem={renderItem}
+  keyExtractor={(item) => item.id}
+  inverted
+  contentContainerStyle={{ padding: 16, paddingTop: 8, paddingBottom: 12 }}
+  removeClippedSubviews={Platform.OS !== 'ios'}
+  initialNumToRender={12}
+  maxToRenderPerBatch={8}
+  windowSize={7}
+  updateCellsBatchingPeriod={16}
+  keyboardShouldPersistTaps="handled"
+/>
 
     {typingUser && (
       <Text style={styles.typingText}>Someone is typing…</Text>
     )}
 
-    <View style={styles.inputBar}>
+       <View
+      style={[
+        styles.inputBar,
+        Platform.OS === 'android' && keyboardHeight > 0
+          ? { marginBottom: keyboardHeight }
+          : null,
+      ]}
+    >
       <TouchableOpacity
   onPress={sendFile}
   style={styles.iconBtn}
@@ -1779,91 +1784,54 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
                 paddingBottom:
                   18,
               }}
-              renderItem={({ item }) => {
-                const ringColor =
-                  getLevelRingColor(
-                    item.level
-                  );
+                            renderItem={({ item }) => {
                 return (
                   <TouchableOpacity
                     onPress={() => {
-                      setMembersVisible(
-                        false
-                      );
-                      navigation.navigate(
-                        'Profile',
-                        {
-                          user: {
-                            id: item.id,
-                            full_name:
-                              item.full_name,
-                          },
-                        }
-                      );
-                    }}
-                    style={
-                      styles.memberRow
-                    }
-                    activeOpacity={
-                      0.85
-                    }
-                  >
-                    <View
-                      style={[
-                        styles.memberAvatarRing,
-                        {
-                          borderColor:
-                            ringColor,
+                      setMembersVisible(false);
+                      navigation.navigate('Profile', {
+                        user: {
+                          id: item.id,
+                          full_name: item.full_name,
                         },
-                      ]}
-                    >
-                      {item.avatar_url ? (
-                        <Image
-                          source={{
-                            uri: item.avatar_url,
-                          }}
-                          style={
-                            styles.memberAvatar
-                          }
-                        />
-                      ) : (
-                        <View
-                          style={[
-                            styles.memberAvatar,
-                            {
-                              backgroundColor:
-                                ELEVATED,
-                            },
-                          ]}
-                        />
-                      )}
-                    </View>
+                      });
+                    }}
+                    style={styles.memberRow}
+                    activeOpacity={0.85}
+                  >
+                    {item.avatar_url ? (
+                      <Image
+                        source={{ uri: item.avatar_url }}
+                        style={styles.memberAvatar}
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.memberAvatar,
+                          { backgroundColor: ELEVATED },
+                        ]}
+                      />
+                    )}
+
                     <Text
-                      style={
-                        styles.memberName
-                      }
-                      numberOfLines={
-                        1
-                      }
+                      style={styles.memberName}
+                      numberOfLines={1}
                     >
-                      {
-                        item.full_name
-                      }
+                      {item.full_name}
                     </Text>
+
                     <Ionicons
                       name="chevron-forward"
                       size={18}
-                      color={
-                        SUBTLE
-                      }
-                      style={{
-                        marginLeft:
-                          'auto',
-                      }}
+                      color={SUBTLE}
+                      style={{ marginLeft: 'auto' }}
                     />
                   </TouchableOpacity>
                 );
               }}
+
+
+               
               ListEmptyComponent={
                 <View
                   style={
@@ -1908,19 +1876,12 @@ const styles = StyleSheet.create({
   maxWidth: Platform.OS === 'ios' ? 170 : 260,
   flexShrink: 1,
 },
-  headerAvatarRing: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  headerAvatar: {
+
+    headerAvatar: {
     width: 26,
     height: 26,
     borderRadius: 13,
+    marginRight: 8,
   },
   headerAvatarFallback: {
   backgroundColor: '#000000',
@@ -1955,8 +1916,8 @@ const styles = StyleSheet.create({
   },
 
   messageWrapper: {
-    marginBottom: 10,
-  },
+  marginTop: 10,
+},
   senderName: {
     fontSize: 12,
     color: SUBTLE,
@@ -2175,20 +2136,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     borderRadius: 12,
   },
-  memberAvatarRing: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  memberAvatar: {
+  
+    memberAvatar: {
     width: 34,
     height: 34,
     borderRadius: 17,
     backgroundColor: ELEVATED,
+    marginRight: 10,
   },
   memberName: {
     fontSize: 15,

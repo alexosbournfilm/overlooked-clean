@@ -35,8 +35,10 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
-import { emitChatBadgeRefresh } from '../lib/chatBadgeEvents';
-
+import {
+  emitChatBadgeRefresh,
+  subscribeChatBadgeRefresh,
+} from '../lib/chatBadgeEvents';
 /* ────────────────────────────────────────────────────────────
    CINEMATIC NOIR — black/white with gold accent
    ──────────────────────────────────────────────────────────── */
@@ -111,11 +113,6 @@ type SimpleUser = {
 };
 
 /* Level-based ring colors */
-const getLevelRingColor = (level?: number | null): string => {
-  if (!level || level < 25) return '#FFFFFF';
-  if (level < 50) return '#C0C0C0';
-  return GOLD;
-};
 
 // throttle helper
 const throttle = (fn: () => void, wait: number) => {
@@ -190,11 +187,14 @@ export default function ChatsScreen() {
   const [loadingCityChat, setLoadingCityChat] = useState(false);
   const [loadingChats, setLoadingChats] = useState(true);
   const [chats, setChats] = useState<any[]>([]);
+  const [unreadConversationIds, setUnreadConversationIds] = useState<Set<string>>(new Set());
+const unreadRequestInFlight = useRef(false);
+const unreadRefreshTimeout = useRef<any>(null);
   const [search, setSearch] = useState('');
 
   // users search tab
   const [activeTab, setActiveTab] =
-    useState<'chats' | 'users'>('chats');
+  useState<'chats' | 'contacts' | 'users'>('chats');
   const [userQuery, setUserQuery] = useState('');
   const [users, setUsers] = useState<SimpleUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -205,6 +205,7 @@ export default function ChatsScreen() {
   const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
   const [optionsModalVisible, setOptionsModalVisible] = useState(false);
 const [selectedChat, setSelectedChat] = useState<any | null>(null);
+const [newChatMenuVisible, setNewChatMenuVisible] = useState(false);
 
   // create group modal
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
@@ -230,6 +231,13 @@ const [selectedChat, setSelectedChat] = useState<any | null>(null);
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+    };
+  }, []);
+    useEffect(() => {
+    return () => {
+      if (unreadRefreshTimeout.current) {
+        clearTimeout(unreadRefreshTimeout.current);
+      }
     };
   }, []);
 
@@ -428,6 +436,90 @@ const [selectedChat, setSelectedChat] = useState<any | null>(null);
   }
 }, []);
 
+const loadUnreadConversationIds = useCallback(async (userIdParam?: string | null) => {
+  const uid = userIdParam || meId;
+
+  if (!uid) {
+    setUnreadConversationIds(new Set());
+    return;
+  }
+
+  if (unreadRequestInFlight.current) return;
+  unreadRequestInFlight.current = true;
+
+  try {
+    const { data: conversations, error: convoError } = await supabase
+      .from('conversations')
+      .select('id')
+      .contains('participant_ids', [uid]);
+
+    if (convoError) {
+      console.error('Unread conversations fetch error:', convoError.message);
+      return;
+    }
+
+    const conversationIds = (conversations || []).map((c: any) => c.id);
+
+    if (!conversationIds.length) {
+      setUnreadConversationIds(new Set());
+      return;
+    }
+
+    const { data: reads, error: readsError } = await supabase
+      .from('conversation_reads')
+      .select('conversation_id, last_read_at')
+      .eq('user_id', uid)
+      .in('conversation_id', conversationIds);
+
+    if (readsError) {
+      console.error('Unread reads fetch error:', readsError.message);
+      return;
+    }
+
+    const readsMap = new Map<string, string>();
+    (reads || []).forEach((row: any) => {
+      readsMap.set(String(row.conversation_id), row.last_read_at);
+    });
+
+    const { data: messages, error: msgError } = await supabase
+      .from('messages')
+      .select('conversation_id, sent_at, sender_id')
+      .in('conversation_id', conversationIds)
+      .neq('sender_id', uid);
+
+    if (msgError) {
+      console.error('Unread messages fetch error:', msgError.message);
+      return;
+    }
+
+    const unreadIds = new Set<string>();
+
+    (messages || []).forEach((msg: any) => {
+      const cid = String(msg.conversation_id);
+      const lastReadAt = readsMap.get(cid);
+
+      if (!lastReadAt || new Date(msg.sent_at).getTime() > new Date(lastReadAt).getTime()) {
+        unreadIds.add(cid);
+      }
+    });
+
+    setUnreadConversationIds(unreadIds);
+  } catch (e: any) {
+    console.error('loadUnreadConversationIds error:', e?.message || e);
+  } finally {
+    unreadRequestInFlight.current = false;
+  }
+}, [meId]);
+const queueUnreadRefresh = useCallback(() => {
+  if (unreadRefreshTimeout.current) {
+    clearTimeout(unreadRefreshTimeout.current);
+  }
+
+  unreadRefreshTimeout.current = setTimeout(() => {
+    loadUnreadConversationIds();
+  }, 250);
+}, [loadUnreadConversationIds]);
+
   // Core fetch
   const fetchUserChats = useCallback(
     async (opts?: { showSpinner?: boolean }) => {
@@ -455,8 +547,9 @@ const [selectedChat, setSelectedChat] = useState<any | null>(null);
           return;
         }
 
-        await fetchHides(uid);
+                await fetchHides(uid);
         await fetchBlockedUsers(uid);
+        await loadUnreadConversationIds(uid);
 
         const { data: conversations, error } =
           await supabase
@@ -735,13 +828,21 @@ const [selectedChat, setSelectedChat] = useState<any | null>(null);
         }
       }
     },
-    [meId, fetchHides, fetchBlockedUsers]
+        [meId, fetchHides, fetchBlockedUsers, loadUnreadConversationIds]
   );
 
   // initial / focus fetch
   useEffect(() => {
     fetchUserChats({ showSpinner: true });
   }, [fetchUserChats]);
+    useEffect(() => {
+    if (!meId) {
+      setUnreadConversationIds(new Set());
+      return;
+    }
+
+    loadUnreadConversationIds(meId);
+  }, [meId, loadUnreadConversationIds]);
 
   useFocusEffect(
     useCallback(() => {
@@ -758,20 +859,28 @@ const [selectedChat, setSelectedChat] = useState<any | null>(null);
       };
     }, [fetchUserChats])
   );
+    useEffect(() => {
+    const unsubscribe = subscribeChatBadgeRefresh(() => {
+      queueUnreadRefresh();
+    });
+
+    return unsubscribe;
+  }, [queueUnreadRefresh]);
 
   // realtime
-  useEffect(() => {
+    useEffect(() => {
     if (!meId) return;
 
     let convoChannel: any;
     let msgChannel: any;
-    const throttledRefresh = throttle(
-      () =>
-        fetchUserChats({
-          showSpinner: false,
-        }),
-      800
-    );
+    let readsChannel: any;
+
+    const throttledRefresh = throttle(() => {
+      fetchUserChats({
+        showSpinner: false,
+      });
+      queueUnreadRefresh();
+    }, 800);
 
     (async () => {
       const {
@@ -804,19 +913,28 @@ const [selectedChat, setSelectedChat] = useState<any | null>(null);
           () => throttledRefresh()
         )
         .subscribe();
+
+      readsChannel = supabase
+        .channel('realtime-conversation-reads')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'conversation_reads',
+            filter: `user_id=eq.${meId}`,
+          },
+          () => throttledRefresh()
+        )
+        .subscribe();
     })();
 
     return () => {
-      if (convoChannel)
-        supabase.removeChannel(
-          convoChannel
-        );
-      if (msgChannel)
-        supabase.removeChannel(
-          msgChannel
-        );
+      if (convoChannel) supabase.removeChannel(convoChannel);
+      if (msgChannel) supabase.removeChannel(msgChannel);
+      if (readsChannel) supabase.removeChannel(readsChannel);
     };
-  }, [meId, fetchUserChats]);
+  }, [meId, fetchUserChats, queueUnreadRefresh]);
 
   // deep-link joins
   useEffect(() => {
@@ -888,18 +1006,83 @@ const [selectedChat, setSelectedChat] = useState<any | null>(null);
     },
         [meId, isGuest]
   );
+  const fetchContactUsers = useCallback(
+  async (q: string) => {
+    if (isGuest || !meId) {
+      if (mountedRef.current) setUsers([]);
+      return;
+    }
+
+    try {
+      setLoadingUsers(true);
+
+      const { data: conversations, error: convoError } = await supabase
+        .from('conversations')
+        .select('participant_ids,is_group')
+        .contains('participant_ids', [meId]);
+
+      if (convoError) {
+        console.error('Contact search conversation error:', convoError.message);
+        if (mountedRef.current) setUsers([]);
+        return;
+      }
+
+      const peerIds = Array.from(
+        new Set(
+          (conversations || [])
+            .filter((c: any) => !c.is_group)
+            .flatMap((c: any) => c.participant_ids || [])
+            .filter((id: string) => id !== meId)
+        )
+      );
+
+      if (!peerIds.length) {
+        if (mountedRef.current) setUsers([]);
+        return;
+      }
+
+      let query = supabase
+        .from('users')
+        .select('id, full_name, avatar_url, level')
+        .in('id', peerIds)
+        .order('full_name', { ascending: true })
+        .limit(30);
+
+      if (q.trim().length > 0) {
+        query = query.ilike('full_name', `%${q.trim()}%`);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error('Contact search user error:', error.message);
+        if (mountedRef.current) setUsers([]);
+        return;
+      }
+
+      if (mountedRef.current) {
+        setUsers((data || []) as SimpleUser[]);
+      }
+    } finally {
+      if (mountedRef.current) setLoadingUsers(false);
+    }
+  },
+  [isGuest, meId]
+);
 
   useEffect(() => {
-    if (activeTab !== 'users') return;
-    const t = setTimeout(() => {
+  if (activeTab !== 'users' && activeTab !== 'contacts') return;
+
+  const t = setTimeout(() => {
+    if (activeTab === 'contacts') {
+      fetchContactUsers(userQuery);
+    } else {
       fetchUsers(userQuery);
-    }, 250);
-    return () => clearTimeout(t);
-  }, [
-    userQuery,
-    activeTab,
-    fetchUsers,
-  ]);
+    }
+  }, 250);
+
+  return () => clearTimeout(t);
+}, [userQuery, activeTab, fetchUsers, fetchContactUsers]);
 
   /* ─────────────────────────────
      GROUP CHAT CREATION
@@ -1354,6 +1537,30 @@ const [selectedChat, setSelectedChat] = useState<any | null>(null);
       }
     };
 
+    const leaveGroupChat = async (chat: any) => {
+  try {
+    setDeletingId(chat.id);
+
+    const { error } = await supabase.rpc('leave_group_chat', {
+      conversation_id_input: chat.id,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    setChats((prev) => prev.filter((c) => String(c.id) !== String(chat.id)));
+
+    showAlert('Left group', 'You are no longer part of this group chat.');
+    emitChatBadgeRefresh();
+  } catch (e: any) {
+    console.error('leaveGroupChat error:', e?.message || e);
+    showAlert('Could not leave group', String(e?.message ?? e));
+  } finally {
+    setDeletingId(null);
+  }
+};
+
   // hide (delete for me)
   const removeChatForMe = async (
     chat: any
@@ -1492,6 +1699,31 @@ const unblockUser = async (targetUserId: string) => {
 };
 
 const openChatOptions = (chat: any) => {
+  if (chat?.is_group) {
+    if (Platform.OS === 'web') {
+      setSelectedChat(chat);
+      setOptionsModalVisible(true);
+      return;
+    }
+
+    Alert.alert(
+      chat?.label || 'Group chat',
+      'Do you want to leave this group chat?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Leave group',
+          style: 'destructive',
+          onPress: () => leaveGroupChat(chat),
+        },
+      ]
+    );
+    return;
+  }
+
   if (!chat?.peerUser?.id) {
     removeChatForMe(chat);
     return;
@@ -1502,29 +1734,29 @@ const openChatOptions = (chat: any) => {
   const displayName = chat.peerUser.full_name || 'User';
 
   if (Platform.OS === 'web') {
-  setSelectedChat(chat);
-  setOptionsModalVisible(true);
-  return;
-}
+    setSelectedChat(chat);
+    setOptionsModalVisible(true);
+    return;
+  }
 
   Alert.alert(displayName, 'Choose an action', [
-  {
-  text: isBlocked ? 'Unblock' : 'Block',
-  onPress: () =>
-    isBlocked
-      ? unblockUser(targetUserId)
-      : blockUser(targetUserId),
-},
-  {
-    text: 'Delete',
-    style: 'destructive',
-    onPress: () => removeChatForMe(chat),
-  },
-  {
-    text: 'Cancel',
-    style: 'cancel',
-  },
-]);
+    {
+      text: isBlocked ? 'Unblock' : 'Block',
+      onPress: () =>
+        isBlocked
+          ? unblockUser(targetUserId)
+          : blockUser(targetUserId),
+    },
+    {
+      text: 'Delete',
+      style: 'destructive',
+      onPress: () => removeChatForMe(chat),
+    },
+    {
+      text: 'Cancel',
+      style: 'cancel',
+    },
+  ]);
 };
 
 const closeOptionsModal = () => {
@@ -1597,19 +1829,9 @@ const handleWebDelete = async () => {
       ? item?.group_avatar_url || undefined
       : undefined;
 
-    const peerLevel: number | null =
-      isDirect
-        ? item?.peerUser
-            ?.level ?? null
-        : null;
+    
 
-    const ringColor = isDirect
-      ? getLevelRingColor(
-          peerLevel
-        )
-      : undefined;
-
-    const memberCount =
+        const memberCount =
       Array.isArray(
         item.participant_ids
       )
@@ -1618,6 +1840,7 @@ const handleWebDelete = async () => {
         : 0;
     const isDeleting =
       deletingId === item.id;
+    const isUnread = unreadConversationIds.has(String(item.id));
 const isDirectBlocked =
   !item.is_group &&
   !!item?.peerUser?.id &&
@@ -1632,7 +1855,7 @@ const isDirectBlocked =
       opacity: 0.6,
     },
   ]}
-                onPress={async () => {
+                                onPress={async () => {
   if (isDeleting) return;
 
   if (isGuest) {
@@ -1641,12 +1864,12 @@ const isDirectBlocked =
   }
 
   if (isDirectBlocked) {
-  showAlert(
-    'User blocked',
-    'You have blocked this user. Unblock them to open the chat.'
-  );
-  return;
-}
+    showAlert(
+      'User blocked',
+      'You have blocked this user. Unblock them to open the chat.'
+    );
+    return;
+  }
 
   try {
     if (meId && item?.id) {
@@ -1662,6 +1885,12 @@ const isDirectBlocked =
             onConflict: 'user_id,conversation_id',
           }
         );
+
+      setUnreadConversationIds((prev) => {
+        const next = new Set(prev);
+        next.delete(String(item.id));
+        return next;
+      });
 
       emitChatBadgeRefresh();
     }
@@ -1686,40 +1915,20 @@ const isDirectBlocked =
         <View style={styles.leftRow}>
           {/* Direct chat: avatar with level ring */}
           {isDirect &&
-            (avatarUri ||
-              true) && (
-              <View
-                style={[
-                  styles.avatarRing,
-                  {
-                    borderColor:
-                      ringColor,
-                  },
-                ]}
-              >
-                {avatarUri ? (
-                  <Image
-  source={{
-    uri: avatarUri,
-  }}
-  style={styles.avatar as any}
-/>
-                ) : (
-                  <View
-                    style={[
-                      styles.avatar,
-                      styles.fallbackAvatar,
-                    ]}
-                  >
-                    <Ionicons
-                      name="person-outline"
-                      size={20}
-                      color={T.sub}
-                    />
-                  </View>
-                )}
-              </View>
-            )}
+  (avatarUri ? (
+    <Image
+      source={{ uri: avatarUri }}
+      style={styles.avatar as any}
+    />
+  ) : (
+    <View style={[styles.avatar, styles.fallbackAvatar]}>
+      <Ionicons
+        name="person-outline"
+        size={20}
+        color={T.sub}
+      />
+    </View>
+  ))}
 
           {/* City group: flag only, no ring */}
           {isCityGroup &&
@@ -1767,95 +1976,70 @@ const isDirectBlocked =
               </View>
             ))}
 
-          <View
+                    <View
             style={{
               flexShrink: 1,
+              flex: 1,
             }}
           >
+            <View style={styles.chatNameRow}>
+              <Text
+                style={[
+                  styles.chatName,
+                  isUnread && styles.chatNameUnread,
+                ]}
+                numberOfLines={1}
+              >
+                {title}
+              </Text>
+
+              {isUnread ? <View style={styles.inlineUnreadDot} /> : null}
+            </View>
+
             <Text
               style={
-                styles.chatName
+                styles.chatMessage
               }
               numberOfLines={1}
             >
-              {title}
+              {isDirectBlocked
+                ? 'Blocked user'
+                : item.isTyping
+                ? 'Typing…'
+                : item.lastMessage}
             </Text>
-            <Text
-  style={
-    styles.chatMessage
-  }
-  numberOfLines={1}
->
-  {isDirectBlocked
-    ? 'Blocked user'
-    : item.isTyping
-    ? 'Typing…'
-    : item.lastMessage}
-</Text>
           </View>
         </View>
 
-        <View
-          style={styles.rightMeta}
-          pointerEvents="box-none"
-        >
-          {item.is_group && (
-            <View
-              style={
-                styles.memberPill
-              }
-            >
-              <Ionicons
-                name="people-outline"
-                size={14}
-                color={T.sub}
-              />
-              <Text
-                style={
-                  styles.memberPillText
-                }
-              >
-                {
-                  memberCount
-                }
-              </Text>
-            </View>
-          )}
+        <View style={styles.rightMeta} pointerEvents="box-none">
+  <Text style={styles.timeText} numberOfLines={1}>
+    {timeAgo}
+  </Text>
 
-          <Text
-            style={styles.timeText}
-            numberOfLines={1}
-          >
-            {timeAgo}
-          </Text>
+  <Pressable
+    style={styles.trashHitBox}
+    onPress={(e) => {
+      e.stopPropagation?.();
 
-          <Pressable
-  style={styles.trashHitBox}
-  onPress={(e) => {
-    e.stopPropagation?.();
+      if (isGuest) {
+        promptSignIn('Create an account or sign in to manage chats.');
+        return;
+      }
 
-    if (isGuest) {
-      promptSignIn('Create an account or sign in to manage chats.');
-      return;
-    }
-
-    openChatOptions(item);
-  }}
->
-  {isDeleting ? (
-    <ActivityIndicator
-      size="small"
-      color={T.accent}
-    />
-  ) : (
-    <Ionicons
-      name="ellipsis-horizontal"
-      size={16}
-      color="#8A8A8A"
-    />
-  )}
-</Pressable>
-        </View>
+      openChatOptions(item);
+    }}
+  >
+    {isDeleting ? (
+      <ActivityIndicator size="small" color={T.accent} />
+    ) : (
+      <Ionicons
+        name="ellipsis-horizontal"
+        size={16}
+        color="#8A8A8A"
+      />
+    )}
+  </Pressable>
+</View>
       </Pressable>
     );
   };
@@ -1882,10 +2066,7 @@ const isDirectBlocked =
     const avatarUri =
       item.avatar_url ||
       undefined;
-    const ringColor =
-      getLevelRingColor(
-        item.level
-      );
+    
 
     return (
       <Pressable
@@ -1900,45 +2081,26 @@ const isDirectBlocked =
             return;
           }
 
-          navigation.navigate(
-            'Profile',
-            {
-              user: item,
-              userId:
-                item.id,
-            }
-          );
+          navigation.navigate('Profile', {
+  user: item,
+  userId: item.id,
+});
         }}
       >
-        <View
-          style={[
-            styles.avatarRing,
-            {
-              borderColor:
-                ringColor,
-            },
-          ]}
-        >
-          {avatarUri ? (
-            <Image
-  source={{ uri: avatarUri }}
-  style={styles.avatar as any}
-/>
-          ) : (
-            <View
-              style={[
-                styles.avatar,
-                styles.fallbackAvatar,
-              ]}
-            >
-              <Ionicons
-                name="person-outline"
-                size={20}
-                color={T.sub}
-              />
-            </View>
-          )}
-        </View>
+        {avatarUri ? (
+  <Image
+    source={{ uri: avatarUri }}
+    style={styles.avatar as any}
+  />
+) : (
+  <View style={[styles.avatar, styles.fallbackAvatar]}>
+    <Ionicons
+      name="person-outline"
+      size={20}
+      color={T.sub}
+    />
+  </View>
+)}
 
         <Text
           style={
@@ -1960,119 +2122,98 @@ const isDirectBlocked =
   /* -------- top search / tabs header -------- */
 
   const TopSearchHeader = (
-    <View
-      style={[
-        styles.searchHeader,
-        { paddingTop: 4 },
-      ]}
-    >
-      <View style={styles.tabsRow}>
-        <Pressable
-          onPress={() =>
-            setActiveTab(
-              'chats'
-            )
-          }
-          style={[
-            styles.tabPill,
-            activeTab ===
-              'chats' &&
-              styles.tabPillActive,
-          ]}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab ===
-                'chats' &&
-                styles.tabTextActive,
-            ]}
-          >
-            CHATS
-          </Text>
-        </Pressable>
+  <View style={[styles.searchHeader, { paddingTop: 4 }]}>
+    <View style={styles.topBar}>
+  <View style={styles.topBarLeft}>
+    {activeTab !== 'chats' ? (
+      <Pressable
+        onPress={() => {
+          setActiveTab('chats');
+          setUserQuery('');
+        }}
+        style={styles.backButton}
+      >
+        <Ionicons name="chevron-back" size={18} color={T.text} />
+      </Pressable>
+    ) : null}
 
-                <Pressable
-          onPress={() => {
-            if (isGuest) {
-              promptSignIn('Create an account or sign in to search for users.');
-              return;
-            }
-            setActiveTab('users');
-          }}
-          style={[
-            styles.tabPill,
-            activeTab === 'users' && styles.tabPillActive,
-          ]}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab ===
-                'users' &&
-                styles.tabTextActive,
-            ]}
-          >
-            SEARCH USERS
-          </Text>
-        </Pressable>
+    <Text style={styles.recentChatsTitle}>
+      {activeTab === 'contacts'
+        ? 'Search current contacts'
+        : activeTab === 'users'
+        ? 'New 1-to-1 chat'
+        : 'Recent chats'}
+    </Text>
+  </View>
 
-        {/* Create group button */}
-        <Pressable
-                    onPress={() => {
-            if (isGuest) {
-              promptSignIn('Create an account or sign in to create group chats.');
-              return;
-            }
-            openCreateGroup();
-          }}
-          style={styles.createGroupPill}
-        >
-          <Ionicons name="add" size={18} color={T.text} />
-        </Pressable>
-      </View>
+  <Pressable
+    onPress={() => {
+      if (isGuest) {
+        promptSignIn('Create an account or sign in to start a new chat.');
+        return;
+      }
+      setNewChatMenuVisible(true);
+    }}
+    style={styles.plusButton}
+  >
+    <Ionicons name="add" size={20} color={T.text} />
+  </Pressable>
+</View>
 
-      {activeTab ===
-      'chats' ? (
-        <TextInput
-          placeholder="Search chats…"
-          placeholderTextColor={
-            T.mute
-          }
-          style={
-            styles.searchInput
-          }
-          value={search}
-          onChangeText={
-            setSearch
-          }
-          autoCorrect={false}
-          autoCapitalize="none"
-        />
-      ) : (
-                <TextInput
-          onFocus={() => {
-            if (isGuest) {
-              promptSignIn('Create an account or sign in to search for users.');
-            }
-          }}
-          placeholder="Search users by name…"
-          placeholderTextColor={T.mute}
-          style={styles.searchInput}
-          value={userQuery}
-          onChangeText={(text) => {
-            if (isGuest) {
-              promptSignIn('Create an account or sign in to search for users.');
-              return;
-            }
-            setUserQuery(text);
-          }}
-          autoCapitalize="words"
-          autoCorrect={false}
-        />
-      )}
-    </View>
-  );
+    
+
+    {activeTab === 'chats' ? (
+  <View style={styles.searchInputWrap}>
+    <Ionicons name="search-outline" size={18} color={T.mute} />
+    <TextInput
+      placeholder="Search recent chats"
+      placeholderTextColor={T.mute}
+      style={styles.searchInputInline}
+      value={search}
+      onChangeText={setSearch}
+      autoCorrect={false}
+      autoCapitalize="none"
+    />
+  </View>
+) : (
+  <View style={styles.searchInputWrap}>
+    <Ionicons name="search-outline" size={18} color={T.mute} />
+    <TextInput
+      onFocus={() => {
+        if (isGuest) {
+          promptSignIn(
+            activeTab === 'contacts'
+              ? 'Create an account or sign in to search current contacts.'
+              : 'Create an account or sign in to start a new 1-to-1 chat.'
+          );
+        }
+      }}
+      placeholder={
+        activeTab === 'contacts'
+          ? 'Search current contacts'
+          : 'Search all users'
+      }
+      placeholderTextColor={T.mute}
+      style={styles.searchInputInline}
+      value={userQuery}
+      onChangeText={(text) => {
+        if (isGuest) {
+          promptSignIn(
+            activeTab === 'contacts'
+              ? 'Create an account or sign in to search current contacts.'
+              : 'Create an account or sign in to start a new 1-to-1 chat.'
+          );
+          return;
+        }
+        setUserQuery(text);
+      }}
+      autoCapitalize="words"
+      autoCorrect={false}
+    />
+  </View>
+)}
+  </View>
+);
 
   /* -------- render -------- */
 
@@ -2207,21 +2348,18 @@ updateCellsBatchingPeriod={16}
               ),
           }}
           ListEmptyComponent={
-            loadingUsers ? null : (
-              <Text
-                style={
-                  styles.emptyText
-                }
-              >
-                {userQuery
-                  .trim()
-                  .length ===
-                0
-                  ? 'Start typing a name to search.'
-                  : 'No users found.'}
-              </Text>
-            )
-          }
+  loadingUsers ? null : (
+    <Text style={styles.emptyText}>
+      {userQuery.trim().length === 0
+        ? activeTab === 'contacts'
+          ? 'Start typing a name to search your chats.'
+          : 'Start typing a name to search all users.'
+        : activeTab === 'contacts'
+        ? 'No current contacts found.'
+        : 'No users found.'}
+    </Text>
+  )
+}
           onRefresh={() =>
             fetchUsers(
               userQuery
@@ -2250,33 +2388,97 @@ updateCellsBatchingPeriod={16}
   />
   <View style={styles.optionsModalCard}>
     <Text style={styles.optionsModalTitle}>
-      {selectedChat?.peerUser?.full_name || 'Chat options'}
+      {selectedChat?.is_group
+        ? selectedChat?.label || 'Group chat'
+        : selectedChat?.peerUser?.full_name || 'Chat options'}
     </Text>
 
-    <TouchableOpacity
-      style={styles.optionsModalButton}
-      onPress={handleWebBlockToggle}
-      activeOpacity={0.85}
-    >
-      <Text style={styles.optionsModalButtonText}>
-        {selectedChat?.peerUser?.id &&
-        blockedUserIds.has(selectedChat.peerUser.id)
-          ? 'Unblock'
-          : 'Block'}
-      </Text>
-    </TouchableOpacity>
+    {selectedChat?.is_group ? (
+      <TouchableOpacity
+        style={[styles.optionsModalButton, styles.optionsDeleteButton]}
+        onPress={async () => {
+          const chatToLeave = selectedChat;
+          closeOptionsModal();
+          await leaveGroupChat(chatToLeave);
+        }}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.optionsDeleteButtonText}>Leave group chat</Text>
+      </TouchableOpacity>
+    ) : (
+      <>
+        <TouchableOpacity
+          style={styles.optionsModalButton}
+          onPress={handleWebBlockToggle}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.optionsModalButtonText}>
+            {selectedChat?.peerUser?.id &&
+            blockedUserIds.has(selectedChat.peerUser.id)
+              ? 'Unblock'
+              : 'Block'}
+          </Text>
+        </TouchableOpacity>
 
-    <TouchableOpacity
-      style={[styles.optionsModalButton, styles.optionsDeleteButton]}
-      onPress={handleWebDelete}
-      activeOpacity={0.85}
-    >
-      <Text style={styles.optionsDeleteButtonText}>Delete</Text>
-    </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.optionsModalButton, styles.optionsDeleteButton]}
+          onPress={handleWebDelete}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.optionsDeleteButtonText}>Delete</Text>
+        </TouchableOpacity>
+      </>
+    )}
 
     <TouchableOpacity
       style={styles.optionsModalCancel}
       onPress={closeOptionsModal}
+      activeOpacity={0.85}
+    >
+      <Text style={styles.optionsModalCancelText}>Cancel</Text>
+    </TouchableOpacity>
+  </View>
+</Modal>
+
+<Modal
+  visible={newChatMenuVisible}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setNewChatMenuVisible(false)}
+>
+  <Pressable
+    style={styles.modalBackdrop}
+    onPress={() => setNewChatMenuVisible(false)}
+  />
+
+  <View style={styles.optionsModalCard}>
+    <Text style={styles.optionsModalTitle}>Start chat</Text>
+
+    <TouchableOpacity
+      style={styles.optionsModalButton}
+      onPress={() => {
+        setNewChatMenuVisible(false);
+        setActiveTab('users');
+      }}
+      activeOpacity={0.85}
+    >
+      <Text style={styles.optionsModalButtonText}>New 1-to-1 chat</Text>
+    </TouchableOpacity>
+
+    <TouchableOpacity
+      style={styles.optionsModalButton}
+      onPress={() => {
+        setNewChatMenuVisible(false);
+        openCreateGroup();
+      }}
+      activeOpacity={0.85}
+    >
+      <Text style={styles.optionsModalButtonText}>New group chat</Text>
+    </TouchableOpacity>
+
+    <TouchableOpacity
+      style={styles.optionsModalCancel}
+      onPress={() => setNewChatMenuVisible(false)}
       activeOpacity={0.85}
     >
       <Text style={styles.optionsModalCancelText}>Cancel</Text>
@@ -2359,6 +2561,32 @@ updateCellsBatchingPeriod={16}
               style={styles.modalInput}
               autoCorrect={false}
             />
+            <View style={styles.createGroupTopRow}>
+  <View style={styles.selectedCountTopWrap}>
+    <Text style={styles.selectedCountText}>
+      Selected: {Array.from(groupMemberIds).length}
+    </Text>
+  </View>
+
+  <TouchableOpacity
+    onPress={createGroupChat}
+    disabled={creatingGroup}
+    activeOpacity={0.85}
+    style={[
+      styles.createBtnTop,
+      creatingGroup && { opacity: 0.7 },
+    ]}
+  >
+    {creatingGroup ? (
+      <ActivityIndicator color="#000" />
+    ) : (
+      <>
+        <Ionicons name="chatbubble-ellipses-outline" size={16} color="#000" />
+        <Text style={styles.createBtnTopText}>Create Group</Text>
+      </>
+    )}
+  </TouchableOpacity>
+</View>
 
             {loadingGroupUsers ? (
               <ActivityIndicator
@@ -2369,7 +2597,7 @@ updateCellsBatchingPeriod={16}
 
             {(groupUsers || []).map((u) => {
               const selected = groupMemberIds.has(u.id);
-              const ringColor = getLevelRingColor(u.level);
+              
               return (
                 <Pressable
                   key={u.id}
@@ -2379,15 +2607,13 @@ updateCellsBatchingPeriod={16}
                     selected && { borderColor: T.olive },
                   ]}
                 >
-                  <View style={[styles.avatarRingSmall, { borderColor: ringColor }]}>
-                    {u.avatar_url ? (
-                      <Image source={{ uri: u.avatar_url }} style={styles.avatarSmall as any} />
-                    ) : (
-                      <View style={[styles.avatarSmall, styles.fallbackAvatar]}>
-                        <Ionicons name="person-outline" size={16} color={T.sub} />
-                      </View>
-                    )}
-                  </View>
+                  {u.avatar_url ? (
+  <Image source={{ uri: u.avatar_url }} style={styles.avatarSmall as any} />
+) : (
+  <View style={[styles.avatarSmall, styles.fallbackAvatar]}>
+    <Ionicons name="person-outline" size={16} color={T.sub} />
+  </View>
+)}
 
                   <Text style={styles.memberPickName} numberOfLines={1}>
                     {u.full_name}
@@ -2402,30 +2628,7 @@ updateCellsBatchingPeriod={16}
               );
             })}
 
-            <View style={styles.selectedCountRow}>
-              <Text style={styles.selectedCountText}>
-                Selected: {Array.from(groupMemberIds).length}
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              onPress={createGroupChat}
-              disabled={creatingGroup}
-              activeOpacity={0.85}
-              style={[
-                styles.createBtn,
-                creatingGroup && { opacity: 0.7 },
-              ]}
-            >
-              {creatingGroup ? (
-  <ActivityIndicator color={GOLD} />
-) : (
-                <>
-                  <Ionicons name="chatbubble-ellipses-outline" size={18} color="#000" />
-                  <Text style={styles.createBtnText}>Create Group</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            
           </ScrollView>
         </View>
       </Modal>
@@ -2511,20 +2714,68 @@ optionsModalCancelText: {
 
   /* Search header / tabs */
   searchHeader: {
-    backgroundColor: 'transparent',
-    paddingBottom: 12,
-  },
-  tabsRow: {
-    flexDirection: 'row',
-    backgroundColor: '#080808',
-    borderRadius: 18,
-    padding: 4,
-    gap: 6,
-    marginTop: 8,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#151515',
-  },
+  backgroundColor: 'transparent',
+  paddingBottom: 12,
+  paddingHorizontal: 2,
+},
+  topBar: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginTop: 8,
+  marginBottom: 12,
+},
+recentChatsTitle: {
+  color: T.text,
+  fontSize: 16,
+  fontWeight: '800',
+  fontFamily: SYSTEM_SANS,
+},
+
+plusButton: {
+  width: 40,
+  height: 40,
+  borderRadius: 12,
+  backgroundColor: '#141414',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderWidth: 1,
+  borderColor: '#151515',
+},
+
+contactsShortcut: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+  marginBottom: 10,
+  paddingHorizontal: 2,
+},
+
+contactsShortcutText: {
+  color: T.sub,
+  fontSize: 13,
+  fontWeight: '600',
+  fontFamily: SYSTEM_SANS,
+},
+
+searchInputWrap: {
+  height: 46,
+  backgroundColor: '#0B0B0B',
+  borderRadius: 16,
+  paddingHorizontal: 14,
+  borderWidth: 1,
+  borderColor: '#151515',
+  flexDirection: 'row',
+  alignItems: 'center',
+},
+
+searchInputInline: {
+  flex: 1,
+  color: T.text,
+  fontFamily: SYSTEM_SANS,
+  fontSize: 14,
+  marginLeft: 10,
+},
   tabPill: {
     flex: 1,
     borderRadius: 14,
@@ -2547,6 +2798,20 @@ optionsModalCancelText: {
   tabTextActive: {
     color: T.text,
   },
+  topBarLeft: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+},
+
+backButton: {
+  width: 32,
+  height: 32,
+  borderRadius: 10,
+  backgroundColor: '#141414',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
 
   createGroupPill: {
     width: 42,
@@ -2570,31 +2835,61 @@ optionsModalCancelText: {
     fontFamily: SYSTEM_SANS,
     fontSize: 14,
   },
+  createGroupTopRow: {
+  marginTop: 12,
+  marginBottom: 8,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 10,
+},
+
+selectedCountTopWrap: {
+  flex: 1,
+},
+
+createBtnTop: {
+  height: 42,
+  borderRadius: 12,
+  backgroundColor: T.olive,
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexDirection: 'row',
+  gap: 6,
+  paddingHorizontal: 14,
+},
+
+createBtnTopText: {
+  color: '#000',
+  fontWeight: '700',
+  fontFamily: SYSTEM_SANS,
+  fontSize: 13,
+},
 
   /* Chat rows */
   chatCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#070707',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 18,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#111111',
-    minHeight: 78,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: '#070707',
+  paddingHorizontal: 12,
+  paddingVertical: 12,
+  borderRadius: 16,
+  marginBottom: 8,
+  borderWidth: 1,
+  borderColor: '#111111',
+  minHeight: 76,
+},
   chatCardPressed: {
   opacity: 0.88,
   transform: [{ scale: 0.995 }],
 },
   leftRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-    paddingRight: 12,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 12,
+  flex: 1,
+  paddingRight: 10,
+},
 
   avatarRing: {
     width: 52,
@@ -2607,52 +2902,68 @@ optionsModalCancelText: {
     backgroundColor: '#050505',
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#111',
-  },
+  width: 48,
+  height: 48,
+  borderRadius: 24,
+  backgroundColor: '#111',
+},
   fallbackAvatar: {
     backgroundColor: '#111111',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
+    chatNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 3,
+    maxWidth: '100%',
+  },
+
   chatName: {
     fontSize: 15,
     color: T.text,
     fontWeight: '700',
-    letterSpacing: 0,
-    textTransform: 'none',
     fontFamily: SYSTEM_SANS,
-    marginBottom: 2,
+  },
+
+  chatNameUnread: {
+    color: GOLD,
+  },
+
+  inlineUnreadDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: GOLD,
+    borderWidth: 1,
+    borderColor: '#000000',
+    flexShrink: 0,
   },
   chatMessage: {
-    fontSize: 13,
-    color: '#9A9A9A',
-    marginTop: 1,
-    maxWidth: 240,
-    flexShrink: 1,
-    lineHeight: 18,
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '400',
-  },
+  fontSize: 13,
+  color: '#9A9A9A',
+  maxWidth: 220,
+  flexShrink: 1,
+  lineHeight: 18,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '400',
+},
   timeText: {
-    fontSize: 11,
-    color: '#7D7D7D',
-    marginTop: 0,
-    marginBottom: 8,
-    textAlign: 'right',
-    letterSpacing: 0,
-    fontFamily: SYSTEM_SANS,
-  },
+  fontSize: 11,
+  color: '#7D7D7D',
+  marginBottom: 6,
+  textAlign: 'right',
+  fontFamily: SYSTEM_SANS,
+},
   rightMeta: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    alignSelf: 'stretch',
-    paddingLeft: 8,
-    minWidth: 64,
-  },
+  alignItems: 'flex-end',
+  justifyContent: 'flex-start',
+  alignSelf: 'stretch',
+  paddingLeft: 8,
+  minWidth: 58,
+},
   memberPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2671,11 +2982,11 @@ optionsModalCancelText: {
   },
 
   trashHitBox: {
-    alignSelf: 'flex-end',
-    padding: 6,
-    borderRadius: 10,
-    backgroundColor: 'transparent',
-  },
+  alignSelf: 'flex-end',
+  padding: 4,
+  borderRadius: 10,
+  backgroundColor: 'transparent',
+},
 
   /* Loading overlay */
   loadingOverlay: {
@@ -2710,27 +3021,25 @@ optionsModalCancelText: {
 
   /* user search items */
   userCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#070707',
-    borderWidth: 1,
-    borderColor: '#111111',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 8,
-    minHeight: 74,
-  },
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 12,
+  backgroundColor: '#070707',
+  borderWidth: 1,
+  borderColor: '#111111',
+  borderRadius: 16,
+  paddingHorizontal: 12,
+  paddingVertical: 12,
+  marginBottom: 8,
+  minHeight: 72,
+},
   userName: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '700',
-    color: T.text,
-    letterSpacing: 0,
-    textTransform: 'none',
-    fontFamily: SYSTEM_SANS,
-  },
+  flex: 1,
+  fontSize: 15,
+  fontWeight: '700',
+  color: T.text,
+  fontFamily: SYSTEM_SANS,
+},
   userCardPressed: {
   opacity: 0.88,
   transform: [{ scale: 0.995 }],
@@ -2869,13 +3178,14 @@ optionsModalCancelText: {
     marginRight: 10,
   },
   avatarSmall: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#111',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  width: 36,
+  height: 36,
+  borderRadius: 18,
+  backgroundColor: '#111',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginRight: 10,
+},
   memberPickName: {
     flex: 1,
     color: T.text,

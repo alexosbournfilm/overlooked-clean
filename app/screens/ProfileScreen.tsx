@@ -1053,7 +1053,9 @@ export default function ProfileScreen() {
 
   // ✅ single source of truth for which profile should load
   const targetIdParam: string | null =
-    route.params?.userId ?? route.params?.user?.id ?? null;
+  route.params?.userId ?? route.params?.user?.id ?? null;
+
+const isViewingExternalProfile = !!targetIdParam;
 
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const publicProfileUrl = profile?.public_slug
@@ -1237,7 +1239,7 @@ try {
   const authUserIdLocal = authUserId ?? null;
   setCurrentUserId(authUserIdLocal);
 
-  const targetId = targetIdParam ?? authUserIdLocal ?? null;
+  const targetId = isViewingExternalProfile ? targetIdParam : authUserIdLocal ?? null;
 
   if (!targetId) {
     setProfile(null);

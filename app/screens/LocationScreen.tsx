@@ -23,15 +23,20 @@ import { useAuth } from '../context/AuthProvider';
 const IS_WEB = Platform.OS === 'web';
 
 /* ────────────────────────────────────────────────────────────
-   Minimal palette (keeps your dark aesthetic but “ChatGPT-home” layout)
+   Cinematic dark palette aligned with the rest of Overlooked
    ──────────────────────────────────────────────────────────── */
 const DARK_BG = '#000000';
-const DARK_ELEVATED = '#141414';
-const DARK_PILL = '#111111';
-const TEXT_IVORY = '#EDEBE6';
-const TEXT_MUTED = '#A7A6A2';
-const DIVIDER = '#2A2A2A';
+const SURFACE = '#080808';
+const SURFACE_2 = '#0D0D0D';
+const SURFACE_3 = '#121212';
+const INPUT_BG = '#0B0B0B';
+const TEXT_PRIMARY = '#F3EEE4';
+const TEXT_SECONDARY = '#A9A295';
+const TEXT_TERTIARY = '#776F64';
+const BORDER = '#181818';
+const BORDER_SOFT = '#141414';
 const GOLD = '#C6A664';
+const GOLD_DARK = '#9C7B39';
 
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
@@ -113,7 +118,7 @@ type JobDetail = {
   id: string;
   description: string | null;
   type: string | null;
-  currency: string | null;
+  currency: string | number | null;
   amount: string | number | null;
   rate: string | null;
   time: string | null;
@@ -138,12 +143,6 @@ const getFlag = (countryCode: string) =>
   countryCode
     .toUpperCase()
     .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
-
-const getLevelRingColor = (level?: number | null): string => {
-  if (!level || level < 25) return '#FFFFFF';
-  if (level < 50) return '#C0C0C0';
-  return '#FFD700';
-};
 
 const parseCityQuery = (raw: string) => {
   const s = (raw || '').trim();
@@ -235,7 +234,7 @@ const IconText: React.FC<{
   bold?: boolean;
 }> = ({ name, text, bold }) => (
   <View style={styles.iconTextRow}>
-    <Ionicons name={name} size={16} color={TEXT_MUTED} style={{ marginRight: 8 }} />
+    <Ionicons name={name} size={16} color={TEXT_SECONDARY} style={{ marginRight: 8 }} />
     <Text style={[styles.jobMeta, bold && styles.jobMetaStrong]}>{text}</Text>
   </View>
 );
@@ -264,7 +263,7 @@ export default function LocationScreen() {
 
   const navigation = useNavigation<any>();
   const { userId } = useAuth();
-const isGuest = !userId;
+  const isGuest = !userId;
 
   const cityReqIdRef = useRef(0);
   const latestCityTermRef = useRef('');
@@ -423,13 +422,13 @@ const isGuest = !userId;
       setJoining(true);
 
       if (isGuest) {
-  Alert.alert(
-    'Sign in required',
-    'Create an account or sign in to join your city group chat.'
-  );
-  navigation.navigate('Auth', { screen: 'SignIn' });
-  return;
-}
+        Alert.alert(
+          'Sign in required',
+          'Create an account or sign in to join your city group chat.'
+        );
+        navigation.navigate('Auth', { screen: 'SignIn' });
+        return;
+      }
 
       const { data: rpcResult, error: rpcError } = await supabase.rpc('join_city_group', {
         city_id_input: city.value,
@@ -507,24 +506,25 @@ const isGuest = !userId;
     if (!selectedJob) return;
 
     if (isGuest) {
-  Alert.alert(
-    'Sign in required',
-    'Create an account or sign in to apply for jobs.'
-  );
-  navigation.navigate('Auth', { screen: 'SignIn' });
-  return;
-}
+      Alert.alert(
+        'Sign in required',
+        'Create an account or sign in to apply for jobs.'
+      );
+      navigation.navigate('Auth', { screen: 'SignIn' });
+      return;
+    }
 
-const { data: auth } = await supabase.auth.getUser();
-const me = auth?.user;
-if (!me) {
-  Alert.alert(
-    'Sign in required',
-    'Create an account or sign in to apply for jobs.'
-  );
-  navigation.navigate('Auth', { screen: 'SignIn' });
-  return;
-}
+    const { data: auth } = await supabase.auth.getUser();
+    const me = auth?.user;
+
+    if (!me) {
+      Alert.alert(
+        'Sign in required',
+        'Create an account or sign in to apply for jobs.'
+      );
+      navigation.navigate('Auth', { screen: 'SignIn' });
+      return;
+    }
 
     const { data: latest, error: latestErr } = await supabase
       .from('jobs')
@@ -536,6 +536,7 @@ if (!me) {
       console.error(latestErr);
       return Alert.alert('Error', 'Could not verify job status.');
     }
+
     if (latest?.is_closed) {
       setSelectedJob((prev) => (prev ? { ...prev, is_closed: true } : prev));
       return Alert.alert('Closed', 'This job has been closed and is no longer accepting applications.');
@@ -555,6 +556,7 @@ if (!me) {
       console.error(checkErr);
       return Alert.alert('Error', 'Could not check existing application.');
     }
+
     if (existing) {
       setApplyLoading(false);
       return Alert.alert('Already applied', 'You have already applied to this job.');
@@ -579,150 +581,195 @@ if (!me) {
       setJobDetailModalOpen(false);
       setSelectedJob(null);
     }
-  }, [selectedJob]);
+  }, [selectedJob, isGuest, navigation]);
+
+  const canShowTopActions = !!city;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView
         style={styles.screen}
-        contentContainerStyle={[styles.container, { paddingTop: insets.top > 0 ? 6 : 12 }]}
+        contentContainerStyle={[
+          styles.container,
+          { paddingTop: insets.top > 0 ? 4 : 10 },
+        ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.hero}>
-          <Text style={styles.heroTitle}>What’s your city?</Text>
-          <Text style={styles.heroSub}>
-            Search your city to find creatives, jobs, and join the local group chat.
-          </Text>
-
-          <TouchableOpacity
-            style={styles.cityPill}
-            onPress={() => setSearchModalVisible(true)}
-            activeOpacity={0.92}
-          >
-            <Ionicons name="search-outline" size={18} color={city ? GOLD : TEXT_MUTED} />
-            <Text style={[styles.cityPillText, city && styles.cityPillTextSelected]} numberOfLines={1}>
-              {city ? city.label : 'Type a city… (e.g. Rome, IT)'}
+        <View style={styles.content}>
+          <View style={styles.heroCard}>
+           
+            <Text style={styles.heroTitle}>Find your city</Text>
+            <Text style={styles.heroSub}>
+              Search by city to discover creatives, local jobs, and the city group chat.
             </Text>
-          </TouchableOpacity>
 
-          {city ? (
-            <TouchableOpacity style={styles.primaryPillBtn} onPress={handleSearch} activeOpacity={0.92}>
-              {searching ? (
-                <ActivityIndicator color={DARK_BG} />
-              ) : (
-                <Text style={styles.primaryPillBtnText}>Search</Text>
-              )}
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        {searched && (
-          <View style={styles.resultsSection}>
-            <View style={styles.tabsRow}>
-              {(['creatives', 'jobs'] as const).map((tab) => {
-                const active = activeTab === tab;
-                const count = tab === 'creatives' ? users.length : jobs.length;
-                return (
-                  <TouchableOpacity
-                    key={tab}
-                    style={[styles.tabBtn, active && styles.tabBtnActive]}
-                    onPress={() => setActiveTab(tab)}
-                    activeOpacity={0.92}
-                  >
-                    <Text style={[styles.tabText, active && styles.tabTextActive]}>
-                      {tab === 'creatives' ? 'Creatives' : 'Jobs'}
-                      {typeof count === 'number' ? ` (${count})` : ''}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>
-                {activeTab === 'creatives' ? 'Creatives' : 'Jobs'} in {city?.label}
+            <TouchableOpacity
+              style={styles.cityInput}
+              onPress={() => setSearchModalVisible(true)}
+              activeOpacity={0.92}
+            >
+              <Ionicons name="search-outline" size={18} color={city ? GOLD : TEXT_TERTIARY} />
+              <Text style={[styles.cityInputText, city && styles.cityInputTextSelected]} numberOfLines={1}>
+                {city ? city.label : 'Select a city'}
               </Text>
+              <Ionicons name="chevron-down" size={18} color={TEXT_TERTIARY} />
+            </TouchableOpacity>
 
-              {activeTab === 'creatives' ? (
-                users.length === 0 ? (
-                  <Text style={styles.emptyText}>No creatives here yet.</Text>
+            <View style={styles.heroButtonsStack}>
+              <TouchableOpacity
+                style={[styles.searchButton, !city && styles.actionButtonDisabled]}
+                onPress={handleSearch}
+                activeOpacity={0.92}
+                disabled={!city || searching}
+              >
+                {searching ? (
+                  <ActivityIndicator color={DARK_BG} />
                 ) : (
-                  users.map((user) => {
-                    const avatarUri = user.avatar_url || null;
-                    const ringColor = getLevelRingColor(user.level);
+                  <Text style={styles.searchButtonText}>Search</Text>
+                )}
+              </TouchableOpacity>
+
+              {canShowTopActions ? (
+                <TouchableOpacity
+                  style={styles.joinTopButton}
+                  onPress={joinCityChat}
+                  disabled={joining}
+                  activeOpacity={0.92}
+                >
+                  {joining ? (
+                    <ActivityIndicator color={TEXT_PRIMARY} />
+                  ) : (
+                    <>
+                      <Ionicons name="chatbubble-ellipses-outline" size={17} color={TEXT_PRIMARY} />
+                      <Text style={styles.joinTopButtonText}>
+                        {isGuest ? 'Sign In to Join City Chat' : 'Join City Group Chat'}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+
+          {searched && (
+            <View style={styles.resultsWrap}>
+              <View style={styles.tabsOuter}>
+                <View style={styles.tabsRow}>
+                  {(['creatives', 'jobs'] as const).map((tab) => {
+                    const active = activeTab === tab;
+                    const count = tab === 'creatives' ? users.length : jobs.length;
 
                     return (
                       <TouchableOpacity
-                        key={user.id}
-                        onPress={() => goToProfile(user)}
-                        activeOpacity={0.85}
-                        style={styles.row}
+                        key={tab}
+                        style={[styles.tabButton, active && styles.tabButtonActive]}
+                        onPress={() => setActiveTab(tab)}
+                        activeOpacity={0.92}
                       >
-                        <View style={[styles.avatarRing, { borderColor: ringColor }]}>
-                          {avatarUri ? (
-                            <Image source={{ uri: avatarUri }} style={styles.avatar} />
-                          ) : (
-                            <View style={[styles.avatar, styles.fallbackAvatar]}>
-                              <Ionicons name="person-outline" size={18} color={TEXT_MUTED} />
-                            </View>
-                          )}
+                        <Text style={[styles.tabButtonText, active && styles.tabButtonTextActive]}>
+                          {tab === 'creatives' ? 'Creatives' : 'Jobs'} ({count})
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.resultsCard}>
+                <View style={styles.resultsHeader}>
+                  <Text style={styles.resultsTitle}>
+                    {activeTab === 'creatives' ? 'Creatives' : 'Jobs'}
+                  </Text>
+                  <Text style={styles.resultsSubtitle} numberOfLines={1}>
+                    {city?.label}
+                  </Text>
+                </View>
+
+                {activeTab === 'creatives' ? (
+                  users.length === 0 ? (
+                    <View style={styles.emptyState}>
+                      <Ionicons name="people-outline" size={20} color={TEXT_TERTIARY} />
+                      <Text style={styles.emptyTitle}>No creatives here yet</Text>
+                      <Text style={styles.emptyText}>Be the first to connect in this city.</Text>
+                    </View>
+                  ) : (
+                    users.map((user, index) => {
+                      const avatarUri = user.avatar_url || null;
+
+                      return (
+                        <TouchableOpacity
+                          key={user.id}
+                          onPress={() => goToProfile(user)}
+                          activeOpacity={0.88}
+                          style={[
+                            styles.listRow,
+                            index === 0 && styles.listRowFirst,
+                            index === users.length - 1 && styles.listRowLast,
+                          ]}
+                        >
+                          <View style={styles.avatarWrap}>
+                            {avatarUri ? (
+                              <Image source={{ uri: avatarUri }} style={styles.avatar} />
+                            ) : (
+                              <View style={[styles.avatar, styles.fallbackAvatar]}>
+                                <Ionicons name="person-outline" size={18} color={TEXT_SECONDARY} />
+                              </View>
+                            )}
+                          </View>
+
+                          <View style={styles.rowTextWrap}>
+                            <Text style={styles.rowPrimary} numberOfLines={1}>
+                              {user.full_name}
+                            </Text>
+                          </View>
+
+                          <Ionicons name="chevron-forward" size={18} color={TEXT_TERTIARY} />
+                        </TouchableOpacity>
+                      );
+                    })
+                  )
+                ) : jobs.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Ionicons name="briefcase-outline" size={20} color={TEXT_TERTIARY} />
+                    <Text style={styles.emptyTitle}>No jobs in this city</Text>
+                    <Text style={styles.emptyText}>Check back later or join the local chat.</Text>
+                  </View>
+                ) : (
+                  jobs.map((job, index) => {
+                    const roleName = getRoleFromJoin(job.creative_roles)?.name;
+
+                    return (
+                      <TouchableOpacity
+                        key={job.id}
+                        onPress={() => onPressJob(job)}
+                        activeOpacity={0.88}
+                        style={[
+                          styles.listRow,
+                          index === 0 && styles.listRowFirst,
+                          index === jobs.length - 1 && styles.listRowLast,
+                        ]}
+                      >
+                        <View style={styles.jobIconWrap}>
+                          <Ionicons name="briefcase-outline" size={17} color={TEXT_PRIMARY} />
                         </View>
 
-                        <Text style={styles.rowPrimary} numberOfLines={1}>
-                          {user.full_name}
-                        </Text>
+                        <View style={styles.rowTextWrap}>
+                          <Text style={styles.rowPrimary} numberOfLines={1}>
+                            {roleName || job.title || 'Job'}
+                          </Text>
+                        </View>
 
-                        <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
+                        <Ionicons name="chevron-forward" size={18} color={TEXT_TERTIARY} />
                       </TouchableOpacity>
                     );
                   })
-                )
-              ) : jobs.length === 0 ? (
-                <Text style={styles.emptyText}>No jobs in this city yet.</Text>
-              ) : (
-                jobs.map((job) => {
-                  const roleName = getRoleFromJoin(job.creative_roles)?.name;
-                  return (
-                    <TouchableOpacity
-                      key={job.id}
-                      onPress={() => onPressJob(job)}
-                      activeOpacity={0.85}
-                      style={styles.row}
-                    >
-                      <Ionicons
-                        name="briefcase-outline"
-                        size={18}
-                        color={TEXT_MUTED}
-                        style={{ marginRight: 10 }}
-                      />
-                      <Text style={styles.rowPrimary} numberOfLines={1}>
-                        {roleName || job.title || 'Job'}
-                      </Text>
-                      <Ionicons name="chevron-forward" size={18} color={TEXT_MUTED} />
-                    </TouchableOpacity>
-                  );
-                })
-              )}
+                )}
+              </View>
             </View>
-
-            <TouchableOpacity
-              style={styles.joinPillBtn}
-              onPress={joinCityChat}
-              disabled={joining}
-              activeOpacity={0.92}
-            >
-              {joining ? (
-                <ActivityIndicator color={TEXT_IVORY} />
-              ) : (
-                <Text style={styles.joinPillBtnText}>
-  {isGuest ? 'Sign In to Join City Group Chat' : 'Join City Group Chat'}
-</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
+          )}
+        </View>
 
         <Modal
           visible={searchModalVisible}
@@ -730,12 +777,22 @@ if (!me) {
           onRequestClose={() => setSearchModalVisible(false)}
         >
           <SafeAreaView style={styles.modalSafeArea} edges={['top']}>
-            <View style={styles.modalContainer}>
-              <Text style={styles.modalTitle}>Search your city</Text>
+            <View style={styles.modalShell}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Choose a city</Text>
+
+                <TouchableOpacity
+                  onPress={() => setSearchModalVisible(false)}
+                  style={styles.modalCloseIcon}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="close" size={18} color={TEXT_PRIMARY} />
+                </TouchableOpacity>
+              </View>
 
               <TextInput
-                placeholder="Start typing..."
-                placeholderTextColor={TEXT_MUTED}
+                placeholder="Start typing a city..."
+                placeholderTextColor={TEXT_TERTIARY}
                 value={citySearchTerm}
                 onChangeText={(text) => {
                   setCitySearchTerm(text);
@@ -746,14 +803,19 @@ if (!me) {
               />
 
               {isSearchingCities ? (
-                <ActivityIndicator style={{ marginTop: 20 }} color={GOLD} />
+                <View style={styles.modalLoadingWrap}>
+                  <ActivityIndicator color={GOLD} />
+                </View>
               ) : (
                 <FlatList
                   data={cityItems}
                   keyExtractor={(item) => item.value.toString()}
                   keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.cityListContent}
                   renderItem={({ item, index }) => {
                     const selected = city?.value === item.value;
+
                     return (
                       <TouchableOpacity
                         style={[styles.cityItem, selected && styles.cityItemSelected]}
@@ -763,32 +825,40 @@ if (!me) {
                         }}
                         activeOpacity={0.9}
                       >
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-                          {selected ? (
-                            <Ionicons name="checkmark-outline" size={16} color={GOLD} />
-                          ) : null}
-                          <Text style={[styles.cityItemText, selected && { color: GOLD }]}>
+                        <View style={styles.cityItemLeft}>
+                          <View style={[styles.radioOuter, selected && styles.radioOuterSelected]}>
+                            {selected ? <View style={styles.radioInner} /> : null}
+                          </View>
+
+                          <Text style={[styles.cityItemText, selected && styles.cityItemTextSelected]}>
                             {item.label}
                           </Text>
                         </View>
 
                         {index === 0 && effectiveCityQuery.cityQuery.length >= 3 ? (
-                          <View style={styles.bestMatchPill}>
-                            <Text style={styles.bestMatchText}>BEST MATCH</Text>
+                          <View style={styles.bestMatchBadge}>
+                            <Text style={styles.bestMatchText}>Best match</Text>
                           </View>
                         ) : null}
                       </TouchableOpacity>
                     );
                   }}
+                  ListEmptyComponent={
+                    citySearchTerm.trim().length >= 2 ? (
+                      <View style={styles.emptySearchState}>
+                        <Text style={styles.emptyText}>No matching cities found.</Text>
+                      </View>
+                    ) : null
+                  }
                 />
               )}
 
               <TouchableOpacity
                 onPress={() => setSearchModalVisible(false)}
-                style={styles.closeModalButton}
+                style={styles.modalCancelButton}
                 activeOpacity={0.92}
               >
-                <Text style={styles.closeModalText}>Cancel</Text>
+                <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </SafeAreaView>
@@ -806,17 +876,19 @@ if (!me) {
           <View style={styles.dimOverlay}>
             <View style={styles.jobModalCard}>
               {loadingSelectedJob ? (
-                <View style={{ paddingVertical: 20 }}>
+                <View style={styles.jobLoaderWrap}>
                   <ActivityIndicator size="large" color={GOLD} />
                 </View>
               ) : selectedJob ? (
                 <>
+                  <View style={styles.modalHandle} />
+
                   <Text style={styles.jobTitleBig}>
                     {getRoleFromJoin(selectedJob.creative_roles)?.name ?? 'Job'}
                   </Text>
 
                   {selectedJob.is_closed ? (
-                    <View style={{ marginTop: 6 }}>
+                    <View style={{ marginTop: 8 }}>
                       <IconText name="alert-circle-outline" text="This job is closed." bold />
                     </View>
                   ) : null}
@@ -825,7 +897,7 @@ if (!me) {
                     <Text style={styles.jobBody}>{selectedJob.description}</Text>
                   ) : null}
 
-                  <View style={{ marginTop: 8 }}>
+                  <View style={styles.jobInfoBlock}>
                     <IconText
                       name="location-outline"
                       text={`${getCityFromJoin(selectedJob.cities)?.name ?? 'Unknown'}${
@@ -839,7 +911,7 @@ if (!me) {
                       <Ionicons
                         name="person-outline"
                         size={16}
-                        color={TEXT_MUTED}
+                        color={TEXT_SECONDARY}
                         style={{ marginRight: 8 }}
                       />
                       <TouchableOpacity
@@ -858,9 +930,7 @@ if (!me) {
                         </Text>
                       </TouchableOpacity>
                     </View>
-                  </View>
 
-                  <View style={{ marginTop: 6 }}>
                     {selectedJob.type === 'Paid' ? (
                       <IconText
                         name="cash-outline"
@@ -884,25 +954,25 @@ if (!me) {
                       activeOpacity={0.9}
                     >
                       {applyLoading ? (
-                        <ActivityIndicator color={TEXT_IVORY} />
+                        <ActivityIndicator color={DARK_BG} />
                       ) : (
                         <Text style={styles.primaryBtnText}>
-  {selectedJob.is_closed ? 'Closed' : isGuest ? 'Sign In to Apply' : 'Apply'}
-</Text>
+                          {selectedJob.is_closed ? 'Closed' : isGuest ? 'Sign In to Apply' : 'Apply'}
+                        </Text>
                       )}
                     </TouchableOpacity>
-                  </View>
 
-                  <TouchableOpacity
-                    onPress={() => {
-                      setJobDetailModalOpen(false);
-                      setSelectedJob(null);
-                    }}
-                    style={styles.ghostBtn}
-                    activeOpacity={0.9}
-                  >
-                    <Text style={styles.ghostBtnText}>Close</Text>
-                  </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setJobDetailModalOpen(false);
+                        setSelectedJob(null);
+                      }}
+                      style={styles.ghostBtn}
+                      activeOpacity={0.9}
+                    >
+                      <Text style={styles.ghostBtnText}>Close</Text>
+                    </TouchableOpacity>
+                  </View>
                 </>
               ) : (
                 <Text style={styles.emptyText}>Couldn’t load this job.</Text>
@@ -927,202 +997,296 @@ const styles = StyleSheet.create({
   },
 
   container: {
-    backgroundColor: DARK_BG,
-    padding: 16,
-    paddingBottom: 28,
     flexGrow: 1,
+    backgroundColor: DARK_BG,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
   },
 
-  hero: {
-    alignItems: 'center',
-    paddingTop: 22,
-    paddingBottom: 18,
-  },
-  heroTitle: {
-    color: TEXT_IVORY,
-    fontFamily: SYSTEM_SANS,
-    fontSize: 28,
-    fontWeight: '900',
-    letterSpacing: 0.2,
-    textAlign: 'center',
-  },
-  heroSub: {
-    marginTop: 10,
-    maxWidth: 720,
-    color: TEXT_MUTED,
-    fontFamily: SYSTEM_SANS,
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 20,
-    textAlign: 'center',
-    paddingHorizontal: 10,
-  },
-
-  cityPill: {
-    marginTop: 18,
+  content: {
     width: '100%',
     maxWidth: 760,
+    alignSelf: 'center',
+  },
+
+  heroCard: {
+    backgroundColor: SURFACE,
+    borderRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: BORDER,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+
+  
+  heroTitle: {
+    marginTop: 8,
+    color: TEXT_PRIMARY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 30,
+    fontWeight: '900',
+    textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+
+  heroSub: {
+    marginTop: 10,
+    color: TEXT_SECONDARY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+    paddingHorizontal: 8,
+  },
+
+  cityInput: {
+    marginTop: 18,
+    minHeight: 54,
+    borderRadius: 17,
+    backgroundColor: INPUT_BG,
+    borderWidth: 1,
+    borderColor: BORDER_SOFT,
+    paddingHorizontal: 15,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: DARK_PILL,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: DIVIDER,
-  },
-  cityPillText: {
-    flex: 1,
-    color: TEXT_MUTED,
-    fontFamily: SYSTEM_SANS,
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  cityPillTextSelected: {
-    color: GOLD,
-    fontWeight: '900',
   },
 
-  primaryPillBtn: {
+  cityInputText: {
+    flex: 1,
+    color: TEXT_TERTIARY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
+  cityInputTextSelected: {
+    color: TEXT_PRIMARY,
+    fontWeight: '800',
+  },
+
+  heroButtonsStack: {
     marginTop: 12,
-    width: '100%',
-    maxWidth: 340,
-    paddingVertical: 12,
-    borderRadius: 999,
+    gap: 10,
+  },
+
+  searchButton: {
+    minHeight: 52,
+    borderRadius: 17,
+    backgroundColor: GOLD,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: GOLD,
+    shadowColor: GOLD_DARK,
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
-  primaryPillBtnText: {
+
+  actionButtonDisabled: {
+    opacity: 0.45,
+  },
+
+  searchButtonText: {
     color: DARK_BG,
     fontFamily: SYSTEM_SANS,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '900',
-    letterSpacing: 1.2,
+    letterSpacing: 1,
     textTransform: 'uppercase',
   },
 
-  resultsSection: {
-    marginTop: 10,
+  joinTopButton: {
+    minHeight: 50,
+    borderRadius: 16,
+    backgroundColor: SURFACE_2,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 9,
+  },
+
+  joinTopButtonText: {
+    color: TEXT_PRIMARY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+  },
+
+  resultsWrap: {
+    marginTop: 14,
+    gap: 10,
+  },
+
+  tabsOuter: {
+    backgroundColor: SURFACE,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: BORDER,
+    padding: 5,
   },
 
   tabsRow: {
     flexDirection: 'row',
-    gap: 10,
-    justifyContent: 'center',
-    marginBottom: 12,
-    flexWrap: 'wrap',
-  },
-  tabBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: DARK_PILL,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: DIVIDER,
-  },
-  tabBtnActive: {
-    borderColor: GOLD,
-  },
-  tabText: {
-    color: TEXT_MUTED,
-    fontFamily: SYSTEM_SANS,
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
-  tabTextActive: {
-    color: GOLD,
   },
 
-  card: {
-    backgroundColor: DARK_ELEVATED,
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: DIVIDER,
-  },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: TEXT_IVORY,
-    marginBottom: 10,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    fontFamily: SYSTEM_SANS,
-    textAlign: 'center',
-  },
-
-  emptyText: {
-    color: TEXT_MUTED,
-    fontStyle: 'italic',
-    marginBottom: 6,
-    fontFamily: SYSTEM_SANS,
-    textAlign: 'center',
-  },
-
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#232323',
-  },
-  rowPrimary: {
+  tabButton: {
     flex: 1,
-    color: TEXT_IVORY,
+    minHeight: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  tabButtonActive: {
+    backgroundColor: SURFACE_3,
+  },
+
+  tabButtonText: {
+    color: TEXT_SECONDARY,
     fontFamily: SYSTEM_SANS,
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 0.2,
   },
 
-  avatarRing: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-    backgroundColor: '#101010',
-  },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#111',
-  },
-  fallbackAvatar: {
-    backgroundColor: '#111111',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: DIVIDER,
+  tabButtonTextActive: {
+    color: TEXT_PRIMARY,
   },
 
-  joinPillBtn: {
-    marginTop: 12,
-    alignSelf: 'center',
-    width: '100%',
-    maxWidth: 520,
-    backgroundColor: DARK_ELEVATED,
-    paddingVertical: 14,
-    borderRadius: 999,
-    alignItems: 'center',
+  resultsCard: {
+    backgroundColor: SURFACE,
+    borderRadius: 24,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: DIVIDER,
+    borderColor: BORDER,
+    overflow: 'hidden',
   },
-  joinPillBtnText: {
-    color: TEXT_IVORY,
-    fontWeight: '900',
-    fontSize: 12,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+
+  resultsHeader: {
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: BORDER,
+  },
+
+  resultsTitle: {
+    color: TEXT_PRIMARY,
     fontFamily: SYSTEM_SANS,
+    fontSize: 16,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+
+  resultsSubtitle: {
+    marginTop: 4,
+    color: TEXT_SECONDARY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+
+  listRow: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: BORDER,
+    backgroundColor: 'transparent',
+  },
+
+  listRowFirst: {
+    borderTopWidth: 0,
+  },
+
+  listRowLast: {
+    marginBottom: 0,
+  },
+
+  avatarWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: SURFACE_2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+
+  avatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+  },
+
+  fallbackAvatar: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: SURFACE_2,
+  },
+
+  jobIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: SURFACE_2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+
+  rowTextWrap: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+
+  rowPrimary: {
+    color: TEXT_PRIMARY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.1,
+  },
+
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 30,
+  },
+
+  emptyTitle: {
+    marginTop: 10,
+    color: TEXT_PRIMARY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 15,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+
+  emptyText: {
+    marginTop: 6,
+    color: TEXT_SECONDARY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
   },
 
   modalSafeArea: {
@@ -1130,184 +1294,284 @@ const styles = StyleSheet.create({
     backgroundColor: DARK_BG,
   },
 
-  modalContainer: {
+  modalShell: {
     flex: 1,
     backgroundColor: DARK_BG,
-    padding: 20,
-    paddingTop: 20,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 16,
   },
+
+  modalHeader: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+
   modalTitle: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: TEXT_IVORY,
-    marginBottom: 12,
-    textAlign: 'center',
-    textTransform: 'uppercase',
-    letterSpacing: 2.0,
+    color: TEXT_PRIMARY,
     fontFamily: SYSTEM_SANS,
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: -0.3,
+  },
+
+  modalCloseIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: SURFACE,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   searchInput: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: DIVIDER,
-    borderRadius: 14,
-    padding: 12,
-    fontSize: 14,
-    color: TEXT_IVORY,
-    backgroundColor: DARK_PILL,
+    minHeight: 50,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 15,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    color: TEXT_PRIMARY,
+    backgroundColor: INPUT_BG,
     fontFamily: SYSTEM_SANS,
   },
 
+  modalLoadingWrap: {
+    paddingTop: 24,
+  },
+
+  cityListContent: {
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
+
   cityItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderBottomColor: DIVIDER,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    minHeight: 58,
+    borderRadius: 16,
+    backgroundColor: SURFACE,
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingHorizontal: 14,
+    marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+
   cityItemSelected: {
-    backgroundColor: DARK_PILL,
+    borderColor: '#3D3119',
+    backgroundColor: '#0E0D09',
   },
+
+  cityItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    paddingRight: 10,
+  },
+
+  radioOuter: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: TEXT_TERTIARY,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  radioOuterSelected: {
+    borderColor: GOLD,
+  },
+
+  radioInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: GOLD,
+  },
+
   cityItemText: {
+    flex: 1,
     fontSize: 14,
-    color: TEXT_IVORY,
+    color: TEXT_PRIMARY,
     fontFamily: SYSTEM_SANS,
     fontWeight: '700',
   },
 
-  bestMatchPill: {
-    marginLeft: 12,
+  cityItemTextSelected: {
+    color: TEXT_PRIMARY,
+    fontWeight: '800',
+  },
+
+  bestMatchBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: GOLD,
-    backgroundColor: DARK_PILL,
-  },
-  bestMatchText: {
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-    color: GOLD,
-    textTransform: 'uppercase',
-    fontFamily: SYSTEM_SANS,
+    backgroundColor: '#18140B',
+    borderWidth: 1,
+    borderColor: '#3D3119',
   },
 
-  closeModalButton: {
-    marginTop: 16,
-    padding: 12,
-    borderRadius: 999,
-    alignItems: 'center',
-    backgroundColor: DARK_ELEVATED,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: DIVIDER,
-  },
-  closeModalText: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: TEXT_MUTED,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
+  bestMatchText: {
+    fontSize: 10,
+    color: GOLD,
     fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+
+  emptySearchState: {
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
+
+  modalCancelButton: {
+    marginTop: 4,
+    minHeight: 50,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: SURFACE,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+
+  modalCancelText: {
+    color: TEXT_SECONDARY,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 14,
+    fontWeight: '800',
   },
 
   dimOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.66)',
+    backgroundColor: 'rgba(0,0,0,0.72)',
     justifyContent: 'flex-end',
   },
+
   jobModalCard: {
-    backgroundColor: DARK_BG,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    padding: 18,
+    backgroundColor: SURFACE,
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    paddingHorizontal: 18,
+    paddingBottom: 22,
+    paddingTop: 12,
     maxHeight: '88%',
+    borderTopWidth: 1,
+    borderColor: BORDER,
     shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: -8 },
     elevation: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderColor: DIVIDER,
   },
+
+  modalHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: '#2A2A2A',
+    marginBottom: 16,
+  },
+
+  jobLoaderWrap: {
+    paddingVertical: 30,
+  },
+
   jobTitleBig: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: TEXT_IVORY,
-    letterSpacing: 0.8,
+    color: TEXT_PRIMARY,
     fontFamily: SYSTEM_SANS,
-    textTransform: 'uppercase',
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: -0.2,
   },
+
   jobBody: {
+    marginTop: 10,
+    color: TEXT_PRIMARY,
+    fontFamily: SYSTEM_SANS,
     fontSize: 14,
-    color: TEXT_IVORY,
-    marginTop: 8,
-    lineHeight: 20,
-    fontFamily: SYSTEM_SANS,
+    lineHeight: 21,
   },
+
+  jobInfoBlock: {
+    marginTop: 10,
+    paddingTop: 2,
+  },
+
   jobMeta: {
-    fontSize: 13,
-    color: TEXT_MUTED,
-    marginTop: 4,
+    color: TEXT_SECONDARY,
     fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    lineHeight: 18,
   },
+
   jobMetaStrong: {
-    fontSize: 13,
-    color: TEXT_IVORY,
-    fontWeight: '900',
-    marginTop: 4,
+    color: TEXT_PRIMARY,
     fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 18,
   },
+
   link: {
     color: GOLD,
-    fontWeight: '900',
-    textDecorationLine: 'underline',
     fontFamily: SYSTEM_SANS,
+    fontWeight: '800',
+    textDecorationLine: 'underline',
   },
+
   iconTextRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 6,
+    marginTop: 8,
   },
+
   applyBox: {
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: DIVIDER,
+    marginTop: 18,
+    gap: 10,
   },
+
   primaryBtn: {
-    backgroundColor: DARK_ELEVATED,
-    padding: 14,
-    borderRadius: 12,
+    minHeight: 52,
+    borderRadius: 16,
+    backgroundColor: GOLD,
     alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: DIVIDER,
+    justifyContent: 'center',
   },
+
   primaryBtnText: {
-    color: TEXT_IVORY,
-    fontWeight: '900',
-    fontSize: 12,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
+    color: DARK_BG,
     fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
+
   ghostBtn: {
-    backgroundColor: DARK_PILL,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: DIVIDER,
-    padding: 12,
-    borderRadius: 12,
+    minHeight: 50,
+    borderRadius: 16,
     alignItems: 'center',
-    marginTop: 12,
+    justifyContent: 'center',
+    backgroundColor: SURFACE_2,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
+
   ghostBtnText: {
-    color: TEXT_MUTED,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
+    color: TEXT_SECONDARY,
     fontFamily: SYSTEM_SANS,
-    fontSize: 12,
+    fontSize: 13,
+    fontWeight: '800',
   },
 });

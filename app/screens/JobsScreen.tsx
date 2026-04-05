@@ -49,17 +49,22 @@ const SYSTEM_SANS = Platform.select({
    Cinematic noir base (gold accents, fewer cards)
    ──────────────────────────────────────────────────────────── */
 const GOLD = '#C6A664';
+const GOLD_SOFT = 'rgba(198,166,100,0.16)';
+const GOLD_LINE = 'rgba(198,166,100,0.28)';
 
 const T = {
   bg: '#000000',
-  surface: '#0A0A0A',
+  surface: '#070707',
+  surface2: '#0B0B0B',
+  surface3: '#101010',
   text: '#FFFFFF',
-  sub: '#C9C9C9',
-  mute: '#9A9A9A',
+  sub: '#CFC7B8',
+  mute: '#8F8A82',
   accent: '#FFFFFF',
-  line: '#141414',
+  line: '#151515',
+  lineSoft: '#1C1C1C',
+  glow: 'rgba(255,255,255,0.03)',
 };
-T.mute = '#9A9A9A'; // keep original mute
 
 const FONT_CINEMATIC =
   Platform.select({ ios: 'Cinzel', android: 'Cinzel', default: 'Cinzel' }) || 'Cinzel';
@@ -283,11 +288,19 @@ const IconText: React.FC<{
   name: keyof typeof Ionicons.glyphMap;
   text: string;
   weight?: '400' | '600';
-}> = ({ name, text, weight = '400' }) => (
+  accent?: boolean;
+}> = ({ name, text, weight = '400', accent = false }) => (
   <View style={styles.iconText}>
-    <Ionicons name={name} size={16} color={T.sub} style={{ marginRight: 6 }} />
-    <Text style={[styles.jobMeta, { fontWeight: weight }]}>{text}</Text>
-  </View>
+  <Ionicons
+    name={name}
+    size={15}
+    color={accent ? GOLD : T.sub}
+    style={{ marginRight: 6 }}
+  />
+  <Text style={[styles.jobMeta, { fontWeight: weight, color: accent ? GOLD : T.sub }]}>
+    {text}
+  </Text>
+</View>
 );
 
 /* -------------------------------------------
@@ -422,6 +435,7 @@ export default function JobsScreen() {
   // Debounce / throttles
   const fetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const realtimeThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const citySearchInputRef = useRef<TextInput | null>(null);
 
   // Tier / upgrade modal
   const [userTier, setUserTier] = useState<UserTier>('free');
@@ -489,6 +503,16 @@ contentStyle: { backgroundColor: '#000000' },
     };
   }, []);
 
+  useEffect(() => {
+  if (jobCityOverlayVisible) {
+    const timer = setTimeout(() => {
+      citySearchInputRef.current?.focus();
+    }, 120);
+
+    return () => clearTimeout(timer);
+  }
+}, [jobCityOverlayVisible]);
+
   const fetchRoles = async () => {
     const { data, error } = await supabase.from('creative_roles').select('id, name').order('name');
     if (error) {
@@ -510,7 +534,7 @@ contentStyle: { backgroundColor: '#000000' },
         .select(`*, users(id, full_name), cities(name, country_code), creative_roles(name)`)
         .eq('type', activeTab === 'paid' ? 'Paid' : 'Free')
         .eq('is_closed', false)
-        .order('xp', { foreignTable: 'users', ascending: false })
+        .order('created_at', { ascending: false })
 .order('created_at', { ascending: false });
 
       if (filterCity?.value) query = query.eq('city_id', filterCity.value);
@@ -534,82 +558,106 @@ contentStyle: { backgroundColor: '#000000' },
   );
 
   const fetchMyJobs = useCallback(async () => {
-    try {
-      setLoadingMyJobs(true);
+  try {
+    setLoadingMyJobs(true);
 
-      const {
-        data: { user },
-        error: authErr,
-      } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: authErr,
+    } = await supabase.auth.getUser();
 
-      if (authErr || !user) {
-        if (authErr) console.error(authErr);
-        setMyJobs([]);
-        setLoadingMyJobs(false);
-        return;
-      }
+    if (authErr || !user) {
+      if (authErr) console.error(authErr);
+      setMyJobs([]);
+      setLoadingMyJobs(false);
+      return;
+    }
 
-      const { data: myJobsData, error: jobsErr } = await supabase
-        .from('jobs')
-        .select('*, users(id, full_name), cities(name, country_code), creative_roles(name)')
-        .eq('user_id', user.id)
-        .eq('is_closed', false) // only open jobs in MY JOBS
-        .order('xp', { foreignTable: 'users', ascending: false })
-.order('created_at', { ascending: false });
+    const { data: myJobsData, error: jobsErr } = await supabase
+      .from('jobs')
+      .select('*, users(id, full_name), cities(name, country_code), creative_roles(name)')
+      .eq('user_id', user.id)
+      .eq('is_closed', false)
+      .order('created_at', { ascending: false });
 
-      if (jobsErr) {
-        console.error(jobsErr);
-        show('Could not load your jobs.', 'error');
-        setMyJobs([]);
-        setLoadingMyJobs(false);
-        return;
-      }
-
-      const baseJobs = (myJobsData || []) as JobRow[];
-
-      if (!baseJobs.length) {
-        setMyJobs([]);
-        setLoadingMyJobs(false);
-        return;
-      }
-
-      const jobIds = baseJobs.map((j) => j.id);
-
-      const { data: appsData, error: appsErr } = await supabase
-  .from('applications')
-  .select(`id, job_id, applicant:users(id, full_name, xp)`)
-  .in('job_id', jobIds)
-  .order('xp', { foreignTable: 'users', ascending: false });
-
-      if (appsErr) {
-        console.error(appsErr);
-        show('Could not load applicants.', 'error');
-      }
-
-      const appsByJob: Record<number, Applicant[]> = {};
-
-      (appsData || []).forEach((row: any) => {
-        const jobId = row.job_id as number;
-        const applicant = row.applicant as Applicant | null;
-        if (!jobId || !applicant) return;
-        if (!appsByJob[jobId]) appsByJob[jobId] = [];
-        appsByJob[jobId].push(applicant);
-      });
-
-      const withApplicants: MyJob[] = baseJobs.map((j) => ({
-        ...j,
-        applicants: appsByJob[j.id] || [],
-      }));
-
-      setMyJobs(withApplicants);
-    } catch (e: any) {
-      console.error('fetchMyJobs error', e?.message ?? e);
+    if (jobsErr) {
+      console.error(jobsErr);
       show('Could not load your jobs.', 'error');
       setMyJobs([]);
-    } finally {
       setLoadingMyJobs(false);
+      return;
     }
-  }, [show]);
+
+    const baseJobs = (myJobsData || []) as JobRow[];
+
+    if (!baseJobs.length) {
+      setMyJobs([]);
+      setLoadingMyJobs(false);
+      return;
+    }
+
+    const jobIds = baseJobs.map((j) => j.id);
+
+    const { data: appsData, error: appsErr } = await supabase
+  .from('applications')
+  .select('id, job_id, applicant_id')
+  .in('job_id', jobIds);
+
+if (appsErr) {
+  console.error('fetchMyJobsWithApplicants applicationsErr', appsErr);
+  return;
+}
+
+const applicantIds = [
+  ...new Set((appsData || []).map((a: any) => a.applicant_id).filter(Boolean)),
+];
+
+let usersMap: Record<string, { id: string; full_name?: string | null }> = {};
+
+if (applicantIds.length) {
+  const { data: usersData, error: usersErr } = await supabase
+    .from('users')
+    .select('id, full_name')
+    .in('id', applicantIds);
+
+  if (usersErr) {
+    console.error('fetchMyJobsWithApplicants usersErr', usersErr);
+  } else {
+    usersMap = Object.fromEntries(
+      (usersData || []).map((u: any) => [
+        u.id,
+        { id: u.id, full_name: u.full_name },
+      ])
+    );
+  }
+}
+
+const appsByJob: Record<number, { id: string; full_name?: string | null }[]> = {};
+
+(appsData || []).forEach((row: any) => {
+  const jobId = row.job_id;
+  const applicantId = row.applicant_id;
+
+  if (!jobId || !applicantId || !usersMap[applicantId]) return;
+
+  if (!appsByJob[jobId]) appsByJob[jobId] = [];
+  appsByJob[jobId].push(usersMap[applicantId]);
+});
+
+    const withApplicants: MyJob[] = baseJobs.map((j) => ({
+      ...j,
+      applicants: appsByJob[j.id] || [],
+    }));
+
+    setMyJobs(withApplicants);
+  } catch (e: any) {
+    console.error('fetchMyJobs error', e?.message ?? e);
+    show('Could not load your jobs.', 'error');
+    setMyJobs([]);
+  } finally {
+    setLoadingMyJobs(false);
+  }
+}, [show]);
 
   // Close job (MY JOBS)
   const handleCloseJob = useCallback(
@@ -1079,40 +1127,54 @@ if (!me) {
   const cityKey = useCallback((i: CityOption) => String(i.value), []);
 
   const renderJob = useCallback(
-    ({ item }: { item: JobRow }) => {
-      const job = item;
-      const postedAgo = formatTimeAgo(job.created_at);
-      const rateText =
-        job.type === 'Paid'
-          ? `${job.currency ?? ''}${job.amount ?? ''}${job.rate ? ` • ${job.rate}` : ''}`
-          : 'Free / Collaboration';
+  ({ item }: { item: JobRow }) => {
+    const job = item;
+    const postedAgo = formatTimeAgo(job.created_at);
+    const rateText =
+      job.type === 'Paid'
+        ? `${job.currency ?? ''}${job.amount ?? ''}${job.rate ? ` • ${job.rate}` : ''}`
+        : 'Free / Collaboration';
 
-      return (
-        <TouchableOpacity
-          onPress={() => setSelectedJob(job)}
-          activeOpacity={0.85}
-          style={styles.jobRow}
-        >
-          <View style={styles.jobRowMain}>
-            <Text style={styles.jobTitle}>
-              {decode(job.creative_roles?.name || 'Job')}
-            </Text>
-            <Text style={styles.payText}>{rateText}</Text>
-
-            {job.description ? (
-              <Text numberOfLines={2} style={styles.jobDescription}>
-                {decode(job.description)}
+    return (
+      <TouchableOpacity
+        onPress={() => setSelectedJob(job)}
+        activeOpacity={0.9}
+        style={styles.jobRow}
+      >
+        <View style={styles.jobCard}>
+          <View style={styles.jobCardTopRow}>
+            <View style={styles.jobCardHeaderLeft}>
+              <Text style={styles.jobTitle}>
+                {decode(job.creative_roles?.name || 'Job')}
               </Text>
-            ) : null}
 
-            <View style={styles.metaRow}>
+              <View style={styles.typeBadge}>
+                <Text style={styles.typeBadgeText}>
+                  {job.type === 'Paid' ? 'PAID ROLE' : 'FREE / COLLAB'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.rateBadge}>
+              <Text style={styles.rateBadgeText}>{rateText}</Text>
+            </View>
+          </View>
+
+          {job.description ? (
+            <Text numberOfLines={3} style={styles.jobDescription}>
+              {decode(job.description)}
+            </Text>
+          ) : null}
+
+          <View style={styles.metaBlock}>
+            <View style={styles.metaLine}>
               {!job.remote ? (
                 <IconText
                   name="location-outline"
                   text={job.cities?.name || 'Unknown'}
                 />
               ) : (
-                <IconText name="globe-outline" text="Remote" />
+                <IconText name="globe-outline" text="Remote" accent />
               )}
 
               <View style={styles.dot} />
@@ -1120,7 +1182,7 @@ if (!me) {
               <View style={styles.iconText}>
                 <Ionicons
                   name="person-outline"
-                  size={16}
+                  size={15}
                   color={T.sub}
                   style={{ marginRight: 6 }}
                 />
@@ -1136,155 +1198,156 @@ if (!me) {
                   </Text>
                 </TouchableOpacity>
               </View>
+            </View>
 
-              <View style={styles.dot} />
-              <IconText
-                name="time-outline"
-                text={postedAgo || '—'}
-              />
+            <View style={styles.metaLine}>
+              <IconText name="time-outline" text={postedAgo || '—'} />
               {job.time ? (
                 <>
                   <View style={styles.dot} />
-                  <IconText
-                    name="calendar-outline"
-                    text={job.time}
-                  />
+                  <IconText name="calendar-outline" text={job.time} />
                 </>
               ) : null}
             </View>
           </View>
-        </TouchableOpacity>
-      );
-    },
-    []
-  );
-
+        </View>
+      </TouchableOpacity>
+    );
+  },
+  []
+);
   const renderMyJob = useCallback(
-    ({ item }: { item: MyJob }) => {
-      const job = item;
-      const postedAgo = formatTimeAgo(job.created_at);
-      const rateText =
-        job.type === 'Paid'
-          ? `${job.currency ?? ''}${job.amount ?? ''}${job.rate ? ` • ${job.rate}` : ''}`
-          : 'Free / Collaboration';
-      const hasApplicants = job.applicants && job.applicants.length > 0;
+  ({ item }: { item: MyJob }) => {
+    const job = item;
+    const postedAgo = formatTimeAgo(job.created_at);
+    const rateText =
+      job.type === 'Paid'
+        ? `${job.currency ?? ''}${job.amount ?? ''}${job.rate ? ` • ${job.rate}` : ''}`
+        : 'Free / Collaboration';
+    const hasApplicants = job.applicants && job.applicants.length > 0;
 
-      return (
-        <View style={styles.jobRow}>
-          <View style={styles.jobRowMain}>
-            <Text style={styles.jobTitle}>
-              {decode(job.creative_roles?.name || 'Job')}
-            </Text>
-            <Text style={styles.payText}>{rateText}</Text>
-
-            {job.description ? (
-              <Text numberOfLines={3} style={styles.jobDescription}>
-                {decode(job.description)}
+    return (
+      <View style={styles.jobRow}>
+        <View style={styles.jobCard}>
+          <View style={styles.jobCardTopRow}>
+            <View style={styles.jobCardHeaderLeft}>
+              <Text style={styles.jobTitle}>
+                {decode(job.creative_roles?.name || 'Job')}
               </Text>
-            ) : null}
 
-            <View style={styles.metaRow}>
+              <View style={styles.typeBadge}>
+                <Text style={styles.typeBadgeText}>MY LISTING</Text>
+              </View>
+            </View>
+
+            <View style={styles.rateBadge}>
+              <Text style={styles.rateBadgeText}>{rateText}</Text>
+            </View>
+          </View>
+
+          {job.description ? (
+            <Text numberOfLines={3} style={styles.jobDescription}>
+              {decode(job.description)}
+            </Text>
+          ) : null}
+
+          <View style={styles.metaBlock}>
+            <View style={styles.metaLine}>
               {!job.remote ? (
                 <IconText
                   name="location-outline"
                   text={job.cities?.name || 'Unknown'}
                 />
               ) : (
-                <IconText name="globe-outline" text="Remote" />
+                <IconText name="globe-outline" text="Remote" accent />
               )}
 
               <View style={styles.dot} />
-              <IconText
-                name="time-outline"
-                text={postedAgo || '—'}
-              />
+              <IconText name="time-outline" text={postedAgo || '—'} />
               {job.time ? (
                 <>
                   <View style={styles.dot} />
-                  <IconText
-                    name="calendar-outline"
-                    text={job.time}
-                  />
+                  <IconText name="calendar-outline" text={job.time} />
                 </>
               ) : null}
             </View>
+          </View>
 
-            <View style={styles.applicantSummaryRow}>
-              <Ionicons
-                name="people-outline"
-                size={16}
-                color={T.sub}
-                style={{ marginRight: 6 }}
-              />
-              {hasApplicants ? (
-                <Text style={styles.applicantSummaryText}>
-                  {job.applicants.length} applicant
-                  {job.applicants.length !== 1 ? 's' : ''}
-                </Text>
-              ) : (
-                <Text style={styles.applicantSummaryText}>
-                  No applicants yet.
+          <View style={styles.applicantSummaryRow}>
+            <Ionicons
+              name="people-outline"
+              size={16}
+              color={T.sub}
+              style={{ marginRight: 6 }}
+            />
+            {hasApplicants ? (
+              <Text style={styles.applicantSummaryText}>
+                {job.applicants.length} applicant
+                {job.applicants.length !== 1 ? 's' : ''}
+              </Text>
+            ) : (
+              <Text style={styles.applicantSummaryText}>
+                No applicants yet.
+              </Text>
+            )}
+          </View>
+
+          {hasApplicants && (
+            <View style={styles.applicantList}>
+              {job.applicants.slice(0, 4).map((a) => (
+                <TouchableOpacity
+                  key={a.id}
+                  style={styles.applicantPill}
+                  activeOpacity={0.9}
+                  onPress={() => {
+                    // @ts-ignore
+                    navigation.navigate('Profile', {
+                      user: { id: a.id, full_name: a.full_name },
+                    });
+                  }}
+                >
+                  <Ionicons
+                    name="person-circle-outline"
+                    size={14}
+                    color={GOLD}
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text style={styles.applicantPillText}>
+                    {a.full_name || 'View profile'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              {job.applicants.length > 4 && (
+                <Text style={styles.applicantMoreText}>
+                  +{job.applicants.length - 4} more
                 </Text>
               )}
             </View>
+          )}
 
-            {hasApplicants && (
-              <View style={styles.applicantList}>
-                {job.applicants.slice(0, 4).map((a) => (
-                  <TouchableOpacity
-                    key={a.id}
-                    style={styles.applicantPill}
-                    activeOpacity={0.9}
-                    onPress={() => {
-                      // @ts-ignore
-                      navigation.navigate('Profile', {
-                        user: { id: a.id, full_name: a.full_name },
-                      });
-                    }}
-                  >
-                    <Ionicons
-                      name="person-circle-outline"
-                      size={14}
-                      color={GOLD}
-                      style={{ marginRight: 4 }}
-                    />
-                    <Text style={styles.applicantPillText}>
-                      {a.full_name || 'View profile'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-                {job.applicants.length > 4 && (
-                  <Text style={styles.applicantMoreText}>
-                    +{job.applicants.length - 4} more
-                  </Text>
-                )}
-              </View>
-            )}
-
-            {/* Close Job action */}
-            <View style={styles.myJobActionsRow}>
-              <TouchableOpacity
-                style={styles.closeJobButton}
-                onPress={() => handleCloseJob(job.id)}
-                activeOpacity={0.9}
-              >
-                <Ionicons
-                  name="lock-closed-outline"
-                  size={14}
-                  color="#000"
-                  style={{ marginRight: 6 }}
-                />
-                <Text style={styles.closeJobButtonText}>
-                  Close Job
-                </Text>
-              </TouchableOpacity>
-            </View>
+          <View style={styles.myJobActionsRow}>
+            <TouchableOpacity
+              style={styles.closeJobButton}
+              onPress={() => handleCloseJob(job.id)}
+              activeOpacity={0.92}
+            >
+              <Ionicons
+                name="lock-closed-outline"
+                size={14}
+                color="#000"
+                style={{ marginRight: 6 }}
+              />
+              <Text style={styles.closeJobButtonText}>
+                Close Job
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
-      );
-    },
-    [navigation, handleCloseJob]
-  );
+      </View>
+    );
+  },
+  [navigation, handleCloseJob]
+);
 
   const anyFilterActive = useMemo(
     () => !!(filterCity || filterRole || includeRemote === false),
@@ -1298,12 +1361,11 @@ if (!me) {
   };
 
   const ListHeader = useMemo(
-    () => (
-      <View style={{ paddingTop: HEADER_GAP }}>
-        {/* Gamification helper text only (bubble removed) */}
-        
+  () => (
+    <View style={{ paddingTop: HEADER_GAP }}>
+    
 
-        {/* Category-style text tabs */}
+      <View style={styles.categoryTabsWrap}>
         <View style={styles.categoryTabsRow}>
           {(['free', 'paid', 'my'] as const).map((tab) => {
             const active = activeTab === tab;
@@ -1313,10 +1375,11 @@ if (!me) {
                 : tab === 'free'
                 ? 'FREE'
                 : 'MY JOBS';
+
             return (
               <TouchableOpacity
                 key={tab}
-                style={styles.categoryTap}
+                style={[styles.categoryTap, active && styles.categoryTapActive]}
                 onPress={() => setActiveTab(tab)}
                 activeOpacity={0.92}
               >
@@ -1328,96 +1391,95 @@ if (!me) {
                 >
                   {label}
                 </Text>
-                {active ? (
-                  <View style={styles.categoryUnderline} />
-                ) : (
-                  <View style={{ height: 3 }} />
-                )}
+                {active ? <View style={styles.categoryUnderline} /> : null}
               </TouchableOpacity>
             );
           })}
         </View>
+      </View>
 
-        {/* Minimal filters (hidden when in MY JOBS since they don't apply) */}
-        {activeTab !== 'my' && (
-          <View style={styles.filtersInline}>
-            <TouchableOpacity
-              onPress={() => setCityFilterModalVisible(true)}
-              style={styles.filterLink}
-              activeOpacity={0.9}
-            >
-              <Ionicons
-                name="location-outline"
-                size={16}
-                color={T.sub}
-              />
-              <Text style={styles.filterLinkText}>
-                {filterCity?.label || 'City'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => setRoleFilterModalVisible(true)}
-              style={styles.filterLink}
-              activeOpacity={0.9}
-            >
-              <Ionicons
-                name="briefcase-outline"
-                size={16}
-                color={T.sub}
-              />
-              <Text style={styles.filterLinkText}>
-                {filterRole?.label || 'Role'}
-              </Text>
-            </TouchableOpacity>
-
-            <View
+      {activeTab !== 'my' && (
+        <View style={styles.filtersInline}>
+          <TouchableOpacity
+            onPress={() => setCityFilterModalVisible(true)}
+            style={[styles.filterPill, !!filterCity && styles.filterPillActive]}
+            activeOpacity={0.9}
+          >
+            <Ionicons
+              name="location-outline"
+              size={15}
+              color={filterCity ? GOLD : T.sub}
+            />
+            <Text
               style={[
-                styles.filterLink,
-                { paddingHorizontal: 0 },
+                styles.filterPillText,
+                !!filterCity && styles.filterPillTextActive,
               ]}
             >
-              <Text style={styles.filterToggleLabel}>
-                Remote
-              </Text>
-              <CustomToggle
-                value={includeRemote}
-                onChange={(v) => setIncludeRemote(v)}
-                size="sm"
-              />
-            </View>
+              {filterCity?.label || 'City'}
+            </Text>
+          </TouchableOpacity>
 
-            {anyFilterActive ? (
-              <TouchableOpacity
-                onPress={clearFilters}
-                style={styles.clearInline}
-                activeOpacity={0.9}
-              >
-                <Ionicons
-                  name="close-circle-outline"
-                  size={16}
-                  color={T.sub}
-                />
-                <Text style={styles.clearInlineText}>
-                  Clear
-                </Text>
-              </TouchableOpacity>
-            ) : null}
+          <TouchableOpacity
+            onPress={() => setRoleFilterModalVisible(true)}
+            style={[styles.filterPill, !!filterRole && styles.filterPillActive]}
+            activeOpacity={0.9}
+          >
+            <Ionicons
+              name="briefcase-outline"
+              size={15}
+              color={filterRole ? GOLD : T.sub}
+            />
+            <Text
+              style={[
+                styles.filterPillText,
+                !!filterRole && styles.filterPillTextActive,
+              ]}
+            >
+              {filterRole?.label || 'Role'}
+            </Text>
+          </TouchableOpacity>
+
+          <View style={[styles.filterPill, styles.remoteFilterPill]}>
+            <Text style={styles.filterToggleLabel}>Remote</Text>
+            <CustomToggle
+              value={includeRemote}
+              onChange={(v) => setIncludeRemote(v)}
+              size="sm"
+            />
           </View>
-        )}
 
-        <View style={styles.listDivider} />
-      </View>
-    ),
-    [
-      activeTab,
-      filterCity,
-      filterRole,
-      includeRemote,
-      anyFilterActive,
-      gamifyLoading,
-    ]
-  );
+          {anyFilterActive ? (
+            <TouchableOpacity
+              onPress={clearFilters}
+              style={styles.clearPill}
+              activeOpacity={0.9}
+            >
+              <Ionicons
+                name="close-circle-outline"
+                size={15}
+                color={T.sub}
+              />
+              <Text style={styles.clearPillText}>Clear</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      )}
+
+      <View style={styles.sectionSpacer} />
+    </View>
+  ),
+  [
+    activeTab,
+    filterCity,
+    filterRole,
+    includeRemote,
+    anyFilterActive,
+    gamifyLoading,
+    jobs.length,
+    myJobs.length,
+  ]
+);
 
   /* -------------------------------- render --------------------------------- */
   const listData = activeTab === 'my' ? myJobs : jobs;
@@ -1437,42 +1499,30 @@ if (!me) {
         }
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={
-          <View style={{ paddingVertical: 32 }}>
-            {activeTab === 'my' ? (
-              // Stable, non-glitchy empty state for MY JOBS
-              <Text
-                style={[
-                  styles.jobDescription,
-                  {
-                    textAlign: 'center',
-                    marginTop: 8,
-                  },
-                ]}
-              >
-                You haven&apos;t posted any jobs yet. Use &quot;Post a Job&quot; below to share an opportunity.
-              </Text>
-            ) : isLoadingInit ? (
-              <ActivityIndicator
-                size="large"
-                color={T.accent}
-              />
-            ) : (
-              <Text
-                style={[
-                  styles.jobDescription,
-                  {
-                    textAlign: 'center',
-                    marginTop: 8,
-                  },
-                ]}
-              >
-                No jobs match these filters yet.
-              </Text>
-            )}
-          </View>
-        }
+  <View style={styles.emptyWrap}>
+    {activeTab === 'my' ? (
+      <View style={styles.emptyCard}>
+        <Ionicons name="briefcase-outline" size={28} color={GOLD} />
+        <Text style={styles.emptyTitle}>No jobs posted yet</Text>
+        <Text style={styles.emptyText}>
+          You haven&apos;t posted any jobs yet. Use &quot;Post a Job&quot; below to share an opportunity.
+        </Text>
+      </View>
+    ) : isLoadingInit ? (
+      <ActivityIndicator size="large" color={GOLD} />
+    ) : (
+      <View style={styles.emptyCard}>
+        <Ionicons name="sparkles-outline" size={28} color={GOLD} />
+        <Text style={styles.emptyTitle}>Nothing here yet</Text>
+        <Text style={styles.emptyText}>
+          No jobs match these filters right now.
+        </Text>
+      </View>
+    )}
+  </View>
+}
         contentContainerStyle={{
-  paddingBottom: Platform.OS === 'web' ? 120 : 220,
+  paddingBottom: Platform.OS === 'web' ? 150 : 230,
 }}
         refreshing={activeTab === 'my' ? loadingMyJobs : isRefreshing}
         onRefresh={() => {
@@ -1484,42 +1534,42 @@ if (!me) {
         }}
         showsVerticalScrollIndicator={false}
         removeClippedSubviews={Platform.OS !== 'web'}
-        ItemSeparatorComponent={() => (
-          <View style={styles.rowDivider} />
-        )}
+        ItemSeparatorComponent={() => <View style={styles.rowSpacer} />}
       />
 
       {/* Post a Job */}
       <TouchableOpacity
-        style={[
-  styles.postButton,
-  {
-    bottom: Platform.OS === 'web' ? 30 : 80,
-  },
-]}
-        onPress={async () => {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  style={[
+    styles.postButton,
+    {
+      bottom: Platform.OS === 'web' ? 28 : Math.max(tabBarHeight + 14, 84),
+    },
+  ]}
+  onPress={async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  if (!user) {
-    promptSignIn('Create an account or sign in to post a job.');
-    return;
-  }
+    if (!user) {
+      promptSignIn('Create an account or sign in to post a job.');
+      return;
+    }
 
-  setJobFormVisible(true);
-}}
-        activeOpacity={0.92}
-      >
-        <Ionicons
-          name="add"
-          size={18}
-          color="#000"
-        />
-        <Text style={styles.postButtonText}>
-          Post a Job
-        </Text>
-      </TouchableOpacity>
+    setJobFormVisible(true);
+  }}
+  activeOpacity={0.94}
+>
+  <View style={styles.postButtonInner}>
+    <Ionicons
+      name="add"
+      size={18}
+      color="#0B0B0B"
+    />
+    <Text style={styles.postButtonText}>
+      Post a Job
+    </Text>
+  </View>
+</TouchableOpacity>
 
       {/* Post Job Modal */}
       <Modal
@@ -1538,6 +1588,7 @@ if (!me) {
           }
         >
           <View style={styles.modalContainer}>
+            <View style={styles.modalChromeLine} />
             <Text style={styles.modalTitle}>
               Post a New Job
             </Text>
@@ -1754,20 +1805,31 @@ if (!me) {
 
             {/* Inline City Search */}
             {jobCityOverlayVisible && (
-              <View style={styles.inlineOverlay}>
-                <View style={styles.inlineSheet}>
+  <View
+    style={[
+      styles.inlineOverlay,
+      { paddingTop: 0, justifyContent: 'flex-start' },
+    ]}
+  >
+    <View
+      style={[
+        styles.inlineSheet,
+        { marginTop: insets.top + 28 },
+      ]}
+    >
+                  <View style={styles.modalChromeLine} />
                   <Text style={styles.modalTitle}>Search City</Text>
                   <TextInput
-                    placeholder="Start typing…"
-                    placeholderTextColor={T.mute}
-                    value={citySearchTerm}
-                    onChangeText={(text) => {
-                      setCitySearchTerm(text);
-                      void fetchCities(text);
-                    }}
-                    style={styles.searchInput}
-                    autoFocus
-                  />
+  ref={citySearchInputRef}
+  placeholder="Start typing…"
+  placeholderTextColor={T.mute}
+  value={citySearchTerm}
+  onChangeText={(text) => {
+    setCitySearchTerm(text);
+    void fetchCities(text);
+  }}
+  style={styles.searchInput}
+/>
                   <FlatList
                     data={cityItems}
                     keyExtractor={cityKey}
@@ -1794,8 +1856,19 @@ if (!me) {
 
             {/* Inline Role Search */}
             {jobRoleOverlayVisible && (
-              <View style={styles.inlineOverlay}>
-                <View style={styles.inlineSheet}>
+              <View
+  style={[
+    styles.inlineOverlay,
+    { paddingTop: 0, justifyContent: 'flex-start' },
+  ]}
+>
+  <View
+    style={[
+      styles.inlineSheet,
+      { marginTop: insets.top + 28 },
+    ]}
+  >
+                  <View style={styles.modalChromeLine} />
                   <Text style={styles.modalTitle}>Search Role</Text>
                   <TextInput
                     placeholder="Start typing…"
@@ -1828,8 +1901,19 @@ if (!me) {
 
             {/* Inline Currency Picker */}
             {currencyOverlayVisible && (
-              <View style={styles.inlineOverlay}>
-                <View style={styles.inlineSheet}>
+              <View
+  style={[
+    styles.inlineOverlay,
+    { paddingTop: 0, justifyContent: 'flex-start' },
+  ]}
+>
+  <View
+    style={[
+      styles.inlineSheet,
+      { marginTop: insets.top + 28 },
+    ]}
+  >
+                  <View style={styles.modalChromeLine} />
                   <Text style={styles.modalTitle}>Select Currency</Text>
                   <FlatList
                     data={currencyItems}
@@ -1863,8 +1947,19 @@ if (!me) {
 
             {/* Inline Rate Picker */}
             {rateOverlayVisible && (
-              <View style={styles.inlineOverlay}>
-                <View style={styles.inlineSheet}>
+              <View
+  style={[
+    styles.inlineOverlay,
+    { paddingTop: 0, justifyContent: 'flex-start' },
+  ]}
+>
+  <View
+    style={[
+      styles.inlineSheet,
+      { marginTop: insets.top + 28 },
+    ]}
+  >
+                  <View style={styles.modalChromeLine} />
                   <Text style={styles.modalTitle}>Select Pay Type</Text>
                   <FlatList
                     data={rateItems}
@@ -1926,6 +2021,7 @@ if (!me) {
         onRequestClose={() => setCityFilterModalVisible(false)}
       >
         <View style={styles.modalContainer}>
+          <View style={styles.modalChromeLine} />
           <Text style={styles.modalTitle}>Filter by City</Text>
           <TextInput
             style={styles.searchInput}
@@ -1977,6 +2073,7 @@ if (!me) {
         onRequestClose={() => setRoleFilterModalVisible(false)}
       >
         <View style={styles.modalContainer}>
+          <View style={styles.modalChromeLine} />
           <Text style={styles.modalTitle}>Filter by Role</Text>
           <TextInput
             style={styles.searchInput}
@@ -2020,13 +2117,15 @@ if (!me) {
 
       {/* Job Detail / Apply Modal */}
       <Modal
-        visible={!!selectedJob}
-        animationType={Platform.OS === 'web' ? 'none' : 'slide'}
-        onRequestClose={() => setSelectedJob(null)}
-      >
-        <View style={styles.modalContainer}>
-          {selectedJob && (
-            <>
+  visible={!!selectedJob}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setSelectedJob(null)}
+>
+        <View style={styles.detailModalOverlay}>
+  <View style={styles.detailModalCard}>
+    {selectedJob && (
+      <>
               <Text
                 style={[styles.modalTitle, { marginBottom: 4 }]}
               >
@@ -2091,6 +2190,7 @@ if (!me) {
                   </Text>
                 </TouchableOpacity>
               </View>
+              
 
               {selectedJob.time ? (
                 <View
@@ -2158,10 +2258,11 @@ if (!me) {
               >
                 <Text style={styles.cancelText}>Close</Text>
               </TouchableOpacity>
-            </>
-          )}
-        </View>
-      </Modal>
+                  </>
+    )}
+  </View>
+</View>
+</Modal>
 
       {/* Success Confirmation Modal */}
       <Modal
@@ -2225,10 +2326,13 @@ const RADIUS = 8;
 
 const styles = StyleSheet.create({
   safeArea: {
-  flex: 1,
-  backgroundColor: T.bg,
-},
-  container: { flex: 1, backgroundColor: T.bg },
+    flex: 1,
+    backgroundColor: T.bg,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: T.bg,
+  },
 
   /* Toast */
   toastContainer: {
@@ -2241,7 +2345,7 @@ const styles = StyleSheet.create({
   toastInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: RADIUS,
+    borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderWidth: 1,
@@ -2253,7 +2357,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
 
-  /* Gamification copy */
+  /* Optional old gamification spacing */
   levelBannerWrap: {
     paddingHorizontal: 16,
     paddingTop: 4,
@@ -2267,103 +2371,293 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  /* Category tabs */
-  categoryTabsRow: {
-    marginTop: 2,
-    flexDirection: 'row',
-    alignSelf: 'center',
-    gap: 26,
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    paddingBottom: 6,
+  /* Hero */
+  heroWrap: {
+    paddingHorizontal: 16,
   },
-  categoryTap: { alignItems: 'center' },
-  categoryText: {
-    color: '#CFCFCF',
-    fontFamily: SYSTEM_SANS,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    fontSize: 13,
+  heroCard: {
+    backgroundColor: T.surface2,
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    borderWidth: 1,
+    borderColor: T.lineSoft,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  heroTopRow: {
+  flexDirection: 'row',
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginBottom: 14,
+},
+  heroEyebrowPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#111111',
+    borderWidth: 1,
+    borderColor: T.lineSoft,
+  },
+  heroEyebrow: {
+    color: GOLD,
+    fontSize: 10,
     fontWeight: '800',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
   },
-  categoryTextActive: { color: GOLD },
-  categoryUnderline: {
-    marginTop: 6,
-    height: 3,
-    width: 60,
-    backgroundColor: GOLD,
-    borderRadius: 2,
+  heroStatsPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#101010',
+    borderWidth: 1,
+    borderColor: T.lineSoft,
+  },
+  heroStatsText: {
+    color: T.sub,
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: SYSTEM_SANS,
+  },
+  heroTitle: {
+    color: T.text,
+    fontSize: 20,
+    lineHeight: 27,
+    fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
+    marginBottom: 8,
+  },
+  heroSubtitle: {
+    color: T.sub,
+    fontSize: 13,
+    lineHeight: 20,
+    fontFamily: SYSTEM_SANS,
+  },
+  sectionSpacer: {
+    height: 18,
   },
 
-  /* Filters row */
-  filtersInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    flexWrap: 'wrap',
+  /* Category tabs */
+  categoryTabsWrap: {
     paddingHorizontal: 16,
-    paddingTop: 4,
+    marginTop: 16,
   },
-  filterLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
+  categoryTabsRow: {
+  flexDirection: 'row',
+  alignSelf: 'center',
+  justifyContent: 'center',
+  alignItems: 'center',
+  gap: 8,
+},
+categoryTap: {
+  alignItems: 'center',
+  justifyContent: 'center',
+  minWidth: 82,
+  paddingHorizontal: 12,
+  paddingVertical: 8,
+  borderRadius: 999,
+  backgroundColor: T.surface2,
+  borderWidth: 1,
+  borderColor: T.lineSoft,
+},
+  categoryTapActive: {
+    backgroundColor: GOLD_SOFT,
+    borderColor: GOLD_LINE,
   },
-  filterLinkText: {
-    color: T.sub,
-    fontSize: 13,
-    textDecorationLine: 'underline',
+  categoryText: {
+    color: '#D0CCC4',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '600',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    fontSize: 12,
+    fontWeight: '800',
   },
+  categoryTextActive: {
+    color: GOLD,
+  },
+  
+  categoryUnderline: {
+    marginTop: 6,
+    height: 2,
+    width: 26,
+    backgroundColor: GOLD,
+    borderRadius: 999,
+  },
+  detailModalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0,0,0,0.6)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  paddingHorizontal: 20,
+},
+
+detailModalCard: {
+  width: '100%',
+  maxWidth: 460,
+  backgroundColor: T.surface2,
+  borderRadius: 24,
+  paddingHorizontal: 20,
+  paddingVertical: 22,
+  borderWidth: 1,
+  borderColor: T.lineSoft,
+  shadowColor: '#000',
+  shadowOpacity: 0.35,
+  shadowRadius: 18,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 8,
+},
+
+  /* Filters */
+  filtersInline: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+  flexWrap: 'wrap',
+  paddingHorizontal: 16,
+  paddingTop: 10,
+},
+filterPill: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  minWidth: 86,
+  paddingHorizontal: 12,
+  paddingVertical: 8,
+  borderRadius: 999,
+  backgroundColor: T.surface2,
+  borderWidth: 1,
+  borderColor: T.lineSoft,
+},
+  filterPillActive: {
+    backgroundColor: GOLD_SOFT,
+    borderColor: GOLD_LINE,
+  },
+  filterPillText: {
+    color: T.sub,
+    fontSize: 12.5,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '700',
+  },
+  filterPillTextActive: {
+    color: GOLD,
+  },
+  remoteFilterPill: {
+  minWidth: 108,
+  paddingHorizontal: 12,
+},
   filterToggleLabel: {
     color: T.sub,
-    fontSize: 13,
-    marginRight: 6,
+    fontSize: 12.5,
+    marginRight: 8,
     fontFamily: SYSTEM_SANS,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  clearInline: {
+  clearPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#101010',
+    borderWidth: 1,
+    borderColor: T.lineSoft,
   },
-  clearInlineText: {
+  clearPillText: {
     color: T.sub,
-    fontSize: 13,
-    textDecorationLine: 'underline',
+    fontSize: 12.5,
     fontFamily: SYSTEM_SANS,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   listDivider: {
     height: 1,
     backgroundColor: T.line,
-    marginTop: 4,
+    marginTop: 8,
   },
 
-  /* Job Row */
+  /* Jobs list */
   jobRow: {
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: 'transparent',
+  },
+  rowSpacer: {
+    height: 12,
   },
   rowDivider: {
-    height: 1,
-    backgroundColor: T.line,
-    marginLeft: 16,
+    height: 12,
   },
   jobRowMain: {},
 
+  jobCard: {
+    backgroundColor: T.surface2,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderWidth: 1,
+    borderColor: T.lineSoft,
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3,
+  },
+  jobCardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  jobCardHeaderLeft: {
+    flex: 1,
+    paddingRight: 4,
+  },
   jobTitle: {
     fontSize: 15,
     fontWeight: '900',
-    letterSpacing: 1,
+    letterSpacing: 1.2,
     color: T.text,
     textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+    marginBottom: 8,
+  },
+  typeBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#101010',
+    borderWidth: 1,
+    borderColor: T.lineSoft,
+  },
+  typeBadgeText: {
+    color: GOLD,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+  },
+  rateBadge: {
+    maxWidth: '48%',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: GOLD_SOFT,
+    borderWidth: 1,
+    borderColor: GOLD_LINE,
+  },
+  rateBadgeText: {
+    color: '#E6D6B0',
+    fontSize: 11.5,
+    lineHeight: 15,
+    fontWeight: '800',
+    textAlign: 'right',
     fontFamily: SYSTEM_SANS,
   },
   payText: {
@@ -2376,35 +2670,46 @@ const styles = StyleSheet.create({
   jobDescription: {
     fontSize: 13,
     color: T.sub,
-    marginTop: 6,
-    lineHeight: 18,
+    marginTop: 12,
+    lineHeight: 20,
     fontFamily: SYSTEM_SANS,
   },
 
-  /* Meta row */
+  /* Meta */
+  metaBlock: {
+    marginTop: 14,
+    gap: 8,
+  },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    columnGap: 12,
+    columnGap: 10,
+    rowGap: 8,
     marginTop: 8,
+  },
+  metaLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    columnGap: 10,
+    rowGap: 8,
   },
   iconText: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   dot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: '#ffffff22',
+    width: 4,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   jobMeta: {
     fontSize: 12.5,
     color: T.sub,
     fontFamily: SYSTEM_SANS,
   },
-
   posterName: {
     color: GOLD,
     fontFamily: SYSTEM_SANS,
@@ -2412,110 +2717,169 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  /* Post Job button */
+  /* Empty state */
+  emptyWrap: {
+    paddingHorizontal: 16,
+    paddingVertical: 24,
+  },
+  emptyCard: {
+    backgroundColor: T.surface2,
+    borderRadius: 22,
+    paddingHorizontal: 18,
+    paddingVertical: 24,
+    borderWidth: 1,
+    borderColor: T.lineSoft,
+    alignItems: 'center',
+  },
+  emptyTitle: {
+    color: T.text,
+    fontSize: 15,
+    fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  emptyText: {
+    color: T.sub,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  /* Post button */
   postButton: {
-  position: 'absolute',
-  left: 16,
-  right: 16,
-  backgroundColor: GOLD,
-  padding: 14,
-  borderRadius: RADIUS,
-  alignItems: 'center',
-  flexDirection: 'row',
-  justifyContent: 'center',
-  gap: 8,
-  borderWidth: 1,
-  borderColor: '#000000',
-},
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    borderRadius: 18,
+    backgroundColor: GOLD,
+    borderWidth: 1,
+    borderColor: '#8F7441',
+    shadowColor: '#000',
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  postButtonInner: {
+    paddingVertical: 15,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
   postButtonText: {
-    color: '#000',
+    color: '#0B0B0B',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    fontSize: 16,
-    letterSpacing: 1,
+    fontSize: 15,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
 
   /* Modal base */
   modalContainer: {
-    flex: 1,
-    backgroundColor: T.bg,
-    padding: 20,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+  flex: 1,
+  backgroundColor: T.bg,
+  padding: 20,
+  paddingTop: Platform.OS === 'ios' ? 90 : 40,
+},
+  modalChromeLine: {
+    alignSelf: 'center',
+    width: 42,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: GOLD,
+    opacity: 0.9,
+    marginBottom: 14,
   },
   modalTitle: {
     fontSize: 16,
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
     color: T.text,
-    letterSpacing: 1.2,
+    letterSpacing: 1.3,
     textTransform: 'uppercase',
+  },
+  modalTabsRow: {
+    marginTop: 6,
+    marginBottom: 10,
   },
   label: {
     fontSize: 11,
     fontWeight: '800',
-    marginTop: 10,
-    marginBottom: 6,
-    color: T.text,
-    letterSpacing: 0.4,
+    marginTop: 12,
+    marginBottom: 8,
+    color: '#EEE4CF',
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
   },
   input: {
-    backgroundColor: '#121212',
-    padding: 12,
-    borderRadius: RADIUS,
+    backgroundColor: T.surface3,
+    padding: 14,
+    borderRadius: 16,
     marginBottom: 12,
-    borderColor: COLORS.border,
+    borderColor: T.lineSoft,
     borderWidth: 1,
     color: T.text,
     fontFamily: SYSTEM_SANS,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  textAreaInput: {
+    minHeight: 96,
+    textAlignVertical: 'top',
   },
   searchInput: {
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS,
+    borderColor: T.lineSoft,
+    borderRadius: 16,
     padding: 14,
-    fontSize: 16,
+    fontSize: 15,
     color: T.text,
-    backgroundColor: '#121212',
-    marginBottom: 8,
+    backgroundColor: T.surface3,
+    marginBottom: 10,
     fontFamily: SYSTEM_SANS,
   },
 
-    submitButton: {
-  backgroundColor: GOLD,      // ✅ match Challenge gold button
-  padding: 14,
-  borderRadius: RADIUS,
-  alignItems: 'center',
-  borderWidth: 1,
-  borderColor: '#000000',     // ✅ same gold button border style as Challenge
-},
+  submitButton: {
+    backgroundColor: GOLD,
+    padding: 15,
+    borderRadius: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#8F7441',
+  },
   submitText: {
-    color: '#000',
+    color: '#0B0B0B',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    fontSize: 16,
+    fontSize: 15,
     letterSpacing: 1,
   },
   cancelText: {
-    color: T.accent,
+    color: T.sub,
     textAlign: 'center',
     fontFamily: SYSTEM_SANS,
     fontWeight: '800',
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
   },
 
-  /* List picker */
+  /* Picker */
   listPickerItem: {
-    paddingVertical: 12,
-    borderBottomColor: '#1A1A1A',
+    paddingVertical: 14,
+    borderBottomColor: T.lineSoft,
     borderBottomWidth: 1,
   },
   listPickerText: {
-    fontSize: 16,
+    fontSize: 15,
     color: T.text,
     fontFamily: SYSTEM_SANS,
   },
@@ -2528,80 +2892,79 @@ const styles = StyleSheet.create({
     bottom: 0,
     padding: 16,
     paddingBottom: Platform.OS === 'ios' ? 28 : 16,
-    backgroundColor: T.bg,
+    backgroundColor: '#050505',
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: T.lineSoft,
     flexDirection: 'row',
     gap: 10,
   },
   footerBtn: {
     flex: 1,
-    padding: 14,
-    borderRadius: RADIUS,
+    padding: 15,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   footerGhost: {
-    backgroundColor: '#121212',
+    backgroundColor: T.surface3,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: T.lineSoft,
   },
   footerGhostText: {
-    color: T.accent,
+    color: T.sub,
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    letterSpacing: 0.6,
+    letterSpacing: 0.8,
   },
   footerPrimary: {
-  backgroundColor: GOLD,   // ✅ gold like Challenge
-  borderWidth: 1,
-  borderColor: '#000000',  // ✅ same border feel as Challenge buttons
-},
-footerPrimaryText: {
-  color: '#0B0B0B',        // ✅ dark text like Challenge
-  fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
-  letterSpacing: 1,
-},
+    backgroundColor: GOLD,
+    borderWidth: 1,
+    borderColor: '#8F7441',
+  },
+  footerPrimaryText: {
+    color: '#0B0B0B',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
 
   /* Inline overlays */
-  inlineOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-  },
+ inlineOverlay: {
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  top: 0,
+  bottom: 0,
+  backgroundColor: 'rgba(0,0,0,0.58)',
+  alignItems: 'center',
+  paddingHorizontal: 16,
+},
   inlineSheet: {
-    backgroundColor: T.bg,
-    padding: 20,
-    paddingTop: Platform.OS === 'ios' ? 24 : 20,
-    borderRadius: RADIUS,
-    width: '100%',
-    maxWidth: 640,
-    maxHeight: '75%',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
+  backgroundColor: '#050505',
+  padding: 20,
+  paddingTop: 28,
+  borderRadius: 22,
+  width: '100%',
+  maxWidth: 640,
+  maxHeight: '72%',
+  borderWidth: 1,
+  borderColor: T.lineSoft,
+},
   closeModalButton: {
     marginTop: 14,
-    padding: 12,
-    borderRadius: RADIUS,
+    padding: 14,
+    borderRadius: 16,
     alignItems: 'center',
-    backgroundColor: '#121212',
+    backgroundColor: T.surface3,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: T.lineSoft,
   },
   closeModalText: {
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: SYSTEM_SANS,
     fontWeight: '800',
     color: T.text,
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
   },
 
   /* Remote row */
@@ -2610,20 +2973,20 @@ footerPrimaryText: {
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: '#121212',
-    borderRadius: RADIUS,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: T.surface3,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: T.lineSoft,
   },
   remoteLabel: {
-    fontSize: 13,
+    fontSize: 12.5,
     color: T.text,
     textTransform: 'uppercase',
-    letterSpacing: 0.2,
+    letterSpacing: 0.8,
     fontFamily: SYSTEM_SANS,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   remoteHint: {
     fontSize: 12,
@@ -2634,7 +2997,23 @@ footerPrimaryText: {
     fontFamily: SYSTEM_SANS,
   },
 
-  /* Job detail key/value */
+  /* Job detail */
+  detailHeroCard: {
+    backgroundColor: T.surface2,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderWidth: 1,
+    borderColor: T.lineSoft,
+    marginTop: 6,
+  },
+  detailTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 10,
+  },
   keyValue: {
     color: T.sub,
     marginTop: 6,
@@ -2662,11 +3041,11 @@ footerPrimaryText: {
   confirmCard: {
     width: '100%',
     maxWidth: 420,
-    backgroundColor: T.surface,
-    borderRadius: RADIUS,
+    backgroundColor: T.surface2,
+    borderRadius: 22,
     padding: 20,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: T.lineSoft,
   },
   confirmTitle: {
     fontSize: 16,
@@ -2682,7 +3061,7 @@ footerPrimaryText: {
     fontSize: 14,
     color: T.sub,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 21,
     marginBottom: 14,
     fontFamily: SYSTEM_SANS,
   },
@@ -2695,10 +3074,10 @@ footerPrimaryText: {
   applicantSummaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 14,
   },
   applicantSummaryText: {
-    fontSize: 12,
+    fontSize: 12.5,
     color: T.sub,
     fontFamily: SYSTEM_SANS,
   },
@@ -2706,26 +3085,26 @@ footerPrimaryText: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    marginTop: 6,
+    marginTop: 8,
   },
   applicantPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: GOLD,
-    backgroundColor: '#111111',
+    borderColor: GOLD_LINE,
+    backgroundColor: GOLD_SOFT,
   },
   applicantPillText: {
-    fontSize: 11,
+    fontSize: 11.5,
     color: GOLD,
     fontFamily: SYSTEM_SANS,
     fontWeight: '700',
   },
   applicantMoreText: {
-    fontSize: 11,
+    fontSize: 11.5,
     color: T.sub,
     marginTop: 4,
     marginLeft: 2,
@@ -2736,23 +3115,23 @@ footerPrimaryText: {
   myJobActionsRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    marginTop: 12,
+    marginTop: 14,
   },
   closeJobButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     backgroundColor: GOLD,
-    borderRadius: RADIUS,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: GOLD,
+    borderColor: '#8F7441',
   },
   closeJobButtonText: {
-    fontSize: 11,
+    fontSize: 11.5,
     fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
-    letterSpacing: 0.6,
+    fontWeight: '900',
+    letterSpacing: 0.8,
     color: '#000',
     textTransform: 'uppercase',
   },
