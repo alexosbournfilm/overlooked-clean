@@ -863,6 +863,10 @@ interface SubmissionRow {
   mime_type?: string | null;
   thumbnail_url?: string | null;   // ✅ ADD THIS
   votes?: number | null;
+    mux_upload_id?: string | null;
+  mux_asset_id?: string | null;
+  mux_playback_id?: string | null;
+  mux_status?: string | null;
   submitted_at: string;
 }
 
@@ -888,6 +892,10 @@ interface ShowreelRow {
   thumbnail_url: string | null;
   is_primary: boolean | null;
   sort_order?: number | null;
+    mux_upload_id?: string | null;
+  mux_asset_id?: string | null;
+  mux_playback_id?: string | null;
+  mux_status?: string | null;
   created_at: string;
   url: string;
 }
@@ -1393,7 +1401,21 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
   const fetchShowreelList = async (userId: string) => {
     const { data, error } = await supabase
       .from('user_showreels')
-      .select('id, user_id, file_path, title, category, thumbnail_url, is_primary, sort_order, created_at')
+      .select(`
+  id,
+  user_id,
+  file_path,
+  title,
+  category,
+  thumbnail_url,
+  is_primary,
+  sort_order,
+  created_at,
+  mux_upload_id,
+  mux_asset_id,
+  mux_playback_id,
+  mux_status
+`)
       .eq('user_id', userId)
       .order('is_primary', { ascending: false })
       .order('sort_order', { ascending: true })
@@ -1671,6 +1693,20 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
       }
 
       const rows = (data || []) as any[];
+      function isMuxReady(status?: string | null) {
+  const s = String(status || '').toLowerCase();
+  return s === 'ready' || s === 'asset_ready' || s === 'playable';
+}
+
+function getMuxPlaybackUrl(playbackId?: string | null) {
+  if (!playbackId) return null;
+  return `https://stream.mux.com/${playbackId}.m3u8`;
+}
+
+function getMuxThumbnailUrl(playbackId?: string | null) {
+  if (!playbackId) return null;
+  return `https://image.mux.com/${playbackId}/thumbnail.jpg`;
+}
 
       // 🔥 PROOF LOG: look at ONE mp4 row in the console and you’ll know instantly what column is used.
       if (rows.length) {
@@ -1704,64 +1740,58 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
       };
 
       const withPlayableUrls: SubmissionRow[] = await Promise.all(
-        rows.map(async (s) => {
-          const raw = pickVideoField(s);
+  rows.map(async (s) => {
+    const muxReady = isMuxReady(s.mux_status);
+    const muxPlaybackId = s.mux_playback_id || null;
 
-          // If nothing exists, this is the REAL problem (upload didn’t store a reference)
-          if (!raw) return s as SubmissionRow;
+    if (muxPlaybackId && muxReady) {
+      return {
+        ...s,
+        video_url: getMuxPlaybackUrl(muxPlaybackId),
+        thumbnail_url: s.thumbnail_url || getMuxThumbnailUrl(muxPlaybackId),
+      };
+    }
 
-          // If already http(s):
-          if (/^https?:\/\//i.test(raw)) {
-            const pub = pathFromPublicUrl(raw);
+    const raw =
+      s.video_url ||
+      s.video_path ||
+      s.file_url ||
+      s.file_path ||
+      s.mp4_url ||
+      s.mp4_path ||
+      s.storage_url ||
+      s.storage_path ||
+      s.url ||
+      s.path ||
+      "";
 
-            // Not a supabase public object url → just use directly
-            if (!pub) {
-              return { ...(s as SubmissionRow), video_url: stripQuery(raw) };
-            }
+    if (!raw) return s as SubmissionRow;
 
-            // Supabase public url → sign for reliable access
-            const { data: signed, error: signErr } = await supabase.storage
-              .from(pub.bucket)
-              .createSignedUrl(pub.path, 60 * 60);
+    if (/^https?:\/\//i.test(raw)) {
+      return { ...(s as SubmissionRow), video_url: raw.split("?")[0] };
+    }
 
-            if (!signErr && signed?.signedUrl) {
-              return { ...(s as SubmissionRow), video_url: signed.signedUrl };
-            }
+    const cleanPath = raw.split("?")[0];
 
-            console.warn("[SIGN FAIL public url]", raw, signErr?.message || "");
-            return { ...(s as SubmissionRow), video_url: stripQuery(raw) };
-          }
+    const { data: signedFilms } = await supabase.storage
+      .from("films")
+      .createSignedUrl(cleanPath, 60 * 60);
 
-          // Otherwise raw is a storage path
-          const cleanPath = stripQuery(raw);
+    if (signedFilms?.signedUrl) {
+      return { ...(s as SubmissionRow), video_url: signedFilms.signedUrl };
+    }
 
-          // Try films
-          const { data: signedFilms, error: signErrFilms } = await supabase.storage
-            .from("films")
-            .createSignedUrl(cleanPath, 60 * 60);
+    const { data: signedPort } = await supabase.storage
+      .from("portfolios")
+      .createSignedUrl(cleanPath, 60 * 60);
 
-          if (!signErrFilms && signedFilms?.signedUrl) {
-            return { ...(s as SubmissionRow), video_url: signedFilms.signedUrl };
-          }
+    if (signedPort?.signedUrl) {
+      return { ...(s as SubmissionRow), video_url: signedPort.signedUrl };
+    }
 
-          // Fallback portfolios
-          const { data: signedPort, error: signErrPort } = await supabase.storage
-            .from("portfolios")
-            .createSignedUrl(cleanPath, 60 * 60);
-
-          if (!signErrPort && signedPort?.signedUrl) {
-            return { ...(s as SubmissionRow), video_url: signedPort.signedUrl };
-          }
-
-          console.warn(
-            "[SIGN FAIL path]",
-            cleanPath,
-            signErrFilms?.message || signErrPort?.message || ""
-          );
-
-          return s as SubmissionRow;
-        })
-      );
+    return s as SubmissionRow;
+  })
+);
 
       setSubmissions(withPlayableUrls);
     } finally {

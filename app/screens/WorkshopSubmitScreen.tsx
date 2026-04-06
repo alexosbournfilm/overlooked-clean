@@ -619,6 +619,110 @@ async function fetchCurrentChallenge(): Promise<MonthlyChallenge> {
   return fallback.data as MonthlyChallenge;
 }
 
+async function createMuxDirectUpload(input: {
+  userId: string;
+  title: string;
+  mimeType?: string | null;
+  category?: string | null;
+  challengeId?: string | number | null;
+  workshopPath?: string | null;
+  workshopStep?: number | null;
+  workshopLessonTitle?: string | null;
+}) {
+  const { data, error } = await supabase.functions.invoke("mux-create-upload", {
+    body: {
+      userId: input.userId,
+      title: input.title,
+      mimeType: input.mimeType ?? null,
+      category: input.category ?? null,
+      challengeId: input.challengeId ?? null,
+      workshopPath: input.workshopPath ?? null,
+      workshopStep: input.workshopStep ?? null,
+      workshopLessonTitle: input.workshopLessonTitle ?? null,
+    },
+  });
+
+  if (error) throw error;
+  if (!data?.uploadUrl || !data?.uploadId) {
+    throw new Error("Mux upload URL was not returned.");
+  }
+
+  return {
+    uploadId: data.uploadId as string,
+    uploadUrl: data.uploadUrl as string,
+    status: (data.status as string) ?? "waiting",
+  };
+}
+
+async function uploadFileToMuxDirectUrl(opts: {
+  uploadUrl: string;
+  fileBlob?: Blob | File | null;
+  localUri?: string | null;
+  mimeType?: string | null;
+  onProgress?: (pct: number) => void;
+}) {
+  const { uploadUrl, fileBlob, localUri, mimeType, onProgress } = opts;
+
+  if (Platform.OS === "web") {
+    const blob = fileBlob;
+    if (!blob) throw new Error("No web file selected for Mux upload.");
+
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      xhr.open("PUT", uploadUrl, true);
+      xhr.setRequestHeader("Content-Type", mimeType || "application/octet-stream");
+      xhr.timeout = 1000 * 60 * 60; // 1 hour for large uploads
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) return;
+        const pct = Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100)));
+        onProgress?.(pct);
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          onProgress?.(100);
+          resolve();
+        } else {
+          reject(new Error(`Mux upload failed: ${xhr.status} ${xhr.responseText || ""}`));
+        }
+      };
+
+      xhr.onerror = () => {
+        reject(new Error("Mux upload failed due to a network error."));
+      };
+
+      xhr.ontimeout = () => {
+        reject(new Error("Mux upload timed out."));
+      };
+
+      xhr.onabort = () => {
+        reject(new Error("Mux upload was aborted."));
+      };
+
+      xhr.send(blob);
+    });
+
+    return;
+  }
+
+  if (!localUri) throw new Error("No local file selected for Mux upload.");
+
+  const result = await FileSystem.uploadAsync(uploadUrl, localUri, {
+    httpMethod: "PUT",
+    uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+    headers: {
+      "Content-Type": mimeType || "application/octet-stream",
+    },
+  });
+
+  onProgress?.(100);
+
+  if (result.status < 200 || result.status >= 300) {
+    throw new Error(`Mux upload failed: ${result.status} ${result.body || ""}`);
+  }
+}
 export default function WorkshopSubmitScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<WorkshopSubmitRouteParams, "WorkshopSubmit">>();
@@ -1321,128 +1425,156 @@ export default function WorkshopSubmitScreen() {
         }
       }
 
-      setStatus("Uploading file…");
+      setStatus("Preparing upload…");
 
-      const uploadPrefix = isWorkshopMode ? `workshop/${user.id}` : `monthly/${user.id}`;
+const uploadPrefix = isWorkshopMode ? `workshop/${user.id}` : `monthly/${user.id}`;
 
-      const { path, contentType } = await uploadResumable({
+const contentType =
+  Platform.OS === "web"
+    ? (((webFile as any)?.type as string | undefined) ?? "video/mp4")
+    : localUri?.toLowerCase().endsWith(".mov")
+    ? "video/quicktime"
+    : localUri?.toLowerCase().endsWith(".m4v")
+    ? "video/x-m4v"
+    : "video/mp4";
+
+const muxUpload = await createMuxDirectUpload({
   userId: user.id,
-  fileBlob: Platform.OS === "web" ? ((webFile as File | Blob | null) ?? undefined) : undefined,
-  localUri: Platform.OS !== "web" ? (localUri as string) : undefined,
-  fileName:
-    Platform.OS === "web"
-      ? ((webFile as any)?.name ?? null)
-      : localUri?.split("/").pop() ?? `upload-${Date.now()}.mp4`,
-  fileSize: fileSizeBytes ?? null,
-  mimeType:
-    Platform.OS === "web"
-      ? ((webFile as any)?.type ?? null)
-      : (localUri?.toLowerCase().endsWith(".mov")
-          ? "video/quicktime"
-          : localUri?.toLowerCase().endsWith(".m4v")
-          ? "video/x-m4v"
-          : "video/mp4"),
-  onProgress: (pct) => setProgressPct(pct),
-  onPhase: (label) => setStatus(label),
-  objectName: `${uploadPrefix}/${Date.now()}`,
-  bucket: STORAGE_BUCKET,
+  title: title.trim(),
+  mimeType: contentType,
+  category: "film",
+  challengeId: challengeToUse.id,
+  workshopPath: isWorkshopMode ? pathKey ?? null : null,
+  workshopStep: isWorkshopMode ? step ?? null : null,
+  workshopLessonTitle: isWorkshopMode ? lessonTitle ?? null : null,
 });
 
-      setStatus("Uploading thumbnail…");
+setStatus("Creating submission…");
 
-      const thumbRes = await uploadThumbnailToStorage({
-        userId: user.id,
-        thumbUri: customThumbUri,
-        objectName: `${uploadPrefix}/${Date.now()}`,
-        bucket: THUMB_BUCKET,
-      });
+const media_kind = mediaKindFromMime(contentType);
 
-      setProgressPct(100);
-      setStatus("Creating submission…");
+const submissionInsert = await insertSubmissionRobust(
+  {
+    user_id: user.id,
+    title: title.trim(),
+    description: description.trim(),
+    submitted_at: new Date().toISOString(),
+    word: null,
+    monthly_challenge_id: challengeToUse.id,
+    storage_path: null,
+    video_path: null,
+    mime_type: contentType,
+    media_kind,
+    duration_seconds: durationSec ?? null,
+    category: "film",
+    film_category: selectedTags[0] ?? null,
+    thumbnail_url: null,
+    mux_upload_id: muxUpload.uploadId,
+    mux_asset_id: null,
+    mux_playback_id: null,
+    mux_status: "waiting",
+    source: isWorkshopMode ? "workshop" : "monthly_upload",
+    workshop_path: isWorkshopMode ? pathKey ?? null : null,
+    workshop_step: isWorkshopMode ? step ?? null : null,
+    workshop_lesson_title: isWorkshopMode ? lessonTitle ?? null : null,
+  },
+  ["user_id", "title", "submitted_at"]
+);
 
-      const media_kind = mediaKindFromMime(contentType);
+const createdSubmission = submissionInsert?.data?.[0];
+if (!createdSubmission?.id) {
+  throw new Error("Submission created, but no submission ID was returned.");
+}
 
-      const submissionInsert = await insertSubmissionRobust(
-        {
-          user_id: user.id,
-          title: title.trim(),
-          description: description.trim(),
-          submitted_at: new Date().toISOString(),
-          word: null,
-          monthly_challenge_id: challengeToUse.id,
-          storage_path: path,
-          video_path: path,
-          mime_type: contentType,
-          media_kind,
-          duration_seconds: durationSec ?? null,
-          category: "film",
-          film_category: selectedTags[0] ?? null,
-          thumbnail_url: thumbRes.publicUrl,
-          source: isWorkshopMode ? "workshop" : "monthly_upload",
-          workshop_path: isWorkshopMode ? pathKey ?? null : null,
-          workshop_step: isWorkshopMode ? step ?? null : null,
-          workshop_lesson_title: isWorkshopMode ? lessonTitle ?? null : null,
-        },
-        ["user_id", "title", "submitted_at"]
-      );
+setStatus(
+  Platform.OS === "web"
+    ? "Uploading to Overlooked… This can take a while for large files."
+    : "Uploading to Overlooked… Please keep the app open for large files."
+);
+setProgressPct(0);
 
-      const createdSubmission = submissionInsert?.data?.[0];
-      if (!createdSubmission?.id) {
-        throw new Error("Submission created, but no submission ID was returned.");
-      }
+await uploadFileToMuxDirectUrl({
+  uploadUrl: muxUpload.uploadUrl,
+  fileBlob: Platform.OS === "web" ? ((webFile as File | Blob | null) ?? undefined) : undefined,
+  localUri: Platform.OS !== "web" ? (localUri as string) : undefined,
+  mimeType: contentType,
+  onProgress: (pct) => setProgressPct(pct),
+});
 
-      const shareSlug = await ensureSubmissionShareSlug({
-        id: createdSubmission.id,
-        title: createdSubmission.title ?? title.trim(),
-        share_slug: createdSubmission.share_slug ?? null,
-      });
+setStatus("Uploading thumbnail…");
 
-      const sharedFilmUrl = buildSharedFilmUrl(shareSlug);
-      console.log("Shared film URL:", sharedFilmUrl);
+const thumbRes = await uploadThumbnailToStorage({
+  userId: user.id,
+  thumbUri: customThumbUri,
+  objectName: `${uploadPrefix}/${Date.now()}`,
+  bucket: THUMB_BUCKET,
+});
 
-      if (isWorkshopMode && pathKey && typeof step === "number") {
-        setStatus("Marking lesson complete…");
+setProgressPct(100);
+setStatus("Finalizing submission…");
 
-        const { error: progressInsertError } = await supabase.from("workshop_progress").insert({
-          user_id: user.id,
-          path_key: pathKey,
-          step,
-        });
+const { error: finalizeError } = await supabase
+  .from("submissions")
+  .update({
+    thumbnail_url: thumbRes.publicUrl,
+  })
+  .eq("id", createdSubmission.id);
 
-        if (progressInsertError) {
-          const msg = String(progressInsertError.message || "").toLowerCase();
-          const alreadyExists = msg.includes("duplicate") || msg.includes("unique") || msg.includes("already");
+if (finalizeError) {
+  throw finalizeError;
+}
 
-          if (!alreadyExists) throw progressInsertError;
-        }
+const shareSlug = await ensureSubmissionShareSlug({
+  id: createdSubmission.id,
+  title: createdSubmission.title ?? title.trim(),
+  share_slug: createdSubmission.share_slug ?? null,
+});
+const sharedFilmUrl = buildSharedFilmUrl(shareSlug);
+console.log("Shared film URL:", sharedFilmUrl);
 
-        if (lessonXp > 0) {
-          try {
-            await giveXp(user.id, lessonXp, "manual_adjust");
-          } catch (xpErr) {
-            console.log("Workshop XP award error:", xpErr);
-          }
-        }
-      }
+if (isWorkshopMode && pathKey && typeof step === "number") {
+  setStatus("Marking lesson complete…");
 
-      try {
-        await refreshGamification?.();
-      } catch {}
+  const { error: progressInsertError } = await supabase.from("workshop_progress").insert({
+    user_id: user.id,
+    path_key: pathKey,
+    step,
+  });
 
-      try {
-        await refreshStreak?.();
-      } catch {}
+  if (progressInsertError) {
+    const msg = String(progressInsertError.message || "").toLowerCase();
+    const alreadyExists = msg.includes("duplicate") || msg.includes("unique") || msg.includes("already");
 
-      if (isWorkshopMode) {
-        setAlreadyCompleted(true);
-      }
+    if (!alreadyExists) throw progressInsertError;
+  }
 
-      setStatus("Submitted! 🎉");
+  if (lessonXp > 0) {
+    try {
+      await giveXp(user.id, lessonXp, "manual_adjust");
+    } catch (xpErr) {
+      console.log("Workshop XP award error:", xpErr);
+    }
+  }
+}
+
+try {
+  await refreshGamification?.();
+} catch {}
+
+try {
+  await refreshStreak?.();
+} catch {}
+
+if (isWorkshopMode) {
+  setAlreadyCompleted(true);
+}
+
+setStatus("Submitted! 🎉");
 
       const successTitle = isWorkshopMode ? "Workshop submitted!" : "Film uploaded!";
-      const successMessage = isWorkshopMode
-        ? "Your film has been uploaded, added to Featured, entered into this month’s challenge, and your workshop lesson is now complete."
-        : "Your film has been uploaded, added to Featured, and entered into this month’s challenge.";
+const successMessage = isWorkshopMode
+  ? "Your film has been uploaded and entered into this month’s challenge, and your workshop lesson is now complete. It may take a little time to process before it appears on Featured."
+  : "Your film has been uploaded and entered into this month’s challenge. It may take a little time to process before it appears on Featured.";
 
       const uploadedTitle = createdSubmission.title ?? title.trim();
       const uploadedThumb = thumbRes.publicUrl;
@@ -1631,14 +1763,16 @@ return (
                   <View style={styles.softDivider} />
 
                   <Text style={styles.infoMiniTitle}>What happens after upload</Text>
-                  <View style={styles.infoList}>
-                    <Text style={styles.infoBullet}>• Your film appears on Featured</Text>
-                    <Text style={styles.infoBullet}>• Your film enters this month’s challenge</Text>
-                    <Text style={styles.infoBullet}>• Other users can watch and vote on it</Text>
-                    {isWorkshopMode ? (
-                      <Text style={styles.infoBullet}>• This lesson is marked complete automatically</Text>
-                    ) : null}
-                  </View>
+<View style={styles.infoList}>
+  <Text style={styles.infoBullet}>• Your film is uploaded and entered into this month’s challenge</Text>
+  <Text style={styles.infoBullet}>• Your lesson is completed straight away after upload</Text>
+  <Text style={styles.infoBullet}>• Featured can take a little time to process your film before it appears</Text>
+  <Text style={styles.infoBullet}>• Once processing finishes, it will show on Featured and play normally</Text>
+  <Text style={styles.infoBullet}>• Other users can then watch and vote on it</Text>
+  {isWorkshopMode ? (
+    <Text style={styles.infoBullet}>• This lesson is marked complete automatically</Text>
+  ) : null}
+</View>
 
                   <View style={styles.softDivider} />
 
@@ -1914,7 +2048,12 @@ return (
                     <Text style={styles.submitText}>{submitButtonText}</Text>
                   </TouchableOpacity>
 
-                  <Text style={styles.formFootnote}>{footnoteText}</Text>
+                  <View style={styles.formFootnoteWrap}>
+  <Text style={styles.formFootnote}>{footnoteText}</Text>
+  <Text style={styles.processingNote}>
+    After upload finishes, your film may take a little time to process before it appears on Featured.
+  </Text>
+</View>
                 </View>
               </View>
             </View>
@@ -3062,13 +3201,26 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
 
-  formFootnote: {
-    color: CINEMA.textDim,
-    fontSize: 13,
-    marginTop: 12,
-    textAlign: "center",
-    lineHeight: 19,
-  },
+ formFootnoteWrap: {
+  marginTop: 12,
+  alignItems: "center",
+},
+
+formFootnote: {
+  color: CINEMA.textDim,
+  fontSize: 13,
+  textAlign: "center",
+  lineHeight: 19,
+},
+
+processingNote: {
+  color: CINEMA.brass,
+  fontSize: 13,
+  textAlign: "center",
+  lineHeight: 19,
+  marginTop: 8,
+  maxWidth: 520,
+},
 
   modalOverlay: {
     flex: 1,

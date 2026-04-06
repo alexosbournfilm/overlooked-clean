@@ -165,6 +165,10 @@ type RawSubmission = Omit<Submission, 'users'> & {
   mime_type?: string | null;
   duration_seconds?: number | null;
   category?: Category | null;
+  mux_upload_id?: string | null;
+mux_asset_id?: string | null;
+mux_playback_id?: string | null;
+mux_status?: string | null;
   share_slug?: string | null;
   videos?: {
     original_path?: string | null;
@@ -476,9 +480,27 @@ const WebVideo: any = 'video';
 
 /* ---------------- Video with custom progress (no native controls) ---------------- */
 /* NOTE: Kept exactly as your current implementation. */
+
+function warmPlayableUrl(url?: string | null) {
+  if (!url) return;
+  if (Platform.OS === 'web') {
+    webPreloadHref(url);
+    webWarmVideo(url);
+  }
+}
+function isMuxReady(status?: string | null) {
+  const s = String(status || '').toLowerCase();
+  return s === 'ready' || s === 'asset_ready' || s === 'playable';
+}
+
+function getMuxPlaybackUrl(playbackId?: string | null) {
+  if (!playbackId) return null;
+  return `https://stream.mux.com/${playbackId}.m3u8`;
+}
 function HostedVideoInline({
   playerId,
   storagePath,
+  directUri,
   width,
   maxHeight,
   autoPlay,
@@ -490,7 +512,8 @@ function HostedVideoInline({
   surfacePressMode = 'hold',
 }: {
   playerId: string;
-  storagePath: string;
+  storagePath?: string | null;
+  directUri?: string | null;
   width: number;
   maxHeight: number;
   autoPlay: boolean;
@@ -501,6 +524,7 @@ function HostedVideoInline({
   captureSurfacePress?: boolean;
   surfacePressMode?: 'hold' | 'toggle';
 }){
+  
   const ref = useRef<Video>(null);
   const htmlRef = useRef<any>(null);
   const [src, setSrc] = useState<string | null>(null);
@@ -538,23 +562,36 @@ const [aspect, setAspect] = useState<number>(16 / 9);
   }, [playerId]);
 
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const url = await signStoragePath(storagePath, 3600);
+  let alive = true;
+
+  (async () => {
+    try {
+      if (directUri) {
         if (alive) {
-  setVideoReady(false);
-  opacity.setValue(0);
-  setSrc(url);
-}
-      } catch (e) {
-        console.warn('[HostedVideoInline] sign failed', e);
+          setVideoReady(false);
+          opacity.setValue(0);
+          setSrc(directUri);
+        }
+        return;
       }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [storagePath]);
+
+      if (!storagePath) return;
+
+      const url = await signStoragePath(storagePath, 3600);
+      if (alive) {
+        setVideoReady(false);
+        opacity.setValue(0);
+        setSrc(url);
+      }
+    } catch (e) {
+      console.warn('[HostedVideoInline] src setup failed', e);
+    }
+  })();
+
+  return () => {
+    alive = false;
+  };
+}, [storagePath, directUri]);
 
   const fadeIn = () => {
     Animated.timing(opacity, {
@@ -885,7 +922,7 @@ const onSurfaceTogglePress = async () => {
             }
             loop
 playsInline
-preload="auto"
+preload="metadata"
 controls={false}
 // @ts-ignore
 controlsList="nodownload noplaybackrate noremoteplayback nofullscreen"
@@ -1735,6 +1772,7 @@ const [storyModeItem, setStoryModeItem] = useState<
   const longPressTriggeredRef = useRef<Record<string, boolean>>({});
   const deepLinkHandledRef = useRef<string | null>(null);
 const hasInitializedChallengesRef = useRef(false);
+const hoverIntentRef = useRef<Record<string, any>>({});
   const { userId: gamUserId, refresh: refreshGamification } = useGamification();
 
   // Track monthly votes used for cap enforcement (kept, even though feed is all-time)
@@ -1834,7 +1872,7 @@ const categoryHeaderTopOffset =
 
 
   const baseCols =
-  'id, user_id, title, votes, submitted_at, is_winner, share_slug, users ( id, full_name ), video_id, storage_path, video_path, thumbnail_url, media_kind, mime_type, duration_seconds, category';
+  'id, user_id, title, votes, submitted_at, is_winner, share_slug, users ( id, full_name ), video_id, storage_path, video_path, thumbnail_url, media_kind, mime_type, duration_seconds, category, mux_upload_id, mux_asset_id, mux_playback_id, mux_status';
 
   const fetchWinnerSafe = async (id: string, desired: Category) => {
     const sel = `
@@ -2006,7 +2044,14 @@ const fetchContent = async (uid: string | null, cat: Category, searchTextQ: stri
         winnerData = null;
       }
 
-      if ((winnerData as any)?.storage_path) {
+      const winnerMuxReady = isMuxReady((winnerData as any)?.mux_status);
+const winnerMuxUri = winnerMuxReady
+  ? getMuxPlaybackUrl((winnerData as any)?.mux_playback_id)
+  : null;
+
+if (winnerMuxUri) {
+  warmPlayableUrl(winnerMuxUri);
+} else if ((winnerData as any)?.storage_path) {
   signStoragePath((winnerData as any).storage_path!, 3600).catch(() => {});
 }
     }
@@ -2016,15 +2061,28 @@ const fetchContent = async (uid: string | null, cat: Category, searchTextQ: stri
 const subs = (resp?.data || []) as RawSubmission[];
 const normalized = subs.map(normalizeRow);
 
+const playableOnly = normalized.filter((s: any) => {
+  const muxReady = isMuxReady(s.mux_status);
+  const hasMux = !!s.mux_playback_id;
+  const hasDirectFile = !!s.storage_path;
+
+  return (hasMux && muxReady) || (!hasMux && hasDirectFile) || hasDirectFile;
+});
+
 setWinner(winnerData);
-setSubmissions(normalized);
+setSubmissions(playableOnly);
 
 setTimeout(() => {
-  fetchCommentCounts(normalized.slice(0, 12).map((s) => s.id));
+  fetchCommentCounts(playableOnly.slice(0, 12).map((s) => s.id));
 }, 0);
 
-    normalized.slice(0, 24).forEach((s) => {
-  if (s.storage_path) {
+    playableOnly.slice(0, 24).forEach((s) => {
+  const muxReady = isMuxReady((s as any).mux_status);
+  const muxUri = muxReady ? getMuxPlaybackUrl((s as any).mux_playback_id) : null;
+
+  if (muxUri) {
+    warmPlayableUrl(muxUri);
+  } else if (s.storage_path) {
     signStoragePath(s.storage_path, 3600).catch(() => {});
   }
 });
@@ -2626,31 +2684,35 @@ const fitted = fitContain(mediaW, effectiveMaxH, 16 / 9);
 const frameW = fitted.w;
 const frameH = fitted.h;
 
-  if (!s.storage_path) {
-    return (
-      <View
-        {...(webHoverProps as any)}
-        style={[
-  styles.videoOuter,
-  isWinnerRow && styles.videoOuterHeroFlat,
-  {
-    width: frameW,
-    maxWidth: mediaW,
-    height: frameH,
-    maxHeight: availableHForMedia,
-  },
-]}
-      >
-        <View style={styles.aspectFill}>
-          <Image
-            source={{ uri: 'https://picsum.photos/1600/900' }}
-            style={{ width: '100%', height: '100%', borderRadius: RADIUS_XL }}
-            resizeMode="contain"
-          />
-        </View>
+  const muxReady = isMuxReady((s as any).mux_status);
+const muxUri = muxReady ? getMuxPlaybackUrl((s as any).mux_playback_id) : null;
+const playableUri = muxUri || s.storage_path || null;
+
+if (!playableUri) {
+  return (
+    <View
+      {...(webHoverProps as any)}
+      style={[
+        styles.videoOuter,
+        isWinnerRow && styles.videoOuterHeroFlat,
+        {
+          width: frameW,
+          maxWidth: mediaW,
+          height: frameH,
+          maxHeight: availableHForMedia,
+        },
+      ]}
+    >
+      <View style={styles.aspectFill}>
+        <Image
+          source={{ uri: s.thumbnail_url || 'https://picsum.photos/1600/900' }}
+          style={{ width: '100%', height: '100%', borderRadius: RADIUS_XL }}
+          resizeMode="contain"
+        />
       </View>
-    );
-  }
+    </View>
+  );
+}
 
   if (s.media_kind === 'file_audio') {
     return (
@@ -2689,7 +2751,8 @@ const frameH = fitted.h;
     >
       <HostedVideoInline
   playerId={rowId}
-  storagePath={s.storage_path!}
+  storagePath={muxUri ? null : s.storage_path ?? null}
+  directUri={muxUri}
   width={frameW}
   maxHeight={frameH}
   autoPlay={isActive}
@@ -2814,8 +2877,11 @@ const renderCompactGridCard = useCallback(
     }
   ) => {
     const thumb = s.thumbnail_url || 'https://picsum.photos/600/340';
-    const playerId = `grid-${s.id}`;
-    const isActiveCard = activeId === playerId;
+const playerId = `grid-${s.id}`;
+const isActiveCard = activeId === playerId;
+const muxReady = isMuxReady((s as any).mux_status);
+const muxUri = muxReady ? getMuxPlaybackUrl((s as any).mux_playback_id) : null;
+const hasPlayableVideo = !!(muxUri || s.storage_path);
 
     return (
       <Pressable
@@ -2833,9 +2899,13 @@ const renderCompactGridCard = useCallback(
     openPreview(s);
   }}
   onLongPress={() => {
-  if (Platform.OS !== 'web' && s.storage_path) {
+  if (Platform.OS !== 'web' && hasPlayableVideo) {
     longPressTriggeredRef.current[s.id] = true;
-    signStoragePath(s.storage_path, 3600).catch(() => {});
+
+    if (s.storage_path) {
+      signStoragePath(s.storage_path, 3600).catch(() => {});
+    }
+
     setActiveId(playerId);
   }
 }}
@@ -2851,14 +2921,31 @@ const renderCompactGridCard = useCallback(
   {...(Platform.OS === 'web'
     ? {
         onHoverIn: () => {
-  if (s.storage_path) {
-    signStoragePath(s.storage_path, 3600).catch(() => {});
-    setActiveId(playerId);
+  if (hoverIntentRef.current[playerId]) {
+    clearTimeout(hoverIntentRef.current[playerId]);
   }
+
+  hoverIntentRef.current[playerId] = setTimeout(() => {
+    if (muxUri) {
+      warmPlayableUrl(muxUri);
+      setActiveId(playerId);
+      return;
+    }
+
+    if (s.storage_path) {
+      signStoragePath(s.storage_path, 3600).catch(() => {});
+      setActiveId(playerId);
+    }
+  }, 90);
 },
-        onHoverOut: () => {
-          setActiveId((prev) => (prev === playerId ? null : prev));
-        },
+onHoverOut: () => {
+  if (hoverIntentRef.current[playerId]) {
+    clearTimeout(hoverIntentRef.current[playerId]);
+    delete hoverIntentRef.current[playerId];
+  }
+
+  setActiveId((prev) => (prev === playerId ? null : prev));
+},
       }
     : {})}
 >
@@ -2866,22 +2953,23 @@ const renderCompactGridCard = useCallback(
           {/* Base thumbnail always visible */}
           <Image source={{ uri: thumb }} style={styles.gridThumb} resizeMode="cover" />
 
-          {/* Only mount video while hovered / holding */}
-          {s.storage_path && isActiveCard ? (
-            <View style={StyleSheet.absoluteFillObject}>
-              <HostedVideoInline
-                playerId={playerId}
-                storagePath={s.storage_path}
-                width={gridCardW}
-                maxHeight={gridCardW / (16 / 9)}
-                autoPlay={true}
-                posterUri={s.thumbnail_url ?? null}
-                dimVignette={false}
-                showControls={false}
-                captureSurfacePress={false}
-              />
-            </View>
-          ) : null}
+         {/* Only mount video while hovered / holding */}
+{hasPlayableVideo && isActiveCard ? (
+  <View style={StyleSheet.absoluteFillObject}>
+    <HostedVideoInline
+      playerId={playerId}
+      storagePath={muxUri ? null : s.storage_path ?? null}
+      directUri={muxUri}
+      width={gridCardW}
+      maxHeight={gridCardW / (16 / 9)}
+      autoPlay={true}
+      posterUri={s.thumbnail_url ?? null}
+      dimVignette={false}
+      showControls={false}
+      captureSurfacePress={false}
+    />
+  </View>
+) : null}
 
           <View style={styles.gridThumbOverlay} pointerEvents="none" />
 
@@ -3495,109 +3583,120 @@ maxToRenderPerBatch={2}
   </Modal>
 )}
 
-    {/* ✅ Preview modal (wide web): full player + actions */}
+       {/* ✅ Preview modal (wide web): full player + actions */}
     {previewOpen && previewItem && (
-  <Modal visible transparent animationType="fade" onRequestClose={closePreview}>
-    <View style={styles.previewOverlay}>
-      <Pressable style={StyleSheet.absoluteFillObject} onPress={closePreview} />
+      <Modal visible transparent animationType="fade" onRequestClose={closePreview}>
+        <View style={styles.previewOverlay}>
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={closePreview} />
 
-      <View style={styles.previewCard}>
-        <View style={styles.previewHeader}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.previewTitle} numberOfLines={2}>
-              {previewItem.title}
-            </Text>
+          <View style={styles.previewCard}>
+            <View style={styles.previewHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.previewTitle} numberOfLines={2}>
+                  {previewItem.title}
+                </Text>
 
-            {previewItem.users?.full_name ? (
+                {previewItem.users?.full_name ? (
+                  <TouchableOpacity
+                    onPress={() => goToProfile(previewItem.users)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.previewByline}>{previewItem.users.full_name}</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
               <TouchableOpacity
-                onPress={() => goToProfile(previewItem.users)}
-                activeOpacity={0.85}
+                onPress={closePreview}
+                activeOpacity={0.9}
+                style={styles.previewCloseBtn}
               >
-                <Text style={styles.previewByline}>{previewItem.users.full_name}</Text>
+                <Text style={styles.previewCloseText}>Close</Text>
               </TouchableOpacity>
-            ) : null}
+            </View>
+
+            <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }}>
+              {(() => {
+                const previewMuxReady = isMuxReady((previewItem as any).mux_status);
+                const previewMuxUri = previewMuxReady
+                  ? getMuxPlaybackUrl((previewItem as any).mux_playback_id)
+                  : null;
+
+                return (previewItem.storage_path || previewMuxUri) ? (
+                  <HostedVideoInline
+                    playerId={`preview-${previewItem.id}`}
+                    storagePath={previewMuxUri ? null : previewItem.storage_path ?? null}
+                    directUri={previewMuxUri}
+                    width={Math.min(winW - 40, 760)}
+                    maxHeight={Math.min(winH * 0.34, 300)}
+                    autoPlay={activeId === `preview-${previewItem.id}`}
+                    posterUri={previewItem.thumbnail_url ?? null}
+                    dimVignette={false}
+                    showControls={true}
+                    captureSurfacePress={true}
+                    surfacePressMode="toggle"
+                  />
+                ) : (
+                  <View style={{ height: 220, borderRadius: 14, backgroundColor: '#000' }} />
+                );
+              })()}
+
+              <View style={styles.previewActions}>
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => {
+                    if (isGuest) {
+                      navigation.navigate('Auth', { screen: 'SignIn' });
+                      return;
+                    }
+                    toggleVote(previewItem);
+                  }}
+                  disabled={
+                    !!voteBusy[previewItem.id] ||
+                    (!!currentUserId && (previewItem as any).user_id === currentUserId)
+                  }
+                  style={[
+                    styles.previewActionPill,
+                    (voteBusy[previewItem.id] ||
+                      (!!currentUserId && (previewItem as any).user_id === currentUserId)) && {
+                      opacity: 0.55,
+                    },
+                  ]}
+                >
+                  <Text style={styles.previewActionText}>
+                    {isGuest
+                      ? `Sign In to Vote (${previewItem.votes ?? 0})`
+                      : `${votedIds.has(previewItem.id) ? 'Voted' : 'Vote'} (${previewItem.votes ?? 0})`}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => {
+                    shareSubmissionLink(previewItem as any);
+                  }}
+                  style={styles.previewActionPillGhost}
+                >
+                  <Text style={styles.previewActionTextGhost}>Share</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => openComments(previewItem)}
+                  style={styles.previewActionPillGhost}
+                >
+                  <Text style={styles.previewActionTextGhost}>
+                    {isGuest
+                      ? `Comments (${commentCounts[previewItem.id] ?? 0})`
+                      : `Comments (${commentCounts[previewItem.id] ?? 0})`}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
-
-          <TouchableOpacity
-            onPress={closePreview}
-            activeOpacity={0.9}
-            style={styles.previewCloseBtn}
-          >
-            <Text style={styles.previewCloseText}>Close</Text>
-          </TouchableOpacity>
         </View>
-
-        <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }}>
-          {previewItem.storage_path ? (
-            <HostedVideoInline
-  playerId={`preview-${previewItem.id}`}
-  storagePath={previewItem.storage_path}
-  width={Math.min(winW - 40, 760)}
-  maxHeight={Math.min(winH * 0.34, 300)}
-  autoPlay={activeId === `preview-${previewItem.id}`}
-  posterUri={previewItem.thumbnail_url ?? null}
-  dimVignette={false}
-  showControls={true}
-  captureSurfacePress={true}
-  surfacePressMode="toggle"
-/>
-          ) : (
-            <View style={{ height: 220, borderRadius: 14, backgroundColor: '#000' }} />
-          )}
-
-          <View style={styles.previewActions}>
-            <TouchableOpacity
-  activeOpacity={0.9}
-  onPress={() => {
-    if (isGuest) {
-      navigation.navigate('Auth', { screen: 'SignIn' });
-      return;
-    }
-    toggleVote(previewItem);
-  }}
-              disabled={!!voteBusy[previewItem.id] || (!!currentUserId && (previewItem as any).user_id === currentUserId)}
-              style={[
-                styles.previewActionPill,
-                (voteBusy[previewItem.id] ||
-                  (!!currentUserId && (previewItem as any).user_id === currentUserId)) && {
-                  opacity: 0.55,
-                },
-              ]}
-            >
-              <Text style={styles.previewActionText}>
-  {isGuest
-    ? `Sign In to Vote (${previewItem.votes ?? 0})`
-    : `${votedIds.has(previewItem.id) ? 'Voted' : 'Vote'} (${previewItem.votes ?? 0})`}
-</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-  activeOpacity={0.9}
-  onPress={() => {
-    shareSubmissionLink(previewItem as any);
-  }}
-  style={styles.previewActionPillGhost}
->
-  <Text style={styles.previewActionTextGhost}>Share</Text>
-</TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => openComments(previewItem)}
-              style={styles.previewActionPillGhost}
-            >
-              <Text style={styles.previewActionTextGhost}>
-  {isGuest
-    ? `Comments (${commentCounts[previewItem.id] ?? 0})`
-    : `Comments (${commentCounts[previewItem.id] ?? 0})`}
-</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </View>
-  </Modal>
-)}
+      </Modal>
+    )}
     {/* ---------------- Comments Modal (kept) ---------------- */}
     {commentsOpen && (
   <Modal visible transparent animationType="fade" onRequestClose={closeComments}>
