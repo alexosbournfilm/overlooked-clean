@@ -286,6 +286,9 @@ async function uploadResumable(opts: {
   userId: string;
   fileBlob?: Blob | File | null;
   localUri?: string | null;
+  fileName?: string | null;
+  fileSize?: number | null;
+  mimeType?: string | null;
   onProgress?: (pct: number) => void;
   onPhase?: (label: string) => void;
   objectName?: string;
@@ -295,6 +298,9 @@ async function uploadResumable(opts: {
     userId,
     fileBlob,
     localUri,
+    fileName,
+    fileSize,
+    mimeType,
     onProgress,
     onPhase,
     objectName = `uploads/${userId}/${Date.now()}`,
@@ -303,144 +309,149 @@ async function uploadResumable(opts: {
 
   onPhase?.("Preparing file…");
 
-  // WEB: keep tus resumable upload
-  if (Platform.OS === "web") {
-    let file: Blob;
-    let type = "application/octet-stream";
+  let uploadTarget: any;
+  let type = mimeType || "application/octet-stream";
+  let finalSize = fileSize ?? null;
 
+  if (Platform.OS === "web") {
     if (fileBlob) {
-      file = fileBlob as Blob;
+      uploadTarget = fileBlob as Blob;
       if ((fileBlob as any)?.type) type = (fileBlob as any).type as string;
+      if (typeof (fileBlob as any)?.size === "number") finalSize = (fileBlob as any).size;
     } else if (localUri) {
       const resp = await fetch(localUri);
-      file = await resp.blob();
-      if ((file as any)?.type) type = (file as any).type as string;
+      const blob = await resp.blob();
+      uploadTarget = blob;
+      if ((blob as any)?.type) type = (blob as any).type as string;
+      if (typeof (blob as any)?.size === "number") finalSize = (blob as any).size;
     } else {
       throw new Error("No file to upload");
     }
+  } else {
+    if (!localUri) throw new Error("No local file to upload");
 
-    const ext =
-      type.includes("png")
-        ? ".png"
-        : type.includes("jpeg") || type.includes("jpg")
-        ? ".jpg"
-        : type.includes("webp")
-        ? ".webp"
-        : type.includes("gif")
-        ? ".gif"
-        : type.includes("mp4")
-        ? ".mp4"
-        : type.includes("quicktime")
-        ? ".mov"
-        : type.startsWith("audio/")
-        ? ".mp3"
-        : type.startsWith("video/")
-        ? ".mp4"
-        : ".mp4";
+    let nativeSize = finalSize;
+    if (nativeSize == null) {
+      try {
+        const info = await FileSystem.getInfoAsync(localUri, { size: true } as any);
+        if (info?.exists && typeof (info as any)?.size === "number") {
+          nativeSize = (info as any).size;
+        }
+      } catch {}
+    }
 
-    const finalObjectName = objectName + ext;
+    if (!nativeSize) {
+      throw new Error("Could not determine file size for upload.");
+    }
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    if (!type || type === "application/octet-stream") {
+      const lower = localUri.toLowerCase();
+      if (lower.endsWith(".mov")) type = "video/quicktime";
+      else if (lower.endsWith(".mp4")) type = "video/mp4";
+      else if (lower.endsWith(".m4v")) type = "video/x-m4v";
+      else type = "video/mp4";
+    }
 
-    if (!session) throw new Error("Not signed in");
+    uploadTarget = {
+      uri: localUri,
+      name: fileName || `upload-${Date.now()}`,
+      type,
+    };
 
-    const endpoint = await getResumableEndpoint();
-
-    return new Promise<{ path: string; contentType: string }>((resolve, reject) => {
-      const upload = new Upload(file, {
-        endpoint,
-        retryDelays: [0, 2000, 5000, 10000, 20000],
-        chunkSize: 2 * 1024 * 1024,
-        uploadDataDuringCreation: true,
-        removeFingerprintOnSuccess: true,
-        headers: {
-          authorization: `Bearer ${session.access_token}`,
-          "x-upsert": "true",
-        },
-        metadata: {
-          bucketName: bucket,
-          objectName: finalObjectName,
-          contentType: type,
-          cacheControl: "3600",
-        },
-        onProgress: (sent, total) => {
-          if (!total) return;
-          const pct = Math.max(0, Math.min(100, Math.round((sent / total) * 100)));
-          onProgress?.(pct);
-        },
-        onError: (err: any) => {
-          try {
-            const res = err?.originalResponse;
-            const status =
-              res?.getStatus?.() ??
-              res?.getStatusCode?.() ??
-              res?.status ??
-              err?.originalResponse?.status;
-
-            const body =
-              res?.getBody?.() ??
-              res?.responseText ??
-              err?.originalResponse?.responseText ??
-              "";
-
-            const detail = String(body || "").slice(0, 350);
-            reject(
-              new Error(
-                `Upload failed (${status || "unknown"}): ${detail || err?.message || "Unknown error"}`
-              )
-            );
-          } catch {
-            reject(err);
-          }
-        },
-        onSuccess: () => resolve({ path: finalObjectName, contentType: type }),
-      });
-
-      onPhase?.("Uploading file…");
-      upload.findPreviousUploads().then((prev) => {
-        if (prev.length) upload.resumeFromPreviousUpload(prev[0]);
-        upload.start();
-      });
-    });
+    finalSize = nativeSize;
   }
 
-  // NATIVE: use normal storage upload with ArrayBuffer
-  if (!localUri) throw new Error("No local file to upload");
-
-  const base64 = await FileSystem.readAsStringAsync(localUri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-
-  const arrayBuffer = base64ToArrayBuffer(base64);
-
-  let type = "video/mp4";
-  if (localUri.toLowerCase().endsWith(".mov")) type = "video/quicktime";
-  if (localUri.toLowerCase().endsWith(".mp4")) type = "video/mp4";
-
   const ext =
-    type.includes("quicktime")
+    type.includes("png")
+      ? ".png"
+      : type.includes("jpeg") || type.includes("jpg")
+      ? ".jpg"
+      : type.includes("webp")
+      ? ".webp"
+      : type.includes("gif")
+      ? ".gif"
+      : type.includes("quicktime")
       ? ".mov"
-      : ".mp4";
+      : type.includes("mp4")
+      ? ".mp4"
+      : type.includes("m4v")
+      ? ".m4v"
+      : type.startsWith("audio/")
+      ? ".mp3"
+      : type.startsWith("video/")
+      ? ".mp4"
+      : "";
 
   const finalObjectName = objectName + ext;
 
-  onProgress?.(30);
-  onPhase?.("Uploading file…");
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  const up = await supabase.storage.from(bucket).upload(finalObjectName, arrayBuffer, {
-    upsert: true,
-    contentType: type,
-    cacheControl: "3600",
+  if (!session) throw new Error("Not signed in");
+
+  const endpoint = await getResumableEndpoint();
+
+  return new Promise<{ path: string; contentType: string }>((resolve, reject) => {
+    const upload = new Upload(uploadTarget, {
+      endpoint,
+      retryDelays: [0, 2000, 5000, 10000, 20000],
+      chunkSize: 2 * 1024 * 1024,
+      uploadDataDuringCreation: true,
+      removeFingerprintOnSuccess: true,
+      headers: {
+        authorization: `Bearer ${session.access_token}`,
+        "x-upsert": "true",
+      },
+      metadata: {
+        bucketName: bucket,
+        objectName: finalObjectName,
+        contentType: type,
+        cacheControl: "3600",
+      },
+      uploadSize: finalSize ?? undefined,
+      onProgress: (sent, total) => {
+        if (!total) return;
+        const pct = Math.max(0, Math.min(100, Math.round((sent / total) * 100)));
+        onProgress?.(pct);
+      },
+      onError: (err: any) => {
+        try {
+          const res = err?.originalResponse;
+          const status =
+            res?.getStatus?.() ??
+            res?.getStatusCode?.() ??
+            res?.status ??
+            err?.originalResponse?.status;
+
+          const body =
+            res?.getBody?.() ??
+            res?.responseText ??
+            err?.originalResponse?.responseText ??
+            "";
+
+          const detail = String(body || "").slice(0, 350);
+          reject(
+            new Error(
+              `Upload failed (${status || "unknown"}): ${detail || err?.message || "Unknown error"}`
+            )
+          );
+        } catch {
+          reject(err);
+        }
+      },
+      onSuccess: () => resolve({ path: finalObjectName, contentType: type }),
+    });
+
+    onPhase?.("Uploading file…");
+    upload.findPreviousUploads().then((prev) => {
+      if (prev.length) upload.resumeFromPreviousUpload(prev[0]);
+      upload.start();
+    });
   });
-
-  if (up.error) throw up.error;
-
-  onProgress?.(100);
-
-  return { path: finalObjectName, contentType: type };
 }
+
+
 
 async function captureFirstFrameWeb(
   videoSrc: string
@@ -1315,14 +1326,27 @@ export default function WorkshopSubmitScreen() {
       const uploadPrefix = isWorkshopMode ? `workshop/${user.id}` : `monthly/${user.id}`;
 
       const { path, contentType } = await uploadResumable({
-        userId: user.id,
-        fileBlob: Platform.OS === "web" ? ((webFile as File | Blob | null) ?? undefined) : undefined,
-        localUri: Platform.OS !== "web" ? (localUri as string) : undefined,
-        onProgress: (pct) => setProgressPct(pct),
-        onPhase: (label) => setStatus(label),
-        objectName: `${uploadPrefix}/${Date.now()}`,
-        bucket: STORAGE_BUCKET,
-      });
+  userId: user.id,
+  fileBlob: Platform.OS === "web" ? ((webFile as File | Blob | null) ?? undefined) : undefined,
+  localUri: Platform.OS !== "web" ? (localUri as string) : undefined,
+  fileName:
+    Platform.OS === "web"
+      ? ((webFile as any)?.name ?? null)
+      : localUri?.split("/").pop() ?? `upload-${Date.now()}.mp4`,
+  fileSize: fileSizeBytes ?? null,
+  mimeType:
+    Platform.OS === "web"
+      ? ((webFile as any)?.type ?? null)
+      : (localUri?.toLowerCase().endsWith(".mov")
+          ? "video/quicktime"
+          : localUri?.toLowerCase().endsWith(".m4v")
+          ? "video/x-m4v"
+          : "video/mp4"),
+  onProgress: (pct) => setProgressPct(pct),
+  onPhase: (label) => setStatus(label),
+  objectName: `${uploadPrefix}/${Date.now()}`,
+  bucket: STORAGE_BUCKET,
+});
 
       setStatus("Uploading thumbnail…");
 

@@ -261,15 +261,17 @@ function webWarmVideo(href: string) {
   if (Platform.OS !== 'web') return;
   if (webWarmStore.warmVideos.has(href)) return;
   const v = document.createElement('video');
-  v.preload = 'auto';
-  v.src = href;
-  try {
-    v.load();
-  } catch {}
-  webWarmStore.warmVideos.set(href, v);
+v.preload = 'auto';
+v.muted = true;
+v.playsInline = true;
+v.src = href;
+try {
+  v.load();
+} catch {}
+webWarmStore.warmVideos.set(href, v);
 }
 
-async function signStoragePath(path: string, expiresInSec = 180): Promise<string> {
+async function signStoragePath(path: string, expiresInSec = 3600): Promise<string> {
   const now = Date.now();
   const cached = signedUrlCache.get(path);
   if (cached && now < cached.exp - 30_000) return cached.url;
@@ -295,31 +297,72 @@ async function signStoragePath(path: string, expiresInSec = 180): Promise<string
   return p;
 }
 
-/* ---------------- Select smallest variant ---------------- */
+/* ---------------- Select smallest / fast-start variants ---------------- */
 function pickSmallestVariant(row: any): { path: string | null; thumb: string | null } {
   const variants = row?.videos?.video_variants ?? [];
-  if (!variants || variants.length === 0) {
+
+  if (variants && variants.length > 0) {
+    const scored = variants
+      .map((v: any) => {
+        const m = /(\d{3,4})p/i.exec(v?.label || '');
+        return { ...v, h: m ? parseInt(m[1], 10) : 9999 };
+      })
+      .sort((a: any, b: any) => a.h - b.h);
+
+    const smallest = scored[0] ?? variants[0];
+
     return {
       path:
+        smallest?.path ??
+        row?.videos?.original_path ??
         row?.video_path ??
         row?.storage_path ??
-        row?.videos?.original_path ??
         null,
       thumb: row?.thumbnail_url ?? row?.videos?.thumbnail_path ?? null,
     };
   }
-  const scored = variants
-    .map((v: any) => {
-      const m = /(\d{3,4})p/i.exec(v?.label || '');
-      return { ...v, h: m ? parseInt(m[1], 10) : 9999 };
-    })
-    .sort((a: any, b: any) => a.h - b.h);
-  const smallest = scored[0] ?? variants[0];
+
   return {
     path:
       row?.video_path ??
       row?.storage_path ??
-      smallest?.path ??
+      row?.videos?.original_path ??
+      null,
+    thumb: row?.thumbnail_url ?? row?.videos?.thumbnail_path ?? null,
+  };
+}
+
+function pickFastStartVariant(row: any): { path: string | null; thumb: string | null } {
+  const variants = row?.videos?.video_variants ?? [];
+
+  if (variants && variants.length > 0) {
+    const scored = variants
+      .map((v: any) => {
+        const label = String(v?.label || '').toLowerCase();
+        const m = /(\d{3,4})p/i.exec(label);
+        const h = m ? parseInt(m[1], 10) : 9999;
+
+        let priority = 1000 + h;
+        if (h <= 360) priority = 1 + h;
+        else if (h <= 480) priority = 10 + h;
+        else if (h <= 720) priority = 100 + h;
+
+        return { ...v, h, priority };
+      })
+      .sort((a: any, b: any) => a.priority - b.priority);
+
+    const best = scored[0] ?? variants[0];
+
+    return {
+      path: best?.path ?? null,
+      thumb: row?.thumbnail_url ?? row?.videos?.thumbnail_path ?? null,
+    };
+  }
+
+  return {
+    path:
+      row?.video_path ??
+      row?.storage_path ??
       row?.videos?.original_path ??
       null,
     thumb: row?.thumbnail_url ?? row?.videos?.thumbnail_path ?? null,
@@ -461,10 +504,10 @@ function HostedVideoInline({
   const ref = useRef<Video>(null);
   const htmlRef = useRef<any>(null);
   const [src, setSrc] = useState<string | null>(null);
-  const [posterReady, setPosterReady] = useState(false);
+const [videoReady, setVideoReady] = useState(false);
 
-  const opacity = useRef(new Animated.Value(0)).current;
-  const [aspect, setAspect] = useState<number>(16 / 9);
+const opacity = useRef(new Animated.Value(0)).current;
+const [aspect, setAspect] = useState<number>(16 / 9);
 
   const [muted, setMuted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -498,11 +541,12 @@ function HostedVideoInline({
     let alive = true;
     (async () => {
       try {
-        const url = await signStoragePath(storagePath, 180);
+        const url = await signStoragePath(storagePath, 3600);
         if (alive) {
-          setPosterReady(false);
-          setSrc(url);
-        }
+  setVideoReady(false);
+  opacity.setValue(0);
+  setSrc(url);
+}
       } catch (e) {
         console.warn('[HostedVideoInline] sign failed', e);
       }
@@ -649,17 +693,19 @@ const onSurfaceTogglePress = async () => {
   const handleLoad = (status?: AVPlaybackStatus) => {
   if (Platform.OS !== 'web') {
     maybeUpdateAspectFromStatus(status);
+    setVideoReady(true);
     fadeIn();
   }
 };
 
   const handleReadyForDisplay = (evt?: any) => {
-    if (Platform.OS !== 'web') {
-      const ns = evt?.naturalSize;
-      updateAspectFromDims(ns?.width, ns?.height);
-    }
-    fadeIn();
-  };
+  if (Platform.OS !== 'web') {
+    const ns = evt?.naturalSize;
+    updateAspectFromDims(ns?.width, ns?.height);
+  }
+  setVideoReady(true);
+  fadeIn();
+};
 
   const handleFsUpdate = async ({ fullscreenUpdate }: { fullscreenUpdate: number }) => {
     if (Platform.OS === 'web') return;
@@ -677,13 +723,13 @@ const onSurfaceTogglePress = async () => {
   };
 
   const onWebLoadedMeta = () => {
-    const el = htmlRef.current!;
-    updateAspectFromDims(el.videoWidth, el.videoHeight);
-    setDuration(el.duration || 0);
-    el.controls = false;
-    setPosterReady(true);
-    fadeIn();
-  };
+  const el = htmlRef.current!;
+  updateAspectFromDims(el.videoWidth, el.videoHeight);
+  setDuration(el.duration || 0);
+  el.controls = false;
+  setVideoReady(true);
+  fadeIn();
+};
 
   const onWebTimeUpdate = () => {
     const el = htmlRef.current!;
@@ -797,12 +843,27 @@ const onSurfaceTogglePress = async () => {
         alignSelf: 'center',
       }}
     >
-      <Animated.View
+      {posterUri && !videoReady ? (
+  <Image
+    source={{ uri: posterUri }}
+    style={[
+      StyleSheet.absoluteFillObject,
+      {
+        zIndex: 1,
+        width: '100%',
+        height: '100%',
+      },
+    ]}
+    resizeMode="contain"
+  />
+) : null}
+
+<Animated.View
   style={[
     StyleSheet.absoluteFillObject,
     {
-      opacity: Platform.OS === 'web' ? opacity : 1,
-      zIndex: 0,
+      opacity,
+      zIndex: 2,
     },
   ]}
 >
@@ -823,18 +884,26 @@ const onSurfaceTogglePress = async () => {
               } as any
             }
             loop
-            playsInline
-            preload="auto"
-            controls={false}
-            // @ts-ignore
-            controlsList="nodownload noplaybackrate noremoteplayback nofullscreen"
-            disablePictureInPicture
-            onContextMenu={(e: any) => e.preventDefault()}
-            onLoadedMetadata={onWebLoadedMeta}
-            onTimeUpdate={onWebTimeUpdate}
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
-          />
+playsInline
+preload="auto"
+controls={false}
+// @ts-ignore
+controlsList="nodownload noplaybackrate noremoteplayback nofullscreen"
+disablePictureInPicture
+onContextMenu={(e: any) => e.preventDefault()}
+onLoadedMetadata={onWebLoadedMeta}
+onCanPlay={() => {
+  setVideoReady(true);
+  fadeIn();
+}}
+onLoadedData={() => {
+  setVideoReady(true);
+  fadeIn();
+}}
+onTimeUpdate={onWebTimeUpdate}
+onPlay={() => setIsPlaying(true)}
+onPause={() => setIsPlaying(false)}
+/>
         ) : (
           <Video
             ref={ref}
@@ -958,7 +1027,7 @@ function HostedAudioInline({
     let alive = true;
     (async () => {
       try {
-        const url = await signStoragePath(storagePath, 180);
+        const url = await signStoragePath(storagePath, 3600);
         if (alive) {
           setSrc(url);
         }
@@ -1076,7 +1145,7 @@ function normalizeRow(
 
   const desc = (row as any).description ?? (row as any).word ?? null;
 
-  const picked = pickSmallestVariant(row);
+  const picked = pickFastStartVariant(row);
 
   return {
     ...(row as any),
@@ -1791,11 +1860,11 @@ const categoryHeaderTopOffset =
     }
 
     if (res.data) {
-      const r: any = res.data;
-      const picked = pickSmallestVariant(r);
-      r.storage_path = picked.path;
-      r.thumbnail_url = picked.thumb;
-    }
+  const r: any = res.data;
+  const picked = pickFastStartVariant(r);
+  r.storage_path = picked.path;
+  r.thumbnail_url = picked.thumb;
+}
 
     return res;
   };
@@ -1875,7 +1944,7 @@ q2 = q2.ilike('film_category', `%${dbVal}%`);
 const rows = (res.data ?? []) as any[];
 
 for (const r of rows) {
-  const picked = pickSmallestVariant(r);
+  const picked = pickFastStartVariant(r);
   r.storage_path =
     r.media_kind === 'file_audio'
       ? r.storage_path ?? r.video_path ?? r?.videos?.original_path ?? null
@@ -1938,8 +2007,8 @@ const fetchContent = async (uid: string | null, cat: Category, searchTextQ: stri
       }
 
       if ((winnerData as any)?.storage_path) {
-        signStoragePath((winnerData as any).storage_path!, 180).catch(() => {});
-      }
+  signStoragePath((winnerData as any).storage_path!, 3600).catch(() => {});
+}
     }
 
     // ✅ All-time submissions
@@ -1954,9 +2023,9 @@ setTimeout(() => {
   fetchCommentCounts(normalized.slice(0, 12).map((s) => s.id));
 }, 0);
 
-    normalized.slice(0, 4).forEach((s) => {
+    normalized.slice(0, 24).forEach((s) => {
   if (s.storage_path) {
-    signStoragePath(s.storage_path, 180).catch(() => {});
+    signStoragePath(s.storage_path, 3600).catch(() => {});
   }
 });
 
@@ -2151,10 +2220,14 @@ const shareSubmissionLink = async (
 
   // ✅ open/close preview modal for compact cards
   const openPreview = (s: any) => {
-    setPreviewItem(s);
-    setPreviewOpen(true);
-    setActiveId(`preview-${s.id}`);
-  };
+  if (s?.storage_path) {
+    signStoragePath(s.storage_path, 3600).catch(() => {});
+  }
+
+  setPreviewItem(s);
+  setPreviewOpen(true);
+  setActiveId(`preview-${s.id}`);
+};
 
   const closePreview = async () => {
     setPreviewOpen(false);
@@ -2760,11 +2833,12 @@ const renderCompactGridCard = useCallback(
     openPreview(s);
   }}
   onLongPress={() => {
-    if (Platform.OS !== 'web' && s.storage_path) {
-      longPressTriggeredRef.current[s.id] = true;
-      setActiveId(playerId);
-    }
-  }}
+  if (Platform.OS !== 'web' && s.storage_path) {
+    longPressTriggeredRef.current[s.id] = true;
+    signStoragePath(s.storage_path, 3600).catch(() => {});
+    setActiveId(playerId);
+  }
+}}
   delayLongPress={140}
   onPressOut={() => {
     if (Platform.OS !== 'web') {
@@ -2777,8 +2851,11 @@ const renderCompactGridCard = useCallback(
   {...(Platform.OS === 'web'
     ? {
         onHoverIn: () => {
-          if (s.storage_path) setActiveId(playerId);
-        },
+  if (s.storage_path) {
+    signStoragePath(s.storage_path, 3600).catch(() => {});
+    setActiveId(playerId);
+  }
+},
         onHoverOut: () => {
           setActiveId((prev) => (prev === playerId ? null : prev));
         },
