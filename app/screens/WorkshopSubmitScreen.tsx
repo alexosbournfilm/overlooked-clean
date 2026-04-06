@@ -32,21 +32,7 @@ import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
 
 /* ------------------------------- palette ------------------------------- */
-const GOLD = "#C6A664";
-const DARK_BG = "#0D0D0D";
-const BORDER = "#2A2A2A";
-const TEXT_IVORY = "#EDEBE6";
-const TEXT_MUTED = "#A7A6A2";
 
-const T = {
-  bg: DARK_BG,
-  card: "#101010",
-  text: TEXT_IVORY,
-  sub: "#DADADA",
-  mute: TEXT_MUTED,
-  olive: GOLD,
-  line: BORDER,
-};
 
 type WorkshopPathKey =
   | "acting"
@@ -224,6 +210,11 @@ async function getResumableEndpoint() {
   return `https://${projectRef}.storage.supabase.co/storage/v1/upload/resumable`;
 }
 
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const bytes = Buffer.from(base64, "base64");
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+}
+
 async function uploadThumbnailToStorage(opts: {
   userId: string;
   thumbUri: string;
@@ -237,34 +228,47 @@ async function uploadThumbnailToStorage(opts: {
     bucket = THUMB_BUCKET,
   } = opts;
 
-  let blob: Blob;
-
   if (Platform.OS === "web") {
     const resp = await fetch(thumbUri);
-    blob = await resp.blob();
-  } else {
-    const base64 = await FileSystem.readAsStringAsync(thumbUri, {
-      encoding: FileSystem.EncodingType.Base64,
+    const blob = await resp.blob();
+
+    const ext =
+      blob.type.includes("png")
+        ? ".png"
+        : blob.type.includes("jpeg") || blob.type.includes("jpg")
+        ? ".jpg"
+        : blob.type.includes("webp")
+        ? ".webp"
+        : ".jpg";
+
+    const filePath = `${objectName}${ext}`;
+
+    const up = await supabase.storage.from(bucket).upload(filePath, blob, {
+      upsert: true,
+      contentType: blob.type || "image/jpeg",
+      cacheControl: "3600",
     });
 
-    const bytes = Buffer.from(base64, "base64");
-    blob = new Blob([bytes], { type: "image/jpeg" });
+    if (up.error) throw up.error;
+
+    const pub = supabase.storage.from(bucket).getPublicUrl(filePath);
+    const publicUrl = pub?.data?.publicUrl;
+
+    if (!publicUrl) throw new Error("Could not get public thumbnail URL");
+
+    return { publicUrl, path: filePath };
   }
 
-  const ext =
-    blob.type.includes("png")
-      ? ".png"
-      : blob.type.includes("jpeg") || blob.type.includes("jpg")
-      ? ".jpg"
-      : blob.type.includes("webp")
-      ? ".webp"
-      : ".jpg";
+  const base64 = await FileSystem.readAsStringAsync(thumbUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
 
-  const filePath = `${objectName}${ext}`;
+  const arrayBuffer = base64ToArrayBuffer(base64);
+  const filePath = `${objectName}.jpg`;
 
-  const up = await supabase.storage.from(bucket).upload(filePath, blob, {
+  const up = await supabase.storage.from(bucket).upload(filePath, arrayBuffer, {
     upsert: true,
-    contentType: blob.type || "image/jpeg",
+    contentType: "image/jpeg",
     cacheControl: "3600",
   });
 
@@ -299,115 +303,143 @@ async function uploadResumable(opts: {
 
   onPhase?.("Preparing file…");
 
-  let file: Blob;
-  let type = "application/octet-stream";
+  // WEB: keep tus resumable upload
+  if (Platform.OS === "web") {
+    let file: Blob;
+    let type = "application/octet-stream";
 
-  if (fileBlob) {
-    file = fileBlob as Blob;
-    if ((fileBlob as any)?.type) type = (fileBlob as any).type as string;
-  } else if (localUri) {
-    if (Platform.OS === "web") {
+    if (fileBlob) {
+      file = fileBlob as Blob;
+      if ((fileBlob as any)?.type) type = (fileBlob as any).type as string;
+    } else if (localUri) {
       const resp = await fetch(localUri);
       file = await resp.blob();
       if ((file as any)?.type) type = (file as any).type as string;
     } else {
-      const base64 = await FileSystem.readAsStringAsync(localUri, {
-        encoding: FileSystem.EncodingType.Base64,
+      throw new Error("No file to upload");
+    }
+
+    const ext =
+      type.includes("png")
+        ? ".png"
+        : type.includes("jpeg") || type.includes("jpg")
+        ? ".jpg"
+        : type.includes("webp")
+        ? ".webp"
+        : type.includes("gif")
+        ? ".gif"
+        : type.includes("mp4")
+        ? ".mp4"
+        : type.includes("quicktime")
+        ? ".mov"
+        : type.startsWith("audio/")
+        ? ".mp3"
+        : type.startsWith("video/")
+        ? ".mp4"
+        : ".mp4";
+
+    const finalObjectName = objectName + ext;
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) throw new Error("Not signed in");
+
+    const endpoint = await getResumableEndpoint();
+
+    return new Promise<{ path: string; contentType: string }>((resolve, reject) => {
+      const upload = new Upload(file, {
+        endpoint,
+        retryDelays: [0, 2000, 5000, 10000, 20000],
+        chunkSize: 2 * 1024 * 1024,
+        uploadDataDuringCreation: true,
+        removeFingerprintOnSuccess: true,
+        headers: {
+          authorization: `Bearer ${session.access_token}`,
+          "x-upsert": "true",
+        },
+        metadata: {
+          bucketName: bucket,
+          objectName: finalObjectName,
+          contentType: type,
+          cacheControl: "3600",
+        },
+        onProgress: (sent, total) => {
+          if (!total) return;
+          const pct = Math.max(0, Math.min(100, Math.round((sent / total) * 100)));
+          onProgress?.(pct);
+        },
+        onError: (err: any) => {
+          try {
+            const res = err?.originalResponse;
+            const status =
+              res?.getStatus?.() ??
+              res?.getStatusCode?.() ??
+              res?.status ??
+              err?.originalResponse?.status;
+
+            const body =
+              res?.getBody?.() ??
+              res?.responseText ??
+              err?.originalResponse?.responseText ??
+              "";
+
+            const detail = String(body || "").slice(0, 350);
+            reject(
+              new Error(
+                `Upload failed (${status || "unknown"}): ${detail || err?.message || "Unknown error"}`
+              )
+            );
+          } catch {
+            reject(err);
+          }
+        },
+        onSuccess: () => resolve({ path: finalObjectName, contentType: type }),
       });
 
-      const bytes = Buffer.from(base64, "base64");
-      file = new Blob([bytes], { type: "video/mp4" });
-      type = "video/mp4";
-    }
-  } else {
-    throw new Error("No file to upload");
+      onPhase?.("Uploading file…");
+      upload.findPreviousUploads().then((prev) => {
+        if (prev.length) upload.resumeFromPreviousUpload(prev[0]);
+        upload.start();
+      });
+    });
   }
 
+  // NATIVE: use normal storage upload with ArrayBuffer
+  if (!localUri) throw new Error("No local file to upload");
+
+  const base64 = await FileSystem.readAsStringAsync(localUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+
+  const arrayBuffer = base64ToArrayBuffer(base64);
+
+  let type = "video/mp4";
+  if (localUri.toLowerCase().endsWith(".mov")) type = "video/quicktime";
+  if (localUri.toLowerCase().endsWith(".mp4")) type = "video/mp4";
+
   const ext =
-    type.includes("png")
-      ? ".png"
-      : type.includes("jpeg") || type.includes("jpg")
-      ? ".jpg"
-      : type.includes("webp")
-      ? ".webp"
-      : type.includes("gif")
-      ? ".gif"
-      : type.includes("mp4")
-      ? ".mp4"
-      : type.includes("quicktime")
+    type.includes("quicktime")
       ? ".mov"
-      : type.startsWith("audio/")
-      ? ".mp3"
-      : type.startsWith("video/")
-      ? ".mp4"
       : ".mp4";
 
   const finalObjectName = objectName + ext;
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  onProgress?.(30);
+  onPhase?.("Uploading file…");
 
-  if (!session) throw new Error("Not signed in");
-
-  const endpoint = await getResumableEndpoint();
-
-  return new Promise<{ path: string; contentType: string }>((resolve, reject) => {
-    const upload = new Upload(file, {
-      endpoint,
-      retryDelays: [0, 2000, 5000, 10000, 20000],
-      chunkSize: 2 * 1024 * 1024,
-      uploadDataDuringCreation: true,
-      removeFingerprintOnSuccess: true,
-      headers: {
-        authorization: `Bearer ${session.access_token}`,
-        "x-upsert": "true",
-      },
-      metadata: {
-        bucketName: bucket,
-        objectName: finalObjectName,
-        contentType: type,
-        cacheControl: "3600",
-      },
-      onProgress: (sent, total) => {
-        if (!total) return;
-        const pct = Math.max(0, Math.min(100, Math.round((sent / total) * 100)));
-        onProgress?.(pct);
-      },
-      onError: (err: any) => {
-        try {
-          const res = err?.originalResponse;
-          const status =
-            res?.getStatus?.() ??
-            res?.getStatusCode?.() ??
-            res?.status ??
-            err?.originalResponse?.status;
-
-          const body =
-            res?.getBody?.() ??
-            res?.responseText ??
-            err?.originalResponse?.responseText ??
-            "";
-
-          const detail = String(body || "").slice(0, 350);
-          reject(
-            new Error(
-              `Upload failed (${status || "unknown"}): ${detail || err?.message || "Unknown error"}`
-            )
-          );
-        } catch {
-          reject(err);
-        }
-      },
-      onSuccess: () => resolve({ path: finalObjectName, contentType: type }),
-    });
-
-    onPhase?.("Uploading file…");
-    upload.findPreviousUploads().then((prev) => {
-      if (prev.length) upload.resumeFromPreviousUpload(prev[0]);
-      upload.start();
-    });
+  const up = await supabase.storage.from(bucket).upload(finalObjectName, arrayBuffer, {
+    upsert: true,
+    contentType: type,
+    cacheControl: "3600",
   });
+
+  if (up.error) throw up.error;
+
+  onProgress?.(100);
+
+  return { path: finalObjectName, contentType: type };
 }
 
 async function captureFirstFrameWeb(
@@ -584,6 +616,8 @@ export default function WorkshopSubmitScreen() {
   const isWide = width >= 1100;
   const isDesktopPreview = width >= 900;
   const isPhone = width < 520;
+  const isTablet = width >= 768 && width < 1100;
+  const [showInfoPanel, setShowInfoPanel] = useState(false);
 
   const mode: SubmitMode = route.params?.mode ?? "workshop";
   const isWorkshopMode = mode === "workshop";
@@ -1454,11 +1488,11 @@ export default function WorkshopSubmitScreen() {
         ]);
       }
     } catch (e: any) {
-      console.warn("Workshop/monthly submit failed:", e?.message ?? e);
-      notify("Submission failed", e?.message ?? "Please try again.", setStatus);
-      setStatus("");
-      setProgressPct(0);
-    } finally {
+  console.warn("Workshop/monthly submit failed:", e?.message ?? e);
+  const stepMessage = status ? `Last step: ${status}\n\n${e?.message ?? "Please try again."}` : (e?.message ?? "Please try again.");
+  notify("Submission failed", stepMessage, setStatus);
+  setProgressPct(0);
+} finally {
       setLoading(false);
     }
   };
@@ -1491,8 +1525,7 @@ export default function WorkshopSubmitScreen() {
     : "Your upload will appear on Featured and be entered into this month’s challenge.";
 
   const rulesTitle = isWorkshopMode ? "Workshop Rules & Terms" : "Upload Rules & Terms";
-
-  return (
+return (
   <View style={styles.container}>
     <LinearGradient
       colors={[T.bg, T.bg]}
@@ -1502,116 +1535,134 @@ export default function WorkshopSubmitScreen() {
     />
 
     <View style={[styles.webScrollShell, isMobileWeb && styles.webScrollShellMobileWeb]}>
-  <ScrollView
-    style={[styles.scrollView, isMobileWeb && styles.scrollViewMobileWeb]}
-    contentContainerStyle={[styles.scroll, isMobileWeb && styles.scrollMobileWeb]}
-    showsVerticalScrollIndicator={true}
-    keyboardShouldPersistTaps="handled"
-    bounces={false}
-  >
+      <ScrollView
+        style={[styles.scrollView, isMobileWeb && styles.scrollViewMobileWeb]}
+        contentContainerStyle={[styles.scroll, isMobileWeb && styles.scrollMobileWeb]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        bounces={false}
+      >
         <View
-  style={[
-    styles.pageWrap,
-    isWide && styles.pageWrapWide,
-    isPhone && styles.pageWrapPhone,
-  ]}
->
+          style={[
+            styles.pageWrap,
+            isWide && styles.pageWrapWide,
+            isPhone && styles.pageWrapPhone,
+          ]}
+        >
           <View style={styles.topNavRow}>
             <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.goBack()} style={styles.backBtn}>
               <Text style={styles.backBtnText}>← Back</Text>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.topHeader}>
-            <Text style={styles.topTitle}>{headerTitle}</Text>
-            <Text style={styles.topSub}>
-              <Text style={styles.topSubStrong}>{headerSub}</Text>
+          <View style={styles.heroHeader}>
+            <Text style={[styles.heroTitle, isPhone && styles.heroTitlePhone]}>{headerTitle}</Text>
+            <Text style={[styles.heroSubtitle, isPhone && styles.heroSubtitlePhone]}>
+              {headerSub}
             </Text>
           </View>
 
-          <View style={[styles.twoCol, isWide && styles.twoColWide]}>
-            <View style={[styles.col, isWide && styles.leftCol]}>
-              <View style={[styles.card, isPhone && styles.cardPhone]}>
-                <Text style={styles.sectionKicker}>{leftTitle}</Text>
-
-                {isWorkshopMode ? (
-                  <>
-                    <Text style={styles.lessonTitle}>{lessonTitle}</Text>
-                    <Text style={styles.lessonText}>{lessonDescription}</Text>
-
-                    <View style={styles.divider} />
-
-                    <Text style={styles.sectionKicker}>Prompt</Text>
-                    <Text style={styles.lessonText}>{lessonPrompt}</Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.lessonTitle}>Upload your film</Text>
-                    <Text style={styles.lessonText}>
-                      Use this page to upload a film to Featured and enter it into this month’s challenge.
-                    </Text>
-
-                    <View style={styles.divider} />
-
-                    <Text style={styles.sectionKicker}>How it works</Text>
-                    <Text style={styles.bullet}>• Add a title + one sentence</Text>
-                    <Text style={styles.bullet}>• Choose 1 category</Text>
-                    <Text style={styles.bullet}>• Upload your film + thumbnail</Text>
-                    <Text style={styles.bullet}>• Agree to the rules</Text>
-                    <Text style={styles.bullet}>• Submit your upload</Text>
-                  </>
-                )}
-
-                <View style={styles.divider} />
-
-                <Text style={styles.sectionKicker}>What happens after upload</Text>
-                <Text style={styles.bullet}>• Your film appears on Featured</Text>
-                <Text style={styles.bullet}>• Your film is entered into this month’s challenge</Text>
-                <Text style={styles.bullet}>• Other users can view and vote on it</Text>
-                {isWorkshopMode ? (
-                  <Text style={styles.bullet}>• This lesson is marked complete automatically</Text>
-                ) : null}
-
-                <View style={styles.divider} />
-
-                <Text style={styles.sectionKicker}>Rules</Text>
-                <Text style={styles.bullet}>• File size must be 5GB or under</Text>
-                <Text style={styles.bullet}>• Pro Overlooked is required to upload videos</Text>
-                <Text style={styles.bullet}>• Your film must be original</Text>
-                <Text style={styles.bullet}>• No stolen, hateful, or harmful content</Text>
-                <Text style={styles.bullet}>• Thumbnail is required</Text>
-                <Text style={styles.bullet}>• You must choose 1 category</Text>
+          {!isWide ? (
+            <Pressable
+              onPress={() => setShowInfoPanel((v) => !v)}
+              style={({ pressed }) => [styles.infoToggleCard, pressed && { opacity: 0.94 }]}
+            >
+              <View style={styles.infoToggleLeft}>
+                <Text style={styles.infoToggleKicker}>Before you upload</Text>
+                <Text style={styles.infoToggleTitle}>
+                  {showInfoPanel ? "Hide steps & rules" : "View steps & rules"}
+                </Text>
               </View>
-            </View>
+              <Text style={styles.infoToggleChevron}>{showInfoPanel ? "−" : "+"}</Text>
+            </Pressable>
+          ) : null}
 
-            <View style={[styles.col, isWide && styles.rightCol]}>
-              <View style={[styles.card, isPhone && styles.cardPhone]}>
-                <View style={styles.formHeaderLite}>
-                  <Text style={styles.formTitle}>{rightTitle}</Text>
-                  <Text style={styles.formSubtitle}>{rightSubtitle}</Text>
+          <View
+            style={[
+              styles.layoutShell,
+              isWide && styles.layoutShellWide,
+              isTablet && styles.layoutShellTablet,
+            ]}
+          >
+            {(isWide || showInfoPanel) && (
+              <View style={[styles.infoColumn, isWide && styles.infoColumnWide]}>
+                <View style={[styles.card, styles.infoCard, isPhone && styles.cardPhone]}>
+                  <Text style={styles.infoSectionLabel}>How it works</Text>
+                  <Text style={styles.infoSectionTitle}>Upload your film</Text>
+                  <Text style={styles.infoSectionBody}>
+                    Add a title, choose a category, upload your film and thumbnail, then submit it to Featured and this month’s challenge.
+                  </Text>
+
+                  <View style={styles.softDivider} />
+
+                  <Text style={styles.infoMiniTitle}>Steps</Text>
+                  <View style={styles.infoList}>
+                    <Text style={styles.infoBullet}>• Add a title + one sentence</Text>
+                    <Text style={styles.infoBullet}>• Choose 1 category</Text>
+                    <Text style={styles.infoBullet}>• Upload your film + thumbnail</Text>
+                    <Text style={styles.infoBullet}>• Agree to the rules</Text>
+                    <Text style={styles.infoBullet}>• Submit your upload</Text>
+                  </View>
+
+                  <View style={styles.softDivider} />
+
+                  <Text style={styles.infoMiniTitle}>What happens after upload</Text>
+                  <View style={styles.infoList}>
+                    <Text style={styles.infoBullet}>• Your film appears on Featured</Text>
+                    <Text style={styles.infoBullet}>• Your film enters this month’s challenge</Text>
+                    <Text style={styles.infoBullet}>• Other users can watch and vote on it</Text>
+                    {isWorkshopMode ? (
+                      <Text style={styles.infoBullet}>• This lesson is marked complete automatically</Text>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.softDivider} />
+
+                  <Text style={styles.infoMiniTitle}>Rules</Text>
+                  <View style={styles.infoList}>
+                    <Text style={styles.infoBullet}>• File size must be 5GB or under</Text>
+                    <Text style={styles.infoBullet}>• Pro Overlooked is required to upload videos</Text>
+                    <Text style={styles.infoBullet}>• Your film must be original</Text>
+                    <Text style={styles.infoBullet}>• No stolen, hateful, or harmful content</Text>
+                    <Text style={styles.infoBullet}>• Thumbnail is required</Text>
+                    <Text style={styles.infoBullet}>• You must choose 1 category</Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
+            <View style={[styles.formColumn, isWide && styles.formColumnWide]}>
+              <View style={[styles.card, styles.formCard, isPhone && styles.cardPhone]}>
+                <View style={styles.formHeaderClean}>
+                  <Text style={styles.formTitleLarge}>{rightTitle}</Text>
+                  <Text style={styles.formSubtitleClean}>{rightSubtitle}</Text>
                 </View>
 
                 <View style={[styles.formBodyLite, isPhone && styles.formBodyLitePhone]}>
-                  <Text style={styles.label}>Title</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="e.g. Static Hour"
-                    placeholderTextColor={T.mute}
-                    value={title}
-                    onChangeText={setTitle}
-                  />
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.label}>Title</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="e.g. Static Hour"
+                      placeholderTextColor={T.mute}
+                      value={title}
+                      onChangeText={setTitle}
+                    />
+                  </View>
 
-                  <Text style={styles.label}>One sentence</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="One sentence about your film"
-                    placeholderTextColor={T.mute}
-                    value={description}
-                    onChangeText={(t) => setDescription(t.slice(0, 100))}
-                    maxLength={100}
-                  />
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.label}>One sentence</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="One sentence about your film"
+                      placeholderTextColor={T.mute}
+                      value={description}
+                      onChangeText={(t) => setDescription(t.slice(0, 100))}
+                      maxLength={100}
+                    />
+                  </View>
 
-                  <View style={{ marginTop: 14 }}>
+                  <View style={styles.fieldGroup}>
                     <Text style={styles.label}>Category</Text>
 
                     <Pressable
@@ -1646,65 +1697,35 @@ export default function WorkshopSubmitScreen() {
                     )}
                   </View>
 
-                  <TouchableOpacity style={styles.primaryBtn} onPress={pickFile} activeOpacity={0.92}>
-                    <Text style={styles.primaryBtnText}>{localUri ? "Pick a different file" : "Pick a file"}</Text>
-                    <Text style={styles.primaryBtnSub}>Pro required • Max file size: 5GB</Text>
-                  </TouchableOpacity>
+                  <View style={styles.uploadBox}>
+                    <TouchableOpacity style={styles.primaryBtn} onPress={pickFile} activeOpacity={0.92}>
+                      <Text style={styles.primaryBtnText}>{localUri ? "Pick a different file" : "Pick a file"}</Text>
+                      <Text style={styles.primaryBtnSub}>Pro required • Max file size: 5GB</Text>
+                    </TouchableOpacity>
 
-                  {localUri ? (
-                    <View style={[styles.fileActionsRow, isPhone && styles.fileActionsRowPhone]}>
-                      <Pressable
-                        onPress={pickFile}
-                        style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.9 }]}
-                      >
-                        <Text style={styles.secondaryBtnText}>Change file</Text>
-                      </Pressable>
+                    {localUri ? (
+                      <View style={[styles.fileActionsRow, isPhone && styles.fileActionsRowPhone]}>
+                        <Pressable
+                          onPress={pickFile}
+                          style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.9 }]}
+                        >
+                          <Text style={styles.secondaryBtnText}>Change file</Text>
+                        </Pressable>
 
-                      <Pressable
-                        onPress={resetSelectedFile}
-                        style={({ pressed }) => [styles.secondaryBtnDanger, pressed && { opacity: 0.9 }]}
-                      >
-                        <Text style={styles.secondaryBtnDangerText}>Remove</Text>
-                      </Pressable>
-                    </View>
-                  ) : null}
-
-                  {localUri ? (
-                    <Pressable
-                      onPress={openPreview}
-                      style={({ pressed }) => [styles.previewWrap, pressed && { opacity: 0.92 }]}
-                    >
-                      <View style={[styles.previewStage, { aspectRatio: thumbAspect }]}>
-                        {thumbLoading ? (
-                          <View style={styles.thumbLoading}>
-                            <ActivityIndicator size="small" color={T.olive} />
-                            <Text style={styles.thumbLoadingText}>Generating preview…</Text>
-                          </View>
-                        ) : previewThumbToShow ? (
-                          <Image
-                            source={{ uri: previewThumbToShow }}
-                            style={styles.previewImg}
-                            resizeMode={customThumbUri ? "cover" : "contain"}
-                          />
-                        ) : (
-                          <View style={styles.thumbFallback}>
-                            <Text style={styles.thumbFallbackText}>Watch preview</Text>
-                          </View>
-                        )}
+                        <Pressable
+                          onPress={resetSelectedFile}
+                          style={({ pressed }) => [styles.secondaryBtnDanger, pressed && { opacity: 0.9 }]}
+                        >
+                          <Text style={styles.secondaryBtnDangerText}>Remove</Text>
+                        </Pressable>
                       </View>
-
-                      <View style={styles.previewBadgeOverlay} pointerEvents="none">
-                        <View style={styles.playPill}>
-                          <Text style={styles.playPillText}>▶ Watch preview</Text>
-                        </View>
-                      </View>
-                    </Pressable>
-                  ) : null}
+                    ) : null}
+                  </View>
 
                   {localUri ? (
-                    <View style={{ marginTop: 12 }}>
-                      <View style={styles.thumbReqRow}>
-                        <Text style={styles.thumbReqTitle}>Thumbnail (required)</Text>
+                    <View style={styles.mediaSection}>
+                      <View style={styles.mediaSectionHeader}>
+                        <Text style={styles.mediaSectionTitle}>Thumbnail</Text>
                         {!customThumbUri ? (
                           <Text style={styles.thumbReqBadge}>Missing</Text>
                         ) : (
@@ -1755,6 +1776,42 @@ export default function WorkshopSubmitScreen() {
                     </View>
                   ) : null}
 
+                  {localUri ? (
+                    <View style={styles.mediaSection}>
+                      <Text style={styles.mediaSectionTitle}>Preview</Text>
+
+                      <Pressable
+                        onPress={openPreview}
+                        style={({ pressed }) => [styles.previewWrap, pressed && { opacity: 0.92 }]}
+                      >
+                        <View style={[styles.previewStage, { aspectRatio: thumbAspect || 16 / 9 }]}>
+                          {thumbLoading ? (
+                            <View style={styles.thumbLoading}>
+                              <ActivityIndicator size="small" color={T.olive} />
+                              <Text style={styles.thumbLoadingText}>Generating preview…</Text>
+                            </View>
+                          ) : previewThumbToShow ? (
+                            <Image
+                              source={{ uri: previewThumbToShow }}
+                              style={styles.previewImg}
+                              resizeMode={customThumbUri ? "cover" : "contain"}
+                            />
+                          ) : (
+                            <View style={styles.thumbFallback}>
+                              <Text style={styles.thumbFallbackText}>Watch preview</Text>
+                            </View>
+                          )}
+                        </View>
+
+                        <View style={styles.previewBadgeOverlay} pointerEvents="none">
+                          <View style={styles.playPill}>
+                            <Text style={styles.playPillText}>▶ Watch preview</Text>
+                          </View>
+                        </View>
+                      </Pressable>
+                    </View>
+                  ) : null}
+
                   {localUri && Platform.OS !== "web" ? (
                     <Video
                       ref={videoRef}
@@ -1790,7 +1847,9 @@ export default function WorkshopSubmitScreen() {
                       </View>
                     </View>
                   ) : null}
+                </View>
 
+                <View style={styles.formFooter}>
                   <View style={styles.agreeBlock}>
                     <Pressable
                       onPress={() => setAgreed(!agreed)}
@@ -2138,6 +2197,7 @@ export default function WorkshopSubmitScreen() {
     />
   </View>
 );
+  
 }
 
 function slugifyFilmTitle(value: string) {
@@ -2178,15 +2238,46 @@ async function copyFilmLink(opts: { shareSlug: string }) {
 }
 
 /* -------------------------------- styles -------------------------------- */
+const CINEMA = {
+  bg: "#050506",
+  panel: "#0B0C0F",
+  panel2: "#111318",
+  card: "#0D0F13",
+  cardSoft: "#14171D",
+
+  stroke: "rgba(255,255,255,0.06)",
+  strokeSoft: "rgba(255,255,255,0.035)",
+
+  text: "#F5F1E8",
+  textSoft: "#BEB5A8",
+  textDim: "#8F8578",
+
+  brass: "#D3B06B",
+  brassSoft: "rgba(211,176,107,0.12)",
+  brassBorder: "rgba(211,176,107,0.28)",
+  glow: "rgba(211,176,107,0.07)",
+
+  redSoft: "rgba(140,58,58,0.16)",
+  redBorder: "rgba(196,98,98,0.22)",
+
+  greenSoft: "#123225",
+  greenBorder: "rgba(104,186,132,0.18)",
+};
+
+const T = {
+  bg: CINEMA.bg,
+  card: CINEMA.card,
+  text: CINEMA.text,
+  sub: CINEMA.textSoft,
+  mute: CINEMA.textDim,
+  olive: CINEMA.brass,
+  line: CINEMA.stroke,
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: T.bg,
-    ...(Platform.OS === "web"
-      ? ({
-           
-        } as any)
-      : {}),
+    backgroundColor: CINEMA.bg,
   },
 
   webScrollShell: {
@@ -2194,7 +2285,6 @@ const styles = StyleSheet.create({
     ...(Platform.OS === "web"
       ? ({
           height: "100dvh",
-          
         } as any)
       : {}),
   },
@@ -2231,10 +2321,11 @@ const styles = StyleSheet.create({
   },
 
   scroll: {
-    paddingHorizontal: 18,
-    paddingTop: 24,
-    paddingBottom: 40,
     flexGrow: 1,
+    paddingHorizontal: 0,
+    paddingTop: 6,
+    paddingBottom: 42,
+    backgroundColor: CINEMA.bg,
   },
 
   scrollMobileWeb: {
@@ -2247,14 +2338,1061 @@ const styles = StyleSheet.create({
 
   pageWrap: {
     width: "100%",
-    maxWidth: 1180,
+    maxWidth: 1320,
     alignSelf: "center",
-    paddingHorizontal: 24,
-    paddingTop: 44,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    backgroundColor: CINEMA.bg,
   },
 
   pageWrapWide: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 28,
+  },
+
+  pageWrapPhone: {
+  paddingHorizontal: 14,
+  paddingTop: 14,
+},
+
+  topNavRow: {
+  marginBottom: 14,
+  marginTop: Platform.OS === "ios" ? 10 : 6,
+  flexDirection: "row",
+  alignItems: "center",
+},
+
+  backBtn: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: CINEMA.panel,
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3,
+  },
+
+  backBtnText: {
+    color: CINEMA.text,
+    fontWeight: "800",
+    fontSize: 14,
+    letterSpacing: 0.12,
+  },
+
+  heroHeader: {
+    marginBottom: 18,
+    paddingHorizontal: 2,
+  },
+
+  heroTitle: {
+    color: CINEMA.text,
+    fontSize: 48,
+    lineHeight: 50,
+    fontWeight: "900",
+    letterSpacing: -1.2,
+  },
+
+  heroTitlePhone: {
+    fontSize: 28,
+    lineHeight: 31,
+    letterSpacing: -0.6,
+  },
+
+  heroSubtitle: {
+    color: CINEMA.brass,
+    fontSize: 19,
+    lineHeight: 25,
+    fontWeight: "800",
+    marginTop: 10,
+    maxWidth: 760,
+    letterSpacing: -0.1,
+  },
+
+  heroSubtitlePhone: {
+    fontSize: 15,
+    lineHeight: 21,
+    marginTop: 8,
+  },
+
+  layoutShell: {
+    gap: 18,
+  },
+
+  layoutShellWide: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 20,
+  },
+
+  layoutShellTablet: {
+    gap: 18,
+  },
+
+  infoColumn: {
+    width: "100%",
+  },
+
+  infoColumnWide: {
+  flex: 0.36,
+},
+
+  formColumn: {
+    width: "100%",
+  },
+
+  formColumnWide: {
+  flex: 0.64,
+},
+
+  infoToggleCard: {
+    backgroundColor: CINEMA.panel,
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    marginBottom: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    shadowColor: "#000",
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 5,
+  },
+
+  infoToggleLeft: {
+    flex: 1,
+    paddingRight: 12,
+  },
+
+  infoToggleKicker: {
+    color: CINEMA.brass,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
+  },
+
+  infoToggleTitle: {
+    color: CINEMA.text,
+    fontSize: 19,
+    fontWeight: "900",
+    marginTop: 4,
+    letterSpacing: -0.2,
+  },
+
+  infoToggleChevron: {
+    color: CINEMA.text,
+    fontSize: 30,
+    fontWeight: "400",
+  },
+
+  card: {
+    backgroundColor: CINEMA.panel,
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+    borderRadius: 30,
+    shadowColor: "#000",
+    shadowOpacity: 0.26,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 7,
+  },
+
+  cardPhone: {
+    borderRadius: 26,
+  },
+
+  infoCard: {
+    padding: 22,
+  },
+
+  formCard: {
+    padding: 0,
+    overflow: "hidden",
+    backgroundColor: "#090B0E",
+  },
+
+  infoSectionLabel: {
+    color: CINEMA.brass,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 2,
+    marginBottom: 10,
+  },
+
+  infoSectionTitle: {
+    color: CINEMA.text,
+    fontSize: 28,
+    lineHeight: 31,
+    fontWeight: "900",
+    letterSpacing: -0.8,
+    marginBottom: 8,
+  },
+
+  infoSectionBody: {
+    color: CINEMA.textSoft,
+    fontSize: 15,
+    lineHeight: 24,
+    letterSpacing: 0.04,
+  },
+
+  infoMiniTitle: {
+    color: CINEMA.brass,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 1.35,
+    marginBottom: 10,
+  },
+
+  infoList: {
+    gap: 8,
+  },
+
+  infoBullet: {
+    color: CINEMA.textSoft,
+    fontSize: 15,
+    lineHeight: 24,
+    letterSpacing: 0.02,
+  },
+
+  softDivider: {
+    height: 1,
+    backgroundColor: CINEMA.strokeSoft,
+    marginVertical: 18,
+  },
+
+  formHeaderClean: {
+    paddingHorizontal: 26,
+    paddingTop: 24,
+    paddingBottom: 14,
+    backgroundColor: "transparent",
+  },
+
+  formTitleLarge: {
+    color: CINEMA.text,
+    fontSize: 30,
+    lineHeight: 34,
+    fontWeight: "900",
+    letterSpacing: -0.8,
+  },
+
+  formSubtitleClean: {
+    color: CINEMA.textDim,
+    fontSize: 15,
+    marginTop: 5,
+    lineHeight: 22,
+    letterSpacing: 0.04,
+  },
+
+  formBodyLite: {
+    gap: 18,
+    paddingHorizontal: 26,
+    paddingTop: 4,
+    paddingBottom: 16,
+  },
+
+  formBodyLitePhone: {
+    gap: 16,
+    paddingHorizontal: 18,
+  },
+
+  fieldGroup: {
+    gap: 8,
+  },
+
+  label: {
+    color: CINEMA.text,
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 2,
+    letterSpacing: -0.1,
+  },
+
+  input: {
+    minHeight: 60,
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+    backgroundColor: "#07080B",
+    color: CINEMA.text,
+    borderRadius: 22,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    fontSize: 16,
+    ...(Platform.OS === "web"
+      ? ({
+          outlineStyle: "none",
+          boxShadow: "none",
+        } as any)
+      : {}),
+  },
+
+  selectBtn: {
+    minHeight: 76,
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+    backgroundColor: "#07080B",
+    borderRadius: 22,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    justifyContent: "center",
+  },
+
+  selectBtnText: {
+    color: CINEMA.text,
+    fontSize: 16,
+    fontWeight: "800",
+    letterSpacing: -0.1,
+  },
+
+  selectBtnHint: {
+    color: CINEMA.textDim,
+    fontSize: 13,
+    marginTop: 5,
+    letterSpacing: 0.03,
+  },
+
+  selectedRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+
+  selectedChip: {
+    backgroundColor: CINEMA.brassSoft,
+    borderColor: CINEMA.brassBorder,
+    borderWidth: 1,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+
+  selectedChipText: {
+    color: CINEMA.brass,
+    fontWeight: "800",
+    fontSize: 13,
+  },
+
+  clearChipBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+    backgroundColor: CINEMA.panel2,
+  },
+
+  clearChipText: {
+    color: CINEMA.textSoft,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+
+  helperText: {
+    color: CINEMA.textDim,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 8,
+    letterSpacing: 0.04,
+  },
+
+  uploadBox: {
+    marginTop: 2,
+    gap: 12,
+  },
+
+  primaryBtn: {
+    minHeight: 80,
+    backgroundColor: CINEMA.brass,
+    borderRadius: 24,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.24,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 5,
+  },
+
+  primaryBtnText: {
+    color: "#0A0A0B",
+    fontSize: 18,
+    fontWeight: "900",
+    letterSpacing: -0.2,
+  },
+
+  primaryBtnSub: {
+    color: "#2B2317",
+    fontSize: 13,
+    fontWeight: "800",
+    marginTop: 5,
+    letterSpacing: 0.1,
+  },
+
+  fileActionsRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+
+  fileActionsRowPhone: {
+    flexDirection: "column",
+  },
+
+  secondaryBtn: {
+    flex: 1,
+    minHeight: 58,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+    backgroundColor: CINEMA.panel2,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  secondaryBtnText: {
+    color: CINEMA.text,
+    fontWeight: "800",
+    fontSize: 15,
+    letterSpacing: -0.1,
+  },
+
+  secondaryBtnDanger: {
+    flex: 1,
+    minHeight: 58,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: CINEMA.redBorder,
+    backgroundColor: CINEMA.redSoft,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  secondaryBtnDangerText: {
+    color: "#F0B2B2",
+    fontWeight: "800",
+    fontSize: 15,
+    letterSpacing: -0.1,
+  },
+
+  mediaSection: {
+    gap: 10,
+    marginTop: 2,
+  },
+
+  mediaSectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  mediaSectionTitle: {
+    color: CINEMA.text,
+    fontWeight: "900",
+    fontSize: 16,
+    letterSpacing: -0.15,
+  },
+
+  thumbReqRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+
+  thumbReqTitle: {
+    color: CINEMA.text,
+    fontWeight: "900",
+    fontSize: 15,
+  },
+
+  thumbReqBadge: {
+    color: "#EBC3C3",
+    borderColor: "rgba(255,120,120,0.28)",
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    fontWeight: "800",
+    fontSize: 12,
+    backgroundColor: "rgba(110,35,35,0.18)",
+  },
+
+  thumbActionsRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+
+  thumbActionsRowPhone: {
+    flexDirection: "column",
+  },
+
+  previewWrap: {
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: CINEMA.strokeSoft,
+    backgroundColor: "#07090C",
+    overflow: "hidden",
+  },
+
+  previewStage: {
+    width: "100%",
+    backgroundColor: "#07090C",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+
+  previewImg: {
+    width: "100%",
+    height: "100%",
+  },
+
+  previewBadgeOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingBottom: 14,
+  },
+
+  playPill: {
+    backgroundColor: "rgba(0,0,0,0.56)",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+
+  playPillText: {
+    color: CINEMA.text,
+    fontWeight: "800",
+    fontSize: 13,
+    letterSpacing: 0.04,
+  },
+
+  thumbLoading: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 34,
+  },
+
+  thumbLoadingText: {
+    color: CINEMA.textDim,
+    marginTop: 8,
+    fontSize: 13,
+  },
+
+  thumbFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+  },
+
+  thumbFallbackText: {
+    color: CINEMA.textDim,
+    fontWeight: "800",
+    fontSize: 14,
+  },
+
+  statusRow: {
+    marginTop: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  statusText: {
+    color: CINEMA.textSoft,
+    fontSize: 13,
+    flex: 1,
+    lineHeight: 19,
+  },
+
+  progressWrap: {
+    marginTop: 2,
+  },
+
+  progressBar: {
+    height: 10,
+    width: "100%",
+    backgroundColor: CINEMA.panel2,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+
+  progressFill: {
+    height: "100%",
+    backgroundColor: CINEMA.brass,
+    borderRadius: 999,
+  },
+
+  progressLabels: {
+    marginTop: 7,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
+
+  progressText: {
+    color: CINEMA.text,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+
+  formFooter: {
+    borderTopWidth: 1,
+    borderTopColor: CINEMA.strokeSoft,
+    paddingHorizontal: 26,
+    paddingTop: 18,
+    paddingBottom: 24,
+    marginTop: 4,
+  },
+
+  agreeBlock: {
+    marginTop: 0,
+  },
+
+  agreeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+
+  checkbox: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+    backgroundColor: "#101216",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  checkboxChecked: {
+    backgroundColor: CINEMA.brass,
+    borderColor: CINEMA.brass,
+  },
+
+  checkGlyph: {
+    color: "#0A0A0B",
+    fontWeight: "900",
+    fontSize: 15,
+  },
+
+  agreeText: {
+    color: CINEMA.textSoft,
+    flex: 1,
+    lineHeight: 22,
+    fontSize: 15,
+  },
+
+  termsLink: {
+    color: CINEMA.brass,
+    fontWeight: "900",
+  },
+
+  termsHintRow: {
+    marginTop: 8,
+    marginLeft: 40,
+  },
+
+  termsHintText: {
+    color: CINEMA.textDim,
+    textDecorationLine: "underline",
+    fontSize: 13,
+  },
+
+  submitBtn: {
+    marginTop: 18,
+    minHeight: 72,
+    backgroundColor: CINEMA.brass,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.24,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 5,
+  },
+
+  submitText: {
+    color: "#0A0A0B",
+    fontWeight: "900",
+    fontSize: 18,
+    letterSpacing: -0.2,
+  },
+
+  formFootnote: {
+    color: CINEMA.textDim,
+    fontSize: 13,
+    marginTop: 12,
+    textAlign: "center",
+    lineHeight: 19,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(4,4,6,0.86)",
+    justifyContent: "center",
+    padding: 18,
+  },
+
+  categoryModal: {
+    backgroundColor: "#0C0E12",
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+    padding: 18,
+    shadowColor: "#000",
+    shadowOpacity: 0.4,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 10,
+  },
+
+  categoryModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+  },
+
+  modalTitle: {
+    color: CINEMA.text,
+    fontSize: 24,
+    fontWeight: "900",
+    letterSpacing: -0.4,
+  },
+
+  modalIconClose: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    backgroundColor: "#15181D",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: CINEMA.strokeSoft,
+  },
+
+  modalIconCloseText: {
+    color: CINEMA.text,
+    fontSize: 17,
+    fontWeight: "800",
+  },
+
+  modalSearch: {
+    marginTop: 14,
+    minHeight: 58,
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+    backgroundColor: "#07080B",
+    color: CINEMA.text,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 15,
+    ...(Platform.OS === "web"
+      ? ({
+          outlineStyle: "none",
+          boxShadow: "none",
+        } as any)
+      : {}),
+  },
+
+  tagList: {
+    marginTop: 12,
+    gap: 8,
+  },
+
+  tagRow: {
+    borderWidth: 1,
+    borderColor: CINEMA.strokeSoft,
+    backgroundColor: "#111318",
+    borderRadius: 18,
+    paddingHorizontal: 15,
+    paddingVertical: 15,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+
+  tagRowActive: {
+    borderColor: CINEMA.brassBorder,
+    backgroundColor: CINEMA.brassSoft,
+  },
+
+  tagRowText: {
+    color: CINEMA.text,
+    fontWeight: "800",
+    fontSize: 14,
+  },
+
+  tagRowTextActive: {
+    color: CINEMA.brass,
+  },
+
+  tagRowCheck: {
+    color: CINEMA.brass,
+    fontWeight: "900",
+    fontSize: 16,
+  },
+
+  modalAltBtn: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+    backgroundColor: "#15181D",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  modalAltText: {
+    color: CINEMA.text,
+    fontWeight: "800",
+    fontSize: 14,
+  },
+
+  modalPrimaryBtn: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 18,
+    backgroundColor: CINEMA.brass,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  modalPrimaryText: {
+    color: "#0A0A0B",
+    fontWeight: "900",
+    fontSize: 14,
+  },
+
+  modalContent: {
+    backgroundColor: "#0C0E12",
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOpacity: 0.4,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 10,
+  },
+
+  modalText: {
+    color: CINEMA.textSoft,
+    fontSize: 15,
+    lineHeight: 24,
+    marginBottom: 10,
+    letterSpacing: 0.04,
+  },
+
+  modalCloseBtn: {
+    backgroundColor: CINEMA.brass,
+    borderRadius: 20,
+    minHeight: 54,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+
+  modalCloseText: {
+    color: "#0A0A0B",
+    fontWeight: "900",
+    fontSize: 15,
+  },
+
+  previewModal: {
+    backgroundColor: "#0C0E12",
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+    padding: 18,
+    shadowColor: "#000",
+    shadowOpacity: 0.42,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 11,
+  },
+
+  previewModalDesktop: {
+    width: "86%",
+    maxWidth: 980,
+    maxHeight: "88%",
+    alignSelf: "center",
+    marginTop: 32,
+  },
+
+  previewModalMobile: {
+    width: "94%",
+    maxWidth: 720,
+    maxHeight: "78%",
+    alignSelf: "center",
+    marginTop: 16,
+    padding: 14,
+  },
+
+  previewTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+
+  previewTitle: {
+    color: CINEMA.text,
+    fontSize: 24,
+    fontWeight: "900",
+    letterSpacing: -0.3,
+  },
+
+  previewHeaderCloseBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: "#15181D",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: CINEMA.strokeSoft,
+  },
+
+  previewHeaderCloseText: {
+    color: CINEMA.text,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+
+  previewVideoWrap: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: CINEMA.strokeSoft,
+    backgroundColor: "#0A0A0A",
+    overflow: "hidden",
+  },
+
+  previewVideoWrapDesktop: {
+    width: "100%",
+    height: 520,
+  },
+
+  previewVideoWrapMobile: {
+    width: "100%",
+  },
+
+  previewVideoStage: {
+    width: "100%",
+    aspectRatio: 16 / 9,
+    backgroundColor: "#0B0B0B",
+    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+
+  previewVideo: {
+    width: "100%",
+    height: "100%",
+  },
+
+  previewLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  previewLoadingText: {
+    color: CINEMA.text,
+    marginTop: 10,
+    fontWeight: "800",
+    fontSize: 14,
+  },
+
+  previewErrorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.62)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+
+  previewErrorText: {
+    color: CINEMA.text,
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 14,
+    fontSize: 14,
+  },
+
+  previewErrorActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+
+  previewRetryBtn: {
+    backgroundColor: CINEMA.brass,
+    borderRadius: 14,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+  },
+
+  previewRetryText: {
+    color: "#0A0A0B",
+    fontWeight: "900",
+  },
+
+  previewAltBtn: {
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+    backgroundColor: "#15181D",
+    borderRadius: 14,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+  },
+
+  previewAltText: {
+    color: CINEMA.text,
+    fontWeight: "800",
+  },
+
+  previewMetaRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 12,
+    marginBottom: 8,
+    gap: 12,
+    flexWrap: "wrap",
+  },
+
+  previewMeta: {
+    color: CINEMA.textSoft,
+    fontSize: 14,
+  },
+
+  previewMetaStrong: {
+    color: CINEMA.text,
+    fontWeight: "900",
   },
 
   storyOverlay: {
@@ -2275,11 +3413,11 @@ const styles = StyleSheet.create({
     width: "100%",
     aspectRatio: 9 / 16,
     borderRadius: 28,
-    
     backgroundColor: "#050505",
-    borderWidth: 0,
-    borderColor: "transparent",
+    borderWidth: 1,
+    borderColor: CINEMA.strokeSoft,
     position: "relative",
+    overflow: "hidden",
   },
 
   storyPosterImage: {
@@ -2297,8 +3435,8 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 999,
     backgroundColor: "rgba(0,0,0,0.55)",
-    borderWidth: 0,
-    borderColor: "transparent",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
     alignItems: "center",
     justifyContent: "center",
     zIndex: 20,
@@ -2380,829 +3518,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textTransform: "uppercase",
     letterSpacing: 0.6,
-  },
-
-  topNavRow: {
-    marginBottom: 12,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  backBtn: {
-    height: 40,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    backgroundColor: "#111",
-    borderWidth: 1,
-    borderColor: T.line,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  backBtnText: {
-    color: T.text,
-    fontWeight: "800",
-    fontSize: 13,
-  },
-
-  topHeader: {
-    marginBottom: 18,
-  },
-
-  topTitle: {
-    color: T.text,
-    fontSize: 32,
-    fontWeight: "800",
-  },
-
-  topSub: {
-    color: T.mute,
-    fontSize: 15,
-    marginTop: 6,
-  },
-
-  topSubStrong: {
-    color: T.olive,
-    fontWeight: "700",
-  },
-
-  twoCol: {
-    gap: 18,
-  },
-
-  twoColWide: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-
-  col: {
-    width: "100%",
-  },
-
-  leftCol: {
-    flex: 0.9,
-  },
-
-  rightCol: {
-    flex: 1.1,
-  },
-
-  card: {
-    backgroundColor: T.card,
-    borderWidth: 1,
-    borderColor: T.line,
-    borderRadius: 22,
-    padding: 18,
-  },
-
-  sectionKicker: {
-    color: T.olive,
-    fontSize: 13,
-    fontWeight: "800",
-    marginBottom: 10,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-  },
-
-  lessonTitle: {
-    color: T.text,
-    fontSize: 22,
-    fontWeight: "800",
-    marginBottom: 10,
-  },
-
-  lessonText: {
-    color: T.sub,
-    fontSize: 15,
-    lineHeight: 22,
-  },
-
-  bullet: {
-    color: T.sub,
-    fontSize: 15,
-    lineHeight: 24,
-    marginBottom: 6,
-  },
-
-  divider: {
-    height: 1,
-    backgroundColor: T.line,
-    marginVertical: 14,
-  },
-
-  formHeaderLite: {
-    marginBottom: 12,
-  },
-
-  formTitle: {
-    color: T.text,
-    fontSize: 24,
-    fontWeight: "800",
-  },
-
-  formSubtitle: {
-    color: T.mute,
-    fontSize: 14,
-    marginTop: 4,
-  },
-
-  formBodyLite: {
-    gap: 10,
-  },
-
-  label: {
-    color: T.text,
-    fontSize: 14,
-    fontWeight: "700",
-    marginBottom: 4,
-  },
-
-  input: {
-    borderWidth: 1,
-    borderColor: T.line,
-    backgroundColor: "#0C0C0C",
-    color: T.text,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    fontSize: 15,
-    ...(Platform.OS === "web"
-      ? ({
-          outlineStyle: "none",
-          boxShadow: "none",
-        } as any)
-      : {}),
-  },
-
-  selectBtn: {
-    borderWidth: 1,
-    borderColor: T.line,
-    backgroundColor: "#0C0C0C",
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-  },
-
-  selectBtnText: {
-    color: T.text,
-    fontSize: 15,
-    fontWeight: "700",
-  },
-
-  selectBtnHint: {
-    color: T.mute,
-    fontSize: 12,
-    marginTop: 4,
-  },
-
-  selectedRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-
-  selectedChip: {
-    backgroundColor: "rgba(198,166,100,0.18)",
-    borderColor: "rgba(198,166,100,0.35)",
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-
-  selectedChipText: {
-    color: T.text,
-    fontWeight: "700",
-  },
-
-  clearChipBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: T.line,
-    backgroundColor: "#141414",
-  },
-
-  clearChipText: {
-    color: T.sub,
-    fontWeight: "700",
-  },
-
-  helperText: {
-    color: T.mute,
-    fontSize: 13,
-    marginTop: 8,
-  },
-
-  primaryBtn: {
-    marginTop: 12,
-    backgroundColor: T.olive,
-    borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    alignItems: "center",
-  },
-
-  primaryBtnText: {
-    color: "#111",
-    fontSize: 16,
-    fontWeight: "800",
-  },
-
-  primaryBtnSub: {
-    color: "#221D11",
-    fontSize: 12,
-    fontWeight: "700",
-    marginTop: 4,
-  },
-
-  fileActionsRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 10,
-  },
-
-  secondaryBtn: {
-    flex: 1,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: T.line,
-    backgroundColor: "#151515",
-    paddingVertical: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  secondaryBtnText: {
-    color: T.text,
-    fontWeight: "700",
-  },
-
-  secondaryBtnDanger: {
-    flex: 1,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,110,110,0.25)",
-    backgroundColor: "rgba(255,90,90,0.08)",
-    paddingVertical: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  secondaryBtnDangerText: {
-    color: "#FFB2B2",
-    fontWeight: "700",
-  },
-
-  previewWrap: {
-    marginTop: 12,
-    borderRadius: 18,
-    
-    borderWidth: 1,
-    borderColor: T.line,
-    backgroundColor: "#0B0B0B",
-  },
-
-  previewStage: {
-    width: "100%",
-    backgroundColor: "#090909",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  previewImg: {
-    width: "100%",
-    height: "100%",
-  },
-
-  previewBadgeOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: "flex-end",
-    alignItems: "center",
-    paddingBottom: 12,
-  },
-
-  playPill: {
-    backgroundColor: "rgba(0,0,0,0.55)",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-  },
-
-  playPillText: {
-    color: T.text,
-    fontWeight: "700",
-    fontSize: 13,
-  },
-
-  previewModalDesktop: {
-    width: "86%",
-    maxWidth: 980,
-    maxHeight: "88%",
-    alignSelf: "center",
-    marginTop: 32,
-  },
-
-  previewModalMobile: {
-  width: "94%",
-  maxWidth: 720,
-  maxHeight: "78%",
-  alignSelf: "center",
-  marginTop: 16,
-  padding: 14,
-},
-
-  previewVideoWrapDesktop: {
-    width: "100%",
-    height: 520,
-  },
-
-  previewVideoWrapMobile: {
-  width: "100%",
-},
-
-  thumbLoading: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 30,
-  },
-
-  thumbLoadingText: {
-    color: T.mute,
-    marginTop: 8,
-  },
-
-  thumbFallback: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 40,
-  },
-
-  thumbFallbackText: {
-    color: T.mute,
-    fontWeight: "700",
-  },
-
-  thumbReqRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-
-  thumbReqTitle: {
-    color: T.text,
-    fontWeight: "800",
-    fontSize: 14,
-  },
-
-  thumbReqBadge: {
-    color: "#FFD8D8",
-    borderColor: "rgba(255,120,120,0.28)",
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    fontWeight: "700",
-    fontSize: 12,
-  },
-
-  statusRow: {
-    marginTop: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-
-  statusText: {
-    color: T.sub,
-    fontSize: 13,
-    flex: 1,
-  },
-
-  progressWrap: {
-    marginTop: 10,
-  },
-
-  progressBar: {
-    height: 10,
-    width: "100%",
-    backgroundColor: "#1C1C1C",
-    borderRadius: 999,
-    
-  },
-
-  progressFill: {
-    height: "100%",
-    backgroundColor: T.olive,
-    borderRadius: 999,
-  },
-
-  progressLabels: {
-    marginTop: 6,
-    flexDirection: "row",
-    justifyContent: "flex-end",
-  },
-
-  progressText: {
-    color: T.text,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-
-  agreeBlock: {
-    marginTop: 10,
-  },
-
-  agreeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: T.line,
-    backgroundColor: "#111",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  checkboxChecked: {
-    backgroundColor: T.olive,
-    borderColor: T.olive,
-  },
-
-  checkGlyph: {
-    color: "#111",
-    fontWeight: "900",
-  },
-
-  agreeText: {
-    color: T.sub,
-    flex: 1,
-    lineHeight: 21,
-  },
-
-  termsLink: {
-    color: T.olive,
-    fontWeight: "800",
-  },
-
-  termsHintRow: {
-    marginTop: 8,
-    marginLeft: 32,
-  },
-
-  termsHintText: {
-    color: T.mute,
-    textDecorationLine: "underline",
-  },
-
-  submitBtn: {
-    marginTop: 14,
-    backgroundColor: T.olive,
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: "center",
-  },
-
-  submitText: {
-    color: "#111",
-    fontWeight: "900",
-    fontSize: 16,
-  },
-
-  formFootnote: {
-    color: T.mute,
-    fontSize: 13,
-    marginTop: 10,
-    textAlign: "center",
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.72)",
-    justifyContent: "center",
-    padding: 20,
-  },
-
-  categoryModal: {
-    backgroundColor: "#111",
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: T.line,
-    padding: 16,
-  },
-
-  categoryModalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-
-  modalTitle: {
-    color: T.text,
-    fontSize: 22,
-    fontWeight: "800",
-  },
-
-  modalIconClose: {
-    width: 34,
-    height: 34,
-    borderRadius: 999,
-    backgroundColor: "#1A1A1A",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  modalIconCloseText: {
-    color: T.text,
-    fontSize: 16,
-    fontWeight: "800",
-  },
-
-  modalSearch: {
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: T.line,
-    backgroundColor: "#0C0C0C",
-    color: T.text,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    fontSize: 15,
-    ...(Platform.OS === "web"
-      ? ({
-          outlineStyle: "none",
-          boxShadow: "none",
-        } as any)
-      : {}),
-  },
-
-  tagList: {
-    marginTop: 12,
-    gap: 8,
-  },
-
-  tagRow: {
-    borderWidth: 1,
-    borderColor: T.line,
-    backgroundColor: "#151515",
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-
-  tagRowActive: {
-    borderColor: T.olive,
-    backgroundColor: "rgba(198,166,100,0.12)",
-  },
-
-  tagRowText: {
-    color: T.text,
-    fontWeight: "700",
-  },
-
-  tagRowTextActive: {
-    color: T.text,
-  },
-
-  tagRowCheck: {
-    color: T.olive,
-    fontWeight: "900",
-    fontSize: 16,
-  },
-
-  modalAltBtn: {
-    flex: 1,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: T.line,
-    backgroundColor: "#151515",
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-
-  modalAltText: {
-    color: T.text,
-    fontWeight: "700",
-  },
-
-  modalPrimaryBtn: {
-    flex: 1,
-    borderRadius: 14,
-    backgroundColor: T.olive,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-
-  modalPrimaryText: {
-    color: "#111",
-    fontWeight: "900",
-  },
-
-  modalContent: {
-    backgroundColor: "#111",
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: T.line,
-    padding: 18,
-  },
-
-  modalText: {
-    color: T.sub,
-    fontSize: 15,
-    lineHeight: 24,
-    marginBottom: 10,
-  },
-
-  modalCloseBtn: {
-    backgroundColor: T.olive,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 8,
-  },
-
-  modalCloseText: {
-    color: "#111",
-    fontWeight: "900",
-    fontSize: 15,
-  },
-
-  previewModal: {
-    backgroundColor: "#111",
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: T.line,
-    padding: 18,
-  },
-
-  previewTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-
-  previewTitle: {
-    color: T.text,
-    fontSize: 22,
-    fontWeight: "800",
-  },
-
-  previewHeaderCloseBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 999,
-    backgroundColor: "#1A1A1A",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: T.line,
-  },
-
-  previewHeaderCloseText: {
-    color: T.text,
-    fontSize: 16,
-    fontWeight: "800",
-  },
-
-  previewVideoWrap: {
-  borderRadius: 18,
-  borderWidth: 1,
-  borderColor: T.line,
-  backgroundColor: "#0A0A0A",
-  overflow: "hidden",
-},
-
-  previewVideoStage: {
-  width: "100%",
-  aspectRatio: 16 / 9,
-  backgroundColor: "#0B0B0B",
-  position: "relative",
-  justifyContent: "center",
-  alignItems: "center",
-  overflow: "hidden",
-},
-
-  previewVideo: {
-    width: "100%",
-    height: "100%",
-  },
-
-  previewLoadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  previewLoadingText: {
-    color: T.text,
-    marginTop: 10,
-    fontWeight: "700",
-  },
-
-  previewErrorOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.62)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
-
-  previewErrorText: {
-    color: T.text,
-    textAlign: "center",
-    lineHeight: 22,
-    marginBottom: 14,
-  },
-
-  previewErrorActions: {
-    flexDirection: "row",
-    gap: 10,
-  },
-
-  previewRetryBtn: {
-    backgroundColor: T.olive,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-
-  previewRetryText: {
-    color: "#111",
-    fontWeight: "900",
-  },
-
-  previewAltBtn: {
-    borderWidth: 1,
-    borderColor: T.line,
-    backgroundColor: "#151515",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-
-  previewAltText: {
-    color: T.text,
-    fontWeight: "700",
-  },
-
-  previewMetaRow: {
-  flexDirection: "row",
-  justifyContent: "space-between",
-  marginTop: 12,
-  marginBottom: 8,
-  gap: 12,
-  flexWrap: "wrap",
-},
-
-  previewMeta: {
-    color: T.sub,
-    fontSize: 13,
-  },
-
-  previewMetaStrong: {
-    color: T.text,
-    fontWeight: "800",
-  },
-    pageWrapPhone: {
-    paddingHorizontal: 8,
-    paddingTop: 20,
-  },
-
-  cardPhone: {
-    padding: 14,
-    borderRadius: 18,
-  },
-
-  formBodyLitePhone: {
-    gap: 14,
-  },
-
-  fileActionsRowPhone: {
-    flexDirection: "column",
-  },
-
-  thumbActionsRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-
-  thumbActionsRowPhone: {
-    flexDirection: "column",
   },
 });
