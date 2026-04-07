@@ -1,4 +1,3 @@
-// app/navigation/linking.ts
 import { LinkingOptions } from "@react-navigation/native";
 
 export const linking: LinkingOptions<any> = {
@@ -15,10 +14,6 @@ export const linking: LinkingOptions<any> = {
     screens: {
       // DIRECT screens
       NewPassword: "reset-password",
-      PublicProfile: "creative/:slug",
-
-      // ✅ NEW SHARED FILM LINK
-    
 
       // AUTH STACK
       Auth: {
@@ -34,16 +29,21 @@ export const linking: LinkingOptions<any> = {
       MainTabs: {
         screens: {
           Featured: {
-  path: "f/:openShareSlug",
-  parse: {
-    openShareSlug: (value: string) => decodeURIComponent(value),
-  },
-},
+            path: "f/:openShareSlug",
+            parse: {
+              openShareSlug: (value: string) => decodeURIComponent(value),
+            },
+          },
           Jobs: "jobs",
           Challenge: "challenge",
           Location: "location",
           Chats: "chats",
-          Profile: "profile",
+          Profile: {
+            path: "creative/:openProfileSlug",
+            parse: {
+              openProfileSlug: (value: string) => decodeURIComponent(value),
+            },
+          },
         },
       },
 

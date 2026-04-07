@@ -1073,8 +1073,10 @@ export default function ProfileScreen() {
   }, [navigation]);
   // ✅ 1) figure out which profile we're viewing FIRST
   const viewedUserFromObj = route.params?.user;
-  const viewedUserId: string | undefined =
-    route.params?.userId ?? viewedUserFromObj?.id ?? undefined;
+const openProfileSlug = route.params?.openProfileSlug ?? null;
+
+const viewedUserId: string | undefined =
+  route.params?.userId ?? viewedUserFromObj?.id ?? undefined;
 
   // ✅ 2) pass viewedUserId into the hook (so streak matches the profile)
   const {
@@ -1095,10 +1097,13 @@ export default function ProfileScreen() {
   const targetIdParam: string | null =
   route.params?.userId ?? route.params?.user?.id ?? null;
 
-const isViewingExternalProfile = !!targetIdParam;
+const [profile, setProfile] = useState<ProfileData | null>(null);
+const [sharedProfileUserId, setSharedProfileUserId] = useState<string | null>(null);
 
-  const [profile, setProfile] = useState<ProfileData | null>(null);
-  const publicProfileUrl = profile?.public_slug
+const isViewingExternalProfile =
+  !!targetIdParam || !!sharedProfileUserId || !!openProfileSlug;
+
+const publicProfileUrl = profile?.public_slug
   ? buildSharedProfileUrl(profile.public_slug)
   : null;
   const [mainRoleName, setMainRoleName] = useState('');
@@ -1269,6 +1274,36 @@ if (data) row = data as LevelRow;
   }, []);
 
   /* ---------- profile loader with job wiring ---------- */
+
+  const fetchUserIdFromSharedSlug = useCallback(async (slug: string) => {
+  try {
+    const { data, error } = await supabase
+      .from("users")
+      .select("id")
+      .eq("public_slug", slug)
+      .eq("is_profile_public", true)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("fetchUserIdFromSharedSlug error:", error.message);
+      setSharedProfileUserId(null);
+      return;
+    }
+
+    setSharedProfileUserId(data?.id ?? null);
+  } catch (e: any) {
+    console.warn("fetchUserIdFromSharedSlug fatal:", e?.message || e);
+    setSharedProfileUserId(null);
+  }
+}, []);
+useEffect(() => {
+  if (!openProfileSlug) {
+    setSharedProfileUserId(null);
+    return;
+  }
+
+  fetchUserIdFromSharedSlug(openProfileSlug);
+}, [openProfileSlug, fetchUserIdFromSharedSlug]);
   const fetchProfile = useCallback(async () => {
     if (savingRef.current) return;
 
@@ -1279,7 +1314,9 @@ try {
   const authUserIdLocal = authUserId ?? null;
   setCurrentUserId(authUserIdLocal);
 
-  const targetId = isViewingExternalProfile ? targetIdParam : authUserIdLocal ?? null;
+  const targetId =
+  sharedProfileUserId ??
+  (isViewingExternalProfile ? targetIdParam : authUserIdLocal ?? null);
 
   if (!targetId) {
     setProfile(null);
@@ -1420,7 +1457,7 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
     } finally {
       setIsLoading(false);
     }
- }, [targetIdParam, loadGamificationMeta, authUserId, authReady]);
+ }, [targetIdParam, sharedProfileUserId, loadGamificationMeta, authUserId, authReady]);
 
   useFocusEffect(
     useCallback(() => {
@@ -3054,9 +3091,12 @@ const previewCreativeProtocolLink = async () => {
       prev ? { ...prev, public_slug: publicSlug, is_profile_public: true } : prev
     );
 
-    navigation.navigate("PublicProfile", { slug: publicSlug });
+    navigation.navigate("MainTabs", {
+      screen: "Profile",
+      params: { openProfileSlug: publicSlug },
+    });
   } catch (e: any) {
-    Alert.alert("Unavailable", "Public profile link is not ready yet.");
+    Alert.alert("Unavailable", "Profile link is not ready yet.");
   }
 };
 
