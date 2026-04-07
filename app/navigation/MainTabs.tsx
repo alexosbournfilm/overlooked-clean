@@ -1694,14 +1694,8 @@ useEffect(() => {
     tabBarActiveTintColor: GOLD,
     tabBarInactiveTintColor: TEXT_MUTED,
     tabBarShowLabel: false,
-    lazy: true,
-    animation: 'shift',
-transitionSpec: {
-  animation: 'timing',
-  config: {
-    duration: 220,
-  },
-},
+    lazy: false,
+    animation: 'none',
     tabBarStyle: {
       backgroundColor: DARK_BG,
       borderTopWidth: 1,

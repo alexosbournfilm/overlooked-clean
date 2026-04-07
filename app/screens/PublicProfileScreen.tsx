@@ -10,7 +10,6 @@ import {
   Pressable,
   Modal,
   Platform,
-  SafeAreaView,
   Linking,
   TouchableOpacity,
   ImageBackground,
@@ -1213,6 +1212,7 @@ const secondaryTileH = isMobileLike
   <View style={[block.section, { alignItems: "center" }]}>
     <TouchableOpacity
   activeOpacity={0.92}
+  delayPressIn={120}
   onPress={() => {
     setActiveShowreel(primaryRow);
     setShowreelModalOpen(true);
@@ -1346,12 +1346,13 @@ const secondaryTileH = isMobileLike
                     }}
                   >
                     <TouchableOpacity
-                      activeOpacity={0.92}
-                      onPress={() => {
-                        setActiveShowreel(r);
-                        setShowreelModalOpen(true);
-                      }}
-                    >
+  activeOpacity={0.92}
+  delayPressIn={120}
+  onPress={() => {
+    setActiveShowreel(r);
+    setShowreelModalOpen(true);
+  }}
+>
                       <View
                         style={[
                           block.mediaCard,
@@ -1606,14 +1607,16 @@ const secondaryTileH = isMobileLike
             const mp4Thumb = s.thumbnail_url || null;
 
             return (
-              <Pressable
-                key={s.id}
-                onPress={() => {
-                  setActiveSubmission(s);
-                  setSubmissionModalOpen(true);
-                }}
-                style={{ width: tileW }}
-              >
+              <TouchableOpacity
+  key={s.id}
+  activeOpacity={0.92}
+  delayPressIn={120}
+  onPress={() => {
+    setActiveSubmission(s);
+    setSubmissionModalOpen(true);
+  }}
+  style={{ width: tileW }}
+>
                 <View
                   style={{
                     height: tileH,
@@ -1675,8 +1678,8 @@ const secondaryTileH = isMobileLike
                       {s.title || "Untitled"}
                     </Text>
                   </View>
-                </View>
-              </Pressable>
+                              </View>
+            </TouchableOpacity>
             );
           })}
         </View>
@@ -1917,147 +1920,150 @@ const renderAboutAndCTA = () => {
     );
   }
     return (
-    <>
-      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.background }}>
-        <ScrollView
-          style={{ flex: 1, backgroundColor: COLORS.background }}
-          contentContainerStyle={{
-            alignItems: "center",
-            paddingBottom: 48,
-          }}
-        >
-          <View
-            style={{
-              width: "100%",
-              maxWidth: PAGE_MAX,
-              paddingHorizontal: horizontalPad,
-            }}
-          >
-            {renderHero()}
-{renderFeaturedFilm()}
-{renderEditorialPortfolio()}
-{renderSubmissionsSection()}
-{renderAboutAndCTA()}
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-
-      <Modal
-  visible={imageViewerIndex !== null}
-
-        transparent
-        animationType="fade"
-        onRequestClose={() => setImageViewerIndex(null)}
-      >
-        <View style={block.viewerOverlay}>
-          <Pressable
-            style={StyleSheet.absoluteFillObject}
-            onPress={() => setImageViewerIndex(null)}
-          />
-          {imageViewerIndex !== null && (
-            <>
-              <Image
-                source={{ uri: imageViewerUrls[imageViewerIndex] }}
-                style={block.viewerImage}
-                resizeMode="contain"
-              />
-              <View style={block.viewerCloseHint}>
-                <Text style={block.viewerHintText}>Tap outside to close</Text>
-              </View>
-
-              {imageViewerIndex > 0 && (
-                <TouchableOpacity
-                  style={[navStyles.arrow, navStyles.left]}
-                  onPress={() => setImageViewerIndex((i) => (i! > 0 ? i! - 1 : i))}
-                >
-                  <Ionicons name="chevron-back" size={28} color="#FFF" />
-                </TouchableOpacity>
-              )}
-
-              {imageViewerIndex < imageViewerUrls.length - 1 && (
-                <TouchableOpacity
-                  style={[navStyles.arrow, navStyles.right]}
-                  onPress={() =>
-                    setImageViewerIndex((i) =>
-                      i! < imageViewerUrls.length - 1 ? i! + 1 : i
-                    )
-                  }
-                >
-                  <Ionicons name="chevron-forward" size={28} color="#FFF" />
-                </TouchableOpacity>
-              )}
-            </>
-          )}
-        </View>
-      </Modal>
-
-      <Modal
-        visible={showreelModalOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={closeShowreelModal}
+  <>
+    <View style={screenStyles.root}>
+      <ScrollView
+        style={screenStyles.scroll}
+        contentContainerStyle={screenStyles.scrollContent}
+        showsVerticalScrollIndicator={true}
+        bounces={true}
+        alwaysBounceVertical={true}
+        nestedScrollEnabled={true}
+        keyboardShouldPersistTaps="handled"
+        contentInsetAdjustmentBehavior="automatic"
       >
         <View
+          style={[
+            screenStyles.inner,
+            {
+              maxWidth: PAGE_MAX,
+              paddingHorizontal: horizontalPad,
+            },
+          ]}
+        >
+          {renderHero()}
+          {renderFeaturedFilm()}
+          {renderEditorialPortfolio()}
+          {renderSubmissionsSection()}
+          {renderAboutAndCTA()}
+        </View>
+      </ScrollView>
+    </View>
+    <Modal
+      visible={imageViewerIndex !== null}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setImageViewerIndex(null)}
+    >
+      <View style={block.viewerOverlay}>
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
+          onPress={() => setImageViewerIndex(null)}
+        />
+        {imageViewerIndex !== null && (
+          <>
+            <Image
+              source={{ uri: imageViewerUrls[imageViewerIndex] }}
+              style={block.viewerImage}
+              resizeMode="contain"
+            />
+            <View style={block.viewerCloseHint}>
+              <Text style={block.viewerHintText}>Tap outside to close</Text>
+            </View>
+
+            {imageViewerIndex > 0 && (
+              <TouchableOpacity
+                style={[navStyles.arrow, navStyles.left]}
+                onPress={() => setImageViewerIndex((i) => (i! > 0 ? i! - 1 : i))}
+              >
+                <Ionicons name="chevron-back" size={28} color="#FFF" />
+              </TouchableOpacity>
+            )}
+
+            {imageViewerIndex < imageViewerUrls.length - 1 && (
+              <TouchableOpacity
+                style={[navStyles.arrow, navStyles.right]}
+                onPress={() =>
+                  setImageViewerIndex((i) =>
+                    i! < imageViewerUrls.length - 1 ? i! + 1 : i
+                  )
+                }
+              >
+                <Ionicons name="chevron-forward" size={28} color="#FFF" />
+              </TouchableOpacity>
+            )}
+          </>
+        )}
+      </View>
+    </Modal>
+
+    <Modal
+      visible={showreelModalOpen}
+      transparent
+      animationType="fade"
+      onRequestClose={closeShowreelModal}
+    >
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(0,0,0,0.9)",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 16,
+        }}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={closeShowreelModal}
+          style={StyleSheet.absoluteFillObject}
+        />
+
+        <View
           style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.9)",
-            justifyContent: "center",
-            alignItems: "center",
-            padding: 16,
+            width: "100%",
+            maxWidth: 800,
+            backgroundColor: COLORS.cardAlt,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: COLORS.border,
+            padding: 12,
           }}
         >
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={closeShowreelModal}
-            style={StyleSheet.absoluteFillObject}
-          />
-
-          <View
+          <Text
             style={{
-              width: "100%",
-              maxWidth: 800,
-              backgroundColor: COLORS.cardAlt,
-              borderRadius: 16,
-              borderWidth: 1,
-              borderColor: COLORS.border,
-              padding: 12,
+              color: COLORS.textPrimary,
+              fontFamily: FONT_OBLIVION,
+              fontWeight: "900",
+              marginBottom: 10,
+              textAlign: "center",
+              textTransform: "uppercase",
             }}
           >
-            <Text
-              style={{
-                color: COLORS.textPrimary,
-                fontFamily: FONT_OBLIVION,
-                fontWeight: "900",
-                marginBottom: 10,
-                textAlign: "center",
-                textTransform: "uppercase",
-              }}
-            >
-              {activeShowreel?.category || "Showreel"}
-            </Text>
+            {activeShowreel?.category || "Showreel"}
+          </Text>
 
-            {activeShowreel ? (
-  <View style={{ width: "100%", alignItems: "center", justifyContent: "center" }}>
-    <ShowreelVideoInline
-      playerId={`public_secondary_showreel_${activeShowreel.id}`}
-      filePathOrUrl={activeShowreel.file_path || activeShowreel.url}
-      width={Math.max(280, Math.min(width - horizontalPad * 2 - 24, 760))}
-      autoPlay={false}
-    />
-  </View>
-) : null}
+          {activeShowreel ? (
+            <View style={{ width: "100%", alignItems: "center", justifyContent: "center" }}>
+              <ShowreelVideoInline
+                playerId={`public_secondary_showreel_${activeShowreel.id}`}
+                filePathOrUrl={activeShowreel.file_path || activeShowreel.url}
+                width={Math.max(280, Math.min(width - horizontalPad * 2 - 24, 760))}
+                autoPlay={false}
+              />
+            </View>
+          ) : null}
 
-            <TouchableOpacity
-              onPress={closeShowreelModal}
-              style={[styles.ghostBtn, { marginTop: 12 }]}
-            >
-              <Text style={styles.ghostBtnText}>Close</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            onPress={closeShowreelModal}
+            style={[styles.ghostBtn, { marginTop: 12 }]}
+          >
+            <Text style={styles.ghostBtnText}>Close</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
-    </>
-  );
+      </View>
+    </Modal>
+  </>
+);
 }
 
 const styles = StyleSheet.create({
@@ -2382,6 +2388,25 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: "uppercase",
     fontSize: 13,
+  },
+});
+
+const screenStyles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    minHeight: "100%",
+  },
+  scroll: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  scrollContent: {
+    paddingBottom: 48,
+  },
+  inner: {
+    width: "100%",
+    alignSelf: "center",
   },
 });
 

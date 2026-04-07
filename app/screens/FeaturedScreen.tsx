@@ -65,7 +65,7 @@ const T = {
   text: '#FFFFFF',
   sub: '#DADADA',
   mute: '#9A9A9A',
-  accent: '#4FD1FF',
+  accent: GOLD,
   heroBurgundy1: '#000000',
   heroBurgundy2: '#000000',
 };
@@ -1634,7 +1634,8 @@ const gridColumns = isWideWeb || useTwoColumnMobile ? 2 : 1;
 
 // Category filter (matches Challenge categories)
 const [filmCategory, setFilmCategory] = useState<FilmCategory>('All');
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+const [refreshing, setRefreshing] = useState(false);
   const [winner, setWinner] = useState<
     | (Submission & {
         description?: string | null;
@@ -2013,7 +2014,13 @@ const initChallengesIfNeeded = async () => {
 };
 
 const fetchContent = async (uid: string | null, cat: Category, searchTextQ: string) => {
-  setLoading(true);
+  const firstLoad = submissions.length === 0 && !winner;
+
+  if (firstLoad) {
+    setInitialLoading(true);
+  } else {
+    setRefreshing(true);
+  }
 
   try {
     const challenges = await fetchChallengesForFeatured();
@@ -2024,17 +2031,7 @@ const fetchContent = async (uid: string | null, cat: Category, searchTextQ: stri
 
     currentRangeRef.current = range ?? null;
 
-    // Winner (previous month only)
-    let winnerData:
-      | (Submission & {
-          description?: string | null;
-          storage_path?: string | null;
-          thumbnail_url?: string | null;
-          media_kind?: RawSubmission['media_kind'];
-          mime_type?: string | null;
-          category?: Category | null;
-        })
-      | null = null;
+    let winnerData: any = null;
 
     if (challenges.previous?.winner_submission_id) {
       const { data: w } = await fetchWinnerSafe(challenges.previous.winner_submission_id, cat);
@@ -2045,47 +2042,47 @@ const fetchContent = async (uid: string | null, cat: Category, searchTextQ: stri
       }
 
       const winnerMuxReady = isMuxReady((winnerData as any)?.mux_status);
-const winnerMuxUri = winnerMuxReady
-  ? getMuxPlaybackUrl((winnerData as any)?.mux_playback_id)
-  : null;
+      const winnerMuxUri = winnerMuxReady
+        ? getMuxPlaybackUrl((winnerData as any)?.mux_playback_id)
+        : null;
 
-if (winnerMuxUri) {
-  warmPlayableUrl(winnerMuxUri);
-} else if ((winnerData as any)?.storage_path) {
-  signStoragePath((winnerData as any).storage_path!, 3600).catch(() => {});
-}
+      if (winnerMuxUri) {
+        warmPlayableUrl(winnerMuxUri);
+      } else if ((winnerData as any)?.storage_path) {
+        signStoragePath((winnerData as any).storage_path!, 3600).catch(() => {});
+      }
     }
 
-    // ✅ All-time submissions
     const resp = await fetchSubsSafe(sort, searchTextQ, cat, filmCategory);
-const subs = (resp?.data || []) as RawSubmission[];
-const normalized = subs.map(normalizeRow);
+    const subs = (resp?.data || []) as RawSubmission[];
+    const normalized = subs.map(normalizeRow);
 
-const playableOnly = normalized.filter((s: any) => {
-  const muxReady = isMuxReady(s.mux_status);
-  const hasMux = !!s.mux_playback_id;
-  const hasDirectFile = !!s.storage_path;
+    const playableOnly = normalized.filter((s: any) => {
+      const muxReady = isMuxReady(s.mux_status);
+      const hasMux = !!s.mux_playback_id;
+      const hasDirectFile = !!s.storage_path;
+      return (hasMux && muxReady) || (!hasMux && hasDirectFile) || hasDirectFile;
+    });
 
-  return (hasMux && muxReady) || (!hasMux && hasDirectFile) || hasDirectFile;
-});
+    setWinner(winnerData);
+    setSubmissions(playableOnly);
 
-setWinner(winnerData);
-setSubmissions(playableOnly);
+    setTimeout(() => {
+      setTimeout(() => {
+  fetchCommentCounts(playableOnly.slice(0, 8).map((s) => s.id));
+}, 300);
+    }, 0);
 
-setTimeout(() => {
-  fetchCommentCounts(playableOnly.slice(0, 12).map((s) => s.id));
-}, 0);
+    playableOnly.slice(0, 6).forEach((s) => {
+      const muxReady = isMuxReady((s as any).mux_status);
+      const muxUri = muxReady ? getMuxPlaybackUrl((s as any).mux_playback_id) : null;
 
-    playableOnly.slice(0, 24).forEach((s) => {
-  const muxReady = isMuxReady((s as any).mux_status);
-  const muxUri = muxReady ? getMuxPlaybackUrl((s as any).mux_playback_id) : null;
-
-  if (muxUri) {
-    warmPlayableUrl(muxUri);
-  } else if (s.storage_path) {
-    signStoragePath(s.storage_path, 3600).catch(() => {});
-  }
-});
+      if (muxUri) {
+        warmPlayableUrl(muxUri);
+      } else if (s.storage_path) {
+        signStoragePath(s.storage_path, 3600).catch(() => {});
+      }
+    });
 
     if (uid && normalized.length) {
       const ids = normalized.map((s) => s.id);
@@ -2109,21 +2106,16 @@ setTimeout(() => {
     }
 
     const firstPlayable = winnerData?.storage_path
-  ? `winner-${winnerData.id}`
-  : normalized.find((r) => !!r.storage_path && r.media_kind !== 'file_audio')?.id ?? null;
+      ? `winner-${winnerData.id}`
+      : normalized.find((r) => !!r.storage_path && r.media_kind !== 'file_audio')?.id ?? null;
 
-// Always default to last month's winner if it exists
-setActiveId(firstPlayable as string | null);
-
+    setActiveId(firstPlayable as string | null);
     layoutMap.current.clear();
   } catch (e: any) {
     console.warn('fetchContent error:', e?.message || e);
-    setWinner(null);
-    setSubmissions([]);
-    setVotedIds(new Set());
-    setMonthlyVotesUsed(0);
   } finally {
-    setLoading(false);
+    setInitialLoading(false);
+    setRefreshing(false);
   }
 };
 
@@ -2551,7 +2543,7 @@ useEffect(() => {
   })();
 }, [activeId, winner]);
 useEffect(() => {
-  if (loading) return;
+  if (initialLoading) return;
   if (!submissions.length && !winner) return;
 
   const deepLinkKey = openSubmissionId || openShareSlug || null;
@@ -2594,7 +2586,7 @@ useEffect(() => {
       openShareSlug: undefined,
     });
   }
-}, [loading, submissions, winner, openSubmissionId, openShareSlug, navigation]);
+}, [initialLoading, submissions, winner, openSubmissionId, openShareSlug, navigation]);
 
   const onItemLayout = (id: string, playable: boolean) => (e: LayoutChangeEvent) => {
   const { y, height } = e.nativeEvent.layout;
@@ -3341,9 +3333,11 @@ return (
     />
     <Grain opacity={0.05} />
 
-    {loading && submissions.length === 0 ? (
-      <ActivityIndicator style={{ marginTop: CONTENT_TOP_PAD + 8 }} color={T.accent} />
-    ) : (
+    {initialLoading && submissions.length === 0 ? (
+  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+    <ActivityIndicator color={GOLD} />
+  </View>
+) : (
       <View style={{ flex: 1, paddingHorizontal: Platform.OS === 'web' ? 18 : 0 }}>
         {isWideWeb ? (
           <View style={[styles.wideLayout, { maxWidth: 1400, alignSelf: 'center' }]}>
