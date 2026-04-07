@@ -30,6 +30,7 @@ import { navigationRef } from '../navigation/navigationRef';
 import { useAuth } from '../context/AuthProvider';
 import { useGamification } from '../context/GamificationContext';
 import AvatarCropper from '../../components/AvatarCropper';
+import * as FileSystem from 'expo-file-system/legacy';
 
 // ---------------- THEME ----------------
 const DARK_BG = '#000000';
@@ -64,16 +65,44 @@ const showToast = (msg: string) => {
   }
 };
 
-async function uploadBlobToBucket(opts: {
+function base64ToArrayBuffer(base64: string) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  const clean = base64.replace(/=+$/, '');
+  const bufferLength = Math.floor((clean.length * 3) / 4);
+  const bytes = new Uint8Array(bufferLength);
+
+  let p = 0;
+
+  for (let i = 0; i < clean.length; i += 4) {
+    const encoded1 = chars.indexOf(clean[i]);
+    const encoded2 = chars.indexOf(clean[i + 1]);
+    const encoded3 = chars.indexOf(clean[i + 2]);
+    const encoded4 = chars.indexOf(clean[i + 3]);
+
+    bytes[p++] = (encoded1 << 2) | (encoded2 >> 4);
+
+    if (encoded3 !== 64 && encoded3 !== -1 && p < bytes.length) {
+      bytes[p++] = ((encoded2 & 15) << 4) | (encoded3 >> 2);
+    }
+
+    if (encoded4 !== 64 && encoded4 !== -1 && p < bytes.length) {
+      bytes[p++] = ((encoded3 & 3) << 6) | encoded4;
+    }
+  }
+
+  return bytes.buffer;
+}
+
+async function uploadArrayBufferToBucket(opts: {
   bucket: string;
   path: string;
-  blob: Blob;
+  arrayBuffer: ArrayBuffer;
   contentType?: string;
 }) {
-  const { bucket, path, blob, contentType } = opts;
+  const { bucket, path, arrayBuffer, contentType } = opts;
 
-  const { error } = await supabase.storage.from(bucket).upload(path, blob, {
-    contentType: contentType || blob.type || undefined,
+  const { error } = await supabase.storage.from(bucket).upload(path, arrayBuffer, {
+    contentType: contentType || 'image/jpeg',
     upsert: true,
   });
 
@@ -92,14 +121,12 @@ const rankMatch = (candidate: string, query: string) => {
   const q = normalizeText(query);
 
   if (!q) return 999;
-
   if (c === q) return 0;
   if (c.startsWith(q)) return 1;
 
   const words = c.split(/\s+/);
   if (words.includes(q)) return 2;
   if (words.some((word) => word.startsWith(q))) return 3;
-
   if (c.includes(q)) return 4;
 
   return 999;
@@ -115,12 +142,10 @@ export default function CreateProfileScreen() {
   const roleSearchReq = useRef(0);
   const citySearchReq = useRef(0);
 
-  // Whole-page cinematic transition
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  // Smooth mobile image section entrance
   const imageSectionOpacity = useRef(new Animated.Value(0)).current;
   const imageSectionTranslate = useRef(new Animated.Value(18)).current;
 
@@ -197,19 +222,19 @@ export default function CreateProfileScreen() {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 2400,
+        duration: 700,
         easing: Easing.inOut(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.timing(slideAnim, {
         toValue: -12,
-        duration: 2400,
+        duration: 700,
         easing: Easing.inOut(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.timing(scaleAnim, {
         toValue: 0.985,
-        duration: 2400,
+        duration: 700,
         easing: Easing.inOut(Easing.cubic),
         useNativeDriver: true,
       }),
@@ -223,19 +248,19 @@ export default function CreateProfileScreen() {
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 3400,
+          duration: 850,
           easing: Easing.inOut(Easing.exp),
           useNativeDriver: true,
         }),
         Animated.timing(slideAnim, {
           toValue: 0,
-          duration: 3400,
+          duration: 850,
           easing: Easing.inOut(Easing.exp),
           useNativeDriver: true,
         }),
         Animated.timing(scaleAnim, {
           toValue: 1,
-          duration: 3400,
+          duration: 850,
           easing: Easing.inOut(Easing.exp),
           useNativeDriver: true,
         }),
@@ -258,10 +283,7 @@ export default function CreateProfileScreen() {
   };
 
   const fetchCreativeRoles = async () => {
-    const { data, error } = await supabase
-      .from('creative_roles')
-      .select('id, name')
-      .order('name');
+    const { data, error } = await supabase.from('creative_roles').select('id, name').order('name');
 
     if (error) {
       console.error('Error fetching roles:', error.message);
@@ -308,9 +330,7 @@ export default function CreateProfileScreen() {
       const ordered = mapped.sort((a, b) => {
         const aRank = rankMatch(a.label, q);
         const bRank = rankMatch(b.label, q);
-
         if (aRank !== bRank) return aRank - bRank;
-
         return a.label.localeCompare(b.label);
       });
 
@@ -369,7 +389,6 @@ export default function CreateProfileScreen() {
           const bRank = rankMatch(b.rawName, q);
 
           if (aRank !== bRank) return aRank - bRank;
-
           return a.rawName.localeCompare(b.rawName);
         })
         .map(({ rawName, ...rest }: any) => rest);
@@ -385,6 +404,7 @@ export default function CreateProfileScreen() {
 
   const pickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
     if (!permission.granted) {
       Alert.alert('Permission required', 'Please allow access to your photos.');
       return;
@@ -394,6 +414,7 @@ export default function CreateProfileScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 1,
       base64: false,
+      allowsEditing: false,
     });
 
     if (result.canceled || !result.assets.length) return;
@@ -416,13 +437,20 @@ export default function CreateProfileScreen() {
       const fileName = `${Date.now()}_avatar.jpg`;
       const path = `user_${user.id}/${fileName}`;
 
-      const response = await fetch(croppedUri);
-      const blob = await response.blob();
+      const base64 = await FileSystem.readAsStringAsync(croppedUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
 
-      const publicUrl = await uploadBlobToBucket({
+      if (!base64) {
+        throw new Error('Could not read cropped image.');
+      }
+
+      const arrayBuffer = base64ToArrayBuffer(base64);
+
+      const publicUrl = await uploadArrayBufferToBucket({
         bucket: 'avatars',
         path,
-        blob,
+        arrayBuffer,
         contentType: 'image/jpeg',
       });
 
@@ -430,6 +458,7 @@ export default function CreateProfileScreen() {
       setImageUrl(publicUrl);
       animateStageChange('review');
     } catch (err: any) {
+      console.error('Avatar upload error:', err);
       Alert.alert('Upload Error', err?.message ?? 'Could not upload image.');
     } finally {
       setUploadingImage(false);
@@ -497,7 +526,12 @@ export default function CreateProfileScreen() {
         navigationRef.dispatch(
           CommonActions.reset({
             index: 0,
-            routes: [{ name: 'MainTabs', state: { index: 0, routes: [{ name: 'Featured' }] } }],
+            routes: [
+              {
+                name: 'MainTabs',
+                state: { index: 0, routes: [{ name: 'Featured' }] },
+              },
+            ],
           })
         );
       }
@@ -563,24 +597,28 @@ export default function CreateProfileScreen() {
                     Role
                   </Text>
                 </View>
+
                 <View style={styles.progressItem}>
                   <View style={[styles.progressDot, cityStepVisible && styles.progressDotActive]} />
                   <Text style={[styles.progressLabel, cityStepVisible && styles.progressLabelActive]}>
                     Location
                   </Text>
                 </View>
+
                 <View style={styles.progressItem}>
                   <View style={[styles.progressDot, nameStepVisible && styles.progressDotActive]} />
                   <Text style={[styles.progressLabel, nameStepVisible && styles.progressLabelActive]}>
                     Name
                   </Text>
                 </View>
+
                 <View style={styles.progressItem}>
                   <View style={[styles.progressDot, imageStepVisible && styles.progressDotActive]} />
                   <Text style={[styles.progressLabel, imageStepVisible && styles.progressLabelActive]}>
                     Photo
                   </Text>
                 </View>
+
                 <View style={styles.progressItem}>
                   <View style={[styles.progressDot, reviewVisible && styles.progressDotActive]} />
                   <Text style={[styles.progressLabel, reviewVisible && styles.progressLabelActive]}>
@@ -722,7 +760,8 @@ export default function CreateProfileScreen() {
                   <View style={styles.infoBox}>
                     <Text style={styles.infoBoxTitle}>Showreels and portfolio</Text>
                     <Text style={styles.infoBoxText}>
-                      You can add showreels, thumbnails, and more portfolio content once your account is created from your Profile page.
+                      You can add showreels, thumbnails, and more portfolio content once your
+                      account is created from your Profile page.
                     </Text>
                   </View>
 
@@ -892,18 +931,18 @@ export default function CreateProfileScreen() {
       </Modal>
 
       <AvatarCropper
-        visible={cropperOpen}
-        imageUri={cropSource || undefined}
-        onCancel={() => {
-          setCropperOpen(false);
-          setCropSource(null);
-        }}
-        onCropped={handleAvatarCropped}
-        fullName={fullName || ''}
-        mainRoleName={mainRoleLabel || ''}
-        cityName={cityLabel || ''}
-        level={1}
-      />
+  visible={cropperOpen}
+  imageUri={cropSource || undefined}
+  onCancel={() => {
+    setCropperOpen(false);
+    setCropSource(null);
+  }}
+  onCropped={handleAvatarCropped}
+  fullName={fullName || 'Your Name'}
+  mainRoleName={mainRoleLabel || 'Director'}
+  cityName={cityLabel || 'Your City'}
+  level={50}
+/>
     </KeyboardAvoidingView>
   );
 }

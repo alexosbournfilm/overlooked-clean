@@ -1,11 +1,6 @@
 // components/AvatarCropper.tsx
 
-import React, {
-  useMemo,
-  useRef,
-  useState,
-  useEffect,
-} from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -27,17 +22,14 @@ import Slider from '@react-native-community/slider';
 type Props = {
   visible: boolean;
 
-  // Canonical
   imageUri?: string;
   onCropped?: (croppedUri: string) => void;
 
-  // Legacy aliases
   sourceUri?: string;
   onDone?: (croppedUri: string) => void;
 
   onCancel: () => void;
 
-  // Optional extras for live hero preview (all optional / safe defaults)
   fullName?: string | null;
   mainRoleName?: string | null;
   cityName?: string | null;
@@ -46,63 +38,59 @@ type Props = {
 
 const WINDOW = Dimensions.get('window');
 const GOLD = '#C6A664';
+const IVORY = '#F5F2EA';
+const MUTED = '#C8C1B2';
+const SOFT = '#A7A6A2';
 
 const COLORS = {
-  background: '#000000EE',
+  background: 'rgba(0,0,0,0.94)',
   card: '#050505',
-  border: '#FFFFFF22',
-  textPrimary: '#FFFFFF',
-  textSecondary: '#D0D0D0',
-  hint: '#AAAAAA',
+  border: 'rgba(255,255,255,0.10)',
+  textPrimary: IVORY,
+  textSecondary: MUTED,
+  hint: SOFT,
 };
 
-const FONT_OBLIVION =
+const FONT_PRIMARY =
+  Platform.select({
+    ios: 'Avenir Next',
+    android: 'sans-serif',
+    default: 'Avenir Next',
+  }) || 'Avenir Next';
+
+const FONT_LIGHT =
   Platform.select({
     ios: 'Avenir Next',
     android: 'sans-serif-light',
     default: 'Avenir Next',
   }) || 'Avenir Next';
 
-/** Avatar + banner layout (desktop-style preview) */
 const PREVIEW_MAX_W = 1040;
 const H_PADDING = 22;
 
-const PREVIEW_W = Math.min(
-  WINDOW.width - H_PADDING * 2,
-  PREVIEW_MAX_W,
-);
-const BANNER_H = PREVIEW_W * 0.38; // wide, cinematic
-const AVATAR_DIAMETER = BANNER_H * 0.26;
+const PREVIEW_W = Math.min(WINDOW.width - H_PADDING * 2, PREVIEW_MAX_W);
+const BANNER_H = PREVIEW_W * 0.50;
+
+const AVATAR_DIAMETER = BANNER_H * 0.25;
 const AVATAR_RADIUS = AVATAR_DIAMETER / 2;
-const AVATAR_LEFT = 32; // from left of banner
-const AVATAR_BOTTOM = 26; // from bottom of banner
 
-/** Where the avatar circle center lives in banner coords */
-const AVATAR_CENTER_X = AVATAR_LEFT + AVATAR_RADIUS;
-const AVATAR_CENTER_Y = BANNER_H - AVATAR_BOTTOM - AVATAR_RADIUS;
+const AVATAR_LEFT = 24;
+const AVATAR_BOTTOM = 34;
 
-/** Cross-platform RNGH end-state helper */
 function isEndState(state: any) {
-  return (
-    state === 'END' ||
-    state === 5 ||
-    state === 'CANCELLED' ||
-    state === 3
-  );
+  return state === 'END' || state === 5 || state === 'CANCELLED' || state === 3;
 }
 
-const clamp = (v: number, min: number, max: number) =>
-  Math.max(min, Math.min(max, v));
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 
-/* Simple level → ring color mapping (kept local) */
 const LEVEL_RING_STEPS = [
   { max: 24, color: '#E0E0EA' },
   { max: 49, color: '#C0C0C8' },
   { max: 9999, color: '#C6A664' },
 ];
+
 const getRingColorForLevel = (level?: number | null) => {
-  const lv =
-    typeof level === 'number' && level > 0 ? level : 1;
+  const lv = typeof level === 'number' && level > 0 ? level : 1;
   const step =
     LEVEL_RING_STEPS.find((s) => lv <= s.max) ||
     LEVEL_RING_STEPS[LEVEL_RING_STEPS.length - 1];
@@ -121,37 +109,27 @@ export default function AvatarCropper({
   cityName,
   level,
 }: Props) {
-  const effectiveUri =
-    imageUri || sourceUri || undefined;
+  const effectiveUri = imageUri || sourceUri || undefined;
 
-  // Real image size (px)
-  const [imgSize, setImgSize] = useState<{
-    w: number;
-    h: number;
-  } | null>(null);
+  const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
 
-  // Zoom (1–4)
   const [scale, setScale] = useState(1);
-  const baseScale = useRef(1);
+  const [translate, setTranslate] = useState({ x: 0, y: 0 });
 
-  // Pan (offset of image center relative to circle center, in px)
-  const [translate, setTranslate] = useState({
-    x: 0,
-    y: 0,
-  });
-  const lastOffset = useRef({ x: 0, y: 0 });
-
-  const [loadingMeta, setLoadingMeta] =
-    useState(false);
+  const [loadingMeta, setLoadingMeta] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Load intrinsic size once per image
+  const [baseScale, setBaseScale] = useState(1);
+  const [lastOffset, setLastOffset] = useState({ x: 0, y: 0 });
+
   useEffect(() => {
     if (!effectiveUri || !visible) {
       setImgSize(null);
       return;
     }
+
     setLoadingMeta(true);
+
     Image.getSize(
       effectiveUri,
       (w, h) => {
@@ -159,89 +137,66 @@ export default function AvatarCropper({
         setLoadingMeta(false);
       },
       () => {
-        // Fallback
         setImgSize({ w: 1000, h: 1000 });
         setLoadingMeta(false);
-      },
+      }
     );
   }, [effectiveUri, visible]);
 
-  // Reset when opened / source changes
   useEffect(() => {
     if (!visible) return;
-    baseScale.current = 1;
-    lastOffset.current = { x: 0, y: 0 };
+    setBaseScale(1);
+    setLastOffset({ x: 0, y: 0 });
     setScale(1);
     setTranslate({ x: 0, y: 0 });
     setSaving(false);
   }, [visible, effectiveUri]);
 
-  // Fit: ensure the *avatar circle* is fully covered at min zoom
-  const baseFitScale = useMemo(() => {
-    if (!imgSize) return 1;
-    return Math.max(
-      AVATAR_DIAMETER / imgSize.w,
-      AVATAR_DIAMETER / imgSize.h,
-    ); // cover circle
-  }, [imgSize]);
+  const baseFitScale = imgSize
+    ? Math.max(AVATAR_DIAMETER / imgSize.w, AVATAR_DIAMETER / imgSize.h)
+    : 1;
 
-  // Total scale from image px -> avatar view px
   const totalScale = baseFitScale * scale;
 
-  // --- Gestures for avatar image inside circle ---
-
   const onPanEvent = (e: any) => {
-    const { translationX, translationY } =
-      e.nativeEvent;
+    const { translationX, translationY } = e.nativeEvent;
+
     setTranslate({
-      x:
-        lastOffset.current.x +
-        translationX,
-      y:
-        lastOffset.current.y +
-        translationY,
+      x: lastOffset.x + translationX,
+      y: lastOffset.y + translationY,
     });
   };
 
   const onPanStateChange = (e: any) => {
     if (isEndState(e.nativeEvent.state)) {
-      const { translationX, translationY } =
-        e.nativeEvent;
-      lastOffset.current = {
-        x:
-          lastOffset.current.x +
-          translationX,
-        y:
-          lastOffset.current.y +
-          translationY,
+      const { translationX, translationY } = e.nativeEvent;
+
+      const next = {
+        x: lastOffset.x + translationX,
+        y: lastOffset.y + translationY,
       };
+
+      setLastOffset(next);
+      setTranslate(next);
     }
   };
 
-  // Pinch handlers
   const onPinchEvent = (e: any) => {
-    const s =
-      baseScale.current *
-      e.nativeEvent.scale;
+    const s = baseScale * e.nativeEvent.scale;
     setScale(clamp(s, 1, 4));
   };
 
   const onPinchStateChange = (e: any) => {
     if (isEndState(e.nativeEvent.state)) {
-      baseScale.current = clamp(
-        baseScale.current *
-          e.nativeEvent.scale,
-        1,
-        4,
-      );
-      setScale(baseScale.current);
+      const next = clamp(baseScale * e.nativeEvent.scale, 1, 4);
+      setBaseScale(next);
+      setScale(next);
     }
   };
 
-  // Slider (esp. desktop/web)
   const onSliderChange = (val: number) => {
     const s = clamp(val, 1, 4);
-    baseScale.current = s;
+    setBaseScale(s);
     setScale(s);
   };
 
@@ -250,65 +205,39 @@ export default function AvatarCropper({
     onDone?.(uri);
   };
 
-  // Map current circle + transform -> cropped avatar
   const doCrop = async () => {
-    if (!effectiveUri || !imgSize || saving)
-      return;
+    if (!effectiveUri || !imgSize || saving) return;
 
     try {
       setSaving(true);
 
       const { w: imgW, h: imgH } = imgSize;
 
-      // In the avatar container's own coords:
-      //  - circle center is (AVATAR_RADIUS, AVATAR_RADIUS)
-      //  - image center is (AVATAR_RADIUS + translate.x, AVATAR_RADIUS + translate.y)
       const cxView = AVATAR_RADIUS;
       const cyView = AVATAR_RADIUS;
-      const imgCxView =
-        AVATAR_RADIUS + translate.x;
-      const imgCyView =
-        AVATAR_RADIUS + translate.y;
+      const imgCxView = AVATAR_RADIUS + translate.x;
+      const imgCyView = AVATAR_RADIUS + translate.y;
 
-      // Map circle center from view -> image space
-      const ixCenter =
-        (cxView - imgCxView) /
-          totalScale +
-        imgW / 2;
-      const iyCenter =
-        (cyView - imgCyView) /
-          totalScale +
-        imgH / 2;
+      const ixCenter = (cxView - imgCxView) / totalScale + imgW / 2;
+      const iyCenter = (cyView - imgCyView) / totalScale + imgH / 2;
 
-      // Circle radius in image px
-      const rImg =
-        AVATAR_RADIUS /
-        totalScale;
+      const rImg = AVATAR_RADIUS / totalScale;
 
-      // Crop square that bounds the circle
       let originX = ixCenter - rImg;
       let originY = iyCenter - rImg;
       let size = rImg * 2;
 
-      // Clamp within image
       if (size > imgW || size > imgH) {
         size = Math.min(imgW, imgH);
         originX = (imgW - size) / 2;
         originY = (imgH - size) / 2;
       } else {
-        originX = clamp(
-          originX,
-          0,
-          imgW - size,
-        );
-        originY = clamp(
-          originY,
-          0,
-          imgH - size,
-        );
+        originX = clamp(originX, 0, imgW - size);
+        originY = clamp(originY, 0, imgH - size);
       }
 
-      const actions: ImageManipulator.Action[] =
+      const result = await ImageManipulator.manipulateAsync(
+        effectiveUri,
         [
           {
             crop: {
@@ -324,23 +253,15 @@ export default function AvatarCropper({
               height: 512,
             },
           },
-        ];
-
-      const result =
-        await ImageManipulator.manipulateAsync(
-          effectiveUri,
-          actions,
-          {
-            compress: 0.9,
-            format:
-              ImageManipulator
-                .SaveFormat.JPEG,
-          },
-        );
+        ],
+        {
+          compress: 0.92,
+          format: ImageManipulator.SaveFormat.JPEG,
+        }
+      );
 
       emitDone(result.uri);
     } catch (err) {
-      // Fallback: return original
       emitDone(effectiveUri);
     } finally {
       setSaving(false);
@@ -349,206 +270,105 @@ export default function AvatarCropper({
 
   if (!visible) return null;
 
-  // Preview text fallbacks
-  const displayRole =
-    (mainRoleName || '')
-      .toString()
-      .trim()
-      .toUpperCase() || 'DIRECTOR';
-  const displayName =
-    (fullName || '')
-      .toString()
-      .trim() || 'Your Name';
-  const displayCity =
-    (cityName || '')
-      .toString()
-      .trim() || 'Your City';
-  const displayLevel =
-    typeof level === 'number' && level > 0
-      ? level
-      : 8;
-  const ringColor =
-    getRingColorForLevel(level);
+  const displayRole = (mainRoleName || '').toString().trim().toUpperCase() || 'DIRECTOR';
+  const displayName = (fullName || '').toString().trim() || 'Your Name';
+  const displayCity = (cityName || '').toString().trim().toUpperCase() || 'YOUR CITY';
+  const displayLevel = typeof level === 'number' && level > 0 ? level : 8;
+  const ringColor = getRingColorForLevel(level);
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onCancel}
-    >
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={styles.overlay}>
         <View style={styles.card}>
-          <Text style={styles.title}>
-            Adjust profile picture
-          </Text>
+          <Text style={styles.title}>Adjust profile picture</Text>
 
-          {/* HERO PREVIEW */}
-          <View
-            style={[
-              styles.previewWrap,
-              {
-                width: PREVIEW_W,
-                height: BANNER_H,
-              },
-            ]}
-          >
-            {/* Banner */}
+          <View style={[styles.previewWrap, { width: PREVIEW_W, height: BANNER_H }]}>
             {effectiveUri ? (
-              <Image
-                source={{ uri: effectiveUri }}
-                style={styles.bannerImage}
-                resizeMode="cover"
-              />
+              <Image source={{ uri: effectiveUri }} style={styles.bannerImage} resizeMode="cover" />
             ) : (
-              <View
-                style={[
-                  styles.bannerImage,
-                  {
-                    backgroundColor:
-                      '#151515',
-                  },
-                ]}
-              />
+              <View style={[styles.bannerImage, { backgroundColor: '#141414' }]} />
             )}
 
-            {/* Banner gradient + text */}
-            <View
-              style={styles.bannerOverlay}
-            >
-              <View
-                style={styles.bannerTextWrap}
-              >
-                <Text
-                  style={
-                    styles.roleText
-                  }
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                >
-                  {displayRole}
-                </Text>
-                <Text
-                  style={
-                    styles.metaText
-                  }
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                >
-                  {displayName}
-                  {'  •  '}
-                  {displayCity}
-                </Text>
-              </View>
+            <View style={styles.bannerDarken} />
+            <View style={styles.bannerVignetteTop} />
+            <View style={styles.bannerVignetteBottom} />
+
+            <View style={styles.topBrandRow}>
+              <Text style={styles.brandText}>OVERLOOKED</Text>
             </View>
 
-            {/* Avatar ring + interactive circle */}
+            <View style={styles.centerTextWrap}>
+              <Text style={styles.roleText} numberOfLines={1} adjustsFontSizeToFit>
+                {displayRole}
+              </Text>
+              <Text style={styles.metaText} numberOfLines={1} adjustsFontSizeToFit>
+                {displayName.toUpperCase()} {' • '} {displayCity}
+              </Text>
+            </View>
+
+            <View style={styles.bottomInfoStrip}>
+              <Text style={styles.bottomInfoLabel}>Filmmaking streak</Text>
+              <Text style={styles.bottomInfoValue}>Year 1</Text>
+            </View>
+
+            <View
+              style={[
+                styles.avatarOuterGlow,
+                {
+                  width: AVATAR_DIAMETER + 14,
+                  height: AVATAR_DIAMETER + 14,
+                  left: AVATAR_LEFT - 7,
+                  top: BANNER_H - AVATAR_BOTTOM - AVATAR_DIAMETER - 7,
+                },
+              ]}
+            />
+
             <View
               style={[
                 styles.avatarRingWrapper,
                 {
-                  width:
-                    AVATAR_DIAMETER +
-                    14,
-                  height:
-                    AVATAR_DIAMETER +
-                    14,
-                  left: AVATAR_LEFT - 7,
-                  top:
-                    BANNER_H -
-                    AVATAR_BOTTOM -
-                    AVATAR_DIAMETER -
-                    7,
-                  borderColor:
-                    ringColor,
+                  width: AVATAR_DIAMETER + 10,
+                  height: AVATAR_DIAMETER + 10,
+                  left: AVATAR_LEFT - 5,
+                  top: BANNER_H - AVATAR_BOTTOM - AVATAR_DIAMETER - 5,
+                  borderColor: ringColor,
                 },
               ]}
             >
-              <View
-                style={[
-                  styles.avatarRing,
-                  {
-                    borderColor:
-                      ringColor,
-                  },
-                ]}
-              />
+              <View style={[styles.avatarRing, { borderColor: ringColor }]} />
 
-              {/* Avatar crop interaction */}
               <PinchGestureHandler
-                onGestureEvent={
-                  onPinchEvent
-                }
-                onHandlerStateChange={
-                  onPinchStateChange
-                }
+                onGestureEvent={onPinchEvent}
+                onHandlerStateChange={onPinchStateChange}
               >
-                <View
-                  style={
-                    styles.gestureFill
-                  }
-                >
+                <View style={styles.gestureFill}>
                   <PanGestureHandler
-                    onGestureEvent={
-                      onPanEvent
-                    }
-                    onHandlerStateChange={
-                      onPanStateChange
-                    }
+                    onGestureEvent={onPanEvent}
+                    onHandlerStateChange={onPanStateChange}
                   >
                     <View
                       style={[
                         styles.avatarCircle,
                         {
-                          width:
-                            AVATAR_DIAMETER,
-                          height:
-                            AVATAR_DIAMETER,
-                          borderRadius:
-                            AVATAR_RADIUS,
+                          width: AVATAR_DIAMETER,
+                          height: AVATAR_DIAMETER,
+                          borderRadius: AVATAR_RADIUS,
                         },
                       ]}
                     >
-                      {loadingMeta ||
-                      !imgSize ||
-                      !effectiveUri ? (
-                        <View
-                          style={
-                            styles.avatarLoading
-                          }
-                        >
-                          <ActivityIndicator
-                            color={
-                              GOLD
-                            }
-                          />
+                      {loadingMeta || !imgSize || !effectiveUri ? (
+                        <View style={styles.avatarLoading}>
+                          <ActivityIndicator color={GOLD} />
                         </View>
                       ) : (
                         <Image
-                          source={{
-                            uri: effectiveUri,
-                          }}
+                          source={{ uri: effectiveUri }}
                           style={{
-                            position:
-                              'absolute',
-                            width:
-                              imgSize.w *
-                              totalScale,
-                            height:
-                              imgSize.h *
-                              totalScale,
-                            left:
-                              AVATAR_RADIUS -
-                              (imgSize.w *
-                                totalScale) /
-                                2 +
-                              translate.x,
-                            top:
-                              AVATAR_RADIUS -
-                              (imgSize.h *
-                                totalScale) /
-                                2 +
-                              translate.y,
+                            position: 'absolute',
+                            width: imgSize.w * totalScale,
+                            height: imgSize.h * totalScale,
+                            left: AVATAR_RADIUS - (imgSize.w * totalScale) / 2 + translate.x,
+                            top: AVATAR_RADIUS - (imgSize.h * totalScale) / 2 + translate.y,
                           }}
                           resizeMode="cover"
                         />
@@ -559,114 +379,56 @@ export default function AvatarCropper({
               </PinchGestureHandler>
             </View>
 
-            {/* Level pill */}
             <View
               style={[
                 styles.levelPill,
                 {
-                  left:
-                    AVATAR_LEFT +
-                    AVATAR_DIAMETER -
-                    12,
-                  top:
-                    BANNER_H -
-                    AVATAR_BOTTOM -
-                    18,
-                  backgroundColor:
-                    ringColor,
+                  left: AVATAR_LEFT + 8,
+                  top: BANNER_H - AVATAR_BOTTOM + 10,
+                  backgroundColor: ringColor,
                 },
               ]}
             >
-              <Text
-                style={
-                  styles.levelPillText
-                }
-              >
-                Lv {displayLevel}
-              </Text>
+              <Text style={styles.levelPillText}>LV {displayLevel}</Text>
             </View>
           </View>
 
-          {/* Zoom slider */}
           <View style={styles.zoomRow}>
-            <Text
-              style={styles.zoomLabel}
-            >
-              Zoom
-            </Text>
+            <Text style={styles.zoomLabel}>Zoom</Text>
             <Slider
-              style={
-                styles.slider
-              }
+              style={styles.slider}
               minimumValue={1}
               maximumValue={4}
               value={scale}
-              onValueChange={
-                onSliderChange
-              }
-              minimumTrackTintColor={
-                GOLD
-              }
-              maximumTrackTintColor="#444"
+              onValueChange={onSliderChange}
+              minimumTrackTintColor={GOLD}
+              maximumTrackTintColor="#3F3F3F"
               thumbTintColor={GOLD}
             />
           </View>
 
-          <Text
-            style={styles.hint}
-            numberOfLines={2}
-          >
-            Drag inside the circle to
-            position your avatar ·
-            Pinch to zoom (mobile) ·
-            Or use the slider
+          <Text style={styles.hint}>
+            Drag inside the circle to position your avatar · Pinch to zoom · Or use the slider
           </Text>
 
-          {/* Actions */}
           <View style={styles.actions}>
-            <TouchableOpacity
-              onPress={onCancel}
-              disabled={saving}
-              style={[
-                styles.btn,
-                styles.btnGhost,
-              ]}
-            >
-              <Text
-                style={
-                  styles.btnGhostText
-                }
-              >
-                Cancel
-              </Text>
+            <TouchableOpacity onPress={onCancel} disabled={saving} style={[styles.btn, styles.btnGhost]}>
+              <Text style={styles.btnGhostText}>Cancel</Text>
             </TouchableOpacity>
+
             <TouchableOpacity
               onPress={doCrop}
-              disabled={
-                saving ||
-                loadingMeta ||
-                !effectiveUri
-              }
+              disabled={saving || loadingMeta || !effectiveUri}
               style={[
                 styles.btn,
                 styles.btnPrimary,
-                (saving ||
-                  loadingMeta ||
-                  !effectiveUri) && {
-                  opacity: 0.6,
-                },
+                (saving || loadingMeta || !effectiveUri) && { opacity: 0.6 },
               ]}
             >
               {saving ? (
                 <ActivityIndicator color="#000" />
               ) : (
-                <Text
-                  style={
-                    styles.btnPrimaryText
-                  }
-                >
-                  Save
-                </Text>
+                <Text style={styles.btnPrimaryText}>Save</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -676,8 +438,6 @@ export default function AvatarCropper({
   );
 }
 
-/* ======================= STYLES ======================= */
-
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
@@ -686,78 +446,158 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: H_PADDING,
   },
+
   card: {
     width: '100%',
     maxWidth: PREVIEW_MAX_W,
     backgroundColor: COLORS.card,
-    borderRadius: 18,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: COLORS.border,
     paddingVertical: 18,
     paddingHorizontal: 18,
     alignItems: 'center',
   },
+
   title: {
     color: COLORS.textPrimary,
     fontSize: 18,
     fontWeight: '900',
     marginBottom: 14,
-    fontFamily: FONT_OBLIVION,
+    fontFamily: FONT_PRIMARY,
+    letterSpacing: 0.3,
   },
+
   previewWrap: {
-    borderRadius: 14,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#FFFFFF22',
+    borderColor: 'rgba(255,255,255,0.10)',
     overflow: 'hidden',
     backgroundColor: '#000',
     position: 'relative',
   },
+
   bannerImage: {
     ...StyleSheet.absoluteFillObject,
   },
-  bannerOverlay: {
+
+  bannerDarken: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 18,
-    backgroundColor:
-      'rgba(0,0,0,0.18)',
+    backgroundColor: 'rgba(0,0,0,0.38)',
   },
-  bannerTextWrap: {
+
+  bannerVignetteTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '28%',
+    backgroundColor: 'rgba(0,0,0,0.42)',
+  },
+
+  bannerVignetteBottom: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '38%',
+    backgroundColor: 'rgba(0,0,0,0.48)',
+  },
+
+  topBrandRow: {
+    position: 'absolute',
+    top: 18,
+    left: 18,
+    right: 18,
+    alignItems: 'flex-start',
+  },
+
+  brandText: {
+    color: IVORY,
+    fontSize: 16,
+    letterSpacing: 2.6,
+    fontWeight: '900',
+    fontFamily: FONT_PRIMARY,
+  },
+
+  centerTextWrap: {
+    position: 'absolute',
+    top: '23%',
+    left: 22,
+    right: 22,
     alignItems: 'center',
   },
+
   roleText: {
     color: COLORS.textPrimary,
-    fontSize: 40,
-    letterSpacing: 3,
-    fontWeight: '400',
+    fontSize: 30,
+    letterSpacing: 4,
+    fontWeight: '700',
     textTransform: 'uppercase',
-    fontFamily: FONT_OBLIVION,
+    fontFamily: FONT_LIGHT,
   },
+
   metaText: {
     marginTop: 8,
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    letterSpacing: 2,
-    fontFamily: FONT_OBLIVION,
+    color: GOLD,
+    fontSize: 12,
+    letterSpacing: 1.7,
+    fontFamily: FONT_PRIMARY,
+    fontWeight: '700',
   },
+
+  bottomInfoStrip: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 24,
+    paddingBottom: 14,
+    paddingTop: 26,
+    alignItems: 'center',
+  },
+
+  bottomInfoLabel: {
+    color: MUTED,
+    fontSize: 11,
+    fontFamily: FONT_PRIMARY,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+
+  bottomInfoValue: {
+    color: IVORY,
+    fontSize: 12,
+    letterSpacing: 1,
+    fontFamily: FONT_PRIMARY,
+    fontWeight: '700',
+  },
+
+  avatarOuterGlow: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.34)',
+  },
+
   avatarRingWrapper: {
     position: 'absolute',
     borderRadius: 999,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor:
-      'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderWidth: 1,
   },
+
   avatarRing: {
     position: 'absolute',
-    top: 7,
-    left: 7,
-    right: 7,
-    bottom: 7,
+    top: 5,
+    left: 5,
+    right: 5,
+    bottom: 5,
     borderRadius: 999,
     borderWidth: 2,
   },
+
   gestureFill: {
     width: '100%',
     height: '100%',
@@ -766,82 +606,101 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   avatarCircle: {
     overflow: 'hidden',
     backgroundColor: '#000',
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   avatarLoading: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   levelPill: {
     position: 'absolute',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
     borderRadius: 999,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
+
   levelPillText: {
     fontSize: 11,
     fontWeight: '900',
     color: '#000',
     letterSpacing: 1,
-    fontFamily: FONT_OBLIVION,
+    fontFamily: FONT_PRIMARY,
   },
+
   zoomRow: {
     flexDirection: 'row',
     alignItems: 'center',
     width: '100%',
     marginTop: 16,
   },
+
   zoomLabel: {
     color: COLORS.textPrimary,
     fontSize: 13,
     fontWeight: '700',
     marginRight: 10,
-    fontFamily: FONT_OBLIVION,
+    fontFamily: FONT_PRIMARY,
   },
+
   slider: {
     flex: 1,
     height: 32,
   },
+
   hint: {
     marginTop: 4,
     color: COLORS.hint,
     fontSize: 11,
     textAlign: 'center',
-    fontFamily: FONT_OBLIVION,
+    fontFamily: FONT_PRIMARY,
+    lineHeight: 16,
   },
+
   actions: {
     flexDirection: 'row',
     gap: 12,
     marginTop: 16,
   },
+
   btn: {
     paddingVertical: 10,
     paddingHorizontal: 26,
     borderRadius: 999,
     borderWidth: 1,
   },
+
   btnGhost: {
-    borderColor: '#FFFFFF44',
-    backgroundColor:
-      'transparent',
+    borderColor: 'rgba(255,255,255,0.24)',
+    backgroundColor: 'transparent',
   },
+
   btnGhostText: {
     color: COLORS.textPrimary,
     fontWeight: '800',
-    fontFamily: FONT_OBLIVION,
+    fontFamily: FONT_PRIMARY,
   },
+
   btnPrimary: {
     borderColor: GOLD,
     backgroundColor: GOLD,
   },
+
   btnPrimaryText: {
     color: '#000',
     fontWeight: '900',
-    fontFamily: FONT_OBLIVION,
+    fontFamily: FONT_PRIMARY,
   },
 });
