@@ -139,6 +139,38 @@ const ytThumb = (url: string) => {
   return `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
 };
 
+function slugifyProfileName(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+}
+
+function buildSharedProfileUrl(publicSlug: string) {
+  return `https://overlooked.cloud/creative/${publicSlug}`;
+}
+
+async function ensureProfilePublicSlug(profile: {
+  id: string;
+  full_name?: string | null;
+  public_slug?: string | null;
+}) {
+  if (profile.public_slug) return profile.public_slug;
+
+  const base = slugifyProfileName(profile.full_name || 'creative');
+  const slug = `${base || 'creative'}-${String(profile.id).slice(0, 6)}`;
+
+  const { error } = await supabase
+    .from('users')
+    .update({ public_slug: slug, is_profile_public: true })
+    .eq('id', profile.id);
+
+  if (error) throw error;
+
+  return slug;
+}
 
 /* Flag emoji from country code */
 const codeToFlag = (cc?: string) => {
@@ -1067,7 +1099,7 @@ const isViewingExternalProfile = !!targetIdParam;
 
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const publicProfileUrl = profile?.public_slug
-  ? `${Platform.OS === "web" ? window.location.origin : "https://overlooked.cloud"}/creative/${profile.public_slug}`
+  ? buildSharedProfileUrl(profile.public_slug)
   : null;
   const [mainRoleName, setMainRoleName] = useState('');
   const [cityName, setCityName] = useState('');
@@ -2973,23 +3005,59 @@ if (up.error) throw up.error;
     navigation.reset({ index: 0, routes: [{ name: 'Auth' }] });
   };
 
-  const copyCreativeProtocolLink = async () => {
-  if (!publicProfileUrl) {
-    Alert.alert("Unavailable", "Public link is not ready yet.");
-    return;
-  }
+  const shareProfileLink = async () => {
+  try {
+    if (!profile) {
+      Alert.alert("Unavailable", "Profile is not ready yet.");
+      return;
+    }
 
-  await Clipboard.setStringAsync(publicProfileUrl);
-  Alert.alert("Copied", "Portfolio has been copied.");
+    const publicSlug = await ensureProfilePublicSlug({
+      id: profile.id,
+      full_name: profile.full_name,
+      public_slug: profile.public_slug ?? null,
+    });
+
+    const url = buildSharedProfileUrl(publicSlug);
+
+    setProfile((prev) =>
+      prev ? { ...prev, public_slug: publicSlug, is_profile_public: true } : prev
+    );
+
+    if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
+      await navigator.clipboard.writeText(url);
+    } else {
+      await Clipboard.setStringAsync(url);
+    }
+
+    Alert.alert("Copied", "Public profile link has been copied.");
+  } catch (e: any) {
+    console.warn("Profile share failed:", e?.message || e);
+    Alert.alert("Share failed", "Could not create or copy the public profile link.");
+  }
 };
 
-const previewCreativeProtocolLink = () => {
-  if (!profile?.public_slug) {
-    Alert.alert("Unavailable", "Public link is not ready yet.");
-    return;
-  }
+const previewCreativeProtocolLink = async () => {
+  try {
+    if (!profile) {
+      Alert.alert("Unavailable", "Profile is not ready yet.");
+      return;
+    }
 
-  navigation.navigate("PublicProfile", { slug: profile.public_slug });
+    const publicSlug = await ensureProfilePublicSlug({
+      id: profile.id,
+      full_name: profile.full_name,
+      public_slug: profile.public_slug ?? null,
+    });
+
+    setProfile((prev) =>
+      prev ? { ...prev, public_slug: publicSlug, is_profile_public: true } : prev
+    );
+
+    navigation.navigate("PublicProfile", { slug: publicSlug });
+  } catch (e: any) {
+    Alert.alert("Unavailable", "Public profile link is not ready yet.");
+  }
 };
 
   const startOneToOneChat = async () => {
@@ -3252,20 +3320,20 @@ paddingHorizontal: compactMobile ? 8 : 0,
   }}
 >
   <TouchableOpacity
-    onPress={copyCreativeProtocolLink}
-    activeOpacity={0.85}
-    style={compactMobile ? styles.utilitySingleLinkBtnMobile : styles.utilitySingleLinkBtn}
+  onPress={shareProfileLink}
+  activeOpacity={0.85}
+  style={compactMobile ? styles.utilitySingleLinkBtnMobile : styles.utilitySingleLinkBtn}
+>
+  <Text
+    style={
+      compactMobile
+        ? styles.utilitySingleLinkBtnTextMobile
+        : styles.utilitySingleLinkBtnText
+    }
   >
-    <Text
-      style={
-        compactMobile
-          ? styles.utilitySingleLinkBtnTextMobile
-          : styles.utilitySingleLinkBtnText
-      }
-    >
-      Share Portfolio Link
-    </Text>
-  </TouchableOpacity>
+    Share Profile
+  </Text>
+</TouchableOpacity>
 </View>
     </View>
   );
