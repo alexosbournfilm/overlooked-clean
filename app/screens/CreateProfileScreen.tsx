@@ -114,6 +114,25 @@ async function uploadArrayBufferToBucket(opts: {
   return data.publicUrl;
 }
 
+async function uriToArrayBuffer(uri: string) {
+  // Web-safe path first because cropped URIs on web are often blob: URLs
+  if (Platform.OS === 'web' || uri.startsWith('blob:') || uri.startsWith('data:')) {
+    const response = await fetch(uri);
+    if (!response.ok) throw new Error('Could not read cropped image.');
+    return await response.arrayBuffer();
+  }
+
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+
+  if (!base64) {
+    throw new Error('Could not read cropped image.');
+  }
+
+  return base64ToArrayBuffer(base64);
+}
+
 const normalizeText = (text: string) => text.trim().toLowerCase();
 
 const rankMatch = (candidate: string, query: string) => {
@@ -222,19 +241,19 @@ export default function CreateProfileScreen() {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 700,
+        duration: 280,
         easing: Easing.inOut(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.timing(slideAnim, {
         toValue: -12,
-        duration: 700,
+        duration: 280,
         easing: Easing.inOut(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.timing(scaleAnim, {
         toValue: 0.985,
-        duration: 700,
+        duration: 280,
         easing: Easing.inOut(Easing.cubic),
         useNativeDriver: true,
       }),
@@ -248,19 +267,19 @@ export default function CreateProfileScreen() {
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 850,
+          duration: 340,
           easing: Easing.inOut(Easing.exp),
           useNativeDriver: true,
         }),
         Animated.timing(slideAnim, {
           toValue: 0,
-          duration: 850,
+          duration: 340,
           easing: Easing.inOut(Easing.exp),
           useNativeDriver: true,
         }),
         Animated.timing(scaleAnim, {
           toValue: 1,
-          duration: 850,
+          duration: 340,
           easing: Easing.inOut(Easing.exp),
           useNativeDriver: true,
         }),
@@ -428,24 +447,21 @@ export default function CreateProfileScreen() {
     try {
       setUploadingImage(true);
 
+      // Show the selected image immediately
+      setImage(croppedUri);
+
       const {
         data: { user },
+        error: userError,
       } = await supabase.auth.getUser();
 
+      if (userError) throw userError;
       if (!user?.id) throw new Error('User not authenticated');
 
       const fileName = `${Date.now()}_avatar.jpg`;
       const path = `user_${user.id}/${fileName}`;
 
-      const base64 = await FileSystem.readAsStringAsync(croppedUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      if (!base64) {
-        throw new Error('Could not read cropped image.');
-      }
-
-      const arrayBuffer = base64ToArrayBuffer(base64);
+      const arrayBuffer = await uriToArrayBuffer(croppedUri);
 
       const publicUrl = await uploadArrayBufferToBucket({
         bucket: 'avatars',
@@ -454,16 +470,16 @@ export default function CreateProfileScreen() {
         contentType: 'image/jpeg',
       });
 
-      setImage(croppedUri);
       setImageUrl(publicUrl);
+      setCropperOpen(false);
+      setCropSource(null);
+
       animateStageChange('review');
     } catch (err: any) {
       console.error('Avatar upload error:', err);
       Alert.alert('Upload Error', err?.message ?? 'Could not upload image.');
     } finally {
       setUploadingImage(false);
-      setCropperOpen(false);
-      setCropSource(null);
     }
   };
 
@@ -499,7 +515,7 @@ export default function CreateProfileScreen() {
           },
           { onConflict: 'id' }
         )
-        .select('id, full_name, main_role_id, city_id')
+        .select('id, full_name, main_role_id, city_id, avatar_url')
         .maybeSingle();
 
       if (error) throw error;
@@ -510,19 +526,26 @@ export default function CreateProfileScreen() {
       const start = Date.now();
       let gate =
         profileComplete ||
-        Boolean(upserted?.full_name && upserted?.main_role_id && upserted?.city_id);
+        Boolean(
+          upserted?.full_name && upserted?.main_role_id && upserted?.city_id && upserted?.avatar_url
+        );
 
       while (!gate && Date.now() - start < 2500) {
         await new Promise((r) => setTimeout(r, 150));
         await refreshProfile();
         gate =
           profileComplete ||
-          Boolean(upserted?.full_name && upserted?.main_role_id && upserted?.city_id);
+          Boolean(
+            upserted?.full_name &&
+              upserted?.main_role_id &&
+              upserted?.city_id &&
+              upserted?.avatar_url
+          );
       }
 
       showToast('Welcome to Overlooked!');
 
-      if (gate && navigationRef.isReady()) {
+      if (navigationRef.isReady()) {
         navigationRef.dispatch(
           CommonActions.reset({
             index: 0,
@@ -536,6 +559,7 @@ export default function CreateProfileScreen() {
         );
       }
     } catch (err: any) {
+      console.error('Create profile error:', err);
       Alert.alert('Error', err?.message ?? 'Could not create profile.');
     } finally {
       setSaving(false);
@@ -636,6 +660,7 @@ export default function CreateProfileScreen() {
                     style={[styles.selectButton, stage === 'role' && styles.activeSelectButton]}
                     onPress={openRoleSelector}
                     activeOpacity={0.9}
+                    disabled={loading}
                   >
                     <Text style={styles.selectButtonText}>
                       {mainRoleLabel ?? 'Search your main creative role'}
@@ -652,6 +677,7 @@ export default function CreateProfileScreen() {
                     style={[styles.selectButton, stage === 'city' && styles.activeSelectButton]}
                     onPress={openCitySelector}
                     activeOpacity={0.9}
+                    disabled={loading}
                   >
                     <Text style={styles.selectButtonText}>
                       {cityLabel ?? 'Search for your city'}
@@ -671,6 +697,7 @@ export default function CreateProfileScreen() {
                     style={[styles.input, searchInputWebFix]}
                     placeholderTextColor={TEXT_MUTED}
                     autoFocus={stage === 'name'}
+                    editable={!loading}
                     onSubmitEditing={() => {
                       if (fullName.trim().length >= 2 && stage === 'name') {
                         animateStageChange('image');
@@ -714,7 +741,7 @@ export default function CreateProfileScreen() {
                       stage === 'image' && styles.avatarButtonActive,
                       isMobile && styles.avatarButtonMobile,
                     ]}
-                    disabled={uploadingImage || saving}
+                    disabled={loading}
                   >
                     {image ? (
                       <Image source={{ uri: image }} style={styles.avatarImage} resizeMode="cover" />
@@ -730,7 +757,7 @@ export default function CreateProfileScreen() {
                     onPress={pickImage}
                     style={[styles.avatarChangeBtn, isMobile && styles.avatarChangeBtnMobile]}
                     activeOpacity={0.88}
-                    disabled={uploadingImage || saving}
+                    disabled={loading}
                   >
                     {uploadingImage ? (
                       <ActivityIndicator color="#000" size="small" />
@@ -743,7 +770,11 @@ export default function CreateProfileScreen() {
 
                   <Text style={styles.requiredLabel}>Required</Text>
 
-                  {stage === 'image' && imageUrl && (
+                  {!!uploadingImage && (
+                    <Text style={styles.uploadingText}>Saving your profile image...</Text>
+                  )}
+
+                  {stage === 'image' && imageUrl && !uploadingImage && (
                     <TouchableOpacity
                       onPress={() => animateStageChange('review')}
                       style={styles.inlineContinueButton}
@@ -757,6 +788,31 @@ export default function CreateProfileScreen() {
 
               {reviewVisible && (
                 <>
+                  <View style={styles.reviewCard}>
+                    <Text style={styles.reviewTitle}>Confirm your profile</Text>
+
+                    {!!image && (
+                      <View style={styles.reviewAvatarWrap}>
+                        <Image source={{ uri: image }} style={styles.reviewAvatar} />
+                      </View>
+                    )}
+
+                    <View style={styles.reviewRow}>
+                      <Text style={styles.reviewLabel}>Name</Text>
+                      <Text style={styles.reviewValue}>{fullName || '—'}</Text>
+                    </View>
+
+                    <View style={styles.reviewRow}>
+                      <Text style={styles.reviewLabel}>Role</Text>
+                      <Text style={styles.reviewValue}>{mainRoleLabel || '—'}</Text>
+                    </View>
+
+                    <View style={styles.reviewRow}>
+                      <Text style={styles.reviewLabel}>Location</Text>
+                      <Text style={styles.reviewValue}>{cityLabel || '—'}</Text>
+                    </View>
+                  </View>
+
                   <View style={styles.infoBox}>
                     <Text style={styles.infoBoxTitle}>Showreels and portfolio</Text>
                     <Text style={styles.infoBoxText}>
@@ -765,18 +821,29 @@ export default function CreateProfileScreen() {
                     </Text>
                   </View>
 
-                  <TouchableOpacity
-                    onPress={handleSubmit}
-                    style={[styles.submitButton, loading && { opacity: 0.6 }]}
-                    disabled={loading}
-                    activeOpacity={0.9}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#000" />
-                    ) : (
-                      <Text style={styles.submitText}>Finish</Text>
-                    )}
-                  </TouchableOpacity>
+                  <View style={styles.reviewActions}>
+                    <TouchableOpacity
+                      onPress={() => animateStageChange('image')}
+                      style={styles.backButton}
+                      activeOpacity={0.9}
+                      disabled={loading}
+                    >
+                      <Text style={styles.backButtonText}>Back</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={handleSubmit}
+                      style={[styles.submitButton, styles.submitButtonReview, loading && { opacity: 0.6 }]}
+                      disabled={loading}
+                      activeOpacity={0.9}
+                    >
+                      {loading ? (
+                        <ActivityIndicator color="#000" />
+                      ) : (
+                        <Text style={styles.submitText}>Confirm & Enter</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 </>
               )}
             </View>
@@ -931,18 +998,18 @@ export default function CreateProfileScreen() {
       </Modal>
 
       <AvatarCropper
-  visible={cropperOpen}
-  imageUri={cropSource || undefined}
-  onCancel={() => {
-    setCropperOpen(false);
-    setCropSource(null);
-  }}
-  onCropped={handleAvatarCropped}
-  fullName={fullName || 'Your Name'}
-  mainRoleName={mainRoleLabel || 'Director'}
-  cityName={cityLabel || 'Your City'}
-  level={50}
-/>
+        visible={cropperOpen}
+        imageUri={cropSource || undefined}
+        onCancel={() => {
+          setCropperOpen(false);
+          setCropSource(null);
+        }}
+        onCropped={handleAvatarCropped}
+        fullName={fullName || 'Your Name'}
+        mainRoleName={mainRoleLabel || 'Director'}
+        cityName={cityLabel || 'Your City'}
+        level={50}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -1154,6 +1221,14 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
+  uploadingText: {
+    marginTop: 10,
+    color: TEXT_MUTED,
+    fontSize: 13,
+    fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
+  },
+
   fieldBlock: {
     marginBottom: 16,
   },
@@ -1228,6 +1303,66 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
 
+  reviewCard: {
+    marginTop: 4,
+    marginBottom: 16,
+    backgroundColor: ELEVATED,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+
+  reviewTitle: {
+    color: TEXT_IVORY,
+    fontSize: 18,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+    marginBottom: 14,
+    textAlign: 'center',
+  },
+
+  reviewAvatarWrap: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    overflow: 'hidden',
+    marginBottom: 18,
+    borderWidth: 1.5,
+    borderColor: GOLD,
+  },
+
+  reviewAvatar: {
+    width: '100%',
+    height: '100%',
+  },
+
+  reviewRow: {
+    width: '100%',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER_SOFT,
+  },
+
+  reviewLabel: {
+    color: GOLD,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+
+  reviewValue: {
+    color: TEXT_IVORY,
+    fontSize: 15,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '700',
+  },
+
   infoBox: {
     marginTop: 4,
     marginBottom: 18,
@@ -1256,6 +1391,30 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
+  reviewActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  backButton: {
+    flex: 1,
+    backgroundColor: ELEVATED,
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingVertical: 15,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+
+  backButtonText: {
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 15,
+    letterSpacing: 0.4,
+  },
+
   submitButton: {
     backgroundColor: GOLD,
     width: '100%',
@@ -1263,6 +1422,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     marginTop: 4,
+  },
+
+  submitButtonReview: {
+    flex: 1.6,
+    marginTop: 0,
   },
 
   submitText: {
