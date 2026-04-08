@@ -444,44 +444,43 @@ export default function CreateProfileScreen() {
   };
 
   const handleAvatarCropped = async (croppedUri: string) => {
-    try {
-      setUploadingImage(true);
+  try {
+    setUploadingImage(true);
 
-      // Show the selected image immediately
-      setImage(croppedUri);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+    if (userError) throw userError;
+    if (!user?.id) throw new Error('User not authenticated');
 
-      if (userError) throw userError;
-      if (!user?.id) throw new Error('User not authenticated');
+    const fileName = `${Date.now()}_avatar.jpg`;
+    const path = `user_${user.id}/${fileName}`;
 
-      const fileName = `${Date.now()}_avatar.jpg`;
-      const path = `user_${user.id}/${fileName}`;
+    const arrayBuffer = await uriToArrayBuffer(croppedUri);
 
-      const arrayBuffer = await uriToArrayBuffer(croppedUri);
+    const publicUrl = await uploadArrayBufferToBucket({
+      bucket: 'avatars',
+      path,
+      arrayBuffer,
+      contentType: 'image/jpeg',
+    });
 
-      const publicUrl = await uploadArrayBufferToBucket({
-        bucket: 'avatars',
-        path,
-        arrayBuffer,
-        contentType: 'image/jpeg',
-      });
+    setImage(croppedUri);
+    setImageUrl(publicUrl);
 
-      setImageUrl(publicUrl);
-      setCropperOpen(false);
-      setCropSource(null);
+    setCropperOpen(false);
+    setCropSource(null);
 
-      animateStageChange('review');
-    } catch (err: any) {
-      console.error('Avatar upload error:', err);
-      Alert.alert('Upload Error', err?.message ?? 'Could not upload image.');
-    } finally {
-      setUploadingImage(false);
-    }
-  };
+    animateStageChange('review');
+  } catch (err: any) {
+    console.error('Avatar upload error:', err);
+    Alert.alert('Upload Error', err?.message ?? 'Could not upload image.');
+  } finally {
+    setUploadingImage(false);
+  }
+};
 
   const handleSubmit = async () => {
     if (!fullName.trim() || !mainRole || !cityId) {
@@ -743,14 +742,18 @@ export default function CreateProfileScreen() {
                     ]}
                     disabled={loading}
                   >
-                    {image ? (
-                      <Image source={{ uri: image }} style={styles.avatarImage} resizeMode="cover" />
-                    ) : (
-                      <View style={styles.avatarFallback}>
-                        <Ionicons name="camera-outline" size={30} color={GOLD} />
-                        <Text style={styles.avatarFallbackText}>Add Profile Image</Text>
-                      </View>
-                    )}
+                    {(imageUrl || image) ? (
+  <Image
+    source={{ uri: imageUrl || image || undefined }}
+    style={styles.avatarImage}
+    resizeMode="cover"
+  />
+) : (
+  <View style={styles.avatarFallback}>
+    <Ionicons name="camera-outline" size={30} color={GOLD} />
+    <Text style={styles.avatarFallbackText}>Add Profile Image</Text>
+  </View>
+)}
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -791,11 +794,15 @@ export default function CreateProfileScreen() {
                   <View style={styles.reviewCard}>
                     <Text style={styles.reviewTitle}>Confirm your profile</Text>
 
-                    {!!image && (
-                      <View style={styles.reviewAvatarWrap}>
-                        <Image source={{ uri: image }} style={styles.reviewAvatar} />
-                      </View>
-                    )}
+                    {!!(imageUrl || image) && (
+  <View style={styles.reviewAvatarWrap}>
+    <Image
+      source={{ uri: imageUrl || image || undefined }}
+      style={styles.reviewAvatar}
+      resizeMode="cover"
+    />
+  </View>
+)}
 
                     <View style={styles.reviewRow}>
                       <Text style={styles.reviewLabel}>Name</Text>
