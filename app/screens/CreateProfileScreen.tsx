@@ -115,7 +115,6 @@ async function uploadArrayBufferToBucket(opts: {
 }
 
 async function uriToArrayBuffer(uri: string) {
-  // Web-safe path first because cropped URIs on web are often blob: URLs
   if (Platform.OS === 'web' || uri.startsWith('blob:') || uri.startsWith('data:')) {
     const response = await fetch(uri);
     if (!response.ok) throw new Error('Could not read cropped image.');
@@ -131,6 +130,23 @@ async function uriToArrayBuffer(uri: string) {
   }
 
   return base64ToArrayBuffer(base64);
+}
+
+async function makePreviewUri(uri: string) {
+  if (Platform.OS === 'web') {
+    const response = await fetch(uri);
+    if (!response.ok) throw new Error('Could not prepare preview image.');
+    const blob = await response.blob();
+
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error('Could not prepare preview image.'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  return uri;
 }
 
 const normalizeText = (text: string) => text.trim().toLowerCase();
@@ -175,6 +191,7 @@ export default function CreateProfileScreen() {
   const [fullName, setFullName] = useState('');
 
   const [image, setImage] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
 
@@ -444,43 +461,45 @@ export default function CreateProfileScreen() {
   };
 
   const handleAvatarCropped = async (croppedUri: string) => {
-  try {
-    setUploadingImage(true);
+    try {
+      setUploadingImage(true);
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+      const previewUri = await makePreviewUri(croppedUri);
+      setImage(croppedUri);
+      setImagePreview(previewUri);
 
-    if (userError) throw userError;
-    if (!user?.id) throw new Error('User not authenticated');
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-    const fileName = `${Date.now()}_avatar.jpg`;
-    const path = `user_${user.id}/${fileName}`;
+      if (userError) throw userError;
+      if (!user?.id) throw new Error('User not authenticated');
 
-    const arrayBuffer = await uriToArrayBuffer(croppedUri);
+      const fileName = `${Date.now()}_avatar.jpg`;
+      const path = `user_${user.id}/${fileName}`;
 
-    const publicUrl = await uploadArrayBufferToBucket({
-      bucket: 'avatars',
-      path,
-      arrayBuffer,
-      contentType: 'image/jpeg',
-    });
+      const arrayBuffer = await uriToArrayBuffer(croppedUri);
 
-    setImage(croppedUri);
-    setImageUrl(publicUrl);
+      const publicUrl = await uploadArrayBufferToBucket({
+        bucket: 'avatars',
+        path,
+        arrayBuffer,
+        contentType: 'image/jpeg',
+      });
 
-    setCropperOpen(false);
-    setCropSource(null);
+      setImageUrl(publicUrl);
+      setCropperOpen(false);
+      setCropSource(null);
 
-    animateStageChange('review');
-  } catch (err: any) {
-    console.error('Avatar upload error:', err);
-    Alert.alert('Upload Error', err?.message ?? 'Could not upload image.');
-  } finally {
-    setUploadingImage(false);
-  }
-};
+      animateStageChange('review');
+    } catch (err: any) {
+      console.error('Avatar upload error:', err);
+      Alert.alert('Upload Error', err?.message ?? 'Could not upload image.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!fullName.trim() || !mainRole || !cityId) {
@@ -566,6 +585,7 @@ export default function CreateProfileScreen() {
   };
 
   const loading = saving || uploadingImage;
+  const displayImage = imagePreview || imageUrl || image;
 
   const searchInputWebFix =
     Platform.OS === 'web'
@@ -742,18 +762,14 @@ export default function CreateProfileScreen() {
                     ]}
                     disabled={loading}
                   >
-                    {(imageUrl || image) ? (
-  <Image
-    source={{ uri: imageUrl || image || undefined }}
-    style={styles.avatarImage}
-    resizeMode="cover"
-  />
-) : (
-  <View style={styles.avatarFallback}>
-    <Ionicons name="camera-outline" size={30} color={GOLD} />
-    <Text style={styles.avatarFallbackText}>Add Profile Image</Text>
-  </View>
-)}
+                    {displayImage ? (
+                      <Image source={{ uri: displayImage }} style={styles.avatarImage} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.avatarFallback}>
+                        <Ionicons name="camera-outline" size={30} color={GOLD} />
+                        <Text style={styles.avatarFallbackText}>Add Profile Image</Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -766,7 +782,7 @@ export default function CreateProfileScreen() {
                       <ActivityIndicator color="#000" size="small" />
                     ) : (
                       <Text style={styles.avatarChangeBtnText}>
-                        {image ? 'Change Profile Image' : 'Upload Profile Image'}
+                        {displayImage ? 'Change Profile Image' : 'Upload Profile Image'}
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -794,15 +810,15 @@ export default function CreateProfileScreen() {
                   <View style={styles.reviewCard}>
                     <Text style={styles.reviewTitle}>Confirm your profile</Text>
 
-                    {!!(imageUrl || image) && (
-  <View style={styles.reviewAvatarWrap}>
-    <Image
-      source={{ uri: imageUrl || image || undefined }}
-      style={styles.reviewAvatar}
-      resizeMode="cover"
-    />
-  </View>
-)}
+                    {!!displayImage && (
+                      <View style={styles.reviewAvatarWrap}>
+                        <Image
+                          source={{ uri: displayImage }}
+                          style={styles.reviewAvatar}
+                          resizeMode="cover"
+                        />
+                      </View>
+                    )}
 
                     <View style={styles.reviewRow}>
                       <Text style={styles.reviewLabel}>Name</Text>
@@ -1339,6 +1355,7 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     borderWidth: 1.5,
     borderColor: GOLD,
+    backgroundColor: '#151515',
   },
 
   reviewAvatar: {
