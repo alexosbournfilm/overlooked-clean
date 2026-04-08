@@ -1,4 +1,3 @@
-// screens/CreateProfileScreen.tsx
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
@@ -25,12 +24,12 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CommonActions } from '@react-navigation/native';
+import * as FileSystem from 'expo-file-system';
 import { supabase } from '../lib/supabase';
 import { navigationRef } from '../navigation/navigationRef';
 import { useAuth } from '../context/AuthProvider';
 import { useGamification } from '../context/GamificationContext';
 import AvatarCropper from '../../components/AvatarCropper';
-import * as FileSystem from 'expo-file-system/legacy';
 
 // ---------------- THEME ----------------
 const DARK_BG = '#000000';
@@ -115,17 +114,26 @@ async function uploadArrayBufferToBucket(opts: {
 }
 
 async function uriToArrayBuffer(uri: string) {
+  if (!uri) {
+    throw new Error('Missing image URI.');
+  }
+
   if (Platform.OS === 'web' || uri.startsWith('blob:') || uri.startsWith('data:')) {
     const response = await fetch(uri);
     if (!response.ok) throw new Error('Could not read cropped image.');
     return await response.arrayBuffer();
   }
 
-  const base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
+  const fileInfo = await FileSystem.getInfoAsync(uri);
+  if (!fileInfo.exists) {
+    throw new Error('Cropped image file does not exist.');
+  }
 
-  if (!base64) {
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+  encoding: 'base64' as any,
+});
+
+  if (!base64 || typeof base64 !== 'string') {
     throw new Error('Could not read cropped image.');
   }
 
@@ -133,6 +141,8 @@ async function uriToArrayBuffer(uri: string) {
 }
 
 async function makePreviewUri(uri: string) {
+  if (!uri) return uri;
+
   if (Platform.OS === 'web') {
     const response = await fetch(uri);
     if (!response.ok) throw new Error('Could not prepare preview image.');
@@ -456,6 +466,11 @@ export default function CreateProfileScreen() {
     if (result.canceled || !result.assets.length) return;
 
     const asset = result.assets[0];
+    if (!asset?.uri) {
+      Alert.alert('Image Error', 'Could not read selected image.');
+      return;
+    }
+
     setCropSource(asset.uri);
     setCropperOpen(true);
   };
@@ -476,7 +491,7 @@ export default function CreateProfileScreen() {
       if (userError) throw userError;
       if (!user?.id) throw new Error('User not authenticated');
 
-      const fileName = `${Date.now()}_avatar.jpg`;
+      const fileName = `avatar_${Date.now()}.jpg`;
       const path = `user_${user.id}/${fileName}`;
 
       const arrayBuffer = await uriToArrayBuffer(croppedUri);

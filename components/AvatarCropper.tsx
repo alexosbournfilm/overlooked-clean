@@ -1,5 +1,3 @@
-// components/AvatarCropper.tsx
-
 import React, { useState, useEffect } from 'react';
 import {
   Modal,
@@ -15,6 +13,7 @@ import {
 import {
   PanGestureHandler,
   PinchGestureHandler,
+  State,
 } from 'react-native-gesture-handler';
 import * as ImageManipulator from 'expo-image-manipulator';
 import Slider from '@react-native-community/slider';
@@ -69,7 +68,7 @@ const PREVIEW_MAX_W = 1040;
 const H_PADDING = 22;
 
 const PREVIEW_W = Math.min(WINDOW.width - H_PADDING * 2, PREVIEW_MAX_W);
-const BANNER_H = PREVIEW_W * 0.50;
+const BANNER_H = PREVIEW_W * 0.5;
 
 const AVATAR_DIAMETER = BANNER_H * 0.25;
 const AVATAR_RADIUS = AVATAR_DIAMETER / 2;
@@ -77,11 +76,16 @@ const AVATAR_RADIUS = AVATAR_DIAMETER / 2;
 const AVATAR_LEFT = 24;
 const AVATAR_BOTTOM = 34;
 
-function isEndState(state: any) {
-  return state === 'END' || state === 5 || state === 'CANCELLED' || state === 3;
+function isEndState(state: number) {
+  return (
+    state === State.END ||
+    state === State.CANCELLED ||
+    state === State.FAILED
+  );
 }
 
-const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+const clamp = (v: number, min: number, max: number) =>
+  Math.max(min, Math.min(max, v));
 
 const LEVEL_RING_STEPS = [
   { max: 24, color: '#E0E0EA' },
@@ -136,15 +140,39 @@ export default function AvatarCropper({
         setImgSize({ w, h });
         setLoadingMeta(false);
       },
-      () => {
-        setImgSize({ w: 1000, h: 1000 });
-        setLoadingMeta(false);
+      async () => {
+        try {
+          const result = await ImageManipulator.manipulateAsync(
+            effectiveUri,
+            [],
+            {
+              compress: 1,
+              format: ImageManipulator.SaveFormat.JPEG,
+            }
+          );
+
+          Image.getSize(
+            result.uri,
+            (w, h) => {
+              setImgSize({ w, h });
+              setLoadingMeta(false);
+            },
+            () => {
+              setImgSize({ w: 1000, h: 1000 });
+              setLoadingMeta(false);
+            }
+          );
+        } catch {
+          setImgSize({ w: 1000, h: 1000 });
+          setLoadingMeta(false);
+        }
       }
     );
   }, [effectiveUri, visible]);
 
   useEffect(() => {
     if (!visible) return;
+
     setBaseScale(1);
     setLastOffset({ x: 0, y: 0 });
     setScale(1);
@@ -215,6 +243,7 @@ export default function AvatarCropper({
 
       const cxView = AVATAR_RADIUS;
       const cyView = AVATAR_RADIUS;
+
       const imgCxView = AVATAR_RADIUS + translate.x;
       const imgCyView = AVATAR_RADIUS + translate.y;
 
@@ -236,17 +265,17 @@ export default function AvatarCropper({
         originY = clamp(originY, 0, imgH - size);
       }
 
+      const crop = {
+        originX: Math.round(originX),
+        originY: Math.round(originY),
+        width: Math.round(size),
+        height: Math.round(size),
+      };
+
       const result = await ImageManipulator.manipulateAsync(
         effectiveUri,
         [
-          {
-            crop: {
-              originX,
-              originY,
-              width: size,
-              height: size,
-            } as any,
-          },
+          { crop },
           {
             resize: {
               width: 512,
@@ -262,6 +291,7 @@ export default function AvatarCropper({
 
       emitDone(result.uri);
     } catch (err) {
+      console.log('Avatar crop error:', err);
       emitDone(effectiveUri);
     } finally {
       setSaving(false);
@@ -270,9 +300,11 @@ export default function AvatarCropper({
 
   if (!visible) return null;
 
-  const displayRole = (mainRoleName || '').toString().trim().toUpperCase() || 'DIRECTOR';
+  const displayRole =
+    (mainRoleName || '').toString().trim().toUpperCase() || 'DIRECTOR';
   const displayName = (fullName || '').toString().trim() || 'Your Name';
-  const displayCity = (cityName || '').toString().trim().toUpperCase() || 'YOUR CITY';
+  const displayCity =
+    (cityName || '').toString().trim().toUpperCase() || 'YOUR CITY';
   const displayLevel = typeof level === 'number' && level > 0 ? level : 8;
   const ringColor = getRingColorForLevel(level);
 
@@ -412,7 +444,11 @@ export default function AvatarCropper({
           </Text>
 
           <View style={styles.actions}>
-            <TouchableOpacity onPress={onCancel} disabled={saving} style={[styles.btn, styles.btnGhost]}>
+            <TouchableOpacity
+              onPress={onCancel}
+              disabled={saving}
+              style={[styles.btn, styles.btnGhost]}
+            >
               <Text style={styles.btnGhostText}>Cancel</Text>
             </TouchableOpacity>
 

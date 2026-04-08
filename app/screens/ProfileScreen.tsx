@@ -38,7 +38,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../context/AuthProvider';
 import { Upload } from 'tus-js-client';
 import { supportUser, unsupportUser } from "../lib/connections";
-import * as FileSystem from "expo-file-system/legacy";
+import * as FileSystem from 'expo-file-system';
 import { Buffer } from "buffer";
 import { useMonthlyStreak } from "../lib/useMonthlyStreak";
 import YoutubePlayer from "react-native-youtube-iframe";
@@ -2834,7 +2834,7 @@ async function uploadSubmissionThumbToStorage(opts: {
 
     if (Platform.OS !== "web" && uri.startsWith("file://")) {
       const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
+        encoding: 'base64' as any,
       });
       const bytes = Buffer.from(base64, "base64");
       blob = new Uint8Array(bytes);
@@ -2901,7 +2901,7 @@ async function uploadShowreelThumbToStorage(opts: {
 
     if (Platform.OS !== "web" && uri.startsWith("file://")) {
       const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
+        encoding: 'base64' as any,
       });
       const bytes = Buffer.from(base64, "base64");
       blob = new Uint8Array(bytes);
@@ -2964,7 +2964,7 @@ async function uploadThumbnailToStorage(opts: {
 
   if (Platform.OS !== "web" && thumbUri.startsWith("file://")) {
     const base64 = await FileSystem.readAsStringAsync(thumbUri, {
-      encoding: FileSystem.EncodingType.Base64,
+      encoding: 'base64' as any,
     });
     const bytes = Buffer.from(base64, "base64");
     blob = new Blob([bytes], { type: "image/jpeg" });
