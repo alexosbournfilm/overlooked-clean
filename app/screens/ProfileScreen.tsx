@@ -103,7 +103,13 @@ const ONE_GB = 1024 * 1024 * 1024;
 
 const looksLikeVideo = (u: string) => {
   const s = (u || "").toLowerCase();
-  return s.endsWith(".mp4") || s.includes(".mp4?");
+  return (
+    s.endsWith(".mp4") ||
+    s.includes(".mp4?") ||
+    s.endsWith(".m3u8") ||
+    s.includes(".m3u8?") ||
+    s.includes("stream.mux.com/")
+  );
 };
 
 // Keep this ONLY if any part of the file still references it
@@ -139,38 +145,6 @@ const ytThumb = (url: string) => {
   return `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
 };
 
-function slugifyProfileName(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-}
-
-function buildSharedProfileUrl(publicSlug: string) {
-  return `https://overlooked.cloud/creative/${publicSlug}`;
-}
-
-async function ensureProfilePublicSlug(profile: {
-  id: string;
-  full_name?: string | null;
-  public_slug?: string | null;
-}) {
-  if (profile.public_slug) return profile.public_slug;
-
-  const base = slugifyProfileName(profile.full_name || 'creative');
-  const slug = `${base || 'creative'}-${String(profile.id).slice(0, 6)}`;
-
-  const { error } = await supabase
-    .from('users')
-    .update({ public_slug: slug, is_profile_public: true })
-    .eq('id', profile.id);
-
-  if (error) throw error;
-
-  return slug;
-}
 
 /* Flag emoji from country code */
 const codeToFlag = (cc?: string) => {
@@ -1073,10 +1047,8 @@ export default function ProfileScreen() {
   }, [navigation]);
   // ✅ 1) figure out which profile we're viewing FIRST
   const viewedUserFromObj = route.params?.user;
-const openProfileSlug = route.params?.openProfileSlug ?? null;
-
-const viewedUserId: string | undefined =
-  route.params?.userId ?? viewedUserFromObj?.id ?? undefined;
+  const viewedUserId: string | undefined =
+    route.params?.userId ?? viewedUserFromObj?.id ?? undefined;
 
   // ✅ 2) pass viewedUserId into the hook (so streak matches the profile)
   const {
@@ -1097,14 +1069,11 @@ const viewedUserId: string | undefined =
   const targetIdParam: string | null =
   route.params?.userId ?? route.params?.user?.id ?? null;
 
-const [profile, setProfile] = useState<ProfileData | null>(null);
-const [sharedProfileUserId, setSharedProfileUserId] = useState<string | null>(null);
+const isViewingExternalProfile = !!targetIdParam;
 
-const isViewingExternalProfile =
-  !!targetIdParam || !!sharedProfileUserId || !!openProfileSlug;
-
-const publicProfileUrl = profile?.public_slug
-  ? buildSharedProfileUrl(profile.public_slug)
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const publicProfileUrl = profile?.public_slug
+  ? `${Platform.OS === "web" ? window.location.origin : "https://overlooked.cloud"}/creative/${profile.public_slug}`
   : null;
   const [mainRoleName, setMainRoleName] = useState('');
   const [cityName, setCityName] = useState('');
@@ -1274,36 +1243,6 @@ if (data) row = data as LevelRow;
   }, []);
 
   /* ---------- profile loader with job wiring ---------- */
-
-  const fetchUserIdFromSharedSlug = useCallback(async (slug: string) => {
-  try {
-    const { data, error } = await supabase
-      .from("users")
-      .select("id")
-      .eq("public_slug", slug)
-      .eq("is_profile_public", true)
-      .maybeSingle();
-
-    if (error) {
-      console.warn("fetchUserIdFromSharedSlug error:", error.message);
-      setSharedProfileUserId(null);
-      return;
-    }
-
-    setSharedProfileUserId(data?.id ?? null);
-  } catch (e: any) {
-    console.warn("fetchUserIdFromSharedSlug fatal:", e?.message || e);
-    setSharedProfileUserId(null);
-  }
-}, []);
-useEffect(() => {
-  if (!openProfileSlug) {
-    setSharedProfileUserId(null);
-    return;
-  }
-
-  fetchUserIdFromSharedSlug(openProfileSlug);
-}, [openProfileSlug, fetchUserIdFromSharedSlug]);
   const fetchProfile = useCallback(async () => {
     if (savingRef.current) return;
 
@@ -1314,9 +1253,7 @@ try {
   const authUserIdLocal = authUserId ?? null;
   setCurrentUserId(authUserIdLocal);
 
-  const targetId =
-  sharedProfileUserId ??
-  (isViewingExternalProfile ? targetIdParam : authUserIdLocal ?? null);
+  const targetId = isViewingExternalProfile ? targetIdParam : authUserIdLocal ?? null;
 
   if (!targetId) {
     setProfile(null);
@@ -1398,9 +1335,14 @@ try {
 
       const existing = (pd.portfolio_url || "").trim();
 
-      if (existing && looksLikeVideo(existing)) {
+const looksLikeMuxPlayback = (u: string) => {
+  const s = (u || "").toLowerCase();
+  return s.includes("stream.mux.com/") || s.endsWith(".m3u8") || s.includes(".m3u8?");
+};
+
+if (existing && (looksLikeVideo(existing) || looksLikeMuxPlayback(existing))) {
   setMp4MainUrl(existing);
-  setMp4MainName(existing.split("/").pop() || "Showreel.mp4");
+  setMp4MainName(existing.split("/").pop() || "Showreel");
 } else {
   setMp4MainUrl("");
   setMp4MainName("");
@@ -1457,20 +1399,18 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
     } finally {
       setIsLoading(false);
     }
- }, [targetIdParam, sharedProfileUserId, loadGamificationMeta, authUserId, authReady]);
+ }, [targetIdParam, loadGamificationMeta, authUserId, authReady]);
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchProfile();
-    }, [fetchProfile])
-  );
+  useEffect(() => {
+  fetchProfile();
+}, [fetchProfile]);
 
   /* ---------- user_showreels CRUD ---------- */
 
   const fetchShowreelList = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('user_showreels')
-      .select(`
+  const { data, error } = await supabase
+    .from('user_showreels')
+    .select(`
   id,
   user_id,
   file_path,
@@ -1479,41 +1419,60 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
   thumbnail_url,
   is_primary,
   sort_order,
-  created_at,
-  mux_upload_id,
-  mux_asset_id,
-  mux_playback_id,
-  mux_status
+  created_at
 `)
-      .eq('user_id', userId)
-      .order('is_primary', { ascending: false })
-      .order('sort_order', { ascending: true })
-      .order('created_at', { ascending: false });
+    .eq('user_id', userId)
+    .order('is_primary', { ascending: false })
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: false });
 
-    if (error) {
-      console.warn('fetchShowreelList error:', error.message);
-      setShowreels([]);
-      return;
-    }
+  console.log('[SHOWREEL] fetchShowreelList result:', { data, error });
 
-    const rows: ShowreelRow[] = (data || []).map((row: any) => {
-      const { data: pub } = supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(row.file_path);
-      return {
-        id: row.id,
-        user_id: row.user_id,
-        file_path: row.file_path,
-        title: row.title ?? null,
-        category: row.category ?? null,
-        thumbnail_url: row.thumbnail_url ?? null,
-        is_primary: row.is_primary ?? false,
-        sort_order: row.sort_order ?? 0,
-        created_at: row.created_at,
-        url: pub.publicUrl,
-      };
-    });
+  if (error) {
+    console.warn('fetchShowreelList error:', error.message);
+    setShowreels([]);
+    return;
+  }
 
-    setShowreels(rows.slice(0, 3));
+  const isMuxReady = (status?: string | null) => {
+    const s = String(status || '').toLowerCase();
+    return s === 'ready' || s === 'asset_ready' || s === 'playable';
   };
+
+  const getMuxPlaybackUrl = (playbackId?: string | null) => {
+    if (!playbackId) return null;
+    return `https://stream.mux.com/${playbackId}.m3u8`;
+  };
+
+  const getMuxThumbnailUrl = (playbackId?: string | null) => {
+    if (!playbackId) return null;
+    return `https://image.mux.com/${playbackId}/thumbnail.jpg`;
+  };
+
+  const rows: ShowreelRow[] = (data || []).map((row: any) => {
+  const storageUrl =
+    row.file_path
+      ? supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(row.file_path).data.publicUrl
+      : null;
+
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    file_path: row.file_path ?? '',
+    title: row.title ?? null,
+    category: row.category ?? null,
+    thumbnail_url: row.thumbnail_url ?? null,
+    is_primary: row.is_primary ?? false,
+    sort_order: row.sort_order ?? 0,
+    created_at: row.created_at,
+    url: storageUrl || '',
+  };
+});
+
+  console.log('[SHOWREEL] mapped showreels:', rows);
+
+  setShowreels(rows.slice(0, 3));
+};
 
   const uploadAnotherShowreel = async () => {
     try {
@@ -1555,71 +1514,117 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
   };
 
   const confirmUploadShowreel = async () => {
-    try {
-      if (!pendingShowreelAsset) return;
+  try {
+    if (!pendingShowreelAsset) return;
 
-      const asset: any = pendingShowreelAsset;
-      const name = (asset.name || '').toLowerCase();
+    const asset: any = pendingShowreelAsset;
+    const name = (asset.name || '').toLowerCase();
 
-      setShowreelCategoryModalVisible(false);
-      setSrUploading(true);
-      setSrProgress(0);
-      setSrStatus('Preparing…');
+    setShowreelCategoryModalVisible(false);
+    setSrUploading(true);
+    setSrProgress(0);
+    setSrStatus('Preparing…');
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-      const { path } = await uploadResumableToBucket({
-        userId: user.id,
-        fileBlob:
-          Platform.OS === 'web' ? ((asset.file as File | Blob | null) ?? undefined) : undefined,
-        localUri: Platform.OS !== 'web' ? (asset.uri as string) : undefined,
-        onProgress: (pct) => setSrProgress(pct),
-        onPhase: (label) => setSrStatus(label),
-        objectName: `user_${user.id}/${Date.now()}_${sanitizeFileName(name || 'showreel')}`,
-        bucket: SHOWREEL_BUCKET,
-      });
+    if (!user) throw new Error('Not authenticated');
 
-      const currentCount = showreels.length;
-      const makePrimary = currentCount === 0;
+    const { path } = await uploadResumableToBucket({
+      userId: user.id,
+      fileBlob:
+        Platform.OS === 'web' ? ((asset.file as File | Blob | null) ?? undefined) : undefined,
+      localUri: Platform.OS !== 'web' ? (asset.uri as string) : undefined,
+      onProgress: (pct) => setSrProgress(pct),
+      onPhase: (label) => setSrStatus(label),
+      objectName: `user_${user.id}/${Date.now()}_${sanitizeFileName(name || 'showreel')}`,
+      bucket: SHOWREEL_BUCKET,
+    });
 
-      const { data: ins, error: insErr } = await supabase
-        .from('user_showreels')
-        .insert({
-          user_id: user.id,
-          file_path: path,
-          title: asset.name || selectedShowreelCategory,
-          category: selectedShowreelCategory,
-          thumbnail_url: null,
-          is_primary: makePrimary,
-          sort_order: currentCount,
-        })
-        .select('id')
-        .single();
+    console.log('[SHOWREEL] storage upload complete, path =', path);
 
-      if (insErr || !ins) throw insErr;
+    const currentCount = showreels.length;
+    const makePrimary = currentCount === 0;
 
-      if (makePrimary) {
-        const { data: pub } = supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(path);
-        const publicUrl = pub.publicUrl;
-        await supabase.from('users').update({ portfolio_url: publicUrl }).eq('id', user.id);
-        setMp4MainUrl(`${publicUrl}${ts()}`);
-        setMp4MainName(asset.name || 'Showreel.mp4');
+    const insertPayload = {
+  user_id: user.id,
+  file_path: path,
+  title: asset.name || selectedShowreelCategory,
+  category: selectedShowreelCategory,
+  thumbnail_url: null,
+  is_primary: makePrimary,
+  sort_order: currentCount,
+};
+
+    console.log('[SHOWREEL] inserting row into user_showreels:', insertPayload);
+
+    const { data: ins, error: insErr } = await supabase
+      .from('user_showreels')
+      .insert(insertPayload)
+      .select('*')
+      .single();
+
+    if (insErr) {
+      console.error('[SHOWREEL] insert failed:', insErr);
+      throw insErr;
+    }
+
+    if (!ins) {
+      throw new Error('Insert succeeded but no row was returned from user_showreels.');
+    }
+
+    console.log('[SHOWREEL] insert success:', ins);
+
+    if (makePrimary) {
+      const publicUrl =
+        ins.mux_playback_id
+          ? `https://stream.mux.com/${ins.mux_playback_id}.m3u8`
+          : path
+          ? supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(path).data.publicUrl
+          : null;
+
+      if (!publicUrl) {
+        throw new Error('No playable URL found for the uploaded showreel.');
       }
 
-      setPendingShowreelAsset(null);
-      await fetchShowreelList(user.id);
-      Alert.alert('Uploaded', 'Showreel added.');
-    } catch (e: any) {
-      console.warn('confirmUploadShowreel failed:', e?.message ?? e);
-      Alert.alert('Upload failed', e?.message ?? 'Could not upload video.');
-    } finally {
-      setSrUploading(false);
-      setTimeout(() => setSrStatus(''), 1200);
+      const { error: profileErr } = await supabase
+        .from('users')
+        .update({ portfolio_url: publicUrl })
+        .eq('id', user.id);
+
+      if (profileErr) {
+        console.error('[SHOWREEL] users.portfolio_url update failed:', profileErr);
+        throw profileErr;
+      }
+
+      setMp4MainUrl(`${publicUrl}${ts()}`);
+      setMp4MainName(asset.name || 'Showreel.mp4');
     }
-  };
+
+    setPendingShowreelAsset(null);
+
+    await fetchShowreelList(user.id);
+    await fetchProfile();
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.alert('Showreel uploaded successfully.');
+    } else {
+      Alert.alert('Uploaded', 'Showreel added.');
+    }
+  } catch (e: any) {
+    console.error('[SHOWREEL] confirmUploadShowreel failed:', e);
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.alert(`Upload failed: ${e?.message ?? 'Could not upload video.'}`);
+    } else {
+      Alert.alert('Upload failed', e?.message ?? 'Could not upload video.');
+    }
+  } finally {
+    setSrUploading(false);
+    setTimeout(() => setSrStatus(''), 1200);
+  }
+};
 
   const setPrimaryShowreel = async (row: ShowreelRow) => {
     try {
@@ -1628,8 +1633,26 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
       } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data: pub } = supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(row.file_path);
-      const publicUrl = pub.publicUrl;
+      const isMuxReady = (status?: string | null) => {
+  const s = String(status || '').toLowerCase();
+  return s === 'ready' || s === 'asset_ready' || s === 'playable';
+};
+
+const getMuxPlaybackUrl = (playbackId?: string | null) => {
+  if (!playbackId) return null;
+  return `https://stream.mux.com/${playbackId}.m3u8`;
+};
+
+const publicUrl =
+  row.mux_playback_id && isMuxReady(row.mux_status)
+    ? getMuxPlaybackUrl(row.mux_playback_id)
+    : row.file_path
+    ? supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(row.file_path).data.publicUrl
+    : null;
+
+if (!publicUrl) {
+  throw new Error('No playable URL found for this showreel.');
+}
 
       await supabase.from('user_showreels').update({ is_primary: false }).eq('user_id', user.id);
       await supabase
@@ -1711,10 +1734,26 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
           .eq('id', fallback.id)
           .eq('user_id', user.id);
 
-        const { data: pub } = supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(fallback.file_path);
-        await supabase.from('users').update({ portfolio_url: pub.publicUrl }).eq('id', user.id);
+        const isMuxReady = (status?: string | null) => {
+  const s = String(status || '').toLowerCase();
+  return s === 'ready' || s === 'asset_ready' || s === 'playable';
+};
 
-        setMp4MainUrl(`${pub.publicUrl}${ts()}`);
+const getMuxPlaybackUrl = (playbackId?: string | null) => {
+  if (!playbackId) return null;
+  return `https://stream.mux.com/${playbackId}.m3u8`;
+};
+
+const fallbackUrl =
+  fallback.mux_playback_id && isMuxReady(fallback.mux_status)
+    ? getMuxPlaybackUrl(fallback.mux_playback_id)
+    : fallback.file_path
+    ? supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(fallback.file_path).data.publicUrl
+    : null;
+
+await supabase.from('users').update({ portfolio_url: fallbackUrl }).eq('id', user.id);
+
+setMp4MainUrl(fallbackUrl ? `${fallbackUrl}${ts()}` : '');
         setMp4MainName(fallback.title || fallback.category || 'Showreel.mp4');
       } else if (remaining.length === 0) {
         setMp4MainUrl('');
@@ -2602,11 +2641,13 @@ const uploadPendingShowreelThumbs = async (userId: string) => {
     const sideRolesClean = (sideRoles || []).map((s) => s.trim()).filter(Boolean);
 
     const primaryShowreel = showreels.find((r) => r.is_primary) || null;
-    const resolvedPortfolioUrl = primaryShowreel
-      ? stripBuster(primaryShowreel.url || mp4MainUrl || profile?.portfolio_url || null)
-      : mp4MainUrl
-      ? stripBuster(mp4MainUrl)
-      : profile?.portfolio_url ?? null;
+
+const resolvedPortfolioUrl =
+  primaryShowreel?.url
+    ? stripBuster(primaryShowreel.url)
+    : mp4MainUrl
+    ? stripBuster(mp4MainUrl)
+    : profile?.portfolio_url ?? null;
 
     const payload: any = {
       full_name: (fullName || '').trim() || null,
@@ -3042,62 +3083,23 @@ if (up.error) throw up.error;
     navigation.reset({ index: 0, routes: [{ name: 'Auth' }] });
   };
 
-  const shareProfileLink = async () => {
-  try {
-    if (!profile) {
-      Alert.alert("Unavailable", "Profile is not ready yet.");
-      return;
-    }
-
-    const publicSlug = await ensureProfilePublicSlug({
-      id: profile.id,
-      full_name: profile.full_name,
-      public_slug: profile.public_slug ?? null,
-    });
-
-    const url = buildSharedProfileUrl(publicSlug);
-
-    setProfile((prev) =>
-      prev ? { ...prev, public_slug: publicSlug, is_profile_public: true } : prev
-    );
-
-    if (Platform.OS === "web" && typeof navigator !== "undefined" && navigator.clipboard) {
-      await navigator.clipboard.writeText(url);
-    } else {
-      await Clipboard.setStringAsync(url);
-    }
-
-    Alert.alert("Copied", "Public profile link has been copied.");
-  } catch (e: any) {
-    console.warn("Profile share failed:", e?.message || e);
-    Alert.alert("Share failed", "Could not create or copy the public profile link.");
+  const copyCreativeProtocolLink = async () => {
+  if (!publicProfileUrl) {
+    Alert.alert("Unavailable", "Public link is not ready yet.");
+    return;
   }
+
+  await Clipboard.setStringAsync(publicProfileUrl);
+  Alert.alert("Copied", "Portfolio has been copied.");
 };
 
-const previewCreativeProtocolLink = async () => {
-  try {
-    if (!profile) {
-      Alert.alert("Unavailable", "Profile is not ready yet.");
-      return;
-    }
-
-    const publicSlug = await ensureProfilePublicSlug({
-      id: profile.id,
-      full_name: profile.full_name,
-      public_slug: profile.public_slug ?? null,
-    });
-
-    setProfile((prev) =>
-      prev ? { ...prev, public_slug: publicSlug, is_profile_public: true } : prev
-    );
-
-    navigation.navigate("MainTabs", {
-      screen: "Profile",
-      params: { openProfileSlug: publicSlug },
-    });
-  } catch (e: any) {
-    Alert.alert("Unavailable", "Profile link is not ready yet.");
+const previewCreativeProtocolLink = () => {
+  if (!profile?.public_slug) {
+    Alert.alert("Unavailable", "Public link is not ready yet.");
+    return;
   }
+
+  navigation.navigate("PublicProfile", { slug: profile.public_slug });
 };
 
   const startOneToOneChat = async () => {
@@ -3360,20 +3362,20 @@ paddingHorizontal: compactMobile ? 8 : 0,
   }}
 >
   <TouchableOpacity
-  onPress={shareProfileLink}
-  activeOpacity={0.85}
-  style={compactMobile ? styles.utilitySingleLinkBtnMobile : styles.utilitySingleLinkBtn}
->
-  <Text
-    style={
-      compactMobile
-        ? styles.utilitySingleLinkBtnTextMobile
-        : styles.utilitySingleLinkBtnText
-    }
+    onPress={copyCreativeProtocolLink}
+    activeOpacity={0.85}
+    style={compactMobile ? styles.utilitySingleLinkBtnMobile : styles.utilitySingleLinkBtn}
   >
-    Share Profile
-  </Text>
-</TouchableOpacity>
+    <Text
+      style={
+        compactMobile
+          ? styles.utilitySingleLinkBtnTextMobile
+          : styles.utilitySingleLinkBtnText
+      }
+    >
+      Share Portfolio Link
+    </Text>
+  </TouchableOpacity>
 </View>
     </View>
   );
@@ -4691,11 +4693,11 @@ const renderSubmissionsSection = () => {
                     />
                   ) : activeSubmission.video_url || activeSubmission.video_path ? (
                     <ShowreelVideoInline
-                      playerId={`submission_${activeSubmission.id}`}
-                      filePathOrUrl={activeSubmission.video_url || activeSubmission.video_path!}
-                      width={modalMediaW}
-                      autoPlay={false}
-                    />
+  playerId={`secondary_showreel_${activeShowreel.id}`}
+  filePathOrUrl={activeShowreel.url || activeShowreel.file_path}
+  width={Math.max(280, Math.min(width - horizontalPad * 2 - 24, 760))}
+  autoPlay={false}
+/>
                   ) : (
                     <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
                       <Text style={[block.muted, { textAlign: "center" }]}>
@@ -5261,7 +5263,7 @@ return (
                   </>
                 ) : (
                   <Text style={[block.muted, { marginBottom: 6 }]}>
-                    Upload up to 3 MP4 showreels. Pick a category for each one and choose which is the main featured reel.
+                    Upload up to 3 showreels. Pick a category for each one and choose which is the main featured reel.
                   </Text>
                 )}
 

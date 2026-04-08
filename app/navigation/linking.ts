@@ -38,12 +38,15 @@ export const linking: LinkingOptions<any> = {
           Challenge: "challenge",
           Location: "location",
           Chats: "chats",
-          Profile: {
-            path: "creative/:openProfileSlug",
-            parse: {
-              openProfileSlug: (value: string) => decodeURIComponent(value),
-            },
-          },
+          Profile: "profile",
+        },
+      },
+
+      // PUBLIC SHARED PROFILE
+      PublicProfile: {
+        path: "creative/:slug",
+        parse: {
+          slug: (value: string) => decodeURIComponent(value),
         },
       },
 
