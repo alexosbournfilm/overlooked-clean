@@ -38,7 +38,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../context/AuthProvider';
 import { Upload } from 'tus-js-client';
 import { supportUser, unsupportUser } from "../lib/connections";
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Buffer } from "buffer";
 import { useMonthlyStreak } from "../lib/useMonthlyStreak";
 import YoutubePlayer from "react-native-youtube-iframe";

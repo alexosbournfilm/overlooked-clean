@@ -24,7 +24,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CommonActions } from '@react-navigation/native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../lib/supabase';
 import { navigationRef } from '../navigation/navigationRef';
 import { useAuth } from '../context/AuthProvider';
