@@ -265,55 +265,57 @@ export default function CreateProfileScreen() {
   }, [stage, imageSectionOpacity, imageSectionTranslate]);
 
   const animateStageChange = (nextStage: OnboardingStage, cb?: () => void) => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 280,
-        easing: Easing.inOut(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: -12,
-        duration: 280,
-        easing: Easing.inOut(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 0.985,
-        duration: 280,
-        easing: Easing.inOut(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setStage(nextStage);
-      cb?.();
+  Animated.parallel([
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 500, // was 280
+      easing: Easing.inOut(Easing.cubic),
+      useNativeDriver: true,
+    }),
+    Animated.timing(slideAnim, {
+      toValue: -16, // slightly more movement
+      duration: 500,
+      easing: Easing.inOut(Easing.cubic),
+      useNativeDriver: true,
+    }),
+    Animated.timing(scaleAnim, {
+      toValue: 0.97, // slightly more shrink
+      duration: 500,
+      easing: Easing.inOut(Easing.cubic),
+      useNativeDriver: true,
+    }),
+  ]).start(() => {
+    setStage(nextStage);
+    cb?.();
 
-      slideAnim.setValue(16);
-      scaleAnim.setValue(1.015);
+    fadeAnim.setValue(0);
+    slideAnim.setValue(24);
+    scaleAnim.setValue(1.02);
 
+    setTimeout(() => {
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 340,
-          easing: Easing.inOut(Easing.exp),
+          duration: 650, // was 340
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(slideAnim, {
           toValue: 0,
-          duration: 340,
-          easing: Easing.inOut(Easing.exp),
+          duration: 650,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(scaleAnim, {
           toValue: 1,
-          duration: 340,
-          easing: Easing.inOut(Easing.exp),
+          duration: 650,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }),
       ]).start();
-    });
-  };
-
+    }, 120); // tiny pause between steps
+  });
+};
   const openRoleSelector = () => {
     setRoleSearchTerm('');
     setRoleSearchItems([]);
