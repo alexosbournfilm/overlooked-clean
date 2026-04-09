@@ -64,7 +64,7 @@ const showToast = (msg: string) => {
   }
 };
 
-function base64ToArrayBuffer(base64: string) {
+function base64ToUint8Array(base64: string) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
   const clean = base64.replace(/=+$/, '');
   const bufferLength = Math.floor((clean.length * 3) / 4);
@@ -89,18 +89,18 @@ function base64ToArrayBuffer(base64: string) {
     }
   }
 
-  return bytes.buffer;
+  return bytes;
 }
 
-async function uploadArrayBufferToBucket(opts: {
+async function uploadImageToBucket(opts: {
   bucket: string;
   path: string;
-  arrayBuffer: ArrayBuffer;
+  fileBody: Blob | Uint8Array;
   contentType?: string;
 }) {
-  const { bucket, path, arrayBuffer, contentType } = opts;
+  const { bucket, path, fileBody, contentType } = opts;
 
-  const { error } = await supabase.storage.from(bucket).upload(path, arrayBuffer, {
+  const { error } = await supabase.storage.from(bucket).upload(path, fileBody, {
     contentType: contentType || 'image/jpeg',
     upsert: true,
   });
@@ -113,7 +113,7 @@ async function uploadArrayBufferToBucket(opts: {
   return data.publicUrl;
 }
 
-async function uriToArrayBuffer(uri: string) {
+async function uriToUploadBody(uri: string): Promise<Blob | Uint8Array> {
   if (!uri) {
     throw new Error('Missing image URI.');
   }
@@ -121,7 +121,7 @@ async function uriToArrayBuffer(uri: string) {
   if (Platform.OS === 'web' || uri.startsWith('blob:') || uri.startsWith('data:')) {
     const response = await fetch(uri);
     if (!response.ok) throw new Error('Could not read cropped image.');
-    return await response.arrayBuffer();
+    return await response.blob();
   }
 
   const fileInfo = await FileSystem.getInfoAsync(uri);
@@ -130,14 +130,14 @@ async function uriToArrayBuffer(uri: string) {
   }
 
   const base64 = await FileSystem.readAsStringAsync(uri, {
-  encoding: 'base64' as any,
-});
+    encoding: 'base64' as any,
+  });
 
   if (!base64 || typeof base64 !== 'string') {
     throw new Error('Could not read cropped image.');
   }
 
-  return base64ToArrayBuffer(base64);
+  return base64ToUint8Array(base64);
 }
 
 async function makePreviewUri(uri: string) {
@@ -476,45 +476,45 @@ export default function CreateProfileScreen() {
   };
 
   const handleAvatarCropped = async (croppedUri: string) => {
-    try {
-      setUploadingImage(true);
+  try {
+    setUploadingImage(true);
 
-      const previewUri = await makePreviewUri(croppedUri);
-      setImage(croppedUri);
-      setImagePreview(previewUri);
+    const previewUri = await makePreviewUri(croppedUri);
+    setImage(previewUri);
+    setImagePreview(previewUri);
 
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-      if (userError) throw userError;
-      if (!user?.id) throw new Error('User not authenticated');
+    if (userError) throw userError;
+    if (!user?.id) throw new Error('User not authenticated');
 
-      const fileName = `avatar_${Date.now()}.jpg`;
-      const path = `user_${user.id}/${fileName}`;
+    const fileName = `avatar_${Date.now()}.jpg`;
+    const path = `user_${user.id}/${fileName}`;
 
-      const arrayBuffer = await uriToArrayBuffer(croppedUri);
+    const fileBody = await uriToUploadBody(croppedUri);
 
-      const publicUrl = await uploadArrayBufferToBucket({
-        bucket: 'avatars',
-        path,
-        arrayBuffer,
-        contentType: 'image/jpeg',
-      });
+    const publicUrl = await uploadImageToBucket({
+      bucket: 'avatars',
+      path,
+      fileBody,
+      contentType: 'image/jpeg',
+    });
 
-      setImageUrl(publicUrl);
-      setCropperOpen(false);
-      setCropSource(null);
+    setImageUrl(`${publicUrl}?t=${Date.now()}`);
+    setCropperOpen(false);
+    setCropSource(null);
 
-      animateStageChange('review');
-    } catch (err: any) {
-      console.error('Avatar upload error:', err);
-      Alert.alert('Upload Error', err?.message ?? 'Could not upload image.');
-    } finally {
-      setUploadingImage(false);
-    }
-  };
+    animateStageChange('review');
+  } catch (err: any) {
+    console.error('Avatar upload error:', err);
+    Alert.alert('Upload Error', err?.message ?? 'Could not upload image.');
+  } finally {
+    setUploadingImage(false);
+  }
+};
 
   const handleSubmit = async () => {
     if (!fullName.trim() || !mainRole || !cityId) {
@@ -544,7 +544,7 @@ export default function CreateProfileScreen() {
             full_name: fullName.trim(),
             main_role_id: mainRole,
             city_id: cityId,
-            avatar_url: imageUrl,
+            avatar_url: imageUrl ? imageUrl.split('?')[0] : null,
           },
           { onConflict: 'id' }
         )
@@ -600,7 +600,7 @@ export default function CreateProfileScreen() {
   };
 
   const loading = saving || uploadingImage;
-  const displayImage = imagePreview || imageUrl || image;
+  const displayImage = imagePreview || image || imageUrl;
 
   const searchInputWebFix =
     Platform.OS === 'web'

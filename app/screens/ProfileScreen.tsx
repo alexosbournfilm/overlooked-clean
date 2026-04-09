@@ -2191,47 +2191,64 @@ setAlreadyAppliedJobIds(ids);
   };
 
   const handleAvatarCropped = async (croppedUri: string) => {
-    try {
-      setUploading(true);
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      const userObj = user;
-      if (!userObj) throw new Error('Not authenticated');
+  try {
+    setUploading(true);
 
-      const fileName = `${Date.now()}_avatar.jpg`;
-      const path = `user_${userObj.id}/${fileName}`;
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
+    if (!user) throw new Error("Not authenticated");
+
+    const fileName = `${Date.now()}_avatar.jpg`;
+    const path = `user_${user.id}/${fileName}`;
+
+    let uploadBody: Blob | Uint8Array;
+    let contentType = "image/jpeg";
+
+    if (Platform.OS !== "web" && croppedUri.startsWith("file://")) {
+      const base64 = await FileSystem.readAsStringAsync(croppedUri, {
+        encoding: 'base64' as any,
+      });
+      const bytes = Buffer.from(base64, "base64");
+      uploadBody = new Uint8Array(bytes);
+    } else {
       const response = await fetch(croppedUri);
       const blob = await response.blob();
-      const { error: uploadErr } = await supabase.storage
-        .from('avatars')
-        .upload(path, blob, {
-          contentType: 'image/jpeg',
-          upsert: true,
-        });
-      if (uploadErr) throw uploadErr;
-
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
-      const publicUrl = urlData.publicUrl;
-
-     setImage(`${publicUrl}?t=${Date.now()}`);
-
-      const { error: updErr } = await supabase
-        .from('users')
-        .update({ avatar_url: publicUrl })
-        .eq('id', userObj.id);
-      if (updErr) throw updErr;
-
-      await fetchProfile();
-    } catch (err: any) {
-      Alert.alert('Upload failed', err?.message ?? 'Unexpected error.');
-    } finally {
-      setUploading(false);
-      setCropperOpen(false);
-      setCropSource(null);
+      uploadBody = blob;
+      contentType = blob.type || "image/jpeg";
     }
-  };
+
+    const { error: uploadErr } = await supabase.storage
+      .from("avatars")
+      .upload(path, uploadBody, {
+        contentType,
+        upsert: true,
+      });
+
+    if (uploadErr) throw uploadErr;
+
+    const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
+    const publicUrl = urlData.publicUrl;
+
+    const { error: updErr } = await supabase
+      .from("users")
+      .update({ avatar_url: publicUrl })
+      .eq("id", user.id);
+
+    if (updErr) throw updErr;
+
+    setImage(`${publicUrl}?t=${Date.now()}`);
+    await fetchProfile();
+  } catch (err: any) {
+    console.warn("Avatar upload failed:", err);
+    Alert.alert("Upload failed", err?.message ?? "Unexpected error.");
+  } finally {
+    setUploading(false);
+    setCropperOpen(false);
+    setCropSource(null);
+  }
+};
 
   const uploadToPortfolios = async ({
     localUri,
@@ -4622,10 +4639,13 @@ const renderSubmissionsSection = () => {
         visible={submissionModalOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => {
-          setSubmissionModalOpen(false);
-          setActiveSubmission(null);
-        }}
+        onRequestClose={async () => {
+  try {
+    await pauseAllExcept(PAUSE_NONE_ID);
+  } catch {}
+  setSubmissionModalOpen(false);
+  setActiveSubmission(null);
+}}
       >
         <View
           style={{
@@ -4637,10 +4657,13 @@ const renderSubmissionsSection = () => {
         >
           <Pressable
             style={StyleSheet.absoluteFillObject}
-            onPress={() => {
-              setSubmissionModalOpen(false);
-              setActiveSubmission(null);
-            }}
+            onPress={async () => {
+  try {
+    await pauseAllExcept(PAUSE_NONE_ID);
+  } catch {}
+  setSubmissionModalOpen(false);
+  setActiveSubmission(null);
+}}
           />
 
           <View
@@ -4692,13 +4715,13 @@ const renderSubmissionsSection = () => {
                       initialPlayerParams={{ rel: false }}
                     />
                   ) : activeSubmission.video_url || activeSubmission.video_path ? (
-                    <ShowreelVideoInline
-  playerId={`secondary_showreel_${activeShowreel.id}`}
-  filePathOrUrl={activeShowreel.url || activeShowreel.file_path}
-  width={Math.max(280, Math.min(width - horizontalPad * 2 - 24, 760))}
-  autoPlay={false}
-/>
-                  ) : (
+  <ShowreelVideoInline
+    playerId={`submission_${activeSubmission.id}`}
+    filePathOrUrl={activeSubmission.video_url || activeSubmission.video_path || ""}
+    width={Math.max(280, Math.min(width - horizontalPad * 2 - 24, 760))}
+    autoPlay={false}
+  />
+) : (
                     <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
                       <Text style={[block.muted, { textAlign: "center" }]}>
                         No video found for this submission.
@@ -4722,10 +4745,13 @@ const renderSubmissionsSection = () => {
   </View>
 )}
             <TouchableOpacity
-              onPress={() => {
-                setSubmissionModalOpen(false);
-                setActiveSubmission(null);
-              }}
+              onPress={async () => {
+  try {
+    await pauseAllExcept(PAUSE_NONE_ID);
+  } catch {}
+  setSubmissionModalOpen(false);
+  setActiveSubmission(null);
+}}
               style={[styles.ghostBtn, { marginTop: 12 }]}
             >
               <Text style={styles.ghostBtnText}>Close</Text>
