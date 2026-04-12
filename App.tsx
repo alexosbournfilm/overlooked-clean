@@ -8,6 +8,7 @@ import * as SplashScreen from "expo-splash-screen";
 import * as SecureStore from "expo-secure-store";
 import { Provider as PaperProvider } from "react-native-paper";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import * as Notifications from "expo-notifications";
 
 import AppNavigator from "./app/navigation/AppNavigator";
 import { supabase } from "./app/lib/supabase";
@@ -15,6 +16,7 @@ import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { AuthProvider } from "./app/context/AuthProvider";
 import { GamificationProvider } from "./app/context/GamificationContext";
 import { navigate } from "./app/navigation/navigationRef";
+import { registerAndSavePushToken } from "./app/lib/registerAndSavePushToken"; 
 
 // fonts
 import {
@@ -89,6 +91,9 @@ export default function App() {
   const [initialAuthRouteName, setInitialAuthRouteName] =
     useState<"SignIn" | "CreateProfile">("SignIn");
 
+  const notificationListener = useRef<any>(null);
+  const responseListener = useRef<any>(null);
+
   // Load fonts
   const [courierLoaded] = useCourierFonts({
     CourierPrime_400Regular,
@@ -100,6 +105,15 @@ export default function App() {
     Cinzel_900Black,
   });
   const fontsLoaded = courierLoaded && cinzelLoaded;
+
+  const savePushTokenForUser = useCallback(async (userId: string) => {
+    try {
+      if (Platform.OS === "web") return;
+      await registerAndSavePushToken(userId);
+    } catch (err: any) {
+      console.error("❌ Push token save failed:", err?.message || err);
+    }
+  }, []);
 
   // --------------------------------------------------------------
   // Deep-link handler (Supabase signup confirm + recovery)
@@ -188,6 +202,38 @@ export default function App() {
   }, []);
 
   // --------------------------------------------------------------
+  // Push notification listeners
+  // --------------------------------------------------------------
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+
+    notificationListener.current =
+      Notifications.addNotificationReceivedListener((notification) => {
+        console.log("📩 Notification received:", notification);
+      });
+
+    responseListener.current =
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        console.log("👆 Notification tapped:", response);
+
+        const data = response.notification.request.content.data as any;
+
+        if (data?.screen) {
+          try {
+            navigate(data.screen, data.params || {});
+          } catch (err) {
+            console.log("Navigation from notification failed:", err);
+          }
+        }
+      });
+
+    return () => {
+      notificationListener.current?.remove?.();
+      responseListener.current?.remove?.();
+    };
+  }, []);
+
+  // --------------------------------------------------------------
   // APP INIT — handle initial URL + prevent fake /reset-password loads
   // --------------------------------------------------------------
   useEffect(() => {
@@ -233,6 +279,10 @@ export default function App() {
             JSON.stringify(session)
           );
 
+          if (Platform.OS !== "web") {
+            await savePushTokenForUser(session.user.id);
+          }
+
           const meta: any = (session.user as any)?.user_metadata || {};
           const metaHasProfileBits =
             !!meta?.full_name && !!meta?.main_role_id && !!meta?.city_id;
@@ -275,7 +325,29 @@ export default function App() {
       mounted = false;
       linkSub?.remove();
     };
-  }, [handleDeepLink]);
+  }, [handleDeepLink, savePushTokenForUser]);
+
+  // --------------------------------------------------------------
+  // Save push token whenever auth changes
+  // --------------------------------------------------------------
+  useEffect(() => {
+    const { data: subscription } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (
+          Platform.OS !== "web" &&
+          session?.user?.id &&
+          (event === "SIGNED_IN" ||
+            event === "TOKEN_REFRESHED" ||
+            event === "INITIAL_SESSION" ||
+            event === "USER_UPDATED")
+        ) {
+          await savePushTokenForUser(session.user.id);
+        }
+      }
+    );
+
+    return () => subscription.subscription.unsubscribe();
+  }, [savePushTokenForUser]);
 
   // --------------------------------------------------------------
   // Splash screen final hide
@@ -300,7 +372,9 @@ export default function App() {
       <AppErrorBoundary>
         <PaperProvider>
           <SafeAreaProvider>
-            <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#0D0D0D" }}>
+            <GestureHandlerRootView
+              style={{ flex: 1, backgroundColor: "#0D0D0D" }}
+            >
               <StatusBar style="light" />
               <AuthProvider>
                 <GamificationProvider>

@@ -11,7 +11,7 @@
     "splash": {
       "image": "./app/assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFF7F3"
+      "backgroundColor": "#000000"
     },
 
     "ios": {
@@ -36,7 +36,7 @@
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./app/assets/adaptive-icon.png",
-        "backgroundColor": "#FFF7F3"
+        "backgroundColor": "#000000"
       },
       "intentFilters": [
         {
@@ -70,8 +70,8 @@
       "bundler": "metro",
       "favicon": "./public/ol-favicon-999.png",
       "display": "browser",
-      "themeColor": "#FFF7F3",
-      "backgroundColor": "#FFF7F3"
+      "themeColor": "#000000",
+      "backgroundColor": "#000000"
     },
 
     "extra": {

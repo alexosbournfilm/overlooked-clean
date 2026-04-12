@@ -22,35 +22,50 @@ export async function registerForPushNotificationsAsync() {
       name: "default",
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
-      lockscreenVisibility:
-        Notifications.AndroidNotificationVisibility.PUBLIC,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      sound: "default",
     });
   }
 
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
+  const permissions = await Notifications.getPermissionsAsync();
+  let finalStatus = permissions.status;
 
-  if (existingStatus !== "granted") {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
+  const alreadyAllowed =
+    permissions.granted ||
+    permissions.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
 
-  if (finalStatus !== "granted") {
+  if (!alreadyAllowed) {
+    const request = await Notifications.requestPermissionsAsync({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,
+      },
+    });
+
+    finalStatus = request.status;
+
+    const allowedAfterRequest =
+      request.granted ||
+      request.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+
+    if (!allowedAfterRequest) {
+      throw new Error("Permission not granted for push notifications.");
+    }
+  } else if (finalStatus !== "granted" && Platform.OS !== "ios") {
     throw new Error("Permission not granted for push notifications.");
   }
 
   const projectId =
-    Constants?.expoConfig?.extra?.eas?.projectId ??
-    Constants?.easConfig?.projectId;
+    Constants.expoConfig?.extra?.eas?.projectId ??
+    Constants.easConfig?.projectId;
 
   if (!projectId) {
     throw new Error("Missing EAS projectId.");
   }
 
   const token = (
-    await Notifications.getExpoPushTokenAsync({
-      projectId,
-    })
+    await Notifications.getExpoPushTokenAsync({ projectId })
   ).data;
 
   return token;

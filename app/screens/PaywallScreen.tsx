@@ -176,9 +176,9 @@ export default function PaywallScreen() {
     (async () => {
       try {
         await fetchProducts({
-          skus: [ANDROID_SUBSCRIPTION_PRODUCT_ID],
-          type: 'in-app',
-        });
+  skus: [ANDROID_SUBSCRIPTION_PRODUCT_ID],
+  type: 'subs',
+});
       } catch (err: any) {
         if (!mounted) return;
         console.warn('[iap] fetchProducts error', err);
