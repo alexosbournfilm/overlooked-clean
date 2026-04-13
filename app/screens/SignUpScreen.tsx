@@ -39,6 +39,7 @@ export default function SignUpScreen() {
 
   const [showTos, setShowTos] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showChildSafety, setShowChildSafety] = useState(false);
 
   const [emailConfirmed, setEmailConfirmed] = useState(false);
   const [checkingLink, setCheckingLink] = useState(true);
@@ -246,7 +247,7 @@ export default function SignUpScreen() {
       return;
     }
     if (!agreed) {
-      Alert.alert('Agreement Required', 'You must agree to the Terms & Privacy Policy.');
+      Alert.alert('Agreement Required', 'You must agree to the Terms, Privacy Policy, and Child Safety Policy.');
       return;
     }
 
@@ -387,10 +388,14 @@ export default function SignUpScreen() {
               I agree to the{' '}
               <Text style={styles.link} onPress={() => setShowTos(true)}>
                 Terms of Service
-              </Text>{' '}
-              and{' '}
+              </Text>
+              ,{' '}
               <Text style={styles.link} onPress={() => setShowPrivacy(true)}>
                 Privacy Policy
+              </Text>
+              , and{' '}
+              <Text style={styles.link} onPress={() => setShowChildSafety(true)}>
+                Child Safety Policy
               </Text>
               .
             </Text>
@@ -462,7 +467,7 @@ export default function SignUpScreen() {
         </View>
       </Modal>
 
-      {/* ---------- LEGAL MODALS (unchanged) ---------- */}
+      {/* ---------- LEGAL MODALS (unchanged except child safety added) ---------- */}
 
       {/* Terms of Service (UK Law) */}
       <Modal
@@ -605,6 +610,77 @@ This Privacy Policy explains how Overlooked LTD (“Overlooked”, “we”, “
             <TouchableOpacity
               style={styles.closeButton}
               onPress={() => setShowPrivacy(false)}
+            >
+              <Text style={styles.closeButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Child Safety Policy */}
+      <Modal
+        visible={showChildSafety}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowChildSafety(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <ScrollView>
+              <Text style={styles.modalTitle}>Child Safety Policy (Overlooked)</Text>
+              <Text
+                style={[
+                  styles.modalText,
+                  Platform.OS === 'web' ? ({ whiteSpace: 'pre-wrap' } as any) : null,
+                ]}
+              >
+                {`Last updated: ${new Date().toISOString().slice(0, 10)}
+
+Overlooked is committed to maintaining a safe platform and has zero tolerance for child sexual abuse, child sexual exploitation, or any content that endangers minors.
+
+1. AGE RESTRICTION
+- Overlooked is strictly for users aged 18 and over.
+- Anyone under 18 is not permitted to create an account or use the platform.
+
+2. PROHIBITED CONTENT
+Users must not upload, share, request, promote, or distribute:
+- Child sexual abuse material (CSAM).
+- Any sexualised content involving minors.
+- Content that exploits, harms, grooms, or endangers children.
+- Links to external material involving child exploitation.
+- Any attempt to solicit minors for sexual purposes.
+
+3. REPORTING
+- Users can report suspicious, exploitative, or abusive content in-app.
+- Reports related to child safety are treated as high priority and reviewed urgently.
+
+4. ENFORCEMENT
+If we become aware of content or behaviour that may involve child exploitation or abuse, Overlooked may:
+- Remove the content immediately.
+- Suspend or permanently ban the account.
+- Preserve evidence where required.
+- Report the matter to relevant law enforcement or child protection authorities.
+
+5. MODERATION
+- We reserve the right to review user-generated content, profiles, job posts, messages, and submissions where necessary to enforce platform safety.
+- Attempts to evade moderation or enforcement may result in permanent removal from the platform.
+
+6. CONTACT
+For child safety concerns, abuse reports, or urgent safeguarding issues, contact:
+alexosbournfilm@gmail.com
+
+7. LEGAL COMPLIANCE
+- Overlooked complies with applicable child safety laws and platform rules.
+- We cooperate with lawful requests from regulators and law enforcement where required.
+
+8. POLICY UPDATES
+- We may update this Child Safety Policy from time to time to reflect legal, operational, or safety changes.`}
+              </Text>
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowChildSafety(false)}
             >
               <Text style={styles.closeButtonText}>Close</Text>
             </TouchableOpacity>

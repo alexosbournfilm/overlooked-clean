@@ -21,14 +21,16 @@ import {
   CommonActions,
 } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useIAP } from 'expo-iap';
+import Purchases from 'react-native-purchases';
 import { supabase } from '../lib/supabase';
 import { FUNCTIONS_URL } from '../lib/supabase';
 import { invalidateMembershipCache } from '../lib/membership';
-import { ANDROID_SUBSCRIPTION_PRODUCT_ID } from '../lib/androidBilling';
 
 /* -------------------------- Stripe Price IDs -------------------------- */
 const STRIPE_PRICE_MONTHLY = 'price_1S1jLxIaba42c4jIsVBQneb0';
+
+/* -------------------------- RevenueCat -------------------------- */
+const REVENUECAT_ANDROID_PUBLIC_SDK_KEY = 'goog_yNsgMdHFvNRzhpfDwICFHbSXuvC';
 
 type PlanKey = 'monthly';
 
@@ -120,35 +122,12 @@ export default function PaywallScreen() {
   const [proEndsIso, setProEndsIso] = useState<string | null>(null);
   const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState<boolean>(false);
 
+  const [rcReady, setRcReady] = useState(false);
+  const [monthlyPackage, setMonthlyPackage] = useState<any | null>(null);
+  const [rcPriceLabel, setRcPriceLabel] = useState<string | null>(null);
+
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasExited = useRef(false);
-
-  const {
-    connected: iapConnected,
-    products,
-    fetchProducts,
-  } = useIAP({
-    onPurchaseSuccess: async () => {
-      setMessage(
-        'Purchase callback received, but backend verification is not connected yet.'
-      );
-    },
-    onPurchaseError: (error) => {
-      console.error('[iap] purchase error', error);
-      setMessage(error?.message || 'Google Play purchase failed.');
-    },
-  });
-
-  const androidProduct = useMemo(() => {
-    if (Platform.OS !== 'android') return null;
-    return (
-      products?.find(
-        (product: any) =>
-          product?.id === ANDROID_SUBSCRIPTION_PRODUCT_ID ||
-          product?.productId === ANDROID_SUBSCRIPTION_PRODUCT_ID
-      ) ?? null
-    );
-  }, [products]);
 
   const clearPoll = () => {
     if (pollTimerRef.current) {
@@ -169,29 +148,57 @@ export default function PaywallScreen() {
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
-    if (!iapConnected) return;
 
     let mounted = true;
 
     (async () => {
       try {
-        await fetchProducts({
-  skus: [ANDROID_SUBSCRIPTION_PRODUCT_ID],
-  type: 'subs',
-});
+        const { data: auth, error } = await supabase.auth.getUser();
+        if (error) throw error;
+
+        const user = auth?.user;
+        if (!user?.id) {
+          if (mounted) {
+            setMessage('You must be signed in to load your subscription options.');
+          }
+          return;
+        }
+
+        Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
+
+        await Purchases.configure({
+          apiKey: REVENUECAT_ANDROID_PUBLIC_SDK_KEY,
+          appUserID: user.id,
+        });
+
+        const offerings = await Purchases.getOfferings();
+
+        const pkg =
+          offerings.current?.monthly ??
+          offerings.current?.availablePackages?.find(
+            (p: any) =>
+              p?.packageType === 'MONTHLY' ||
+              p?.identifier === '$rc_monthly' ||
+              p?.packageType?.toLowerCase?.() === 'monthly'
+          ) ??
+          null;
+
+        if (!mounted) return;
+
+        setMonthlyPackage(pkg);
+        setRcPriceLabel(pkg?.product?.priceString ?? null);
+        setRcReady(true);
       } catch (err: any) {
         if (!mounted) return;
-        console.warn('[iap] fetchProducts error', err);
-        setMessage(
-          err?.message || 'Could not load Google Play product information.'
-        );
+        console.warn('[revenuecat] setup error', err);
+        setMessage(err?.message || 'Could not load subscription offering.');
       }
     })();
 
     return () => {
       mounted = false;
     };
-  }, [iapConnected, fetchProducts]);
+  }, []);
 
   const planLabel = useMemo(() => {
     if (Platform.OS === 'android') return 'Continue with Google Play';
@@ -199,11 +206,11 @@ export default function PaywallScreen() {
   }, []);
 
   const selectedSubLabel = useMemo(() => {
-    if (Platform.OS === 'android' && androidProduct?.displayPrice) {
-      return `Monthly access • ${androidProduct.displayPrice}`;
+    if (Platform.OS === 'android' && rcPriceLabel) {
+      return `Monthly access • ${rcPriceLabel}`;
     }
     return 'Monthly access • £4.99 / month';
-  }, [androidProduct]);
+  }, [rcPriceLabel]);
 
   const selectedPlanPayload = useMemo(() => {
     return { plan: 'monthly' as const, priceId: STRIPE_PRICE_MONTHLY };
@@ -225,7 +232,9 @@ export default function PaywallScreen() {
 
     const { data, error } = await supabase
       .from('users')
-      .select('tier, subscription_status, current_period_end, premium_access_expires_at, cancel_at_period_end')
+      .select(
+        'tier, subscription_status, current_period_end, premium_access_expires_at, cancel_at_period_end'
+      )
       .eq('id', uid)
       .maybeSingle();
 
@@ -337,7 +346,9 @@ export default function PaywallScreen() {
         } catch (fallbackErr: any) {
           console.warn('[paywall] fallback fetch error:', fallbackErr);
           throw new Error(
-            `Checkout failed.\n\nPrimary: ${primaryMsg}\nFallback: ${fallbackErr?.message || 'Unknown error'}`
+            `Checkout failed.\n\nPrimary: ${primaryMsg}\nFallback: ${
+              fallbackErr?.message || 'Unknown error'
+            }`
           );
         }
       }
@@ -366,25 +377,46 @@ export default function PaywallScreen() {
       }
 
       if (Platform.OS === 'android') {
-        if (!iapConnected) {
-          throw new Error('Google Play Billing is not connected yet.');
+        if (!rcReady) {
+          throw new Error('RevenueCat is still loading.');
         }
 
-        if (!androidProduct) {
+        if (!monthlyPackage) {
           throw new Error(
-            'Google Play product not found yet. Finish Play verification, create the Pro subscription in Play Console, and use the exact product ID in androidBilling.ts.'
+            'No monthly offering found in RevenueCat yet. Make sure your current offering includes a monthly package linked to the pro entitlement.'
           );
         }
 
-        throw new Error(
-          'Google Play product was found, but backend verification is not connected yet.'
-        );
+        const result = await Purchases.purchasePackage(monthlyPackage);
+        const customerInfo = result.customerInfo;
+
+        const hasPro = !!customerInfo?.entitlements?.active?.pro;
+
+        if (!hasPro) {
+          throw new Error(
+            'Purchase completed, but the pro entitlement is not active yet.'
+          );
+        }
+
+        invalidateMembershipCache();
+        enterFeatured();
+        return;
       }
 
       throw new Error('Subscriptions for this platform are not set up yet.');
     } catch (e: any) {
       console.error('checkout redirect error', e);
-      setMessage(e?.message || 'Could not open checkout.');
+
+      const cancelled =
+        e?.userCancelled === true ||
+        e?.code === 'PURCHASE_CANCELLED' ||
+        e?.code === '1';
+
+      if (cancelled) {
+        setMessage('Purchase cancelled.');
+      } else {
+        setMessage(e?.message || 'Could not open checkout.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -615,8 +647,8 @@ export default function PaywallScreen() {
                 <View style={styles.planPriceRow}>
                   <Text style={styles.planCurrency}>£</Text>
                   <Text style={styles.planPriceHero}>
-                    {Platform.OS === 'android' && androidProduct?.displayPrice
-                      ? androidProduct.displayPrice.replace(/[^\d.,]/g, '')
+                    {Platform.OS === 'android' && rcPriceLabel
+                      ? rcPriceLabel.replace(/[^\d.,]/g, '')
                       : '4.99'}
                   </Text>
                 </View>
@@ -650,11 +682,11 @@ export default function PaywallScreen() {
           <Text style={styles.selectedText}>
             {selectedSubLabel}
             {Platform.OS === 'android'
-              ? iapConnected
-                ? androidProduct
-                  ? ' • Google Play product found'
-                  : ' • Waiting for Play product'
-                : ' • Connecting to Google Play'
+              ? rcReady
+                ? monthlyPackage
+                  ? ' • RevenueCat offering loaded'
+                  : ' • Waiting for RevenueCat offering'
+                : ' • Connecting to RevenueCat'
               : ''}
           </Text>
 
@@ -925,4 +957,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: SYSTEM_SANS,
   },
-}); 
+});

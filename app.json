@@ -33,6 +33,7 @@
 
     "android": {
       "package": "com.overlooked.app",
+      "versionCode": 2,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./app/assets/adaptive-icon.png",
