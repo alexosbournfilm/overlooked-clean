@@ -24,7 +24,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Purchases from 'react-native-purchases';
 import { supabase } from '../lib/supabase';
 import { FUNCTIONS_URL } from '../lib/supabase';
-import { invalidateMembershipCache } from '../lib/membership';
+import {
+  invalidateMembershipCache,
+  getCurrentUserTier,
+} from '../lib/membership';
 
 /* -------------------------- Stripe Price IDs -------------------------- */
 const STRIPE_PRICE_MONTHLY = 'price_1S1jLxIaba42c4jIsVBQneb0';
@@ -72,6 +75,57 @@ function formatEndDate(iso: string) {
   }
 }
 
+function extractInvokeError(err: any): string {
+  return (
+    err?.message ||
+    err?.context ||
+    err?.details ||
+    err?.error ||
+    (typeof err === 'string' ? err : '') ||
+    'Checkout session failed.'
+  );
+}
+
+function getActiveProEntitlement(customerInfo: any) {
+  return (
+    customerInfo?.entitlements?.active?.pro ??
+    null
+  );
+}
+
+function getEntitlementExpirationIso(entitlement: any): string | null {
+  return (
+    entitlement?.expirationDate ??
+    entitlement?.expiresDate ??
+    null
+  );
+}
+
+async function syncAndroidProToSupabase(args: {
+  userId: string;
+  entitlement: any;
+}) {
+  const expirationIso = getEntitlementExpirationIso(args.entitlement);
+
+  const payload = {
+    tier: 'pro',
+    is_premium: true,
+    subscription_status: 'active',
+    cancel_at_period_end: false,
+    current_period_end: expirationIso,
+    premium_access_expires_at: expirationIso,
+  };
+
+  const { error } = await supabase
+    .from('users')
+    .update(payload)
+    .eq('id', args.userId);
+
+  if (error) {
+    throw error;
+  }
+}
+
 /* -------------------------- theme -------------------------- */
 
 const DARK_ELEVATED = '#171717';
@@ -90,17 +144,6 @@ const SYSTEM_SANS = Platform.select({
   web: undefined,
   default: undefined,
 });
-
-function extractInvokeError(err: any): string {
-  return (
-    err?.message ||
-    err?.context ||
-    err?.details ||
-    err?.error ||
-    (typeof err === 'string' ? err : '') ||
-    'Checkout session failed.'
-  );
-}
 
 export default function PaywallScreen() {
   const nav = useNavigation<any>();
@@ -173,15 +216,19 @@ export default function PaywallScreen() {
 
         const offerings = await Purchases.getOfferings();
 
+        console.log('[RC] offerings', JSON.stringify(offerings, null, 2));
+        console.log('[RC] current offering', JSON.stringify(offerings.current, null, 2));
+        console.log(
+          '[RC] available packages',
+          JSON.stringify(offerings.current?.availablePackages ?? [], null, 2)
+        );
+
         const pkg =
           offerings.current?.monthly ??
-          offerings.current?.availablePackages?.find(
-            (p: any) =>
-              p?.packageType === 'MONTHLY' ||
-              p?.identifier === '$rc_monthly' ||
-              p?.packageType?.toLowerCase?.() === 'monthly'
-          ) ??
+          offerings.current?.availablePackages?.[0] ??
           null;
+
+        console.log('[RC] selected package', JSON.stringify(pkg, null, 2));
 
         if (!mounted) return;
 
@@ -191,7 +238,11 @@ export default function PaywallScreen() {
       } catch (err: any) {
         if (!mounted) return;
         console.warn('[revenuecat] setup error', err);
-        setMessage(err?.message || 'Could not load subscription offering.');
+        setMessage(
+          err?.message
+            ? `Could not load subscription offering: ${err.message}`
+            : 'Could not load subscription offering.'
+        );
       }
     })();
 
@@ -387,10 +438,21 @@ export default function PaywallScreen() {
           );
         }
 
+        const { data: auth, error: authErr } = await supabase.auth.getUser();
+        if (authErr) throw authErr;
+
+        const user = auth?.user;
+        if (!user?.id) {
+          throw new Error('Not signed in.');
+        }
+
         const result = await Purchases.purchasePackage(monthlyPackage);
         const customerInfo = result.customerInfo;
 
-        const hasPro = !!customerInfo?.entitlements?.active?.pro;
+        console.log('[RC] customerInfo after purchase', JSON.stringify(customerInfo, null, 2));
+
+        const entitlement = getActiveProEntitlement(customerInfo);
+        const hasPro = !!entitlement;
 
         if (!hasPro) {
           throw new Error(
@@ -398,7 +460,23 @@ export default function PaywallScreen() {
           );
         }
 
+        await syncAndroidProToSupabase({
+          userId: user.id,
+          entitlement,
+        });
+
         invalidateMembershipCache();
+        await getCurrentUserTier({ force: true });
+
+        const freshRow = await fetchBillingRow();
+        const freshPro = hasProAccess(freshRow ?? undefined);
+
+        if (!freshPro) {
+          throw new Error(
+            'Purchase succeeded, but your Pro status did not refresh in the database yet.'
+          );
+        }
+
         enterFeatured();
         return;
       }

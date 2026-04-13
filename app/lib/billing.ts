@@ -1,16 +1,54 @@
 // app/lib/billing.ts
 import { supabase } from './supabase';
 
-function isPremiumStillActive(premiumAccessExpiresAt?: string | null) {
-  if (!premiumAccessExpiresAt) return false;
-  const t = new Date(premiumAccessExpiresAt).getTime();
-  if (!Number.isFinite(t)) return false;
-  return t > Date.now();
+type EffectiveTier = 'free' | 'pro';
+
+function toMs(value?: string | null) {
+  if (!value) return null;
+  const t = new Date(value).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+function isFuture(value?: string | null, graceMs = 0) {
+  const t = toMs(value);
+  if (t === null) return false;
+  return t > Date.now() - graceMs;
+}
+
+function isSubscriptionStatusActive(status?: string | null) {
+  if (!status) return false;
+  return status === 'active' || status === 'trialing' || status === 'past_due';
+}
+
+function computeHasProAccess(row: {
+  tier?: string | null;
+  is_premium?: boolean | null;
+  subscription_status?: string | null;
+  current_period_end?: string | null;
+  premium_access_expires_at?: string | null;
+}) {
+  const tier = (row.tier as EffectiveTier | null) ?? 'free';
+
+  const premiumByTier = tier === 'pro';
+  const premiumByFlag = Boolean(row.is_premium);
+  const premiumByExpiry = isFuture(row.premium_access_expires_at, 5_000);
+
+  const premiumBySubscriptionWindow =
+    isSubscriptionStatusActive(row.subscription_status) &&
+    isFuture(row.current_period_end, 5_000);
+
+  return (
+    premiumByTier ||
+    premiumByFlag ||
+    premiumByExpiry ||
+    premiumBySubscriptionWindow
+  );
 }
 
 export async function getMySubscriptionStatus() {
   const { data: userRes, error: userErr } = await supabase.auth.getUser();
   if (userErr) throw userErr;
+
   const user = userRes?.user;
   if (!user) throw new Error('Not signed in');
 
@@ -35,19 +73,27 @@ export async function getMySubscriptionStatus() {
 
   if (error) throw error;
 
-  // ✅ make TS happy + avoid spreading null
   const row = (data ?? {}) as any;
 
-  const premiumByFlag = Boolean(row.is_premium);
-  const premiumByExpiry = isPremiumStillActive(row.premium_access_expires_at ?? null);
-  const tier = (row.tier as 'free' | 'pro' | null) ?? 'free';
+  const hasProAccess = computeHasProAccess(row);
+  const effectiveTier: EffectiveTier = hasProAccess ? 'pro' : 'free';
 
-  const hasProAccess = tier === 'pro' || premiumByFlag || premiumByExpiry;
+  const accessEndsAt =
+    row.premium_access_expires_at ??
+    row.current_period_end ??
+    null;
+
+  const inCancelGracePeriod =
+    Boolean(row.cancel_at_period_end) &&
+    hasProAccess &&
+    (isFuture(row.premium_access_expires_at, 5_000) ||
+      isFuture(row.current_period_end, 5_000));
 
   return {
     ...row,
     hasProAccess,
-    effectiveTier: hasProAccess ? 'pro' : 'free',
-    accessEndsAt: row.premium_access_expires_at ?? null,
+    effectiveTier,
+    accessEndsAt,
+    inCancelGracePeriod,
   };
 }
