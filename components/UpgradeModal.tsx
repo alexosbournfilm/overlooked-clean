@@ -19,6 +19,7 @@ import {
   getCurrentUserTierOrFree,
   invalidateMembershipCache,
 } from '../app/lib/membership';
+import { getMySubscriptionStatus } from '../app/lib/billing';
 import { supabase } from '../app/lib/supabase';
 
 type UpgradeContext =
@@ -33,6 +34,21 @@ type Props = {
   onClose: () => void;
   context?: UpgradeContext;
   onSelectPro?: () => void;
+};
+
+type BillingSnapshot = {
+  hasProAccess: boolean;
+  effectiveTier: 'free' | 'pro';
+  accessEndsAt: string | null;
+  inCancelGracePeriod: boolean;
+  isGrandfathered: boolean;
+  isActiveSubscriber: boolean;
+  hasStripeSubscriptionRecord: boolean;
+  cancel_at_period_end?: boolean | null;
+  current_period_end?: string | null;
+  premium_access_expires_at?: string | null;
+  stripe_subscription_id?: string | null;
+  stripe_customer_id?: string | null;
 };
 
 /* -------------------------- shared palette/fonts -------------------------- */
@@ -124,7 +140,8 @@ export const UpgradeModal: React.FC<Props> = ({
 
   const [periodEndIso, setPeriodEndIso] = useState<string | null>(null);
   const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState<boolean>(false);
-  const [hasStripeSubscription, setHasStripeSubscription] = useState<boolean>(false);
+
+  const [billingState, setBillingState] = useState<BillingSnapshot | null>(null);
 
   const [offerCountdown, setOfferCountdown] = useState(() => getOfferRemaining());
 
@@ -148,28 +165,18 @@ export const UpgradeModal: React.FC<Props> = ({
         setErrorText(null);
         setDowngradeConfirmError(null);
 
-        const tier = await getCurrentUserTierOrFree();
+        const tier = await getCurrentUserTierOrFree({ force: true });
         if (!mounted) return;
+
         setCurrentTier(tier);
         setSelectedTier(tier);
 
-        const { data: userRes, error: userErr } = await supabase.auth.getUser();
-        if (userErr) throw userErr;
-        if (!userRes?.user?.id) return;
-
-        const { data, error } = await supabase
-          .from('users')
-          .select('premium_access_expires_at, cancel_at_period_end, stripe_subscription_id')
-          .eq('id', userRes.user.id)
-          .single();
-
+        const billing = (await getMySubscriptionStatus()) as BillingSnapshot;
         if (!mounted) return;
 
-        if (!error && data) {
-          setPeriodEndIso((data as any)?.premium_access_expires_at ?? null);
-          setCancelAtPeriodEnd(Boolean((data as any)?.cancel_at_period_end));
-          setHasStripeSubscription(Boolean((data as any)?.stripe_subscription_id));
-        }
+        setBillingState(billing);
+        setPeriodEndIso(billing.accessEndsAt ?? null);
+        setCancelAtPeriodEnd(Boolean(billing.cancel_at_period_end));
       } catch (err) {
         console.log('UpgradeModal load error', (err as any)?.message || err);
       }
@@ -181,20 +188,26 @@ export const UpgradeModal: React.FC<Props> = ({
   }, [visible]);
 
   const title = 'Unlock your full filmmaking access';
-const subtitle =
-  'Upload your films, apply for paid jobs, and unlock the full Filmmaking Bootcamp — a premium space to train across every major film discipline through high-level lessons, practical exercises, and powerful Workshop tools built to help you actually make films.';
+  const subtitle =
+    'Upload your films, apply for paid jobs, and unlock the full Filmmaking Bootcamp — a premium space to train across every major film discipline through high-level lessons, practical exercises, and powerful Workshop tools built to help you actually make films.';
 
   const currentTierLabel = currentTier ? HUMAN_TIER_LONG[currentTier] : 'Free';
   const isProDisabled = currentTier === 'pro';
   const endDateLabel = periodEndIso ? formatEndDate(periodEndIso) : null;
 
+  const isGrandfathered = Boolean(billingState?.isGrandfathered);
+  const isActiveSubscriber = Boolean(billingState?.isActiveSubscriber);
+  const inCancelGracePeriod = Boolean(billingState?.inCancelGracePeriod);
+
+  const canCancelRenewal = isActiveSubscriber || inCancelGracePeriod;
+
   const downgradeLossBullets = useMemo(() => {
     return [
-  'Uploading films to the Monthly Film Challenge will be locked (Pro only).',
-  'Paid job applications will be locked (Pro only).',
-  'The full Filmmaking Bootcamp will be locked (Pro only).',
-  'Workshop tools and film resources that help you make films will be locked (Pro only).',
-];
+      'Uploading films to the Monthly Film Challenge will be locked (Pro only).',
+      'Paid job applications will be locked (Pro only).',
+      'The full Filmmaking Bootcamp will be locked (Pro only).',
+      'Workshop tools and film resources that help you make films will be locked (Pro only).',
+    ];
   }, [context]);
 
   const doUpgradeToPro = async () => {
@@ -233,41 +246,45 @@ const subtitle =
       if (userErr) throw userErr;
       if (!userRes?.user?.id) throw new Error('Not signed in');
 
-      if (!hasStripeSubscription) {
+      const latestBilling = (await getMySubscriptionStatus()) as BillingSnapshot;
+      setBillingState(latestBilling);
+      setPeriodEndIso(latestBilling.accessEndsAt ?? null);
+      setCancelAtPeriodEnd(Boolean(latestBilling.cancel_at_period_end));
+
+      if (latestBilling.isGrandfathered) {
         setDowngradeConfirmError(
-          "You're on Pro without an active subscription. If this is Lifetime Pro, there’s nothing to cancel."
+          "This account has grandfathered Pro access. There isn't a monthly renewal to cancel."
         );
         return;
       }
 
-      const { error: fnError } = await supabase.functions.invoke('cancel-subscription', {
-        body: {},
-      });
+      if (!(latestBilling.isActiveSubscriber || latestBilling.inCancelGracePeriod)) {
+        setDowngradeConfirmError(
+          'No active monthly renewal was found for this account.'
+        );
+        return;
+      }
+
+      const { data: fnData, error: fnError } = await supabase.functions.invoke(
+        'cancel-subscription',
+        { body: {} }
+      );
       if (fnError) throw fnError;
 
       invalidateMembershipCache();
 
-      const { data: row, error: rowErr } = await supabase
-        .from('users')
-        .select('tier, premium_access_expires_at, cancel_at_period_end, stripe_subscription_id')
-        .eq('id', userRes.user.id)
-        .single();
+      const refreshedTier = await getCurrentUserTierOrFree({ force: true });
+      const refreshedBilling = (await getMySubscriptionStatus()) as BillingSnapshot;
 
-      if (rowErr) {
-        setDowngradeConfirmVisible(false);
-        onClose();
-        return;
+      setCurrentTier(refreshedTier);
+      setSelectedTier(refreshedTier);
+      setBillingState(refreshedBilling);
+      setPeriodEndIso(refreshedBilling.accessEndsAt ?? null);
+      setCancelAtPeriodEnd(Boolean(refreshedBilling.cancel_at_period_end));
+
+      if (fnData?.ok === false) {
+        throw new Error(fnData?.error || 'Could not cancel renewal');
       }
-
-      const newTier = (row as any)?.tier as UserTier | undefined;
-      const expires = (row as any)?.premium_access_expires_at ?? null;
-
-      setPeriodEndIso(expires);
-      setCancelAtPeriodEnd(Boolean((row as any)?.cancel_at_period_end));
-      setHasStripeSubscription(Boolean((row as any)?.stripe_subscription_id));
-
-      setCurrentTier(newTier ?? 'pro');
-      setSelectedTier(newTier ?? 'pro');
 
       setDowngradeConfirmVisible(false);
       onClose();
@@ -293,6 +310,20 @@ const subtitle =
     height - verticalPadTop - verticalPadBottom,
     isMobile ? 680 : 760
   );
+
+  const confirmIntroText = isGrandfathered
+    ? 'This account has grandfathered Pro access. There is no monthly renewal to cancel.'
+    : `Your Pro subscription will be cancelled so you won’t be charged again.${
+        endDateLabel
+          ? ` You’ll keep Pro until ${endDateLabel}, then switch to Free.`
+          : ` You’ll keep Pro until the end of your current billing period.`
+      }`;
+
+  const confirmPrimaryButtonLabel = isGrandfathered
+    ? 'Close'
+    : downgrading
+    ? 'Cancelling…'
+    : 'Cancel renewal';
 
   return (
     <>
@@ -413,7 +444,9 @@ const subtitle =
                   ]}
                 >
                   <Text style={styles.tierName}>Pro</Text>
-                  <Text style={styles.tierTagline}>Create, train, and make films with full access</Text>
+                  <Text style={styles.tierTagline}>
+                    Create, train, and make films with full access
+                  </Text>
 
                   <View style={styles.plansArea}>
                     <View style={[styles.planRow, isMobile && styles.planRowMobile]}>
@@ -439,13 +472,19 @@ const subtitle =
                   <View style={styles.dividerUltraSoft} />
 
                   <View style={styles.featureList}>
-  <Text style={styles.featureItem}>✓ Upload films to the Monthly Film Challenge</Text>
-  <Text style={styles.featureItem}>✓ Apply for paid jobs across Overlooked</Text>
-  <Text style={styles.featureItem}>✓ Unlock the full Filmmaking Bootcamp</Text>
-  <Text style={styles.featureItem}>✓ Learn every major film discipline through focused lessons and exercises</Text>
-  <Text style={styles.featureItem}>✓ Train with practical exercises inspired by academic film and acting courses</Text>
-  <Text style={styles.featureItem}>✓ Use all Workshop tools and resources to help you develop, plan, and make films</Text>
-</View>
+                    <Text style={styles.featureItem}>✓ Upload films to the Monthly Film Challenge</Text>
+                    <Text style={styles.featureItem}>✓ Apply for paid jobs across Overlooked</Text>
+                    <Text style={styles.featureItem}>✓ Unlock the full Filmmaking Bootcamp</Text>
+                    <Text style={styles.featureItem}>
+                      ✓ Learn every major film discipline through focused lessons and exercises
+                    </Text>
+                    <Text style={styles.featureItem}>
+                      ✓ Train with practical exercises inspired by academic film and acting courses
+                    </Text>
+                    <Text style={styles.featureItem}>
+                      ✓ Use all Workshop tools and resources to help you develop, plan, and make films
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               </View>
 
@@ -523,23 +562,22 @@ const subtitle =
               showsVerticalScrollIndicator={false}
               bounces={false}
             >
-              <Text style={styles.confirmTitle}>Cancel renewal?</Text>
-
-              <Text style={styles.confirmSub}>
-                Your Pro subscription will be cancelled so you won’t be charged again.
-                {endDateLabel
-                  ? ` You’ll keep Pro until ${endDateLabel}, then switch to Free.`
-                  : ` You’ll keep Pro until the end of your current billing period.`}
+              <Text style={styles.confirmTitle}>
+                {isGrandfathered ? 'Pro access' : 'Cancel renewal?'}
               </Text>
 
-              <View style={styles.confirmList}>
-                <Text style={styles.confirmItem}>After Pro ends, you’ll lose access to:</Text>
-                {downgradeLossBullets.map((t, idx) => (
-                  <Text key={`${idx}-${t}`} style={styles.confirmItem}>
-                    • {t}
-                  </Text>
-                ))}
-              </View>
+              <Text style={styles.confirmSub}>{confirmIntroText}</Text>
+
+              {!isGrandfathered ? (
+                <View style={styles.confirmList}>
+                  <Text style={styles.confirmItem}>After Pro ends, you’ll lose access to:</Text>
+                  {downgradeLossBullets.map((t, idx) => (
+                    <Text key={`${idx}-${t}`} style={styles.confirmItem}>
+                      • {t}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
 
               {downgradeConfirmError ? (
                 <Text style={styles.errorText}>{downgradeConfirmError}</Text>
@@ -556,31 +594,49 @@ const subtitle =
                     downgrading ? { opacity: 0.5 } : null,
                   ]}
                 >
-                  <Text style={styles.confirmBtnGhostText}>Keep Pro</Text>
+                  <Text style={styles.confirmBtnGhostText}>
+                    {isGrandfathered ? 'Done' : 'Keep Pro'}
+                  </Text>
                 </Pressable>
 
                 <Pressable
-                  disabled={downgrading}
-                  onPress={doDowngradeToFree}
+                  disabled={downgrading || isGrandfathered || !canCancelRenewal}
+                  onPress={isGrandfathered ? undefined : doDowngradeToFree}
                   style={({ pressed }) => [
                     styles.confirmBtn,
                     styles.confirmBtnDanger,
-                    pressed && !downgrading ? { opacity: 0.9 } : null,
+                    (isGrandfathered || !canCancelRenewal) && styles.buttonDisabled,
+                    pressed && !downgrading && !isGrandfathered && canCancelRenewal
+                      ? { opacity: 0.9 }
+                      : null,
                     downgrading ? { opacity: 0.7 } : null,
                   ]}
                 >
                   <View style={styles.confirmDangerInner}>
-                    {downgrading ? (
+                    {downgrading && !isGrandfathered ? (
                       <ActivityIndicator size="small" color="#0B0B0B" />
                     ) : null}
-                    <Text style={styles.confirmBtnDangerText}>
-                      {downgrading ? 'Cancelling…' : 'Cancel renewal'}
+                    <Text
+                      style={[
+                        styles.confirmBtnDangerText,
+                        (isGrandfathered || !canCancelRenewal) && styles.buttonTextDisabled,
+                      ]}
+                    >
+                      {isGrandfathered
+                        ? 'No renewal to cancel'
+                        : !canCancelRenewal
+                        ? 'No active renewal found'
+                        : confirmPrimaryButtonLabel}
                     </Text>
                   </View>
                 </Pressable>
               </View>
 
-              <Text style={styles.confirmFoot}>Tip: you can re-subscribe any time.</Text>
+              <Text style={styles.confirmFoot}>
+                {isGrandfathered
+                  ? 'Your Pro access remains active.'
+                  : 'Tip: you can re-subscribe any time.'}
+              </Text>
             </ScrollView>
           </Pressable>
         </Pressable>
