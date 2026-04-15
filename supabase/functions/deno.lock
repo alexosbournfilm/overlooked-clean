@@ -390,6 +390,8 @@
     "https://deno.land/std@0.177.1/path/separator.ts": "0fb679739d0d1d7bf45b68dacfb4ec7563597a902edbaf3c59b50d5bcadd93b1",
     "https://deno.land/std@0.177.1/path/win32.ts": "d186344e5583bcbf8b18af416d13d82b35a317116e6460a5a3953508c3de5bba",
     "https://deno.land/std@0.177.1/streams/write_all.ts": "3b2e1ce44913f966348ce353d02fa5369e94115181037cd8b602510853ec3033",
+    "https://deno.land/std@0.224.0/async/delay.ts": "f90dd685b97c2f142b8069082993e437b1602b8e2561134827eeb7c12b95c499",
+    "https://deno.land/std@0.224.0/http/server.ts": "f9313804bf6467a1704f45f76cb6cd0a3396a3b31c316035e6a4c2035d1ea514",
     "https://esm.sh/@supabase/auth-js@2.71.1/denonext/auth-js.mjs": "d55f67342e652b8bdce35b0ff13ad5cc294b7e96dbd68f859b464b07c6864967",
     "https://esm.sh/@supabase/functions-js@2.4.5/denonext/functions-js.mjs": "acfcb4db90c292c335a9dbb5664485f5e0b680533d68e6942abb9387ec7e0d0b",
     "https://esm.sh/@supabase/node-fetch@2.6.15/denonext/node-fetch.mjs": "0bae9052231f4f6dbccc7234d05ea96923dbf967be12f402764580b6bf9f713d",
