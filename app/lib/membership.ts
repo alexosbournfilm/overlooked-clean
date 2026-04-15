@@ -53,6 +53,7 @@ export type MembershipSnapshot = {
   dbTier: UserTier;
   effectiveTier: UserTier;
   isPremium: boolean;
+  grandfathered: boolean;
   subscriptionStatus: string | null;
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: string | null;
@@ -88,28 +89,26 @@ function isSubscriptionStatusActive(status?: string | null): boolean {
 }
 
 /**
- * Pro access rules:
+ * Correct Pro access rules:
  *
- * A user should have Pro if:
- * - DB tier says "pro", OR
- * - is_premium is true, OR
+ * A user should have Pro only if:
+ * - grandfathered is true, OR
  * - premium_access_expires_at is still in the future, OR
  * - subscription_status is active/trialing/past_due AND current_period_end is still in the future
  *
- * Important for cancel-at-period-end:
- * - user keeps Pro until current_period_end / premium_access_expires_at
- * - after that date passes, effective tier becomes free
+ * Important:
+ * - tier / is_premium may be stored as mirror fields, but they are NOT the source of truth
+ *   for entitlement because they can become stale after cancellation or sync issues.
+ * - cancel_at_period_end means the user keeps access until the relevant end date passes.
  */
 function computeEffectiveTier(row: {
-  tier?: string | null;
-  is_premium?: boolean | null;
+  grandfathered?: boolean | null;
   subscription_status?: string | null;
   cancel_at_period_end?: boolean | null;
   current_period_end?: string | null;
   premium_access_expires_at?: string | null;
 }): UserTier {
-  const dbTier = (row.tier as UserTier | null) ?? 'free';
-  const premiumByFlag = Boolean(row.is_premium);
+  const premiumByGrandfathered = Boolean(row.grandfathered);
   const premiumByExpiry = isFuture(row.premium_access_expires_at, 5_000);
 
   const subStatusActive = isSubscriptionStatusActive(row.subscription_status);
@@ -117,8 +116,7 @@ function computeEffectiveTier(row: {
   const premiumBySubscriptionWindow = subStatusActive && subPeriodStillActive;
 
   const hasPro =
-    dbTier === 'pro' ||
-    premiumByFlag ||
+    premiumByGrandfathered ||
     premiumByExpiry ||
     premiumBySubscriptionWindow;
 
@@ -151,6 +149,7 @@ export async function getMembershipSnapshot(opts?: {
       [
         'tier',
         'is_premium',
+        'grandfathered',
         'subscription_status',
         'cancel_at_period_end',
         'current_period_end',
@@ -174,6 +173,7 @@ export async function getMembershipSnapshot(opts?: {
     dbTier,
     effectiveTier,
     isPremium: Boolean(data.is_premium),
+    grandfathered: Boolean(data.grandfathered),
     subscriptionStatus: data.subscription_status ?? null,
     cancelAtPeriodEnd: Boolean(data.cancel_at_period_end),
     currentPeriodEnd: data.current_period_end ?? null,

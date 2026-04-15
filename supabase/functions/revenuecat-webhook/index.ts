@@ -67,6 +67,17 @@ type RcSubscriberV1 = {
   };
 };
 
+type UserBillingRow = {
+  id: string;
+  tier: string | null;
+  is_premium: boolean | null;
+  grandfathered: boolean | null;
+  subscription_status: string | null;
+  cancel_at_period_end: boolean | null;
+  current_period_end: string | null;
+  premium_access_expires_at: string | null;
+};
+
 function normalizeAuthHeader(value: string | null): string {
   if (!value) return "";
   return value.trim();
@@ -226,16 +237,44 @@ function deriveRefunded(subscriber: RcSubscriberV1): boolean {
 }
 
 function deriveSubscriptionStatus(args: {
-  hasActivePro: boolean;
+  hasActivePaidPro: boolean;
   cancelAtPeriodEnd: boolean;
   billingIssue: boolean;
   refunded: boolean;
+  isGrandfathered: boolean;
 }): string {
+  if (args.isGrandfathered) return "grandfathered";
   if (args.refunded) return "refunded";
-  if (args.hasActivePro && args.billingIssue) return "billing_issue";
-  if (args.hasActivePro && args.cancelAtPeriodEnd) return "canceled";
-  if (args.hasActivePro) return "active";
+  if (args.hasActivePaidPro && args.billingIssue) return "billing_issue";
+  if (args.hasActivePaidPro && args.cancelAtPeriodEnd) return "canceled";
+  if (args.hasActivePaidPro) return "active";
   return "expired";
+}
+
+async function getCurrentUserBillingRow(
+  supabaseAdmin: any,
+  userId: string
+): Promise<UserBillingRow | null> {
+  const { data, error } = await supabaseAdmin
+    .from("users")
+    .select(
+      [
+        "id",
+        "tier",
+        "is_premium",
+        "grandfathered",
+        "subscription_status",
+        "cancel_at_period_end",
+        "current_period_end",
+        "premium_access_expires_at",
+      ].join(",")
+    )
+    .eq("id", userId)
+    .single();
+
+  if (error) throw error;
+
+  return (data ?? null) as unknown as UserBillingRow | null;
 }
 
 async function syncUserFromRevenueCat(
@@ -243,27 +282,36 @@ async function syncUserFromRevenueCat(
   userId: string,
   subscriber: RcSubscriberV1
 ) {
+  const existingUser = await getCurrentUserBillingRow(supabaseAdmin, userId);
+  const isGrandfathered = Boolean(existingUser?.grandfathered);
+
   const proEntitlement = pickCurrentProEntitlement(subscriber);
   const currentPeriodEnd = deriveCurrentPeriodEnd(subscriber, proEntitlement);
-  const hasActivePro = !!proEntitlement && isFuture(currentPeriodEnd, 5_000);
+
+  const hasActivePaidPro =
+    !!proEntitlement && isFuture(currentPeriodEnd, 5_000);
+
   const cancelAtPeriodEnd = deriveCancelAtPeriodEnd(subscriber);
   const billingIssue = deriveBillingIssue(subscriber);
   const refunded = deriveRefunded(subscriber);
 
+  const hasEffectivePro = isGrandfathered || hasActivePaidPro;
+
   const subscriptionStatus = deriveSubscriptionStatus({
-    hasActivePro,
+    hasActivePaidPro,
     cancelAtPeriodEnd,
     billingIssue,
     refunded,
+    isGrandfathered,
   });
 
   const payload = {
-    tier: hasActivePro ? "pro" : "free",
-    is_premium: hasActivePro,
+    tier: hasEffectivePro ? "pro" : "free",
+    is_premium: hasEffectivePro,
     subscription_status: subscriptionStatus,
-    cancel_at_period_end: hasActivePro ? cancelAtPeriodEnd : false,
-    current_period_end: currentPeriodEnd,
-    premium_access_expires_at: currentPeriodEnd,
+    cancel_at_period_end: hasActivePaidPro ? cancelAtPeriodEnd : false,
+    current_period_end: hasActivePaidPro ? currentPeriodEnd : null,
+    premium_access_expires_at: hasActivePaidPro ? currentPeriodEnd : null,
   };
 
   const { error } = await supabaseAdmin
@@ -274,11 +322,13 @@ async function syncUserFromRevenueCat(
   if (error) throw error;
 
   return {
-    hasActivePro,
-    cancelAtPeriodEnd,
+    isGrandfathered,
+    hasActivePaidPro,
+    hasEffectivePro,
+    cancelAtPeriodEnd: hasActivePaidPro ? cancelAtPeriodEnd : false,
     billingIssue,
     refunded,
-    currentPeriodEnd,
+    currentPeriodEnd: hasActivePaidPro ? currentPeriodEnd : null,
     subscriptionStatus,
     productIdentifier: proEntitlement?.product_identifier ?? null,
   };

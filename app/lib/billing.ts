@@ -21,16 +21,12 @@ function isSubscriptionStatusActive(status?: string | null) {
 }
 
 function computeHasProAccess(row: {
-  tier?: string | null;
-  is_premium?: boolean | null;
+  grandfathered?: boolean | null;
   subscription_status?: string | null;
   current_period_end?: string | null;
   premium_access_expires_at?: string | null;
 }) {
-  const tier = (row.tier as EffectiveTier | null) ?? 'free';
-
-  const premiumByTier = tier === 'pro';
-  const premiumByFlag = Boolean(row.is_premium);
+  const premiumByGrandfathered = Boolean(row.grandfathered);
   const premiumByExpiry = isFuture(row.premium_access_expires_at, 5_000);
 
   const premiumBySubscriptionWindow =
@@ -38,8 +34,7 @@ function computeHasProAccess(row: {
     isFuture(row.current_period_end, 5_000);
 
   return (
-    premiumByTier ||
-    premiumByFlag ||
+    premiumByGrandfathered ||
     premiumByExpiry ||
     premiumBySubscriptionWindow
   );
@@ -89,11 +84,23 @@ export async function getMySubscriptionStatus() {
     (isFuture(row.premium_access_expires_at, 5_000) ||
       isFuture(row.current_period_end, 5_000));
 
+  const hasStripeSubscriptionRecord =
+    Boolean(row.stripe_customer_id) || Boolean(row.stripe_subscription_id);
+
+  const isGrandfathered = Boolean(row.grandfathered);
+
+  const isActiveSubscriber =
+    isSubscriptionStatusActive(row.subscription_status) &&
+    isFuture(row.current_period_end, 5_000);
+
   return {
     ...row,
     hasProAccess,
     effectiveTier,
     accessEndsAt,
     inCancelGracePeriod,
+    isGrandfathered,
+    isActiveSubscriber,
+    hasStripeSubscriptionRecord,
   };
 }
