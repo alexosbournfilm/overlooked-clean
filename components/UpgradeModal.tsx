@@ -40,6 +40,7 @@ type BillingSnapshot = {
   inCancelGracePeriod: boolean;
   isGrandfathered: boolean;
   isActiveSubscriber: boolean;
+  hasPaymentProviderSubscriptionRecord?: boolean;
   hasStripeSubscriptionRecord: boolean;
   cancel_at_period_end?: boolean | null;
   current_period_end?: string | null;
@@ -339,7 +340,15 @@ export const UpgradeModal: React.FC<Props> = ({
   const isActiveSubscriber = Boolean(billingState?.isActiveSubscriber);
   const inCancelGracePeriod = Boolean(billingState?.inCancelGracePeriod);
 
-  const canCancelRenewal = !isGrandfathered && (isActiveSubscriber || inCancelGracePeriod);
+  const canCancelRenewal =
+  !isGrandfathered &&
+  (
+    isActiveSubscriber ||
+    inCancelGracePeriod ||
+    Boolean(billingState?.hasPaymentProviderSubscriptionRecord) ||
+    Boolean(billingState?.stripe_subscription_id) ||
+    Boolean(billingState?.stripe_customer_id)
+  );
   const canKeepPro = !isGrandfathered && isActuallyPro && cancelAtPeriodEnd;
 
   const downgradeLossBullets = useMemo(() => {
@@ -427,12 +436,19 @@ export const UpgradeModal: React.FC<Props> = ({
         return;
       }
 
-      if (!(latestBilling.isActiveSubscriber || latestBilling.inCancelGracePeriod)) {
-        setDowngradeConfirmError(
-          'No active monthly renewal was found for this account.'
-        );
-        return;
-      }
+      const hasCancelableSubscription =
+  latestBilling.isActiveSubscriber ||
+  latestBilling.inCancelGracePeriod ||
+  Boolean((latestBilling as any).hasPaymentProviderSubscriptionRecord) ||
+  Boolean(latestBilling.stripe_subscription_id) ||
+  Boolean(latestBilling.stripe_customer_id);
+
+if (!hasCancelableSubscription) {
+  setDowngradeConfirmError(
+    'No active monthly renewal was found for this account.'
+  );
+  return;
+}
 
       const { data: fnData, error: fnError } = await supabase.functions.invoke(
         'cancel-subscription',

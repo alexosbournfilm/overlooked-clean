@@ -103,16 +103,24 @@ export async function getMySubscriptionStatus() {
       isFuture(row.current_period_end, 5_000));
 
   const hasPaymentProviderSubscriptionRecord =
-    Boolean(row.stripe_customer_id) ||
+  Boolean(row.stripe_customer_id) ||
+  Boolean(row.stripe_subscription_id) ||
+  Boolean(row.current_period_end) ||
+  Boolean(row.premium_access_expires_at) ||
+  Boolean(row.subscription_status);
+
+const isGrandfathered = Boolean(row.grandfathered);
+
+const isActiveSubscriber =
+  hasPaymentProviderSubscriptionRecord &&
+  !isGrandfathered &&
+  (
+    isSubscriptionStatusActive(row.subscription_status) ||
     Boolean(row.stripe_subscription_id) ||
-    Boolean(row.current_period_end) ||
-    Boolean(row.premium_access_expires_at);
-
-  const isGrandfathered = Boolean(row.grandfathered);
-
-  const isActiveSubscriber =
-    isSubscriptionStatusActive(row.subscription_status) &&
-    isFuture(row.current_period_end, 5_000);
+    Boolean(row.stripe_customer_id) ||
+    isFuture(row.current_period_end, 5_000) ||
+    isFuture(row.premium_access_expires_at, 5_000)
+  );
 
   return {
     ...row,
