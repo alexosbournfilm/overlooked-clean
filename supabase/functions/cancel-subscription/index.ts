@@ -22,120 +22,12 @@ function toIsoFromStripeUnix(unix: number | null | undefined): string | null {
   return new Date(unix * 1000).toISOString();
 }
 
-function toIso(value?: string | null): string | null {
-  if (!value) return null;
-  const t = new Date(value).getTime();
-  if (!Number.isFinite(t)) return null;
-  return new Date(t).toISOString();
-}
-
-function isFuture(value?: string | null, graceMs = 0): boolean {
-  if (!value) return false;
-  const t = new Date(value).getTime();
-  if (!Number.isFinite(t)) return false;
-  return t > Date.now() - graceMs;
-}
-
 type UserBillingRow = {
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   subscription_status: string | null;
   grandfathered: boolean | null;
-  premium_access_expires_at?: string | null;
-  current_period_end?: string | null;
 };
-
-type RcSubscriberV1 = {
-  subscriber?: {
-    management_url?: string | null;
-    subscriptions?: Record<
-      string,
-      {
-        expires_date?: string | null;
-        unsubscribe_detected_at?: string | null;
-        store?: string | null;
-      }
-    >;
-    entitlements?: Record<
-      string,
-      {
-        product_identifier?: string | null;
-        expires_date?: string | null;
-      }
-    >;
-  };
-};
-
-async function fetchRevenueCatSubscriber(
-  appUserId: string,
-  secretApiKey: string,
-): Promise<RcSubscriberV1 | null> {
-  if (!secretApiKey) return null;
-
-  const url = `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`;
-
-  const resp = await fetch(url, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${secretApiKey}`,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "X-Platform": "server",
-    },
-  });
-
-  const text = await resp.text();
-
-  let parsed: any = {};
-  try {
-    parsed = text ? JSON.parse(text) : {};
-  } catch {
-    parsed = {};
-  }
-
-  if (!resp.ok) {
-    console.warn("[cancel-subscription] RevenueCat lookup failed", resp.status, text);
-    return null;
-  }
-
-  return parsed as RcSubscriberV1;
-}
-
-function getRevenueCatRenewableState(subscriber: RcSubscriberV1 | null) {
-  const subscriptions = subscriber?.subscriber?.subscriptions ?? {};
-  const managementUrl = subscriber?.subscriber?.management_url ?? null;
-
-  let hasRenewableSubscription = false;
-  let cancelAtPeriodEnd = false;
-  let latestExpiry: string | null = null;
-  let store: string | null = null;
-
-  for (const sub of Object.values(subscriptions)) {
-    const expires = toIso(sub?.expires_date ?? null);
-    const unsubscribeDetected = Boolean(sub?.unsubscribe_detected_at);
-
-    if (expires && isFuture(expires, 5_000)) {
-      hasRenewableSubscription = true;
-
-      if (!latestExpiry || new Date(expires).getTime() > new Date(latestExpiry).getTime()) {
-        latestExpiry = expires;
-        store = sub?.store ?? null;
-      }
-    }
-
-    if (unsubscribeDetected) {
-      cancelAtPeriodEnd = true;
-    }
-  }
-
-  return {
-    hasRenewableSubscription,
-    cancelAtPeriodEnd,
-    latestExpiry,
-    managementUrl,
-    store,
-  };
-}
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
@@ -162,7 +54,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     Deno.env.get("SB_SERVICE_ROLE_KEY");
 
   const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY");
-  const REVENUECAT_SECRET_API_KEY = Deno.env.get("REVENUECAT_SECRET_API_KEY") || "";
 
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     return json(500, { error: "Supabase service env missing" });
@@ -189,6 +80,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const user = userRes.user;
 
+    console.log("[cancel-subscription] user", user.id);
+
     const { data, error: rowErr } = await supaRls
       .from("users")
       .select(
@@ -197,8 +90,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
           "stripe_subscription_id",
           "subscription_status",
           "grandfathered",
-          "premium_access_expires_at",
-          "current_period_end",
         ].join(","),
       )
       .eq("id", user.id)
@@ -212,149 +103,190 @@ Deno.serve(async (req: Request): Promise<Response> => {
       });
     }
 
-    const row = (data ?? null) as unknown as UserBillingRow | null;
+    const rawRow = data ?? null;
+const row = rawRow as unknown as UserBillingRow | null;
 
     const customerId = row?.stripe_customer_id ?? null;
     const savedSubId = row?.stripe_subscription_id ?? null;
     const isGrandfathered = Boolean(row?.grandfathered);
 
-    console.log("[cancel-subscription] user", user.id, {
+    console.log(
+      "[cancel-subscription] customerId",
       customerId,
+      "savedSubId",
       savedSubId,
+      "grandfathered",
       isGrandfathered,
+    );
+
+    // Real lifetime/grandfathered user: nothing to cancel in Stripe.
+    if (isGrandfathered && !customerId && !savedSubId) {
+      return json(200, {
+        ok: true,
+        message:
+          "This account has grandfathered Pro access and no active Stripe subscription to cancel.",
+        is_grandfathered: true,
+      });
+    }
+
+    // No Stripe customer => no monthly subscription exists.
+    // Clear stale billing fields so UI stops thinking billing is still active.
+    if (!customerId) {
+      await supaRls
+        .from("users")
+        .update({
+          cancel_at_period_end: false,
+          current_period_end: null,
+          premium_access_expires_at: null,
+          stripe_subscription_id: null,
+          subscription_status: null,
+          price_id: null,
+          tier: isGrandfathered ? "pro" : "free",
+          is_premium: isGrandfathered,
+        })
+        .eq("id", user.id);
+
+      return json(200, {
+        ok: true,
+        message: isGrandfathered
+          ? "No Stripe subscription found. Grandfathered Pro remains active."
+          : "No active Stripe customer; monthly subscription is already inactive.",
+        is_grandfathered: isGrandfathered,
+      });
+    }
+
+    const allSubs = await stripe.subscriptions.list({
+      customer: customerId,
+      status: "all",
+      limit: 100,
     });
 
-    // 1) Try Stripe first if we have a Stripe customer
-    if (customerId) {
-      const allSubs = await stripe.subscriptions.list({
-        customer: customerId,
-        status: "all",
-        limit: 100,
+    const activeSubs = (allSubs.data as Stripe.Subscription[]).filter(
+      (s) => s.status === "active" || s.status === "trialing",
+    );
+
+    if (activeSubs.length === 0) {
+      await supaRls
+        .from("users")
+        .update({
+          cancel_at_period_end: false,
+          current_period_end: null,
+          premium_access_expires_at: null,
+          stripe_subscription_id: null,
+          subscription_status: null,
+          price_id: null,
+          tier: isGrandfathered ? "pro" : "free",
+          is_premium: isGrandfathered,
+        })
+        .eq("id", user.id);
+
+      return json(200, {
+        ok: true,
+        message: isGrandfathered
+          ? "No active Stripe subscription found. Grandfathered Pro remains active."
+          : "No active subscription found.",
+        is_grandfathered: isGrandfathered,
       });
+    }
 
-      const activeSubs = (allSubs.data as Stripe.Subscription[]).filter(
-        (s) => s.status === "active" || s.status === "trialing",
-      );
+    let target: Stripe.Subscription | null = null;
 
-      let target: Stripe.Subscription | null = null;
-
-      if (savedSubId) {
-        target = activeSubs.find((s) => s.id === savedSubId) ?? null;
-      }
-
+    if (savedSubId) {
+      target = activeSubs.find((s) => s.id === savedSubId) ?? null;
       if (!target) {
-        target =
-          activeSubs
-            .slice()
-            .sort((a, b) => {
-              const bc = typeof b.created === "number" ? b.created : 0;
-              const ac = typeof a.created === "number" ? a.created : 0;
-              return bc - ac;
-            })[0] ?? null;
+        console.warn(
+          "[cancel-subscription] savedSubId not active; will choose another active sub",
+        );
       }
+    }
 
-      if (target) {
-        if (target.cancel_at_period_end) {
-          const cpeIso = toIsoFromStripeUnix(target.current_period_end);
+    if (!target) {
+      target =
+        activeSubs
+          .slice()
+          .sort((a, b) => {
+            const bc = typeof b.created === "number" ? b.created : 0;
+            const ac = typeof a.created === "number" ? a.created : 0;
+            return bc - ac;
+          })[0] ?? null;
+    }
 
-          await supaRls
-            .from("users")
-            .update({
-              stripe_subscription_id: target.id,
-              subscription_status: target.status,
-              cancel_at_period_end: true,
-              current_period_end: cpeIso,
-              premium_access_expires_at: cpeIso,
-              tier: "pro",
-              is_premium: true,
-            })
-            .eq("id", user.id);
+    if (!target) {
+      await supaRls
+        .from("users")
+        .update({
+          cancel_at_period_end: false,
+          current_period_end: null,
+          premium_access_expires_at: null,
+          stripe_subscription_id: null,
+          subscription_status: null,
+          price_id: null,
+          tier: isGrandfathered ? "pro" : "free",
+          is_premium: isGrandfathered,
+        })
+        .eq("id", user.id);
 
-          return json(200, {
-            ok: true,
-            action: "stripe_canceled",
-            message: "Subscription already scheduled to cancel at period end.",
-            period_end: cpeIso,
-          });
-        }
+      return json(200, {
+        ok: true,
+        message: "No cancellable subscription found.",
+      });
+    }
 
-        const updated = await stripe.subscriptions.update(target.id, {
+    if (target.cancel_at_period_end) {
+      const cpeIso = toIsoFromStripeUnix(target.current_period_end);
+
+      await supaRls
+        .from("users")
+        .update({
+          stripe_subscription_id: target.id,
+          subscription_status: target.status,
           cancel_at_period_end: true,
-        });
+          current_period_end: cpeIso,
+          premium_access_expires_at: cpeIso,
+          tier: "pro",
+          is_premium: true,
+        })
+        .eq("id", user.id);
 
-        const latestIso = toIsoFromStripeUnix(updated.current_period_end);
-
-        await supaRls
-          .from("users")
-          .update({
-            stripe_subscription_id: updated.id,
-            subscription_status: updated.status,
-            cancel_at_period_end: true,
-            current_period_end: latestIso,
-            premium_access_expires_at: latestIso,
-            tier: "pro",
-            is_premium: true,
-          })
-          .eq("id", user.id);
-
-        return json(200, {
-          ok: true,
-          action: "stripe_canceled",
-          message: "Subscription scheduled to cancel at period end.",
-          period_end: latestIso,
-        });
-      }
-    }
-
-    // 2) No cancellable Stripe subscription. Check RevenueCat/mobile subscription.
-    const rcSubscriber = await fetchRevenueCatSubscriber(user.id, REVENUECAT_SECRET_API_KEY);
-    const rcState = getRevenueCatRenewableState(rcSubscriber);
-
-    if (rcState.hasRenewableSubscription) {
       return json(200, {
         ok: true,
-        action: "manage_external",
-        provider: "revenuecat",
-        store: rcState.store,
-        management_url: rcState.managementUrl,
-        period_end: rcState.latestExpiry,
-        cancel_at_period_end: rcState.cancelAtPeriodEnd,
-        message: rcState.managementUrl
-          ? "This subscription is managed through your mobile app store. Use the store management page to cancel renewal."
-          : "This subscription is managed through your mobile app store. Cancel it from Google Play or the App Store.",
+        message: "Subscription already scheduled to cancel at period end.",
+        period_end: cpeIso,
+        is_grandfathered: false,
       });
     }
 
-    // 3) Grandfathered user: nothing to cancel
-    if (isGrandfathered) {
-      return json(200, {
-        ok: true,
-        action: "nothing_to_cancel",
-        is_grandfathered: true,
-        message:
-          "This account has grandfathered Pro access and no monthly renewal to cancel.",
-      });
-    }
+    const updated = await stripe.subscriptions.update(target.id, {
+      cancel_at_period_end: true,
+    });
 
-    // 4) Truly no Stripe or RevenueCat renewal exists. Clear stale local billing fields.
+    const latestIso = toIsoFromStripeUnix(updated.current_period_end);
+
+    console.log(
+      "[cancel-subscription] set cancel_at_period_end for",
+      updated.id,
+      "cpe",
+      updated.current_period_end,
+    );
+
     await supaRls
       .from("users")
       .update({
-        cancel_at_period_end: false,
-        current_period_end: null,
-        premium_access_expires_at: null,
-        stripe_subscription_id: null,
-        subscription_status: null,
-        price_id: null,
-        tier: "free",
-        is_premium: false,
+        stripe_subscription_id: updated.id,
+        subscription_status: updated.status,
+        cancel_at_period_end: true,
+        current_period_end: latestIso,
+        premium_access_expires_at: latestIso,
+        tier: "pro",
+        is_premium: true,
       })
       .eq("id", user.id);
 
     return json(200, {
       ok: true,
-      action: "nothing_to_cancel",
-      message: "No active renewal was found for this account.",
+      message: "Subscription scheduled to cancel at period end.",
+      period_end: latestIso,
+      is_grandfathered: false,
     });
   } catch (e: any) {
     console.error("[cancel-subscription] unhandled", e);
