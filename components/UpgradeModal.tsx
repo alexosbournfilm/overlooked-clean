@@ -273,18 +273,16 @@ export const UpgradeModal: React.FC<Props> = ({
         setExternalManagementStore(null);
         setExternalManagementMessage(null);
 
-        const tier = await getCurrentUserTierOrFree({ force: true });
-        if (!mounted) return;
-
-        setCurrentTier(tier);
-        setSelectedTier(tier);
-
         const billing = (await getMySubscriptionStatus()) as BillingSnapshot;
-        if (!mounted) return;
+if (!mounted) return;
 
-        setBillingState(billing);
-        setPeriodEndIso(billing.accessEndsAt ?? null);
-        setCancelAtPeriodEnd(Boolean(billing.cancel_at_period_end));
+const derivedTier: UserTier = billing?.hasProAccess ? 'pro' : 'free';
+
+setBillingState(billing);
+setCurrentTier(derivedTier);
+setSelectedTier(derivedTier);
+setPeriodEndIso(billing.accessEndsAt ?? null);
+setCancelAtPeriodEnd(Boolean(billing.cancel_at_period_end));
       } catch (err) {
         console.log('UpgradeModal load error', (err as any)?.message || err);
       }
@@ -331,7 +329,11 @@ export const UpgradeModal: React.FC<Props> = ({
       if (onSelectPro) onSelectPro();
 
       onClose();
-      nav.navigate('Paywall');
+
+requestAnimationFrame(() => {
+  nav.getParent?.()?.navigate?.('Paywall');
+  nav.navigate?.('Paywall');
+});
     } catch (err: any) {
       console.log('UpgradeModal upgrade start error', err?.message || err);
       setErrorText(err?.message || 'Could not start checkout');
@@ -373,16 +375,16 @@ export const UpgradeModal: React.FC<Props> = ({
   const refreshBillingState = async () => {
     invalidateMembershipCache();
 
-    const refreshedTier = await getCurrentUserTierOrFree({ force: true });
-    const refreshedBilling = (await getMySubscriptionStatus()) as BillingSnapshot;
+const refreshedBilling = (await getMySubscriptionStatus()) as BillingSnapshot;
+const refreshedTier: UserTier = refreshedBilling?.hasProAccess ? 'pro' : 'free';
 
-    setCurrentTier(refreshedTier);
-    setSelectedTier(refreshedTier);
-    setBillingState(refreshedBilling);
-    setPeriodEndIso(refreshedBilling.accessEndsAt ?? null);
-    setCancelAtPeriodEnd(Boolean(refreshedBilling.cancel_at_period_end));
+setCurrentTier(refreshedTier);
+setSelectedTier(refreshedTier);
+setBillingState(refreshedBilling);
+setPeriodEndIso(refreshedBilling.accessEndsAt ?? null);
+setCancelAtPeriodEnd(Boolean(refreshedBilling.cancel_at_period_end));
 
-    return { refreshedTier, refreshedBilling };
+return { refreshedTier, refreshedBilling };
   };
 
   const doDowngradeToFree = async () => {
@@ -691,7 +693,7 @@ export const UpgradeModal: React.FC<Props> = ({
                   onPress={() => {
                     setErrorText(null);
 
-                    if (currentTier === 'pro') {
+                    if (billingState?.hasProAccess) {
                       setSelectedTier('free');
                       openDowngradeConfirm();
                       return;
