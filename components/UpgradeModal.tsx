@@ -15,10 +15,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { type UserTier } from '../app/lib/supabase';
-import {
-  getCurrentUserTierOrFree,
-  invalidateMembershipCache,
-} from '../app/lib/membership';
+import { invalidateMembershipCache } from '../app/lib/membership';
 import { getMySubscriptionStatus } from '../app/lib/billing';
 import { supabase } from '../app/lib/supabase';
 
@@ -103,7 +100,6 @@ const HAIRLINE = 'rgba(255,255,255,0.09)';
 const HAIRLINE_2 = 'rgba(255,255,255,0.06)';
 
 const GOLD = '#C6A664';
-const SUCCESS = '#2ED47A';
 const WARNING_BG = 'rgba(198,166,100,0.12)';
 const WARNING_BORDER = 'rgba(198,166,100,0.22)';
 const SUCCESS_BG = 'rgba(46,212,122,0.12)';
@@ -118,11 +114,6 @@ const SYSTEM_SANS = Platform.select({
   web: undefined,
   default: undefined,
 });
-
-const HUMAN_TIER_LONG: Record<UserTier, string> = {
-  free: 'Free',
-  pro: 'Pro',
-};
 
 function getOfferRemaining() {
   const end = new Date(2026, 0, 31, 23, 59, 59);
@@ -215,6 +206,12 @@ function getCancellationCountdown(iso?: string | null) {
   }
 }
 
+function getDerivedTierFromBilling(
+  billing: BillingSnapshot | null | undefined
+): UserTier {
+  return billing?.hasProAccess || billing?.effectiveTier === 'pro' ? 'pro' : 'free';
+}
+
 async function openExternalManagementUrl(url?: string | null) {
   if (!url) return false;
 
@@ -300,16 +297,14 @@ export const UpgradeModal: React.FC<Props> = ({
         setSuccessText(null);
         setDowngradeConfirmError(null);
 
-        const tier = await getCurrentUserTierOrFree({ force: true });
-        if (!mounted) return;
-
-        setCurrentTier(tier);
-        setSelectedTier(tier);
-
         const billing = (await getMySubscriptionStatus()) as BillingSnapshot;
         if (!mounted) return;
 
+        const derivedTier = getDerivedTierFromBilling(billing);
+
         setBillingState(billing);
+        setCurrentTier(derivedTier);
+        setSelectedTier(derivedTier);
         setPeriodEndIso(
           billing.current_period_end ??
             billing.accessEndsAt ??
@@ -331,8 +326,13 @@ export const UpgradeModal: React.FC<Props> = ({
   const subtitle =
     'Upload your films, apply for paid jobs, and unlock the full Filmmaking Bootcamp — a premium space to train across every major film discipline through high-level lessons, practical exercises, and powerful Workshop tools built to help you actually make films.';
 
-  const currentTierLabel = currentTier ? HUMAN_TIER_LONG[currentTier] : 'Free';
-  const isProDisabled = currentTier === 'pro' && !cancelAtPeriodEnd;
+  const isActuallyPro =
+    Boolean(billingState?.hasProAccess) ||
+    billingState?.effectiveTier === 'pro' ||
+    currentTier === 'pro';
+
+  const currentTierLabel = isActuallyPro ? 'Pro' : 'Free';
+  const isProDisabled = isActuallyPro && !cancelAtPeriodEnd;
   const endDateLabel = periodEndIso ? formatEndDate(periodEndIso) : null;
 
   const isGrandfathered = Boolean(billingState?.isGrandfathered);
@@ -340,7 +340,7 @@ export const UpgradeModal: React.FC<Props> = ({
   const inCancelGracePeriod = Boolean(billingState?.inCancelGracePeriod);
 
   const canCancelRenewal = !isGrandfathered && (isActiveSubscriber || inCancelGracePeriod);
-  const canKeepPro = !isGrandfathered && currentTier === 'pro' && cancelAtPeriodEnd;
+  const canKeepPro = !isGrandfathered && isActuallyPro && cancelAtPeriodEnd;
 
   const downgradeLossBullets = useMemo(() => {
     return [
@@ -354,14 +354,12 @@ export const UpgradeModal: React.FC<Props> = ({
   const refreshBillingState = async () => {
     invalidateMembershipCache();
 
-    const [refreshedTier, refreshedBilling] = await Promise.all([
-      getCurrentUserTierOrFree({ force: true }),
-      getMySubscriptionStatus() as Promise<BillingSnapshot>,
-    ]);
+    const refreshedBilling = (await getMySubscriptionStatus()) as BillingSnapshot;
+    const derivedTier = getDerivedTierFromBilling(refreshedBilling);
 
-    setCurrentTier(refreshedTier);
-    setSelectedTier(refreshedTier);
     setBillingState(refreshedBilling);
+    setCurrentTier(derivedTier);
+    setSelectedTier(derivedTier);
     setPeriodEndIso(
       refreshedBilling.current_period_end ??
         refreshedBilling.accessEndsAt ??
@@ -369,6 +367,8 @@ export const UpgradeModal: React.FC<Props> = ({
         null
     );
     setCancelAtPeriodEnd(Boolean(refreshedBilling.cancel_at_period_end));
+
+    return refreshedBilling;
   };
 
   const doUpgradeToPro = async () => {
@@ -462,12 +462,19 @@ export const UpgradeModal: React.FC<Props> = ({
         return;
       }
 
-      await refreshBillingState();
+      const refreshedBilling = await refreshBillingState();
+      const latestEnd =
+        result?.period_end ??
+        refreshedBilling.current_period_end ??
+        refreshedBilling.accessEndsAt ??
+        refreshedBilling.premium_access_expires_at ??
+        null;
+      const latestEndLabel = latestEnd ? formatEndDate(latestEnd) : null;
 
       setDowngradeConfirmVisible(false);
       setSuccessText(
-        endDateLabel
-          ? `Your renewal has been cancelled. You’ll keep Pro until ${endDateLabel}.`
+        latestEndLabel
+          ? `Your renewal has been cancelled. You’ll keep Pro until ${latestEndLabel}.`
           : 'Your renewal has been cancelled. You’ll keep Pro until the end of your billing period.'
       );
     } catch (err: any) {
@@ -506,7 +513,13 @@ export const UpgradeModal: React.FC<Props> = ({
       }
 
       if (!latestBilling.cancel_at_period_end) {
-        setSuccessText('Your Pro subscription is already set to continue.');
+        const refreshed = await refreshBillingState();
+        const derivedTier = getDerivedTierFromBilling(refreshed);
+        if (derivedTier === 'pro') {
+          setSuccessText('Your Pro subscription is already active.');
+        } else {
+          setSuccessText('Your Pro subscription is already set to continue.');
+        }
         setDowngradeConfirmVisible(false);
         return;
       }
@@ -553,7 +566,7 @@ export const UpgradeModal: React.FC<Props> = ({
   };
 
   const ctaLabel =
-    currentTier === 'pro' && cancelAtPeriodEnd
+    isActuallyPro && cancelAtPeriodEnd
       ? restoringPro
         ? 'Keeping Pro…'
         : 'Keep Pro'
@@ -640,13 +653,13 @@ export const UpgradeModal: React.FC<Props> = ({
               {currentTier ? (
                 <Text style={styles.currentTierText}>
                   Current plan: <Text style={styles.currentTierName}>{currentTierLabel}</Text>
-                  {currentTier === 'pro' && cancelAtPeriodEnd && endDateLabel ? (
+                  {isActuallyPro && cancelAtPeriodEnd && endDateLabel ? (
                     <Text style={{ color: TEXT_MUTED }}>{`  •  Cancels ${endDateLabel}`}</Text>
                   ) : null}
                 </Text>
               ) : null}
 
-              {currentTier === 'pro' && cancelAtPeriodEnd ? (
+              {isActuallyPro && cancelAtPeriodEnd ? (
                 <View style={styles.countdownBanner}>
                   <View style={styles.countdownBannerTopRow}>
                     <Text style={styles.countdownPill}>CANCELLATION SCHEDULED</Text>
@@ -710,7 +723,7 @@ export const UpgradeModal: React.FC<Props> = ({
                     setErrorText(null);
                     setSuccessText(null);
 
-                    if (currentTier === 'pro') {
+                    if (isActuallyPro) {
                       setSelectedTier('free');
                       openDowngradeConfirm();
                       return;
@@ -723,7 +736,7 @@ export const UpgradeModal: React.FC<Props> = ({
                     styles.freeCard,
                     isMobile && styles.tierCardMobile,
                     selectedTier === 'free' && styles.tierCardSelected,
-                    currentTier === 'free' && styles.tierCardCurrentFree,
+                    !isActuallyPro && styles.tierCardCurrentFree,
                   ]}
                 >
                   <Text style={styles.freeSmallLabel}>Free</Text>
@@ -766,7 +779,7 @@ export const UpgradeModal: React.FC<Props> = ({
                     styles.proCard,
                     isMobile && styles.tierCardMobile,
                     selectedTier === 'pro' && styles.tierCardSelectedPro,
-                    currentTier === 'pro' && styles.tierCardCurrentPro,
+                    isActuallyPro && styles.tierCardCurrentPro,
                   ]}
                 >
                   <Text style={styles.tierName}>Pro</Text>
@@ -960,11 +973,7 @@ export const UpgradeModal: React.FC<Props> = ({
                       <ActivityIndicator size="small" color={TEXT_IVORY} />
                     ) : null}
                     <Text style={styles.confirmBtnGhostText}>
-                      {isGrandfathered
-                        ? 'Done'
-                        : cancelAtPeriodEnd
-                        ? 'Keep Pro'
-                        : 'Keep Pro'}
+                      {isGrandfathered ? 'Done' : 'Keep Pro'}
                     </Text>
                   </View>
                 </Pressable>
