@@ -16,7 +16,7 @@ import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { AuthProvider } from "./app/context/AuthProvider";
 import { GamificationProvider } from "./app/context/GamificationContext";
 import { navigate } from "./app/navigation/navigationRef";
-import { registerAndSavePushToken } from "./app/lib/registerAndSavePushToken"; 
+import { registerAndSavePushToken } from "./app/lib/registerAndSavePushToken";
 
 // fonts
 import {
@@ -54,6 +54,15 @@ if (Platform.OS === "web") {
     return originalGetInitialURL();
   };
 }
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -207,6 +216,16 @@ export default function App() {
   useEffect(() => {
     if (Platform.OS === "web") return;
 
+    const handleNotificationNavigation = (data: any) => {
+      if (data?.screen) {
+        try {
+          navigate(data.screen, data.params || {});
+        } catch (err) {
+          console.log("Navigation from notification failed:", err);
+        }
+      }
+    };
+
     notificationListener.current =
       Notifications.addNotificationReceivedListener((notification) => {
         console.log("📩 Notification received:", notification);
@@ -217,15 +236,26 @@ export default function App() {
         console.log("👆 Notification tapped:", response);
 
         const data = response.notification.request.content.data as any;
-
-        if (data?.screen) {
-          try {
-            navigate(data.screen, data.params || {});
-          } catch (err) {
-            console.log("Navigation from notification failed:", err);
-          }
-        }
+        handleNotificationNavigation(data);
       });
+
+    (async () => {
+      try {
+        const lastResponse =
+          await Notifications.getLastNotificationResponseAsync();
+
+        if (lastResponse) {
+          console.log("🚀 App opened from notification:", lastResponse);
+
+          const data =
+            lastResponse.notification.request.content.data as any;
+
+          handleNotificationNavigation(data);
+        }
+      } catch (err) {
+        console.log("Failed to get last notification response:", err);
+      }
+    })();
 
     return () => {
       notificationListener.current?.remove?.();

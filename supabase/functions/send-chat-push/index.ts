@@ -29,6 +29,14 @@ type UserRow = {
   expo_push_token: string | null;
 };
 
+function isExpoPushToken(token: string | null | undefined): token is string {
+  if (!token) return false;
+  return (
+    token.startsWith("ExponentPushToken[") ||
+    token.startsWith("ExpoPushToken[")
+  );
+}
+
 serve(async (req: Request): Promise<Response> => {
   try {
     const body = (await req.json()) as WebhookBody;
@@ -44,6 +52,7 @@ serve(async (req: Request): Promise<Response> => {
     const conversationId = record.conversation_id;
     const senderId = record.sender_id;
     const rawContent = record.content ?? "";
+    const messageType = record.message_type ?? "text";
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -69,7 +78,7 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const recipientIds = (conversation.participant_ids || []).filter(
-      (id: string) => id !== senderId
+      (id) => id !== senderId
     );
 
     if (!recipientIds.length) {
@@ -88,11 +97,14 @@ serve(async (req: Request): Promise<Response> => {
       .eq("id", senderId)
       .single<SenderRow>();
 
-    if (senderError) {
-      return new Response(JSON.stringify({ error: senderError.message }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+    if (senderError || !sender) {
+      return new Response(
+        JSON.stringify({ error: senderError?.message ?? "Sender not found" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     }
 
     const { data: recipients, error: recipientsError } = await supabase
@@ -107,13 +119,13 @@ serve(async (req: Request): Promise<Response> => {
       });
     }
 
-    const validRecipients = ((recipients ?? []) as UserRow[]).filter(
-      (user) => !!user.expo_push_token
+    const validRecipients = ((recipients ?? []) as UserRow[]).filter((user) =>
+      isExpoPushToken(user.expo_push_token)
     );
 
     if (!validRecipients.length) {
       return new Response(
-        JSON.stringify({ ok: true, skipped: "No push tokens" }),
+        JSON.stringify({ ok: true, skipped: "No valid push tokens" }),
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -121,30 +133,38 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const senderName = sender?.full_name || "New message";
+    const senderName = sender.full_name?.trim() || "New message";
 
-    const bodyText = rawContent.startsWith("image:")
-      ? "📷 Photo"
-      : rawContent.startsWith("📎 File:")
-      ? rawContent
-      : rawContent || "New message";
+    let bodyText = "New message";
+    if (messageType === "image") {
+      bodyText = "📷 Photo";
+    } else if (messageType === "file") {
+      bodyText = "📎 File";
+    } else if (rawContent.trim()) {
+      bodyText = rawContent.trim();
+    }
+
+    const title = conversation.is_group
+      ? `${senderName} · ${conversation.label ?? "Group chat"}`
+      : senderName;
 
     const pushMessages = validRecipients.map((user) => ({
-      to: user.expo_push_token as string,
+      to: user.expo_push_token!,
       sound: "default",
-      title: senderName,
+      title,
       body: bodyText,
       data: {
         screen: "ChatRoom",
-        params: {
-          conversationId,
-        },
+        conversationId,
+        senderId,
       },
     }));
 
     const expoResponse = await fetch("https://exp.host/--/api/v2/push/send", {
       method: "POST",
       headers: {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip, deflate",
         "Content-Type": "application/json",
       },
       body: JSON.stringify(pushMessages),
@@ -152,10 +172,17 @@ serve(async (req: Request): Promise<Response> => {
 
     const expoResult = await expoResponse.json();
 
-    return new Response(JSON.stringify({ ok: true, expoResult }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        sent: pushMessages.length,
+        expoResult,
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : "Unknown send-chat-push error";
