@@ -70,6 +70,25 @@ type CancelSubscriptionResponse = {
   is_grandfathered?: boolean;
 };
 
+type ResumeSubscriptionResponse = {
+  ok?: boolean;
+  error?: string;
+  details?: string;
+  message?: string;
+  provider?: 'stripe' | 'revenuecat' | string;
+  action?:
+    | 'stripe_resumed'
+    | 'already_active'
+    | 'manage_external'
+    | 'nothing_to_resume'
+    | string;
+  management_url?: string | null;
+  store?: string | null;
+  cancel_at_period_end?: boolean | null;
+  period_end?: string | null;
+  is_grandfathered?: boolean;
+};
+
 /* -------------------------- shared palette/fonts -------------------------- */
 
 const DARK_ELEVATED = '#171717';
@@ -84,6 +103,11 @@ const HAIRLINE = 'rgba(255,255,255,0.09)';
 const HAIRLINE_2 = 'rgba(255,255,255,0.06)';
 
 const GOLD = '#C6A664';
+const SUCCESS = '#2ED47A';
+const WARNING_BG = 'rgba(198,166,100,0.12)';
+const WARNING_BORDER = 'rgba(198,166,100,0.22)';
+const SUCCESS_BG = 'rgba(46,212,122,0.12)';
+const SUCCESS_BORDER = 'rgba(46,212,122,0.22)';
 
 const OFFER_TILE_BG = 'rgba(46,212,122,0.12)';
 const OFFER_TILE_BORDER = 'rgba(46,212,122,0.22)';
@@ -133,6 +157,64 @@ function formatEndDate(iso: string) {
   }
 }
 
+function getCancellationCountdown(iso?: string | null) {
+  if (!iso) {
+    return {
+      daysLeft: null as number | null,
+      short: null as string | null,
+      long: null as string | null,
+      ended: false,
+    };
+  }
+
+  try {
+    const end = new Date(iso);
+    if (Number.isNaN(end.getTime())) {
+      return {
+        daysLeft: null,
+        short: null,
+        long: null,
+        ended: false,
+      };
+    }
+
+    const now = new Date();
+    const diffMs = end.getTime() - now.getTime();
+
+    if (diffMs <= 0) {
+      return {
+        daysLeft: 0,
+        short: 'Ends today',
+        long: 'Your Pro access ends today.',
+        ended: true,
+      };
+    }
+
+    const dayMs = 1000 * 60 * 60 * 24;
+    const daysLeft = Math.ceil(diffMs / dayMs);
+
+    const short = daysLeft === 1 ? '1 day left' : `${daysLeft} days left`;
+    const long =
+      daysLeft === 1
+        ? 'Your account will return to Free in 1 day.'
+        : `Your account will return to Free in ${daysLeft} days.`;
+
+    return {
+      daysLeft,
+      short,
+      long,
+      ended: false,
+    };
+  } catch {
+    return {
+      daysLeft: null,
+      short: null,
+      long: null,
+      ended: false,
+    };
+  }
+}
+
 async function openExternalManagementUrl(url?: string | null) {
   if (!url) return false;
 
@@ -166,8 +248,10 @@ export const UpgradeModal: React.FC<Props> = ({
 
   const [upgrading, setUpgrading] = useState(false);
   const [downgrading, setDowngrading] = useState(false);
+  const [restoringPro, setRestoringPro] = useState(false);
 
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [successText, setSuccessText] = useState<string | null>(null);
 
   const [downgradeConfirmVisible, setDowngradeConfirmVisible] = useState(false);
   const [downgradeConfirmError, setDowngradeConfirmError] = useState<string | null>(null);
@@ -178,6 +262,9 @@ export const UpgradeModal: React.FC<Props> = ({
   const [billingState, setBillingState] = useState<BillingSnapshot | null>(null);
 
   const [offerCountdown, setOfferCountdown] = useState(() => getOfferRemaining());
+  const [cancelCountdown, setCancelCountdown] = useState(() =>
+    getCancellationCountdown(null)
+  );
 
   useEffect(() => {
     if (!visible) return;
@@ -192,11 +279,25 @@ export const UpgradeModal: React.FC<Props> = ({
   useEffect(() => {
     if (!visible) return;
 
+    const tick = () => {
+      setCancelCountdown(getCancellationCountdown(periodEndIso));
+    };
+
+    tick();
+
+    const id = setInterval(tick, 60 * 1000);
+    return () => clearInterval(id);
+  }, [visible, periodEndIso]);
+
+  useEffect(() => {
+    if (!visible) return;
+
     let mounted = true;
 
     (async () => {
       try {
         setErrorText(null);
+        setSuccessText(null);
         setDowngradeConfirmError(null);
 
         const tier = await getCurrentUserTierOrFree({ force: true });
@@ -209,7 +310,12 @@ export const UpgradeModal: React.FC<Props> = ({
         if (!mounted) return;
 
         setBillingState(billing);
-        setPeriodEndIso(billing.accessEndsAt ?? null);
+        setPeriodEndIso(
+          billing.current_period_end ??
+            billing.accessEndsAt ??
+            billing.premium_access_expires_at ??
+            null
+        );
         setCancelAtPeriodEnd(Boolean(billing.cancel_at_period_end));
       } catch (err) {
         console.log('UpgradeModal load error', (err as any)?.message || err);
@@ -226,14 +332,15 @@ export const UpgradeModal: React.FC<Props> = ({
     'Upload your films, apply for paid jobs, and unlock the full Filmmaking Bootcamp — a premium space to train across every major film discipline through high-level lessons, practical exercises, and powerful Workshop tools built to help you actually make films.';
 
   const currentTierLabel = currentTier ? HUMAN_TIER_LONG[currentTier] : 'Free';
-  const isProDisabled = currentTier === 'pro';
+  const isProDisabled = currentTier === 'pro' && !cancelAtPeriodEnd;
   const endDateLabel = periodEndIso ? formatEndDate(periodEndIso) : null;
 
   const isGrandfathered = Boolean(billingState?.isGrandfathered);
   const isActiveSubscriber = Boolean(billingState?.isActiveSubscriber);
   const inCancelGracePeriod = Boolean(billingState?.inCancelGracePeriod);
 
-  const canCancelRenewal = isActiveSubscriber || inCancelGracePeriod;
+  const canCancelRenewal = !isGrandfathered && (isActiveSubscriber || inCancelGracePeriod);
+  const canKeepPro = !isGrandfathered && currentTier === 'pro' && cancelAtPeriodEnd;
 
   const downgradeLossBullets = useMemo(() => {
     return [
@@ -244,10 +351,31 @@ export const UpgradeModal: React.FC<Props> = ({
     ];
   }, [context]);
 
+  const refreshBillingState = async () => {
+    invalidateMembershipCache();
+
+    const [refreshedTier, refreshedBilling] = await Promise.all([
+      getCurrentUserTierOrFree({ force: true }),
+      getMySubscriptionStatus() as Promise<BillingSnapshot>,
+    ]);
+
+    setCurrentTier(refreshedTier);
+    setSelectedTier(refreshedTier);
+    setBillingState(refreshedBilling);
+    setPeriodEndIso(
+      refreshedBilling.current_period_end ??
+        refreshedBilling.accessEndsAt ??
+        refreshedBilling.premium_access_expires_at ??
+        null
+    );
+    setCancelAtPeriodEnd(Boolean(refreshedBilling.cancel_at_period_end));
+  };
+
   const doUpgradeToPro = async () => {
     try {
       setUpgrading(true);
       setErrorText(null);
+      setSuccessText(null);
 
       const { data: userRes, error: userErr } = await supabase.auth.getUser();
       if (userErr) throw userErr;
@@ -268,6 +396,7 @@ export const UpgradeModal: React.FC<Props> = ({
 
   const openDowngradeConfirm = () => {
     setDowngradeConfirmError(null);
+    setSuccessText(null);
     setDowngradeConfirmVisible(true);
   };
 
@@ -275,6 +404,7 @@ export const UpgradeModal: React.FC<Props> = ({
     try {
       setDowngrading(true);
       setDowngradeConfirmError(null);
+      setSuccessText(null);
 
       const { data: userRes, error: userErr } = await supabase.auth.getUser();
       if (userErr) throw userErr;
@@ -282,7 +412,12 @@ export const UpgradeModal: React.FC<Props> = ({
 
       const latestBilling = (await getMySubscriptionStatus()) as BillingSnapshot;
       setBillingState(latestBilling);
-      setPeriodEndIso(latestBilling.accessEndsAt ?? null);
+      setPeriodEndIso(
+        latestBilling.current_period_end ??
+          latestBilling.accessEndsAt ??
+          latestBilling.premium_access_expires_at ??
+          null
+      );
       setCancelAtPeriodEnd(Boolean(latestBilling.cancel_at_period_end));
 
       if (latestBilling.isGrandfathered) {
@@ -323,33 +458,18 @@ export const UpgradeModal: React.FC<Props> = ({
 
         setDowngradeConfirmError(externalMessage);
 
-        invalidateMembershipCache();
-
-        const refreshedTier = await getCurrentUserTierOrFree({ force: true });
-        const refreshedBilling = (await getMySubscriptionStatus()) as BillingSnapshot;
-
-        setCurrentTier(refreshedTier);
-        setSelectedTier(refreshedTier);
-        setBillingState(refreshedBilling);
-        setPeriodEndIso(refreshedBilling.accessEndsAt ?? null);
-        setCancelAtPeriodEnd(Boolean(refreshedBilling.cancel_at_period_end));
-
+        await refreshBillingState();
         return;
       }
 
-      invalidateMembershipCache();
-
-      const refreshedTier = await getCurrentUserTierOrFree({ force: true });
-      const refreshedBilling = (await getMySubscriptionStatus()) as BillingSnapshot;
-
-      setCurrentTier(refreshedTier);
-      setSelectedTier(refreshedTier);
-      setBillingState(refreshedBilling);
-      setPeriodEndIso(refreshedBilling.accessEndsAt ?? null);
-      setCancelAtPeriodEnd(Boolean(refreshedBilling.cancel_at_period_end));
+      await refreshBillingState();
 
       setDowngradeConfirmVisible(false);
-      onClose();
+      setSuccessText(
+        endDateLabel
+          ? `Your renewal has been cancelled. You’ll keep Pro until ${endDateLabel}.`
+          : 'Your renewal has been cancelled. You’ll keep Pro until the end of your billing period.'
+      );
     } catch (err: any) {
       console.log('UpgradeModal downgrade error', err?.message || err);
       setDowngradeConfirmError(err?.message || 'Downgrade failed');
@@ -358,11 +478,90 @@ export const UpgradeModal: React.FC<Props> = ({
     }
   };
 
-  const ctaLabel = isProDisabled
-    ? "You're on Pro"
-    : upgrading
-    ? 'Opening checkout…'
-    : 'See Pro plans';
+  const doKeepPro = async () => {
+    try {
+      setRestoringPro(true);
+      setErrorText(null);
+      setSuccessText(null);
+      setDowngradeConfirmError(null);
+
+      const { data: userRes, error: userErr } = await supabase.auth.getUser();
+      if (userErr) throw userErr;
+      if (!userRes?.user?.id) throw new Error('Not signed in');
+
+      const latestBilling = (await getMySubscriptionStatus()) as BillingSnapshot;
+      setBillingState(latestBilling);
+      setPeriodEndIso(
+        latestBilling.current_period_end ??
+          latestBilling.accessEndsAt ??
+          latestBilling.premium_access_expires_at ??
+          null
+      );
+      setCancelAtPeriodEnd(Boolean(latestBilling.cancel_at_period_end));
+
+      if (latestBilling.isGrandfathered) {
+        setSuccessText('Your Pro access is already active.');
+        setDowngradeConfirmVisible(false);
+        return;
+      }
+
+      if (!latestBilling.cancel_at_period_end) {
+        setSuccessText('Your Pro subscription is already set to continue.');
+        setDowngradeConfirmVisible(false);
+        return;
+      }
+
+      const { data: fnData, error: fnError } = await supabase.functions.invoke(
+        'resume-subscription',
+        { body: {} }
+      );
+
+      if (fnError) throw fnError;
+
+      const result = (fnData ?? {}) as ResumeSubscriptionResponse;
+
+      if (result?.ok === false) {
+        throw new Error(result?.error || result?.message || 'Could not keep Pro');
+      }
+
+      if (result?.action === 'manage_external') {
+        const opened = await openExternalManagementUrl(result?.management_url ?? null);
+
+        const externalMessage =
+          result?.message ||
+          (opened
+            ? 'Your subscription is managed by your mobile app store. We opened the store management page so you can continue it there.'
+            : 'Your subscription is managed by your mobile app store. Please manage it in Google Play or the App Store.');
+
+        setDowngradeConfirmError(externalMessage);
+        await refreshBillingState();
+        return;
+      }
+
+      await refreshBillingState();
+
+      setDowngradeConfirmVisible(false);
+      setSuccessText('Your cancellation was removed. Your Pro subscription will continue.');
+    } catch (err: any) {
+      console.log('UpgradeModal keep pro error', err?.message || err);
+      const msg = err?.message || 'Could not keep Pro';
+      setErrorText(msg);
+      setDowngradeConfirmError(msg);
+    } finally {
+      setRestoringPro(false);
+    }
+  };
+
+  const ctaLabel =
+    currentTier === 'pro' && cancelAtPeriodEnd
+      ? restoringPro
+        ? 'Keeping Pro…'
+        : 'Keep Pro'
+      : isProDisabled
+      ? "You're on Pro"
+      : upgrading
+      ? 'Opening checkout…'
+      : 'See Pro plans';
 
   const horizontalPad = isMobile ? 14 : 20;
   const verticalPadTop = Math.max(insets.top + 12, 20);
@@ -375,6 +574,12 @@ export const UpgradeModal: React.FC<Props> = ({
 
   const confirmIntroText = isGrandfathered
     ? 'This account has grandfathered Pro access. There is no monthly renewal to cancel.'
+    : cancelAtPeriodEnd
+    ? `Your Pro renewal is already cancelled.${
+        endDateLabel
+          ? ` You’ll keep Pro until ${endDateLabel}, then switch to Free.`
+          : ` You’ll keep Pro until the end of your current billing period.`
+      }`
     : `Your Pro subscription will be cancelled so you won’t be charged again.${
         endDateLabel
           ? ` You’ll keep Pro until ${endDateLabel}, then switch to Free.`
@@ -385,6 +590,8 @@ export const UpgradeModal: React.FC<Props> = ({
     ? 'Close'
     : downgrading
     ? 'Cancelling…'
+    : cancelAtPeriodEnd
+    ? 'Cancellation scheduled'
     : 'Cancel renewal';
 
   return (
@@ -439,6 +646,61 @@ export const UpgradeModal: React.FC<Props> = ({
                 </Text>
               ) : null}
 
+              {currentTier === 'pro' && cancelAtPeriodEnd ? (
+                <View style={styles.countdownBanner}>
+                  <View style={styles.countdownBannerTopRow}>
+                    <Text style={styles.countdownPill}>CANCELLATION SCHEDULED</Text>
+                    {cancelCountdown.short ? (
+                      <Text style={styles.countdownDays}>{cancelCountdown.short}</Text>
+                    ) : null}
+                  </View>
+
+                  <Text style={styles.countdownTitle}>
+                    {endDateLabel
+                      ? `Your Pro plan ends on ${endDateLabel}`
+                      : 'Your Pro plan will return to Free at the end of your billing period'}
+                  </Text>
+
+                  {cancelCountdown.long ? (
+                    <Text style={styles.countdownText}>{cancelCountdown.long}</Text>
+                  ) : null}
+
+                  <View style={[styles.inlineActionRow, isMobile && styles.inlineActionRowMobile]}>
+                    <TouchableOpacity
+                      activeOpacity={0.92}
+                      onPress={restoringPro ? undefined : doKeepPro}
+                      style={[
+                        styles.inlineActionBtn,
+                        styles.inlineActionPrimary,
+                        restoringPro && styles.buttonDisabled,
+                      ]}
+                      disabled={restoringPro}
+                    >
+                      {restoringPro ? (
+                        <ActivityIndicator size="small" color="#0B0B0B" />
+                      ) : (
+                        <Text style={styles.inlineActionPrimaryText}>Keep Pro</Text>
+                      )}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      activeOpacity={0.92}
+                      onPress={() => setDowngradeConfirmVisible(true)}
+                      style={[styles.inlineActionBtn, styles.inlineActionSecondary]}
+                      disabled={restoringPro}
+                    >
+                      <Text style={styles.inlineActionSecondaryText}>View cancellation</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+
+              {successText ? (
+                <View style={styles.successBanner}>
+                  <Text style={styles.successBannerText}>{successText}</Text>
+                </View>
+              ) : null}
+
               {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
               <View style={[styles.tiersRow, isMobile && styles.tiersRowMobile]}>
@@ -446,6 +708,7 @@ export const UpgradeModal: React.FC<Props> = ({
                   activeOpacity={0.9}
                   onPress={() => {
                     setErrorText(null);
+                    setSuccessText(null);
 
                     if (currentTier === 'pro') {
                       setSelectedTier('free');
@@ -495,6 +758,7 @@ export const UpgradeModal: React.FC<Props> = ({
                   activeOpacity={0.92}
                   onPress={() => {
                     setErrorText(null);
+                    setSuccessText(null);
                     setSelectedTier('pro');
                   }}
                   style={[
@@ -554,22 +818,32 @@ export const UpgradeModal: React.FC<Props> = ({
                 style={[
                   styles.buttonBase,
                   styles.proButton,
-                  (selectedTier !== 'pro' || isProDisabled || upgrading) &&
+                  ((selectedTier !== 'pro' && !canKeepPro) ||
+                    (isProDisabled && !canKeepPro) ||
+                    upgrading ||
+                    restoringPro) &&
                     styles.buttonDisabled,
                 ]}
                 onPress={
-                  selectedTier !== 'pro' || isProDisabled || upgrading
+                  canKeepPro
+                    ? doKeepPro
+                    : selectedTier !== 'pro' || isProDisabled || upgrading || restoringPro
                     ? undefined
                     : doUpgradeToPro
                 }
                 activeOpacity={
-                  selectedTier !== 'pro' || isProDisabled || upgrading ? 1 : 0.92
+                  selectedTier !== 'pro' || (isProDisabled && !canKeepPro) || upgrading || restoringPro
+                    ? 1
+                    : 0.92
                 }
               >
                 <Text
                   style={[
                     styles.buttonText,
-                    (selectedTier !== 'pro' || isProDisabled || upgrading) &&
+                    ((selectedTier !== 'pro' && !canKeepPro) ||
+                      (isProDisabled && !canKeepPro) ||
+                      upgrading ||
+                      restoringPro) &&
                       styles.buttonTextDisabled,
                   ]}
                 >
@@ -580,7 +854,7 @@ export const UpgradeModal: React.FC<Props> = ({
               <TouchableOpacity
                 onPress={onClose}
                 style={styles.laterButton}
-                disabled={upgrading || downgrading}
+                disabled={upgrading || downgrading || restoringPro}
               >
                 <Text style={styles.laterText}>Maybe later</Text>
               </TouchableOpacity>
@@ -593,7 +867,9 @@ export const UpgradeModal: React.FC<Props> = ({
         visible={downgradeConfirmVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => (downgrading ? null : setDowngradeConfirmVisible(false))}
+        onRequestClose={() =>
+          downgrading || restoringPro ? null : setDowngradeConfirmVisible(false)
+        }
         presentationStyle="overFullScreen"
         statusBarTranslucent
       >
@@ -607,7 +883,7 @@ export const UpgradeModal: React.FC<Props> = ({
             },
           ]}
           onPress={() => {
-            if (!downgrading) setDowngradeConfirmVisible(false);
+            if (!downgrading && !restoringPro) setDowngradeConfirmVisible(false);
           }}
         >
           <Pressable
@@ -625,10 +901,27 @@ export const UpgradeModal: React.FC<Props> = ({
               bounces={false}
             >
               <Text style={styles.confirmTitle}>
-                {isGrandfathered ? 'Pro access' : 'Cancel renewal?'}
+                {isGrandfathered
+                  ? 'Pro access'
+                  : cancelAtPeriodEnd
+                  ? 'Cancellation scheduled'
+                  : 'Cancel renewal?'}
               </Text>
 
               <Text style={styles.confirmSub}>{confirmIntroText}</Text>
+
+              {!isGrandfathered && cancelAtPeriodEnd ? (
+                <View style={styles.confirmStatusCard}>
+                  <Text style={styles.confirmStatusLabel}>
+                    {cancelCountdown.short || 'Scheduled'}
+                  </Text>
+                  <Text style={styles.confirmStatusBody}>
+                    {endDateLabel
+                      ? `You’ll stay on Pro until ${endDateLabel}. After that, your account returns to Free.`
+                      : 'You’ll stay on Pro until the end of your current billing period.'}
+                  </Text>
+                </View>
+              ) : null}
 
               {!isGrandfathered ? (
                 <View style={styles.confirmList}>
@@ -647,45 +940,69 @@ export const UpgradeModal: React.FC<Props> = ({
 
               <View style={[styles.confirmButtonsRow, isMobile && styles.confirmButtonsRowMobile]}>
                 <Pressable
-                  disabled={downgrading}
-                  onPress={() => setDowngradeConfirmVisible(false)}
+                  disabled={downgrading || restoringPro}
+                  onPress={
+                    isGrandfathered
+                      ? () => setDowngradeConfirmVisible(false)
+                      : cancelAtPeriodEnd
+                      ? doKeepPro
+                      : () => setDowngradeConfirmVisible(false)
+                  }
                   style={({ pressed }) => [
                     styles.confirmBtn,
                     styles.confirmBtnGhost,
-                    pressed && !downgrading ? { opacity: 0.9 } : null,
-                    downgrading ? { opacity: 0.5 } : null,
-                  ]}
-                >
-                  <Text style={styles.confirmBtnGhostText}>
-                    {isGrandfathered ? 'Done' : 'Keep Pro'}
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  disabled={downgrading || isGrandfathered || !canCancelRenewal}
-                  onPress={isGrandfathered ? undefined : doDowngradeToFree}
-                  style={({ pressed }) => [
-                    styles.confirmBtn,
-                    styles.confirmBtnDanger,
-                    (isGrandfathered || !canCancelRenewal) && styles.buttonDisabled,
-                    pressed && !downgrading && !isGrandfathered && canCancelRenewal
-                      ? { opacity: 0.9 }
-                      : null,
-                    downgrading ? { opacity: 0.7 } : null,
+                    pressed && !downgrading && !restoringPro ? { opacity: 0.9 } : null,
+                    downgrading || restoringPro ? { opacity: 0.5 } : null,
                   ]}
                 >
                   <View style={styles.confirmDangerInner}>
-                    {downgrading && !isGrandfathered ? (
+                    {restoringPro && cancelAtPeriodEnd ? (
+                      <ActivityIndicator size="small" color={TEXT_IVORY} />
+                    ) : null}
+                    <Text style={styles.confirmBtnGhostText}>
+                      {isGrandfathered
+                        ? 'Done'
+                        : cancelAtPeriodEnd
+                        ? 'Keep Pro'
+                        : 'Keep Pro'}
+                    </Text>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  disabled={downgrading || restoringPro || isGrandfathered || !canCancelRenewal || cancelAtPeriodEnd}
+                  onPress={isGrandfathered || cancelAtPeriodEnd ? undefined : doDowngradeToFree}
+                  style={({ pressed }) => [
+                    styles.confirmBtn,
+                    styles.confirmBtnDanger,
+                    (isGrandfathered || !canCancelRenewal || cancelAtPeriodEnd) &&
+                      styles.buttonDisabled,
+                    pressed &&
+                    !downgrading &&
+                    !restoringPro &&
+                    !isGrandfathered &&
+                    canCancelRenewal &&
+                    !cancelAtPeriodEnd
+                      ? { opacity: 0.9 }
+                      : null,
+                    downgrading || restoringPro ? { opacity: 0.7 } : null,
+                  ]}
+                >
+                  <View style={styles.confirmDangerInner}>
+                    {downgrading && !isGrandfathered && !cancelAtPeriodEnd ? (
                       <ActivityIndicator size="small" color="#0B0B0B" />
                     ) : null}
                     <Text
                       style={[
                         styles.confirmBtnDangerText,
-                        (isGrandfathered || !canCancelRenewal) && styles.buttonTextDisabled,
+                        (isGrandfathered || !canCancelRenewal || cancelAtPeriodEnd) &&
+                          styles.buttonTextDisabled,
                       ]}
                     >
                       {isGrandfathered
                         ? 'No renewal to cancel'
+                        : cancelAtPeriodEnd
+                        ? 'Cancellation scheduled'
                         : !canCancelRenewal
                         ? 'No active renewal found'
                         : confirmPrimaryButtonLabel}
@@ -697,6 +1014,8 @@ export const UpgradeModal: React.FC<Props> = ({
               <Text style={styles.confirmFoot}>
                 {isGrandfathered
                   ? 'Your Pro access remains active.'
+                  : cancelAtPeriodEnd
+                  ? 'You can undo this any time before the period ends.'
                   : 'Tip: you can re-subscribe any time.'}
               </Text>
             </ScrollView>
@@ -787,6 +1106,116 @@ const styles = StyleSheet.create({
   currentTierName: {
     color: GOLD,
     fontWeight: '900',
+  },
+
+  countdownBanner: {
+    marginBottom: 14,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    backgroundColor: WARNING_BG,
+    borderWidth: 1,
+    borderColor: WARNING_BORDER,
+  },
+
+  countdownBannerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+    flexWrap: 'wrap',
+  },
+
+  countdownPill: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: GOLD,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  countdownDays: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  countdownTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    marginBottom: 4,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  countdownText: {
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: TEXT_MUTED,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  inlineActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+
+  inlineActionRowMobile: {
+    flexDirection: 'column',
+  },
+
+  inlineActionBtn: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+
+  inlineActionPrimary: {
+    backgroundColor: GOLD,
+  },
+
+  inlineActionSecondary: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: HAIRLINE,
+  },
+
+  inlineActionPrimaryText: {
+    color: '#0B0B0B',
+    fontWeight: '900',
+    fontSize: 13,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  inlineActionSecondaryText: {
+    color: TEXT_IVORY,
+    fontWeight: '900',
+    fontSize: 13,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  successBanner: {
+    marginBottom: 12,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: SUCCESS_BG,
+    borderWidth: 1,
+    borderColor: SUCCESS_BORDER,
+  },
+
+  successBannerText: {
+    color: TEXT_IVORY,
+    fontSize: 12.5,
+    lineHeight: 18,
+    fontFamily: SYSTEM_SANS,
   },
 
   errorText: {
@@ -1107,6 +1536,33 @@ const styles = StyleSheet.create({
     color: TEXT_MUTED,
     lineHeight: 18,
     marginBottom: 12,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  confirmStatusCard: {
+    marginBottom: 12,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: WARNING_BG,
+    borderWidth: 1,
+    borderColor: WARNING_BORDER,
+  },
+
+  confirmStatusLabel: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: GOLD,
+    marginBottom: 6,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  confirmStatusBody: {
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
   },
 
