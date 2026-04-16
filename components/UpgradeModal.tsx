@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   ScrollView,
   useWindowDimensions,
+  Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -49,6 +50,32 @@ type BillingSnapshot = {
   premium_access_expires_at?: string | null;
   stripe_subscription_id?: string | null;
   stripe_customer_id?: string | null;
+};
+
+type CancelSubscriptionResponse = {
+  ok?: boolean;
+  error?: string;
+  action?: 'stripe_canceled' | 'manage_external' | 'nothing_to_cancel';
+  provider?: 'revenuecat' | 'stripe' | string;
+  store?: string | null;
+  management_url?: string | null;
+  period_end?: string | null;
+  cancel_at_period_end?: boolean | null;
+  message?: string;
+  is_grandfathered?: boolean;
+};
+
+type ResumeSubscriptionResponse = {
+  ok?: boolean;
+  error?: string;
+  action?: 'stripe_resumed' | 'already_active' | 'manage_external' | 'nothing_to_resume';
+  provider?: 'revenuecat' | 'stripe' | string;
+  store?: string | null;
+  management_url?: string | null;
+  period_end?: string | null;
+  cancel_at_period_end?: boolean | null;
+  message?: string;
+  is_grandfathered?: boolean;
 };
 
 /* -------------------------- shared palette/fonts -------------------------- */
@@ -114,6 +141,78 @@ function formatEndDate(iso: string) {
   }
 }
 
+function getDaysLeftFromIso(iso?: string | null) {
+  if (!iso) return null;
+  const end = new Date(iso).getTime();
+  if (!Number.isFinite(end)) return null;
+
+  const diffMs = end - Date.now();
+  if (diffMs <= 0) return 0;
+
+  return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+}
+
+function getDaysLeftLabel(iso?: string | null) {
+  const daysLeft = getDaysLeftFromIso(iso);
+  if (daysLeft == null) return null;
+  if (daysLeft === 0) return 'Ends today';
+  if (daysLeft === 1) return '1 day left';
+  return `${daysLeft} days left`;
+}
+
+function getStoreLabel(store?: string | null) {
+  const raw = String(store || '').toLowerCase();
+
+  if (raw.includes('app_store') || raw.includes('appstore') || raw.includes('apple')) {
+    return 'App Store';
+  }
+
+  if (raw.includes('play_store') || raw.includes('playstore') || raw.includes('google')) {
+    return 'Google Play';
+  }
+
+  if (raw.includes('stripe')) {
+    return 'Stripe';
+  }
+
+  return 'your mobile app store';
+}
+
+function getExternalManagementCopy(
+  store?: string | null,
+  endDateLabel?: string | null,
+  managementUrl?: string | null,
+  mode: 'cancel' | 'resume' = 'cancel'
+) {
+  const storeLabel = getStoreLabel(store);
+
+  if (mode === 'resume') {
+    const intro = endDateLabel
+      ? `This Pro subscription is managed through ${storeLabel}. You currently keep Pro until ${endDateLabel}.`
+      : `This Pro subscription is managed through ${storeLabel}.`;
+
+    const action = managementUrl
+      ? `Tap the button below to open ${storeLabel} and turn renewal back on.`
+      : `Turn renewal back on in ${storeLabel}.`;
+
+    return `${intro} ${action}`;
+  }
+
+  const intro = endDateLabel
+    ? `This Pro subscription is managed through ${storeLabel}. You’ll keep Pro until ${endDateLabel}, then it will end if you cancel renewal in the store.`
+    : `This Pro subscription is managed through ${storeLabel}. To stop renewal, you need to manage it in the store instead of inside the app.`;
+
+  const action = managementUrl
+    ? `Tap the button below to open the ${storeLabel} subscription management page.`
+    : storeLabel === 'App Store'
+    ? 'Open your Apple subscriptions settings and cancel the renewal there.'
+    : storeLabel === 'Google Play'
+    ? 'Open your Google Play subscriptions settings and cancel the renewal there.'
+    : 'Open your subscription settings in the store where you purchased Pro and cancel the renewal there.';
+
+  return `${intro} ${action}`;
+}
+
 export const UpgradeModal: React.FC<Props> = ({
   visible,
   onClose,
@@ -132,6 +231,7 @@ export const UpgradeModal: React.FC<Props> = ({
 
   const [upgrading, setUpgrading] = useState(false);
   const [downgrading, setDowngrading] = useState(false);
+  const [resuming, setResuming] = useState(false);
 
   const [errorText, setErrorText] = useState<string | null>(null);
 
@@ -142,6 +242,11 @@ export const UpgradeModal: React.FC<Props> = ({
   const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState<boolean>(false);
 
   const [billingState, setBillingState] = useState<BillingSnapshot | null>(null);
+
+  const [externalManagementUrl, setExternalManagementUrl] = useState<string | null>(null);
+  const [externalManagementStore, setExternalManagementStore] = useState<string | null>(null);
+  const [externalManagementMessage, setExternalManagementMessage] = useState<string | null>(null);
+  const [openingManagement, setOpeningManagement] = useState(false);
 
   const [offerCountdown, setOfferCountdown] = useState(() => getOfferRemaining());
 
@@ -164,6 +269,9 @@ export const UpgradeModal: React.FC<Props> = ({
       try {
         setErrorText(null);
         setDowngradeConfirmError(null);
+        setExternalManagementUrl(null);
+        setExternalManagementStore(null);
+        setExternalManagementMessage(null);
 
         const tier = await getCurrentUserTierOrFree({ force: true });
         if (!mounted) return;
@@ -194,12 +302,12 @@ export const UpgradeModal: React.FC<Props> = ({
   const currentTierLabel = currentTier ? HUMAN_TIER_LONG[currentTier] : 'Free';
   const isProDisabled = currentTier === 'pro';
   const endDateLabel = periodEndIso ? formatEndDate(periodEndIso) : null;
+  const daysLeftLabel = getDaysLeftLabel(periodEndIso);
 
   const isGrandfathered = Boolean(billingState?.isGrandfathered);
   const isActiveSubscriber = Boolean(billingState?.isActiveSubscriber);
   const inCancelGracePeriod = Boolean(billingState?.inCancelGracePeriod);
-
-  const canCancelRenewal = isActiveSubscriber || inCancelGracePeriod;
+  const hasStripeSubscriptionRecord = Boolean(billingState?.hasStripeSubscriptionRecord);
 
   const downgradeLossBullets = useMemo(() => {
     return [
@@ -234,13 +342,56 @@ export const UpgradeModal: React.FC<Props> = ({
 
   const openDowngradeConfirm = () => {
     setDowngradeConfirmError(null);
+    setExternalManagementUrl(null);
+    setExternalManagementStore(null);
+    setExternalManagementMessage(null);
     setDowngradeConfirmVisible(true);
+  };
+
+  const openExternalManagementLink = async () => {
+    try {
+      if (!externalManagementUrl) return;
+
+      setOpeningManagement(true);
+
+      const supported = await Linking.canOpenURL(externalManagementUrl);
+      if (!supported) {
+        throw new Error('Could not open subscription management link.');
+      }
+
+      await Linking.openURL(externalManagementUrl);
+    } catch (err: any) {
+      console.log('UpgradeModal open management link error', err?.message || err);
+      setDowngradeConfirmError(
+        err?.message || 'Could not open the subscription management page.'
+      );
+    } finally {
+      setOpeningManagement(false);
+    }
+  };
+
+  const refreshBillingState = async () => {
+    invalidateMembershipCache();
+
+    const refreshedTier = await getCurrentUserTierOrFree({ force: true });
+    const refreshedBilling = (await getMySubscriptionStatus()) as BillingSnapshot;
+
+    setCurrentTier(refreshedTier);
+    setSelectedTier(refreshedTier);
+    setBillingState(refreshedBilling);
+    setPeriodEndIso(refreshedBilling.accessEndsAt ?? null);
+    setCancelAtPeriodEnd(Boolean(refreshedBilling.cancel_at_period_end));
+
+    return { refreshedTier, refreshedBilling };
   };
 
   const doDowngradeToFree = async () => {
     try {
       setDowngrading(true);
       setDowngradeConfirmError(null);
+      setExternalManagementUrl(null);
+      setExternalManagementStore(null);
+      setExternalManagementMessage(null);
 
       const { data: userRes, error: userErr } = await supabase.auth.getUser();
       if (userErr) throw userErr;
@@ -258,41 +409,173 @@ export const UpgradeModal: React.FC<Props> = ({
         return;
       }
 
-      if (!(latestBilling.isActiveSubscriber || latestBilling.inCancelGracePeriod)) {
+      if (latestBilling.cancel_at_period_end) {
+        const alreadyEndDateLabel = latestBilling.accessEndsAt
+          ? formatEndDate(latestBilling.accessEndsAt)
+          : null;
+        const alreadyDaysLeftLabel = getDaysLeftLabel(latestBilling.accessEndsAt);
+
         setDowngradeConfirmError(
-          'No active monthly renewal was found for this account.'
+          alreadyEndDateLabel || alreadyDaysLeftLabel
+            ? `Renewal is already cancelled. You still have Pro until ${
+                alreadyEndDateLabel ?? 'the end of your current period'
+              }${alreadyDaysLeftLabel ? ` (${alreadyDaysLeftLabel}).` : '.'}`
+            : 'Renewal is already cancelled for this subscription.'
         );
         return;
       }
 
-      const { data: fnData, error: fnError } = await supabase.functions.invoke(
+      const { data: fnDataRaw, error: fnError } = await supabase.functions.invoke(
         'cancel-subscription',
         { body: {} }
       );
+
       if (fnError) throw fnError;
 
-      invalidateMembershipCache();
-
-      const refreshedTier = await getCurrentUserTierOrFree({ force: true });
-      const refreshedBilling = (await getMySubscriptionStatus()) as BillingSnapshot;
-
-      setCurrentTier(refreshedTier);
-      setSelectedTier(refreshedTier);
-      setBillingState(refreshedBilling);
-      setPeriodEndIso(refreshedBilling.accessEndsAt ?? null);
-      setCancelAtPeriodEnd(Boolean(refreshedBilling.cancel_at_period_end));
+      const fnData = (fnDataRaw ?? {}) as CancelSubscriptionResponse;
 
       if (fnData?.ok === false) {
         throw new Error(fnData?.error || 'Could not cancel renewal');
       }
 
-      setDowngradeConfirmVisible(false);
-      onClose();
+      if (fnData?.action === 'manage_external') {
+        const nextPeriodEnd = fnData?.period_end ?? latestBilling.accessEndsAt ?? null;
+        const nextEndDateLabel = nextPeriodEnd ? formatEndDate(nextPeriodEnd) : null;
+
+        setPeriodEndIso(nextPeriodEnd);
+        setExternalManagementUrl(fnData?.management_url ?? null);
+        setExternalManagementStore(fnData?.store ?? null);
+        setExternalManagementMessage(
+          fnData?.message ||
+            getExternalManagementCopy(
+              fnData?.store ?? null,
+              nextEndDateLabel,
+              fnData?.management_url ?? null,
+              'cancel'
+            )
+        );
+
+        if (fnData?.management_url) {
+          try {
+            const supported = await Linking.canOpenURL(fnData.management_url);
+            if (supported) {
+              await Linking.openURL(fnData.management_url);
+            }
+          } catch (openErr) {
+            console.log('Auto-open management url failed', openErr);
+          }
+        }
+
+        return;
+      }
+
+      await refreshBillingState();
+
+      if (fnData?.action === 'nothing_to_cancel') {
+        setDowngradeConfirmError(
+          fnData?.message || 'No active monthly renewal was found for this account.'
+        );
+        return;
+      }
+
+      setDowngradeConfirmError(null);
     } catch (err: any) {
       console.log('UpgradeModal downgrade error', err?.message || err);
       setDowngradeConfirmError(err?.message || 'Downgrade failed');
     } finally {
       setDowngrading(false);
+    }
+  };
+
+  const doResumeRenewal = async () => {
+    try {
+      setResuming(true);
+      setDowngradeConfirmError(null);
+
+      const { data: userRes, error: userErr } = await supabase.auth.getUser();
+      if (userErr) throw userErr;
+      if (!userRes?.user?.id) throw new Error('Not signed in');
+
+      const latestBilling = (await getMySubscriptionStatus()) as BillingSnapshot;
+      setBillingState(latestBilling);
+      setPeriodEndIso(latestBilling.accessEndsAt ?? null);
+      setCancelAtPeriodEnd(Boolean(latestBilling.cancel_at_period_end));
+
+      if (!latestBilling.cancel_at_period_end) {
+        setDowngradeConfirmError('Renewal is already active for this subscription.');
+        return;
+      }
+
+      if (!latestBilling.hasStripeSubscriptionRecord) {
+        const nextEndDateLabel = latestBilling.accessEndsAt
+          ? formatEndDate(latestBilling.accessEndsAt)
+          : null;
+
+        setExternalManagementMessage(
+          getExternalManagementCopy(
+            externalManagementStore,
+            nextEndDateLabel,
+            externalManagementUrl,
+            'resume'
+          )
+        );
+        return;
+      }
+
+      const { data: fnDataRaw, error: fnError } = await supabase.functions.invoke(
+        'resume-subscription',
+        { body: {} }
+      );
+
+      if (fnError) throw fnError;
+
+      const fnData = (fnDataRaw ?? {}) as ResumeSubscriptionResponse;
+
+      if (fnData?.ok === false) {
+        throw new Error(fnData?.error || 'Could not resume renewal');
+      }
+
+      if (fnData?.action === 'manage_external') {
+        const nextPeriodEnd = fnData?.period_end ?? latestBilling.accessEndsAt ?? null;
+        const nextEndDateLabel = nextPeriodEnd ? formatEndDate(nextPeriodEnd) : null;
+
+        setPeriodEndIso(nextPeriodEnd);
+        setExternalManagementUrl(fnData?.management_url ?? null);
+        setExternalManagementStore(fnData?.store ?? null);
+        setExternalManagementMessage(
+          fnData?.message ||
+            getExternalManagementCopy(
+              fnData?.store ?? null,
+              nextEndDateLabel,
+              fnData?.management_url ?? null,
+              'resume'
+            )
+        );
+
+        if (fnData?.management_url) {
+          try {
+            const supported = await Linking.canOpenURL(fnData.management_url);
+            if (supported) {
+              await Linking.openURL(fnData.management_url);
+            }
+          } catch (openErr) {
+            console.log('Auto-open management url failed', openErr);
+          }
+        }
+
+        return;
+      }
+
+      await refreshBillingState();
+      setExternalManagementMessage(null);
+      setExternalManagementUrl(null);
+      setExternalManagementStore(null);
+      setDowngradeConfirmError('Renewal is back on. Your Pro plan will continue.');
+    } catch (err: any) {
+      console.log('UpgradeModal resume error', err?.message || err);
+      setDowngradeConfirmError(err?.message || 'Could not resume renewal');
+    } finally {
+      setResuming(false);
     }
   };
 
@@ -311,19 +594,34 @@ export const UpgradeModal: React.FC<Props> = ({
     isMobile ? 680 : 760
   );
 
-  const confirmIntroText = isGrandfathered
+  const showExternalManagementState = Boolean(externalManagementMessage);
+
+  const confirmIntroText = showExternalManagementState
+    ? externalManagementMessage
+    : isGrandfathered
     ? 'This account has grandfathered Pro access. There is no monthly renewal to cancel.'
+    : cancelAtPeriodEnd
+    ? `Your renewal is already turned off.${
+        endDateLabel ? ` You keep Pro until ${endDateLabel}.` : ''
+      }${daysLeftLabel ? ` ${daysLeftLabel}.` : ''}`
     : `Your Pro subscription will be cancelled so you won’t be charged again.${
         endDateLabel
           ? ` You’ll keep Pro until ${endDateLabel}, then switch to Free.`
           : ` You’ll keep Pro until the end of your current billing period.`
-      }`;
+      }${daysLeftLabel ? ` ${daysLeftLabel}.` : ''}`;
 
-  const confirmPrimaryButtonLabel = isGrandfathered
-    ? 'Close'
-    : downgrading
-    ? 'Cancelling…'
-    : 'Cancel renewal';
+  const confirmTitle = showExternalManagementState
+    ? 'Manage subscription in store'
+    : isGrandfathered
+    ? 'Pro access'
+    : cancelAtPeriodEnd
+    ? 'Renewal already cancelled'
+    : 'Cancel renewal?';
+
+  const canResumeViaApp = cancelAtPeriodEnd && hasStripeSubscriptionRecord;
+  const shouldShowResumeButton = cancelAtPeriodEnd;
+  const primaryActionIsResume = shouldShowResumeButton && !showExternalManagementState;
+  const showDangerAction = !isGrandfathered;
 
   return (
     <>
@@ -372,9 +670,17 @@ export const UpgradeModal: React.FC<Props> = ({
                 <Text style={styles.currentTierText}>
                   Current plan: <Text style={styles.currentTierName}>{currentTierLabel}</Text>
                   {currentTier === 'pro' && cancelAtPeriodEnd && endDateLabel ? (
-                    <Text style={{ color: TEXT_MUTED }}>{`  •  Cancels ${endDateLabel}`}</Text>
+                    <Text style={{ color: TEXT_MUTED }}>
+                      {`  •  Renewal off until ${endDateLabel}${daysLeftLabel ? ` (${daysLeftLabel})` : ''}`}
+                    </Text>
                   ) : null}
                 </Text>
+              ) : null}
+
+              {currentTier === 'pro' && cancelAtPeriodEnd && daysLeftLabel ? (
+                <View style={styles.statusPill}>
+                  <Text style={styles.statusPillText}>Pro stays active • {daysLeftLabel}</Text>
+                </View>
               ) : null}
 
               {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
@@ -434,6 +740,10 @@ export const UpgradeModal: React.FC<Props> = ({
                   onPress={() => {
                     setErrorText(null);
                     setSelectedTier('pro');
+
+                    if (currentTier === 'pro' && cancelAtPeriodEnd) {
+                      openDowngradeConfirm();
+                    }
                   }}
                   style={[
                     styles.tierCard,
@@ -464,7 +774,11 @@ export const UpgradeModal: React.FC<Props> = ({
                           <Text style={styles.planPriceHero}>4.99</Text>
                         </View>
 
-                        <Text style={styles.planSubHero}>Cancel anytime</Text>
+                        <Text style={styles.planSubHero}>
+                          {currentTier === 'pro' && cancelAtPeriodEnd
+                            ? 'Tap to turn renewal back on'
+                            : 'Cancel anytime'}
+                        </Text>
                       </View>
                     </View>
                   </View>
@@ -518,7 +832,7 @@ export const UpgradeModal: React.FC<Props> = ({
               <TouchableOpacity
                 onPress={onClose}
                 style={styles.laterButton}
-                disabled={upgrading || downgrading}
+                disabled={upgrading || downgrading || resuming}
               >
                 <Text style={styles.laterText}>Maybe later</Text>
               </TouchableOpacity>
@@ -531,7 +845,11 @@ export const UpgradeModal: React.FC<Props> = ({
         visible={downgradeConfirmVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => (downgrading ? null : setDowngradeConfirmVisible(false))}
+        onRequestClose={() =>
+          downgrading || resuming || openingManagement
+            ? null
+            : setDowngradeConfirmVisible(false)
+        }
         presentationStyle="overFullScreen"
         statusBarTranslucent
       >
@@ -545,7 +863,9 @@ export const UpgradeModal: React.FC<Props> = ({
             },
           ]}
           onPress={() => {
-            if (!downgrading) setDowngradeConfirmVisible(false);
+            if (!downgrading && !resuming && !openingManagement) {
+              setDowngradeConfirmVisible(false);
+            }
           }}
         >
           <Pressable
@@ -562,13 +882,21 @@ export const UpgradeModal: React.FC<Props> = ({
               showsVerticalScrollIndicator={false}
               bounces={false}
             >
-              <Text style={styles.confirmTitle}>
-                {isGrandfathered ? 'Pro access' : 'Cancel renewal?'}
-              </Text>
+              <Text style={styles.confirmTitle}>{confirmTitle}</Text>
 
               <Text style={styles.confirmSub}>{confirmIntroText}</Text>
 
-              {!isGrandfathered ? (
+              {cancelAtPeriodEnd && daysLeftLabel ? (
+                <View style={styles.remainingBox}>
+                  <Text style={styles.remainingBoxKicker}>TIME REMAINING</Text>
+                  <Text style={styles.remainingBoxTitle}>{daysLeftLabel}</Text>
+                  {endDateLabel ? (
+                    <Text style={styles.remainingBoxText}>Access ends on {endDateLabel}</Text>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {!isGrandfathered && !showExternalManagementState && !cancelAtPeriodEnd ? (
                 <View style={styles.confirmList}>
                   <Text style={styles.confirmItem}>After Pro ends, you’ll lose access to:</Text>
                   {downgradeLossBullets.map((t, idx) => (
@@ -579,61 +907,83 @@ export const UpgradeModal: React.FC<Props> = ({
                 </View>
               ) : null}
 
+              {showExternalManagementState ? (
+                <View style={styles.externalBox}>
+                  <Text style={styles.externalBoxKicker}>SUBSCRIPTION SOURCE</Text>
+                  <Text style={styles.externalBoxTitle}>{getStoreLabel(externalManagementStore)}</Text>
+                  {endDateLabel ? (
+                    <Text style={styles.externalBoxText}>
+                      Current access remains active until {endDateLabel}.
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+
               {downgradeConfirmError ? (
                 <Text style={styles.errorText}>{downgradeConfirmError}</Text>
               ) : null}
 
               <View style={[styles.confirmButtonsRow, isMobile && styles.confirmButtonsRowMobile]}>
                 <Pressable
-                  disabled={downgrading}
+                  disabled={downgrading || resuming || openingManagement}
                   onPress={() => setDowngradeConfirmVisible(false)}
                   style={({ pressed }) => [
                     styles.confirmBtn,
                     styles.confirmBtnGhost,
-                    pressed && !downgrading ? { opacity: 0.9 } : null,
-                    downgrading ? { opacity: 0.5 } : null,
+                    pressed && !downgrading && !resuming && !openingManagement
+                      ? { opacity: 0.9 }
+                      : null,
+                    downgrading || resuming || openingManagement ? { opacity: 0.5 } : null,
                   ]}
                 >
                   <Text style={styles.confirmBtnGhostText}>
-                    {isGrandfathered ? 'Done' : 'Keep Pro'}
+                    {showExternalManagementState ? 'Close' : cancelAtPeriodEnd ? 'Done' : isGrandfathered ? 'Done' : 'Keep Pro'}
                   </Text>
                 </Pressable>
 
-                <Pressable
-                  disabled={downgrading || isGrandfathered || !canCancelRenewal}
-                  onPress={isGrandfathered ? undefined : doDowngradeToFree}
-                  style={({ pressed }) => [
-                    styles.confirmBtn,
-                    styles.confirmBtnDanger,
-                    (isGrandfathered || !canCancelRenewal) && styles.buttonDisabled,
-                    pressed && !downgrading && !isGrandfathered && canCancelRenewal
-                      ? { opacity: 0.9 }
-                      : null,
-                    downgrading ? { opacity: 0.7 } : null,
-                  ]}
-                >
-                  <View style={styles.confirmDangerInner}>
-                    {downgrading && !isGrandfathered ? (
-                      <ActivityIndicator size="small" color="#0B0B0B" />
-                    ) : null}
-                    <Text
-                      style={[
-                        styles.confirmBtnDangerText,
-                        (isGrandfathered || !canCancelRenewal) && styles.buttonTextDisabled,
-                      ]}
-                    >
-                      {isGrandfathered
-                        ? 'No renewal to cancel'
-                        : !canCancelRenewal
-                        ? 'No active renewal found'
-                        : confirmPrimaryButtonLabel}
-                    </Text>
-                  </View>
-                </Pressable>
+                {showDangerAction ? (
+                  <Pressable
+                    disabled={downgrading || resuming || openingManagement}
+                    onPress={
+                      showExternalManagementState
+                        ? openExternalManagementLink
+                        : primaryActionIsResume
+                        ? doResumeRenewal
+                        : doDowngradeToFree
+                    }
+                    style={({ pressed }) => [
+                      styles.confirmBtn,
+                      styles.confirmBtnDanger,
+                      pressed && !downgrading && !resuming && !openingManagement
+                        ? { opacity: 0.9 }
+                        : null,
+                      downgrading || resuming || openingManagement ? { opacity: 0.7 } : null,
+                    ]}
+                  >
+                    <View style={styles.confirmDangerInner}>
+                      {downgrading || resuming || openingManagement ? (
+                        <ActivityIndicator size="small" color="#0B0B0B" />
+                      ) : null}
+                      <Text style={styles.confirmBtnDangerText}>
+                        {showExternalManagementState
+                          ? `Open ${getStoreLabel(externalManagementStore)}`
+                          : primaryActionIsResume
+                          ? canResumeViaApp
+                            ? 'Resume Pro renewal'
+                            : 'Manage in store'
+                          : 'Cancel renewal'}
+                      </Text>
+                    </View>
+                  </Pressable>
+                ) : null}
               </View>
 
               <Text style={styles.confirmFoot}>
-                {isGrandfathered
+                {showExternalManagementState
+                  ? 'Store-managed subscriptions must be changed in the store where they were purchased.'
+                  : cancelAtPeriodEnd
+                  ? 'You can keep using Pro until the access end date above.'
+                  : isGrandfathered
                   ? 'Your Pro access remains active.'
                   : 'Tip: you can re-subscribe any time.'}
               </Text>
@@ -725,6 +1075,24 @@ const styles = StyleSheet.create({
   currentTierName: {
     color: GOLD,
     fontWeight: '900',
+  },
+
+  statusPill: {
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(198,166,100,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.24)',
+  },
+
+  statusPillText: {
+    color: TEXT_IVORY,
+    fontSize: 11.5,
+    fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
   },
 
   errorText: {
@@ -1057,6 +1425,78 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     color: TEXT_IVORY,
     lineHeight: 18,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  remainingBox: {
+    marginTop: 2,
+    marginBottom: 10,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(46,212,122,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(46,212,122,0.22)',
+  },
+
+  remainingBoxKicker: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: 'rgba(46,212,122,0.92)',
+    marginBottom: 4,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  remainingBoxTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    marginBottom: 4,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  remainingBoxText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: TEXT_MUTED,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  externalBox: {
+    marginTop: 4,
+    marginBottom: 10,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(198,166,100,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.24)',
+  },
+
+  externalBoxKicker: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: 'rgba(198,166,100,0.84)',
+    marginBottom: 4,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  externalBoxTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    marginBottom: 4,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  externalBoxText: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: TEXT_MUTED,
     fontFamily: SYSTEM_SANS,
   },
 

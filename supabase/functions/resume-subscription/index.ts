@@ -1,9 +1,8 @@
-// supabase/functions/cancel-subscription/index.ts
+// supabase/functions/resume-subscription/index.ts
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import Stripe from "https://esm.sh/stripe@13.10.0?target=deno";
 
-/** CORS */
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -56,13 +55,6 @@ type RcSubscriberV1 = {
         store?: string | null;
       }
     >;
-    entitlements?: Record<
-      string,
-      {
-        product_identifier?: string | null;
-        expires_date?: string | null;
-      }
-    >;
   };
 };
 
@@ -94,7 +86,7 @@ async function fetchRevenueCatSubscriber(
   }
 
   if (!resp.ok) {
-    console.warn("[cancel-subscription] RevenueCat lookup failed", resp.status, text);
+    console.warn("[resume-subscription] RevenueCat lookup failed", resp.status, text);
     return null;
   }
 
@@ -205,7 +197,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .single();
 
     if (rowErr) {
-      console.error("[cancel-subscription] load row error", rowErr.message);
+      console.error("[resume-subscription] load row error", rowErr.message);
       return json(500, {
         error: "Failed to load user billing row",
         details: rowErr.message,
@@ -218,13 +210,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const savedSubId = row?.stripe_subscription_id ?? null;
     const isGrandfathered = Boolean(row?.grandfathered);
 
-    console.log("[cancel-subscription] user", user.id, {
-      customerId,
-      savedSubId,
-      isGrandfathered,
-    });
-
-    // 1) Try Stripe first if we have a Stripe customer
     if (customerId) {
       const allSubs = await stripe.subscriptions.list({
         customer: customerId,
@@ -232,19 +217,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
         limit: 100,
       });
 
-      const activeSubs = (allSubs.data as Stripe.Subscription[]).filter(
+      const renewableSubs = (allSubs.data as Stripe.Subscription[]).filter(
         (s) => s.status === "active" || s.status === "trialing",
       );
 
       let target: Stripe.Subscription | null = null;
 
       if (savedSubId) {
-        target = activeSubs.find((s) => s.id === savedSubId) ?? null;
+        target = renewableSubs.find((s) => s.id === savedSubId) ?? null;
       }
 
       if (!target) {
         target =
-          activeSubs
+          renewableSubs
             .slice()
             .sort((a, b) => {
               const bc = typeof b.created === "number" ? b.created : 0;
@@ -254,7 +239,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
 
       if (target) {
-        if (target.cancel_at_period_end) {
+        if (!target.cancel_at_period_end) {
           const cpeIso = toIsoFromStripeUnix(target.current_period_end);
 
           await supaRls
@@ -262,7 +247,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
             .update({
               stripe_subscription_id: target.id,
               subscription_status: target.status,
-              cancel_at_period_end: true,
+              cancel_at_period_end: false,
               current_period_end: cpeIso,
               premium_access_expires_at: cpeIso,
               tier: "pro",
@@ -272,14 +257,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
           return json(200, {
             ok: true,
-            action: "stripe_canceled",
-            message: "Subscription already scheduled to cancel at period end.",
+            action: "already_active",
+            message: "Renewal is already active for this subscription.",
             period_end: cpeIso,
           });
         }
 
         const updated = await stripe.subscriptions.update(target.id, {
-          cancel_at_period_end: true,
+          cancel_at_period_end: false,
         });
 
         const latestIso = toIsoFromStripeUnix(updated.current_period_end);
@@ -289,7 +274,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           .update({
             stripe_subscription_id: updated.id,
             subscription_status: updated.status,
-            cancel_at_period_end: true,
+            cancel_at_period_end: false,
             current_period_end: latestIso,
             premium_access_expires_at: latestIso,
             tier: "pro",
@@ -299,14 +284,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
         return json(200, {
           ok: true,
-          action: "stripe_canceled",
-          message: "Subscription scheduled to cancel at period end.",
+          action: "stripe_resumed",
+          message: "Subscription renewal has been turned back on.",
           period_end: latestIso,
         });
       }
     }
 
-    // 2) No cancellable Stripe subscription. Check RevenueCat/mobile subscription.
     const rcSubscriber = await fetchRevenueCatSubscriber(user.id, REVENUECAT_SECRET_API_KEY);
     const rcState = getRevenueCatRenewableState(rcSubscriber);
 
@@ -320,44 +304,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
         period_end: rcState.latestExpiry,
         cancel_at_period_end: rcState.cancelAtPeriodEnd,
         message: rcState.managementUrl
-          ? "This subscription is managed through your mobile app store. Use the store management page to cancel renewal."
-          : "This subscription is managed through your mobile app store. Cancel it from Google Play or the App Store.",
+          ? "This subscription is managed through your mobile app store. Use the store management page to turn renewal back on."
+          : "This subscription is managed through your mobile app store. Turn renewal back on in Google Play or the App Store.",
       });
     }
 
-    // 3) Grandfathered user: nothing to cancel
     if (isGrandfathered) {
       return json(200, {
         ok: true,
-        action: "nothing_to_cancel",
+        action: "nothing_to_resume",
         is_grandfathered: true,
-        message:
-          "This account has grandfathered Pro access and no monthly renewal to cancel.",
+        message: "This account has grandfathered Pro access and no renewable subscription.",
       });
     }
 
-    // 4) Truly no Stripe or RevenueCat renewal exists. Clear stale local billing fields.
-    await supaRls
-      .from("users")
-      .update({
-        cancel_at_period_end: false,
-        current_period_end: null,
-        premium_access_expires_at: null,
-        stripe_subscription_id: null,
-        subscription_status: null,
-        price_id: null,
-        tier: "free",
-        is_premium: false,
-      })
-      .eq("id", user.id);
-
     return json(200, {
       ok: true,
-      action: "nothing_to_cancel",
-      message: "No active renewal was found for this account.",
+      action: "nothing_to_resume",
+      message: "No renewable subscription was found for this account.",
     });
   } catch (e: any) {
-    console.error("[cancel-subscription] unhandled", e);
+    console.error("[resume-subscription] unhandled", e);
     return json(500, { error: "Unhandled error", details: String(e) });
   }
 });
