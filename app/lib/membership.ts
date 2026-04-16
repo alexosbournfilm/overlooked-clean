@@ -93,20 +93,37 @@ function isSubscriptionStatusActive(status?: string | null): boolean {
   return status === 'active' || status === 'trialing' || status === 'past_due';
 }
 
+function getBestAccessEnd(row: {
+  premium_access_expires_at?: string | null;
+  current_period_end?: string | null;
+}): string | null {
+  const premiumExpiryMs = toMs(row.premium_access_expires_at);
+  const currentPeriodEndMs = toMs(row.current_period_end);
+
+  if (premiumExpiryMs !== null && currentPeriodEndMs !== null) {
+    return premiumExpiryMs >= currentPeriodEndMs
+      ? row.premium_access_expires_at ?? null
+      : row.current_period_end ?? null;
+  }
+
+  return row.premium_access_expires_at ?? row.current_period_end ?? null;
+}
+
 /**
- * Correct Pro access rules:
+ * More resilient Pro access rules:
  *
- * A user should have Pro only if:
- * - grandfathered is true, OR
- * - premium_access_expires_at is still in the future, OR
- * - subscription_status is active/trialing/past_due AND current_period_end is still in the future
+ * A user should be treated as Pro if any trustworthy billing/pro mirror says Pro:
+ * - grandfathered
+ * - tier === 'pro'
+ * - is_premium === true
+ * - premium_access_expires_at still in future
+ * - active/trialing/past_due subscription with future current_period_end
  *
- * Important:
- * - tier / is_premium may be stored as mirror fields, but they are NOT the source of truth
- *   for entitlement because they can become stale after cancellation or sync issues.
- * - cancel_at_period_end means the user keeps access until the relevant end date passes.
+ * cancel_at_period_end does NOT mean free immediately.
  */
 function computeEffectiveTier(row: {
+  tier?: string | null;
+  is_premium?: boolean | null;
   grandfathered?: boolean | null;
   subscription_status?: string | null;
   cancel_at_period_end?: boolean | null;
@@ -114,6 +131,8 @@ function computeEffectiveTier(row: {
   premium_access_expires_at?: string | null;
 }): UserTier {
   const premiumByGrandfathered = Boolean(row.grandfathered);
+  const premiumByTier = row.tier === 'pro';
+  const premiumByFlag = Boolean(row.is_premium);
   const premiumByExpiry = isFuture(row.premium_access_expires_at, 5_000);
 
   const subStatusActive = isSubscriptionStatusActive(row.subscription_status);
@@ -122,6 +141,8 @@ function computeEffectiveTier(row: {
 
   const hasPro =
     premiumByGrandfathered ||
+    premiumByTier ||
+    premiumByFlag ||
     premiumByExpiry ||
     premiumBySubscriptionWindow;
 
@@ -270,7 +291,10 @@ export async function getMembershipAccessEndsAt(opts?: {
   const snapshot = await getMembershipSnapshot({ force: opts?.force });
   if (!snapshot) return null;
 
-  return snapshot.premiumAccessExpiresAt ?? snapshot.currentPeriodEnd ?? null;
+  return getBestAccessEnd({
+    premium_access_expires_at: snapshot.premiumAccessExpiresAt,
+    current_period_end: snapshot.currentPeriodEnd,
+  });
 }
 
 // =======================

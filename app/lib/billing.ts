@@ -19,13 +19,33 @@ function isSubscriptionStatusActive(status?: string | null) {
   return status === 'active' || status === 'trialing' || status === 'past_due';
 }
 
+function getBestAccessEnd(row: {
+  premium_access_expires_at?: string | null;
+  current_period_end?: string | null;
+}) {
+  const premiumExpiryMs = toMs(row.premium_access_expires_at);
+  const currentPeriodEndMs = toMs(row.current_period_end);
+
+  if (premiumExpiryMs !== null && currentPeriodEndMs !== null) {
+    return premiumExpiryMs >= currentPeriodEndMs
+      ? row.premium_access_expires_at ?? null
+      : row.current_period_end ?? null;
+  }
+
+  return row.premium_access_expires_at ?? row.current_period_end ?? null;
+}
+
 function computeHasProAccess(row: {
+  tier?: string | null;
+  is_premium?: boolean | null;
   grandfathered?: boolean | null;
   subscription_status?: string | null;
   current_period_end?: string | null;
   premium_access_expires_at?: string | null;
 }) {
   const premiumByGrandfathered = Boolean(row.grandfathered);
+  const premiumByTier = row.tier === 'pro';
+  const premiumByFlag = Boolean(row.is_premium);
   const premiumByExpiry = isFuture(row.premium_access_expires_at, 5_000);
 
   const premiumBySubscriptionWindow =
@@ -34,6 +54,8 @@ function computeHasProAccess(row: {
 
   return (
     premiumByGrandfathered ||
+    premiumByTier ||
+    premiumByFlag ||
     premiumByExpiry ||
     premiumBySubscriptionWindow
   );
@@ -72,10 +94,7 @@ export async function getMySubscriptionStatus() {
   const hasProAccess = computeHasProAccess(row);
   const effectiveTier: EffectiveTier = hasProAccess ? 'pro' : 'free';
 
-  const accessEndsAt =
-    row.premium_access_expires_at ??
-    row.current_period_end ??
-    null;
+  const accessEndsAt = getBestAccessEnd(row);
 
   const inCancelGracePeriod =
     Boolean(row.cancel_at_period_end) &&
@@ -103,11 +122,7 @@ export async function getMySubscriptionStatus() {
     inCancelGracePeriod,
     isGrandfathered,
     isActiveSubscriber,
-
-    // New neutral flag for cross-platform billing flows
     hasPaymentProviderSubscriptionRecord,
-
-    // Keep old flag too so existing screens do not break
     hasStripeSubscriptionRecord:
       Boolean(row.stripe_customer_id) || Boolean(row.stripe_subscription_id),
   };
