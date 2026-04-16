@@ -1,4 +1,3 @@
-// components/SettingsModal.tsx
 import React, { useState } from 'react';
 import {
   Modal,
@@ -9,6 +8,7 @@ import {
   Alert,
   Platform,
   StyleSheet,
+  Linking,
 } from 'react-native';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import { useSettingsModal } from '../app/context/SettingsModalContext';
@@ -31,6 +31,18 @@ const SYSTEM_SANS = Platform.select({
   web: undefined,
   default: undefined,
 });
+
+type DeleteAccountResponse = {
+  ok?: boolean;
+  error?: string;
+  details?: string;
+  message?: string;
+  action?: 'cancel_external_first' | string;
+  provider?: 'revenuecat' | 'stripe' | string;
+  management_url?: string | null;
+  store?: string | null;
+  period_end?: string | null;
+};
 
 /* ---------- helpers (unchanged) ---------- */
 async function confirm(opts: {
@@ -115,6 +127,21 @@ async function callFunction(
   } catch {}
 
   return { status: res.status, text, data };
+}
+
+async function openExternalManagementUrl(url?: string | null) {
+  if (!url) return false;
+
+  try {
+    const supported = await Linking.canOpenURL(url);
+    if (!supported) return false;
+
+    await Linking.openURL(url);
+    return true;
+  } catch (e) {
+    console.log('SettingsModal openExternalManagementUrl error', e);
+    return false;
+  }
 }
 
 /* ---------------------- DARK THEME SECTION BUTTON ---------------------- */
@@ -304,12 +331,30 @@ export default function SettingsModal() {
       setDebug('delete-account: preparing…');
 
       const { status, text, data } = await callFunction('delete-account');
+      const result = (data ?? {}) as DeleteAccountResponse;
+
+      if (status === 409 && result?.action === 'cancel_external_first') {
+        const opened = await openExternalManagementUrl(result?.management_url ?? null);
+
+        const externalMessage =
+          result?.message ||
+          (opened
+            ? 'Your mobile subscription is still active and renewing. We opened the store management page so you can cancel it there first.'
+            : 'Your mobile subscription is still active and renewing. Please cancel it first in Google Play or the App Store, then try deleting your account again.');
+
+        setDebug(
+          `delete-account blocked: external cancellation required (${result?.store || result?.provider || 'external'})`
+        );
+
+        Alert.alert('Cancel subscription first', externalMessage);
+        return;
+      }
 
       if (status >= 400) {
         setDebug(`delete-account http ${status}: ${text}`);
         Alert.alert(
           'Error',
-          `Delete failed (${status}). ${data?.message || text}`
+          `Delete failed (${status}). ${result?.message || result?.error || text}`
         );
         return;
       }

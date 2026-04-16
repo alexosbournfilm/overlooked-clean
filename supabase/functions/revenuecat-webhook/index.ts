@@ -76,6 +76,8 @@ type UserBillingRow = {
   cancel_at_period_end: boolean | null;
   current_period_end: string | null;
   premium_access_expires_at: string | null;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
 };
 
 function normalizeAuthHeader(value: string | null): string {
@@ -118,10 +120,42 @@ function isFuture(value?: string | null, graceMs = 0): boolean {
   return t > Date.now() - graceMs;
 }
 
+function isStripeishStatusActive(status?: string | null): boolean {
+  return (
+    status === "trialing" ||
+    status === "active" ||
+    status === "past_due" ||
+    status === "unpaid" ||
+    status === "canceled"
+  );
+}
+
+function hasEffectiveStripeAccess(row: UserBillingRow | null): boolean {
+  if (!row) return false;
+
+  const hasStripeIds =
+    Boolean(row.stripe_customer_id) || Boolean(row.stripe_subscription_id);
+
+  if (!hasStripeIds) return false;
+
+  const expiresAt =
+    row.premium_access_expires_at ?? row.current_period_end ?? null;
+
+  if (expiresAt && isFuture(expiresAt, 5_000)) {
+    return true;
+  }
+
+  if (isStripeishStatusActive(row.subscription_status)) {
+    return true;
+  }
+
+  return false;
+}
+
 async function markEventSeen(
   supabaseAdmin: any,
   eventId: string,
-  event: RcWebhookEvent
+  event: RcWebhookEvent,
 ) {
   const { error } = await supabaseAdmin.from("revenuecat_webhook_events").insert({
     event_id: eventId,
@@ -144,9 +178,11 @@ async function markEventSeen(
 
 async function fetchRevenueCatSubscriber(
   appUserId: string,
-  secretApiKey: string
+  secretApiKey: string,
 ): Promise<RcSubscriberV1> {
-  const url = `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`;
+  const url = `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(
+    appUserId,
+  )}`;
 
   const resp = await fetch(url, {
     method: "GET",
@@ -170,7 +206,7 @@ async function fetchRevenueCatSubscriber(
     throw new Error(
       `RevenueCat GET /subscribers failed (${resp.status}): ${
         parsed?.message || parsed?.error || text || "Unknown error"
-      }`
+      }`,
     );
   }
 
@@ -178,7 +214,7 @@ async function fetchRevenueCatSubscriber(
 }
 
 function pickCurrentProEntitlement(
-  subscriber: RcSubscriberV1
+  subscriber: RcSubscriberV1,
 ): RcEntitlementV1 | null {
   const entitlements = subscriber?.subscriber?.entitlements ?? {};
   const pro = entitlements?.pro ?? null;
@@ -187,7 +223,7 @@ function pickCurrentProEntitlement(
 
 function deriveCurrentPeriodEnd(
   subscriber: RcSubscriberV1,
-  entitlement: RcEntitlementV1 | null
+  entitlement: RcEntitlementV1 | null,
 ): string | null {
   const entitlementExpiry = toIso(entitlement?.expires_date ?? null);
   if (entitlementExpiry) return entitlementExpiry;
@@ -242,18 +278,19 @@ function deriveSubscriptionStatus(args: {
   billingIssue: boolean;
   refunded: boolean;
   isGrandfathered: boolean;
+  preserveExistingStatus?: string | null;
 }): string {
   if (args.isGrandfathered) return "grandfathered";
   if (args.refunded) return "refunded";
   if (args.hasActivePaidPro && args.billingIssue) return "billing_issue";
   if (args.hasActivePaidPro && args.cancelAtPeriodEnd) return "canceled";
   if (args.hasActivePaidPro) return "active";
-  return "expired";
+  return args.preserveExistingStatus ?? "expired";
 }
 
 async function getCurrentUserBillingRow(
   supabaseAdmin: any,
-  userId: string
+  userId: string,
 ): Promise<UserBillingRow | null> {
   const { data, error } = await supabaseAdmin
     .from("users")
@@ -267,7 +304,9 @@ async function getCurrentUserBillingRow(
         "cancel_at_period_end",
         "current_period_end",
         "premium_access_expires_at",
-      ].join(",")
+        "stripe_customer_id",
+        "stripe_subscription_id",
+      ].join(","),
     )
     .eq("id", userId)
     .single();
@@ -280,10 +319,11 @@ async function getCurrentUserBillingRow(
 async function syncUserFromRevenueCat(
   supabaseAdmin: any,
   userId: string,
-  subscriber: RcSubscriberV1
+  subscriber: RcSubscriberV1,
 ) {
   const existingUser = await getCurrentUserBillingRow(supabaseAdmin, userId);
   const isGrandfathered = Boolean(existingUser?.grandfathered);
+  const hasStripeAccess = hasEffectiveStripeAccess(existingUser);
 
   const proEntitlement = pickCurrentProEntitlement(subscriber);
   const currentPeriodEnd = deriveCurrentPeriodEnd(subscriber, proEntitlement);
@@ -295,24 +335,59 @@ async function syncUserFromRevenueCat(
   const billingIssue = deriveBillingIssue(subscriber);
   const refunded = deriveRefunded(subscriber);
 
-  const hasEffectivePro = isGrandfathered || hasActivePaidPro;
+  const hasEffectivePro =
+    isGrandfathered || hasActivePaidPro || hasStripeAccess;
 
-  const subscriptionStatus = deriveSubscriptionStatus({
-    hasActivePaidPro,
-    cancelAtPeriodEnd,
-    billingIssue,
-    refunded,
-    isGrandfathered,
-  });
+  // If RevenueCat is active, let it refresh the shared effective-access fields.
+  // If RevenueCat is not active but Stripe is still active, preserve the existing Stripe snapshot.
+  let payload: Record<string, any>;
 
-  const payload = {
-    tier: hasEffectivePro ? "pro" : "free",
-    is_premium: hasEffectivePro,
-    subscription_status: subscriptionStatus,
-    cancel_at_period_end: hasActivePaidPro ? cancelAtPeriodEnd : false,
-    current_period_end: hasActivePaidPro ? currentPeriodEnd : null,
-    premium_access_expires_at: hasActivePaidPro ? currentPeriodEnd : null,
-  };
+  if (hasActivePaidPro) {
+    const subscriptionStatus = deriveSubscriptionStatus({
+      hasActivePaidPro,
+      cancelAtPeriodEnd,
+      billingIssue,
+      refunded,
+      isGrandfathered,
+    });
+
+    payload = {
+      tier: "pro",
+      is_premium: true,
+      subscription_status: subscriptionStatus,
+      cancel_at_period_end: cancelAtPeriodEnd,
+      current_period_end: currentPeriodEnd,
+      premium_access_expires_at: currentPeriodEnd,
+    };
+  } else if (isGrandfathered) {
+    payload = {
+      tier: "pro",
+      is_premium: true,
+      subscription_status: "grandfathered",
+      cancel_at_period_end: false,
+      current_period_end: null,
+      premium_access_expires_at: null,
+    };
+  } else if (hasStripeAccess) {
+    payload = {
+      tier: "pro",
+      is_premium: true,
+      subscription_status: existingUser?.subscription_status ?? "active",
+      cancel_at_period_end: existingUser?.cancel_at_period_end ?? false,
+      current_period_end: existingUser?.current_period_end ?? null,
+      premium_access_expires_at:
+        existingUser?.premium_access_expires_at ?? existingUser?.current_period_end ?? null,
+    };
+  } else {
+    payload = {
+      tier: "free",
+      is_premium: false,
+      subscription_status: refunded ? "refunded" : "expired",
+      cancel_at_period_end: false,
+      current_period_end: null,
+      premium_access_expires_at: null,
+    };
+  }
 
   const { error } = await supabaseAdmin
     .from("users")
@@ -323,13 +398,17 @@ async function syncUserFromRevenueCat(
 
   return {
     isGrandfathered,
+    hasStripeAccess,
     hasActivePaidPro,
     hasEffectivePro,
-    cancelAtPeriodEnd: hasActivePaidPro ? cancelAtPeriodEnd : false,
+    cancelAtPeriodEnd: hasActivePaidPro ? cancelAtPeriodEnd : (payload.cancel_at_period_end ?? false),
     billingIssue,
     refunded,
-    currentPeriodEnd: hasActivePaidPro ? currentPeriodEnd : null,
-    subscriptionStatus,
+    currentPeriodEnd:
+      hasActivePaidPro
+        ? currentPeriodEnd
+        : (payload.current_period_end ?? null),
+    subscriptionStatus: payload.subscription_status,
     productIdentifier: proEntitlement?.product_identifier ?? null,
   };
 }
@@ -417,13 +496,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const subscriber = await fetchRevenueCatSubscriber(
       appUserId,
-      REVENUECAT_SECRET_API_KEY
+      REVENUECAT_SECRET_API_KEY,
     );
 
     const syncResult = await syncUserFromRevenueCat(
       supabaseAdmin,
       appUserId,
-      subscriber
+      subscriber,
     );
 
     return json(200, {

@@ -42,6 +42,10 @@ type UserBillingRow = {
   grandfathered: boolean | null;
   premium_access_expires_at?: string | null;
   current_period_end?: string | null;
+  cancel_at_period_end?: boolean | null;
+  price_id?: string | null;
+  tier?: string | null;
+  is_premium?: boolean | null;
 };
 
 type RcSubscriberV1 = {
@@ -64,7 +68,9 @@ async function fetchRevenueCatSubscriber(
 ): Promise<RcSubscriberV1 | null> {
   if (!secretApiKey) return null;
 
-  const url = `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`;
+  const url = `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(
+    appUserId,
+  )}`;
 
   const resp = await fetch(url, {
     method: "GET",
@@ -109,7 +115,10 @@ function getRevenueCatRenewableState(subscriber: RcSubscriberV1 | null) {
     if (expires && isFuture(expires, 5_000)) {
       hasRenewableSubscription = true;
 
-      if (!latestExpiry || new Date(expires).getTime() > new Date(latestExpiry).getTime()) {
+      if (
+        !latestExpiry ||
+        new Date(expires).getTime() > new Date(latestExpiry).getTime()
+      ) {
         latestExpiry = expires;
         store = sub?.store ?? null;
       }
@@ -127,6 +136,18 @@ function getRevenueCatRenewableState(subscriber: RcSubscriberV1 | null) {
     managementUrl,
     store,
   };
+}
+
+function isStoreManagedStore(store?: string | null) {
+  if (!store) return false;
+  const normalized = String(store).toLowerCase();
+
+  return (
+    normalized === "app_store" ||
+    normalized === "play_store" ||
+    normalized === "mac_app_store" ||
+    normalized === "amazon"
+  );
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -154,7 +175,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     Deno.env.get("SB_SERVICE_ROLE_KEY");
 
   const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY");
-  const REVENUECAT_SECRET_API_KEY = Deno.env.get("REVENUECAT_SECRET_API_KEY") || "";
+  const REVENUECAT_SECRET_API_KEY =
+    Deno.env.get("REVENUECAT_SECRET_API_KEY") || "";
 
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     return json(500, { error: "Supabase service env missing" });
@@ -191,6 +213,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
           "grandfathered",
           "premium_access_expires_at",
           "current_period_end",
+          "cancel_at_period_end",
+          "price_id",
+          "tier",
+          "is_premium",
         ].join(","),
       )
       .eq("id", user.id)
@@ -210,6 +236,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const savedSubId = row?.stripe_subscription_id ?? null;
     const isGrandfathered = Boolean(row?.grandfathered);
 
+    // 1) Stripe-managed subscription: resume on server directly.
     if (customerId) {
       const allSubs = await stripe.subscriptions.list({
         customer: customerId,
@@ -257,6 +284,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
           return json(200, {
             ok: true,
+            provider: "stripe",
             action: "already_active",
             message: "Renewal is already active for this subscription.",
             period_end: cpeIso,
@@ -284,6 +312,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
         return json(200, {
           ok: true,
+          provider: "stripe",
           action: "stripe_resumed",
           message: "Subscription renewal has been turned back on.",
           period_end: latestIso,
@@ -291,10 +320,29 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    const rcSubscriber = await fetchRevenueCatSubscriber(user.id, REVENUECAT_SECRET_API_KEY);
+    // 2) No active Stripe subscription found. Check RevenueCat / mobile subscriptions.
+    const rcSubscriber = await fetchRevenueCatSubscriber(
+      user.id,
+      REVENUECAT_SECRET_API_KEY,
+    );
     const rcState = getRevenueCatRenewableState(rcSubscriber);
 
     if (rcState.hasRenewableSubscription) {
+      await supaRls
+        .from("users")
+        .update({
+          stripe_subscription_id: null,
+          subscription_status: rcState.cancelAtPeriodEnd
+            ? "active"
+            : row?.subscription_status ?? "active",
+          cancel_at_period_end: rcState.cancelAtPeriodEnd,
+          current_period_end: rcState.latestExpiry,
+          premium_access_expires_at: rcState.latestExpiry,
+          tier: "pro",
+          is_premium: true,
+        })
+        .eq("id", user.id);
+
       return json(200, {
         ok: true,
         action: "manage_external",
@@ -304,19 +352,40 @@ Deno.serve(async (req: Request): Promise<Response> => {
         period_end: rcState.latestExpiry,
         cancel_at_period_end: rcState.cancelAtPeriodEnd,
         message: rcState.managementUrl
-          ? "This subscription is managed through your mobile app store. Use the store management page to turn renewal back on."
-          : "This subscription is managed through your mobile app store. Turn renewal back on in Google Play or the App Store.",
+          ? rcState.cancelAtPeriodEnd
+            ? "This subscription is managed through your mobile app store. Open the management page if you want to turn renewal back on."
+            : "This subscription is already managed through your mobile app store and renewal is currently active there."
+          : isStoreManagedStore(rcState.store)
+          ? "This subscription is managed through your mobile app store. Turn renewal back on in Google Play or the App Store."
+          : "This subscription is managed externally. Use the provider's management page to turn renewal back on.",
       });
     }
 
+    // 3) Grandfathered/lifetime access with no renewable sub.
     if (isGrandfathered) {
       return json(200, {
         ok: true,
         action: "nothing_to_resume",
         is_grandfathered: true,
-        message: "This account has grandfathered Pro access and no renewable subscription.",
+        message:
+          "This account has grandfathered Pro access and no renewable subscription.",
       });
     }
+
+    // 4) Nothing renewable found anywhere. Clear stale local flags.
+    await supaRls
+      .from("users")
+      .update({
+        cancel_at_period_end: false,
+        current_period_end: null,
+        premium_access_expires_at: null,
+        stripe_subscription_id: null,
+        subscription_status: null,
+        price_id: null,
+        tier: "free",
+        is_premium: false,
+      })
+      .eq("id", user.id);
 
     return json(200, {
       ok: true,

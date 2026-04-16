@@ -1,4 +1,3 @@
-// app/lib/billing.ts
 import { supabase } from './supabase';
 
 type EffectiveTier = 'free' | 'pro';
@@ -84,8 +83,11 @@ export async function getMySubscriptionStatus() {
     (isFuture(row.premium_access_expires_at, 5_000) ||
       isFuture(row.current_period_end, 5_000));
 
-  const hasStripeSubscriptionRecord =
-    Boolean(row.stripe_customer_id) || Boolean(row.stripe_subscription_id);
+  const hasPaymentProviderSubscriptionRecord =
+    Boolean(row.stripe_customer_id) ||
+    Boolean(row.stripe_subscription_id) ||
+    Boolean(row.current_period_end) ||
+    Boolean(row.premium_access_expires_at);
 
   const isGrandfathered = Boolean(row.grandfathered);
 
@@ -101,6 +103,12 @@ export async function getMySubscriptionStatus() {
     inCancelGracePeriod,
     isGrandfathered,
     isActiveSubscriber,
-    hasStripeSubscriptionRecord,
+
+    // New neutral flag for cross-platform billing flows
+    hasPaymentProviderSubscriptionRecord,
+
+    // Keep old flag too so existing screens do not break
+    hasStripeSubscriptionRecord:
+      Boolean(row.stripe_customer_id) || Boolean(row.stripe_subscription_id),
   };
 }

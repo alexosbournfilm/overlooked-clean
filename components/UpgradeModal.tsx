@@ -1,4 +1,3 @@
-// app/components/UpgradeModal.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
@@ -11,6 +10,7 @@ import {
   ActivityIndicator,
   ScrollView,
   useWindowDimensions,
+  Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -49,6 +49,25 @@ type BillingSnapshot = {
   premium_access_expires_at?: string | null;
   stripe_subscription_id?: string | null;
   stripe_customer_id?: string | null;
+};
+
+type CancelSubscriptionResponse = {
+  ok?: boolean;
+  error?: string;
+  details?: string;
+  message?: string;
+  provider?: 'stripe' | 'revenuecat' | string;
+  action?:
+    | 'stripe_canceled'
+    | 'already_scheduled'
+    | 'manage_external'
+    | 'nothing_to_cancel'
+    | string;
+  management_url?: string | null;
+  store?: string | null;
+  cancel_at_period_end?: boolean | null;
+  period_end?: string | null;
+  is_grandfathered?: boolean;
 };
 
 /* -------------------------- shared palette/fonts -------------------------- */
@@ -111,6 +130,21 @@ function formatEndDate(iso: string) {
     });
   } catch {
     return null;
+  }
+}
+
+async function openExternalManagementUrl(url?: string | null) {
+  if (!url) return false;
+
+  try {
+    const supported = await Linking.canOpenURL(url);
+    if (!supported) return false;
+
+    await Linking.openURL(url);
+    return true;
+  } catch (e) {
+    console.log('UpgradeModal openExternalManagementUrl error', e);
+    return false;
   }
 }
 
@@ -269,7 +303,39 @@ export const UpgradeModal: React.FC<Props> = ({
         'cancel-subscription',
         { body: {} }
       );
+
       if (fnError) throw fnError;
+
+      const result = (fnData ?? {}) as CancelSubscriptionResponse;
+
+      if (result?.ok === false) {
+        throw new Error(result?.error || result?.message || 'Could not cancel renewal');
+      }
+
+      if (result?.action === 'manage_external') {
+        const opened = await openExternalManagementUrl(result?.management_url ?? null);
+
+        const externalMessage =
+          result?.message ||
+          (opened
+            ? 'Your subscription is managed by your mobile app store. We opened the store management page so you can cancel it there.'
+            : 'Your subscription is managed by your mobile app store. Please cancel it in Google Play or the App Store.');
+
+        setDowngradeConfirmError(externalMessage);
+
+        invalidateMembershipCache();
+
+        const refreshedTier = await getCurrentUserTierOrFree({ force: true });
+        const refreshedBilling = (await getMySubscriptionStatus()) as BillingSnapshot;
+
+        setCurrentTier(refreshedTier);
+        setSelectedTier(refreshedTier);
+        setBillingState(refreshedBilling);
+        setPeriodEndIso(refreshedBilling.accessEndsAt ?? null);
+        setCancelAtPeriodEnd(Boolean(refreshedBilling.cancel_at_period_end));
+
+        return;
+      }
 
       invalidateMembershipCache();
 
@@ -281,10 +347,6 @@ export const UpgradeModal: React.FC<Props> = ({
       setBillingState(refreshedBilling);
       setPeriodEndIso(refreshedBilling.accessEndsAt ?? null);
       setCancelAtPeriodEnd(Boolean(refreshedBilling.cancel_at_period_end));
-
-      if (fnData?.ok === false) {
-        throw new Error(fnData?.error || 'Could not cancel renewal');
-      }
 
       setDowngradeConfirmVisible(false);
       onClose();

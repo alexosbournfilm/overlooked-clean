@@ -1,4 +1,3 @@
-// app/lib/membership.ts
 import { supabase, TIER_SUBMISSION_LIMITS, type UserTier } from './supabase';
 
 export type SubmissionQuotaInfo = {
@@ -59,6 +58,12 @@ export type MembershipSnapshot = {
   currentPeriodEnd: string | null;
   premiumAccessExpiresAt: string | null;
   hasProAccess: boolean;
+
+  // Neutral cross-platform flag
+  hasRenewableSubscriptionRecord: boolean;
+
+  // Kept for compatibility with older Stripe-oriented UI
+  hasStripeSubscriptionRecord?: boolean;
 };
 
 // =======================
@@ -154,6 +159,8 @@ export async function getMembershipSnapshot(opts?: {
         'cancel_at_period_end',
         'current_period_end',
         'premium_access_expires_at',
+        'stripe_customer_id',
+        'stripe_subscription_id',
       ].join(',')
     )
     .eq('id', userId)
@@ -168,6 +175,11 @@ export async function getMembershipSnapshot(opts?: {
   const effectiveTier = computeEffectiveTier(data);
   const hasProAccess = effectiveTier === 'pro';
 
+  const hasRenewableSubscriptionRecord =
+    Boolean(data.current_period_end) ||
+    Boolean(data.premium_access_expires_at) ||
+    Boolean(data.subscription_status);
+
   const snapshot: MembershipSnapshot = {
     userId,
     dbTier,
@@ -179,6 +191,12 @@ export async function getMembershipSnapshot(opts?: {
     currentPeriodEnd: data.current_period_end ?? null,
     premiumAccessExpiresAt: data.premium_access_expires_at ?? null,
     hasProAccess,
+    hasRenewableSubscriptionRecord,
+
+    // compatibility
+    hasStripeSubscriptionRecord:
+      Boolean((data as any).stripe_customer_id) ||
+      Boolean((data as any).stripe_subscription_id),
   };
 
   cachedMembershipSnapshot = snapshot;

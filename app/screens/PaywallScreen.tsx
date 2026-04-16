@@ -1,4 +1,3 @@
-// screens/PaywallScreen.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -11,6 +10,7 @@ import {
   AppStateStatus,
   ScrollView,
   useWindowDimensions,
+  Linking as RNLinking,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
@@ -36,6 +36,26 @@ const STRIPE_PRICE_MONTHLY = 'price_1S1jLxIaba42c4jIsVBQneb0';
 const REVENUECAT_ANDROID_PUBLIC_SDK_KEY = 'goog_yNsgMdHFvNRzhpfDwICFHbSXuvC';
 
 type PlanKey = 'monthly';
+
+type CheckoutSessionResponse = {
+  id?: string;
+  url?: string;
+  provider?: 'stripe' | 'revenuecat' | string;
+  action?:
+    | 'checkout_created'
+    | 'already_subscribed'
+    | 'already_canceled_but_active'
+    | 'already_has_lifetime'
+    | string;
+  error?: string;
+  message?: string;
+  management_url?: string | null;
+  store?: string | null;
+  cancel_at_period_end?: boolean | null;
+  period_end?: string | null;
+  subscription_id?: string | null;
+  store_managed?: boolean;
+};
 
 function isActive(status?: string | null, currentPeriodEnd?: string | null) {
   if (!status) return false;
@@ -123,6 +143,21 @@ async function syncAndroidProToSupabase(args: {
 
   if (error) {
     throw error;
+  }
+}
+
+async function openExternalManagementUrl(url?: string | null) {
+  if (!url) return false;
+
+  try {
+    const supported = await RNLinking.canOpenURL(url);
+    if (!supported) return false;
+
+    await RNLinking.openURL(url);
+    return true;
+  } catch (e) {
+    console.log('Paywall openExternalManagementUrl error', e);
+    return false;
   }
 }
 
@@ -329,6 +364,62 @@ export default function PaywallScreen() {
     })();
   }, [isFocused, fastGate]);
 
+  const handleExistingSubscriptionResponse = useCallback(
+    async (result: CheckoutSessionResponse) => {
+      const endLabel = result?.period_end ? formatEndDate(result.period_end) : null;
+
+      if (result?.provider === 'revenuecat') {
+        const opened = await openExternalManagementUrl(result?.management_url ?? null);
+
+        if (result?.action === 'already_canceled_but_active') {
+          setMessage(
+            result?.message ||
+              (endLabel
+                ? `You already have a mobile subscription that remains active until ${endLabel}.`
+                : 'You already have a mobile subscription that remains active until the end of the billing period.')
+          );
+          return;
+        }
+
+        if (opened) {
+          setMessage(
+            result?.message ||
+              'You already have a mobile subscription. We opened the store management page for you.'
+          );
+          return;
+        }
+
+        setMessage(
+          result?.message ||
+            'You already have a mobile subscription. Manage it in Google Play or the App Store.'
+        );
+        return;
+      }
+
+      if (result?.action === 'already_has_lifetime') {
+        setMessage(
+          result?.message || 'This account already has lifetime Pro access.'
+        );
+        return;
+      }
+
+      if (result?.action === 'already_canceled_but_active') {
+        setMessage(
+          result?.message ||
+            (endLabel
+              ? `You already have Pro and it stays active until ${endLabel}.`
+              : 'You already have Pro until the end of your current billing period.')
+        );
+        return;
+      }
+
+      setMessage(
+        result?.message || 'This account already has an active subscription.'
+      );
+    },
+    []
+  );
+
   const openStripeCheckout = async () => {
     const { data: auth, error: authErr } = await supabase.auth.getUser();
     if (authErr) throw authErr;
@@ -342,13 +433,15 @@ export default function PaywallScreen() {
       throw new Error('Missing Stripe price id for this plan.');
     }
 
+    const requestBody = {
+      user_id: user.id,
+      email: user.email ?? undefined,
+      plan: selectedPlanPayload.plan,
+      priceId: selectedPlanPayload.priceId,
+    };
+
     const invokeRes = await supabase.functions.invoke('create-checkout-session', {
-      body: {
-        user_id: user.id,
-        email: user.email ?? undefined,
-        plan: selectedPlanPayload.plan,
-        priceId: selectedPlanPayload.priceId,
-      },
+      body: requestBody,
     });
 
     if (invokeRes.error) {
@@ -368,24 +461,26 @@ export default function PaywallScreen() {
               'content-type': 'application/json',
               ...(token ? { authorization: `Bearer ${token}` } : {}),
             },
-            body: JSON.stringify({
-              user_id: user.id,
-              email: user.email ?? undefined,
-              plan: selectedPlanPayload.plan,
-              priceId: selectedPlanPayload.priceId,
-            }),
+            body: JSON.stringify(requestBody),
           });
 
           const json = await resp.json().catch(() => ({}));
+          const result = (json ?? {}) as CheckoutSessionResponse;
+
+          if (resp.status === 409) {
+            await handleExistingSubscriptionResponse(result);
+            return;
+          }
+
           if (!resp.ok) {
             const msg =
-              json?.error ||
-              json?.message ||
+              result?.error ||
+              result?.message ||
               `Checkout session failed (HTTP ${resp.status}).`;
             throw new Error(msg);
           }
 
-          const url = json?.url as string | undefined;
+          const url = result?.url as string | undefined;
           if (!url) throw new Error('No checkout URL returned.');
 
           if (Platform.OS === 'web') {
@@ -407,7 +502,18 @@ export default function PaywallScreen() {
       throw new Error(primaryMsg);
     }
 
-    const url = (invokeRes.data as any)?.url as string | undefined;
+    const result = (invokeRes.data ?? {}) as CheckoutSessionResponse;
+
+    if (
+      result?.action === 'already_subscribed' ||
+      result?.action === 'already_canceled_but_active' ||
+      result?.action === 'already_has_lifetime'
+    ) {
+      await handleExistingSubscriptionResponse(result);
+      return;
+    }
+
+    const url = result?.url as string | undefined;
     if (!url) throw new Error('No checkout URL returned.');
 
     if (Platform.OS === 'web') {
@@ -481,7 +587,7 @@ export default function PaywallScreen() {
         return;
       }
 
-      throw new Error('Subscriptions for this platform are not set up yet.');
+      await openStripeCheckout();
     } catch (e: any) {
       console.error('checkout redirect error', e);
 
