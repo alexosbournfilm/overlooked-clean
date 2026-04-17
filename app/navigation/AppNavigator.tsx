@@ -1,9 +1,9 @@
-// app/navigation/AppNavigator.tsx
 import React, { useEffect, useRef, useState } from "react";
 import {
   NavigationContainer,
   DefaultTheme,
   type InitialState,
+  CommonActions,
 } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -49,6 +49,10 @@ export default function AppNavigator({
   const [initialState, setInitialState] = useState<InitialState | undefined>();
   const [navReady, setNavReady] = useState(false);
 
+  const hasBootstrappedNavRef = useRef(false);
+  const lastAuthSnapshotRef = useRef<string>("");
+  const hasHandledPostMountRedirectRef = useRef(false);
+
   // --------------------------------------------------------------
   // Restore navigation only for logged-in users
   // --------------------------------------------------------------
@@ -60,7 +64,10 @@ export default function AppNavigator({
 
       if (!userId || !profileComplete) {
         setInitialState(undefined);
-        setNavReady(true);
+        if (mounted) {
+          setNavReady(true);
+          hasBootstrappedNavRef.current = true;
+        }
         return;
       }
 
@@ -72,9 +79,14 @@ export default function AppNavigator({
         if (savedState && mounted) {
           setInitialState(JSON.parse(savedState));
         }
-      } catch {}
+      } catch (e) {
+        console.log("Failed to restore navigation state:", e);
+      }
 
-      if (mounted) setNavReady(true);
+      if (mounted) {
+        setNavReady(true);
+        hasBootstrappedNavRef.current = true;
+      }
     };
 
     restoreNav();
@@ -83,6 +95,95 @@ export default function AppNavigator({
       mounted = false;
     };
   }, [ready, userId, profileComplete]);
+
+  // --------------------------------------------------------------
+  // Persist navigation state per signed-in user
+  // --------------------------------------------------------------
+  const handleStateChange = async (state?: InitialState) => {
+    if (!userId || !profileComplete || !state) return;
+
+    try {
+      await AsyncStorage.setItem(
+        `NAVIGATION_STATE_v2:${userId}`,
+        JSON.stringify(state)
+      );
+    } catch (e) {
+      console.log("Failed to persist navigation state:", e);
+    }
+  };
+
+  // --------------------------------------------------------------
+  // Clear stale nav state when user signs out / loses profile completeness
+  // --------------------------------------------------------------
+  useEffect(() => {
+    if (!ready) return;
+
+    if (!userId) {
+      setInitialState(undefined);
+      return;
+    }
+
+    if (!profileComplete) {
+      setInitialState(undefined);
+    }
+  }, [ready, userId, profileComplete]);
+
+  // --------------------------------------------------------------
+  // Actively redirect after mount when auth changes
+  // --------------------------------------------------------------
+  useEffect(() => {
+    if (!ready || !navReady) return;
+    if (!navigationRef.isReady()) return;
+    if (!hasBootstrappedNavRef.current) return;
+
+    const authSnapshot = `${userId ?? "guest"}:${profileComplete ? "complete" : "incomplete"}`;
+    const prevSnapshot = lastAuthSnapshotRef.current;
+    lastAuthSnapshotRef.current = authSnapshot;
+
+    if (!hasHandledPostMountRedirectRef.current) {
+      hasHandledPostMountRedirectRef.current = true;
+      return;
+    }
+
+    if (prevSnapshot === authSnapshot) return;
+
+    const resetToAuth = () => {
+      navigationRef.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            {
+              name: "Auth",
+              params: {
+                screen: !userId ? initialAuthRouteName : "CreateProfile",
+              },
+            },
+          ],
+        })
+      );
+    };
+
+    const resetToMainTabs = () => {
+      navigationRef.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: "MainTabs" }],
+        })
+      );
+    };
+
+    if (!userId) {
+      resetToAuth();
+      return;
+    }
+
+    if (!profileComplete) {
+      resetToAuth();
+      return;
+    }
+
+    resetToMainTabs();
+  }, [ready, navReady, userId, profileComplete, initialAuthRouteName]);
 
   // --------------------------------------------------------------
   // Paid / membership check (non-blocking)
@@ -160,8 +261,6 @@ export default function AppNavigator({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  
-
   // --------------------------------------------------------------
   // Global loading
   // --------------------------------------------------------------
@@ -197,16 +296,19 @@ export default function AppNavigator({
       ref={navigationRef as any}
       linking={linking}
       initialState={initialState}
-      onReady={() => setNavigatorReady(true)}
+      onReady={() => {
+        setNavigatorReady(true);
+      }}
+      onStateChange={handleStateChange}
       theme={NAV_THEME}
     >
       <Stack.Navigator
-  screenOptions={{
-    headerShown: false,
-    cardStyle: { backgroundColor: "#0D0D0D" },
-  }}
-  initialRouteName={rootInitialRouteName as any}
->
+        screenOptions={{
+          headerShown: false,
+          cardStyle: { backgroundColor: "#0D0D0D" },
+        }}
+        initialRouteName={rootInitialRouteName as any}
+      >
         <Stack.Screen name="Paywall" component={PaywallScreen} />
         <Stack.Screen name="PaySuccess" component={PaySuccessScreen} />
 

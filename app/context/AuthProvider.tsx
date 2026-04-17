@@ -1,4 +1,3 @@
-// app/context/AuthProvider.tsx
 import React, {
   createContext,
   useContext,
@@ -35,13 +34,11 @@ const AuthContext = createContext<AuthContextType>({
   refreshProfile: async () => {},
 });
 
-// ✅ Safe global flag across web + native
 const G = globalThis as any;
 if (typeof G.__OVERLOOKED_RECOVERY__ === "undefined") {
   G.__OVERLOOKED_RECOVERY__ = false;
 }
 
-// ✅ Web-only helper: are we ACTUALLY on a recovery/reset link?
 function isWebRecoveryUrl(): boolean {
   if (Platform.OS !== "web") return false;
   if (typeof window === "undefined") return false;
@@ -51,7 +48,6 @@ function isWebRecoveryUrl(): boolean {
   const hash = window.location.hash || "";
   const search = window.location.search || "";
 
-  // Any of these strongly indicate a recovery link
   const hasRecoveryType =
     href.includes("type=recovery") ||
     hash.includes("type=recovery") ||
@@ -62,7 +58,6 @@ function isWebRecoveryUrl(): boolean {
     hash.includes("token_hash=") ||
     search.includes("token_hash=");
 
-  // Your linking maps reset-password → NewPassword
   const isResetRoute =
     path.includes("/reset-password") || path.endsWith("/reset-password");
 
@@ -74,89 +69,145 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<MinimalProfile | null>(null);
 
-  // ✅ Speed-only: prevent redundant profile fetches + prevent stale overwrites
   const inFlightProfileForRef = useRef<string | null>(null);
   const lastLoadedProfileForRef = useRef<string | null>(null);
+  const authBootstrappedRef = useRef(false);
+  const clearingSessionRef = useRef(false);
+  const latestAuthUserIdRef = useRef<string | null>(null);
 
   async function loadProfile(uid: string) {
-    // If we already loaded this uid and profile is present, don't refetch.
-    // (No logic change: profile values stay the same; this only avoids duplicate calls.)
+    if (!uid) return;
+
     if (lastLoadedProfileForRef.current === uid && profile?.id === uid) {
       return;
     }
 
-    // If a fetch for this same uid is already in progress, don't start another.
     if (inFlightProfileForRef.current === uid) {
       return;
     }
 
     inFlightProfileForRef.current = uid;
 
-    const { data } = await supabase
-      .from("users")
-      .select("id, full_name, main_role_id, city_id")
-      .eq("id", uid)
-      .maybeSingle();
+    try {
+      const { data } = await supabase
+        .from("users")
+        .select("id, full_name, main_role_id, city_id")
+        .eq("id", uid)
+        .maybeSingle();
 
-    // Mark request complete (even if data is null)
-    inFlightProfileForRef.current = null;
+      if (!data) {
+        if (latestAuthUserIdRef.current !== uid) return;
 
-    if (!data) {
+        setProfile({
+          id: uid,
+          full_name: null,
+          main_role_id: null,
+          city_id: null,
+        });
+        lastLoadedProfileForRef.current = uid;
+        return;
+      }
+
+      if (latestAuthUserIdRef.current !== uid) return;
+
       setProfile({
-        id: uid,
-        full_name: null,
-        main_role_id: null,
-        city_id: null,
+        id: data.id,
+        full_name: data.full_name,
+        main_role_id: data.main_role_id,
+        city_id: data.city_id,
       });
-      lastLoadedProfileForRef.current = uid;
-      return;
+      lastLoadedProfileForRef.current = data.id;
+    } finally {
+      inFlightProfileForRef.current = null;
     }
-
-    setProfile({
-      id: data.id,
-      full_name: data.full_name,
-      main_role_id: data.main_role_id,
-      city_id: data.city_id,
-    });
-    lastLoadedProfileForRef.current = data.id;
   }
+
+  const clearLocalAuthState = () => {
+    latestAuthUserIdRef.current = null;
+    setUserId(null);
+    setProfile(null);
+    lastLoadedProfileForRef.current = null;
+    inFlightProfileForRef.current = null;
+  };
+
+  const safelyHandleMissingSession = async () => {
+    if (clearingSessionRef.current) return;
+    clearingSessionRef.current = true;
+
+    try {
+      const { data, error } = await supabase.auth.getSession();
+
+      if (error) {
+        console.warn("AuthProvider getSession recheck error:", error.message);
+      }
+
+      const recoveredUid = data?.session?.user?.id ?? null;
+
+      if (recoveredUid) {
+        latestAuthUserIdRef.current = recoveredUid;
+        setUserId(recoveredUid);
+        await loadProfile(recoveredUid);
+        return;
+      }
+
+      clearLocalAuthState();
+    } finally {
+      clearingSessionRef.current = false;
+    }
+  };
 
   const refreshProfile = async () => {
     if (userId) {
-      // Force refresh even if same uid (explicit refresh)
       lastLoadedProfileForRef.current = null;
       await loadProfile(userId);
     }
   };
 
-  /* ------------------------------------------------------------------
-      INITIAL SESSION + AUTH LISTENER
-  ------------------------------------------------------------------ */
   useEffect(() => {
     let mounted = true;
-        try {
+
+    try {
       supabase.auth.startAutoRefresh();
     } catch {}
-        const appStateSub = AppState.addEventListener("change", (state) => {
+
+    const appStateSub = AppState.addEventListener("change", async (state) => {
       try {
         if (state === "active") {
           supabase.auth.startAutoRefresh();
-        } else {
-          supabase.auth.stopAutoRefresh();
+
+          const { data, error } = await supabase.auth.getSession();
+          if (error) {
+            console.warn("AuthProvider resume session check error:", error.message);
+            return;
+          }
+
+          const resumedUid = data?.session?.user?.id ?? null;
+
+          if (resumedUid) {
+            latestAuthUserIdRef.current = resumedUid;
+            setUserId((prev) => (prev === resumedUid ? prev : resumedUid));
+            await loadProfile(resumedUid);
+          }
         }
-      } catch {}
+      } catch (e: any) {
+        console.warn("AuthProvider AppState handler error:", e?.message || String(e));
+      }
     });
 
     const init = async () => {
-      // ✅ On app start, DO NOT stay in recovery mode unless URL proves it
-      // This prevents "stuck recovery" where plain /signin keeps showing NewPassword.
       const shouldBeRecovery = isWebRecoveryUrl();
       G.__OVERLOOKED_RECOVERY__ = shouldBeRecovery;
 
-      const { data } = await supabase.auth.getSession();
-      const uid = data.session?.user?.id ?? null;
+      const { data, error } = await supabase.auth.getSession();
 
       if (!mounted) return;
+
+      if (error) {
+        console.warn("AuthProvider init getSession error:", error.message);
+      }
+
+      const uid = data.session?.user?.id ?? null;
+      latestAuthUserIdRef.current = uid;
 
       setUserId(uid);
 
@@ -168,6 +219,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         inFlightProfileForRef.current = null;
       }
 
+      authBootstrappedRef.current = true;
       setReady(true);
     };
 
@@ -177,8 +229,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (event, session) => {
         console.log("Auth event →", event);
 
-        // ✅ PASSWORD_RECOVERY should ONLY push to NewPassword
-        // when we are truly processing a recovery link.
         if (event === "PASSWORD_RECOVERY") {
           const okRecovery = isWebRecoveryUrl() || Platform.OS !== "web";
 
@@ -199,7 +249,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               );
             }
           } else {
-            // If Supabase fires it unexpectedly, don't trap the user.
             console.warn(
               "⚠️ PASSWORD_RECOVERY fired but URL is not recovery. Ignoring."
             );
@@ -209,8 +258,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        // ✅ USER_UPDATED happens after password is successfully changed
-        // We END recovery mode here and return user to SignIn.
         if (event === "USER_UPDATED") {
           console.log("🔐 USER_UPDATED fired");
 
@@ -218,7 +265,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.log("✅ Recovery complete → exiting recovery mode");
             G.__OVERLOOKED_RECOVERY__ = false;
 
-            // Optional hard clean of URL on web
             if (Platform.OS === "web" && typeof window !== "undefined") {
               const clean = window.location.origin + "/signin";
               window.history.replaceState({}, document.title, clean);
@@ -236,9 +282,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        // ✅ Clear recovery mode on normal sign in/out
         if (event === "SIGNED_IN") {
-          // If user signed in normally, we should not remain in recovery mode
           if (!isWebRecoveryUrl()) {
             G.__OVERLOOKED_RECOVERY__ = false;
           }
@@ -248,38 +292,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           G.__OVERLOOKED_RECOVERY__ = false;
         }
 
-        /* ----------------------------------------------------------
-           GENERIC LOGIN/LOGOUT UPDATE
-        ---------------------------------------------------------- */
         const uid = session?.user?.id ?? null;
-        setUserId(uid);
 
         if (uid) {
+          latestAuthUserIdRef.current = uid;
+          setUserId(uid);
           await loadProfile(uid);
-        } else {
-          setProfile(null);
-          lastLoadedProfileForRef.current = null;
-          inFlightProfileForRef.current = null;
+
+          if (!ready && mounted) {
+            authBootstrappedRef.current = true;
+            setReady(true);
+          }
+          return;
+        }
+
+        if (
+          event === "TOKEN_REFRESHED" ||
+          event === "INITIAL_SESSION" ||
+          event === "SIGNED_IN" ||
+          event === "USER_UPDATED"
+        ) {
+          await safelyHandleMissingSession();
+
+          if (!ready && mounted) {
+            authBootstrappedRef.current = true;
+            setReady(true);
+          }
+          return;
+        }
+
+        if (event === "SIGNED_OUT") {
+          clearLocalAuthState();
+
+          if (!ready && mounted) {
+            authBootstrappedRef.current = true;
+            setReady(true);
+          }
+          return;
+        }
+
+        await safelyHandleMissingSession();
+
+        if (!ready && mounted) {
+          authBootstrappedRef.current = true;
+          setReady(true);
         }
       }
     );
 
     return () => {
-  try {
-    appStateSub.remove();
-  } catch {}
+      try {
+        appStateSub.remove();
+      } catch {}
 
-  listener?.subscription?.unsubscribe?.();
-  mounted = false;
-};
-    // NOTE: loadProfile references profile state; we intentionally keep deps empty
-    // to preserve original behavior and avoid re-subscribing to auth events.
+      listener?.subscription?.unsubscribe?.();
+      mounted = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ------------------------------------------------------------------
-      PROFILE COMPLETENESS
-  ------------------------------------------------------------------ */
   const profileComplete = useMemo(() => {
     if (!profile) return false;
 

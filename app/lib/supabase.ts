@@ -1,4 +1,3 @@
-// app/lib/supabase.ts
 import "react-native-url-polyfill/auto";
 import { createClient } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -37,12 +36,12 @@ export const supabase =
         auth: isWeb
           ? {
               persistSession: true,
-              autoRefreshToken: false,
+              autoRefreshToken: true,
               detectSessionInUrl: shouldDetectSessionInUrl(),
             }
           : {
               persistSession: true,
-              autoRefreshToken: false,
+              autoRefreshToken: true,
               detectSessionInUrl: false,
               storage: AsyncStorage,
               storageKey: "overlooked.supabase.auth",
