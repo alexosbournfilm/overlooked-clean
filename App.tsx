@@ -97,6 +97,11 @@ function parseAuthParamsFromUrl(url: string) {
 
 export default function App() {
   const [appIsReady, setAppIsReady] = useState(false);
+
+  // IMPORTANT:
+  // We default auth flow to SignIn.
+  // CreateProfile must NOT be inferred here from a profile lookup,
+  // because a temporary failed fetch can incorrectly route existing users there.
   const [initialAuthRouteName, setInitialAuthRouteName] =
     useState<"SignIn" | "CreateProfile">("SignIn");
 
@@ -179,6 +184,14 @@ export default function App() {
       console.log("🔐 Recovery link detected → navigating to NewPassword");
       navigate("NewPassword");
       return;
+    }
+
+    // Signup confirmation should NOT auto-force CreateProfile here.
+    // The app should still go through SignIn, and later files will control
+    // the one-time post-confirmation CreateProfile path safely.
+    if (type === "signup") {
+      console.log("✅ Signup confirmation link detected");
+      setInitialAuthRouteName("SignIn");
     }
 
     if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -313,27 +326,10 @@ export default function App() {
             await savePushTokenForUser(session.user.id);
           }
 
-          const meta: any = (session.user as any)?.user_metadata || {};
-          const metaHasProfileBits =
-            !!meta?.full_name && !!meta?.main_role_id && !!meta?.city_id;
-
-          if (metaHasProfileBits) {
-            setInitialAuthRouteName("SignIn");
-          } else {
-            const { data: profile } = await supabase
-              .from("users")
-              .select("full_name, main_role_id, city_id")
-              .eq("id", session.user.id)
-              .maybeSingle();
-
-            const needsProfile =
-              !profile ||
-              !profile.full_name ||
-              !profile.main_role_id ||
-              !profile.city_id;
-
-            setInitialAuthRouteName(needsProfile ? "CreateProfile" : "SignIn");
-          }
+          // IMPORTANT:
+          // Never decide CreateProfile here by querying profile completeness.
+          // A temporary miss / slow fetch can wrongly send an existing user there.
+          setInitialAuthRouteName("SignIn");
         } else {
           setInitialAuthRouteName("SignIn");
         }

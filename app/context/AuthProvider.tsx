@@ -75,10 +75,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clearingSessionRef = useRef(false);
   const latestAuthUserIdRef = useRef<string | null>(null);
 
-  async function loadProfile(uid: string) {
+  async function loadProfile(uid: string, force = false) {
     if (!uid) return;
 
-    if (lastLoadedProfileForRef.current === uid && profile?.id === uid) {
+    if (!force && lastLoadedProfileForRef.current === uid && profile?.id === uid) {
       return;
     }
 
@@ -89,26 +89,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     inFlightProfileForRef.current = uid;
 
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("users")
         .select("id, full_name, main_role_id, city_id")
         .eq("id", uid)
         .maybeSingle();
 
-      if (!data) {
-        if (latestAuthUserIdRef.current !== uid) return;
-
-        setProfile({
-          id: uid,
-          full_name: null,
-          main_role_id: null,
-          city_id: null,
-        });
-        lastLoadedProfileForRef.current = uid;
+      if (error) {
+        console.warn("AuthProvider loadProfile error:", error.message);
         return;
       }
 
       if (latestAuthUserIdRef.current !== uid) return;
+
+      // IMPORTANT:
+      // Do NOT create a fake empty profile object when the row is missing or
+      // the fetch briefly returns nothing. That was helping trigger false
+      // "incomplete profile" states for existing users.
+      if (!data) {
+        setProfile(null);
+        lastLoadedProfileForRef.current = null;
+        return;
+      }
 
       setProfile({
         id: data.id,
@@ -117,6 +119,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         city_id: data.city_id,
       });
       lastLoadedProfileForRef.current = data.id;
+    } catch (e: any) {
+      console.warn(
+        "AuthProvider loadProfile fatal error:",
+        e?.message || String(e)
+      );
     } finally {
       inFlightProfileForRef.current = null;
     }
@@ -159,7 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshProfile = async () => {
     if (userId) {
       lastLoadedProfileForRef.current = null;
-      await loadProfile(userId);
+      await loadProfile(userId, true);
     }
   };
 
@@ -177,7 +184,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           const { data, error } = await supabase.auth.getSession();
           if (error) {
-            console.warn("AuthProvider resume session check error:", error.message);
+            console.warn(
+              "AuthProvider resume session check error:",
+              error.message
+            );
             return;
           }
 
@@ -190,7 +200,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
       } catch (e: any) {
-        console.warn("AuthProvider AppState handler error:", e?.message || String(e));
+        console.warn(
+          "AuthProvider AppState handler error:",
+          e?.message || String(e)
+        );
       }
     });
 
@@ -297,7 +310,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (uid) {
           latestAuthUserIdRef.current = uid;
           setUserId(uid);
-          await loadProfile(uid);
+          await loadProfile(uid, event === "SIGNED_IN" || event === "USER_UPDATED");
 
           if (!ready && mounted) {
             authBootstrappedRef.current = true;

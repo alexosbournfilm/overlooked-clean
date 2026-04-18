@@ -5,6 +5,8 @@
 // - Web: keeps the richer landing layout
 // - Removes blue cursor/selection highlight
 // - Smoother input focus + submit flow
+// - IMPORTANT: CreateProfile is ONLY allowed right after a
+//   genuinely fresh email confirmation / first confirmed sign-in
 // ------------------------------------------------------------
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -83,6 +85,10 @@ const HOLD_FULL_MS = 5500;
 const HOLD_EMPTY_MS = 280;
 const CARET_BLINK_MS = 530;
 const TITLE_FADE_MS = 700;
+
+// Only allow CreateProfile when the account was confirmed very recently.
+// This tightly matches your rule: just confirmed email, then sign in.
+const FRESH_CONFIRMATION_WINDOW_MS = 30 * 60 * 1000;
 
 type FeatureKey = 'profile' | 'location' | 'jobs' | 'festival';
 
@@ -215,6 +221,33 @@ function useHoverScale() {
   return { scale, hovered, onHoverIn, onHoverOut, onPressIn, onPressOut };
 }
 
+function parseAuthTypeFromUrl(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const searchType = u.searchParams.get('type');
+    if (searchType) return searchType;
+
+    const hash = (u.hash || '').replace(/^#/, '');
+    if (hash) {
+      const hp = new URLSearchParams(hash);
+      return hp.get('type');
+    }
+  } catch {}
+
+  return null;
+}
+
+function isFreshlyConfirmedUser(user: any): boolean {
+  const confirmedAt = user?.email_confirmed_at
+    ? new Date(user.email_confirmed_at).getTime()
+    : null;
+
+  if (!confirmedAt || Number.isNaN(confirmedAt)) return false;
+
+  const age = Date.now() - confirmedAt;
+  return age >= 0 && age <= FRESH_CONFIRMATION_WINDOW_MS;
+}
+
 export default function SignInScreen() {
   const navigation = useNavigation<any>();
   const { width, height } = useWindowDimensions();
@@ -260,6 +293,7 @@ export default function SignInScreen() {
 
   const didFinishRedirectRef = useRef(false);
   const deepLinkHandledRef = useRef<string | null>(null);
+  const allowCreateProfileOnceRef = useRef(false);
 
   const emailInputRef = useRef<TextInput>(null);
   const passwordInputRef = useRef<TextInput>(null);
@@ -274,12 +308,15 @@ export default function SignInScreen() {
     Alert.alert(title, message);
   };
 
-  const finishPostAuthRedirect = async () => {
+  const finishPostAuthRedirect = async (opts?: { allowCreateProfile?: boolean }) => {
     if (didFinishRedirectRef.current) return;
     didFinishRedirectRef.current = true;
 
+    const allowCreateProfile = Boolean(opts?.allowCreateProfile);
+
     const { data: u } = await supabase.auth.getUser();
-    const userId = u?.user?.id;
+    const user = u?.user;
+    const userId = user?.id;
 
     if (!userId) {
       showError('Error', 'No active session found after sign-in.');
@@ -288,7 +325,7 @@ export default function SignInScreen() {
 
     const { data: profile, error: profileError } = await supabase
       .from('users')
-      .select('id')
+      .select('id, full_name, main_role_id, city_id')
       .eq('id', userId)
       .maybeSingle();
 
@@ -298,12 +335,27 @@ export default function SignInScreen() {
       return;
     }
 
-    if (!profile) {
-      try {
-        navigation.navigate('CreateProfile');
-      } catch (e) {
-        console.log('CreateProfile navigation error:', e);
+    const profileComplete = Boolean(
+      profile?.id && profile?.full_name && profile?.main_role_id && profile?.city_id
+    );
+
+    if (!profileComplete) {
+      if (allowCreateProfile) {
+        allowCreateProfileOnceRef.current = false;
+
+        try {
+          navigation.navigate('CreateProfile');
+        } catch (e) {
+          console.log('CreateProfile navigation error:', e);
+          showError('Navigation Error', 'Could not open profile setup.');
+        }
+        return;
       }
+
+      showError(
+        'Profile unavailable',
+        'Your account is signed in, but profile setup is only opened immediately after a fresh email confirmation. Please contact support if this account should already have a profile.'
+      );
       return;
     }
 
@@ -335,6 +387,8 @@ export default function SignInScreen() {
       if (deepLinkHandledRef.current === url) return;
       deepLinkHandledRef.current = url;
 
+      const authType = parseAuthTypeFromUrl(url);
+
       const { error } = await supabase.auth.exchangeCodeForSession(url);
 
       if (error) {
@@ -346,12 +400,20 @@ export default function SignInScreen() {
         return;
       }
 
+      const { data: userData } = await supabase.auth.getUser();
+      const signedInUser = userData?.user;
+
+      const allowCreateProfile =
+        authType === 'signup' && Boolean(signedInUser && isFreshlyConfirmedUser(signedInUser));
+
+      allowCreateProfileOnceRef.current = allowCreateProfile;
+
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         const clean = window.location.origin + window.location.pathname;
         window.history.replaceState({}, document.title, clean);
       }
 
-      await finishPostAuthRedirect();
+      await finishPostAuthRedirect({ allowCreateProfile });
     } catch (e) {
       console.log('handleAuthDeepLink exception:', e);
     }
@@ -366,16 +428,20 @@ export default function SignInScreen() {
         const { data: sessionData } = await supabase.auth.getSession();
         if (!mounted) return;
 
-        if (sessionData?.session?.user) {
-          await finishPostAuthRedirect();
-          return;
-        }
-
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
           await handleAuthDeepLink(window.location.href);
         } else {
           const initial = await Linking.getInitialURL();
           if (initial) await handleAuthDeepLink(initial);
+        }
+
+        const { data: refreshedSessionData } = await supabase.auth.getSession();
+        if (!mounted) return;
+
+        if (refreshedSessionData?.session?.user && !didFinishRedirectRef.current) {
+          await finishPostAuthRedirect({
+            allowCreateProfile: allowCreateProfileOnceRef.current,
+          });
         }
 
         const sub = Linking.addEventListener('url', (event) => {
@@ -398,12 +464,12 @@ export default function SignInScreen() {
   }, []);
 
   useEffect(() => {
-  if (useSimpleMobileLayout) return;
-  if (showSignIn) return;
+    if (useSimpleMobileLayout) return;
+    if (showSignIn) return;
 
-  const id = setInterval(() => setCaretVisible((v) => !v), CARET_BLINK_MS);
-  return () => clearInterval(id);
-}, [showSignIn, useSimpleMobileLayout]);
+    const id = setInterval(() => setCaretVisible((v) => !v), CARET_BLINK_MS);
+    return () => clearInterval(id);
+  }, [showSignIn, useSimpleMobileLayout]);
 
   useEffect(() => {
     Animated.parallel([
@@ -423,71 +489,71 @@ export default function SignInScreen() {
   }, []);
 
   useEffect(() => {
-  if (useSimpleMobileLayout) return;
-  if (showSignIn) return;
+    if (useSimpleMobileLayout) return;
+    if (showSignIn) return;
 
-  let mounted = true;
-  let timer: any;
+    let mounted = true;
+    let timer: any;
 
-  const rand = (a: number, b: number) =>
-    Math.floor(Math.random() * (b - a + 1)) + a;
+    const rand = (a: number, b: number) =>
+      Math.floor(Math.random() * (b - a + 1)) + a;
 
-  const nextTypeDelay = (typed: string) => {
-    let d = rand(TYPE_MIN_MS, TYPE_MAX_MS);
-    const last = typed.slice(-1);
-    if (last === ' ') d += WORD_PAUSE_MS;
-    if (['.', ',', '!', '?', ';', ':'].includes(last)) d += PUNCT_PAUSE_MS;
-    if (Math.random() < 0.14) d += rand(100, 320);
-    return d;
-  };
+    const nextTypeDelay = (typed: string) => {
+      let d = rand(TYPE_MIN_MS, TYPE_MAX_MS);
+      const last = typed.slice(-1);
+      if (last === ' ') d += WORD_PAUSE_MS;
+      if (['.', ',', '!', '?', ';', ':'].includes(last)) d += PUNCT_PAUSE_MS;
+      if (Math.random() < 0.14) d += rand(100, 320);
+      return d;
+    };
 
-  const nextDeleteDelay = () => rand(DELETE_MIN_MS, DELETE_MAX_MS);
+    const nextDeleteDelay = () => rand(DELETE_MIN_MS, DELETE_MAX_MS);
 
-  const pickNext = (prev: number) => {
-    let n = prev;
-    while (n === prev) n = Math.floor(Math.random() * MANIFESTO_LINES.length);
-    return n;
-  };
+    const pickNext = (prev: number) => {
+      let n = prev;
+      while (n === prev) n = Math.floor(Math.random() * MANIFESTO_LINES.length);
+      return n;
+    };
 
-  const tick = () => {
-    if (!mounted) return;
-    const current = displayText;
-    const target = fullLine;
+    const tick = () => {
+      if (!mounted) return;
+      const current = displayText;
+      const target = fullLine;
 
-    if (!isDeleting) {
-      if (current.length < target.length) {
-        const next = target.slice(0, current.length + 1);
-        setDisplayText(next);
-        timer = setTimeout(tick, nextTypeDelay(next));
+      if (!isDeleting) {
+        if (current.length < target.length) {
+          const next = target.slice(0, current.length + 1);
+          setDisplayText(next);
+          timer = setTimeout(tick, nextTypeDelay(next));
+        } else {
+          timer = setTimeout(() => {
+            if (!mounted) return;
+            setIsDeleting(true);
+            timer = setTimeout(tick, nextDeleteDelay());
+          }, HOLD_FULL_MS);
+        }
       } else {
-        timer = setTimeout(() => {
-          if (!mounted) return;
-          setIsDeleting(true);
+        if (current.length > 0) {
+          const next = target.slice(0, current.length - 1);
+          setDisplayText(next);
           timer = setTimeout(tick, nextDeleteDelay());
-        }, HOLD_FULL_MS);
+        } else {
+          timer = setTimeout(() => {
+            if (!mounted) return;
+            setIsDeleting(false);
+            setLineIndex((prev) => pickNext(prev));
+          }, HOLD_EMPTY_MS);
+        }
       }
-    } else {
-      if (current.length > 0) {
-        const next = target.slice(0, current.length - 1);
-        setDisplayText(next);
-        timer = setTimeout(tick, nextDeleteDelay());
-      } else {
-        timer = setTimeout(() => {
-          if (!mounted) return;
-          setIsDeleting(false);
-          setLineIndex((prev) => pickNext(prev));
-        }, HOLD_EMPTY_MS);
-      }
-    }
-  };
+    };
 
-  timer = setTimeout(tick, TYPE_MIN_MS);
+    timer = setTimeout(tick, TYPE_MIN_MS);
 
-  return () => {
-    mounted = false;
-    if (timer) clearTimeout(timer);
-  };
-}, [displayText, isDeleting, fullLine, showSignIn, useSimpleMobileLayout]);
+    return () => {
+      mounted = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [displayText, isDeleting, fullLine, showSignIn, useSimpleMobileLayout]);
 
   const handleEnterAsGuest = () => {
     try {
@@ -524,6 +590,7 @@ export default function SignInScreen() {
 
     try {
       didFinishRedirectRef.current = false;
+      allowCreateProfileOnceRef.current = false;
 
       const { data, error } = await supabase.auth.signInWithPassword({
         email: trimmedEmail,
@@ -535,13 +602,15 @@ export default function SignInScreen() {
         return;
       }
 
-      const userId = data?.user?.id;
+      const user = data?.user;
+      const userId = user?.id;
+
       if (!userId) {
         showError('Error', 'Login failed. Please try again.');
         return;
       }
 
-      const isConfirmed = !!data?.user?.email_confirmed_at;
+      const isConfirmed = !!user?.email_confirmed_at;
       if (!isConfirmed) {
         showError(
           'Email not confirmed',
@@ -550,11 +619,14 @@ export default function SignInScreen() {
         return;
       }
 
+      const allowCreateProfile = isFreshlyConfirmedUser(user);
+      allowCreateProfileOnceRef.current = allowCreateProfile;
+
       if (!useSimpleMobileLayout) {
         setShowSignIn(false);
       }
 
-      await finishPostAuthRedirect();
+      await finishPostAuthRedirect({ allowCreateProfile });
     } catch (err: any) {
       console.log('SignIn exception:', err);
       showError('Login Error', 'Something went wrong. Please try again.');
@@ -621,26 +693,26 @@ export default function SignInScreen() {
         <View style={[styles.inputWrap, focus === 'email' && styles.inputWrapFocused]}>
           <Ionicons name="mail" size={16} color={focus === 'email' ? T.olive : T.mute} />
           <TextInput
-  ref={emailInputRef}
-  style={styles.input}
-  placeholder="Email"
-  placeholderTextColor={T.mute}
-  autoCapitalize="none"
-  autoCorrect={false}
-  keyboardType="email-address"
-  autoComplete="email"
-  textContentType="emailAddress"
-  keyboardAppearance="dark"
-  selectionColor={GOLD}
-  cursorColor={GOLD}
-  underlineColorAndroid="transparent"
-  value={email}
-  onChangeText={setEmail}
-  onFocus={() => setFocus('email')}
-  onBlur={() => setFocus(null)}
-  returnKeyType="next"
-  onSubmitEditing={() => passwordInputRef.current?.focus()}
-/>
+            ref={emailInputRef}
+            style={styles.input}
+            placeholder="Email"
+            placeholderTextColor={T.mute}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            autoComplete="email"
+            textContentType="emailAddress"
+            keyboardAppearance="dark"
+            selectionColor={GOLD}
+            cursorColor={GOLD}
+            underlineColorAndroid="transparent"
+            value={email}
+            onChangeText={setEmail}
+            onFocus={() => setFocus('email')}
+            onBlur={() => setFocus(null)}
+            returnKeyType="next"
+            onSubmitEditing={() => passwordInputRef.current?.focus()}
+          />
         </View>
 
         <View
@@ -656,25 +728,25 @@ export default function SignInScreen() {
             color={focus === 'password' ? T.olive : T.mute}
           />
           <TextInput
-  ref={passwordInputRef}
-  style={styles.input}
-  placeholder="Password"
-  placeholderTextColor={T.mute}
-  secureTextEntry
-  autoCorrect={false}
-  autoComplete="password"
-  textContentType="password"
-  keyboardAppearance="dark"
-  selectionColor={GOLD}
-  cursorColor={GOLD}
-  underlineColorAndroid="transparent"
-  value={password}
-  onChangeText={setPassword}
-  onFocus={() => setFocus('password')}
-  onBlur={() => setFocus(null)}
-  returnKeyType="done"
-  onSubmitEditing={handleSignIn}
-/>      
+            ref={passwordInputRef}
+            style={styles.input}
+            placeholder="Password"
+            placeholderTextColor={T.mute}
+            secureTextEntry
+            autoCorrect={false}
+            autoComplete="password"
+            textContentType="password"
+            keyboardAppearance="dark"
+            selectionColor={GOLD}
+            cursorColor={GOLD}
+            underlineColorAndroid="transparent"
+            value={password}
+            onChangeText={setPassword}
+            onFocus={() => setFocus('password')}
+            onBlur={() => setFocus(null)}
+            returnKeyType="done"
+            onSubmitEditing={handleSignIn}
+          />
         </View>
 
         <TouchableOpacity
@@ -729,136 +801,136 @@ export default function SignInScreen() {
   );
 
   if (useSimpleMobileLayout) {
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-      >
-        <View style={styles.bgSolid} />
-        <View style={styles.radialGlowTop} pointerEvents="none" />
-        <View style={styles.radialGlowBottom} pointerEvents="none" />
-
-        <View
-          style={[
-            styles.mobileContainer,
-            {
-              paddingTop: Math.max(insets.top, 20),
-              paddingBottom: Math.max(insets.bottom, 20),
-            },
-          ]}
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1 }}
         >
-          <View style={styles.authCardMobile}>
-            <View style={styles.mobileHeader}>
-              <Animated.Text
-                style={[
-                  styles.mobileBrand,
-                  { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
-                ]}
+          <View style={styles.bgSolid} />
+          <View style={styles.radialGlowTop} pointerEvents="none" />
+          <View style={styles.radialGlowBottom} pointerEvents="none" />
+
+          <View
+            style={[
+              styles.mobileContainer,
+              {
+                paddingTop: Math.max(insets.top, 20),
+                paddingBottom: Math.max(insets.bottom, 20),
+              },
+            ]}
+          >
+            <View style={styles.authCardMobile}>
+              <View style={styles.mobileHeader}>
+                <Animated.Text
+                  style={[
+                    styles.mobileBrand,
+                    { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
+                  ]}
+                >
+                  OVERLOOKED
+                </Animated.Text>
+
+                <Text style={styles.mobileTitle}>Sign in</Text>
+                <Text style={styles.mobileSubtitle}>
+                  Welcome back. Get straight into your account.
+                </Text>
+              </View>
+
+              <View style={styles.inputWrap}>
+                <Ionicons name="mail" size={16} color={T.mute} />
+                <TextInput
+                  ref={emailInputRef}
+                  style={styles.input}
+                  placeholder="Email"
+                  placeholderTextColor={T.mute}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  autoComplete="email"
+                  textContentType="emailAddress"
+                  keyboardAppearance="dark"
+                  selectionColor={GOLD}
+                  cursorColor={GOLD}
+                  underlineColorAndroid="transparent"
+                  value={email}
+                  onChangeText={setEmail}
+                  returnKeyType="next"
+                  blurOnSubmit={false}
+                  onSubmitEditing={() => passwordInputRef.current?.focus()}
+                />
+              </View>
+
+              <View style={[styles.inputWrap, { marginTop: 12 }]}>
+                <Ionicons name="lock-closed" size={16} color={T.mute} />
+                <TextInput
+                  ref={passwordInputRef}
+                  style={styles.input}
+                  placeholder="Password"
+                  placeholderTextColor={T.mute}
+                  secureTextEntry
+                  autoCorrect={false}
+                  autoComplete="password"
+                  textContentType="password"
+                  keyboardAppearance="dark"
+                  selectionColor={GOLD}
+                  cursorColor={GOLD}
+                  underlineColorAndroid="transparent"
+                  value={password}
+                  onChangeText={setPassword}
+                  returnKeyType="done"
+                  onSubmitEditing={handleSignIn}
+                />
+              </View>
+
+              <TouchableOpacity
+                onPress={() => navigation.navigate('ForgotPassword')}
+                style={{ marginTop: 10, alignSelf: 'flex-start' }}
               >
-                OVERLOOKED
-              </Animated.Text>
+                <Text style={styles.forgotText}>Forgot password?</Text>
+              </TouchableOpacity>
 
-              <Text style={styles.mobileTitle}>Sign in</Text>
-              <Text style={styles.mobileSubtitle}>
-                Welcome back. Get straight into your account.
-              </Text>
-            </View>
+              <TouchableOpacity
+                style={[styles.button, loading && { opacity: 0.9 }, { marginTop: 18 }]}
+                onPress={handleSignIn}
+                disabled={loading}
+                activeOpacity={0.9}
+              >
+                {loading ? (
+                  <ActivityIndicator color={DARK_BG} />
+                ) : (
+                  <Text style={styles.buttonText}>Sign In</Text>
+                )}
+              </TouchableOpacity>
 
-            <View style={styles.inputWrap}>
-              <Ionicons name="mail" size={16} color={T.mute} />
-              <TextInput
-                ref={emailInputRef}
-                style={styles.input}
-                placeholder="Email"
-                placeholderTextColor={T.mute}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                autoComplete="email"
-                textContentType="emailAddress"
-                keyboardAppearance="dark"
-                selectionColor={GOLD}
-                cursorColor={GOLD}
-                underlineColorAndroid="transparent"
-                value={email}
-                onChangeText={setEmail}
-                returnKeyType="next"
-                blurOnSubmit={false}
-                onSubmitEditing={() => passwordInputRef.current?.focus()}
-              />
-            </View>
-
-            <View style={[styles.inputWrap, { marginTop: 12 }]}>
-              <Ionicons name="lock-closed" size={16} color={T.mute} />
-              <TextInput
-                ref={passwordInputRef}
-                style={styles.input}
-                placeholder="Password"
-                placeholderTextColor={T.mute}
-                secureTextEntry
-                autoCorrect={false}
-                autoComplete="password"
-                textContentType="password"
-                keyboardAppearance="dark"
-                selectionColor={GOLD}
-                cursorColor={GOLD}
-                underlineColorAndroid="transparent"
-                value={password}
-                onChangeText={setPassword}
-                returnKeyType="done"
-                onSubmitEditing={handleSignIn}
-              />
-            </View>
-
-            <TouchableOpacity
-              onPress={() => navigation.navigate('ForgotPassword')}
-              style={{ marginTop: 10, alignSelf: 'flex-start' }}
-            >
-              <Text style={styles.forgotText}>Forgot password?</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.button, loading && { opacity: 0.9 }, { marginTop: 18 }]}
-              onPress={handleSignIn}
-              disabled={loading}
-              activeOpacity={0.9}
-            >
-              {loading ? (
-                <ActivityIndicator color={DARK_BG} />
-              ) : (
-                <Text style={styles.buttonText}>Sign In</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={handleEnterAsGuest}
-              style={{ marginTop: 14 }}
-            >
-              <Text style={styles.link}>
-                <Text style={{ textDecorationLine: 'underline' }}>
-                  Enter without an account
+              <TouchableOpacity
+                onPress={handleEnterAsGuest}
+                style={{ marginTop: 14 }}
+              >
+                <Text style={styles.link}>
+                  <Text style={{ textDecorationLine: 'underline' }}>
+                    Enter without an account
+                  </Text>
                 </Text>
-              </Text>
-            </TouchableOpacity>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => navigation.navigate('SignUp')}
-              style={{ marginTop: 16 }}
-            >
-              <Text style={styles.link}>
-                New to OverLooked?{' '}
-                <Text style={{ textDecorationLine: 'underline' }}>
-                  Create an account
+              <TouchableOpacity
+                onPress={() => navigation.navigate('SignUp')}
+                style={{ marginTop: 16 }}
+              >
+                <Text style={styles.link}>
+                  New to OverLooked?{' '}
+                  <Text style={{ textDecorationLine: 'underline' }}>
+                    Create an account
+                  </Text>
                 </Text>
-              </Text>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
-  );
-}
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView
@@ -1418,11 +1490,11 @@ const styles = StyleSheet.create({
   },
 
   mobileContainer: {
-  flex: 1,
-  paddingHorizontal: 18,
-  justifyContent: 'center',
-},
-    
+    flex: 1,
+    paddingHorizontal: 18,
+    justifyContent: 'center',
+  },
+
   mobileHeader: {
     alignItems: 'center',
     marginBottom: 18,
@@ -1767,14 +1839,14 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 18 },
   },
   authCardMobile: {
-  width: '100%',
-  borderRadius: 20,
-  paddingHorizontal: 18,
-  paddingVertical: 24,
-  backgroundColor: '#101010',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.06)',
-},
+    width: '100%',
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 24,
+    backgroundColor: '#101010',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
   authHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   authTitle: {
     fontSize: 18,
@@ -1814,12 +1886,12 @@ const styles = StyleSheet.create({
   },
 
   input: {
-  flex: 1,
-  paddingVertical: 2,
-  color: T.text,
-  fontSize: 15,
-  fontFamily: SYSTEM_SANS,
-},
+    flex: 1,
+    paddingVertical: 2,
+    color: T.text,
+    fontSize: 15,
+    fontFamily: SYSTEM_SANS,
+  },
 
   forgotText: {
     color: T.mute,

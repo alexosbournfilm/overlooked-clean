@@ -54,7 +54,7 @@ export default function AppNavigator({
   const hasHandledPostMountRedirectRef = useRef(false);
 
   // --------------------------------------------------------------
-  // Restore navigation only for logged-in users
+  // Restore navigation only for users with a completed profile
   // --------------------------------------------------------------
   useEffect(() => {
     let mounted = true;
@@ -130,6 +130,8 @@ export default function AppNavigator({
 
   // --------------------------------------------------------------
   // Actively redirect after mount when auth changes
+  // IMPORTANT:
+  // Never auto-send a signed-in user to CreateProfile here.
   // --------------------------------------------------------------
   useEffect(() => {
     if (!ready || !navReady) return;
@@ -155,7 +157,7 @@ export default function AppNavigator({
             {
               name: "Auth",
               params: {
-                screen: !userId ? initialAuthRouteName : "CreateProfile",
+                screen: initialAuthRouteName,
               },
             },
           ],
@@ -177,11 +179,7 @@ export default function AppNavigator({
       return;
     }
 
-    if (!profileComplete) {
-      resetToAuth();
-      return;
-    }
-
+    // Signed-in users always stay out of CreateProfile here.
     resetToMainTabs();
   }, [ready, navReady, userId, profileComplete, initialAuthRouteName]);
 
@@ -281,12 +279,11 @@ export default function AppNavigator({
 
   const mustShowPaywall = false;
 
+  // IMPORTANT:
+  // A signed-in user should not be pushed to Auth/CreateProfile here
+  // just because profileComplete is temporarily false.
   const rootInitialRouteName =
-    !userId || !profileComplete
-      ? "Auth"
-      : mustShowPaywall
-      ? "Paywall"
-      : "MainTabs";
+    !userId ? "Auth" : mustShowPaywall ? "Paywall" : "MainTabs";
 
   // --------------------------------------------------------------
   // Navigation tree
@@ -316,13 +313,7 @@ export default function AppNavigator({
           name="Auth"
           children={() => (
             <AuthStack
-              initialRouteName={
-                !userId
-                  ? initialAuthRouteName
-                  : !profileComplete
-                  ? "CreateProfile"
-                  : "SignIn"
-              }
+              initialRouteName={!userId ? initialAuthRouteName : "SignIn"}
             />
           )}
         />
