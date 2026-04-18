@@ -236,51 +236,50 @@ export default function CreateProfileScreen() {
     hasStartedSequence.current = true;
 
     const timer = setTimeout(() => {
-      openRoleSelector();
-    }, 350);
+  openRoleSelector();
+}, 900);
 
     return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    if (stage === 'image' || stage === 'review') {
-      imageSectionOpacity.setValue(0);
-      imageSectionTranslate.setValue(18);
+  if (stage === 'image' || stage === 'review') {
+    imageSectionOpacity.setValue(0);
+    imageSectionTranslate.setValue(18);
 
-      Animated.parallel([
-        Animated.timing(imageSectionOpacity, {
-          toValue: 1,
-          duration: 900,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(imageSectionTranslate, {
-          toValue: 0,
-          duration: 900,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [stage, imageSectionOpacity, imageSectionTranslate]);
-
-  const animateStageChange = (nextStage: OnboardingStage, cb?: () => void) => {
+    Animated.parallel([
+      Animated.timing(imageSectionOpacity, {
+        toValue: 1,
+        duration: 1800,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(imageSectionTranslate, {
+        toValue: 0,
+        duration: 1800,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }
+}, [stage, imageSectionOpacity, imageSectionTranslate]);
+const animateStageChange = (nextStage: OnboardingStage, cb?: () => void) => {
   Animated.parallel([
     Animated.timing(fadeAnim, {
       toValue: 0,
-      duration: 500, // was 280
+      duration: 1400,
       easing: Easing.inOut(Easing.cubic),
       useNativeDriver: true,
     }),
     Animated.timing(slideAnim, {
-      toValue: -16, // slightly more movement
-      duration: 500,
+      toValue: -10,
+      duration: 1400,
       easing: Easing.inOut(Easing.cubic),
       useNativeDriver: true,
     }),
     Animated.timing(scaleAnim, {
-      toValue: 0.97, // slightly more shrink
-      duration: 500,
+      toValue: 0.985,
+      duration: 1400,
       easing: Easing.inOut(Easing.cubic),
       useNativeDriver: true,
     }),
@@ -289,31 +288,31 @@ export default function CreateProfileScreen() {
     cb?.();
 
     fadeAnim.setValue(0);
-    slideAnim.setValue(24);
-    scaleAnim.setValue(1.02);
+    slideAnim.setValue(10);
+    scaleAnim.setValue(1.01);
 
     setTimeout(() => {
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 650, // was 340
-          easing: Easing.out(Easing.cubic),
+          duration: 1600,
+          easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(slideAnim, {
           toValue: 0,
-          duration: 650,
-          easing: Easing.out(Easing.cubic),
+          duration: 1600,
+          easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(scaleAnim, {
           toValue: 1,
-          duration: 650,
-          easing: Easing.out(Easing.cubic),
+          duration: 1600,
+          easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
         }),
       ]).start();
-    }, 120); // tiny pause between steps
+    }, 350);
   });
 };
   const openRoleSelector = () => {
@@ -1007,12 +1006,12 @@ export default function CreateProfileScreen() {
                         setRoleSearchModalVisible(false);
 
                         if (stage === 'role') {
-                          animateStageChange('city', () => {
-                            setTimeout(() => {
-                              openCitySelector();
-                            }, 180);
-                          });
-                        }
+  animateStageChange('city', () => {
+    setTimeout(() => {
+      openCitySelector();
+    }, 700);
+  });
+}
                       }}
                       activeOpacity={0.8}
                     >

@@ -993,14 +993,20 @@ export default function ProfileScreen() {
   const headerHeight = useHeaderHeight();
 
   // Responsive flags
-  const isMobile = width < 768;
+const isMobile = width < 768;
 
-  // Treat narrow web viewports like mobile
-  const isMobileLike =
-    isMobile || (Platform.OS === 'web' && width < 520);
+// Treat native tablets like mobile for THIS screen
+const isTabletNative =
+  Platform.OS !== "web" && width >= 768 && width <= 1366;
 
-  // Extra-compact phones / very narrow web
-  const isCompact = width < 380;
+// Treat narrow web viewports like mobile too
+const isMobileLike =
+  isMobile ||
+  isTabletNative ||
+  (Platform.OS === "web" && width < 520);
+
+// Extra-compact phones / very narrow web
+const isCompact = width < 380;
 
   // ✅ Horizontal padding tuned for: phone, small phone, and “mobile web”
   const horizontalPad = isMobileLike
@@ -1012,6 +1018,14 @@ export default function ProfileScreen() {
 
   // ✅ A little extra bottom breathing room on mobile (esp. Safari / notches)
   const bottomPad = (isMobileLike ? 52 : 40) + Math.max(insets.bottom, 10);
+  const ipadProfileMaxWidth = Math.min(width - horizontalPad * 2, 860);
+const mobileProfileMaxWidth = Math.min(width - horizontalPad * 2, 520);
+
+const contentMaxWidth = isTabletNative
+  ? ipadProfileMaxWidth
+  : isMobileLike
+  ? mobileProfileMaxWidth
+  : PAGE_MAX;
 
   const { refreshProfile, userId: authUserId, ready: authReady } = useAuth();
   const savingRef = useRef(false);
@@ -3645,7 +3659,7 @@ const heroBg = avatarUrl || null;
 
   // ✅ Better mobile + mobile-web spacing: clamp hero width + consistent side padding
   const heroPad = isMobileLike ? 0 : 20;
-const heroMaxW = "100%";
+const heroMaxW = isMobileLike ? contentMaxWidth : "100%";
 
   return (
     <View
@@ -3997,12 +4011,10 @@ const renderFeaturedFilm = () => {
     .filter((r) => r.id !== primaryRow.id)
     .slice(0, 2);
 
-  const maxW = isMobileLike
-  ? Math.min(width - horizontalPad * 2, 680)
-  : SHOWREEL_MAX_W;
+  const maxW = isMobileLike ? contentMaxWidth : SHOWREEL_MAX_W;
   const secondaryCols = 2;
   const secondaryGap = isMobileLike ? 10 : 12;
-const availableWidth = Math.min(width - horizontalPad * 2, maxW);
+const availableWidth = maxW;
 const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobileLike ? 2 : 0);
   const secondaryTileH = isMobileLike
   ? Math.floor(secondaryTileW * 0.64)
@@ -4434,7 +4446,9 @@ const renderEditorialPortfolio = () => {
   const pdfs = unique.filter((p) => p.type === "pdf");
 
   const cols = isMobile ? 2 : 3;
-  const usable = Math.min(width, PAGE_MAX) - horizontalPad * 2;
+  const usable = isMobileLike
+  ? contentMaxWidth
+  : Math.min(width, PAGE_MAX) - horizontalPad * 2;
   const tileW = Math.floor((usable - GRID_GAP * (cols - 1)) / cols);
 
   const imgUrls = imgs.map((i) => i.url);
@@ -4538,7 +4552,9 @@ const renderSubmissionsSection = () => {
   if (!submissions.length) return null;
 
   const cols = isCompact ? 2 : isMobileLike ? 2 : width < 1100 ? 3 : 4;
-  const usable = Math.min(width, PAGE_MAX) - horizontalPad * 2;
+ const usable = isMobileLike
+  ? contentMaxWidth
+  : Math.min(width, PAGE_MAX) - horizontalPad * 2;
   const tileW = Math.floor((usable - GRID_GAP * (cols - 1)) / cols);
   const tileH = Math.floor(tileW * (9 / 16));
 
@@ -4862,14 +4878,14 @@ return (
   }}
 >
     <View
-    style={{
-      width: "100%",
-      maxWidth: isMobileLike ? "100%" : PAGE_MAX,
-      paddingHorizontal: horizontalPad,
-      paddingTop: Math.max(headerHeight - insets.top, 0),
-      alignSelf: "center",
-    }}
-  >
+  style={{
+    width: "100%",
+    maxWidth: isMobileLike ? contentMaxWidth + horizontalPad * 2 : contentMaxWidth,
+    paddingHorizontal: horizontalPad,
+    paddingTop: Math.max(headerHeight - insets.top, 0),
+    alignSelf: "center",
+  }}
+>
     
 
     {renderHero()}

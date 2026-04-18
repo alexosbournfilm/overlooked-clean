@@ -27,6 +27,7 @@ import {
   LayoutChangeEvent,
   Modal,
   Share,
+  InteractionManager,
 } from 'react-native';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import {
@@ -42,6 +43,7 @@ import { supabase, giveXp, XP_VALUES } from '../lib/supabase';
 import { useGamification } from '../context/GamificationContext';
 import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '../context/AuthProvider';
+
 
 
 const SYSTEM_SANS = Platform.select({
@@ -2288,9 +2290,9 @@ const shareSubmissionLink = async (
 
   const openComments = async (s: Submission) => {
   setCommentsFor(s);
-  setCommentsOpen(true);
   setCommentText('');
   setReplyingTo(null);
+  setCommentsOpen(true);
   await fetchComments(s.id);
 };
 
@@ -3577,123 +3579,349 @@ maxToRenderPerBatch={2}
   </Modal>
 )}
 
-       {/* ✅ Preview modal (wide web): full player + actions */}
-    {previewOpen && previewItem && (
-      <Modal visible transparent animationType="fade" onRequestClose={closePreview}>
-        <View style={styles.previewOverlay}>
-          <Pressable style={StyleSheet.absoluteFillObject} onPress={closePreview} />
+    {/* ✅ Preview modal (wide web): full player + actions */}
+{previewOpen && previewItem && (
+  <Modal
+    visible
+    transparent
+    animationType="fade"
+    presentationStyle="overFullScreen"
+    onRequestClose={closePreview}
+  >
+    <View style={styles.previewOverlay}>
+      <Pressable style={StyleSheet.absoluteFillObject} onPress={closePreview} />
 
-          <View style={styles.previewCard}>
-            <View style={styles.previewHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.previewTitle} numberOfLines={2}>
-                  {previewItem.title}
-                </Text>
+      <View style={styles.previewCard}>
+        <View style={styles.previewHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.previewTitle} numberOfLines={2}>
+              {previewItem.title}
+            </Text>
 
-                {previewItem.users?.full_name ? (
-                  <TouchableOpacity
-                    onPress={() => goToProfile(previewItem.users)}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.previewByline}>{previewItem.users.full_name}</Text>
-                  </TouchableOpacity>
-                ) : null}
+            {previewItem.users?.full_name ? (
+              <TouchableOpacity
+                onPress={() => goToProfile(previewItem.users)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.previewByline}>{previewItem.users.full_name}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          <TouchableOpacity
+            onPress={closePreview}
+            activeOpacity={0.9}
+            style={styles.previewCloseBtn}
+          >
+            <Text style={styles.previewCloseText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }}>
+          {(() => {
+            const previewMuxReady = isMuxReady((previewItem as any).mux_status);
+            const previewMuxUri = previewMuxReady
+              ? getMuxPlaybackUrl((previewItem as any).mux_playback_id)
+              : null;
+
+            return previewItem.storage_path || previewMuxUri ? (
+              <HostedVideoInline
+                playerId={`preview-${previewItem.id}`}
+                storagePath={previewMuxUri ? null : previewItem.storage_path ?? null}
+                directUri={previewMuxUri}
+                width={Math.min(winW - 40, 760)}
+                maxHeight={Math.min(winH * 0.34, 300)}
+                autoPlay={activeId === `preview-${previewItem.id}`}
+                posterUri={previewItem.thumbnail_url ?? null}
+                dimVignette={false}
+                showControls={true}
+                captureSurfacePress={true}
+                surfacePressMode="toggle"
+              />
+            ) : (
+              <View style={{ height: 220, borderRadius: 14, backgroundColor: '#000' }} />
+            );
+          })()}
+
+          <View style={styles.previewActions}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => {
+                if (isGuest) {
+                  navigation.navigate('Auth', { screen: 'SignIn' });
+                  return;
+                }
+                toggleVote(previewItem);
+              }}
+              disabled={
+                !!voteBusy[previewItem.id] ||
+                (!!currentUserId && (previewItem as any).user_id === currentUserId)
+              }
+              style={[
+                styles.previewActionPill,
+                (voteBusy[previewItem.id] ||
+                  (!!currentUserId && (previewItem as any).user_id === currentUserId)) && {
+                  opacity: 0.55,
+                },
+              ]}
+            >
+              <Text style={styles.previewActionText}>
+                {isGuest
+                  ? `Sign In to Vote (${previewItem.votes ?? 0})`
+                  : `${votedIds.has(previewItem.id) ? 'Voted' : 'Vote'} (${previewItem.votes ?? 0})`}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => {
+                shareSubmissionLink(previewItem as any);
+              }}
+              style={styles.previewActionPillGhost}
+            >
+              <Text style={styles.previewActionTextGhost}>Share</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => openComments(previewItem)}
+              style={styles.previewActionPillGhost}
+            >
+              <Text style={styles.previewActionTextGhost}>
+                Comments ({commentCounts[previewItem.id] ?? 0})
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {commentsOpen && (
+          <View style={styles.previewCommentsLayer}>
+            <Pressable
+              style={StyleSheet.absoluteFillObject}
+              onPress={closeComments}
+            />
+
+            <View style={styles.previewCommentsCard}>
+              <View style={styles.commentsHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.commentsTitle}>Comments</Text>
+                  {commentsFor?.title ? (
+                    <Text style={styles.commentsSubtitle} numberOfLines={1}>
+                      {commentsFor.title}
+                    </Text>
+                  ) : null}
+                </View>
+
+                <TouchableOpacity
+                  onPress={closeComments}
+                  activeOpacity={0.9}
+                  style={styles.commentsCloseBtn}
+                >
+                  <Text style={styles.commentsClose}>Close</Text>
+                </TouchableOpacity>
               </View>
 
-              <TouchableOpacity
-                onPress={closePreview}
-                activeOpacity={0.9}
-                style={styles.previewCloseBtn}
-              >
-                <Text style={styles.previewCloseText}>Close</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }}>
-              {(() => {
-                const previewMuxReady = isMuxReady((previewItem as any).mux_status);
-                const previewMuxUri = previewMuxReady
-                  ? getMuxPlaybackUrl((previewItem as any).mux_playback_id)
-                  : null;
-
-                return (previewItem.storage_path || previewMuxUri) ? (
-                  <HostedVideoInline
-                    playerId={`preview-${previewItem.id}`}
-                    storagePath={previewMuxUri ? null : previewItem.storage_path ?? null}
-                    directUri={previewMuxUri}
-                    width={Math.min(winW - 40, 760)}
-                    maxHeight={Math.min(winH * 0.34, 300)}
-                    autoPlay={activeId === `preview-${previewItem.id}`}
-                    posterUri={previewItem.thumbnail_url ?? null}
-                    dimVignette={false}
-                    showControls={true}
-                    captureSurfacePress={true}
-                    surfacePressMode="toggle"
-                  />
+              <View style={styles.commentsBody}>
+                {commentsLoading ? (
+                  <ActivityIndicator color={T.accent} style={{ padding: 20 }} />
+                ) : rootComments.length === 0 ? (
+                  <View style={styles.commentsEmptyState}>
+                    <Text style={styles.commentsEmptyTitle}>No comments yet</Text>
+                    <Text style={styles.commentsEmptyText}>
+                      Be the first to say something thoughtful.
+                    </Text>
+                  </View>
                 ) : (
-                  <View style={{ height: 220, borderRadius: 14, backgroundColor: '#000' }} />
-                );
-              })()}
+                  <FlatList
+                    data={rootComments}
+                    keyExtractor={(item) => item.id}
+                    contentContainerStyle={styles.commentsListContent}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="always"
+                    renderItem={({ item }) => {
+                      const u = item.users;
+                      const replies = repliesByParent[item.id] || [];
 
-              <View style={styles.previewActions}>
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => {
-                    if (isGuest) {
-                      navigation.navigate('Auth', { screen: 'SignIn' });
-                      return;
+                      return (
+                        <View style={styles.commentThread}>
+                          <View style={styles.commentCard}>
+                            <TouchableOpacity
+                              onPress={() =>
+                                u && goToProfile({ id: u.id, full_name: u.full_name })
+                              }
+                              activeOpacity={0.9}
+                              style={styles.commentAvatarTap}
+                            >
+                              <Image
+                                source={{ uri: u?.avatar_url || 'https://picsum.photos/80/80' }}
+                                style={styles.commentAvatar}
+                              />
+                            </TouchableOpacity>
+
+                            <View style={{ flex: 1 }}>
+                              <TouchableOpacity
+                                onPress={() =>
+                                  u && goToProfile({ id: u.id, full_name: u.full_name })
+                                }
+                                activeOpacity={0.9}
+                              >
+                                <Text style={styles.commentName}>
+                                  {u?.full_name || 'Unknown'}
+                                </Text>
+                              </TouchableOpacity>
+
+                              <Text style={styles.commentText}>{item.comment}</Text>
+
+                              <View style={styles.commentActionsRow}>
+                                <TouchableOpacity
+                                  activeOpacity={0.9}
+                                  onPress={() => {
+                                    if (isGuest) {
+                                      navigation.navigate('Auth', { screen: 'SignIn' });
+                                      return;
+                                    }
+                                    setReplyingTo(item);
+                                  }}
+                                  style={styles.replyBtn}
+                                >
+                                  <Text style={styles.replyBtnText}>
+                                    {isGuest ? 'Sign In to Reply' : 'Reply'}
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          </View>
+
+                          {replies.length > 0 && (
+                            <View style={styles.repliesWrap}>
+                              {replies.map((reply) => {
+                                const ru = reply.users;
+                                return (
+                                  <View key={reply.id} style={styles.replyCard}>
+                                    <TouchableOpacity
+                                      onPress={() =>
+                                        ru &&
+                                        goToProfile({
+                                          id: ru.id,
+                                          full_name: ru.full_name,
+                                        })
+                                      }
+                                      activeOpacity={0.9}
+                                      style={styles.replyAvatarTap}
+                                    >
+                                      <Image
+                                        source={{
+                                          uri: ru?.avatar_url || 'https://picsum.photos/80/80',
+                                        }}
+                                        style={styles.replyAvatar}
+                                      />
+                                    </TouchableOpacity>
+
+                                    <View style={{ flex: 1 }}>
+                                      <TouchableOpacity
+                                        onPress={() =>
+                                          ru &&
+                                          goToProfile({
+                                            id: ru.id,
+                                            full_name: ru.full_name,
+                                          })
+                                        }
+                                        activeOpacity={0.9}
+                                      >
+                                        <Text style={styles.replyName}>
+                                          {ru?.full_name || 'Unknown'}
+                                        </Text>
+                                      </TouchableOpacity>
+
+                                      <Text style={styles.replyText}>{reply.comment}</Text>
+                                    </View>
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          )}
+                        </View>
+                      );
+                    }}
+                  />
+                )}
+              </View>
+
+              <View style={styles.commentComposerWrap}>
+                {replyingTo ? (
+                  <View style={styles.replyingBanner}>
+                    <Text style={styles.replyingBannerText} numberOfLines={1}>
+                      Replying to {replyingTo.users?.full_name || 'comment'}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setReplyingTo(null)}
+                      activeOpacity={0.9}
+                    >
+                      <Text style={styles.replyingBannerCancel}>Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+
+                <View style={styles.commentComposer}>
+                  <TextInput
+                    value={commentText}
+                    onChangeText={(txt) => {
+                      if (isGuest) {
+                        promptSignIn('Create an account or sign in to comment on films.');
+                        return;
+                      }
+                      setCommentText(txt);
+                    }}
+                    placeholder={
+                      isGuest
+                        ? 'Sign in to comment…'
+                        : replyingTo
+                        ? 'Write a reply…'
+                        : 'Add a comment…'
                     }
-                    toggleVote(previewItem);
-                  }}
-                  disabled={
-                    !!voteBusy[previewItem.id] ||
-                    (!!currentUserId && (previewItem as any).user_id === currentUserId)
-                  }
-                  style={[
-                    styles.previewActionPill,
-                    (voteBusy[previewItem.id] ||
-                      (!!currentUserId && (previewItem as any).user_id === currentUserId)) && {
-                      opacity: 0.55,
-                    },
-                  ]}
-                >
-                  <Text style={styles.previewActionText}>
-                    {isGuest
-                      ? `Sign In to Vote (${previewItem.votes ?? 0})`
-                      : `${votedIds.has(previewItem.id) ? 'Voted' : 'Vote'} (${previewItem.votes ?? 0})`}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => {
-                    shareSubmissionLink(previewItem as any);
-                  }}
-                  style={styles.previewActionPillGhost}
-                >
-                  <Text style={styles.previewActionTextGhost}>Share</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => openComments(previewItem)}
-                  style={styles.previewActionPillGhost}
-                >
-                  <Text style={styles.previewActionTextGhost}>
-                    {isGuest
-                      ? `Comments (${commentCounts[previewItem.id] ?? 0})`
-                      : `Comments (${commentCounts[previewItem.id] ?? 0})`}
-                  </Text>
-                </TouchableOpacity>
+                    placeholderTextColor="#777"
+                    style={styles.commentInput}
+                    multiline
+                  />
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (isGuest) {
+                        navigation.navigate('Auth', { screen: 'SignIn' });
+                        return;
+                      }
+                      postComment();
+                    }}
+                    disabled={commentPosting || (!isGuest && !commentText.trim())}
+                    activeOpacity={0.9}
+                    style={[
+                      styles.commentSendBtn,
+                      (commentPosting || (!isGuest && !commentText.trim())) && {
+                        opacity: 0.5,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.commentSendText}>
+                      {isGuest ? 'Sign In' : commentPosting ? '…' : 'Post'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           </View>
-        </View>
-      </Modal>
-    )}
+        )}
+      </View>
+    </View>
+  </Modal>
+)}
     {/* ---------------- Comments Modal (kept) ---------------- */}
-    {commentsOpen && (
-  <Modal visible transparent animationType="fade" onRequestClose={closeComments}>
+    {commentsOpen && !previewOpen && (
+  <Modal
+    visible
+    transparent
+    animationType="fade"
+    presentationStyle="overFullScreen"
+    onRequestClose={closeComments}
+  >
     <View style={styles.commentsOverlay}>
       <Pressable style={StyleSheet.absoluteFillObject} onPress={closeComments} />
 
@@ -4401,6 +4629,28 @@ mobileMediaWrap: {
     borderBottomColor: '#D6D6D6',
     marginTop: -2,
   },
+
+  previewCommentsLayer: {
+  ...StyleSheet.absoluteFillObject,
+  zIndex: 50,
+  backgroundColor: 'rgba(0,0,0,0.50)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  paddingHorizontal: Platform.OS === 'web' ? 20 : 10,
+  paddingVertical: Platform.OS === 'web' ? 20 : 12,
+},
+
+previewCommentsCard: {
+  width: Platform.OS === 'web' ? '100%' : '96%',
+  maxWidth: Platform.OS === 'web' ? 680 : 760,
+  height: Platform.OS === 'web' ? '82%' : '78%',
+  maxHeight: Platform.OS === 'web' ? 760 : 640,
+  backgroundColor: '#080808',
+  borderRadius: 20,
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.06)',
+  overflow: 'hidden',
+},
 
   voteArrowDown: {
     borderTopWidth: 12,
@@ -5130,9 +5380,8 @@ sidePanelSeamless: {
   },
 
   commentsBody: {
-  flexGrow: 0,
-  minHeight: 120,
-  maxHeight: 250,
+  flex: 1,
+  minHeight: 140,
 },
 
   commentsListContent: {

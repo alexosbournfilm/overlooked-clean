@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { supabase } from "../lib/supabase";
 
 /* Progress type */
@@ -106,7 +106,7 @@ export async function uploadFilm({
     }
   } else {
     try {
-      const info: any = await FileSystem.getInfoAsync(toUploadUri, { size: true });
+      const info: any = await FileSystem.getInfoAsync(toUploadUri);
       if (typeof info?.size === "number" && info.size > 0) total = info.size;
     } catch {}
   }
