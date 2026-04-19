@@ -271,17 +271,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const uid = data.session?.user?.id ?? null;
-      latestAuthUserIdRef.current = uid;
+const inRecoveryFlow = shouldBeRecovery;
 
-      setUserId(uid);
-
-      if (uid) {
-        await loadProfile(uid);
-      } else {
-        setProfile(null);
-        lastLoadedProfileForRef.current = null;
-        inFlightProfileForRef.current = null;
-      }
+if (uid && !inRecoveryFlow) {
+  latestAuthUserIdRef.current = uid;
+  setUserId(uid);
+  await loadProfile(uid);
+} else {
+  latestAuthUserIdRef.current = null;
+  setUserId(null);
+  setProfile(null);
+  lastLoadedProfileForRef.current = null;
+  inFlightProfileForRef.current = null;
+}
 
       authBootstrappedRef.current = true;
       setReady(true);
@@ -358,17 +360,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const uid = session?.user?.id ?? null;
 
-        if (uid) {
-          latestAuthUserIdRef.current = uid;
-          setUserId(uid);
-          await loadProfile(uid, event === "SIGNED_IN" || event === "USER_UPDATED");
+if (uid) {
+  const inRecoveryFlow =
+    G.__OVERLOOKED_RECOVERY__ ||
+    event === "PASSWORD_RECOVERY" ||
+    isWebRecoveryUrl();
 
-          if (!ready && mounted) {
-            authBootstrappedRef.current = true;
-            setReady(true);
-          }
-          return;
-        }
+  if (inRecoveryFlow) {
+    console.log("🔐 Recovery session detected — not treating as normal app sign-in");
+
+    if (!ready && mounted) {
+      authBootstrappedRef.current = true;
+      setReady(true);
+    }
+    return;
+  }
+
+  latestAuthUserIdRef.current = uid;
+  setUserId(uid);
+  await loadProfile(uid, event === "SIGNED_IN" || event === "USER_UPDATED");
+
+  if (!ready && mounted) {
+    authBootstrappedRef.current = true;
+    setReady(true);
+  }
+  return;
+}
 
         if (
           event === "TOKEN_REFRESHED" ||
