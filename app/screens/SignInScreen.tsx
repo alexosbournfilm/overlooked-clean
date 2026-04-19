@@ -796,6 +796,9 @@ export default function SignInScreen() {
             <Text style={{ textDecorationLine: 'underline' }}>Create an account</Text>
           </Text>
         </TouchableOpacity>
+        <Text style={styles.supportText}>
+  For support, message alexosbournfilm@gmail.com
+</Text>
       </ScrollView>
     </View>
   );
@@ -925,6 +928,9 @@ export default function SignInScreen() {
                   </Text>
                 </Text>
               </TouchableOpacity>
+              <Text style={styles.supportText}>
+  For support, message alexosbournfilm@gmail.com
+</Text>
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -1923,6 +1929,15 @@ const styles = StyleSheet.create({
   },
 
   link: { textAlign: 'center', color: T.text, fontWeight: '800', fontFamily: SYSTEM_SANS },
+
+  supportText: {
+  marginTop: 18,
+  textAlign: 'center',
+  fontSize: 13,
+  lineHeight: 18,
+  color: T.mute,
+  fontFamily: SYSTEM_SANS,
+},
 
   modalCard: {
     backgroundColor: T.card2,

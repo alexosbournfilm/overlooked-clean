@@ -433,6 +433,9 @@ export default function SettingsModal() {
             />
 
             {debug ? <Text style={styles.debugText}>{debug}</Text> : null}
+            <Text style={styles.supportText}>
+  For support, message alexosbournfilm@gmail.com
+</Text>
 
             <Pressable
               onPress={close}
@@ -526,6 +529,15 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontFamily: SYSTEM_SANS,
   },
+  supportText: {
+  marginTop: 10,
+  marginBottom: 4,
+  textAlign: 'center',
+  fontSize: 13,
+  lineHeight: 18,
+  color: TEXT_MUTED,
+  fontFamily: SYSTEM_SANS,
+},
   closeButton: {
     marginTop: 10,
     paddingVertical: 12,
