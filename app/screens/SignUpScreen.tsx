@@ -34,7 +34,6 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [agreed, setAgreed] = useState(false);
-  const [isEighteen, setIsEighteen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const [showTos, setShowTos] = useState(false);
@@ -48,20 +47,6 @@ export default function SignUpScreen() {
   const [emailSentVisible, setEmailSentVisible] = useState(false);
   const [emailSentTo, setEmailSentTo] = useState<string>('');
 
-  /**
-   * ✅ IMPORTANT FIX:
-   * Redirect email confirmations to a route that definitely exists in your app.
-   * If your web app does not implement /auth/callback (or linking doesn’t map it),
-   * the PKCE exchange won’t run reliably.
-   *
-   * So we send people to /signin (web) / overlooked://signin (native),
-   * which you already have.
-   *
-   * Make sure these exact URLs are added in Supabase:
-   * - Authentication > URL Configuration > Redirect URLs
-   *   e.g. https://overlooked.cloud/signin
-   *        overlooked://signin
-   */
   const emailRedirectTo = useMemo(() => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       return `${window.location.origin}/signin`;
@@ -82,7 +67,6 @@ export default function SignUpScreen() {
     const parsed = Linking.parse(url);
     let params: Record<string, any> = {};
 
-    // Web: Supabase can return tokens in hash in some flows
     if (typeof window !== 'undefined' && Platform.OS === 'web') {
       const hash = window.location.hash?.replace(/^#/, '') ?? '';
       const searchParams = new URLSearchParams(hash);
@@ -105,8 +89,6 @@ export default function SignUpScreen() {
     if (!url) return false;
 
     try {
-      // ✅ PKCE flow (most common in modern Supabase auth):
-      // If the URL contains ?code=..., we must exchange it for a session.
       if (url.includes('code=')) {
         const { error } = await supabase.auth.exchangeCodeForSession(url);
 
@@ -121,7 +103,6 @@ export default function SignUpScreen() {
 
         setEmailConfirmed(true);
 
-        // Clean URL on web so refresh doesn’t re-run exchange
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
@@ -130,7 +111,6 @@ export default function SignUpScreen() {
         return true;
       }
 
-      // Legacy token flow (hash access_token/refresh_token)
       const { access_token, refresh_token, type, error_description } =
         parseTokensFromUrl(url);
 
@@ -170,14 +150,11 @@ export default function SignUpScreen() {
     return false;
   };
 
-  // Init deep link listener
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
 
     const init = async () => {
       try {
-        // If user opens a confirmation link and lands on this screen for any reason,
-        // we can still finalize the confirmation here.
         if (Platform.OS !== 'web') {
           const initial = await Linking.getInitialURL();
           await maybeHandleAuthDeepLink(initial);
@@ -242,12 +219,11 @@ export default function SignUpScreen() {
       Alert.alert('Password Mismatch', 'Passwords do not match.');
       return;
     }
-    if (!isEighteen) {
-      Alert.alert('Age Confirmation', 'You must be at least 18.');
-      return;
-    }
     if (!agreed) {
-      Alert.alert('Agreement Required', 'You must agree to the Terms, Privacy Policy, and Child Safety Policy.');
+      Alert.alert(
+        'Agreement Required',
+        'You must agree to the Terms, Privacy Policy, and Child Safety Policy.'
+      );
       return;
     }
 
@@ -265,11 +241,9 @@ export default function SignUpScreen() {
         return;
       }
 
-      // ✅ SHOW "EMAIL SENT" INDICATION (WORKS ON WEB + MOBILE)
       setEmailSentTo(trimmedEmail);
       setEmailSentVisible(true);
 
-      // Optional: on web, also trigger a native browser alert (backup)
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         try {
           window.alert(
@@ -278,7 +252,6 @@ export default function SignUpScreen() {
         } catch {}
       }
 
-      // (Keep your legal update attempt)
       try {
         if (data?.user) {
           await supabase
@@ -304,7 +277,6 @@ export default function SignUpScreen() {
     !!confirm &&
     password.length >= 6 &&
     password === confirm &&
-    isEighteen &&
     agreed &&
     !loading;
 
@@ -341,7 +313,6 @@ export default function SignUpScreen() {
             </View>
           )}
 
-          {/* Inputs */}
           <TextInput
             style={styles.input}
             placeholder="Email"
@@ -367,17 +338,6 @@ export default function SignUpScreen() {
             value={confirm}
             onChangeText={setConfirm}
           />
-
-          {/* Checkboxes */}
-          <TouchableOpacity
-            style={styles.checkboxRow}
-            onPress={() => setIsEighteen(!isEighteen)}
-          >
-            <View style={[styles.checkbox, isEighteen && styles.checkboxChecked]} />
-            <Text style={styles.checkboxText}>
-              I confirm that I am at least 18 years old.
-            </Text>
-          </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.checkboxRow}
@@ -422,7 +382,6 @@ export default function SignUpScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* ✅ EMAIL SENT MODAL */}
       <Modal
         visible={emailSentVisible}
         transparent
@@ -467,9 +426,7 @@ export default function SignUpScreen() {
         </View>
       </Modal>
 
-      {/* ---------- LEGAL MODALS (unchanged except child safety added) ---------- */}
-
-      {/* Terms of Service (UK Law) */}
+      {/* Terms of Service */}
       <Modal
         visible={showTos}
         animationType="slide"
@@ -490,52 +447,49 @@ export default function SignUpScreen() {
 
 These Terms of Service (“Terms”) constitute a legally binding agreement between you and Overlooked LTD (“Overlooked”, “we”, “our”, “us”). By creating an account or using Overlooked, you agree to abide by these Terms and all applicable laws of England and Wales.
 
-1. ELIGIBILITY
-- You must be at least 18 years old.
-
-2. USER ACCOUNT
+1. USER ACCOUNT
 - You are responsible for maintaining the confidentiality of your login details.
 - You must not impersonate others or provide false information.
 - Notify us immediately of any unauthorised activity.
 
-3. USER CONTENT
+2. USER CONTENT
 - You retain ownership of all videos, images, audio, film submissions, job listings, text, and other content you upload (“User Content”).
 - You grant Overlooked a worldwide, royalty-free, sublicensable licence to host, store, reproduce, display, transmit, and promote your content solely for operating and improving the platform, including challenge features.
 
-4. PROHIBITED CONTENT
+3. PROHIBITED CONTENT
 You must not upload or share:
 - Copyright-infringing, unlawful, hateful, extremist, pornographic, or exploitative content.
-- Content involving minors.
+- Content involving abuse or exploitation of minors.
 - Doxxing, harassment, threats, spam, scams, or impersonation.
 
-5. JOBS & COLLABORATIONS
+4. JOBS & COLLABORATIONS
 - Overlooked is not a party to any agreements, contracts, or payments between users.
 - You are responsible for verifying other users and complying with employment, tax, and union laws.
 
-6. VOTING & CHALLENGES
+5. VOTING & CHALLENGES
 - Overlooked may remove fraudulent votes and disqualify entries violating these Terms.
 - Winners may be featured on the platform and Overlooked’s social channels.
 
-7. ENFORCEMENT
+6. ENFORCEMENT
 - We may remove content, suspend users, or restrict functionality for safety or legal reasons.
 
-8. COPYRIGHT (DMCA)
+7. COPYRIGHT (DMCA)
 - If you believe your copyright is infringed, contact us with a valid notice.
 
-9. DISCLAIMERS
+8. DISCLAIMERS
 - The service is provided “AS IS”.
 - We make no warranty regarding uptime, accuracy, or availability.
 - You use Overlooked at your own risk.
 
-10. LIMITATION OF LIABILITY
+9. LIMITATION OF LIABILITY
 - To the fullest extent permitted under UK law, Overlooked is not liable for indirect or consequential damages.
 - Maximum liability is the greater of £50 or the amount paid for services in the past 12 months.
 
-11. GOVERNING LAW
+10. GOVERNING LAW
 - These Terms are governed by the laws of England & Wales.
 - Courts of England have exclusive jurisdiction.
 
-12. MODIFICATIONS
+11. MODIFICATIONS
 - We may modify these Terms. We will notify users of material changes.`}
               </Text>
             </ScrollView>
@@ -593,8 +547,8 @@ This Privacy Policy explains how Overlooked LTD (“Overlooked”, “we”, “
 - Right of access, rectification, erasure, portability, restriction, and objection.
 - Right to lodge a complaint with the ICO (Information Commissioner’s Office).
 
-6. CHILDREN
-- Not for users under 18 years old.
+6. SAFETY
+- We take platform safety seriously and may take action against harmful or abusive behaviour.
 
 7. SECURITY
 - We use industry-standard security practices but cannot guarantee absolute protection.
@@ -638,11 +592,7 @@ This Privacy Policy explains how Overlooked LTD (“Overlooked”, “we”, “
 
 Overlooked is committed to maintaining a safe platform and has zero tolerance for child sexual abuse, child sexual exploitation, or any content that endangers minors.
 
-1. AGE RESTRICTION
-- Overlooked is strictly for users aged 18 and over.
-- Anyone under 18 is not permitted to create an account or use the platform.
-
-2. PROHIBITED CONTENT
+1. PROHIBITED CONTENT
 Users must not upload, share, request, promote, or distribute:
 - Child sexual abuse material (CSAM).
 - Any sexualised content involving minors.
@@ -650,30 +600,30 @@ Users must not upload, share, request, promote, or distribute:
 - Links to external material involving child exploitation.
 - Any attempt to solicit minors for sexual purposes.
 
-3. REPORTING
+2. REPORTING
 - Users can report suspicious, exploitative, or abusive content in-app.
 - Reports related to child safety are treated as high priority and reviewed urgently.
 
-4. ENFORCEMENT
+3. ENFORCEMENT
 If we become aware of content or behaviour that may involve child exploitation or abuse, Overlooked may:
 - Remove the content immediately.
 - Suspend or permanently ban the account.
 - Preserve evidence where required.
 - Report the matter to relevant law enforcement or child protection authorities.
 
-5. MODERATION
+4. MODERATION
 - We reserve the right to review user-generated content, profiles, job posts, messages, and submissions where necessary to enforce platform safety.
 - Attempts to evade moderation or enforcement may result in permanent removal from the platform.
 
-6. CONTACT
+5. CONTACT
 For child safety concerns, abuse reports, or urgent safeguarding issues, contact:
 alexosbournfilm@gmail.com
 
-7. LEGAL COMPLIANCE
+6. LEGAL COMPLIANCE
 - Overlooked complies with applicable child safety laws and platform rules.
 - We cooperate with lawful requests from regulators and law enforcement where required.
 
-8. POLICY UPDATES
+7. POLICY UPDATES
 - We may update this Child Safety Policy from time to time to reflect legal, operational, or safety changes.`}
               </Text>
             </ScrollView>
@@ -691,9 +641,6 @@ alexosbournfilm@gmail.com
   );
 }
 
-//
-// --------------------- STYLES ---------------------
-//
 const styles = StyleSheet.create({
   container: {
     padding: 24,
