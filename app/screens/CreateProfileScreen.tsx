@@ -236,85 +236,87 @@ export default function CreateProfileScreen() {
     hasStartedSequence.current = true;
 
     const timer = setTimeout(() => {
-  openRoleSelector();
-}, 900);
+      openRoleSelector();
+    }, 900);
 
     return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-  if (stage === 'image' || stage === 'review') {
-    imageSectionOpacity.setValue(0);
-    imageSectionTranslate.setValue(18);
+    if (stage === 'image' || stage === 'review') {
+      imageSectionOpacity.setValue(0);
+      imageSectionTranslate.setValue(18);
 
-    Animated.parallel([
-      Animated.timing(imageSectionOpacity, {
-        toValue: 1,
-        duration: 1800,
-        easing: Easing.inOut(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(imageSectionTranslate, {
-        toValue: 0,
-        duration: 1800,
-        easing: Easing.inOut(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }
-}, [stage, imageSectionOpacity, imageSectionTranslate]);
-const animateStageChange = (nextStage: OnboardingStage, cb?: () => void) => {
-  Animated.parallel([
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 1400,
-      easing: Easing.inOut(Easing.cubic),
-      useNativeDriver: true,
-    }),
-    Animated.timing(slideAnim, {
-      toValue: -10,
-      duration: 1400,
-      easing: Easing.inOut(Easing.cubic),
-      useNativeDriver: true,
-    }),
-    Animated.timing(scaleAnim, {
-      toValue: 0.985,
-      duration: 1400,
-      easing: Easing.inOut(Easing.cubic),
-      useNativeDriver: true,
-    }),
-  ]).start(() => {
-    setStage(nextStage);
-    cb?.();
-
-    fadeAnim.setValue(0);
-    slideAnim.setValue(10);
-    scaleAnim.setValue(1.01);
-
-    setTimeout(() => {
       Animated.parallel([
-        Animated.timing(fadeAnim, {
+        Animated.timing(imageSectionOpacity, {
           toValue: 1,
-          duration: 1600,
+          duration: 1800,
           easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
         }),
-        Animated.timing(slideAnim, {
+        Animated.timing(imageSectionTranslate, {
           toValue: 0,
-          duration: 1600,
-          easing: Easing.inOut(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(scaleAnim, {
-          toValue: 1,
-          duration: 1600,
+          duration: 1800,
           easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
         }),
       ]).start();
-    }, 350);
-  });
-};
+    }
+  }, [stage, imageSectionOpacity, imageSectionTranslate]);
+
+  const animateStageChange = (nextStage: OnboardingStage, cb?: () => void) => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 1400,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: -10,
+        duration: 1400,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 0.985,
+        duration: 1400,
+        easing: Easing.inOut(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setStage(nextStage);
+      cb?.();
+
+      fadeAnim.setValue(0);
+      slideAnim.setValue(10);
+      scaleAnim.setValue(1.01);
+
+      setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 1600,
+            easing: Easing.inOut(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(slideAnim, {
+            toValue: 0,
+            duration: 1600,
+            easing: Easing.inOut(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 1,
+            duration: 1600,
+            easing: Easing.inOut(Easing.cubic),
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }, 350);
+    });
+  };
+
   const openRoleSelector = () => {
     setRoleSearchTerm('');
     setRoleSearchItems([]);
@@ -477,45 +479,45 @@ const animateStageChange = (nextStage: OnboardingStage, cb?: () => void) => {
   };
 
   const handleAvatarCropped = async (croppedUri: string) => {
-  try {
-    setUploadingImage(true);
+    try {
+      setUploadingImage(true);
 
-    const previewUri = await makePreviewUri(croppedUri);
-    setImage(previewUri);
-    setImagePreview(previewUri);
+      const previewUri = await makePreviewUri(croppedUri);
+      setImage(previewUri);
+      setImagePreview(previewUri);
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-    if (userError) throw userError;
-    if (!user?.id) throw new Error('User not authenticated');
+      if (userError) throw userError;
+      if (!user?.id) throw new Error('User not authenticated');
 
-    const fileName = `avatar_${Date.now()}.jpg`;
-    const path = `user_${user.id}/${fileName}`;
+      const fileName = `avatar_${Date.now()}.jpg`;
+      const path = `user_${user.id}/${fileName}`;
 
-    const fileBody = await uriToUploadBody(croppedUri);
+      const fileBody = await uriToUploadBody(croppedUri);
 
-    const publicUrl = await uploadImageToBucket({
-      bucket: 'avatars',
-      path,
-      fileBody,
-      contentType: 'image/jpeg',
-    });
+      const publicUrl = await uploadImageToBucket({
+        bucket: 'avatars',
+        path,
+        fileBody,
+        contentType: 'image/jpeg',
+      });
 
-    setImageUrl(`${publicUrl}?t=${Date.now()}`);
-    setCropperOpen(false);
-    setCropSource(null);
+      setImageUrl(`${publicUrl}?t=${Date.now()}`);
+      setCropperOpen(false);
+      setCropSource(null);
 
-    animateStageChange('review');
-  } catch (err: any) {
-    console.error('Avatar upload error:', err);
-    Alert.alert('Upload Error', err?.message ?? 'Could not upload image.');
-  } finally {
-    setUploadingImage(false);
-  }
-};
+      animateStageChange('review');
+    } catch (err: any) {
+      console.error('Avatar upload error:', err);
+      Alert.alert('Upload Error', err?.message ?? 'Could not upload image.');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!fullName.trim() || !mainRole || !cityId) {
@@ -619,27 +621,40 @@ const animateStageChange = (nextStage: OnboardingStage, cb?: () => void) => {
   const imageStepVisible = ['image', 'review'].includes(stage);
   const reviewVisible = stage === 'review';
 
+  const Wrapper = Platform.OS === 'web' ? View : KeyboardAvoidingView;
+  const wrapperProps =
+    Platform.OS === 'web'
+      ? { style: styles.wrapper }
+      : { behavior: 'padding' as const, style: styles.wrapper };
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1, backgroundColor: DARK_BG }}
-    >
+    <Wrapper {...wrapperProps}>
       <LinearGradient
         colors={['#000000', '#080808', '#0B0B0B']}
         style={StyleSheet.absoluteFillObject}
       />
 
       <ScrollView
-  style={{ flex: 1 }}
-  contentContainerStyle={[
-    styles.container,
-    Platform.OS === 'web' && styles.containerWeb,
-  ]}
-  keyboardShouldPersistTaps="handled"
-  showsVerticalScrollIndicator={false}
-  bounces={false}
-  overScrollMode="always"
->
+        style={[
+          styles.scrollView,
+          Platform.OS === 'web'
+            ? ({
+                height: '100vh',
+                overflowY: 'auto',
+                overflowX: 'hidden',
+              } as any)
+            : null,
+        ]}
+        contentContainerStyle={[
+          styles.container,
+          Platform.OS === 'web' ? styles.containerWeb : styles.containerMobile,
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={true}
+        scrollEnabled
+        bounces={false}
+        overScrollMode="always"
+      >
         <Animated.View
           style={[
             styles.animatedWrap,
@@ -683,7 +698,9 @@ const animateStageChange = (nextStage: OnboardingStage, cb?: () => void) => {
 
                 <View style={styles.progressItem}>
                   <View style={[styles.progressDot, imageStepVisible && styles.progressDotActive]} />
-                  <Text style={[styles.progressLabel, imageStepVisible && styles.progressLabelActive]}>
+                  <Text
+                    style={[styles.progressLabel, imageStepVisible && styles.progressLabelActive]}
+                  >
                     Photo
                   </Text>
                 </View>
@@ -789,7 +806,11 @@ const animateStageChange = (nextStage: OnboardingStage, cb?: () => void) => {
                     disabled={loading}
                   >
                     {displayImage ? (
-                      <Image source={{ uri: displayImage }} style={styles.avatarImage} resizeMode="cover" />
+                      <Image
+                        source={{ uri: displayImage }}
+                        style={styles.avatarImage}
+                        resizeMode="cover"
+                      />
                     ) : (
                       <View style={styles.avatarFallback}>
                         <Ionicons name="camera-outline" size={30} color={GOLD} />
@@ -882,7 +903,11 @@ const animateStageChange = (nextStage: OnboardingStage, cb?: () => void) => {
 
                     <TouchableOpacity
                       onPress={handleSubmit}
-                      style={[styles.submitButton, styles.submitButtonReview, loading && { opacity: 0.6 }]}
+                      style={[
+                        styles.submitButton,
+                        styles.submitButtonReview,
+                        loading && { opacity: 0.6 },
+                      ]}
                       disabled={loading}
                       activeOpacity={0.9}
                     >
@@ -1016,12 +1041,12 @@ const animateStageChange = (nextStage: OnboardingStage, cb?: () => void) => {
                         setRoleSearchModalVisible(false);
 
                         if (stage === 'role') {
-  animateStageChange('city', () => {
-    setTimeout(() => {
-      openCitySelector();
-    }, 700);
-  });
-}
+                          animateStageChange('city', () => {
+                            setTimeout(() => {
+                              openCitySelector();
+                            }, 700);
+                          });
+                        }
                       }}
                       activeOpacity={0.8}
                     >
@@ -1059,23 +1084,39 @@ const animateStageChange = (nextStage: OnboardingStage, cb?: () => void) => {
         cityName={cityLabel || 'Your City'}
         level={50}
       />
-    </KeyboardAvoidingView>
+    </Wrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-  flexGrow: 1,
-  padding: 18,
-  alignItems: 'center',
-  backgroundColor: DARK_BG,
-},
+  wrapper: {
+    flex: 1,
+    backgroundColor: DARK_BG,
+  },
 
-containerWeb: {
-  justifyContent: 'flex-start',
-  paddingTop: 32,
-  paddingBottom: 40,
-},
+  scrollView: {
+    flex: 1,
+    width: '100%',
+  },
+
+  container: {
+    flexGrow: 1,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    backgroundColor: DARK_BG,
+  },
+
+  containerWeb: {
+    justifyContent: 'flex-start',
+    paddingTop: 32,
+    paddingBottom: 80,
+  },
+
+  containerMobile: {
+    justifyContent: 'center',
+    paddingTop: 18,
+    paddingBottom: 18,
+  },
 
   animatedWrap: {
     width: '100%',
