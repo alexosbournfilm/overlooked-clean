@@ -353,8 +353,8 @@ export default function SignInScreen() {
       }
 
       showError(
-        'Profile unavailable',
-        'Your account is signed in, but profile setup is only opened immediately after a fresh email confirmation. Please contact support if this account should already have a profile.'
+        'Email confirmed',
+        'Sign in and create your profile'
       );
       return;
     }
