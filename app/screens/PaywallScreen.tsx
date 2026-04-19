@@ -34,6 +34,7 @@ const STRIPE_PRICE_MONTHLY = 'price_1S1jLxIaba42c4jIsVBQneb0';
 
 /* -------------------------- RevenueCat -------------------------- */
 const REVENUECAT_ANDROID_PUBLIC_SDK_KEY = 'goog_yNsgMdHFvNRzhpfDwICFHbSXuvC';
+const REVENUECAT_IOS_PUBLIC_SDK_KEY = 'appl_dOTwRcKraCRSTIBoaxPUVEEJcWh';
 
 type PlanKey = 'monthly';
 
@@ -107,21 +108,14 @@ function extractInvokeError(err: any): string {
 }
 
 function getActiveProEntitlement(customerInfo: any) {
-  return (
-    customerInfo?.entitlements?.active?.pro ??
-    null
-  );
+  return customerInfo?.entitlements?.active?.pro ?? null;
 }
 
 function getEntitlementExpirationIso(entitlement: any): string | null {
-  return (
-    entitlement?.expirationDate ??
-    entitlement?.expiresDate ??
-    null
-  );
+  return entitlement?.expirationDate ?? entitlement?.expiresDate ?? null;
 }
 
-async function syncAndroidProToSupabase(args: {
+async function syncProToSupabase(args: {
   userId: string;
   entitlement: any;
 }) {
@@ -225,7 +219,7 @@ export default function PaywallScreen() {
   );
 
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
+    if (Platform.OS === 'web') return;
 
     let mounted = true;
 
@@ -242,10 +236,15 @@ export default function PaywallScreen() {
           return;
         }
 
+        const apiKey =
+          Platform.OS === 'ios'
+            ? REVENUECAT_IOS_PUBLIC_SDK_KEY
+            : REVENUECAT_ANDROID_PUBLIC_SDK_KEY;
+
         Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
 
         await Purchases.configure({
-          apiKey: REVENUECAT_ANDROID_PUBLIC_SDK_KEY,
+          apiKey,
           appUserID: user.id,
         });
 
@@ -260,6 +259,11 @@ export default function PaywallScreen() {
 
         const pkg =
           offerings.current?.monthly ??
+          offerings.current?.availablePackages?.find(
+            (p: any) =>
+              p?.product?.identifier === 'com.overlooked.pro.monthly' ||
+              p?.identifier === '$rc_monthly'
+          ) ??
           offerings.current?.availablePackages?.[0] ??
           null;
 
@@ -288,11 +292,12 @@ export default function PaywallScreen() {
 
   const planLabel = useMemo(() => {
     if (Platform.OS === 'android') return 'Continue with Google Play';
+    if (Platform.OS === 'ios') return 'Continue with App Store';
     return 'Unlock Monthly Access';
   }, []);
 
   const selectedSubLabel = useMemo(() => {
-    if (Platform.OS === 'android' && rcPriceLabel) {
+    if ((Platform.OS === 'android' || Platform.OS === 'ios') && rcPriceLabel) {
       return `Monthly access • ${rcPriceLabel}`;
     }
     return 'Monthly access • £4.99 / month';
@@ -533,61 +538,57 @@ export default function PaywallScreen() {
         return;
       }
 
-      if (Platform.OS === 'android') {
-        if (!rcReady) {
-          throw new Error('RevenueCat is still loading.');
-        }
-
-        if (!monthlyPackage) {
-          throw new Error(
-            'No monthly offering found in RevenueCat yet. Make sure your current offering includes a monthly package linked to the pro entitlement.'
-          );
-        }
-
-        const { data: auth, error: authErr } = await supabase.auth.getUser();
-        if (authErr) throw authErr;
-
-        const user = auth?.user;
-        if (!user?.id) {
-          throw new Error('Not signed in.');
-        }
-
-        const result = await Purchases.purchasePackage(monthlyPackage);
-        const customerInfo = result.customerInfo;
-
-        console.log('[RC] customerInfo after purchase', JSON.stringify(customerInfo, null, 2));
-
-        const entitlement = getActiveProEntitlement(customerInfo);
-        const hasPro = !!entitlement;
-
-        if (!hasPro) {
-          throw new Error(
-            'Purchase completed, but the pro entitlement is not active yet.'
-          );
-        }
-
-        await syncAndroidProToSupabase({
-          userId: user.id,
-          entitlement,
-        });
-
-        invalidateMembershipCache();
-        await getCurrentUserTier({ force: true });
-
-        const freshRow = await fetchBillingRow();
-        const freshPro = hasProAccess(freshRow ?? undefined);
-
-        if (!freshPro) {
-          throw new Error(
-            'Purchase succeeded, but your Pro status did not refresh in the database yet.'
-          );
-        }
-
-        enterFeatured();
-        return;
+      if (!rcReady) {
+        throw new Error('RevenueCat is still loading.');
       }
 
-      await openStripeCheckout();
+      if (!monthlyPackage) {
+        throw new Error(
+          'No monthly offering found in RevenueCat yet. Make sure your current offering includes a monthly package linked to the pro entitlement.'
+        );
+      }
+
+      const { data: auth, error: authErr } = await supabase.auth.getUser();
+      if (authErr) throw authErr;
+
+      const user = auth?.user;
+      if (!user?.id) {
+        throw new Error('Not signed in.');
+      }
+
+      const result = await Purchases.purchasePackage(monthlyPackage);
+      const customerInfo = result.customerInfo;
+
+      console.log('[RC] customerInfo after purchase', JSON.stringify(customerInfo, null, 2));
+
+      const entitlement = getActiveProEntitlement(customerInfo);
+      const hasPro = !!entitlement;
+
+      if (!hasPro) {
+        throw new Error(
+          'Purchase completed, but the pro entitlement is not active yet.'
+        );
+      }
+
+      await syncProToSupabase({
+        userId: user.id,
+        entitlement,
+      });
+
+      invalidateMembershipCache();
+      await getCurrentUserTier({ force: true });
+
+      const freshRow = await fetchBillingRow();
+      const freshPro = hasProAccess(freshRow ?? undefined);
+
+      if (!freshPro) {
+        throw new Error(
+          'Purchase succeeded, but your Pro status did not refresh in the database yet.'
+        );
+      }
+
+      enterFeatured();
+      return;
     } catch (e: any) {
       console.error('checkout redirect error', e);
 
@@ -831,7 +832,7 @@ export default function PaywallScreen() {
                 <View style={styles.planPriceRow}>
                   <Text style={styles.planCurrency}>£</Text>
                   <Text style={styles.planPriceHero}>
-                    {Platform.OS === 'android' && rcPriceLabel
+                    {(Platform.OS === 'android' || Platform.OS === 'ios') && rcPriceLabel
                       ? rcPriceLabel.replace(/[^\d.,]/g, '')
                       : '4.99'}
                   </Text>
@@ -839,6 +840,8 @@ export default function PaywallScreen() {
                 <Text style={styles.planSubHero}>
                   {Platform.OS === 'android'
                     ? 'Google Play subscription'
+                    : Platform.OS === 'ios'
+                    ? 'App Store subscription'
                     : 'Cancel anytime'}
                 </Text>
               </TouchableOpacity>
@@ -855,7 +858,11 @@ export default function PaywallScreen() {
               <View style={styles.buttonRow}>
                 <ActivityIndicator color="#0B0B0B" />
                 <Text style={styles.buttonText}>
-                  {Platform.OS === 'android' ? 'Checking Google Play…' : 'Opening checkout…'}
+                  {Platform.OS === 'android'
+                    ? 'Opening Google Play…'
+                    : Platform.OS === 'ios'
+                    ? 'Opening App Store…'
+                    : 'Opening checkout…'}
                 </Text>
               </View>
             ) : (
@@ -865,7 +872,7 @@ export default function PaywallScreen() {
 
           <Text style={styles.selectedText}>
             {selectedSubLabel}
-            {Platform.OS === 'android'
+            {(Platform.OS === 'android' || Platform.OS === 'ios')
               ? rcReady
                 ? monthlyPackage
                   ? ' • RevenueCat offering loaded'

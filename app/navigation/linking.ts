@@ -12,8 +12,9 @@ export const linking: LinkingOptions<any> = {
 
   config: {
     screens: {
-      // DIRECT screens
+      // ROOT SCREENS
       NewPassword: "reset-password",
+      CreateProfile: "create-profile",
 
       // AUTH STACK
       Auth: {
@@ -21,7 +22,6 @@ export const linking: LinkingOptions<any> = {
           SignIn: "signin",
           SignUp: "signup",
           ForgotPassword: "forgot-password",
-          CreateProfile: "create-profile",
         },
       },
 

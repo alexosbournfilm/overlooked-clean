@@ -1,6 +1,6 @@
 import { Platform } from "react-native";
 import { supabase } from "./supabase";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as VideoThumbnails from "expo-video-thumbnails";
 import { Buffer } from "buffer";
 

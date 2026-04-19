@@ -366,9 +366,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .from("users")
         .update({
           stripe_subscription_id: null,
-          subscription_status: rcState.cancelAtPeriodEnd
-            ? "active"
-            : row?.subscription_status ?? "active",
+          subscription_status: rcState.cancelAtPeriodEnd ? "canceled" : "active",
           cancel_at_period_end: rcState.cancelAtPeriodEnd,
           current_period_end: rcState.latestExpiry,
           premium_access_expires_at: rcState.latestExpiry,

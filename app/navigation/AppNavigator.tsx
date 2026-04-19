@@ -23,6 +23,7 @@ import NewPassword from "../screens/NewPassword";
 import WorkshopSubmitScreen from "../screens/WorkshopSubmitScreen";
 import PublicProfileScreen from "../screens/PublicProfileScreen";
 import SharedFilmScreen from "../screens/SharedFilmScreen";
+import CreateProfileScreen from "../screens/CreateProfileScreen";
 
 const Stack = createStackNavigator();
 
@@ -52,6 +53,8 @@ export default function AppNavigator({
   const hasBootstrappedNavRef = useRef(false);
   const lastAuthSnapshotRef = useRef<string>("");
   const hasHandledPostMountRedirectRef = useRef(false);
+
+  const G = globalThis as any;
 
   // --------------------------------------------------------------
   // Restore navigation only for users with a completed profile
@@ -130,15 +133,13 @@ export default function AppNavigator({
 
   // --------------------------------------------------------------
   // Actively redirect after mount when auth changes
-  // IMPORTANT:
-  // Never auto-send a signed-in user to CreateProfile here.
   // --------------------------------------------------------------
   useEffect(() => {
     if (!ready || !navReady) return;
     if (!navigationRef.isReady()) return;
     if (!hasBootstrappedNavRef.current) return;
 
-    const authSnapshot = `${userId ?? "guest"}:${profileComplete ? "complete" : "incomplete"}`;
+    const authSnapshot = `${userId ?? "guest"}:${profileComplete ? "complete" : "incomplete"}:${G.__OVERLOOKED_EMAIL_CONFIRM__ ? "emailconfirm" : "normal"}`;
     const prevSnapshot = lastAuthSnapshotRef.current;
     lastAuthSnapshotRef.current = authSnapshot;
 
@@ -165,6 +166,15 @@ export default function AppNavigator({
       );
     };
 
+    const resetToCreateProfile = () => {
+      navigationRef.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: "CreateProfile" as never }],
+        })
+      );
+    };
+
     const resetToMainTabs = () => {
       navigationRef.dispatch(
         CommonActions.reset({
@@ -179,7 +189,15 @@ export default function AppNavigator({
       return;
     }
 
-    // Signed-in users always stay out of CreateProfile here.
+    if (!profileComplete) {
+      resetToCreateProfile();
+      return;
+    }
+
+    if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
+      G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+    }
+
     resetToMainTabs();
   }, [ready, navReady, userId, profileComplete, initialAuthRouteName]);
 
@@ -279,11 +297,13 @@ export default function AppNavigator({
 
   const mustShowPaywall = false;
 
-  // IMPORTANT:
-  // A signed-in user should not be pushed to Auth/CreateProfile here
-  // just because profileComplete is temporarily false.
-  const rootInitialRouteName =
-    !userId ? "Auth" : mustShowPaywall ? "Paywall" : "MainTabs";
+  const rootInitialRouteName = !userId
+    ? "Auth"
+    : !profileComplete
+    ? "CreateProfile"
+    : mustShowPaywall
+    ? "Paywall"
+    : "MainTabs";
 
   // --------------------------------------------------------------
   // Navigation tree
@@ -295,6 +315,7 @@ export default function AppNavigator({
       initialState={initialState}
       onReady={() => {
         setNavigatorReady(true);
+        setNavReady(true);
       }}
       onStateChange={handleStateChange}
       theme={NAV_THEME}
@@ -318,6 +339,7 @@ export default function AppNavigator({
           )}
         />
 
+        <Stack.Screen name="CreateProfile" component={CreateProfileScreen} />
         <Stack.Screen name="MainTabs" component={MainTabs} />
 
         {mustShowPaywall && (

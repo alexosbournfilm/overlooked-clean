@@ -36,8 +36,13 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 const G = globalThis as any;
+
 if (typeof G.__OVERLOOKED_RECOVERY__ === "undefined") {
   G.__OVERLOOKED_RECOVERY__ = false;
+}
+
+if (typeof G.__OVERLOOKED_EMAIL_CONFIRM__ === "undefined") {
+  G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
 }
 
 const NATIVE_AUTH_STORAGE_KEY = "overlooked.supabase.auth";
@@ -64,7 +69,49 @@ function isWebRecoveryUrl(): boolean {
   const isResetRoute =
     path.includes("/reset-password") || path.endsWith("/reset-password");
 
-  return Boolean(hasRecoveryType || hasTokenHash || isResetRoute);
+  return Boolean(hasRecoveryType || (hasTokenHash && isResetRoute));
+}
+
+function isWebEmailConfirmationUrl(): boolean {
+  if (Platform.OS !== "web") return false;
+  if (typeof window === "undefined") return false;
+
+  const href = window.location.href || "";
+  const hash = window.location.hash || "";
+  const search = window.location.search || "";
+  const path = window.location.pathname || "";
+
+  const hasSignupType =
+    href.includes("type=signup") ||
+    hash.includes("type=signup") ||
+    search.includes("type=signup");
+
+  const hasInviteType =
+    href.includes("type=invite") ||
+    hash.includes("type=invite") ||
+    search.includes("type=invite");
+
+  const hasAccessToken =
+    href.includes("access_token=") ||
+    hash.includes("access_token=") ||
+    search.includes("access_token=");
+
+  const hasRefreshToken =
+    href.includes("refresh_token=") ||
+    hash.includes("refresh_token=") ||
+    search.includes("refresh_token=");
+
+  const isAuthCallbackRoute =
+    path.includes("auth") ||
+    path.includes("callback") ||
+    path.includes("create-profile") ||
+    path.includes("signin");
+
+  return Boolean(
+    hasSignupType ||
+      hasInviteType ||
+      ((hasAccessToken || hasRefreshToken) && isAuthCallbackRoute)
+  );
 }
 
 function isInvalidRefreshTokenError(error: any): boolean {
@@ -105,6 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const authBootstrappedRef = useRef(false);
   const clearingSessionRef = useRef(false);
   const latestAuthUserIdRef = useRef<string | null>(null);
+  const pendingCreateProfileRedirectRef = useRef(false);
 
   async function loadProfile(uid: string, force = false) {
     if (!uid) return;
@@ -133,10 +181,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (latestAuthUserIdRef.current !== uid) return;
 
-      // IMPORTANT:
-      // Do NOT create a fake empty profile object when the row is missing or
-      // the fetch briefly returns nothing. That was helping trigger false
-      // "incomplete profile" states for existing users.
       if (!data) {
         setProfile(null);
         lastLoadedProfileForRef.current = null;
@@ -166,6 +210,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
     lastLoadedProfileForRef.current = null;
     inFlightProfileForRef.current = null;
+  };
+
+  const tryNavigateToCreateProfile = () => {
+    if (!pendingCreateProfileRedirectRef.current) return;
+    if (!navigationRef.isReady()) return;
+
+    pendingCreateProfileRedirectRef.current = false;
+
+    navigationRef.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: "CreateProfile" as never }],
+      })
+    );
   };
 
   const safelyHandleMissingSession = async () => {
@@ -252,7 +310,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const init = async () => {
       const shouldBeRecovery = isWebRecoveryUrl();
+      const shouldBeEmailConfirm = isWebEmailConfirmationUrl();
+
       G.__OVERLOOKED_RECOVERY__ = shouldBeRecovery;
+      G.__OVERLOOKED_EMAIL_CONFIRM__ = shouldBeEmailConfirm;
 
       const { data, error } = await supabase.auth.getSession();
 
@@ -271,19 +332,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const uid = data.session?.user?.id ?? null;
-const inRecoveryFlow = shouldBeRecovery;
 
-if (uid && !inRecoveryFlow) {
-  latestAuthUserIdRef.current = uid;
-  setUserId(uid);
-  await loadProfile(uid);
-} else {
-  latestAuthUserIdRef.current = null;
-  setUserId(null);
-  setProfile(null);
-  lastLoadedProfileForRef.current = null;
-  inFlightProfileForRef.current = null;
-}
+      if (uid) {
+        latestAuthUserIdRef.current = uid;
+        setUserId(uid);
+        await loadProfile(uid, true);
+
+        if (shouldBeEmailConfirm) {
+          pendingCreateProfileRedirectRef.current = true;
+        }
+      } else {
+        latestAuthUserIdRef.current = null;
+        setUserId(null);
+        setProfile(null);
+        lastLoadedProfileForRef.current = null;
+        inFlightProfileForRef.current = null;
+      }
 
       authBootstrappedRef.current = true;
       setReady(true);
@@ -305,6 +369,7 @@ if (uid && !inRecoveryFlow) {
 
           if (okRecovery) {
             G.__OVERLOOKED_RECOVERY__ = true;
+            G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
 
             if (navigationRef.isReady()) {
               navigationRef.dispatch(
@@ -321,6 +386,33 @@ if (uid && !inRecoveryFlow) {
             G.__OVERLOOKED_RECOVERY__ = false;
           }
 
+          return;
+        }
+
+        if (
+          (event === "SIGNED_IN" || event === "INITIAL_SESSION") &&
+          (isWebEmailConfirmationUrl() || G.__OVERLOOKED_EMAIL_CONFIRM__)
+        ) {
+          console.log("✅ Email confirmation flow detected");
+
+          G.__OVERLOOKED_EMAIL_CONFIRM__ = true;
+          G.__OVERLOOKED_RECOVERY__ = false;
+
+          const confirmedUid = session?.user?.id ?? null;
+
+          if (confirmedUid) {
+            latestAuthUserIdRef.current = confirmedUid;
+            setUserId(confirmedUid);
+            await loadProfile(confirmedUid, true);
+            pendingCreateProfileRedirectRef.current = true;
+          }
+
+          if (!ready && mounted) {
+            authBootstrappedRef.current = true;
+            setReady(true);
+          }
+
+          tryNavigateToCreateProfile();
           return;
         }
 
@@ -348,44 +440,46 @@ if (uid && !inRecoveryFlow) {
           }
         }
 
-        if (event === "SIGNED_IN") {
-          if (!isWebRecoveryUrl()) {
-            G.__OVERLOOKED_RECOVERY__ = false;
-          }
+        if (event === "SIGNED_IN" && !isWebRecoveryUrl()) {
+          G.__OVERLOOKED_RECOVERY__ = false;
         }
 
         if (event === "SIGNED_OUT") {
           G.__OVERLOOKED_RECOVERY__ = false;
+          G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
         }
 
         const uid = session?.user?.id ?? null;
 
-if (uid) {
-  const inRecoveryFlow =
-    G.__OVERLOOKED_RECOVERY__ ||
-    event === "PASSWORD_RECOVERY" ||
-    isWebRecoveryUrl();
+        if (uid) {
+          const inRecoveryFlow =
+            G.__OVERLOOKED_RECOVERY__ ||
+            event === "PASSWORD_RECOVERY" ||
+            isWebRecoveryUrl();
 
-  if (inRecoveryFlow) {
-    console.log("🔐 Recovery session detected — not treating as normal app sign-in");
+          if (inRecoveryFlow) {
+            console.log(
+              "🔐 Recovery session detected — not treating as normal app sign-in"
+            );
 
-    if (!ready && mounted) {
-      authBootstrappedRef.current = true;
-      setReady(true);
-    }
-    return;
-  }
+            if (!ready && mounted) {
+              authBootstrappedRef.current = true;
+              setReady(true);
+            }
+            return;
+          }
 
-  latestAuthUserIdRef.current = uid;
-  setUserId(uid);
-  await loadProfile(uid, event === "SIGNED_IN" || event === "USER_UPDATED");
+          latestAuthUserIdRef.current = uid;
+          setUserId(uid);
+          await loadProfile(uid, event === "SIGNED_IN" || event === "USER_UPDATED");
 
-  if (!ready && mounted) {
-    authBootstrappedRef.current = true;
-    setReady(true);
-  }
-  return;
-}
+          if (!ready && mounted) {
+            authBootstrappedRef.current = true;
+            setReady(true);
+          }
+
+          return;
+        }
 
         if (
           event === "TOKEN_REFRESHED" ||
@@ -431,6 +525,11 @@ if (uid) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    tryNavigateToCreateProfile();
+  }, [ready, userId, profile]);
 
   const profileComplete = useMemo(() => {
     if (!profile) return false;
