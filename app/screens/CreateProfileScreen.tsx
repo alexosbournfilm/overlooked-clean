@@ -629,7 +629,17 @@ const animateStageChange = (nextStage: OnboardingStage, cb?: () => void) => {
         style={StyleSheet.absoluteFillObject}
       />
 
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <ScrollView
+  style={{ flex: 1 }}
+  contentContainerStyle={[
+    styles.container,
+    Platform.OS === 'web' && styles.containerWeb,
+  ]}
+  keyboardShouldPersistTaps="handled"
+  showsVerticalScrollIndicator={false}
+  bounces={false}
+  overScrollMode="always"
+>
         <Animated.View
           style={[
             styles.animatedWrap,
@@ -1055,12 +1065,17 @@ const animateStageChange = (nextStage: OnboardingStage, cb?: () => void) => {
 
 const styles = StyleSheet.create({
   container: {
-    flexGrow: 1,
-    padding: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: DARK_BG,
-  },
+  flexGrow: 1,
+  padding: 18,
+  alignItems: 'center',
+  backgroundColor: DARK_BG,
+},
+
+containerWeb: {
+  justifyContent: 'flex-start',
+  paddingTop: 32,
+  paddingBottom: 40,
+},
 
   animatedWrap: {
     width: '100%',
