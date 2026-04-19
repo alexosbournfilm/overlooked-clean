@@ -340,25 +340,39 @@ export default function SignInScreen() {
     );
 
     if (!profileComplete) {
-      if (allowCreateProfile) {
-        allowCreateProfileOnceRef.current = false;
+  if (allowCreateProfile) {
+    allowCreateProfileOnceRef.current = false;
 
-        try {
-          navigation.navigate('CreateProfile');
-        } catch (e) {
-          console.log('CreateProfile navigation error:', e);
-          showError('Navigation Error', 'Could not open profile setup.');
-        }
-        return;
-      }
+    try {
+      navigation.navigate('CreateProfile');
+    } catch (e) {
+      console.log('CreateProfile navigation error:', e);
+      showError('Navigation Error', 'Could not open profile setup.');
+    }
+    return;
+  }
 
-      showError(
-        'Profile unavailable',
-        'Your account is signed in, but profile setup is only opened immediately after a fresh email confirmation. Please contact support if this account should already have a profile.'
-      );
+  try {
+    const parentNav = navigation.getParent?.();
+
+    if (parentNav) {
+      parentNav.reset({
+        index: 0,
+        routes: [{ name: 'MainTabs' }],
+      });
       return;
     }
 
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'MainTabs' }],
+    });
+  } catch (e) {
+    console.log('MainTabs navigation error:', e);
+    showError('Navigation Error', 'Signed in, but could not open the app.');
+  }
+  return;
+}
     try {
       const parentNav = navigation.getParent?.();
 
