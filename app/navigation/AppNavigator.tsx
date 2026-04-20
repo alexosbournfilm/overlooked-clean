@@ -45,7 +45,8 @@ export default function AppNavigator({
 }: {
   initialAuthRouteName: "SignIn" | "CreateProfile";
 }) {
-  const { ready, userId, profileComplete } = useAuth();
+  const { ready, userId, profileComplete, shouldRouteToCreateProfile } =
+    useAuth();
 
   const [initialState, setInitialState] = useState<InitialState | undefined>();
   const [navReady, setNavReady] = useState(false);
@@ -65,7 +66,7 @@ export default function AppNavigator({
     const restoreNav = async () => {
       if (!ready) return;
 
-      if (!userId || !profileComplete) {
+      if (!userId || !profileComplete || shouldRouteToCreateProfile) {
         setInitialState(undefined);
         if (mounted) {
           setNavReady(true);
@@ -97,7 +98,7 @@ export default function AppNavigator({
     return () => {
       mounted = false;
     };
-  }, [ready, userId, profileComplete]);
+  }, [ready, userId, profileComplete, shouldRouteToCreateProfile]);
 
   // --------------------------------------------------------------
   // Persist navigation state per signed-in user
@@ -126,10 +127,10 @@ export default function AppNavigator({
       return;
     }
 
-    if (!profileComplete) {
+    if (!profileComplete || shouldRouteToCreateProfile) {
       setInitialState(undefined);
     }
-  }, [ready, userId, profileComplete]);
+  }, [ready, userId, profileComplete, shouldRouteToCreateProfile]);
 
   // --------------------------------------------------------------
   // Actively redirect after mount when auth changes
@@ -139,7 +140,7 @@ export default function AppNavigator({
     if (!navigationRef.isReady()) return;
     if (!hasBootstrappedNavRef.current) return;
 
-    const authSnapshot = `${userId ?? "guest"}:${profileComplete ? "complete" : "incomplete"}:${G.__OVERLOOKED_EMAIL_CONFIRM__ ? "emailconfirm" : "normal"}`;
+    const authSnapshot = `${userId ?? "guest"}:${profileComplete ? "complete" : "incomplete"}:${shouldRouteToCreateProfile ? "createprofile" : "normal"}:${G.__OVERLOOKED_EMAIL_CONFIRM__ ? "emailconfirm" : "noemailconfirm"}`;
     const prevSnapshot = lastAuthSnapshotRef.current;
     lastAuthSnapshotRef.current = authSnapshot;
 
@@ -189,8 +190,13 @@ export default function AppNavigator({
       return;
     }
 
-    if (!profileComplete) {
+    if (shouldRouteToCreateProfile) {
       resetToCreateProfile();
+      return;
+    }
+
+    if (!profileComplete) {
+      resetToAuth();
       return;
     }
 
@@ -199,7 +205,14 @@ export default function AppNavigator({
     }
 
     resetToMainTabs();
-  }, [ready, navReady, userId, profileComplete, initialAuthRouteName]);
+  }, [
+    ready,
+    navReady,
+    userId,
+    profileComplete,
+    shouldRouteToCreateProfile,
+    initialAuthRouteName,
+  ]);
 
   // --------------------------------------------------------------
   // Paid / membership check (non-blocking)
@@ -299,8 +312,10 @@ export default function AppNavigator({
 
   const rootInitialRouteName = !userId
     ? "Auth"
-    : !profileComplete
+    : shouldRouteToCreateProfile
     ? "CreateProfile"
+    : !profileComplete
+    ? "Auth"
     : mustShowPaywall
     ? "Paywall"
     : "MainTabs";

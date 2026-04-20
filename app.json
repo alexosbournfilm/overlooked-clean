@@ -4,17 +4,18 @@
     "slug": "overlooked",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./app/assets/icon.png",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "overlooked",
 
     "splash": {
-      "image": "./app/assets/splash-icon.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
 
     "ios": {
+      "icon": "./assets/icon.png",
       "supportsTablet": true,
       "bundleIdentifier": "com.overlooked.app",
       "infoPlist": {
@@ -36,7 +37,7 @@
       "versionCode": 2,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "foregroundImage": "./app/assets/adaptive-icon.png",
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
       "intentFilters": [

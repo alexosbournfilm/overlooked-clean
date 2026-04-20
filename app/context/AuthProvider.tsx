@@ -24,6 +24,7 @@ type AuthContextType = {
   userId: string | null;
   profile: MinimalProfile | null;
   profileComplete: boolean;
+  shouldRouteToCreateProfile: boolean;
   refreshProfile: () => Promise<void>;
 };
 
@@ -32,6 +33,7 @@ const AuthContext = createContext<AuthContextType>({
   userId: null,
   profile: null,
   profileComplete: false,
+  shouldRouteToCreateProfile: false,
   refreshProfile: async () => {},
 });
 
@@ -537,15 +539,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return Boolean(profile.full_name && profile.main_role_id && profile.city_id);
   }, [profile]);
 
+  const shouldRouteToCreateProfile = useMemo(() => {
+    return Boolean(
+      userId && !profileComplete && G.__OVERLOOKED_EMAIL_CONFIRM__
+    );
+  }, [userId, profileComplete]);
+
   const value = useMemo(
     () => ({
       ready,
       userId,
       profile,
       profileComplete,
+      shouldRouteToCreateProfile,
       refreshProfile,
     }),
-    [ready, userId, profile, profileComplete]
+    [ready, userId, profile, profileComplete, shouldRouteToCreateProfile]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
