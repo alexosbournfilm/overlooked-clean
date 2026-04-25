@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "48219489836",
+    "project_id": "overlooked-82349",
+    "storage_bucket": "overlooked-82349.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:48219489836:android:731a609ea5c9b0b153b389",
+        "android_client_info": {
+          "package_name": "com.overlooked.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCWaVlABB_Y6GXvcAlG9KtZOZjcGbdRePk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

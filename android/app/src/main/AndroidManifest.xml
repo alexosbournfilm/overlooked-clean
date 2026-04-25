@@ -31,6 +31,7 @@
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="overlooked"/>
+        <data android:scheme="exp+overlooked"/>
       </intent-filter>
       <intent-filter data-generated="true">
         <action android:name="android.intent.action.VIEW"/>
@@ -38,6 +39,7 @@
         <data android:scheme="overlooked" android:host="reset-password"/>
         <data android:scheme="https" android:host="overlooked.cloud" android:pathPrefix="/"/>
         <data android:scheme="https" android:host="www.overlooked.cloud" android:pathPrefix="/"/>
+        <data android:scheme="exp+overlooked"/>
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
       </intent-filter>

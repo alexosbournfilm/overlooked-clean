@@ -36,6 +36,10 @@ const STRIPE_PRICE_MONTHLY = 'price_1S1jLxIaba42c4jIsVBQneb0';
 const REVENUECAT_ANDROID_PUBLIC_SDK_KEY = 'goog_yNsgMdHFvNRzhpfDwICFHbSXuvC';
 const REVENUECAT_IOS_PUBLIC_SDK_KEY = 'appl_dOTwRcKraCRSTIBoaxPUVEEJcWh';
 
+/* -------------------------- Legal URLs -------------------------- */
+const PRIVACY_POLICY_URL = 'https://overlooked.cloud/privacy';
+const TERMS_OF_USE_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+
 type PlanKey = 'monthly';
 
 type CheckoutSessionResponse = {
@@ -207,6 +211,38 @@ export default function PaywallScreen() {
       pollTimerRef.current = null;
     }
   };
+
+  const openLegalUrl = useCallback(async (url: string) => {
+    try {
+      const supported = await RNLinking.canOpenURL(url);
+      if (supported) {
+        await RNLinking.openURL(url);
+      }
+    } catch (e) {
+      console.log('openLegalUrl error', e);
+    }
+  }, []);
+
+  const getSafeMessage = useCallback((rawMessage: string) => {
+    if (__DEV__) return rawMessage;
+
+    const lower = rawMessage.toLowerCase();
+
+    const isDeveloperOrStoreConfigError =
+      lower.includes('revenuecat') ||
+      lower.includes('offering') ||
+      lower.includes('api key') ||
+      lower.includes('storekit') ||
+      lower.includes('native store') ||
+      lower.includes('configured') ||
+      lower.includes('sandbox');
+
+    if (isDeveloperOrStoreConfigError) {
+      return 'Subscription is temporarily unavailable. Please try again later.';
+    }
+
+    return rawMessage;
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -828,7 +864,10 @@ export default function PaywallScreen() {
                   isTiny ? styles.planTileTinyStack : null,
                 ]}
               >
-                <Text style={[styles.planKicker, styles.planKickerHero]}>MONTHLY</Text>
+                <Text style={[styles.planKicker, styles.planKickerHero]}>
+                  MONTHLY
+                </Text>
+
                 <View style={styles.planPriceRow}>
                   <Text style={styles.planCurrency}>£</Text>
                   <Text style={styles.planPriceHero}>
@@ -837,6 +876,7 @@ export default function PaywallScreen() {
                       : '4.99'}
                   </Text>
                 </View>
+
                 <Text style={styles.planSubHero}>
                   {Platform.OS === 'android'
                     ? 'Google Play subscription'
@@ -870,16 +910,34 @@ export default function PaywallScreen() {
             )}
           </TouchableOpacity>
 
-          <Text style={styles.selectedText}>
-            {selectedSubLabel}
-            {(Platform.OS === 'android' || Platform.OS === 'ios')
-              ? rcReady
-                ? monthlyPackage
-                  ? ' • RevenueCat offering loaded'
-                  : ' • Waiting for RevenueCat offering'
-                : ' • Connecting to RevenueCat'
-              : ''}
-          </Text>
+          <Text style={styles.selectedText}>{selectedSubLabel}</Text>
+
+          <View style={styles.subscriptionInfoBox}>
+            <Text style={styles.subscriptionInfoTitle}>Overlooked Pro Monthly</Text>
+
+            <Text style={styles.subscriptionInfoText}>
+              Auto-renewable monthly subscription. Price: {rcPriceLabel ?? '£4.99'} per month.
+            </Text>
+
+            <Text style={styles.subscriptionInfoText}>
+              Payment will be charged to your Apple ID account at confirmation of purchase.
+              The subscription automatically renews unless cancelled at least 24 hours before
+              the end of the current period. You can manage or cancel your subscription in
+              your App Store account settings.
+            </Text>
+
+            <View style={styles.legalLinksRow}>
+              <TouchableOpacity onPress={() => openLegalUrl(TERMS_OF_USE_URL)}>
+                <Text style={styles.legalLinkText}>Terms of Use</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.legalDivider}>•</Text>
+
+              <TouchableOpacity onPress={() => openLegalUrl(PRIVACY_POLICY_URL)}>
+                <Text style={styles.legalLinkText}>Privacy Policy</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
           <View style={styles.divider} />
 
@@ -892,7 +950,9 @@ export default function PaywallScreen() {
             <Text style={styles.benefitItem}>✓ Use all Workshop tools and resources to help you develop, plan, and make films</Text>
           </View>
 
-          {!!message && <Text style={styles.errorText}>{message}</Text>}
+          {!!message && (
+            <Text style={styles.errorText}>{getSafeMessage(message)}</Text>
+          )}
 
           <TouchableOpacity
             style={styles.backLink}
@@ -1108,6 +1168,56 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 12,
     color: 'rgba(237,235,230,0.60)',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  subscriptionInfoBox: {
+    marginTop: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.035)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+
+  subscriptionInfoTitle: {
+    color: TEXT_IVORY,
+    fontSize: 13,
+    fontWeight: '900',
+    marginBottom: 6,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  subscriptionInfoText: {
+    color: 'rgba(237,235,230,0.58)',
+    fontSize: 11.5,
+    lineHeight: 16,
+    marginBottom: 6,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  legalLinksRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+
+  legalLinkText: {
+    color: GOLD,
+    fontSize: 12,
+    fontWeight: '800',
+    textDecorationLine: 'underline',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  legalDivider: {
+    color: 'rgba(237,235,230,0.38)',
+    fontSize: 12,
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
   },
 
