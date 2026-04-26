@@ -302,15 +302,17 @@ export default function AppNavigator({
 
   const mustShowPaywall = false;
 
-  const rootInitialRouteName = !userId
-    ? "Auth"
-    : shouldRouteToCreateProfile
-    ? "CreateProfile"
-    : !profileComplete
-    ? "Auth"
-    : mustShowPaywall
-    ? "Paywall"
-    : "MainTabs";
+  const rootInitialRouteName = (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__
+  ? "NewPassword"
+  : !userId
+  ? "Auth"
+  : shouldRouteToCreateProfile
+  ? "CreateProfile"
+  : !profileComplete
+  ? "Auth"
+  : mustShowPaywall
+  ? "Paywall"
+  : "MainTabs";
 
   return (
     <NavigationContainer
@@ -318,9 +320,16 @@ export default function AppNavigator({
       linking={linking}
       initialState={initialState}
       onReady={() => {
-        setNavigatorReady(true);
-        setNavReady(true);
-      }}
+  setNavigatorReady(true);
+  setNavReady(true);
+
+  setTimeout(() => {
+    if ((globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__) {
+      (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+      navigationRef.navigate("NewPassword" as never);
+    }
+  }, 500);
+}}
       onStateChange={handleStateChange}
       theme={NAV_THEME}
     >

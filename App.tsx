@@ -181,9 +181,11 @@ export default function App() {
     if (isResetPasswordLink || type === "recovery") {
       console.log("🔐 Reset password link detected → navigating to NewPassword");
 
-      setTimeout(() => {
-        navigate("NewPassword");
-      }, 300);
+      (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
+
+setTimeout(() => {
+  navigate("NewPassword");
+}, 800);
 
       return;
     }
