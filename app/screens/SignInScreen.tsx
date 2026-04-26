@@ -626,7 +626,7 @@ export default function SignInScreen() {
         setShowSignIn(false);
       }
 
-      await finishPostAuthRedirect({ allowCreateProfile });
+    
     } catch (err: any) {
       console.log('SignIn exception:', err);
       showError('Login Error', 'Something went wrong. Please try again.');

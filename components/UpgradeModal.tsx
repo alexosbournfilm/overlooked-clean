@@ -89,18 +89,22 @@ type ResumeSubscriptionResponse = {
 
 /* -------------------------- shared palette/fonts -------------------------- */
 
-const DARK_ELEVATED = '#171717';
-const SURFACE = '#121212';
-const SURFACE_2 = '#0F0F0F';
+const DARK_ELEVATED = '#101010';
+const SURFACE = '#161616';
+const SURFACE_2 = '#111111';
 
-const TEXT_IVORY = '#EDEBE6';
-const TEXT_MUTED = 'rgba(237,235,230,0.60)';
-const TEXT_MUTED_2 = 'rgba(237,235,230,0.42)';
+const TEXT_IVORY = '#F1EFE8';
+const TEXT_MUTED = 'rgba(241,239,232,0.62)';
+const TEXT_MUTED_2 = 'rgba(241,239,232,0.42)';
 
-const HAIRLINE = 'rgba(255,255,255,0.09)';
-const HAIRLINE_2 = 'rgba(255,255,255,0.06)';
+const HAIRLINE = 'rgba(255,255,255,0.10)';
+const HAIRLINE_2 = 'rgba(255,255,255,0.07)';
 
 const GOLD = '#C6A664';
+const GOLD_SOFT = 'rgba(198,166,100,0.16)';
+const GREEN = '#2ED47A';
+const GREEN_DARK = '#102C1B';
+
 const WARNING_BG = 'rgba(198,166,100,0.12)';
 const WARNING_BORDER = 'rgba(198,166,100,0.22)';
 const SUCCESS_BG = 'rgba(46,212,122,0.12)';
@@ -323,9 +327,9 @@ export const UpgradeModal: React.FC<Props> = ({
     };
   }, [visible]);
 
-  const title = 'Unlock your full filmmaking access';
+  const title = 'Unlock full filmmaking access';
   const subtitle =
-    'Upload your films, apply for paid jobs, and unlock the full Filmmaking Bootcamp — a premium space to train across every major film discipline through high-level lessons, practical exercises, and powerful Workshop tools built to help you actually make films.';
+    'Submit films, apply for paid jobs, unlock the Bootcamp, and use Workshop tools to plan, train, and make better films.';
 
   const isActuallyPro =
     Boolean(billingState?.hasProAccess) ||
@@ -341,14 +345,15 @@ export const UpgradeModal: React.FC<Props> = ({
   const inCancelGracePeriod = Boolean(billingState?.inCancelGracePeriod);
 
   const canCancelRenewal =
-  !isGrandfathered &&
-  (
-    isActiveSubscriber ||
-    inCancelGracePeriod ||
-    Boolean(billingState?.hasPaymentProviderSubscriptionRecord) ||
-    Boolean(billingState?.stripe_subscription_id) ||
-    Boolean(billingState?.stripe_customer_id)
-  );
+    !isGrandfathered &&
+    (
+      isActiveSubscriber ||
+      inCancelGracePeriod ||
+      Boolean(billingState?.hasPaymentProviderSubscriptionRecord) ||
+      Boolean(billingState?.stripe_subscription_id) ||
+      Boolean(billingState?.stripe_customer_id)
+    );
+
   const canKeepPro = !isGrandfathered && isActuallyPro && cancelAtPeriodEnd;
 
   const downgradeLossBullets = useMemo(() => {
@@ -437,18 +442,18 @@ export const UpgradeModal: React.FC<Props> = ({
       }
 
       const hasCancelableSubscription =
-  latestBilling.isActiveSubscriber ||
-  latestBilling.inCancelGracePeriod ||
-  Boolean((latestBilling as any).hasPaymentProviderSubscriptionRecord) ||
-  Boolean(latestBilling.stripe_subscription_id) ||
-  Boolean(latestBilling.stripe_customer_id);
+        latestBilling.isActiveSubscriber ||
+        latestBilling.inCancelGracePeriod ||
+        Boolean((latestBilling as any).hasPaymentProviderSubscriptionRecord) ||
+        Boolean(latestBilling.stripe_subscription_id) ||
+        Boolean(latestBilling.stripe_customer_id);
 
-if (!hasCancelableSubscription) {
-  setDowngradeConfirmError(
-    'No active monthly renewal was found for this account.'
-  );
-  return;
-}
+      if (!hasCancelableSubscription) {
+        setDowngradeConfirmError(
+          'No active monthly renewal was found for this account.'
+        );
+        return;
+      }
 
       const { data: fnData, error: fnError } = await supabase.functions.invoke(
         'cancel-subscription',
@@ -592,13 +597,13 @@ if (!hasCancelableSubscription) {
       ? 'Opening checkout…'
       : 'See Pro plans';
 
-  const horizontalPad = isMobile ? 14 : 20;
-  const verticalPadTop = Math.max(insets.top + 12, 20);
-  const verticalPadBottom = Math.max(insets.bottom + 12, 20);
+  const horizontalPad = isMobile ? 10 : 20;
+  const verticalPadTop = Math.max(insets.top + 8, 14);
+  const verticalPadBottom = Math.max(insets.bottom + 8, 14);
 
   const cardMaxHeight = Math.min(
     height - verticalPadTop - verticalPadBottom,
-    isMobile ? 680 : 760
+    isMobile ? 640 : 700
   );
 
   const confirmIntroText = isGrandfathered
@@ -658,22 +663,54 @@ if (!hasCancelableSubscription) {
               showsVerticalScrollIndicator={false}
               bounces={false}
             >
-              <View style={styles.header}>
-                <View style={{ flex: 1 }}>
+              <View style={styles.topBar}>
+                <View style={styles.logoCluster}>
+                  <Text style={styles.brandText}>OVERLOOKED</Text>
                   <Text style={styles.kicker}>UPGRADE</Text>
-                  <Text style={styles.title}>{title}</Text>
-                  <Text style={styles.subtitle}>{subtitle}</Text>
                 </View>
+
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={onClose}
+                  style={styles.closeButton}
+                  disabled={upgrading || downgrading || restoringPro}
+                >
+                  <Text style={styles.closeText}>×</Text>
+                </TouchableOpacity>
               </View>
 
-              {currentTier ? (
-                <Text style={styles.currentTierText}>
-                  Current plan: <Text style={styles.currentTierName}>{currentTierLabel}</Text>
-                  {isActuallyPro && cancelAtPeriodEnd && endDateLabel ? (
-                    <Text style={{ color: TEXT_MUTED }}>{`  •  Cancels ${endDateLabel}`}</Text>
-                  ) : null}
+              <View style={styles.heroBlock}>
+                <Text style={styles.title}>{title}</Text>
+                <Text
+                  style={styles.subtitle}
+                  numberOfLines={isMobile ? 3 : 2}
+                >
+                  {subtitle}
                 </Text>
-              ) : null}
+
+                <View style={styles.metaRow}>
+                  {currentTier ? (
+                    <View style={styles.metaPill}>
+                      <Text style={styles.metaLabel}>Current</Text>
+                      <Text style={styles.metaValue}>{currentTierLabel}</Text>
+                    </View>
+                  ) : null}
+
+                  {!offerCountdown.expired ? (
+                    <View style={[styles.metaPill, styles.offerPill]}>
+                      <Text style={styles.metaLabel}>Offer</Text>
+                      <Text style={styles.metaValue}>{offerCountdown.short}</Text>
+                    </View>
+                  ) : null}
+
+                  {isActuallyPro && cancelAtPeriodEnd && endDateLabel ? (
+                    <View style={styles.metaPill}>
+                      <Text style={styles.metaLabel}>Cancels</Text>
+                      <Text style={styles.metaValue}>{endDateLabel}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
 
               {isActuallyPro && cancelAtPeriodEnd ? (
                 <View style={styles.countdownBanner}>
@@ -686,13 +723,9 @@ if (!hasCancelableSubscription) {
 
                   <Text style={styles.countdownTitle}>
                     {endDateLabel
-                      ? `Your Pro plan ends on ${endDateLabel}`
-                      : 'Your Pro plan will return to Free at the end of your billing period'}
+                      ? `Pro ends on ${endDateLabel}`
+                      : 'Pro returns to Free at the end of your billing period'}
                   </Text>
-
-                  {cancelCountdown.long ? (
-                    <Text style={styles.countdownText}>{cancelCountdown.long}</Text>
-                  ) : null}
 
                   <View style={[styles.inlineActionRow, isMobile && styles.inlineActionRowMobile]}>
                     <TouchableOpacity
@@ -732,7 +765,7 @@ if (!hasCancelableSubscription) {
 
               {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
-              <View style={[styles.tiersRow, isMobile && styles.tiersRowMobile]}>
+              <View style={styles.tiersStack}>
                 <TouchableOpacity
                   activeOpacity={0.9}
                   onPress={() => {
@@ -748,38 +781,21 @@ if (!hasCancelableSubscription) {
                     setSelectedTier('free');
                   }}
                   style={[
-                    styles.tierCard,
-                    styles.freeCard,
-                    isMobile && styles.tierCardMobile,
+                    styles.compactTier,
+                    styles.freeCompact,
                     selectedTier === 'free' && styles.tierCardSelected,
                     !isActuallyPro && styles.tierCardCurrentFree,
                   ]}
                 >
-                  <Text style={styles.freeSmallLabel}>Free</Text>
-
-                  <Text style={styles.tierNameFree}>Free</Text>
-                  <Text style={styles.tierTaglineMuted}>Browse, connect, collaborate</Text>
-
-                  <View style={styles.priceRow}>
-                    <Text style={styles.priceMain}>FREE</Text>
-                    <Text style={styles.priceSub}>forever</Text>
+                  <View style={styles.compactTierLeft}>
+                    <Text style={styles.tierSmallLabel}>FREE</Text>
+                    <Text style={styles.compactTierName}>Free</Text>
+                    <Text style={styles.compactTierSub}>Browse, connect, collaborate</Text>
                   </View>
 
-                  <View style={styles.dividerSoft} />
-
-                  <View style={styles.featureList}>
-                    <Text style={styles.featureItemMuted}>
-                      ✓ Discover and connect with filmmakers worldwide
-                    </Text>
-                    <Text style={styles.featureItemMuted}>
-                      ✓ Browse profiles and message other creatives
-                    </Text>
-                    <Text style={styles.featureItemMuted}>
-                      ✓ Join city-based group chats and find local crews
-                    </Text>
-                    <Text style={styles.featureItemMuted}>
-                      ✓ Apply for free jobs and post your own gigs
-                    </Text>
+                  <View style={styles.compactTierRight}>
+                    <Text style={styles.compactPrice}>FREE</Text>
+                    <Text style={styles.compactPriceSub}>forever</Text>
                   </View>
                 </TouchableOpacity>
 
@@ -791,54 +807,35 @@ if (!hasCancelableSubscription) {
                     setSelectedTier('pro');
                   }}
                   style={[
-                    styles.tierCard,
-                    styles.proCard,
-                    isMobile && styles.tierCardMobile,
+                    styles.proTier,
                     selectedTier === 'pro' && styles.tierCardSelectedPro,
                     isActuallyPro && styles.tierCardCurrentPro,
                   ]}
                 >
-                  <Text style={styles.tierName}>Pro</Text>
-                  <Text style={styles.tierTagline}>
-                    Create, train, and make films with full access
-                  </Text>
+                  <View style={styles.proHeader}>
+                    <View style={styles.compactTierLeft}>
+                      <Text style={styles.tierSmallLabelGold}>PRO</Text>
+                      <Text style={styles.proTitle}>Create, train, and make films</Text>
+                      <Text style={styles.compactTierSub}>Full filmmaking access</Text>
+                    </View>
 
-                  <View style={styles.plansArea}>
-                    <View style={[styles.planRow, isMobile && styles.planRowMobile]}>
-                      <View
-                        style={[
-                          styles.planTile,
-                          styles.planTileHero,
-                          isTiny && styles.planTileTiny,
-                        ]}
-                      >
-                        <Text style={[styles.planKicker, styles.planKickerHero]}>MONTHLY</Text>
-
-                        <View style={styles.planPriceRow}>
-                          <Text style={styles.planCurrency}>£</Text>
-                          <Text style={styles.planPriceHero}>4.99</Text>
-                        </View>
-
-                        <Text style={styles.planSubHero}>Cancel anytime</Text>
+                    <View style={styles.priceBadge}>
+                      <Text style={styles.planKickerHero}>MONTHLY</Text>
+                      <View style={styles.planPriceRow}>
+                        <Text style={styles.planCurrency}>£</Text>
+                        <Text style={styles.planPriceHero}>4.99</Text>
                       </View>
+                      <Text style={styles.planSubHero}>Cancel anytime</Text>
                     </View>
                   </View>
 
-                  <View style={styles.dividerUltraSoft} />
-
-                  <View style={styles.featureList}>
-                    <Text style={styles.featureItem}>✓ Upload films to the Monthly Film Challenge</Text>
-                    <Text style={styles.featureItem}>✓ Apply for paid jobs across Overlooked</Text>
-                    <Text style={styles.featureItem}>✓ Unlock the full Filmmaking Bootcamp</Text>
-                    <Text style={styles.featureItem}>
-                      ✓ Learn every major film discipline through focused lessons and exercises
-                    </Text>
-                    <Text style={styles.featureItem}>
-                      ✓ Train with practical exercises inspired by academic film and acting courses
-                    </Text>
-                    <Text style={styles.featureItem}>
-                      ✓ Use all Workshop tools and resources to help you develop, plan, and make films
-                    </Text>
+                  <View style={styles.featureGrid}>
+                    <Text style={styles.featureItem}>✓ Monthly Film Challenge uploads</Text>
+                    <Text style={styles.featureItem}>✓ Paid job applications</Text>
+                    <Text style={styles.featureItem}>✓ Full Filmmaking Bootcamp</Text>
+                    <Text style={styles.featureItem}>✓ Workshop tools and film resources</Text>
+                    <Text style={styles.featureItem}>✓ Focused lessons and exercises</Text>
+                    <Text style={styles.featureItem}>✓ Plan, develop, and make films</Text>
                   </View>
                 </TouchableOpacity>
               </View>
@@ -1054,7 +1051,7 @@ if (!hasCancelableSubscription) {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.88)',
+    backgroundColor: 'rgba(0,0,0,0.90)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1066,26 +1063,75 @@ const styles = StyleSheet.create({
 
   card: {
     width: '100%',
-    maxWidth: 920,
+    maxWidth: 400,
     alignSelf: 'center',
-    borderRadius: 22,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    borderRadius: 28,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     backgroundColor: DARK_ELEVATED,
     borderWidth: 1,
     borderColor: HAIRLINE,
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.45,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 16,
   },
 
   cardMobile: {
-    borderRadius: 20,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
+    maxWidth: 342,
+    borderRadius: 26,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
   },
 
   cardScrollContent: {
-    paddingBottom: 8,
+    paddingBottom: 4,
     flexGrow: 1,
+  },
+
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    minHeight: 30,
+  },
+
+  logoCluster: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingLeft: 30,
+  },
+
+  brandText: {
+    color: 'rgba(241,239,232,0.38)',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 2.4,
+    fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
+  },
+
+  closeButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: HAIRLINE_2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  closeText: {
+    color: TEXT_MUTED,
+    fontSize: 20,
+    lineHeight: 22,
+    fontWeight: '700',
+    fontFamily: SYSTEM_SANS,
   },
 
   header: {
@@ -1095,29 +1141,79 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
+  heroBlock: {
+    marginBottom: 9,
+    alignItems: 'center',
+  },
+
   kicker: {
-    fontSize: 11,
+    marginTop: 2,
+    fontSize: 8,
     fontWeight: '900',
-    letterSpacing: 1.6,
+    letterSpacing: 1.5,
     color: GOLD,
     textTransform: 'uppercase',
-    marginBottom: 4,
     fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
   },
 
   title: {
-    fontSize: 20,
+    fontSize: 21,
+    lineHeight: 23,
     fontWeight: '900',
     color: TEXT_IVORY,
     marginBottom: 6,
+    letterSpacing: -0.45,
     fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
   },
 
   subtitle: {
-    fontSize: 13,
+    fontSize: 11.5,
     color: TEXT_MUTED,
-    lineHeight: 18,
-    maxWidth: 560,
+    lineHeight: 15,
+    fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
+    maxWidth: 310,
+  },
+
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 9,
+  },
+
+  metaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderWidth: 1,
+    borderColor: HAIRLINE_2,
+  },
+
+  offerPill: {
+    backgroundColor: GOLD_SOFT,
+    borderColor: 'rgba(198,166,100,0.22)',
+  },
+
+  metaLabel: {
+    color: TEXT_MUTED_2,
+    fontSize: 9,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  metaValue: {
+    color: TEXT_IVORY,
+    fontSize: 11,
+    fontWeight: '900',
     fontFamily: SYSTEM_SANS,
   },
 
@@ -1134,10 +1230,10 @@ const styles = StyleSheet.create({
   },
 
   countdownBanner: {
-    marginBottom: 14,
+    marginBottom: 10,
     borderRadius: 18,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
     backgroundColor: WARNING_BG,
     borderWidth: 1,
     borderColor: WARNING_BORDER,
@@ -1147,59 +1243,59 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 8,
+    gap: 8,
+    marginBottom: 5,
     flexWrap: 'wrap',
   },
 
   countdownPill: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '900',
-    letterSpacing: 1,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
     color: GOLD,
     fontFamily: SYSTEM_SANS,
   },
 
   countdownDays: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '900',
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
   },
 
   countdownTitle: {
-    fontSize: 15,
+    fontSize: 12.5,
     fontWeight: '900',
     color: TEXT_IVORY,
-    marginBottom: 4,
+    marginBottom: 2,
     fontFamily: SYSTEM_SANS,
   },
 
   countdownText: {
-    fontSize: 12.5,
-    lineHeight: 18,
+    fontSize: 11,
+    lineHeight: 15,
     color: TEXT_MUTED,
     fontFamily: SYSTEM_SANS,
   },
 
   inlineActionRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 12,
+    gap: 8,
+    marginTop: 9,
   },
 
   inlineActionRowMobile: {
-    flexDirection: 'column',
+    flexDirection: 'row',
   },
 
   inlineActionBtn: {
     flex: 1,
-    minHeight: 44,
-    borderRadius: 14,
+    minHeight: 38,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
   },
 
   inlineActionPrimary: {
@@ -1215,22 +1311,22 @@ const styles = StyleSheet.create({
   inlineActionPrimaryText: {
     color: '#0B0B0B',
     fontWeight: '900',
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: SYSTEM_SANS,
   },
 
   inlineActionSecondaryText: {
     color: TEXT_IVORY,
     fontWeight: '900',
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: SYSTEM_SANS,
   },
 
   successBanner: {
-    marginBottom: 12,
+    marginBottom: 8,
     borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     backgroundColor: SUCCESS_BG,
     borderWidth: 1,
     borderColor: SUCCESS_BORDER,
@@ -1238,163 +1334,141 @@ const styles = StyleSheet.create({
 
   successBannerText: {
     color: TEXT_IVORY,
-    fontSize: 12.5,
-    lineHeight: 18,
+    fontSize: 11.5,
+    lineHeight: 15,
     fontFamily: SYSTEM_SANS,
   },
 
   errorText: {
-    fontSize: 12,
+    fontSize: 11.5,
     color: '#FFB3B3',
-    marginTop: 8,
+    marginTop: 6,
+    marginBottom: 6,
     fontFamily: SYSTEM_SANS,
   },
 
-  tiersRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'stretch',
-    marginBottom: 14,
-    gap: 12,
-    flexWrap: 'wrap',
+  tiersStack: {
+    gap: 9,
+    marginBottom: 10,
   },
 
-  tiersRowMobile: {
-    flexDirection: 'column',
-    flexWrap: 'nowrap',
-  },
-
-  tierCard: {
-    flex: 1,
-    minWidth: 280,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+  compactTier: {
+    borderRadius: 18,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
     backgroundColor: SURFACE,
     borderWidth: 1,
     borderColor: HAIRLINE_2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
 
-  tierCardMobile: {
-    minWidth: 0,
-    width: '100%',
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: 18,
+  freeCompact: {
+    backgroundColor: 'rgba(255,255,255,0.035)',
   },
 
-  freeCard: {
-    borderWidth: 0,
-    backgroundColor: 'rgba(255,255,255,0.02)',
+  compactTierLeft: {
+    flex: 1,
+    paddingRight: 10,
   },
 
-  proCard: {
-    backgroundColor: SURFACE_2,
-    borderColor: 'rgba(198,166,100,0.20)',
+  compactTierRight: {
+    alignItems: 'flex-end',
   },
 
-  tierCardSelected: {
-    borderColor: 'rgba(255,255,255,0.14)',
-  },
-
-  tierCardSelectedPro: {
-    borderColor: 'rgba(198,166,100,0.36)',
-  },
-
-  tierCardCurrentFree: {
-    borderWidth: 0,
-  },
-
-  tierCardCurrentPro: {
-    borderColor: 'rgba(198,166,100,0.42)',
-    shadowColor: '#000',
-    shadowOpacity: 0.24,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
-
-  freeSmallLabel: {
-    fontSize: 10,
+  tierSmallLabel: {
+    fontSize: 9,
     fontWeight: '900',
     letterSpacing: 1,
     textTransform: 'uppercase',
     color: 'rgba(198,166,100,0.62)',
-    marginBottom: 8,
-    fontFamily: SYSTEM_SANS,
-  },
-
-  tierName: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: TEXT_IVORY,
     marginBottom: 3,
     fontFamily: SYSTEM_SANS,
   },
 
-  tierNameFree: {
-    fontSize: 16,
+  tierSmallLabelGold: {
+    fontSize: 9,
     fontWeight: '900',
-    color: TEXT_IVORY,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: GREEN,
     marginBottom: 3,
     fontFamily: SYSTEM_SANS,
   },
 
-  tierTagline: {
-    fontSize: 12,
-    color: TEXT_MUTED,
-    marginBottom: 12,
-    fontFamily: SYSTEM_SANS,
-  },
-
-  tierTaglineMuted: {
-    fontSize: 12,
-    color: 'rgba(237,235,230,0.48)',
-    marginBottom: 12,
-    fontFamily: SYSTEM_SANS,
-  },
-
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginBottom: 10,
-    minHeight: 34,
-  },
-
-  priceMain: {
-    fontSize: 24,
+  compactTierName: {
+    fontSize: 15,
     fontWeight: '900',
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
   },
 
-  priceSub: {
+  compactTierSub: {
+    marginTop: 2,
     fontSize: 11,
     color: TEXT_MUTED,
-    marginLeft: 8,
-    marginBottom: 3,
     fontFamily: SYSTEM_SANS,
   },
 
-  dividerSoft: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    marginVertical: 12,
+  compactPrice: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
   },
 
-  dividerUltraSoft: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.035)',
-    marginVertical: 12,
+  compactPriceSub: {
+    marginTop: 1,
+    fontSize: 10,
+    color: TEXT_MUTED_2,
+    fontFamily: SYSTEM_SANS,
   },
 
-  featureList: {
-    gap: 6,
+  proTier: {
+    borderRadius: 21,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: SURFACE_2,
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.22)',
+  },
+
+  proHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 10,
+  },
+
+  proTitle: {
+    fontSize: 15,
+    lineHeight: 18,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  priceBadge: {
+    minWidth: 104,
+    borderRadius: 16,
+    paddingVertical: 9,
+    paddingHorizontal: 9,
+    backgroundColor: GREEN_DARK,
+    borderWidth: 1,
+    borderColor: OFFER_TILE_BORDER,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  featureGrid: {
+    gap: 4,
   },
 
   featureItem: {
-    fontSize: 11.5,
-    lineHeight: 18,
+    fontSize: 10.4,
+    lineHeight: 13.5,
     color: TEXT_MUTED,
     fontFamily: SYSTEM_SANS,
   },
@@ -1404,6 +1478,28 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: 'rgba(237,235,230,0.45)',
     fontFamily: SYSTEM_SANS,
+  },
+
+  tierCardSelected: {
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+
+  tierCardSelectedPro: {
+    borderColor: 'rgba(46,212,122,0.42)',
+    backgroundColor: '#111512',
+  },
+
+  tierCardCurrentFree: {
+    borderColor: 'rgba(198,166,100,0.16)',
+  },
+
+  tierCardCurrentPro: {
+    borderColor: 'rgba(46,212,122,0.46)',
+    shadowColor: '#000',
+    shadowOpacity: 0.24,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
   },
 
   plansArea: {
@@ -1454,12 +1550,18 @@ const styles = StyleSheet.create({
   },
 
   planKickerHero: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
     color: 'rgba(46,212,122,0.95)',
+    fontFamily: SYSTEM_SANS,
   },
 
   planPriceRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
+    marginTop: 1,
   },
 
   planCurrency: {
@@ -1472,22 +1574,23 @@ const styles = StyleSheet.create({
   },
 
   planPriceHero: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '900',
     color: TEXT_IVORY,
+    letterSpacing: -0.7,
     fontFamily: SYSTEM_SANS,
   },
 
   planSubHero: {
-    marginTop: 6,
-    fontSize: 11,
-    color: 'rgba(237,235,230,0.74)',
+    marginTop: 2,
+    fontSize: 10,
+    color: 'rgba(237,235,230,0.70)',
     fontFamily: SYSTEM_SANS,
   },
 
   buttonBase: {
-    marginTop: 2,
-    paddingVertical: 12,
+    marginTop: 0,
+    paddingVertical: 13,
     borderRadius: 999,
   },
 
@@ -1503,8 +1606,8 @@ const styles = StyleSheet.create({
     color: '#000000',
     textAlign: 'center',
     fontWeight: '900',
-    fontSize: 15,
-    letterSpacing: 0.3,
+    fontSize: 14,
+    letterSpacing: 0.2,
     fontFamily: SYSTEM_SANS,
   },
 
@@ -1513,22 +1616,22 @@ const styles = StyleSheet.create({
   },
 
   laterButton: {
-    marginTop: 10,
-    paddingVertical: 6,
+    marginTop: 8,
+    paddingVertical: 4,
   },
 
   laterText: {
     textAlign: 'center',
     color: TEXT_MUTED,
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: SYSTEM_SANS,
   },
 
   confirmCard: {
     width: '100%',
-    maxWidth: 620,
+    maxWidth: 420,
     alignSelf: 'center',
-    borderRadius: 20,
+    borderRadius: 24,
     paddingVertical: 16,
     paddingHorizontal: 16,
     backgroundColor: DARK_ELEVATED,
@@ -1538,18 +1641,19 @@ const styles = StyleSheet.create({
   },
 
   confirmCardMobile: {
-    borderRadius: 18,
+    maxWidth: 356,
+    borderRadius: 22,
     paddingVertical: 14,
     paddingHorizontal: 14,
   },
 
   confirmScrollContent: {
-    paddingBottom: 8,
+    paddingBottom: 4,
     flexGrow: 1,
   },
 
   confirmTitle: {
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: '900',
     color: TEXT_IVORY,
     marginBottom: 8,
@@ -1557,17 +1661,17 @@ const styles = StyleSheet.create({
   },
 
   confirmSub: {
-    fontSize: 13,
+    fontSize: 12.5,
     color: TEXT_MUTED,
-    lineHeight: 18,
+    lineHeight: 17,
     marginBottom: 12,
     fontFamily: SYSTEM_SANS,
   },
 
   confirmStatusCard: {
     marginBottom: 12,
-    borderRadius: 14,
-    paddingVertical: 12,
+    borderRadius: 16,
+    paddingVertical: 11,
     paddingHorizontal: 12,
     backgroundColor: WARNING_BG,
     borderWidth: 1,
@@ -1575,37 +1679,37 @@ const styles = StyleSheet.create({
   },
 
   confirmStatusLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '900',
     letterSpacing: 1,
     textTransform: 'uppercase',
     color: GOLD,
-    marginBottom: 6,
+    marginBottom: 5,
     fontFamily: SYSTEM_SANS,
   },
 
   confirmStatusBody: {
-    fontSize: 12.5,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 17,
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
   },
 
   confirmList: {
-    gap: 6,
+    gap: 5,
     marginBottom: 10,
   },
 
   confirmItem: {
-    fontSize: 12.5,
+    fontSize: 12,
     color: TEXT_IVORY,
-    lineHeight: 18,
+    lineHeight: 17,
     fontFamily: SYSTEM_SANS,
   },
 
   confirmButtonsRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 9,
     marginTop: 12,
   },
 
@@ -1616,7 +1720,7 @@ const styles = StyleSheet.create({
   confirmBtn: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 14,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1656,7 +1760,7 @@ const styles = StyleSheet.create({
 
   confirmFoot: {
     marginTop: 10,
-    fontSize: 12,
+    fontSize: 11.5,
     color: TEXT_MUTED,
     textAlign: 'center',
     fontFamily: SYSTEM_SANS,

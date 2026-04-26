@@ -1,12 +1,7 @@
 // app/navigation/MainTabs.tsx
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import {
-  TabActions,
-  useNavigation,
-  getFocusedRouteNameFromRoute,
-} from '@react-navigation/native';
-import type { BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
+import { useNavigation } from '@react-navigation/native';
 import {
   StyleSheet,
   View,
@@ -387,6 +382,7 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
   const [activeTab, setActiveTab] = useState<LeaderboardTab>('monthly');
   const [loading, setLoading] = useState(false);
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const requestIdRef = useRef(0); // ✅ FIX: prevent stale responses
   const [error, setError] = useState<string | null>(null);
 
   const [userCityId, setUserCityId] = useState<number | null>(null);
@@ -465,63 +461,78 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
   }, [visible]);
 
   const load = async (tabOverride?: LeaderboardTab) => {
-    if (!visible) return;
+  if (!visible) return;
 
-    const tab = tabOverride || activeTab;
+  const requestId = ++requestIdRef.current;
+  const tab = tabOverride || activeTab;
+
+  safeSet(() => {
+    setLoading(true);
+    setError(null);
+  });
+
+  try {
+    let query: any = null;
+
+    if (tab === 'monthly') {
+      query = supabase
+        .from('leaderboard_monthly_current')
+        .select('*')
+        .order('rank', { ascending: true })
+        .limit(100);
+    } else if (tab === 'allTime') {
+      query = supabase
+        .from('leaderboard_all_time')
+        .select('*')
+        .order('rank', { ascending: true })
+        .limit(100);
+    } else {
+      if (!userCityId) {
+        safeSet(() => {
+          setEntries([]);
+          setError('Set your city in your profile to see your local leaderboard.');
+          setLoading(false);
+        });
+        return;
+      }
+
+      query = supabase
+        .from('leaderboard_city_all_time')
+        .select('*')
+        .eq('city_id', userCityId)
+        .order('rank', { ascending: true })
+        .limit(100);
+    }
+
+    const res = await withTimeout<any>(query as any, 9000);
+
+    if (requestId !== requestIdRef.current) return;
+
+    if (res?.error) throw res.error;
+
     safeSet(() => {
-      setLoading(true);
+      setEntries(((res?.data || []) as any[]) as LeaderboardEntry[]);
       setError(null);
     });
+  } catch (e: any) {
+    if (requestId !== requestIdRef.current) return;
 
-    try {
-      if (tab === 'monthly') {
-        const res = await withTimeout<any>(
-          (supabase.from('leaderboard_monthly_current').select('*').order('rank', { ascending: true }).limit(100) as any) as Promise<any>,
-          9000
-        );
-        if (res?.error) throw res.error;
-        safeSet(() => setEntries(((res?.data || []) as any[]) as LeaderboardEntry[]));
-      } else if (tab === 'allTime') {
-        const res = await withTimeout<any>(
-          (supabase.from('leaderboard_all_time').select('*').order('rank', { ascending: true }).limit(100) as any) as Promise<any>,
-          9000
-        );
-        if (res?.error) throw res.error;
-        safeSet(() => setEntries(((res?.data || []) as any[]) as LeaderboardEntry[]));
-      } else if (tab === 'city') {
-        if (!userCityId) {
-          safeSet(() => {
-            setEntries([]);
-            setError('Set your city in your profile to see your local leaderboard.');
-          });
-        } else {
-          const res = await withTimeout<any>(
-            (supabase
-              .from('leaderboard_city_all_time')
-              .select('*')
-              .eq('city_id', userCityId)
-              .order('rank', { ascending: true })
-              .limit(100) as any) as Promise<any>,
-            9000
-          );
-          if (res?.error) throw res.error;
-          safeSet(() => setEntries(((res?.data || []) as any[]) as LeaderboardEntry[]));
-        }
-      }
-    } catch (e: any) {
-      console.warn('Leaderboard fetch error:', e?.message || String(e));
-      safeSet(() => {
-        setError(
-          e?.message?.toLowerCase?.().includes('timed out')
-            ? 'Leaderboard is taking too long to load.'
-            : 'Could not load leaderboard.'
-        );
-        setEntries([]);
-      });
-    } finally {
+    console.warn('Leaderboard fetch error:', e?.message || String(e));
+
+    safeSet(() => {
+      setError(
+        e?.message?.toLowerCase?.().includes('timed out')
+          ? 'Leaderboard is taking too long to load. Try again.'
+          : 'Could not load leaderboard.'
+      );
+      setEntries([]);
+    });
+  } finally {
+    if (requestId === requestIdRef.current) {
       safeSet(() => setLoading(false));
     }
-  };
+  }
+};
 
   useEffect(() => {
     if (!visible) return;
@@ -1443,26 +1454,8 @@ const unreadRequestInFlight = useRef(false);
 const unreadRefreshTimeout = useRef<any>(null);
 const isGuest = !userId;
 useEffect(() => {
-  let mounted = true;
-
-  const syncUser = async () => {
-    const { data } = await supabase.auth.getUser();
-    if (mounted) {
-      setBadgeUserId(data?.user?.id ?? null);
-    }
-  };
-
-  syncUser();
-
-  const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
-    setBadgeUserId(session?.user?.id ?? null);
-  });
-
-  return () => {
-    mounted = false;
-    authSub?.subscription?.unsubscribe?.();
-  };
-}, []);
+  setBadgeUserId(userId ?? null);
+}, [userId]);
 const loadChatUnreadCount = useCallback(async () => {
   if (!badgeUserId) {
     setChatUnreadCount(0);
@@ -1694,7 +1687,28 @@ useEffect(() => {
     tabBarActiveTintColor: GOLD,
     tabBarInactiveTintColor: TEXT_MUTED,
     tabBarShowLabel: false,
-    lazy: false,
+
+    tabBarBadge:
+      route.name === 'Chats' && Platform.OS === 'android' && chatUnreadCount > 0
+        ? chatUnreadCount > 99
+          ? '99+'
+          : chatUnreadCount
+        : undefined,
+
+    tabBarBadgeStyle: {
+      backgroundColor: GOLD,
+      color: '#000000',
+      fontSize: 10,
+      fontWeight: '900',
+      fontFamily: SYSTEM_SANS,
+      minWidth: 18,
+      height: 18,
+      borderRadius: 9,
+      borderWidth: 1,
+      borderColor: '#000000',
+    },
+
+    lazy: true,
     animation: 'none',
     tabBarStyle: {
       backgroundColor: DARK_BG,
@@ -1709,69 +1723,72 @@ useEffect(() => {
       alignItems: 'center',
       justifyContent: 'center',
       paddingVertical: 0,
+      overflow: 'visible',
     },
     tabBarButton: (props: any) => {
-  const isChatsTab = route.name === 'Chats';
+      const isChatsTab = route.name === 'Chats';
 
-  return (
-    <TabBarButton
-      {...props}
-      onPress={() => {
-        props.onPress?.();
+      return (
+        <TabBarButton
+          {...props}
+          onPress={() => {
+            props.onPress?.();
 
-        if (isChatsTab) {
-          setTimeout(() => {
-            loadChatUnreadCount();
-          }, 250);
-        }
-      }}
-    />
-  );
-},
+            if (isChatsTab) {
+              setTimeout(() => {
+                loadChatUnreadCount();
+              }, 250);
+            }
+          }}
+        />
+      );
+    },
     tabBarIcon: ({ color }: { color: string; focused: boolean }) => {
-  let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
+      let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
 
-  switch (route.name) {
-    case 'Featured':
-      icon = 'star-outline';
-      break;
-    case 'Jobs':
-      icon = 'briefcase-outline';
-      break;
-    case 'Challenge':
-      icon = 'trophy-outline';
-      break;
-    case 'Workshop':
-      icon = 'cube-outline';
-      break;
-    case 'Location':
-      icon = 'location-outline';
-      break;
-    case 'Chats':
-      icon = 'chatbubble-ellipses-outline';
-      break;
-    case 'Profile':
-      icon = 'person-outline';
-      break;
-  }
+      switch (route.name) {
+        case 'Featured':
+          icon = 'star-outline';
+          break;
+        case 'Jobs':
+          icon = 'briefcase-outline';
+          break;
+        case 'Challenge':
+          icon = 'trophy-outline';
+          break;
+        case 'Workshop':
+          icon = 'cube-outline';
+          break;
+        case 'Location':
+          icon = 'location-outline';
+          break;
+        case 'Chats':
+          icon = 'chatbubble-ellipses-outline';
+          break;
+        case 'Profile':
+          icon = 'person-outline';
+          break;
+      }
 
-  const showChatBadge = route.name === 'Chats' && chatUnreadCount > 0;
-  const badgeText = chatUnreadCount > 99 ? '99+' : String(chatUnreadCount);
+      const showChatBadge =
+        route.name === 'Chats' && chatUnreadCount > 0 && Platform.OS !== 'android';
 
-  return (
-    <View style={styles.tabIconOnly}>
-      <Ionicons name={icon} size={isTiny ? 20 : 22} color={color} />
+      const badgeText = chatUnreadCount > 99 ? '99+' : String(chatUnreadCount);
 
-      {showChatBadge && (
-        <View style={styles.chatBadge}>
-          <Text style={styles.chatBadgeText}>{badgeText}</Text>
+      return (
+        <View style={styles.tabIconOnly}>
+          <Ionicons name={icon} size={isTiny ? 20 : 22} color={color} />
+
+          {showChatBadge && (
+            <View style={styles.chatBadge}>
+              <Text style={styles.chatBadgeText}>{badgeText}</Text>
+            </View>
+          )}
         </View>
-      )}
-    </View>
-  );
-},
+      );
+    },
   }),
-  [TABBAR_HEIGHT, isPhone, isTiny, chatUnreadCount]
+  [TABBAR_HEIGHT, isPhone, isTiny, chatUnreadCount, loadChatUnreadCount]
 );
 
   return (
@@ -1795,7 +1812,7 @@ useEffect(() => {
 >
           <Tab.Navigator
   screenOptions={screenOptions}
-  detachInactiveScreens={false}
+  detachInactiveScreens={true}
 >
             <Tab.Screen name="Featured" component={FeaturedWrapped} />
             <Tab.Screen name="Workshop" component={WorkshopWrapped} />
