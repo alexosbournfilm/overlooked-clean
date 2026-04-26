@@ -130,9 +130,12 @@ export default function AppNavigator({
 
     const currentRoute = navigationRef.getCurrentRoute();
 
-    if (currentRoute?.name === "NewPassword") {
-      return;
-    }
+if (
+  currentRoute?.name === "NewPassword" ||
+  (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__
+) {
+  return;
+}
 
     const authSnapshot = `${userId ?? "guest"}:${
       profileComplete ? "complete" : "incomplete"
@@ -325,7 +328,6 @@ export default function AppNavigator({
 
   setTimeout(() => {
     if ((globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__) {
-      (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
       navigationRef.navigate("NewPassword" as never);
     }
   }, 500);
