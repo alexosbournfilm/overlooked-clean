@@ -18,7 +18,6 @@ import { GamificationProvider } from "./app/context/GamificationContext";
 import { navigate } from "./app/navigation/navigationRef";
 import { registerAndSavePushToken } from "./app/lib/registerAndSavePushToken";
 
-// fonts
 import {
   useFonts as useCourierFonts,
   CourierPrime_400Regular,
@@ -32,9 +31,6 @@ import {
   Cinzel_900Black,
 } from "@expo-google-fonts/cinzel";
 
-// ------------------------------------------------------------------
-// SAFARI DEEP LINK FIX — one-shot override (prevents stale replay)
-// ------------------------------------------------------------------
 if (Platform.OS === "web") {
   const originalGetInitialURL = Linking.getInitialURL;
 
@@ -97,27 +93,24 @@ function parseAuthParamsFromUrl(url: string) {
 
 export default function App() {
   const [appIsReady, setAppIsReady] = useState(false);
-
-  // IMPORTANT:
-  // We default auth flow to SignIn.
-  // CreateProfile must NOT be inferred here from a profile lookup,
-  // because a temporary failed fetch can incorrectly route existing users there.
   const [initialAuthRouteName, setInitialAuthRouteName] =
     useState<"SignIn" | "CreateProfile">("SignIn");
 
   const notificationListener = useRef<any>(null);
   const responseListener = useRef<any>(null);
+  const recoveryNavArmedRef = useRef(true);
 
-  // Load fonts
   const [courierLoaded] = useCourierFonts({
     CourierPrime_400Regular,
     CourierPrime_700Bold,
   });
+
   const [cinzelLoaded] = useCinzelFonts({
     Cinzel_400Regular,
     Cinzel_700Bold,
     Cinzel_900Black,
   });
+
   const fontsLoaded = courierLoaded && cinzelLoaded;
 
   const savePushTokenForUser = useCallback(async (userId: string) => {
@@ -129,11 +122,11 @@ export default function App() {
     }
   }, []);
 
-  // --------------------------------------------------------------
-  // Deep-link handler (Supabase signup confirm + recovery)
-  // --------------------------------------------------------------
   const handleDeepLink = useCallback(async (url: string | null) => {
     if (!url) return;
+
+    const isResetPasswordLink =
+      url.includes("reset-password") || url.includes("type=recovery");
 
     const { code, access_token, refresh_token, type, error_description } =
       parseAuthParamsFromUrl(url);
@@ -143,7 +136,8 @@ export default function App() {
       !!access_token ||
       !!refresh_token ||
       type === "recovery" ||
-      type === "signup";
+      type === "signup" ||
+      isResetPasswordLink;
 
     if (!isSupabaseAuthCallback) return;
 
@@ -151,6 +145,7 @@ export default function App() {
       hasCode: !!code,
       hasTokens: !!access_token || !!refresh_token,
       type,
+      isResetPasswordLink,
     });
 
     if (error_description) {
@@ -160,10 +155,12 @@ export default function App() {
 
     if (code) {
       const { error } = await supabase.auth.exchangeCodeForSession(url);
+
       if (error) {
         console.error("exchangeCodeForSession ERROR:", error.message);
         return;
       }
+
       console.log("✅ Session exchanged from code");
     }
 
@@ -177,18 +174,20 @@ export default function App() {
         console.error("setSession ERROR:", error.message);
         return;
       }
-      console.log("✅ Session restored from tokens (web + native)");
+
+      console.log("✅ Session restored from tokens");
     }
 
-    if (type === "recovery") {
-      console.log("🔐 Recovery link detected → navigating to NewPassword");
-      navigate("NewPassword");
+    if (isResetPasswordLink || type === "recovery") {
+      console.log("🔐 Reset password link detected → navigating to NewPassword");
+
+      setTimeout(() => {
+        navigate("NewPassword");
+      }, 300);
+
       return;
     }
 
-    // Signup confirmation should NOT auto-force CreateProfile here.
-    // The app should still go through SignIn, and later files will control
-    // the one-time post-confirmation CreateProfile path safely.
     if (type === "signup") {
       console.log("✅ Signup confirmation link detected");
       setInitialAuthRouteName("SignIn");
@@ -200,11 +199,6 @@ export default function App() {
     }
   }, []);
 
-  // --------------------------------------------------------------
-  // PASSWORD_RECOVERY event → NewPassword
-  // --------------------------------------------------------------
-  const recoveryNavArmedRef = useRef(true);
-
   useEffect(() => {
     const { data: subscription } = supabase.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {
@@ -212,7 +206,10 @@ export default function App() {
         recoveryNavArmedRef.current = false;
 
         console.log("🚨 PASSWORD_RECOVERY event received");
-        navigate("NewPassword");
+
+        setTimeout(() => {
+          navigate("NewPassword");
+        }, 300);
 
         setTimeout(() => {
           recoveryNavArmedRef.current = true;
@@ -223,9 +220,6 @@ export default function App() {
     return () => subscription.subscription.unsubscribe();
   }, []);
 
-  // --------------------------------------------------------------
-  // Push notification listeners
-  // --------------------------------------------------------------
   useEffect(() => {
     if (Platform.OS === "web") return;
 
@@ -260,9 +254,7 @@ export default function App() {
         if (lastResponse) {
           console.log("🚀 App opened from notification:", lastResponse);
 
-          const data =
-            lastResponse.notification.request.content.data as any;
-
+          const data = lastResponse.notification.request.content.data as any;
           handleNotificationNavigation(data);
         }
       } catch (err) {
@@ -276,9 +268,6 @@ export default function App() {
     };
   }, []);
 
-  // --------------------------------------------------------------
-  // APP INIT — handle initial URL + prevent fake /reset-password loads
-  // --------------------------------------------------------------
   useEffect(() => {
     let mounted = true;
     let linkSub: { remove: () => void } | null = null;
@@ -326,9 +315,6 @@ export default function App() {
             await savePushTokenForUser(session.user.id);
           }
 
-          // IMPORTANT:
-          // Never decide CreateProfile here by querying profile completeness.
-          // A temporary miss / slow fetch can wrongly send an existing user there.
           setInitialAuthRouteName("SignIn");
         } else {
           setInitialAuthRouteName("SignIn");
@@ -353,9 +339,6 @@ export default function App() {
     };
   }, [handleDeepLink, savePushTokenForUser]);
 
-  // --------------------------------------------------------------
-  // Save push token whenever auth changes
-  // --------------------------------------------------------------
   useEffect(() => {
     const { data: subscription } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -375,16 +358,12 @@ export default function App() {
     return () => subscription.subscription.unsubscribe();
   }, [savePushTokenForUser]);
 
-  // --------------------------------------------------------------
-  // Splash screen final hide
-  // --------------------------------------------------------------
   useEffect(() => {
     if (appIsReady && fontsLoaded) {
       SplashScreen.hideAsync().catch(() => {});
     }
   }, [appIsReady, fontsLoaded]);
 
-  // ✅ DO NOT return null — keep startup black
   if (!appIsReady || !fontsLoaded) {
     return (
       <View style={{ flex: 1, backgroundColor: "#0D0D0D" }}>

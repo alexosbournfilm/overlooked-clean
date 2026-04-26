@@ -57,9 +57,6 @@ export default function AppNavigator({
 
   const G = globalThis as any;
 
-  // --------------------------------------------------------------
-  // Restore navigation only for users with a completed profile
-  // --------------------------------------------------------------
   useEffect(() => {
     let mounted = true;
 
@@ -100,9 +97,6 @@ export default function AppNavigator({
     };
   }, [ready, userId, profileComplete, shouldRouteToCreateProfile]);
 
-  // --------------------------------------------------------------
-  // Persist navigation state per signed-in user
-  // --------------------------------------------------------------
   const handleStateChange = async (state?: InitialState) => {
     if (!userId || !profileComplete || !state) return;
 
@@ -116,9 +110,6 @@ export default function AppNavigator({
     }
   };
 
-  // --------------------------------------------------------------
-  // Clear stale nav state when user signs out / loses profile completeness
-  // --------------------------------------------------------------
   useEffect(() => {
     if (!ready) return;
 
@@ -132,15 +123,23 @@ export default function AppNavigator({
     }
   }, [ready, userId, profileComplete, shouldRouteToCreateProfile]);
 
-  // --------------------------------------------------------------
-  // Actively redirect after mount when auth changes
-  // --------------------------------------------------------------
   useEffect(() => {
     if (!ready || !navReady) return;
     if (!navigationRef.isReady()) return;
     if (!hasBootstrappedNavRef.current) return;
 
-    const authSnapshot = `${userId ?? "guest"}:${profileComplete ? "complete" : "incomplete"}:${shouldRouteToCreateProfile ? "createprofile" : "normal"}:${G.__OVERLOOKED_EMAIL_CONFIRM__ ? "emailconfirm" : "noemailconfirm"}`;
+    const currentRoute = navigationRef.getCurrentRoute();
+
+    if (currentRoute?.name === "NewPassword") {
+      return;
+    }
+
+    const authSnapshot = `${userId ?? "guest"}:${
+      profileComplete ? "complete" : "incomplete"
+    }:${shouldRouteToCreateProfile ? "createprofile" : "normal"}:${
+      G.__OVERLOOKED_EMAIL_CONFIRM__ ? "emailconfirm" : "noemailconfirm"
+    }`;
+
     const prevSnapshot = lastAuthSnapshotRef.current;
     lastAuthSnapshotRef.current = authSnapshot;
 
@@ -214,9 +213,6 @@ export default function AppNavigator({
     initialAuthRouteName,
   ]);
 
-  // --------------------------------------------------------------
-  // Paid / membership check (non-blocking)
-  // --------------------------------------------------------------
   const [isPaid, setIsPaid] = useState<boolean | null>(null);
   const [expired, setExpired] = useState(false);
   const [membershipChecked, setMembershipChecked] = useState(false);
@@ -287,12 +283,8 @@ export default function AppNavigator({
     return () => {
       mounted = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  // --------------------------------------------------------------
-  // Global loading
-  // --------------------------------------------------------------
   if (!ready || !navReady) {
     return (
       <View
@@ -320,9 +312,6 @@ export default function AppNavigator({
     ? "Paywall"
     : "MainTabs";
 
-  // --------------------------------------------------------------
-  // Navigation tree
-  // --------------------------------------------------------------
   return (
     <NavigationContainer
       ref={navigationRef as any}
@@ -365,18 +354,12 @@ export default function AppNavigator({
           name="WorkshopSubmit"
           component={WorkshopSubmitScreen}
         />
-        <Stack.Screen
-          name="PublicProfile"
-          component={PublicProfileScreen}
-        />
-        <Stack.Screen
-          name="SharedFilm"
-          component={SharedFilmScreen}
-        />
-        <Stack.Screen
-          name="NewPassword"
-          component={NewPassword}
-        />
+
+        <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
+
+        <Stack.Screen name="SharedFilm" component={SharedFilmScreen} />
+
+        <Stack.Screen name="NewPassword" component={NewPassword} />
       </Stack.Navigator>
     </NavigationContainer>
   );

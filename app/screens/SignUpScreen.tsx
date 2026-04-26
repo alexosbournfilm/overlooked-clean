@@ -48,11 +48,12 @@ export default function SignUpScreen() {
   const [emailSentTo, setEmailSentTo] = useState<string>('');
 
   const emailRedirectTo = useMemo(() => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      return `${window.location.origin}/signin`;
-    }
-    return Linking.createURL('signin');
-  }, []);
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    return `${window.location.origin}/signin`;
+  }
+
+  return 'overlooked://callback';
+}, []);
 
   const refreshConfirmedFromUser = async () => {
     const { data } = await supabase.auth.getUser();

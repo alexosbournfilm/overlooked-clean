@@ -19,11 +19,6 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.overlooked.app",
       "infoPlist": {
-        "CFBundleURLTypes": [
-          {
-            "CFBundleURLSchemes": ["overlooked"]
-          }
-        ],
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library for profile uploads."
       },
       "associatedDomains": [
@@ -78,6 +73,7 @@
 
     "extra": {
       "supabaseRedirectUrl": "overlooked://callback",
+      "supabaseResetPasswordUrl": "overlooked://reset-password",
       "eas": {
         "projectId": "d572b8e6-d8d0-451e-bd76-df662912df85"
       }
