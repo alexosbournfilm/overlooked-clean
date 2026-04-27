@@ -6,7 +6,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Platform, AppState } from "react-native";
+import { Platform, AppState, Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
 import { navigationRef } from "../navigation/navigationRef";
@@ -99,6 +99,26 @@ function isWebRecoveryUrl(): boolean {
         hasAccessToken ||
         hasRefreshToken)
   );
+}
+
+function isNativeRecoveryUrl(url?: string | null): boolean {
+  if (Platform.OS === "web") return false;
+  if (!url) return false;
+
+  const lower = url.toLowerCase();
+
+  return (
+    lower.includes("reset-password") ||
+    lower.includes("type=recovery") ||
+    lower.includes("token_hash=") ||
+    lower.includes("access_token=") ||
+    lower.includes("refresh_token=") ||
+    lower.includes("code=")
+  );
+}
+
+function isRecoveryUrl(url?: string | null): boolean {
+  return isWebRecoveryUrl() || isNativeRecoveryUrl(url);
 }
 
 function isWebEmailConfirmationUrl(): boolean {
@@ -270,6 +290,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
+  const markRecoveryMode = () => {
+    G.__OVERLOOKED_RECOVERY__ = true;
+    G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+    G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
+    pendingCreateProfileRedirectRef.current = false;
+  };
+
   const safelyHandleMissingSession = async () => {
     if (clearingSessionRef.current) return;
     clearingSessionRef.current = true;
@@ -292,7 +319,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (recoveredUid) {
         latestAuthUserIdRef.current = recoveredUid;
         setUserId(recoveredUid);
-        await loadProfile(recoveredUid);
+
+        if (!G.__OVERLOOKED_RECOVERY__ && !G.__OVERLOOKED_FORCE_NEW_PASSWORD__) {
+          await loadProfile(recoveredUid);
+        }
+
         return;
       }
 
@@ -321,10 +352,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (state === "active") {
           supabase.auth.startAutoRefresh();
 
-          if (isWebRecoveryUrl()) {
-            G.__OVERLOOKED_RECOVERY__ = true;
-            G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-            G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
+          const activeUrl =
+            Platform.OS === "web" ? null : await Linking.getInitialURL();
+
+          if (isRecoveryUrl(activeUrl)) {
+            markRecoveryMode();
             tryNavigateToNewPassword();
             return;
           }
@@ -362,16 +394,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     const init = async () => {
-      const shouldBeRecovery = isWebRecoveryUrl();
-      const shouldBeEmailConfirm = isWebEmailConfirmationUrl();
+      const initialUrl =
+        Platform.OS === "web" ? null : await Linking.getInitialURL();
 
-      G.__OVERLOOKED_RECOVERY__ = shouldBeRecovery;
-      G.__OVERLOOKED_EMAIL_CONFIRM__ = shouldBeRecovery
+      const shouldBeRecovery = isRecoveryUrl(initialUrl);
+      const shouldBeEmailConfirm = shouldBeRecovery
         ? false
-        : shouldBeEmailConfirm;
+        : isWebEmailConfirmationUrl();
 
       if (shouldBeRecovery) {
-        G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
+        markRecoveryMode();
+      } else {
+        G.__OVERLOOKED_RECOVERY__ = false;
+        G.__OVERLOOKED_EMAIL_CONFIRM__ = shouldBeEmailConfirm;
       }
 
       const { data, error } = await supabase.auth.getSession();
@@ -422,6 +457,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
+    const linkingSub = Linking.addEventListener("url", ({ url }) => {
+      if (isNativeRecoveryUrl(url)) {
+        markRecoveryMode();
+
+        if (mounted) {
+          authBootstrappedRef.current = true;
+          setReady(true);
+        }
+
+        setTimeout(() => {
+          tryNavigateToNewPassword();
+        }, 0);
+      }
+    });
+
     init();
 
     const { data: listener } = supabase.auth.onAuthStateChange(
@@ -429,7 +479,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log("Auth event →", event);
 
         if (event === "PASSWORD_RECOVERY") {
-          const okRecovery = isWebRecoveryUrl() || Platform.OS !== "web";
+          const initialUrl =
+            Platform.OS === "web" ? null : await Linking.getInitialURL();
+
+          const okRecovery = isRecoveryUrl(initialUrl) || Platform.OS !== "web";
 
           console.log(
             "🔐 PASSWORD_RECOVERY event received. okRecovery=",
@@ -437,10 +490,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           );
 
           if (okRecovery) {
-            G.__OVERLOOKED_RECOVERY__ = true;
-            G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-            G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
-
+            markRecoveryMode();
             tryNavigateToNewPassword();
           } else {
             console.warn(
@@ -508,12 +558,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 })
               );
             }
+
             return;
           }
         }
 
         if (event === "SIGNED_IN" && !isWebRecoveryUrl()) {
-          G.__OVERLOOKED_RECOVERY__ = false;
+          if (!G.__OVERLOOKED_FORCE_NEW_PASSWORD__) {
+            G.__OVERLOOKED_RECOVERY__ = false;
+          }
         }
 
         if (event === "SIGNED_OUT") {
@@ -525,23 +578,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const uid = session?.user?.id ?? null;
 
         if (uid) {
+          const activeUrl =
+            Platform.OS === "web" ? null : await Linking.getInitialURL();
+
           const inRecoveryFlow =
             G.__OVERLOOKED_RECOVERY__ ||
             G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
             event === "PASSWORD_RECOVERY" ||
-            isWebRecoveryUrl();
+            isRecoveryUrl(activeUrl);
 
           if (inRecoveryFlow) {
             console.log(
               "🔐 Recovery session detected — not treating as normal app sign-in"
             );
 
+            markRecoveryMode();
             tryNavigateToNewPassword();
 
             if (!ready && mounted) {
               authBootstrappedRef.current = true;
               setReady(true);
             }
+
             return;
           }
 
@@ -570,6 +628,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             authBootstrappedRef.current = true;
             setReady(true);
           }
+
           return;
         }
 
@@ -580,6 +639,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             authBootstrappedRef.current = true;
             setReady(true);
           }
+
           return;
         }
 
@@ -595,6 +655,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       try {
         appStateSub.remove();
+      } catch {}
+
+      try {
+        linkingSub.remove();
       } catch {}
 
       listener?.subscription?.unsubscribe?.();
