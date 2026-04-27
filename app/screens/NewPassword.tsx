@@ -1,5 +1,5 @@
 // app/screens/NewPassword.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Alert,
   Platform,
   Modal,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,8 +25,22 @@ const SUB = "#A9A7A3";
 const GOLD = "#C6A664";
 const BORDER = "#262626";
 
+type ResetTokens = {
+  code?: string;
+  access_token?: string;
+  refresh_token?: string;
+  token_hash?: string;
+  email?: string;
+  type?: string;
+  error?: string;
+  error_code?: string;
+  error_description?: string;
+  rawUrl?: string | null;
+};
+
 export default function NewPassword() {
   const navigation = useNavigation<any>();
+  const latestNativeUrlRef = useRef<string | null>(null);
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -37,17 +52,46 @@ export default function NewPassword() {
   const [successOpen, setSuccessOpen] = useState(false);
   const [status, setStatus] = useState("");
 
-  const parseTokensFromUrl = () => {
-    let params: Record<string, any> = {};
+  const collectParamsFromUrl = (url?: string | null) => {
+    const params: Record<string, string> = {};
+
+    if (!url) return params;
+
+    try {
+      const queryPart = url.includes("?") ? url.split("?")[1]?.split("#")[0] : "";
+      const hashPart = url.includes("#") ? url.split("#")[1] : "";
+
+      if (queryPart) {
+        const queryParams = new URLSearchParams(queryPart);
+        queryParams.forEach((v, k) => {
+          params[k] = v;
+        });
+      }
+
+      if (hashPart) {
+        const hashParams = new URLSearchParams(hashPart);
+        hashParams.forEach((v, k) => {
+          params[k] = v;
+        });
+      }
+    } catch (e) {
+      console.log("Token parse error:", e);
+    }
+
+    return params;
+  };
+
+  const parseTokensFromUrl = async (): Promise<ResetTokens> => {
+    let rawUrl: string | null = null;
+    let params: Record<string, string> = {};
 
     if (Platform.OS === "web" && typeof window !== "undefined") {
-      const hash = window.location.hash?.replace(/^#/, "") ?? "";
-      const hashParams = new URLSearchParams(hash);
-      hashParams.forEach((v, k) => (params[k] = v));
-
-      const search = window.location.search || "";
-      const searchParams = new URLSearchParams(search);
-      searchParams.forEach((v, k) => (params[k] = v));
+      rawUrl = window.location.href;
+      params = collectParamsFromUrl(rawUrl);
+    } else {
+      rawUrl = latestNativeUrlRef.current || (await Linking.getInitialURL());
+      latestNativeUrlRef.current = rawUrl;
+      params = collectParamsFromUrl(rawUrl);
     }
 
     return {
@@ -60,6 +104,7 @@ export default function NewPassword() {
       error: params["error"],
       error_code: params["error_code"],
       error_description: params["error_description"],
+      rawUrl,
     };
   };
 
@@ -81,7 +126,10 @@ export default function NewPassword() {
 
   const goToSignIn = async () => {
     if (signingOut) return;
+
     (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+    (globalThis as any).__OVERLOOKED_RECOVERY__ = false;
+
     setSigningOut(true);
 
     try {
@@ -103,12 +151,6 @@ export default function NewPassword() {
   };
 
   const establishSession = async () => {
-    const { data: existing } = await supabase.auth.getSession();
-    if (existing?.session) {
-      console.log("✅ Existing session found — recovery is ready");
-      return true;
-    }
-
     const {
       code,
       access_token,
@@ -118,9 +160,11 @@ export default function NewPassword() {
       type,
       error_description,
       error_code,
-    } = parseTokensFromUrl();
+      rawUrl,
+    } = await parseTokensFromUrl();
 
-    console.log("Parsed Tokens:", {
+    console.log("Parsed Reset Tokens:", {
+      rawUrl,
       hasCode: !!code,
       access_token: !!access_token,
       refresh_token: !!refresh_token,
@@ -146,37 +190,46 @@ export default function NewPassword() {
       return false;
     }
 
-    if (Platform.OS === "web" && code && typeof window !== "undefined") {
-      console.log("✔ Using PKCE code to exchange session (recovery)");
-      const { error } = await supabase.auth.exchangeCodeForSession(window.location.href);
+    if (code) {
+      console.log("✔ Using PKCE code to exchange recovery session");
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+
       if (!error) return true;
 
       console.log("❌ exchangeCodeForSession error:", error.message);
-      Alert.alert(
-        "Invalid link",
-        "This password reset link is invalid. Please request a new one from Sign In.",
-        [{ text: "OK", onPress: () => goToSignIn() }]
-      );
-      return false;
     }
 
     if (access_token && refresh_token) {
-      console.log("✔ Using access_token session (recovery)");
+      console.log("✔ Using access_token + refresh_token recovery session");
       const { error } = await supabase.auth.setSession({
         access_token,
         refresh_token,
       });
+
       if (!error) return true;
+
+      console.log("❌ setSession error:", error.message);
     }
 
-    if (token_hash && email) {
+    if (token_hash) {
       console.log("✔ Using token_hash to verify recovery session");
+
       const { error } = await supabase.auth.verifyOtp({
         type: "recovery",
         token_hash,
-        email,
-      });
+        ...(email ? { email } : {}),
+      } as any);
+
       if (!error) return true;
+
+      console.log("❌ verifyOtp error:", error.message);
+    }
+
+    const { data: existing } = await supabase.auth.getSession();
+
+    if (existing?.session) {
+      console.log("✅ Existing session found — recovery is ready");
+      return true;
     }
 
     console.log("❌ No valid recovery session could be created");
@@ -189,8 +242,13 @@ export default function NewPassword() {
   };
 
   useEffect(() => {
+    const linkingSub = Linking.addEventListener("url", ({ url }) => {
+      latestNativeUrlRef.current = url;
+    });
+
     const run = async () => {
       setStatus("Validating reset link...");
+
       const ok = await establishSession();
 
       if (ok) {
@@ -207,6 +265,12 @@ export default function NewPassword() {
     };
 
     run();
+
+    return () => {
+      try {
+        linkingSub.remove();
+      } catch {}
+    };
   }, []);
 
   const updatePassword = async () => {
