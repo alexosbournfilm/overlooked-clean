@@ -197,9 +197,16 @@ if (
 }
 
     if (shouldRouteToCreateProfile) {
-      resetToCreateProfile();
-      return;
-    }
+  if (
+    (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+    (globalThis as any).__OVERLOOKED_RECOVERY__
+  ) {
+    return;
+  }
+
+  resetToCreateProfile();
+  return;
+}
 
     if (!profileComplete) {
   if ((globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__) {

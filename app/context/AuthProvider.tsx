@@ -11,7 +11,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
 import { navigationRef } from "../navigation/navigationRef";
 import { CommonActions } from "@react-navigation/native";
- import { registerAndSavePushToken } from "../lib/registerAndSavePushToken";
+import { registerAndSavePushToken } from "../lib/registerAndSavePushToken";
+
 type MinimalProfile = {
   id: string;
   full_name: string | null;
@@ -47,6 +48,10 @@ if (typeof G.__OVERLOOKED_EMAIL_CONFIRM__ === "undefined") {
   G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
 }
 
+if (typeof G.__OVERLOOKED_FORCE_NEW_PASSWORD__ === "undefined") {
+  G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+}
+
 const NATIVE_AUTH_STORAGE_KEY = "overlooked.supabase.auth";
 
 function isWebRecoveryUrl(): boolean {
@@ -58,6 +63,9 @@ function isWebRecoveryUrl(): boolean {
   const hash = window.location.hash || "";
   const search = window.location.search || "";
 
+  const isResetRoute =
+    path.includes("/reset-password") || path.endsWith("/reset-password");
+
   const hasRecoveryType =
     href.includes("type=recovery") ||
     hash.includes("type=recovery") ||
@@ -68,15 +76,36 @@ function isWebRecoveryUrl(): boolean {
     hash.includes("token_hash=") ||
     search.includes("token_hash=");
 
-  const isResetRoute =
-    path.includes("/reset-password") || path.endsWith("/reset-password");
+  const hasCode =
+    href.includes("code=") ||
+    hash.includes("code=") ||
+    search.includes("code=");
 
-  return Boolean(hasRecoveryType || (hasTokenHash && isResetRoute));
+  const hasAccessToken =
+    href.includes("access_token=") ||
+    hash.includes("access_token=") ||
+    search.includes("access_token=");
+
+  const hasRefreshToken =
+    href.includes("refresh_token=") ||
+    hash.includes("refresh_token=") ||
+    search.includes("refresh_token=");
+
+  return Boolean(
+    isResetRoute &&
+      (hasRecoveryType ||
+        hasTokenHash ||
+        hasCode ||
+        hasAccessToken ||
+        hasRefreshToken)
+  );
 }
 
 function isWebEmailConfirmationUrl(): boolean {
   if (Platform.OS !== "web") return false;
   if (typeof window === "undefined") return false;
+
+  if (isWebRecoveryUrl()) return false;
 
   const href = window.location.href || "";
   const hash = window.location.hash || "";
@@ -215,6 +244,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const tryNavigateToCreateProfile = () => {
+    if (G.__OVERLOOKED_RECOVERY__ || G.__OVERLOOKED_FORCE_NEW_PASSWORD__) return;
     if (!pendingCreateProfileRedirectRef.current) return;
     if (!navigationRef.isReady()) return;
 
@@ -224,6 +254,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       CommonActions.reset({
         index: 0,
         routes: [{ name: "CreateProfile" as never }],
+      })
+    );
+  };
+
+  const tryNavigateToNewPassword = () => {
+    if (!G.__OVERLOOKED_FORCE_NEW_PASSWORD__) return;
+    if (!navigationRef.isReady()) return;
+
+    navigationRef.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: "NewPassword" as never }],
       })
     );
   };
@@ -279,7 +321,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (state === "active") {
           supabase.auth.startAutoRefresh();
 
+          if (isWebRecoveryUrl()) {
+            G.__OVERLOOKED_RECOVERY__ = true;
+            G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+            G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
+            tryNavigateToNewPassword();
+            return;
+          }
+
           const { data, error } = await supabase.auth.getSession();
+
           if (error) {
             if (isInvalidRefreshTokenError(error)) {
               await clearPersistedAuthSession();
@@ -315,7 +366,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const shouldBeEmailConfirm = isWebEmailConfirmationUrl();
 
       G.__OVERLOOKED_RECOVERY__ = shouldBeRecovery;
-      G.__OVERLOOKED_EMAIL_CONFIRM__ = shouldBeEmailConfirm;
+      G.__OVERLOOKED_EMAIL_CONFIRM__ = shouldBeRecovery
+        ? false
+        : shouldBeEmailConfirm;
+
+      if (shouldBeRecovery) {
+        G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
+      }
 
       const { data, error } = await supabase.auth.getSession();
 
@@ -337,11 +394,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (uid) {
         latestAuthUserIdRef.current = uid;
-setUserId(uid);
-await registerAndSavePushToken(uid);
-await loadProfile(uid, true);
+        setUserId(uid);
 
-        if (shouldBeEmailConfirm) {
+        if (!shouldBeRecovery) {
+          await registerAndSavePushToken(uid);
+          await loadProfile(uid, true);
+        }
+
+        if (shouldBeEmailConfirm && !shouldBeRecovery) {
           pendingCreateProfileRedirectRef.current = true;
         }
       } else {
@@ -354,6 +414,12 @@ await loadProfile(uid, true);
 
       authBootstrappedRef.current = true;
       setReady(true);
+
+      if (shouldBeRecovery) {
+        setTimeout(() => {
+          tryNavigateToNewPassword();
+        }, 0);
+      }
     };
 
     init();
@@ -373,17 +439,9 @@ await loadProfile(uid, true);
           if (okRecovery) {
             G.__OVERLOOKED_RECOVERY__ = true;
             G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+            G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
 
-            (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
-
-            if (navigationRef.isReady()) {
-              navigationRef.dispatch(
-                CommonActions.reset({
-                  index: 0,
-                  routes: [{ name: "NewPassword" }],
-                })
-              );
-            }
+            tryNavigateToNewPassword();
           } else {
             console.warn(
               "⚠️ PASSWORD_RECOVERY fired but URL is not recovery. Ignoring."
@@ -391,12 +449,20 @@ await loadProfile(uid, true);
             G.__OVERLOOKED_RECOVERY__ = false;
           }
 
+          if (!ready && mounted) {
+            authBootstrappedRef.current = true;
+            setReady(true);
+          }
+
           return;
         }
 
         if (
           (event === "SIGNED_IN" || event === "INITIAL_SESSION") &&
-          (isWebEmailConfirmationUrl() || G.__OVERLOOKED_EMAIL_CONFIRM__)
+          (isWebEmailConfirmationUrl() || G.__OVERLOOKED_EMAIL_CONFIRM__) &&
+          !isWebRecoveryUrl() &&
+          !G.__OVERLOOKED_RECOVERY__ &&
+          !G.__OVERLOOKED_FORCE_NEW_PASSWORD__
         ) {
           console.log("✅ Email confirmation flow detected");
 
@@ -427,6 +493,7 @@ await loadProfile(uid, true);
           if (G.__OVERLOOKED_RECOVERY__) {
             console.log("✅ Recovery complete → exiting recovery mode");
             G.__OVERLOOKED_RECOVERY__ = false;
+            G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
 
             if (Platform.OS === "web" && typeof window !== "undefined") {
               const clean = window.location.origin + "/signin";
@@ -452,6 +519,7 @@ await loadProfile(uid, true);
         if (event === "SIGNED_OUT") {
           G.__OVERLOOKED_RECOVERY__ = false;
           G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+          G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
         }
 
         const uid = session?.user?.id ?? null;
@@ -459,6 +527,7 @@ await loadProfile(uid, true);
         if (uid) {
           const inRecoveryFlow =
             G.__OVERLOOKED_RECOVERY__ ||
+            G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
             event === "PASSWORD_RECOVERY" ||
             isWebRecoveryUrl();
 
@@ -466,6 +535,8 @@ await loadProfile(uid, true);
             console.log(
               "🔐 Recovery session detected — not treating as normal app sign-in"
             );
+
+            tryNavigateToNewPassword();
 
             if (!ready && mounted) {
               authBootstrappedRef.current = true;
@@ -475,9 +546,9 @@ await loadProfile(uid, true);
           }
 
           latestAuthUserIdRef.current = uid;
-setUserId(uid);
-await registerAndSavePushToken(uid);
-await loadProfile(uid, event === "SIGNED_IN" || event === "USER_UPDATED");
+          setUserId(uid);
+          await registerAndSavePushToken(uid);
+          await loadProfile(uid, event === "SIGNED_IN" || event === "USER_UPDATED");
 
           if (!ready && mounted) {
             authBootstrappedRef.current = true;
@@ -534,6 +605,12 @@ await loadProfile(uid, event === "SIGNED_IN" || event === "USER_UPDATED");
 
   useEffect(() => {
     if (!ready) return;
+
+    if (G.__OVERLOOKED_FORCE_NEW_PASSWORD__ || G.__OVERLOOKED_RECOVERY__) {
+      tryNavigateToNewPassword();
+      return;
+    }
+
     tryNavigateToCreateProfile();
   }, [ready, userId, profile]);
 
@@ -544,13 +621,13 @@ await loadProfile(uid, event === "SIGNED_IN" || event === "USER_UPDATED");
   }, [profile]);
 
   const shouldRouteToCreateProfile = useMemo(() => {
-  return Boolean(
-    userId &&
-    !profileComplete &&
-    !G.__OVERLOOKED_RECOVERY__ &&
-    !(globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__
-  );
-}, [userId, profileComplete]);
+    return Boolean(
+      userId &&
+        !profileComplete &&
+        !G.__OVERLOOKED_RECOVERY__ &&
+        !G.__OVERLOOKED_FORCE_NEW_PASSWORD__
+    );
+  }, [userId, profileComplete]);
 
   const value = useMemo(
     () => ({
