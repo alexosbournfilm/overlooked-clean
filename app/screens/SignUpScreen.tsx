@@ -17,6 +17,7 @@ import {
 import * as Linking from 'expo-linking';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
+import { Ionicons } from '@expo/vector-icons';
 
 // DARK THEME PALETTE (aligned with MainTabs)
 const DARK_BG = '#0D0D0D';
@@ -33,6 +34,8 @@ export default function SignUpScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -323,22 +326,47 @@ export default function SignUpScreen() {
             value={email}
             onChangeText={setEmail}
           />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor={TEXT_MUTED}
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Confirm Password"
-            placeholderTextColor={TEXT_MUTED}
-            secureTextEntry
-            value={confirm}
-            onChangeText={setConfirm}
-          />
+          <View style={styles.passwordWrap}>
+  <TextInput
+    style={styles.passwordInput}
+    placeholder="Password"
+    placeholderTextColor={TEXT_MUTED}
+    secureTextEntry={!showPassword}
+    value={password}
+    onChangeText={setPassword}
+  />
+  <TouchableOpacity
+    onPress={() => setShowPassword((prev) => !prev)}
+    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+  >
+    <Ionicons
+      name={showPassword ? 'eye-off' : 'eye'}
+      size={20}
+      color={TEXT_MUTED}
+    />
+  </TouchableOpacity>
+</View>
+
+<View style={styles.passwordWrap}>
+  <TextInput
+    style={styles.passwordInput}
+    placeholder="Confirm Password"
+    placeholderTextColor={TEXT_MUTED}
+    secureTextEntry={!showConfirmPassword}
+    value={confirm}
+    onChangeText={setConfirm}
+  />
+  <TouchableOpacity
+    onPress={() => setShowConfirmPassword((prev) => !prev)}
+    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+  >
+    <Ionicons
+      name={showConfirmPassword ? 'eye-off' : 'eye'}
+      size={20}
+      color={TEXT_MUTED}
+    />
+  </TouchableOpacity>
+</View>
 
           <TouchableOpacity
             style={styles.checkboxRow}
@@ -804,6 +832,29 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontSize: 15,
   },
+  passwordWrap: {
+  width: '100%',
+  backgroundColor: DARK_INPUT,
+  borderRadius: 12,
+  paddingHorizontal: 16,
+  marginBottom: 16,
+  borderWidth: 1,
+  borderColor: BORDER,
+  flexDirection: 'row',
+  alignItems: 'center',
+},
+
+passwordInput: {
+  flex: 1,
+  paddingVertical: 16,
+  color: TEXT_IVORY,
+  ...(Platform.OS === 'web'
+    ? ({
+        outline: 'none',
+        boxShadow: 'none',
+      } as any)
+    : {}),
+},
   emailModalSecondary: {
     borderWidth: 1,
     borderColor: BORDER,

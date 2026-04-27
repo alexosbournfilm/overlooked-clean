@@ -188,9 +188,13 @@ if (
     };
 
     if (!userId) {
-      resetToAuth();
-      return;
-    }
+  if ((globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__) {
+    return; // 🚫 DO NOT override reset password screen
+  }
+
+  resetToAuth();
+  return;
+}
 
     if (shouldRouteToCreateProfile) {
       resetToCreateProfile();
@@ -198,9 +202,13 @@ if (
     }
 
     if (!profileComplete) {
-      resetToAuth();
-      return;
-    }
+  if ((globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__) {
+    return; // 🚫 allow reset password flow
+  }
+
+  resetToAuth();
+  return;
+}
 
     if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
       G.__OVERLOOKED_EMAIL_CONFIRM__ = false;

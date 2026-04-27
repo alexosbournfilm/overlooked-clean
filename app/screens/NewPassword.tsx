@@ -29,29 +29,22 @@ export default function NewPassword() {
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-
-  // ✅ Success popup
   const [successOpen, setSuccessOpen] = useState(false);
-
-  // ✅ Status text (replaces “waiting…” in a clearer way)
   const [status, setStatus] = useState("");
 
-  // ---------------------------------------------------------
-  // Token parser (web only)
-  // ---------------------------------------------------------
   const parseTokensFromUrl = () => {
     let params: Record<string, any> = {};
 
     if (Platform.OS === "web" && typeof window !== "undefined") {
-      // hash (#access_token=...)
       const hash = window.location.hash?.replace(/^#/, "") ?? "";
       const hashParams = new URLSearchParams(hash);
       hashParams.forEach((v, k) => (params[k] = v));
 
-      // query (?code=..., ?token_hash=...)
       const search = window.location.search || "";
       const searchParams = new URLSearchParams(search);
       searchParams.forEach((v, k) => (params[k] = v));
@@ -70,9 +63,6 @@ export default function NewPassword() {
     };
   };
 
-  // ---------------------------------------------------------
-  // Navigation helpers
-  // ---------------------------------------------------------
   const hardGoToSignInWeb = () => {
     if (Platform.OS === "web" && typeof window !== "undefined") {
       window.location.assign("/signin");
@@ -91,6 +81,7 @@ export default function NewPassword() {
 
   const goToSignIn = async () => {
     if (signingOut) return;
+    (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
     setSigningOut(true);
 
     try {
@@ -111,20 +102,13 @@ export default function NewPassword() {
     }
   };
 
-  // ---------------------------------------------------------
-  // ✅ FIX: Establish recovery session reliably
-  // 1) FIRST trust supabase.auth.getSession()
-  // 2) If no session, fall back to URL tokens (code/hash/token_hash)
-  // ---------------------------------------------------------
   const establishSession = async () => {
-    // ✅ Step 1: If Supabase already has a session, we are GOOD.
     const { data: existing } = await supabase.auth.getSession();
     if (existing?.session) {
       console.log("✅ Existing session found — recovery is ready");
       return true;
     }
 
-    // ✅ Step 2: Fall back to URL parsing
     const {
       code,
       access_token,
@@ -147,7 +131,6 @@ export default function NewPassword() {
       error_description,
     });
 
-    // If Supabase says expired/invalid, stop
     if (error_code === "otp_expired" || error_description) {
       Alert.alert(
         "Link expired",
@@ -157,14 +140,12 @@ export default function NewPassword() {
       return false;
     }
 
-    // Only allow recovery links (BUT don’t punish missing type if we still have tokens)
     if (type && type !== "recovery") {
       console.log(`🔁 Not a recovery link (type=${type}). Redirecting to Sign In.`);
       await goToSignIn();
       return false;
     }
 
-    // CASE A: PKCE code
     if (Platform.OS === "web" && code && typeof window !== "undefined") {
       console.log("✔ Using PKCE code to exchange session (recovery)");
       const { error } = await supabase.auth.exchangeCodeForSession(window.location.href);
@@ -179,7 +160,6 @@ export default function NewPassword() {
       return false;
     }
 
-    // CASE B: access_token/refresh_token in hash (older flow)
     if (access_token && refresh_token) {
       console.log("✔ Using access_token session (recovery)");
       const { error } = await supabase.auth.setSession({
@@ -189,7 +169,6 @@ export default function NewPassword() {
       if (!error) return true;
     }
 
-    // CASE C: token_hash + email
     if (token_hash && email) {
       console.log("✔ Using token_hash to verify recovery session");
       const { error } = await supabase.auth.verifyOtp({
@@ -200,7 +179,6 @@ export default function NewPassword() {
       if (!error) return true;
     }
 
-    // Nothing worked
     console.log("❌ No valid recovery session could be created");
     Alert.alert(
       "Invalid link",
@@ -219,7 +197,6 @@ export default function NewPassword() {
         setSessionReady(true);
         setStatus("");
 
-        // ✅ Clean URL AFTER session is ready (web only)
         if (Platform.OS === "web" && typeof window !== "undefined") {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
@@ -232,9 +209,6 @@ export default function NewPassword() {
     run();
   }, []);
 
-  // ---------------------------------------------------------
-  // Update password
-  // ---------------------------------------------------------
   const updatePassword = async () => {
     if (!sessionReady) {
       Alert.alert("Invalid Link", "Please open the reset link again.");
@@ -267,7 +241,6 @@ export default function NewPassword() {
     if (error) {
       const msg = (error.message || "").toLowerCase();
 
-      // ✅ Same password message (Supabase wording varies by project)
       if (
         msg.includes("different") ||
         msg.includes("same") ||
@@ -285,7 +258,6 @@ export default function NewPassword() {
       return;
     }
 
-    // ✅ Success popup with “Go to Sign In”
     setSuccessOpen(true);
   };
 
@@ -312,25 +284,45 @@ export default function NewPassword() {
           <View style={styles.inputRow}>
             <Ionicons name="lock-closed" size={16} color={SUB} />
             <TextInput
-              secureTextEntry
+              secureTextEntry={!showPassword}
               placeholder="New password"
               placeholderTextColor={SUB}
               value={password}
               onChangeText={setPassword}
               style={styles.input}
             />
+            <TouchableOpacity
+              onPress={() => setShowPassword((prev) => !prev)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name={showPassword ? "eye-off" : "eye"}
+                size={18}
+                color={SUB}
+              />
+            </TouchableOpacity>
           </View>
 
           <View style={styles.inputRow}>
             <Ionicons name="shield-checkmark" size={16} color={SUB} />
             <TextInput
-              secureTextEntry
+              secureTextEntry={!showConfirmPassword}
               placeholder="Confirm password"
               placeholderTextColor={SUB}
               value={confirm}
               onChangeText={setConfirm}
               style={styles.input}
             />
+            <TouchableOpacity
+              onPress={() => setShowConfirmPassword((prev) => !prev)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name={showConfirmPassword ? "eye-off" : "eye"}
+                size={18}
+                color={SUB}
+              />
+            </TouchableOpacity>
           </View>
 
           <TouchableOpacity
@@ -356,7 +348,6 @@ export default function NewPassword() {
         </View>
       </View>
 
-      {/* ✅ SUCCESS POPUP with “Go to Sign In” */}
       <Modal
         visible={successOpen}
         transparent

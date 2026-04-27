@@ -11,7 +11,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
 import { navigationRef } from "../navigation/navigationRef";
 import { CommonActions } from "@react-navigation/native";
-
+ import { registerAndSavePushToken } from "../lib/registerAndSavePushToken";
 type MinimalProfile = {
   id: string;
   full_name: string | null;
@@ -337,8 +337,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (uid) {
         latestAuthUserIdRef.current = uid;
-        setUserId(uid);
-        await loadProfile(uid, true);
+setUserId(uid);
+await registerAndSavePushToken(uid);
+await loadProfile(uid, true);
 
         if (shouldBeEmailConfirm) {
           pendingCreateProfileRedirectRef.current = true;
@@ -372,6 +373,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (okRecovery) {
             G.__OVERLOOKED_RECOVERY__ = true;
             G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+
+            (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
 
             if (navigationRef.isReady()) {
               navigationRef.dispatch(
@@ -472,8 +475,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           latestAuthUserIdRef.current = uid;
-          setUserId(uid);
-          await loadProfile(uid, event === "SIGNED_IN" || event === "USER_UPDATED");
+setUserId(uid);
+await registerAndSavePushToken(uid);
+await loadProfile(uid, event === "SIGNED_IN" || event === "USER_UPDATED");
 
           if (!ready && mounted) {
             authBootstrappedRef.current = true;
@@ -540,10 +544,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [profile]);
 
   const shouldRouteToCreateProfile = useMemo(() => {
-    return Boolean(
-      userId && !profileComplete && G.__OVERLOOKED_EMAIL_CONFIRM__
-    );
-  }, [userId, profileComplete]);
+  return Boolean(userId && !profileComplete);
+}, [userId, profileComplete]);
 
   const value = useMemo(
     () => ({

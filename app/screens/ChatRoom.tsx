@@ -26,7 +26,7 @@ import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { emitChatBadgeRefresh } from '../lib/chatBadgeEvents';
-
+import { sendPushNotification } from '../lib/sendPush';
 /* ------------------------------- Noir palette ------------------------------- */
 const DARK_BG = '#000000';
 const ELEVATED = '#000000';
@@ -1073,6 +1073,19 @@ for (const m of reversed)
   };
 
   /* -------------------------------- sending -------------------------------- */
+
+  const notifyRecipients = async (messageText: string) => {
+  if (!conversation?.participant_ids?.length || !userId) return;
+
+  const recipientIds = conversation.participant_ids.filter(
+    (id) => id !== userId
+  );
+
+  for (const recipientId of recipientIds) {
+    await sendPushNotification(recipientId, messageText);
+  }
+};
+
   const sendMessage = async () => {
   if (conversation?.is_group === false && isBlockedByPeer) {
     Alert.alert('Cannot message user', "You can't message this user.");
@@ -1114,6 +1127,8 @@ for (const m of reversed)
   conversation.id,
   text
 );
+
+await notifyRecipients(text);
 
 await supabase.from('conversation_reads').upsert(
   {
@@ -1231,6 +1246,7 @@ emitChatBadgeRefresh();
   conversation.id,
   '[Photo]'
 );
+await notifyRecipients('Sent you a photo');
 
 await supabase.from('conversation_reads').upsert(
   {
@@ -1277,6 +1293,7 @@ emitChatBadgeRefresh();
   conversation.id,
   content
 );
+await notifyRecipients(content);
 
 await supabase.from('conversation_reads').upsert(
   {

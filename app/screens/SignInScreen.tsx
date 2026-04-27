@@ -266,6 +266,7 @@ export default function SignInScreen() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showSignIn, setShowSignIn] = useState(!useSimpleMobileLayout);
   const [activeFeature, setActiveFeature] = useState<FeatureKey | null>(null);
@@ -340,24 +341,20 @@ export default function SignInScreen() {
     );
 
     if (!profileComplete) {
-      if (allowCreateProfile) {
-        allowCreateProfileOnceRef.current = false;
+  allowCreateProfileOnceRef.current = false;
 
-        try {
-          navigation.navigate('CreateProfile');
-        } catch (e) {
-          console.log('CreateProfile navigation error:', e);
-          showError('Navigation Error', 'Could not open profile setup.');
-        }
-        return;
-      }
+  try {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'CreateProfile' }],
+    });
+  } catch (e) {
+    console.log('CreateProfile navigation error:', e);
+    showError('Navigation Error', 'Could not open profile setup.');
+  }
 
-      showError(
-        'Email confirmed',
-        'Sign in and create your profile'
-      );
-      return;
-    }
+  return;
+}
 
     try {
       const parentNav = navigation.getParent?.();
@@ -619,12 +616,10 @@ export default function SignInScreen() {
         return;
       }
 
-      const allowCreateProfile = isFreshlyConfirmedUser(user);
-      allowCreateProfileOnceRef.current = allowCreateProfile;
+      const allowCreateProfile = true;
+allowCreateProfileOnceRef.current = true;
 
-      if (!useSimpleMobileLayout) {
-        setShowSignIn(false);
-      }
+await finishPostAuthRedirect({ allowCreateProfile });
 
     
     } catch (err: any) {
@@ -732,7 +727,7 @@ export default function SignInScreen() {
             style={styles.input}
             placeholder="Password"
             placeholderTextColor={T.mute}
-            secureTextEntry
+            secureTextEntry={!showPassword}
             autoCorrect={false}
             autoComplete="password"
             textContentType="password"
@@ -747,6 +742,16 @@ export default function SignInScreen() {
             returnKeyType="done"
             onSubmitEditing={handleSignIn}
           />
+          <TouchableOpacity
+  onPress={() => setShowPassword((prev) => !prev)}
+  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+>
+  <Ionicons
+    name={showPassword ? 'eye-off' : 'eye'}
+    size={18}
+    color={T.mute}
+  />
+</TouchableOpacity>
         </View>
 
         <TouchableOpacity
@@ -871,7 +876,7 @@ export default function SignInScreen() {
                   style={styles.input}
                   placeholder="Password"
                   placeholderTextColor={T.mute}
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                   autoCorrect={false}
                   autoComplete="password"
                   textContentType="password"
@@ -884,6 +889,16 @@ export default function SignInScreen() {
                   returnKeyType="done"
                   onSubmitEditing={handleSignIn}
                 />
+                <TouchableOpacity
+  onPress={() => setShowPassword((prev) => !prev)}
+  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+>
+  <Ionicons
+    name={showPassword ? 'eye-off' : 'eye'}
+    size={18}
+    color={T.mute}
+  />
+</TouchableOpacity>
               </View>
 
               <TouchableOpacity
