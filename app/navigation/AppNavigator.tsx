@@ -313,12 +313,14 @@ if (
 
   const mustShowPaywall = false;
 
-  const rootInitialRouteName = (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__
-  ? "NewPassword"
-  : !userId
-  ? "Auth"
-  : shouldRouteToCreateProfile
-  ? "CreateProfile"
+  const rootInitialRouteName =
+  (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+  (globalThis as any).__OVERLOOKED_RECOVERY__
+    ? "NewPassword"
+    : !userId
+    ? "Auth"
+    : shouldRouteToCreateProfile
+    ? "CreateProfile"
   : !profileComplete
   ? "Auth"
   : mustShowPaywall

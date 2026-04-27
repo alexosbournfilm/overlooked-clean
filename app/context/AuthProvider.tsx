@@ -544,7 +544,12 @@ await loadProfile(uid, event === "SIGNED_IN" || event === "USER_UPDATED");
   }, [profile]);
 
   const shouldRouteToCreateProfile = useMemo(() => {
-  return Boolean(userId && !profileComplete);
+  return Boolean(
+    userId &&
+    !profileComplete &&
+    !G.__OVERLOOKED_RECOVERY__ &&
+    !(globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__
+  );
 }, [userId, profileComplete]);
 
   const value = useMemo(
