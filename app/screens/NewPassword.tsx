@@ -249,7 +249,12 @@ export default function NewPassword() {
     const run = async () => {
       setStatus("Validating reset link...");
 
-      const ok = await establishSession();
+      const ok = await Promise.race([
+  establishSession(),
+  new Promise<boolean>((resolve) =>
+    setTimeout(() => resolve(false), 10000)
+  ),
+]);
 
       if (ok) {
         setSessionReady(true);
@@ -259,9 +264,13 @@ export default function NewPassword() {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
         }
-      } else {
-        setStatus("");
-      }
+     } else {
+  setStatus("");
+  Alert.alert(
+    "Reset link problem",
+    "The reset link opened, but the recovery session could not be created. Please request a new password reset email and open the newest link."
+  );
+}
     };
 
     run();
