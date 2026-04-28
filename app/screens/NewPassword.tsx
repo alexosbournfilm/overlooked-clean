@@ -30,7 +30,6 @@ type ResetTokens = {
   access_token?: string;
   refresh_token?: string;
   token_hash?: string;
-  email?: string;
   type?: string;
   error?: string;
   error_code?: string;
@@ -41,6 +40,7 @@ type ResetTokens = {
 export default function NewPassword() {
   const navigation = useNavigation<any>();
   const latestNativeUrlRef = useRef<string | null>(null);
+  const hasTriedSessionRef = useRef(false);
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -54,7 +54,6 @@ export default function NewPassword() {
 
   const collectParamsFromUrl = (url?: string | null) => {
     const params: Record<string, string> = {};
-
     if (!url) return params;
 
     try {
@@ -99,7 +98,6 @@ export default function NewPassword() {
       access_token: params["access_token"],
       refresh_token: params["refresh_token"],
       token_hash: params["token_hash"],
-      email: params["email"],
       type: params["type"],
       error: params["error"],
       error_code: params["error_code"],
@@ -156,7 +154,6 @@ export default function NewPassword() {
       access_token,
       refresh_token,
       token_hash,
-      email,
       type,
       error_description,
       error_code,
@@ -166,10 +163,9 @@ export default function NewPassword() {
     console.log("Parsed Reset Tokens:", {
       rawUrl,
       hasCode: !!code,
-      access_token: !!access_token,
-      refresh_token: !!refresh_token,
-      token_hash: !!token_hash,
-      email,
+      hasAccessToken: !!access_token,
+      hasRefreshToken: !!refresh_token,
+      hasTokenHash: !!token_hash,
       type,
       error_code,
       error_description,
@@ -217,8 +213,7 @@ export default function NewPassword() {
       const { error } = await supabase.auth.verifyOtp({
         type: "recovery",
         token_hash,
-        ...(email ? { email } : {}),
-      } as any);
+      });
 
       if (!error) return true;
 
@@ -233,11 +228,6 @@ export default function NewPassword() {
     }
 
     console.log("❌ No valid recovery session could be created");
-    Alert.alert(
-      "Invalid link",
-      "This password reset link is invalid. Please request a new one from Sign In.",
-      [{ text: "OK", onPress: () => goToSignIn() }]
-    );
     return false;
   };
 
@@ -247,24 +237,25 @@ export default function NewPassword() {
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
-  (event, session) => {
-    if (event === "PASSWORD_RECOVERY" && session) {
-      console.log("✅ PASSWORD_RECOVERY session ready inside NewPassword");
-      setSessionReady(true);
-      setStatus("");
-    }
-  }
-);
+      (event, session) => {
+        if (event === "PASSWORD_RECOVERY" && session) {
+          console.log("✅ PASSWORD_RECOVERY session ready inside NewPassword");
+          setSessionReady(true);
+          setStatus("");
+        }
+      }
+    );
 
     const run = async () => {
+      if (hasTriedSessionRef.current) return;
+      hasTriedSessionRef.current = true;
+
       setStatus("Validating reset link...");
 
       const ok = await Promise.race([
-  establishSession(),
-  new Promise<boolean>((resolve) =>
-    setTimeout(() => resolve(false), 10000)
-  ),
-]);
+        establishSession(),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 10000)),
+      ]);
 
       if (ok) {
         setSessionReady(true);
@@ -274,24 +265,24 @@ export default function NewPassword() {
           const clean = window.location.origin + window.location.pathname;
           window.history.replaceState({}, document.title, clean);
         }
-     } else {
-  setStatus("");
-  Alert.alert(
-    "Reset link problem",
-    "The reset link opened, but the recovery session could not be created. Please request a new password reset email and open the newest link."
-  );
-}
+      } else {
+        setStatus("");
+        Alert.alert(
+          "Reset link problem",
+          "The reset link opened, but the recovery session could not be created. Please request a new password reset email and open the newest link."
+        );
+      }
     };
 
     run();
 
     return () => {
-  try {
-    linkingSub.remove();
-  } catch {}
+      try {
+        linkingSub.remove();
+      } catch {}
 
-  authListener?.subscription?.unsubscribe?.();
-};
+      authListener?.subscription?.unsubscribe?.();
+    };
   }, []);
 
   const updatePassword = async () => {
