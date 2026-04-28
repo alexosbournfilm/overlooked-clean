@@ -246,6 +246,16 @@ export default function NewPassword() {
       latestNativeUrlRef.current = url;
     });
 
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+  (event, session) => {
+    if (event === "PASSWORD_RECOVERY" && session) {
+      console.log("✅ PASSWORD_RECOVERY session ready inside NewPassword");
+      setSessionReady(true);
+      setStatus("");
+    }
+  }
+);
+
     const run = async () => {
       setStatus("Validating reset link...");
 
@@ -276,10 +286,12 @@ export default function NewPassword() {
     run();
 
     return () => {
-      try {
-        linkingSub.remove();
-      } catch {}
-    };
+  try {
+    linkingSub.remove();
+  } catch {}
+
+  authListener?.subscription?.unsubscribe?.();
+};
   }, []);
 
   const updatePassword = async () => {

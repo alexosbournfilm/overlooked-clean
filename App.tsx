@@ -125,8 +125,13 @@ export default function App() {
   const handleDeepLink = useCallback(async (url: string | null) => {
     if (!url) return;
 
-    const isResetPasswordLink =
-      url.includes("reset-password") || url.includes("type=recovery");
+    const lowerUrl = url.toLowerCase();
+
+const isResetPasswordLink =
+  lowerUrl.includes("reset-password") ||
+  lowerUrl.includes("new-password") ||
+  lowerUrl.includes("newpassword") ||
+  lowerUrl.includes("type=recovery");
 
     const { code, access_token, refresh_token, type, error_description } =
       parseAuthParamsFromUrl(url);
@@ -154,7 +159,7 @@ export default function App() {
     }
 
     if (code) {
-      const { error } = await supabase.auth.exchangeCodeForSession(url);
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
 
       if (error) {
         console.error("exchangeCodeForSession ERROR:", error.message);

@@ -64,7 +64,10 @@ function isWebRecoveryUrl(): boolean {
   const search = window.location.search || "";
 
   const isResetRoute =
-    path.includes("/reset-password") || path.endsWith("/reset-password");
+  path.includes("/reset-password") ||
+  path.endsWith("/reset-password") ||
+  path.includes("/new-password") ||
+  path.endsWith("/new-password");
 
   const hasRecoveryType =
     href.includes("type=recovery") ||
@@ -109,6 +112,8 @@ function isNativeRecoveryUrl(url?: string | null): boolean {
 
   return (
     lower.includes("reset-password") ||
+    lower.includes("new-password") ||
+    lower.includes("newpassword") ||
     lower.includes("type=recovery") ||
     lower.includes("token_hash=") ||
     lower.includes("access_token=") ||
@@ -116,7 +121,6 @@ function isNativeRecoveryUrl(url?: string | null): boolean {
     lower.includes("code=")
   );
 }
-
 function isRecoveryUrl(url?: string | null): boolean {
   return isWebRecoveryUrl() || isNativeRecoveryUrl(url);
 }
