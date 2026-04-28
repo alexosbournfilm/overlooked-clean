@@ -201,6 +201,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<MinimalProfile | null>(null);
+  const [profileChecked, setProfileChecked] = useState(false);
 
   const inFlightProfileForRef = useRef<string | null>(null);
   const lastLoadedProfileForRef = useRef<string | null>(null);
@@ -210,11 +211,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pendingCreateProfileRedirectRef = useRef(false);
 
   async function loadProfile(uid: string, force = false) {
-    if (!uid) return;
+  if (!uid) {
+    setProfileChecked(true);
+    return;
+  }
+
+  setProfileChecked(false);
 
     if (!force && lastLoadedProfileForRef.current === uid && profile?.id === uid) {
-      return;
-    }
+  setProfileChecked(true);
+  return;
+}
 
     if (inFlightProfileForRef.current === uid) {
       return;
@@ -237,10 +244,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (latestAuthUserIdRef.current !== uid) return;
 
       if (!data) {
-        setProfile(null);
-        lastLoadedProfileForRef.current = null;
-        return;
-      }
+  setProfile(null);
+  lastLoadedProfileForRef.current = null;
+  setProfileChecked(true);
+  return;
+}
 
       setProfile({
         id: data.id,
@@ -249,23 +257,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         city_id: data.city_id,
       });
       lastLoadedProfileForRef.current = data.id;
+      setProfileChecked(true);
     } catch (e: any) {
       console.warn(
         "AuthProvider loadProfile fatal error:",
         e?.message || String(e)
       );
     } finally {
-      inFlightProfileForRef.current = null;
-    }
+  inFlightProfileForRef.current = null;
+  setProfileChecked(true);
+}
   }
 
   const clearLocalAuthState = () => {
-    latestAuthUserIdRef.current = null;
-    setUserId(null);
-    setProfile(null);
-    lastLoadedProfileForRef.current = null;
-    inFlightProfileForRef.current = null;
-  };
+  latestAuthUserIdRef.current = null;
+  setUserId(null);
+  setProfile(null);
+  setProfileChecked(false);
+  lastLoadedProfileForRef.current = null;
+  inFlightProfileForRef.current = null;
+};
 
   const tryNavigateToCreateProfile = () => {
     if (G.__OVERLOOKED_RECOVERY__ || G.__OVERLOOKED_FORCE_NEW_PASSWORD__) return;
@@ -689,13 +700,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [profile]);
 
   const shouldRouteToCreateProfile = useMemo(() => {
-    return Boolean(
-      userId &&
-        !profileComplete &&
-        !G.__OVERLOOKED_RECOVERY__ &&
-        !G.__OVERLOOKED_FORCE_NEW_PASSWORD__
-    );
-  }, [userId, profileComplete]);
+  return Boolean(
+    userId &&
+      profileChecked &&
+      !profile &&
+      G.__OVERLOOKED_EMAIL_CONFIRM__ &&
+      !G.__OVERLOOKED_RECOVERY__ &&
+      !G.__OVERLOOKED_FORCE_NEW_PASSWORD__
+  );
+}, [userId, profile, profileChecked]);
 
   const value = useMemo(
     () => ({

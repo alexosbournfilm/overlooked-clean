@@ -49,10 +49,7 @@ export default function ForgotPassword() {
     // ✅ IMPORTANT:
     // This MUST match the route that actually renders NewPassword.tsx on web,
     // and your deep link route on native.
-    const redirectTo = Platform.select({
-      web: "https://overlooked.cloud/reset-password",
-      default: "overlooked://reset-password",
-    });
+    const redirectTo = "https://overlooked.cloud/reset-password";
 
     const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
       redirectTo,

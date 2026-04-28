@@ -328,11 +328,11 @@ if (
     ? "Auth"
     : shouldRouteToCreateProfile
     ? "CreateProfile"
-  : !profileComplete
-  ? "Auth"
-  : mustShowPaywall
-  ? "Paywall"
-  : "MainTabs";
+    : !profileComplete
+    ? "Auth"
+    : mustShowPaywall
+    ? "Paywall"
+    : "MainTabs";
 
   return (
     <NavigationContainer

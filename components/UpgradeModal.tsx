@@ -232,6 +232,28 @@ async function openExternalManagementUrl(url?: string | null) {
   }
 }
 
+async function openAppleSubscriptions() {
+  const urls = [
+    'itms-apps://apps.apple.com/account/subscriptions',
+    'https://apps.apple.com/account/subscriptions',
+    'https://support.apple.com/billing',
+  ];
+
+  for (const url of urls) {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+        return true;
+      }
+    } catch (e) {
+      console.log('UpgradeModal openAppleSubscriptions error', e);
+    }
+  }
+
+  return false;
+}
+
 export const UpgradeModal: React.FC<Props> = ({
   visible,
   onClose,
@@ -423,6 +445,19 @@ export const UpgradeModal: React.FC<Props> = ({
       const { data: userRes, error: userErr } = await supabase.auth.getUser();
       if (userErr) throw userErr;
       if (!userRes?.user?.id) throw new Error('Not signed in');
+
+      if (Platform.OS === 'ios') {
+  const opened = await openAppleSubscriptions();
+
+  setDowngradeConfirmError(
+    opened
+      ? 'Your iOS subscription is managed by Apple. I opened Apple Subscriptions so you can cancel renewal there.'
+      : 'Your iOS subscription is managed by Apple. Open Settings → Apple Account → Subscriptions to cancel renewal.'
+  );
+
+  await refreshBillingState();
+  return;
+}
 
       const latestBilling = (await getMySubscriptionStatus()) as BillingSnapshot;
       setBillingState(latestBilling);
@@ -992,18 +1027,26 @@ export const UpgradeModal: React.FC<Props> = ({
                 </Pressable>
 
                 <Pressable
-                  disabled={downgrading || restoringPro || isGrandfathered || !canCancelRenewal || cancelAtPeriodEnd}
+                  disabled={
+  downgrading ||
+  restoringPro ||
+  isGrandfathered ||
+  cancelAtPeriodEnd ||
+  (!canCancelRenewal && Platform.OS !== 'ios')
+}
                   onPress={isGrandfathered || cancelAtPeriodEnd ? undefined : doDowngradeToFree}
                   style={({ pressed }) => [
                     styles.confirmBtn,
                     styles.confirmBtnDanger,
-                    (isGrandfathered || !canCancelRenewal || cancelAtPeriodEnd) &&
-                      styles.buttonDisabled,
+                    (isGrandfathered ||
+  cancelAtPeriodEnd ||
+  (!canCancelRenewal && Platform.OS !== 'ios')) &&
+  styles.buttonDisabled,
                     pressed &&
                     !downgrading &&
                     !restoringPro &&
                     !isGrandfathered &&
-                    canCancelRenewal &&
+                    (canCancelRenewal || Platform.OS === 'ios') &&
                     !cancelAtPeriodEnd
                       ? { opacity: 0.9 }
                       : null,
@@ -1017,17 +1060,21 @@ export const UpgradeModal: React.FC<Props> = ({
                     <Text
                       style={[
                         styles.confirmBtnDangerText,
-                        (isGrandfathered || !canCancelRenewal || cancelAtPeriodEnd) &&
-                          styles.buttonTextDisabled,
+                        (isGrandfathered ||
+  cancelAtPeriodEnd ||
+  (!canCancelRenewal && Platform.OS !== 'ios')) &&
+  styles.buttonTextDisabled,
                       ]}
                     >
                       {isGrandfathered
-                        ? 'No renewal to cancel'
-                        : cancelAtPeriodEnd
-                        ? 'Cancellation scheduled'
-                        : !canCancelRenewal
-                        ? 'No active renewal found'
-                        : confirmPrimaryButtonLabel}
+  ? 'No renewal to cancel'
+  : cancelAtPeriodEnd
+  ? 'Cancellation scheduled'
+  : !canCancelRenewal && Platform.OS !== 'ios'
+  ? 'No active renewal found'
+  : Platform.OS === 'ios'
+  ? 'Manage in Apple'
+  : confirmPrimaryButtonLabel}
                     </Text>
                   </View>
                 </Pressable>

@@ -343,16 +343,26 @@ export default function SignInScreen() {
     if (!profileComplete) {
   allowCreateProfileOnceRef.current = false;
 
-  try {
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'CreateProfile' }],
-    });
-  } catch (e) {
-    console.log('CreateProfile navigation error:', e);
-    showError('Navigation Error', 'Could not open profile setup.');
+  if (allowCreateProfile) {
+    try {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'CreateProfile' }],
+      });
+    } catch (e) {
+      console.log('CreateProfile navigation error:', e);
+      showError('Navigation Error', 'Could not open profile setup.');
+    }
+
+    return;
   }
 
+  showError(
+    'Profile not found',
+    'Your account is signed in, but your profile could not be loaded. Please try again.'
+  );
+
+  await supabase.auth.signOut();
   return;
 }
 
@@ -616,8 +626,8 @@ export default function SignInScreen() {
         return;
       }
 
-      const allowCreateProfile = true;
-allowCreateProfileOnceRef.current = true;
+      const allowCreateProfile = false;
+allowCreateProfileOnceRef.current = false;
 
 await finishPostAuthRedirect({ allowCreateProfile });
 
