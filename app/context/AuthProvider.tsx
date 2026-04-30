@@ -54,56 +54,110 @@ if (typeof G.__OVERLOOKED_FORCE_NEW_PASSWORD__ === "undefined") {
 
 const NATIVE_AUTH_STORAGE_KEY = "overlooked.supabase.auth";
 
-function isWebRecoveryUrl(): boolean {
-  if (Platform.OS !== "web") return false;
-  if (typeof window === "undefined") return false;
+/* =====================================================
+   URL HELPERS
+   ===================================================== */
 
-  const href = window.location.href || "";
-  const path = window.location.pathname || "";
-  const hash = window.location.hash || "";
-  const search = window.location.search || "";
+function getWebUrlParts() {
+  if (Platform.OS !== "web") {
+    return {
+      href: "",
+      path: "",
+      hash: "",
+      search: "",
+    };
+  }
 
-  const isResetRoute =
-  path.includes("/reset-password") ||
-  path.endsWith("/reset-password") ||
-  path.includes("/new-password") ||
-  path.endsWith("/new-password");
+  if (typeof window === "undefined") {
+    return {
+      href: "",
+      path: "",
+      hash: "",
+      search: "",
+    };
+  }
 
-  const hasRecoveryType =
-    href.includes("type=recovery") ||
-    hash.includes("type=recovery") ||
-    search.includes("type=recovery");
-
-  const hasTokenHash =
-    href.includes("token_hash=") ||
-    hash.includes("token_hash=") ||
-    search.includes("token_hash=");
-
-  const hasCode =
-    href.includes("code=") ||
-    hash.includes("code=") ||
-    search.includes("code=");
-
-  const hasAccessToken =
-    href.includes("access_token=") ||
-    hash.includes("access_token=") ||
-    search.includes("access_token=");
-
-  const hasRefreshToken =
-    href.includes("refresh_token=") ||
-    hash.includes("refresh_token=") ||
-    search.includes("refresh_token=");
-
-  return Boolean(
-    isResetRoute &&
-      (hasRecoveryType ||
-        hasTokenHash ||
-        hasCode ||
-        hasAccessToken ||
-        hasRefreshToken)
-  );
+  return {
+    href: window.location.href || "",
+    path: window.location.pathname || "",
+    hash: window.location.hash || "",
+    search: window.location.search || "",
+  };
 }
 
+function getUrlParam(url: string, key: string): string | null {
+  try {
+    const parsed = new URL(url);
+
+    const direct = parsed.searchParams.get(key);
+    if (direct) return direct;
+
+    const hash = parsed.hash?.replace(/^#/, "") || "";
+    if (hash) {
+      const hashParams = new URLSearchParams(hash);
+      const fromHash = hashParams.get(key);
+      if (fromHash) return fromHash;
+    }
+
+    return null;
+  } catch {
+    try {
+      const lower = url.toLowerCase();
+      const safeKey = `${key.toLowerCase()}=`;
+
+      if (!lower.includes(safeKey)) return null;
+
+      const after = url.split(new RegExp(`${key}=`, "i"))[1];
+      if (!after) return null;
+
+      return after.split("&")[0].split("#")[0] || null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+/**
+ * WEB password reset detection.
+ *
+ * Important:
+ * - On web, token/code/access_token can exist for multiple auth flows.
+ * - So we only treat it as recovery if the route/path itself is a reset route
+ *   OR the URL explicitly says type=recovery.
+ */
+function isWebRecoveryUrl(): boolean {
+  if (Platform.OS !== "web") return false;
+
+  const { href, path, hash, search } = getWebUrlParts();
+
+  const lowerHref = href.toLowerCase();
+  const lowerPath = path.toLowerCase();
+  const lowerHash = hash.toLowerCase();
+  const lowerSearch = search.toLowerCase();
+
+  const isResetRoute =
+    lowerPath.includes("/reset-password") ||
+    lowerPath.endsWith("/reset-password") ||
+    lowerPath.includes("/new-password") ||
+    lowerPath.endsWith("/new-password");
+
+  const hasRecoveryType =
+    lowerHref.includes("type=recovery") ||
+    lowerHash.includes("type=recovery") ||
+    lowerSearch.includes("type=recovery");
+
+  return Boolean(isResetRoute || hasRecoveryType);
+}
+
+/**
+ * NATIVE password reset detection.
+ *
+ * Critical fix:
+ * - DO NOT treat "code=", "token_hash=", "access_token=", or "refresh_token="
+ *   as recovery by themselves.
+ * - Signup confirmation links can also contain code/tokens.
+ * - Only recovery routes or type=recovery should trigger NewPassword.
+ */
 function isNativeRecoveryUrl(url?: string | null): boolean {
   if (Platform.OS === "web") return false;
   if (!url) return false;
@@ -114,59 +168,122 @@ function isNativeRecoveryUrl(url?: string | null): boolean {
     lower.includes("reset-password") ||
     lower.includes("new-password") ||
     lower.includes("newpassword") ||
-    lower.includes("type=recovery") ||
-    lower.includes("token_hash=") ||
-    lower.includes("access_token=") ||
-    lower.includes("refresh_token=") ||
-    lower.includes("code=")
+    lower.includes("type=recovery")
   );
 }
+
 function isRecoveryUrl(url?: string | null): boolean {
   return isWebRecoveryUrl() || isNativeRecoveryUrl(url);
 }
 
+/**
+ * WEB email confirmation detection.
+ */
 function isWebEmailConfirmationUrl(): boolean {
   if (Platform.OS !== "web") return false;
   if (typeof window === "undefined") return false;
 
   if (isWebRecoveryUrl()) return false;
 
-  const href = window.location.href || "";
-  const hash = window.location.hash || "";
-  const search = window.location.search || "";
-  const path = window.location.pathname || "";
+  const { href, path, hash, search } = getWebUrlParts();
+
+  const lowerHref = href.toLowerCase();
+  const lowerPath = path.toLowerCase();
+  const lowerHash = hash.toLowerCase();
+  const lowerSearch = search.toLowerCase();
 
   const hasSignupType =
-    href.includes("type=signup") ||
-    hash.includes("type=signup") ||
-    search.includes("type=signup");
+    lowerHref.includes("type=signup") ||
+    lowerHash.includes("type=signup") ||
+    lowerSearch.includes("type=signup");
 
   const hasInviteType =
-    href.includes("type=invite") ||
-    hash.includes("type=invite") ||
-    search.includes("type=invite");
+    lowerHref.includes("type=invite") ||
+    lowerHash.includes("type=invite") ||
+    lowerSearch.includes("type=invite");
+
+  const hasCode =
+    lowerHref.includes("code=") ||
+    lowerHash.includes("code=") ||
+    lowerSearch.includes("code=");
 
   const hasAccessToken =
-    href.includes("access_token=") ||
-    hash.includes("access_token=") ||
-    search.includes("access_token=");
+    lowerHref.includes("access_token=") ||
+    lowerHash.includes("access_token=") ||
+    lowerSearch.includes("access_token=");
 
   const hasRefreshToken =
-    href.includes("refresh_token=") ||
-    hash.includes("refresh_token=") ||
-    search.includes("refresh_token=");
+    lowerHref.includes("refresh_token=") ||
+    lowerHash.includes("refresh_token=") ||
+    lowerSearch.includes("refresh_token=");
 
   const isAuthCallbackRoute =
-    path.includes("auth") ||
-    path.includes("callback") ||
-    path.includes("create-profile") ||
-    path.includes("signin");
+    lowerPath.includes("auth") ||
+    lowerPath.includes("callback") ||
+    lowerPath.includes("create-profile") ||
+    lowerPath.includes("signin");
 
   return Boolean(
     hasSignupType ||
       hasInviteType ||
-      ((hasAccessToken || hasRefreshToken) && isAuthCallbackRoute)
+      ((hasCode || hasAccessToken || hasRefreshToken) && isAuthCallbackRoute)
   );
+}
+
+/**
+ * NATIVE email confirmation detection.
+ *
+ * This catches:
+ * - overlooked://callback?code=...
+ * - overlooked://create-profile?code=...
+ * - overlooked://callback?type=signup
+ * - overlooked://callback#access_token=...&type=signup
+ */
+function isNativeEmailConfirmationUrl(url?: string | null): boolean {
+  if (Platform.OS === "web") return false;
+  if (!url) return false;
+
+  if (isNativeRecoveryUrl(url)) return false;
+
+  const lower = url.toLowerCase();
+
+  const type = getUrlParam(url, "type")?.toLowerCase() || "";
+
+  const hasSignupType =
+    type === "signup" ||
+    lower.includes("type=signup") ||
+    lower.includes("type=invite");
+
+  const hasAuthCode =
+    lower.includes("code=") &&
+    !lower.includes("type=recovery") &&
+    !lower.includes("reset-password") &&
+    !lower.includes("new-password") &&
+    !lower.includes("newpassword");
+
+  const hasSignupTokens =
+    (lower.includes("access_token=") || lower.includes("refresh_token=")) &&
+    !lower.includes("type=recovery") &&
+    !lower.includes("reset-password") &&
+    !lower.includes("new-password") &&
+    !lower.includes("newpassword");
+
+  const isCallbackRoute =
+    lower.includes("overlooked://callback") ||
+    lower.includes("overlooked://create-profile") ||
+    lower.includes("https://overlooked.cloud/create-profile") ||
+    lower.includes("https://www.overlooked.cloud/create-profile") ||
+    lower.includes("https://overlooked.cloud/signin") ||
+    lower.includes("https://www.overlooked.cloud/signin");
+
+  return Boolean(
+    hasSignupType ||
+      (isCallbackRoute && (hasAuthCode || hasSignupTokens))
+  );
+}
+
+function isEmailConfirmationUrl(url?: string | null): boolean {
+  return isWebEmailConfirmationUrl() || isNativeEmailConfirmationUrl(url);
 }
 
 function isInvalidRefreshTokenError(error: any): boolean {
@@ -211,17 +328,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pendingCreateProfileRedirectRef = useRef(false);
 
   async function loadProfile(uid: string, force = false) {
-  if (!uid) {
-    setProfileChecked(true);
-    return;
-  }
+    if (!uid) {
+      setProfileChecked(true);
+      return;
+    }
 
-  setProfileChecked(false);
+    setProfileChecked(false);
 
     if (!force && lastLoadedProfileForRef.current === uid && profile?.id === uid) {
-  setProfileChecked(true);
-  return;
-}
+      setProfileChecked(true);
+      return;
+    }
 
     if (inFlightProfileForRef.current === uid) {
       return;
@@ -244,11 +361,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (latestAuthUserIdRef.current !== uid) return;
 
       if (!data) {
-  setProfile(null);
-  lastLoadedProfileForRef.current = null;
-  setProfileChecked(true);
-  return;
-}
+        setProfile(null);
+        lastLoadedProfileForRef.current = null;
+        setProfileChecked(true);
+        return;
+      }
 
       setProfile({
         id: data.id,
@@ -256,6 +373,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         main_role_id: data.main_role_id,
         city_id: data.city_id,
       });
+
       lastLoadedProfileForRef.current = data.id;
       setProfileChecked(true);
     } catch (e: any) {
@@ -264,19 +382,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         e?.message || String(e)
       );
     } finally {
-  inFlightProfileForRef.current = null;
-  setProfileChecked(true);
-}
+      inFlightProfileForRef.current = null;
+      setProfileChecked(true);
+    }
   }
 
   const clearLocalAuthState = () => {
-  latestAuthUserIdRef.current = null;
-  setUserId(null);
-  setProfile(null);
-  setProfileChecked(false);
-  lastLoadedProfileForRef.current = null;
-  inFlightProfileForRef.current = null;
-};
+    latestAuthUserIdRef.current = null;
+    setUserId(null);
+    setProfile(null);
+    setProfileChecked(false);
+    lastLoadedProfileForRef.current = null;
+    inFlightProfileForRef.current = null;
+  };
 
   const tryNavigateToCreateProfile = () => {
     if (G.__OVERLOOKED_RECOVERY__ || G.__OVERLOOKED_FORCE_NEW_PASSWORD__) return;
@@ -310,6 +428,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
     G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
     pendingCreateProfileRedirectRef.current = false;
+  };
+
+  const markEmailConfirmationMode = () => {
+    G.__OVERLOOKED_RECOVERY__ = false;
+    G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+    G.__OVERLOOKED_EMAIL_CONFIRM__ = true;
+    pendingCreateProfileRedirectRef.current = true;
   };
 
   const safelyHandleMissingSession = async () => {
@@ -376,6 +501,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return;
           }
 
+          if (isEmailConfirmationUrl(activeUrl)) {
+            markEmailConfirmationMode();
+          }
+
           const { data, error } = await supabase.auth.getSession();
 
           if (error) {
@@ -397,7 +526,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (resumedUid) {
             latestAuthUserIdRef.current = resumedUid;
             setUserId((prev) => (prev === resumedUid ? prev : resumedUid));
-            await loadProfile(resumedUid);
+
+            if (!G.__OVERLOOKED_RECOVERY__ && !G.__OVERLOOKED_FORCE_NEW_PASSWORD__) {
+              await loadProfile(resumedUid, G.__OVERLOOKED_EMAIL_CONFIRM__);
+            }
+
+            if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
+              pendingCreateProfileRedirectRef.current = true;
+              tryNavigateToCreateProfile();
+            }
           }
         }
       } catch (e: any) {
@@ -415,13 +552,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const shouldBeRecovery = isRecoveryUrl(initialUrl);
       const shouldBeEmailConfirm = shouldBeRecovery
         ? false
-        : isWebEmailConfirmationUrl();
+        : isEmailConfirmationUrl(initialUrl);
 
       if (shouldBeRecovery) {
         markRecoveryMode();
+      } else if (shouldBeEmailConfirm) {
+        markEmailConfirmationMode();
       } else {
         G.__OVERLOOKED_RECOVERY__ = false;
-        G.__OVERLOOKED_EMAIL_CONFIRM__ = shouldBeEmailConfirm;
+        G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
       }
 
       const { data, error } = await supabase.auth.getSession();
@@ -469,10 +608,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setTimeout(() => {
           tryNavigateToNewPassword();
         }, 0);
+      } else if (shouldBeEmailConfirm) {
+        setTimeout(() => {
+          tryNavigateToCreateProfile();
+        }, 0);
       }
     };
 
-    const linkingSub = Linking.addEventListener("url", ({ url }) => {
+    const linkingSub = Linking.addEventListener("url", async ({ url }) => {
       if (isNativeRecoveryUrl(url)) {
         markRecoveryMode();
 
@@ -483,6 +626,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         setTimeout(() => {
           tryNavigateToNewPassword();
+        }, 0);
+
+        return;
+      }
+
+      if (isNativeEmailConfirmationUrl(url)) {
+        markEmailConfirmationMode();
+
+        if (mounted) {
+          authBootstrappedRef.current = true;
+          setReady(true);
+        }
+
+        try {
+          const { data, error } = await supabase.auth.getSession();
+
+          if (error && !isInvalidRefreshTokenError(error)) {
+            console.warn(
+              "AuthProvider email confirmation getSession error:",
+              error.message
+            );
+          }
+
+          const confirmedUid = data?.session?.user?.id ?? null;
+
+          if (confirmedUid) {
+            latestAuthUserIdRef.current = confirmedUid;
+            setUserId(confirmedUid);
+            await registerAndSavePushToken(confirmedUid);
+            await loadProfile(confirmedUid, true);
+          }
+        } catch (e: any) {
+          console.warn(
+            "AuthProvider native email confirmation handler error:",
+            e?.message || String(e)
+          );
+        }
+
+        setTimeout(() => {
+          tryNavigateToCreateProfile();
         }, 0);
       }
     });
@@ -497,7 +680,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const initialUrl =
             Platform.OS === "web" ? null : await Linking.getInitialURL();
 
-          const okRecovery = isRecoveryUrl(initialUrl) || Platform.OS !== "web";
+          const okRecovery =
+            G.__OVERLOOKED_RECOVERY__ ||
+            G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+            isRecoveryUrl(initialUrl);
 
           console.log(
             "🔐 PASSWORD_RECOVERY event received. okRecovery=",
@@ -511,7 +697,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.warn(
               "⚠️ PASSWORD_RECOVERY fired but URL is not recovery. Ignoring."
             );
+
             G.__OVERLOOKED_RECOVERY__ = false;
+            G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
           }
 
           if (!ready && mounted) {
@@ -522,23 +710,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
+        const activeUrl =
+          Platform.OS === "web" ? null : await Linking.getInitialURL();
+
+        const authEventIsEmailConfirmation =
+          isEmailConfirmationUrl(activeUrl) ||
+          G.__OVERLOOKED_EMAIL_CONFIRM__;
+
         if (
           (event === "SIGNED_IN" || event === "INITIAL_SESSION") &&
-          (isWebEmailConfirmationUrl() || G.__OVERLOOKED_EMAIL_CONFIRM__) &&
-          !isWebRecoveryUrl() &&
+          authEventIsEmailConfirmation &&
+          !isRecoveryUrl(activeUrl) &&
           !G.__OVERLOOKED_RECOVERY__ &&
           !G.__OVERLOOKED_FORCE_NEW_PASSWORD__
         ) {
           console.log("✅ Email confirmation flow detected");
 
-          G.__OVERLOOKED_EMAIL_CONFIRM__ = true;
-          G.__OVERLOOKED_RECOVERY__ = false;
+          markEmailConfirmationMode();
 
           const confirmedUid = session?.user?.id ?? null;
 
           if (confirmedUid) {
             latestAuthUserIdRef.current = confirmedUid;
             setUserId(confirmedUid);
+            await registerAndSavePushToken(confirmedUid);
             await loadProfile(confirmedUid, true);
             pendingCreateProfileRedirectRef.current = true;
           }
@@ -557,6 +752,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           if (G.__OVERLOOKED_RECOVERY__) {
             console.log("✅ Recovery complete → exiting recovery mode");
+
             G.__OVERLOOKED_RECOVERY__ = false;
             G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
 
@@ -578,7 +774,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        if (event === "SIGNED_IN" && !isWebRecoveryUrl()) {
+        if (event === "SIGNED_IN" && !isRecoveryUrl(activeUrl)) {
           if (!G.__OVERLOOKED_FORCE_NEW_PASSWORD__) {
             G.__OVERLOOKED_RECOVERY__ = false;
           }
@@ -593,9 +789,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const uid = session?.user?.id ?? null;
 
         if (uid) {
-          const activeUrl =
-            Platform.OS === "web" ? null : await Linking.getInitialURL();
-
           const inRecoveryFlow =
             G.__OVERLOOKED_RECOVERY__ ||
             G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
@@ -620,8 +813,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           latestAuthUserIdRef.current = uid;
           setUserId(uid);
+
           await registerAndSavePushToken(uid);
           await loadProfile(uid, event === "SIGNED_IN" || event === "USER_UPDATED");
+
+          if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
+            pendingCreateProfileRedirectRef.current = true;
+            tryNavigateToCreateProfile();
+          }
 
           if (!ready && mounted) {
             authBootstrappedRef.current = true;
@@ -679,6 +878,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       listener?.subscription?.unsubscribe?.();
       mounted = false;
     };
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -700,15 +900,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [profile]);
 
   const shouldRouteToCreateProfile = useMemo(() => {
-  return Boolean(
-    userId &&
-      profileChecked &&
-      !profile &&
-      G.__OVERLOOKED_EMAIL_CONFIRM__ &&
-      !G.__OVERLOOKED_RECOVERY__ &&
-      !G.__OVERLOOKED_FORCE_NEW_PASSWORD__
-  );
-}, [userId, profile, profileChecked]);
+    return Boolean(
+      userId &&
+        profileChecked &&
+        !profile &&
+        G.__OVERLOOKED_EMAIL_CONFIRM__ &&
+        !G.__OVERLOOKED_RECOVERY__ &&
+        !G.__OVERLOOKED_FORCE_NEW_PASSWORD__
+    );
+  }, [userId, profile, profileChecked]);
 
   const value = useMemo(
     () => ({
