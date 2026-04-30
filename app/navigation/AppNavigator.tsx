@@ -58,57 +58,33 @@ export default function AppNavigator({
   const G = globalThis as any;
 
   useEffect(() => {
-    let mounted = true;
+  let mounted = true;
 
-    const restoreNav = async () => {
-      if (!ready) return;
+  const restoreNav = async () => {
+    if (!ready) return;
 
-      if (!userId || !profileComplete || shouldRouteToCreateProfile) {
-        setInitialState(undefined);
-        if (mounted) {
-          setNavReady(true);
-          hasBootstrappedNavRef.current = true;
-        }
-        return;
-      }
+    // Do not restore old navigation state.
+    // This prevents Android from reopening into stale/broken loading screens.
+    setInitialState(undefined);
 
-      try {
-        const savedState = await AsyncStorage.getItem(
-          `NAVIGATION_STATE_v2:${userId}`
-        );
-
-        if (savedState && mounted) {
-          setInitialState(JSON.parse(savedState));
-        }
-      } catch (e) {
-        console.log("Failed to restore navigation state:", e);
-      }
-
-      if (mounted) {
-        setNavReady(true);
-        hasBootstrappedNavRef.current = true;
-      }
-    };
-
-    restoreNav();
-
-    return () => {
-      mounted = false;
-    };
-  }, [ready, userId, profileComplete, shouldRouteToCreateProfile]);
-
-  const handleStateChange = async (state?: InitialState) => {
-    if (!userId || !profileComplete || !state) return;
-
-    try {
-      await AsyncStorage.setItem(
-        `NAVIGATION_STATE_v2:${userId}`,
-        JSON.stringify(state)
-      );
-    } catch (e) {
-      console.log("Failed to persist navigation state:", e);
+    if (mounted) {
+      setNavReady(true);
+      hasBootstrappedNavRef.current = true;
     }
   };
+
+  restoreNav();
+
+  return () => {
+    mounted = false;
+  };
+}, [ready, userId, profileComplete, shouldRouteToCreateProfile]);
+
+  const handleStateChange = async () => {
+  // Temporarily disabled.
+  // Saving full navigation state can reopen the app into stale loading screens.
+  return;
+};
 
   useEffect(() => {
     if (!ready) return;

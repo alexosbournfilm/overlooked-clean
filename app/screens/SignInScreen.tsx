@@ -812,7 +812,7 @@ await finishPostAuthRedirect({ allowCreateProfile });
           </Text>
         </TouchableOpacity>
         <Text style={styles.supportText}>
-  For support, message alexosbournfilm@gmail.com
+  For support, message overlookedsupport@gmail.com
 </Text>
       </ScrollView>
     </View>
@@ -954,7 +954,7 @@ await finishPostAuthRedirect({ allowCreateProfile });
                 </Text>
               </TouchableOpacity>
               <Text style={styles.supportText}>
-  For support, message alexosbournfilm@gmail.com
+  For support, message overlookedsupport@gmail.com
 </Text>
             </View>
           </View>

@@ -434,7 +434,7 @@ export default function SettingsModal() {
 
             {debug ? <Text style={styles.debugText}>{debug}</Text> : null}
             <Text style={styles.supportText}>
-  For support, message alexosbournfilm@gmail.com
+  For support, message overlookedsupport@gmail.com
 </Text>
 
             <Pressable

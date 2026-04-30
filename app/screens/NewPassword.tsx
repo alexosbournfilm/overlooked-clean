@@ -438,14 +438,13 @@ export default function NewPassword() {
             </Text>
 
             <TouchableOpacity
-              style={styles.modalPrimary}
-              onPress={async () => {
-                setSuccessOpen(false);
-                await goToSignIn();
-              }}
-            >
-              <Text style={styles.modalPrimaryText}>Go to Sign In</Text>
-            </TouchableOpacity>
+  style={styles.modalPrimary}
+  onPress={() => {
+    setSuccessOpen(false);
+  }}
+>
+  <Text style={styles.modalPrimaryText}>Continue</Text>
+</TouchableOpacity>
 
             <TouchableOpacity
               style={styles.modalSecondary}

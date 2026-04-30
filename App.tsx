@@ -319,8 +319,10 @@ setTimeout(() => {
           );
 
           if (Platform.OS !== "web") {
-            await savePushTokenForUser(session.user.id);
-          }
+  savePushTokenForUser(session.user.id).catch((err) => {
+    console.log("Push token save skipped:", err?.message || err);
+  });
+}
 
           setInitialAuthRouteName("SignIn");
         } else {
@@ -357,7 +359,9 @@ setTimeout(() => {
             event === "INITIAL_SESSION" ||
             event === "USER_UPDATED")
         ) {
-          await savePushTokenForUser(session.user.id);
+          savePushTokenForUser(session.user.id).catch((err) => {
+  console.log("Push token save skipped:", err?.message || err);
+});
         }
       }
     );

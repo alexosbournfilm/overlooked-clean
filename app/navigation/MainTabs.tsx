@@ -63,15 +63,16 @@ const SYSTEM_SANS = Platform.select({
 
 /* ------------------------------- helpers ------------------------------- */
 
-function withTimeout<T>(promise: Promise<T>, ms = 9000): Promise<T> {
+function withTimeout<T = any>(promise: PromiseLike<T>, ms = 9000): Promise<any> {
   return new Promise((resolve, reject) => {
     const id = setTimeout(() => reject(new Error('Request timed out')), ms);
-    promise
-      .then((v) => {
+
+    Promise.resolve(promise)
+      .then((v: any) => {
         clearTimeout(id);
         resolve(v);
       })
-      .catch((e) => {
+      .catch((e: any) => {
         clearTimeout(id);
         reject(e);
       });
@@ -1469,10 +1470,16 @@ const loadChatUnreadCount = useCallback(async () => {
   unreadRequestInFlight.current = true;
 
   try {
-    const { data: conversations, error: convoError } = await supabase
-      .from('conversations')
-      .select('id')
-      .contains('participant_ids', [badgeUserId]);
+    const {
+      data: conversations,
+      error: convoError,
+    } = await withTimeout(
+      supabase
+        .from('conversations')
+        .select('id')
+        .contains('participant_ids', [badgeUserId]),
+      8000
+    );
 
     if (convoError) {
       console.error('Unread count conversations error:', convoError.message);
@@ -1486,11 +1493,17 @@ const loadChatUnreadCount = useCallback(async () => {
       return;
     }
 
-    const { data: reads, error: readsError } = await supabase
-      .from('conversation_reads')
-      .select('conversation_id, last_read_at')
-      .eq('user_id', badgeUserId)
-      .in('conversation_id', conversationIds);
+    const {
+      data: reads,
+      error: readsError,
+    } = await withTimeout(
+      supabase
+        .from('conversation_reads')
+        .select('conversation_id, last_read_at')
+        .eq('user_id', badgeUserId)
+        .in('conversation_id', conversationIds),
+      8000
+    );
 
     if (readsError) {
       console.error('Unread count reads error:', readsError.message);
@@ -1502,11 +1515,17 @@ const loadChatUnreadCount = useCallback(async () => {
       readsMap.set(row.conversation_id, row.last_read_at);
     });
 
-    const { data: messages, error: msgError } = await supabase
-      .from('messages')
-      .select('conversation_id, sent_at, sender_id')
-      .in('conversation_id', conversationIds)
-      .neq('sender_id', badgeUserId);
+    const {
+      data: messages,
+      error: msgError,
+    } = await withTimeout(
+      supabase
+        .from('messages')
+        .select('conversation_id, sent_at, sender_id')
+        .in('conversation_id', conversationIds)
+        .neq('sender_id', badgeUserId),
+      8000
+    );
 
     if (msgError) {
       console.error('Unread count messages error:', msgError.message);
@@ -1517,7 +1536,11 @@ const loadChatUnreadCount = useCallback(async () => {
 
     (messages || []).forEach((msg: any) => {
       const lastReadAt = readsMap.get(msg.conversation_id);
-      if (!lastReadAt || new Date(msg.sent_at).getTime() > new Date(lastReadAt).getTime()) {
+
+      if (
+        !lastReadAt ||
+        new Date(msg.sent_at).getTime() > new Date(lastReadAt).getTime()
+      ) {
         unreadConversationIds.add(msg.conversation_id);
       }
     });
@@ -1552,7 +1575,10 @@ useEffect(() => {
     return;
   }
 
-  registerAndSavePushToken(badgeUserId);
+  registerAndSavePushToken(badgeUserId).catch((err: any) => {
+    console.log('Push token save skipped:', err?.message || err);
+  });
+
   loadChatUnreadCount();
 }, [badgeUserId, loadChatUnreadCount]);
 
