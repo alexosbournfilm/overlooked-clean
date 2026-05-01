@@ -59,7 +59,9 @@ export default function NewPassword() {
     if (!url) return params;
 
     try {
-      const queryPart = url.includes("?") ? url.split("?")[1]?.split("#")[0] : "";
+      const queryPart = url.includes("?")
+        ? url.split("?")[1]?.split("#")[0]
+        : "";
       const hashPart = url.includes("#") ? url.split("#")[1] : "";
 
       if (queryPart) {
@@ -186,62 +188,63 @@ export default function NewPassword() {
   };
 
   const goToSignIn = async () => {
-  if (signingOut || hasLeftScreenRef.current) return;
+    if (signingOut || hasLeftScreenRef.current) return;
 
-  hasLeftScreenRef.current = true;
-  setSigningOut(true);
-
-  try {
-    markResetDone();
+    hasLeftScreenRef.current = true;
+    setSigningOut(true);
+    setStatus("Returning to Sign In...");
 
     try {
-      await Promise.race([
-        supabase.auth.signOut({ scope: "local" as any }),
-        new Promise((resolve) => setTimeout(resolve, 3000)),
-      ]);
+      markResetDone();
+
+      try {
+        await Promise.race([
+          supabase.auth.signOut({ scope: "local" as any }),
+          new Promise((resolve) => setTimeout(resolve, 3000)),
+        ]);
+      } catch (e) {
+        console.log("Supabase signOut failed, clearing local auth anyway:", e);
+      }
+
+      await clearSupabaseAuthStorage();
+
+      if (Platform.OS === "web") {
+        if (typeof window !== "undefined") {
+          window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+          window.sessionStorage.setItem("overlooked.justResetPassword", "true");
+          window.location.replace("/signin");
+        }
+        return;
+      }
+
+      resetToSignInNative();
+
+      setTimeout(() => {
+        clearResetFlagsForNativeSignIn();
+      }, 500);
     } catch (e) {
-      console.log("Supabase signOut failed, clearing local auth anyway:", e);
-    }
+      console.log("goToSignIn error:", e);
 
-    await clearSupabaseAuthStorage();
+      await clearSupabaseAuthStorage();
 
-    if (Platform.OS === "web") {
-      if (typeof window !== "undefined") {
+      if (Platform.OS === "web" && typeof window !== "undefined") {
         window.sessionStorage.removeItem("overlooked.allowCreateProfile");
         window.sessionStorage.setItem("overlooked.justResetPassword", "true");
         window.location.replace("/signin");
+        return;
       }
-      return;
+
+      resetToSignInNative();
+
+      setTimeout(() => {
+        clearResetFlagsForNativeSignIn();
+      }, 500);
+    } finally {
+      if (mountedRef.current) {
+        setSigningOut(false);
+      }
     }
-
-    resetToSignInNative();
-
-    setTimeout(() => {
-      clearResetFlagsForNativeSignIn();
-    }, 500);
-  } catch (e) {
-    console.log("goToSignIn error:", e);
-
-    await clearSupabaseAuthStorage();
-
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      window.sessionStorage.removeItem("overlooked.allowCreateProfile");
-      window.sessionStorage.setItem("overlooked.justResetPassword", "true");
-      window.location.replace("/signin");
-      return;
-    }
-
-    resetToSignInNative();
-
-    setTimeout(() => {
-      clearResetFlagsForNativeSignIn();
-    }, 500);
-  } finally {
-    if (mountedRef.current) {
-      setSigningOut(false);
-    }
-  }
-};
+  };
 
   const establishSession = async () => {
     markResetFlowActive();
@@ -274,27 +277,25 @@ export default function NewPassword() {
       Alert.alert(
         "Link expired",
         "That password reset link is invalid or has expired. Please request a new one from Sign In.",
-        [{ text: "OK", onPress: () => goToSignIn() }]
+        [{ text: "OK", onPress: () => void goToSignIn() }]
       );
       return false;
     }
 
     if (type && type !== "recovery") {
-      console.log(`🔁 Not a recovery link (type=${type}). Redirecting to Sign In.`);
-      await goToSignIn();
+      console.log(`Not a recovery link. type=${type}`);
       return false;
     }
 
     if (code) {
-      console.log("✔ Using PKCE code to exchange recovery session");
+      console.log("Using PKCE code to exchange recovery session");
 
       const fullUrl = rawUrl || code;
       const { error } = await supabase.auth.exchangeCodeForSession(fullUrl);
 
       if (!error) {
-        console.log("✅ Recovery session exchanged from code");
-
         const { data: sessionCheck } = await supabase.auth.getSession();
+
         console.log("Session check after code exchange:", {
           hasSession: !!sessionCheck?.session,
         });
@@ -302,14 +303,13 @@ export default function NewPassword() {
         return !!sessionCheck?.session;
       }
 
-      console.log("❌ exchangeCodeForSession full URL error:", error.message);
+      console.log("exchangeCodeForSession full URL error:", error.message);
 
       const fallback = await supabase.auth.exchangeCodeForSession(code);
 
       if (!fallback.error) {
-        console.log("✅ Recovery session exchanged from code fallback");
-
         const { data: sessionCheck } = await supabase.auth.getSession();
+
         console.log("Session check after code fallback:", {
           hasSession: !!sessionCheck?.session,
         });
@@ -317,11 +317,14 @@ export default function NewPassword() {
         return !!sessionCheck?.session;
       }
 
-      console.log("❌ exchangeCodeForSession code fallback error:", fallback.error.message);
+      console.log(
+        "exchangeCodeForSession code fallback error:",
+        fallback.error.message
+      );
     }
 
     if (access_token && refresh_token) {
-      console.log("✔ Using access_token + refresh_token recovery session");
+      console.log("Using access_token + refresh_token recovery session");
 
       const { error } = await supabase.auth.setSession({
         access_token,
@@ -329,9 +332,8 @@ export default function NewPassword() {
       });
 
       if (!error) {
-        console.log("✅ Recovery session restored from tokens");
-
         const { data: sessionCheck } = await supabase.auth.getSession();
+
         console.log("Session check after setSession:", {
           hasSession: !!sessionCheck?.session,
         });
@@ -339,11 +341,11 @@ export default function NewPassword() {
         return !!sessionCheck?.session;
       }
 
-      console.log("❌ setSession error:", error.message);
+      console.log("setSession error:", error.message);
     }
 
     if (token_hash) {
-      console.log("✔ Using token_hash to verify recovery session");
+      console.log("Using token_hash to verify recovery session");
 
       const { data, error } = await supabase.auth.verifyOtp({
         type: "recovery",
@@ -351,15 +353,12 @@ export default function NewPassword() {
       } as any);
 
       if (!error) {
-        console.log("✅ Recovery session verified from token_hash", {
-          hasSession: !!data?.session,
-          hasUser: !!data?.user,
-        });
-
         const { data: sessionCheck } = await supabase.auth.getSession();
 
         console.log("Session check after verifyOtp:", {
           hasSession: !!sessionCheck?.session,
+          hasDataSession: !!data?.session,
+          hasUser: !!data?.user,
         });
 
         if (sessionCheck?.session) {
@@ -377,23 +376,26 @@ export default function NewPassword() {
             return !!secondCheck?.session;
           }
 
-          console.log("❌ setSession after verifyOtp error:", setSessionError.message);
+          console.log(
+            "setSession after verifyOtp error:",
+            setSessionError.message
+          );
         }
       }
 
       if (error) {
-        console.log("❌ verifyOtp token_hash error:", error.message);
+        console.log("verifyOtp token_hash error:", error.message);
       }
     }
 
     const { data: existing } = await supabase.auth.getSession();
 
     if (existing?.session) {
-      console.log("✅ Existing recovery session found — recovery is ready");
+      console.log("Existing recovery session found");
       return true;
     }
 
-    console.log("❌ No valid recovery session could be created");
+    console.log("No valid recovery session could be created");
     return false;
   };
 
@@ -413,8 +415,6 @@ export default function NewPassword() {
         });
 
         if (event === "PASSWORD_RECOVERY" && session) {
-          console.log("✅ PASSWORD_RECOVERY session ready inside NewPassword");
-
           markResetFlowActive();
 
           if (mountedRef.current) {
@@ -424,7 +424,7 @@ export default function NewPassword() {
         }
 
         if (event === "USER_UPDATED") {
-          console.log("✅ USER_UPDATED received inside NewPassword");
+          console.log("USER_UPDATED received inside NewPassword");
         }
       }
     );
@@ -455,12 +455,8 @@ export default function NewPassword() {
           }
         } else {
           setSessionReady(false);
-          setStatus("");
-
-          Alert.alert(
-            "Reset link problem",
-            "The reset link opened, but the recovery session could not be created. Please request a new password reset email and open the newest link.",
-            [{ text: "OK", onPress: () => goToSignIn() }]
+          setStatus(
+            "Reset link not ready. You can still press Update Password to retry the session."
           );
         }
       } catch (e: any) {
@@ -469,12 +465,8 @@ export default function NewPassword() {
         if (!mountedRef.current) return;
 
         setSessionReady(false);
-        setStatus("");
-
-        Alert.alert(
-          "Reset link problem",
-          e?.message || "Could not validate this reset link. Please request a new one.",
-          [{ text: "OK", onPress: () => goToSignIn() }]
+        setStatus(
+          "Could not validate reset link yet. Press Update Password to retry."
         );
       }
     };
@@ -493,55 +485,82 @@ export default function NewPassword() {
   }, []);
 
   const updatePassword = async () => {
-    console.log("🔐 updatePassword pressed", {
-      sessionReady,
-      hasPassword: !!password,
-      hasConfirm: !!confirm,
-    });
+    console.log("🔥 UPDATE PASSWORD BUTTON PRESSED");
 
-    if (!sessionReady) {
-      Alert.alert(
-        "Reset link not ready",
-        "The password reset session was not created. Please go back to Sign In and request a new reset email."
-      );
+    setStatus("Button pressed...");
+
+    if (loading || signingOut) {
+      console.log("Blocked because already loading/signingOut");
       return;
     }
 
     if (!password || !confirm) {
+      setStatus("");
       Alert.alert("Error", "Fill in both fields.");
       return;
     }
 
     if (password !== confirm) {
+      setStatus("");
       Alert.alert("Error", "Passwords do not match.");
       return;
     }
 
     if (password.length < 6) {
+      setStatus("");
       Alert.alert("Error", "Password must be at least 6 characters.");
       return;
     }
 
     setLoading(true);
-    setStatus("Updating password...");
 
     try {
       markResetFlowActive();
 
-      const { data: beforeSession } = await supabase.auth.getSession();
+      setStatus("Checking reset session...");
 
-      console.log("Before updateUser session:", {
-        hasSession: !!beforeSession?.session,
+      let { data: sessionData } = await supabase.auth.getSession();
+
+      console.log("Session before password update:", {
+        hasSession: !!sessionData?.session,
+        userId: sessionData?.session?.user?.id,
       });
 
-      if (!beforeSession?.session) {
+      if (!sessionData?.session) {
+        setStatus("Trying to restore reset session...");
+
+        const ok = await Promise.race([
+          establishSession(),
+          new Promise<boolean>((resolve) =>
+            setTimeout(() => resolve(false), 15000)
+          ),
+        ]);
+
+        console.log("establishSession result inside updatePassword:", ok);
+
+        const retry = await supabase.auth.getSession();
+        sessionData = retry.data;
+
+        console.log("Session after restore attempt:", {
+          hasSession: !!sessionData?.session,
+          userId: sessionData?.session?.user?.id,
+        });
+      }
+
+      if (!sessionData?.session) {
         setSessionReady(false);
+        setStatus("Reset session missing.");
+
         Alert.alert(
-          "Session expired",
-          "Your reset session expired or was not created. Please request a new password reset email."
+          "Reset link problem",
+          "The reset session is missing. Please request a new password reset email and open the newest link."
         );
+
         return;
       }
+
+      setSessionReady(true);
+      setStatus("Updating password...");
 
       const result: any = await Promise.race([
         supabase.auth.updateUser({ password }),
@@ -553,7 +572,11 @@ export default function NewPassword() {
       const error = result?.error;
 
       if (error) {
+        console.log("Password update error:", error);
+
         const msg = (error.message || "").toLowerCase();
+
+        setStatus("");
 
         if (
           msg.includes("different") ||
@@ -568,22 +591,27 @@ export default function NewPassword() {
           return;
         }
 
-        Alert.alert("Error", error.message);
+        Alert.alert(
+          "Password update failed",
+          error.message || "Could not update your password."
+        );
+
         return;
       }
 
-      console.log("✅ Password updated successfully");
+      console.log("✅ PASSWORD UPDATED");
+
+      setStatus("Password updated. Returning to Sign In...");
 
       markResetDone();
 
-      Alert.alert(
-  "Password changed",
-  "Your password has been updated. Please sign in again."
-);
+      await new Promise((resolve) => setTimeout(resolve, 600));
 
-await goToSignIn();
+      await goToSignIn();
     } catch (e: any) {
-      console.log("updatePassword error:", e);
+      console.log("updatePassword fatal error:", e);
+
+      setStatus("");
 
       Alert.alert(
         "Password update problem",
@@ -594,7 +622,6 @@ await goToSignIn();
     } finally {
       if (mountedRef.current) {
         setLoading(false);
-        setStatus("");
       }
     }
   };
@@ -603,7 +630,7 @@ await goToSignIn();
     <SafeAreaView style={{ flex: 1, backgroundColor: BG }}>
       <View style={styles.container}>
         <TouchableOpacity
-          onPress={() => goToSignIn()}
+          onPress={() => void goToSignIn()}
           style={styles.back}
           disabled={signingOut}
         >
@@ -617,7 +644,11 @@ await goToSignIn();
 
         <View style={styles.card}>
           <Text style={styles.title}>Set a New Password</Text>
-          <Text style={styles.subtitle}>Enter your new password below.</Text>
+<Text style={styles.subtitle}>Enter your new password below.</Text>
+
+<Text style={styles.passwordHint}>
+  Password must be at least 6 characters. Numbers, symbols, and uppercase letters are optional.
+</Text>
 
           <View style={styles.inputRow}>
             <Ionicons name="lock-closed" size={16} color={SUB} />
@@ -672,20 +703,20 @@ await goToSignIn();
           </View>
 
           <TouchableOpacity
-            onPress={updatePassword}
-            disabled={loading || signingOut}
+            onPress={() => {
+              console.log("🔥 TOUCHABLE PRESSED");
+              void updatePassword();
+            }}
+            disabled={false}
             style={[
               styles.button,
               (loading || signingOut) && { opacity: 0.6 },
-              !sessionReady && !loading && !signingOut && { opacity: 0.85 },
             ]}
           >
             {loading ? (
               <ActivityIndicator color={BG} />
             ) : (
-              <Text style={styles.buttonText}>
-                {sessionReady ? "UPDATE PASSWORD" : "RESET LINK NOT READY"}
-              </Text>
+              <Text style={styles.buttonText}>UPDATE PASSWORD</Text>
             )}
           </TouchableOpacity>
 
@@ -693,7 +724,8 @@ await goToSignIn();
 
           {!sessionReady && !status && (
             <Text style={styles.error}>
-              Waiting for valid reset link. If this does not change, request a new reset email.
+              Waiting for valid reset link. You can still press Update Password
+              to retry.
             </Text>
           )}
         </View>
@@ -720,6 +752,13 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginBottom: 4,
   },
+  passwordHint: {
+  color: SUB,
+  textAlign: "center",
+  fontSize: 13,
+  lineHeight: 18,
+  marginBottom: 18,
+},
   subtitle: { color: SUB, textAlign: "center", marginBottom: 18 },
   inputRow: {
     flexDirection: "row",
@@ -739,5 +778,5 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: BG, fontWeight: "900", fontSize: 15 },
   error: { color: "red", marginTop: 10, textAlign: "center", lineHeight: 18 },
-  status: { color: SUB, marginTop: 10, textAlign: "center" },
+  status: { color: SUB, marginTop: 10, textAlign: "center", lineHeight: 18 },
 });
