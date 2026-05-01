@@ -1,3 +1,4 @@
+// app/navigation/linking.ts
 import { LinkingOptions } from "@react-navigation/native";
 
 export const linking: LinkingOptions<any> = {
@@ -14,7 +15,6 @@ export const linking: LinkingOptions<any> = {
     screens: {
       // ROOT SCREENS
       NewPassword: "reset-password",
-      CreateProfile: "create-profile",
 
       // AUTH STACK
       Auth: {
@@ -42,7 +42,6 @@ export const linking: LinkingOptions<any> = {
         },
       },
 
-      // PUBLIC SHARED PROFILE
       PublicProfile: {
         path: "creative/:slug",
         parse: {
@@ -50,7 +49,6 @@ export const linking: LinkingOptions<any> = {
         },
       },
 
-      // OPTIONAL ROUTES
       Paywall: "paywall",
       PaySuccess: "pay-success",
     },

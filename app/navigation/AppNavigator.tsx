@@ -1,3 +1,4 @@
+// app/navigation/AppNavigator.tsx
 import React, { useEffect, useRef, useState } from "react";
 import {
   NavigationContainer,
@@ -6,8 +7,7 @@ import {
   CommonActions,
 } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { View, ActivityIndicator } from "react-native";
+import { View, ActivityIndicator, Platform } from "react-native";
 
 import AuthStack from "./AuthStack";
 import MainTabs from "./MainTabs";
@@ -40,6 +40,37 @@ const NAV_THEME = {
   },
 };
 
+function getAllowCreateProfileFlow() {
+  const G = globalThis as any;
+
+  if (G.__OVERLOOKED_EMAIL_CONFIRM__ === true) {
+    return true;
+  }
+
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    return (
+      window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true"
+    );
+  }
+
+  return false;
+}
+
+function getPasswordResetFlowActive() {
+  const G = globalThis as any;
+
+  return Boolean(
+    G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+      G.__OVERLOOKED_RECOVERY__
+  );
+}
+
+function getPasswordResetDone() {
+  const G = globalThis as any;
+
+  return Boolean(G.__OVERLOOKED_PASSWORD_RESET_DONE__);
+}
+
 export default function AppNavigator({
   initialAuthRouteName,
 }: {
@@ -55,48 +86,45 @@ export default function AppNavigator({
   const lastAuthSnapshotRef = useRef<string>("");
   const hasHandledPostMountRedirectRef = useRef(false);
 
+  const [isPaid, setIsPaid] = useState<boolean | null>(null);
+  const [expired, setExpired] = useState(false);
+  const [membershipChecked, setMembershipChecked] = useState(false);
+  const lastCheckedUserIdRef = useRef<string | null>(null);
+
   const G = globalThis as any;
 
+  const isPasswordResetFlow = getPasswordResetFlowActive();
+  const isPasswordResetDone = getPasswordResetDone();
+  const allowCreateProfileFlow = getAllowCreateProfileFlow();
+
   useEffect(() => {
-  let mounted = true;
+    let mounted = true;
 
-  const restoreNav = async () => {
-    if (!ready) return;
+    const restoreNav = async () => {
+      if (!ready) return;
 
-    // Do not restore old navigation state.
-    // This prevents Android from reopening into stale/broken loading screens.
-    setInitialState(undefined);
+      setInitialState(undefined);
 
-    if (mounted) {
-      setNavReady(true);
-      hasBootstrappedNavRef.current = true;
-    }
-  };
+      if (mounted) {
+        setNavReady(true);
+        hasBootstrappedNavRef.current = true;
+      }
+    };
 
-  restoreNav();
+    restoreNav();
 
-  return () => {
-    mounted = false;
-  };
-}, [ready, userId, profileComplete, shouldRouteToCreateProfile]);
+    return () => {
+      mounted = false;
+    };
+  }, [ready, userId, profileComplete, shouldRouteToCreateProfile]);
 
   const handleStateChange = async () => {
-  // Temporarily disabled.
-  // Saving full navigation state can reopen the app into stale loading screens.
-  return;
-};
+    return;
+  };
 
   useEffect(() => {
     if (!ready) return;
-
-    if (!userId) {
-      setInitialState(undefined);
-      return;
-    }
-
-    if (!profileComplete || shouldRouteToCreateProfile) {
-      setInitialState(undefined);
-    }
+    setInitialState(undefined);
   }, [ready, userId, profileComplete, shouldRouteToCreateProfile]);
 
   useEffect(() => {
@@ -106,28 +134,18 @@ export default function AppNavigator({
 
     const currentRoute = navigationRef.getCurrentRoute();
 
-if (
-  currentRoute?.name === "NewPassword" ||
-  (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__
-) {
-  return;
-}
+    const resetFlowActive =
+      G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+      G.__OVERLOOKED_RECOVERY__ ||
+      currentRoute?.name === "NewPassword";
 
-    const authSnapshot = `${userId ?? "guest"}:${
-      profileComplete ? "complete" : "incomplete"
-    }:${shouldRouteToCreateProfile ? "createprofile" : "normal"}:${
-      G.__OVERLOOKED_EMAIL_CONFIRM__ ? "emailconfirm" : "noemailconfirm"
-    }`;
+    const resetDone = G.__OVERLOOKED_PASSWORD_RESET_DONE__ === true;
 
-    const prevSnapshot = lastAuthSnapshotRef.current;
-    lastAuthSnapshotRef.current = authSnapshot;
-
-    if (!hasHandledPostMountRedirectRef.current) {
-      hasHandledPostMountRedirectRef.current = true;
-      return;
-    }
-
-    if (prevSnapshot === authSnapshot) return;
+    const createProfileAllowed =
+      G.__OVERLOOKED_EMAIL_CONFIRM__ === true ||
+      (Platform.OS === "web" &&
+        typeof window !== "undefined" &&
+        window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true");
 
     const resetToAuth = () => {
       navigationRef.dispatch(
@@ -137,7 +155,7 @@ if (
             {
               name: "Auth",
               params: {
-                screen: initialAuthRouteName,
+                screen: "SignIn",
               },
             },
           ],
@@ -163,38 +181,78 @@ if (
       );
     };
 
+    /**
+     * Password reset is finished.
+     * Force Sign In. Never CreateProfile.
+     */
+    if (resetDone) {
+      G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+      G.__OVERLOOKED_RECOVERY__ = false;
+      G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+      G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+        window.sessionStorage.setItem("overlooked.justResetPassword", "true");
+      }
+
+      resetToAuth();
+      return;
+    }
+
+    /**
+     * Password reset owns its own navigation.
+     * Never redirect password-reset users to CreateProfile.
+     */
+    if (resetFlowActive) {
+      return;
+    }
+
+    const authSnapshot = `${userId ?? "guest"}:${
+      profileComplete ? "complete" : "incomplete"
+    }:${shouldRouteToCreateProfile ? "createprofile" : "normal"}:${
+      createProfileAllowed ? "createallowed" : "createnotallowed"
+    }:${G.__OVERLOOKED_EMAIL_CONFIRM__ ? "emailconfirm" : "noemailconfirm"}`;
+
+    const prevSnapshot = lastAuthSnapshotRef.current;
+    lastAuthSnapshotRef.current = authSnapshot;
+
+    if (!hasHandledPostMountRedirectRef.current) {
+      hasHandledPostMountRedirectRef.current = true;
+      return;
+    }
+
+    if (prevSnapshot === authSnapshot) return;
+
     if (!userId) {
-  if ((globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__) {
-    return; // 🚫 DO NOT override reset password screen
-  }
+      resetToAuth();
+      return;
+    }
 
-  resetToAuth();
-  return;
-}
+    /**
+     * CreateProfile is only allowed after a real email-confirmation flow.
+     * This blocks password reset, normal sign-in, stale nav state, and missing profile redirects.
+     */
+    if (shouldRouteToCreateProfile && createProfileAllowed) {
+      resetToCreateProfile();
+      return;
+    }
 
-    if (shouldRouteToCreateProfile) {
-  if (
-    (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
-    (globalThis as any).__OVERLOOKED_RECOVERY__
-  ) {
-    return;
-  }
-
-  resetToCreateProfile();
-  return;
-}
-
+    /**
+     * If profile is incomplete but this is NOT email confirmation,
+     * send user to Sign In instead of CreateProfile.
+     */
     if (!profileComplete) {
-  if ((globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__) {
-    return; // 🚫 allow reset password flow
-  }
-
-  resetToAuth();
-  return;
-}
+      resetToAuth();
+      return;
+    }
 
     if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
       G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+    }
+
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.sessionStorage.removeItem("overlooked.allowCreateProfile");
     }
 
     resetToMainTabs();
@@ -206,11 +264,6 @@ if (
     shouldRouteToCreateProfile,
     initialAuthRouteName,
   ]);
-
-  const [isPaid, setIsPaid] = useState<boolean | null>(null);
-  const [expired, setExpired] = useState(false);
-  const [membershipChecked, setMembershipChecked] = useState(false);
-  const lastCheckedUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!userId) {
@@ -277,7 +330,7 @@ if (
     return () => {
       mounted = false;
     };
-  }, [userId]);
+  }, [userId, isPaid]);
 
   if (!ready || !navReady) {
     return (
@@ -296,19 +349,25 @@ if (
 
   const mustShowPaywall = false;
 
+  /**
+   * IMPORTANT:
+   * CreateProfile can only be the initial route if create-profile flow is allowed.
+   * shouldRouteToCreateProfile alone is NOT enough.
+   */
   const rootInitialRouteName =
-  (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
-  (globalThis as any).__OVERLOOKED_RECOVERY__
-    ? "NewPassword"
-    : !userId
-    ? "Auth"
-    : shouldRouteToCreateProfile
-    ? "CreateProfile"
-    : !profileComplete
-    ? "Auth"
-    : mustShowPaywall
-    ? "Paywall"
-    : "MainTabs";
+    isPasswordResetFlow
+      ? "NewPassword"
+      : isPasswordResetDone
+      ? "Auth"
+      : !userId
+      ? "Auth"
+      : shouldRouteToCreateProfile && allowCreateProfileFlow
+      ? "CreateProfile"
+      : profileComplete
+      ? mustShowPaywall
+        ? "Paywall"
+        : "MainTabs"
+      : "Auth";
 
   return (
     <NavigationContainer
@@ -316,15 +375,18 @@ if (
       linking={linking}
       initialState={initialState}
       onReady={() => {
-  setNavigatorReady(true);
-  setNavReady(true);
+        setNavigatorReady(true);
+        setNavReady(true);
 
-  setTimeout(() => {
-    if ((globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__) {
-      navigationRef.navigate("NewPassword" as never);
-    }
-  }, 500);
-}}
+        setTimeout(() => {
+          if (
+            (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+            (globalThis as any).__OVERLOOKED_RECOVERY__
+          ) {
+            navigationRef.navigate("NewPassword" as never);
+          }
+        }, 500);
+      }}
       onStateChange={handleStateChange}
       theme={NAV_THEME}
     >
@@ -340,11 +402,7 @@ if (
 
         <Stack.Screen
           name="Auth"
-          children={() => (
-            <AuthStack
-              initialRouteName={!userId ? initialAuthRouteName : "SignIn"}
-            />
-          )}
+          children={() => <AuthStack initialRouteName="SignIn" />}
         />
 
         <Stack.Screen name="CreateProfile" component={CreateProfileScreen} />
@@ -360,9 +418,7 @@ if (
         />
 
         <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
-
         <Stack.Screen name="SharedFilm" component={SharedFilmScreen} />
-
         <Stack.Screen name="NewPassword" component={NewPassword} />
       </Stack.Navigator>
     </NavigationContainer>

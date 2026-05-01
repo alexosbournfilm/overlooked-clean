@@ -10,20 +10,19 @@ import {
    ROOT NAVIGATION TYPE DEFINITIONS
    ===================================================== */
 export type RootStackParamList = {
-  // ✅ ROOT AUTH STACK (AUTH SCREENS LIVE *INSIDE* THIS)
+  // ROOT AUTH STACK
+  // CreateProfile is intentionally NOT inside Auth.
   Auth:
     | {
-        screen?:
-          | "SignIn"
-          | "SignUp"
-          | "ForgotPassword"
-          | "CreateProfile"
-          | "NewPassword";
+        screen?: "SignIn" | "SignUp" | "ForgotPassword" | "NewPassword";
         params?: any;
       }
     | undefined;
 
-  // PASSWORD RESET (also accessible at root)
+  // ROOT PROFILE CREATION SCREEN
+  CreateProfile: undefined;
+
+  // PASSWORD RESET
   NewPassword: undefined;
 
   // PAYFLOW
@@ -49,10 +48,10 @@ export type RootStackParamList = {
 
   PublicProfile: { slug: string };
 
-  // ✅ NEW SHARED FILM ROUTE
+  // SHARED FILM ROUTE
   SharedFilm: { shareSlug: string };
 
-  // (Optional) if you ever register ChatRoom at root, this keeps typing happy.
+  // Optional fallback if ChatRoom is ever registered at root.
   ChatRoom: any;
 };
 
@@ -92,6 +91,7 @@ const store: NavGlobals = G.__OVERLOOKED_NAV__;
    ===================================================== */
 function patchRefForQueueing() {
   if (store.patched) return;
+
   const refAny = store.ref as any;
 
   if (refAny.__patched) return;
@@ -104,8 +104,9 @@ function patchRefForQueueing() {
   };
 
   function enqueue(action: () => void, name: string, args: any[]) {
-    if (store.ready && store.ref.isReady()) action();
-    else {
+    if (store.ready && store.ref.isReady()) {
+      action();
+    } else {
       console.warn(`[nav] queued: ${name}`, args);
       store.queue.push(action);
     }
@@ -135,6 +136,7 @@ export const navigationRef = store.ref;
 
 export function setNavigatorReady(ready: boolean) {
   store.ready = ready;
+
   if (ready && store.ref.isReady() && store.queue.length) {
     const queued = [...store.queue];
     store.queue.length = 0;
@@ -158,8 +160,40 @@ export function resetToMain() {
   );
 }
 
+export function resetToSignIn() {
+  store.ref.dispatch(
+    CommonActions.reset({
+      index: 0,
+      routes: [
+        {
+          name: "Auth",
+          params: { screen: "SignIn" },
+        },
+      ],
+    })
+  );
+}
+
+export function resetToNewPassword() {
+  store.ref.dispatch(
+    CommonActions.reset({
+      index: 0,
+      routes: [{ name: "NewPassword" }],
+    })
+  );
+}
+
+export function resetToCreateProfile() {
+  store.ref.dispatch(
+    CommonActions.reset({
+      index: 0,
+      routes: [{ name: "CreateProfile" }],
+    })
+  );
+}
+
 /* =====================================================
-   CHAT HELPER (FIXES YOUR ProfileScreen IMPORT ERROR)
+   CHAT HELPER
    ===================================================== */
 export function openChat(params: ChatRoomParams) {
   try {

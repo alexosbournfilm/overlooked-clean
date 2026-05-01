@@ -68,6 +68,7 @@ function parseAuthParamsFromUrl(url: string) {
   let refresh_token: string | null = null;
   let type: string | null = null;
   let error_description: string | null = null;
+  let token_hash: string | null = null;
 
   try {
     const u = new URL(url);
@@ -75,6 +76,7 @@ function parseAuthParamsFromUrl(url: string) {
     code = u.searchParams.get("code");
     type = u.searchParams.get("type") || type;
     error_description = u.searchParams.get("error_description");
+    token_hash = u.searchParams.get("token_hash");
 
     const hash = (u.hash || "").replace(/^#/, "");
     if (hash) {
@@ -83,16 +85,43 @@ function parseAuthParamsFromUrl(url: string) {
       refresh_token = hp.get("refresh_token") || refresh_token;
       type = hp.get("type") || type;
       error_description = hp.get("error_description") || error_description;
+      token_hash = hp.get("token_hash") || token_hash;
     }
   } catch {
     // ignore
   }
 
-  return { code, access_token, refresh_token, type, error_description };
+  return {
+    code,
+    access_token,
+    refresh_token,
+    type,
+    error_description,
+    token_hash,
+  };
+}
+
+function markPasswordResetFlow() {
+  (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
+  (globalThis as any).__OVERLOOKED_RECOVERY__ = true;
+  (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
+  (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+}
+
+function markSignupConfirmFlow() {
+  (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+  (globalThis as any).__OVERLOOKED_RECOVERY__ = false;
+  (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = true;
+  (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
 }
 
 export default function App() {
   const [appIsReady, setAppIsReady] = useState(false);
+
+  /**
+   * Keep the prop type compatible with your AppNavigator,
+   * but do not use CreateProfile as an initial auth route anymore.
+   */
   const [initialAuthRouteName, setInitialAuthRouteName] =
     useState<"SignIn" | "CreateProfile">("SignIn");
 
@@ -127,19 +156,26 @@ export default function App() {
 
     const lowerUrl = url.toLowerCase();
 
-const isResetPasswordLink =
-  lowerUrl.includes("reset-password") ||
-  lowerUrl.includes("new-password") ||
-  lowerUrl.includes("newpassword") ||
-  lowerUrl.includes("type=recovery");
+    const isResetPasswordLink =
+      lowerUrl.includes("reset-password") ||
+      lowerUrl.includes("new-password") ||
+      lowerUrl.includes("newpassword") ||
+      lowerUrl.includes("type=recovery");
 
-    const { code, access_token, refresh_token, type, error_description } =
-      parseAuthParamsFromUrl(url);
+    const {
+      code,
+      access_token,
+      refresh_token,
+      type,
+      error_description,
+      token_hash,
+    } = parseAuthParamsFromUrl(url);
 
     const isSupabaseAuthCallback =
       !!code ||
       !!access_token ||
       !!refresh_token ||
+      !!token_hash ||
       type === "recovery" ||
       type === "signup" ||
       isResetPasswordLink;
@@ -149,6 +185,7 @@ const isResetPasswordLink =
     console.log("🔗 Supabase auth callback detected:", {
       hasCode: !!code,
       hasTokens: !!access_token || !!refresh_token,
+      hasTokenHash: !!token_hash,
       type,
       isResetPasswordLink,
     });
@@ -158,15 +195,47 @@ const isResetPasswordLink =
       return;
     }
 
+    /**
+     * CRITICAL FIX:
+     *
+     * Password reset must be handled ONLY by NewPassword.tsx.
+     *
+     * Do NOT exchange the recovery code here.
+     * Do NOT call setSession here.
+     *
+     * If App.tsx creates the temporary recovery session first,
+     * the rest of the app sees:
+     *
+     * userId exists + profile incomplete
+     *
+     * and redirects to CreateProfile.
+     */
+    if (isResetPasswordLink || type === "recovery") {
+      console.log("🔐 Reset password link detected → NewPassword owns this flow");
+
+      markPasswordResetFlow();
+      setInitialAuthRouteName("SignIn");
+
+      setTimeout(() => {
+        navigate("NewPassword");
+      }, 300);
+
+      return;
+    }
+
+    /**
+     * Signup confirmation is allowed to create a session here.
+     * Password recovery is not.
+     */
     if (code) {
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      const { error } = await supabase.auth.exchangeCodeForSession(url);
 
       if (error) {
         console.error("exchangeCodeForSession ERROR:", error.message);
         return;
       }
 
-      console.log("✅ Session exchanged from code");
+      console.log("✅ Signup session exchanged from code");
     }
 
     if (access_token && refresh_token) {
@@ -183,20 +252,9 @@ const isResetPasswordLink =
       console.log("✅ Session restored from tokens");
     }
 
-    if (isResetPasswordLink || type === "recovery") {
-      console.log("🔐 Reset password link detected → navigating to NewPassword");
-
-      (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
-
-setTimeout(() => {
-  navigate("NewPassword");
-}, 800);
-
-      return;
-    }
-
     if (type === "signup") {
       console.log("✅ Signup confirmation link detected");
+      markSignupConfirmFlow();
       setInitialAuthRouteName("SignIn");
     }
 
@@ -213,6 +271,8 @@ setTimeout(() => {
         recoveryNavArmedRef.current = false;
 
         console.log("🚨 PASSWORD_RECOVERY event received");
+
+        markPasswordResetFlow();
 
         setTimeout(() => {
           navigate("NewPassword");
@@ -300,6 +360,17 @@ setTimeout(() => {
             window.location.replace("/signin");
             return;
           }
+
+          /**
+           * Mark recovery before any session/profile checks.
+           * This protects AppNavigator/AuthProvider during first render.
+           */
+          if (
+            href.toLowerCase().includes("reset-password") ||
+            href.toLowerCase().includes("type=recovery")
+          ) {
+            markPasswordResetFlow();
+          }
         }
 
         const initialUrl = await Linking.getInitialURL();
@@ -312,17 +383,28 @@ setTimeout(() => {
         const { data: sessionData } = await supabase.auth.getSession();
         const session = sessionData?.session ?? null;
 
-        if (session) {
-          await SecureStore.setItemAsync(
-            "supabaseSession",
-            JSON.stringify(session)
-          );
+        /**
+         * Do not treat a recovery session as a normal logged-in session here.
+         * It belongs to NewPassword.tsx.
+         */
+        const isPasswordResetFlow =
+          (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+          (globalThis as any).__OVERLOOKED_RECOVERY__ ||
+          (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
+
+        if (session && !isPasswordResetFlow) {
+          try {
+            await SecureStore.setItemAsync(
+              "supabaseSession",
+              JSON.stringify(session)
+            );
+          } catch {}
 
           if (Platform.OS !== "web") {
-  savePushTokenForUser(session.user.id).catch((err) => {
-    console.log("Push token save skipped:", err?.message || err);
-  });
-}
+            savePushTokenForUser(session.user.id).catch((err) => {
+              console.log("Push token save skipped:", err?.message || err);
+            });
+          }
 
           setInitialAuthRouteName("SignIn");
         } else {
@@ -351,6 +433,18 @@ setTimeout(() => {
   useEffect(() => {
     const { data: subscription } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        const isPasswordResetFlow =
+          (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+          (globalThis as any).__OVERLOOKED_RECOVERY__ ||
+          (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
+
+        /**
+         * Never run normal post-login work while password reset is active.
+         */
+        if (isPasswordResetFlow) {
+          return;
+        }
+
         if (
           Platform.OS !== "web" &&
           session?.user?.id &&
@@ -360,8 +454,8 @@ setTimeout(() => {
             event === "USER_UPDATED")
         ) {
           savePushTokenForUser(session.user.id).catch((err) => {
-  console.log("Push token save skipped:", err?.message || err);
-});
+            console.log("Push token save skipped:", err?.message || err);
+          });
         }
       }
     );

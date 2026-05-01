@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-  Modal,
   Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -31,6 +30,7 @@ type ResetTokens = {
   refresh_token?: string;
   token_hash?: string;
   type?: string;
+  email?: string;
   error?: string;
   error_code?: string;
   error_description?: string;
@@ -39,8 +39,11 @@ type ResetTokens = {
 
 export default function NewPassword() {
   const navigation = useNavigation<any>();
+
   const latestNativeUrlRef = useRef<string | null>(null);
   const hasTriedSessionRef = useRef(false);
+  const mountedRef = useRef(true);
+  const hasLeftScreenRef = useRef(false);
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -49,7 +52,6 @@ export default function NewPassword() {
   const [sessionReady, setSessionReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-  const [successOpen, setSuccessOpen] = useState(false);
   const [status, setStatus] = useState("");
 
   const collectParamsFromUrl = (url?: string | null) => {
@@ -99,6 +101,7 @@ export default function NewPassword() {
       refresh_token: params["refresh_token"],
       token_hash: params["token_hash"],
       type: params["type"],
+      email: params["email"],
       error: params["error"],
       error_code: params["error_code"],
       error_description: params["error_description"],
@@ -106,10 +109,34 @@ export default function NewPassword() {
     };
   };
 
-  const hardGoToSignInWeb = () => {
+  const markResetFlowActive = () => {
+    (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
+    (globalThis as any).__OVERLOOKED_RECOVERY__ = true;
+    (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+    (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
+
     if (Platform.OS === "web" && typeof window !== "undefined") {
-      window.location.assign("/signin");
+      window.sessionStorage.removeItem("overlooked.allowCreateProfile");
     }
+  };
+
+  const markResetDone = () => {
+    (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+    (globalThis as any).__OVERLOOKED_RECOVERY__ = false;
+    (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = true;
+    (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
+
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+      window.sessionStorage.setItem("overlooked.justResetPassword", "true");
+    }
+  };
+
+  const clearResetFlagsForNativeSignIn = () => {
+    (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+    (globalThis as any).__OVERLOOKED_RECOVERY__ = false;
+    (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+    (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
   };
 
   const resetToSignInNative = () => {
@@ -118,43 +145,114 @@ export default function NewPassword() {
       routes: [{ name: "Auth", params: { screen: "SignIn" } }],
     });
 
-    if (navigationRef.isReady()) navigationRef.dispatch(action);
-    else navigation.dispatch(action);
-  };
-
-  const goToSignIn = async () => {
-    if (signingOut) return;
-
-    (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
-    (globalThis as any).__OVERLOOKED_RECOVERY__ = false;
-
-    setSigningOut(true);
-
-    try {
-      await supabase.auth.signOut();
-
-      if (Platform.OS === "web") {
-        hardGoToSignInWeb();
-        return;
-      }
-
-      resetToSignInNative();
-    } catch (e) {
-      console.log("goToSignIn error:", e);
-      if (Platform.OS === "web") hardGoToSignInWeb();
-      else resetToSignInNative();
-    } finally {
-      setSigningOut(false);
+    if (navigationRef.isReady()) {
+      navigationRef.dispatch(action);
+    } else {
+      navigation.dispatch(action);
     }
   };
 
+  const clearSupabaseAuthStorage = async () => {
+    try {
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        const keysToRemove: string[] = [];
+
+        for (let i = 0; i < window.localStorage.length; i += 1) {
+          const key = window.localStorage.key(i);
+          if (!key) continue;
+
+          if (
+            key.startsWith("sb-") ||
+            key.includes("supabase") ||
+            key.includes("overlooked.supabase.auth")
+          ) {
+            keysToRemove.push(key);
+          }
+        }
+
+        keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+
+        window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+        window.sessionStorage.setItem("overlooked.justResetPassword", "true");
+        return;
+      }
+
+      const AsyncStorage =
+        require("@react-native-async-storage/async-storage").default;
+      await AsyncStorage.removeItem("overlooked.supabase.auth");
+    } catch (e) {
+      console.log("clearSupabaseAuthStorage error:", e);
+    }
+  };
+
+  const goToSignIn = async () => {
+  if (signingOut || hasLeftScreenRef.current) return;
+
+  hasLeftScreenRef.current = true;
+  setSigningOut(true);
+
+  try {
+    markResetDone();
+
+    try {
+      await Promise.race([
+        supabase.auth.signOut({ scope: "local" as any }),
+        new Promise((resolve) => setTimeout(resolve, 3000)),
+      ]);
+    } catch (e) {
+      console.log("Supabase signOut failed, clearing local auth anyway:", e);
+    }
+
+    await clearSupabaseAuthStorage();
+
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+        window.sessionStorage.setItem("overlooked.justResetPassword", "true");
+        window.location.replace("/signin");
+      }
+      return;
+    }
+
+    resetToSignInNative();
+
+    setTimeout(() => {
+      clearResetFlagsForNativeSignIn();
+    }, 500);
+  } catch (e) {
+    console.log("goToSignIn error:", e);
+
+    await clearSupabaseAuthStorage();
+
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+      window.sessionStorage.setItem("overlooked.justResetPassword", "true");
+      window.location.replace("/signin");
+      return;
+    }
+
+    resetToSignInNative();
+
+    setTimeout(() => {
+      clearResetFlagsForNativeSignIn();
+    }, 500);
+  } finally {
+    if (mountedRef.current) {
+      setSigningOut(false);
+    }
+  }
+};
+
   const establishSession = async () => {
+    markResetFlowActive();
+
     const {
       code,
       access_token,
       refresh_token,
       token_hash,
       type,
+      email,
       error_description,
       error_code,
       rawUrl,
@@ -166,6 +264,7 @@ export default function NewPassword() {
       hasAccessToken: !!access_token,
       hasRefreshToken: !!refresh_token,
       hasTokenHash: !!token_hash,
+      hasEmail: !!email,
       type,
       error_code,
       error_description,
@@ -188,21 +287,57 @@ export default function NewPassword() {
 
     if (code) {
       console.log("✔ Using PKCE code to exchange recovery session");
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
 
-      if (!error) return true;
+      const fullUrl = rawUrl || code;
+      const { error } = await supabase.auth.exchangeCodeForSession(fullUrl);
 
-      console.log("❌ exchangeCodeForSession error:", error.message);
+      if (!error) {
+        console.log("✅ Recovery session exchanged from code");
+
+        const { data: sessionCheck } = await supabase.auth.getSession();
+        console.log("Session check after code exchange:", {
+          hasSession: !!sessionCheck?.session,
+        });
+
+        return !!sessionCheck?.session;
+      }
+
+      console.log("❌ exchangeCodeForSession full URL error:", error.message);
+
+      const fallback = await supabase.auth.exchangeCodeForSession(code);
+
+      if (!fallback.error) {
+        console.log("✅ Recovery session exchanged from code fallback");
+
+        const { data: sessionCheck } = await supabase.auth.getSession();
+        console.log("Session check after code fallback:", {
+          hasSession: !!sessionCheck?.session,
+        });
+
+        return !!sessionCheck?.session;
+      }
+
+      console.log("❌ exchangeCodeForSession code fallback error:", fallback.error.message);
     }
 
     if (access_token && refresh_token) {
       console.log("✔ Using access_token + refresh_token recovery session");
+
       const { error } = await supabase.auth.setSession({
         access_token,
         refresh_token,
       });
 
-      if (!error) return true;
+      if (!error) {
+        console.log("✅ Recovery session restored from tokens");
+
+        const { data: sessionCheck } = await supabase.auth.getSession();
+        console.log("Session check after setSession:", {
+          hasSession: !!sessionCheck?.session,
+        });
+
+        return !!sessionCheck?.session;
+      }
 
       console.log("❌ setSession error:", error.message);
     }
@@ -210,20 +345,51 @@ export default function NewPassword() {
     if (token_hash) {
       console.log("✔ Using token_hash to verify recovery session");
 
-      const { error } = await supabase.auth.verifyOtp({
+      const { data, error } = await supabase.auth.verifyOtp({
         type: "recovery",
         token_hash,
-      });
+      } as any);
 
-      if (!error) return true;
+      if (!error) {
+        console.log("✅ Recovery session verified from token_hash", {
+          hasSession: !!data?.session,
+          hasUser: !!data?.user,
+        });
 
-      console.log("❌ verifyOtp error:", error.message);
+        const { data: sessionCheck } = await supabase.auth.getSession();
+
+        console.log("Session check after verifyOtp:", {
+          hasSession: !!sessionCheck?.session,
+        });
+
+        if (sessionCheck?.session) {
+          return true;
+        }
+
+        if (data?.session) {
+          const { error: setSessionError } = await supabase.auth.setSession({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          });
+
+          if (!setSessionError) {
+            const { data: secondCheck } = await supabase.auth.getSession();
+            return !!secondCheck?.session;
+          }
+
+          console.log("❌ setSession after verifyOtp error:", setSessionError.message);
+        }
+      }
+
+      if (error) {
+        console.log("❌ verifyOtp token_hash error:", error.message);
+      }
     }
 
     const { data: existing } = await supabase.auth.getSession();
 
     if (existing?.session) {
-      console.log("✅ Existing session found — recovery is ready");
+      console.log("✅ Existing recovery session found — recovery is ready");
       return true;
     }
 
@@ -232,16 +398,33 @@ export default function NewPassword() {
   };
 
   useEffect(() => {
+    mountedRef.current = true;
+
+    markResetFlowActive();
+
     const linkingSub = Linking.addEventListener("url", ({ url }) => {
       latestNativeUrlRef.current = url;
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log("NewPassword auth event:", event, {
+          hasSession: !!session,
+        });
+
         if (event === "PASSWORD_RECOVERY" && session) {
           console.log("✅ PASSWORD_RECOVERY session ready inside NewPassword");
-          setSessionReady(true);
-          setStatus("");
+
+          markResetFlowActive();
+
+          if (mountedRef.current) {
+            setSessionReady(true);
+            setStatus("");
+          }
+        }
+
+        if (event === "USER_UPDATED") {
+          console.log("✅ USER_UPDATED received inside NewPassword");
         }
       }
     );
@@ -252,24 +435,46 @@ export default function NewPassword() {
 
       setStatus("Validating reset link...");
 
-      const ok = await Promise.race([
-        establishSession(),
-        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 10000)),
-      ]);
+      try {
+        const ok = await Promise.race([
+          establishSession(),
+          new Promise<boolean>((resolve) =>
+            setTimeout(() => resolve(false), 15000)
+          ),
+        ]);
 
-      if (ok) {
-        setSessionReady(true);
-        setStatus("");
+        if (!mountedRef.current) return;
 
-        if (Platform.OS === "web" && typeof window !== "undefined") {
-          const clean = window.location.origin + window.location.pathname;
-          window.history.replaceState({}, document.title, clean);
+        if (ok) {
+          setSessionReady(true);
+          setStatus("");
+
+          if (Platform.OS === "web" && typeof window !== "undefined") {
+            const clean = window.location.origin + "/reset-password";
+            window.history.replaceState({}, document.title, clean);
+          }
+        } else {
+          setSessionReady(false);
+          setStatus("");
+
+          Alert.alert(
+            "Reset link problem",
+            "The reset link opened, but the recovery session could not be created. Please request a new password reset email and open the newest link.",
+            [{ text: "OK", onPress: () => goToSignIn() }]
+          );
         }
-      } else {
+      } catch (e: any) {
+        console.log("NewPassword session run error:", e);
+
+        if (!mountedRef.current) return;
+
+        setSessionReady(false);
         setStatus("");
+
         Alert.alert(
           "Reset link problem",
-          "The reset link opened, but the recovery session could not be created. Please request a new password reset email and open the newest link."
+          e?.message || "Could not validate this reset link. Please request a new one.",
+          [{ text: "OK", onPress: () => goToSignIn() }]
         );
       }
     };
@@ -277,6 +482,8 @@ export default function NewPassword() {
     run();
 
     return () => {
+      mountedRef.current = false;
+
       try {
         linkingSub.remove();
       } catch {}
@@ -286,8 +493,17 @@ export default function NewPassword() {
   }, []);
 
   const updatePassword = async () => {
+    console.log("🔐 updatePassword pressed", {
+      sessionReady,
+      hasPassword: !!password,
+      hasConfirm: !!confirm,
+    });
+
     if (!sessionReady) {
-      Alert.alert("Invalid Link", "Please open the reset link again.");
+      Alert.alert(
+        "Reset link not ready",
+        "The password reset session was not created. Please go back to Sign In and request a new reset email."
+      );
       return;
     }
 
@@ -309,32 +525,78 @@ export default function NewPassword() {
     setLoading(true);
     setStatus("Updating password...");
 
-    const { error } = await supabase.auth.updateUser({ password });
+    try {
+      markResetFlowActive();
 
-    setLoading(false);
-    setStatus("");
+      const { data: beforeSession } = await supabase.auth.getSession();
 
-    if (error) {
-      const msg = (error.message || "").toLowerCase();
+      console.log("Before updateUser session:", {
+        hasSession: !!beforeSession?.session,
+      });
 
-      if (
-        msg.includes("different") ||
-        msg.includes("same") ||
-        msg.includes("old password") ||
-        msg.includes("must be different")
-      ) {
+      if (!beforeSession?.session) {
+        setSessionReady(false);
         Alert.alert(
-          "Choose a different password",
-          "You can’t change your password to the same password as before. Please choose a new one."
+          "Session expired",
+          "Your reset session expired or was not created. Please request a new password reset email."
         );
         return;
       }
 
-      Alert.alert("Error", error.message);
-      return;
-    }
+      const result: any = await Promise.race([
+        supabase.auth.updateUser({ password }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Password update timed out")), 15000)
+        ),
+      ]);
 
-    setSuccessOpen(true);
+      const error = result?.error;
+
+      if (error) {
+        const msg = (error.message || "").toLowerCase();
+
+        if (
+          msg.includes("different") ||
+          msg.includes("same") ||
+          msg.includes("old password") ||
+          msg.includes("must be different")
+        ) {
+          Alert.alert(
+            "Choose a different password",
+            "You can’t change your password to the same password as before. Please choose a new one."
+          );
+          return;
+        }
+
+        Alert.alert("Error", error.message);
+        return;
+      }
+
+      console.log("✅ Password updated successfully");
+
+      markResetDone();
+
+      Alert.alert(
+  "Password changed",
+  "Your password has been updated. Please sign in again."
+);
+
+await goToSignIn();
+    } catch (e: any) {
+      console.log("updatePassword error:", e);
+
+      Alert.alert(
+        "Password update problem",
+        e?.message === "Password update timed out"
+          ? "The request took too long. Please check your connection, then try again."
+          : e?.message || "Could not update your password. Please try again."
+      );
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+        setStatus("");
+      }
+    }
   };
 
   return (
@@ -366,10 +628,14 @@ export default function NewPassword() {
               value={password}
               onChangeText={setPassword}
               style={styles.input}
+              editable={!loading && !signingOut}
+              autoCapitalize="none"
+              autoCorrect={false}
             />
             <TouchableOpacity
               onPress={() => setShowPassword((prev) => !prev)}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              disabled={loading || signingOut}
             >
               <Ionicons
                 name={showPassword ? "eye-off" : "eye"}
@@ -388,10 +654,14 @@ export default function NewPassword() {
               value={confirm}
               onChangeText={setConfirm}
               style={styles.input}
+              editable={!loading && !signingOut}
+              autoCapitalize="none"
+              autoCorrect={false}
             />
             <TouchableOpacity
               onPress={() => setShowConfirmPassword((prev) => !prev)}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              disabled={loading || signingOut}
             >
               <Ionicons
                 name={showConfirmPassword ? "eye-off" : "eye"}
@@ -403,58 +673,31 @@ export default function NewPassword() {
 
           <TouchableOpacity
             onPress={updatePassword}
-            disabled={loading || signingOut || !sessionReady}
+            disabled={loading || signingOut}
             style={[
               styles.button,
-              (loading || signingOut || !sessionReady) && { opacity: 0.6 },
+              (loading || signingOut) && { opacity: 0.6 },
+              !sessionReady && !loading && !signingOut && { opacity: 0.85 },
             ]}
           >
             {loading ? (
               <ActivityIndicator color={BG} />
             ) : (
-              <Text style={styles.buttonText}>UPDATE PASSWORD</Text>
+              <Text style={styles.buttonText}>
+                {sessionReady ? "UPDATE PASSWORD" : "RESET LINK NOT READY"}
+              </Text>
             )}
           </TouchableOpacity>
 
           {!!status && <Text style={styles.status}>{status}</Text>}
 
           {!sessionReady && !status && (
-            <Text style={styles.error}>Waiting for valid reset link…</Text>
+            <Text style={styles.error}>
+              Waiting for valid reset link. If this does not change, request a new reset email.
+            </Text>
           )}
         </View>
       </View>
-
-      <Modal
-        visible={successOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSuccessOpen(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Password changed ✅</Text>
-            <Text style={styles.modalText}>
-              Your password has been updated successfully.
-            </Text>
-
-            <TouchableOpacity
-  style={styles.modalPrimary}
-  onPress={() => {
-    setSuccessOpen(false);
-  }}
->
-  <Text style={styles.modalPrimaryText}>Continue</Text>
-</TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.modalSecondary}
-              onPress={() => setSuccessOpen(false)}
-            >
-              <Text style={styles.modalSecondaryText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -495,49 +738,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   buttonText: { color: BG, fontWeight: "900", fontSize: 15 },
-  error: { color: "red", marginTop: 10, textAlign: "center" },
+  error: { color: "red", marginTop: 10, textAlign: "center", lineHeight: 18 },
   status: { color: SUB, marginTop: 10, textAlign: "center" },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    justifyContent: "center",
-    padding: 18,
-  },
-  modalCard: {
-    backgroundColor: "#111",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 18,
-  },
-  modalTitle: {
-    color: TEXT,
-    fontSize: 18,
-    fontWeight: "900",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  modalText: {
-    color: SUB,
-    textAlign: "center",
-    lineHeight: 20,
-    marginBottom: 14,
-  },
-  modalPrimary: {
-    backgroundColor: GOLD,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  modalPrimaryText: { color: BG, fontWeight: "900", fontSize: 15 },
-  modalSecondary: {
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: BORDER,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  modalSecondaryText: { color: TEXT, fontWeight: "800" },
 });

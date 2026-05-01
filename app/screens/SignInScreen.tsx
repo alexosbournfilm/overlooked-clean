@@ -343,6 +343,20 @@ export default function SignInScreen() {
     if (!profileComplete) {
   allowCreateProfileOnceRef.current = false;
 
+  const isPasswordResetFlow =
+    (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+    (globalThis as any).__OVERLOOKED_RECOVERY__ ||
+    (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
+
+  if (isPasswordResetFlow) {
+    await supabase.auth.signOut();
+    showError(
+      'Password reset complete',
+      'Please sign in again with your new password.'
+    );
+    return;
+  }
+
   if (allowCreateProfile) {
     try {
       navigation.reset({
@@ -359,7 +373,7 @@ export default function SignInScreen() {
 
   showError(
     'Profile not found',
-    'Your account is signed in, but your profile could not be loaded. Please try again.'
+    'Please sign in again. If this is a new account, use your email confirmation link first.'
   );
 
   await supabase.auth.signOut();

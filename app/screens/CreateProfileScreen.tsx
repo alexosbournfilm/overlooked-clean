@@ -1,3 +1,4 @@
+// app/screens/CreateProfileScreen.tsx
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
@@ -55,6 +56,67 @@ type DropdownOption = {
 };
 
 type OnboardingStage = 'role' | 'city' | 'name' | 'image' | 'review';
+
+const G = globalThis as any;
+
+function isRealCreateProfileFlow() {
+  if (G.__OVERLOOKED_EMAIL_CONFIRM__ === true) {
+    return true;
+  }
+
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const href = window.location.href.toLowerCase();
+    const path = window.location.pathname.toLowerCase();
+
+    const isRecovery =
+      href.includes('type=recovery') ||
+      path.includes('reset-password') ||
+      path.includes('new-password');
+
+    if (isRecovery) {
+      return false;
+    }
+
+    const isSignupConfirm =
+      href.includes('type=signup') ||
+      href.includes('type=invite') ||
+      window.sessionStorage.getItem('overlooked.allowCreateProfile') === 'true';
+
+    return Boolean(isSignupConfirm);
+  }
+
+  return false;
+}
+
+function resetHardToSignIn() {
+  G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+  G.__OVERLOOKED_RECOVERY__ = false;
+  G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+  G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.sessionStorage.removeItem('overlooked.allowCreateProfile');
+
+    if (window.location.pathname !== '/signin') {
+      window.location.replace('/signin');
+      return;
+    }
+  }
+
+  if (navigationRef.isReady()) {
+    navigationRef.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: 'Auth',
+            params: { screen: 'SignIn' },
+          },
+        ],
+      })
+    );
+  }
+}
 
 const showToast = (msg: string) => {
   if (Platform.OS === 'android' && Toast) {
@@ -178,8 +240,10 @@ const rankMatch = (candidate: string, query: string) => {
 };
 
 export default function CreateProfileScreen() {
+  const allowedCreateProfileRef = useRef(isRealCreateProfileFlow());
+
   const { width } = useWindowDimensions();
-  const { profileComplete, refreshProfile } = useAuth();
+  const { refreshProfile } = useAuth();
   const { refresh: refreshGamification } = useGamification();
 
   const isMobile = width < 768;
@@ -228,10 +292,19 @@ export default function CreateProfileScreen() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (!allowedCreateProfileRef.current) {
+      console.log('🚫 Blocked CreateProfile: not a real email-confirmation flow.');
+      resetHardToSignIn();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!allowedCreateProfileRef.current) return;
     fetchCreativeRoles();
   }, []);
 
   useEffect(() => {
+    if (!allowedCreateProfileRef.current) return;
     if (hasStartedSequence.current) return;
     hasStartedSequence.current = true;
 
@@ -243,6 +316,8 @@ export default function CreateProfileScreen() {
   }, []);
 
   useEffect(() => {
+    if (!allowedCreateProfileRef.current) return;
+
     if (stage === 'image' || stage === 'review') {
       imageSectionOpacity.setValue(0);
       imageSectionTranslate.setValue(18);
@@ -520,6 +595,11 @@ export default function CreateProfileScreen() {
   };
 
   const handleSubmit = async () => {
+    if (!allowedCreateProfileRef.current) {
+      resetHardToSignIn();
+      return;
+    }
+
     if (!fullName.trim() || !mainRole || !cityId) {
       Alert.alert('Missing Info', 'Please fill in your name, main role, and city.');
       return;
@@ -539,7 +619,7 @@ export default function CreateProfileScreen() {
       const userId = sessionData.user?.id;
       if (!userId) throw new Error('User not authenticated');
 
-      const { data: upserted, error } = await supabase
+      const { error } = await supabase
         .from('users')
         .upsert(
           {
@@ -559,24 +639,13 @@ export default function CreateProfileScreen() {
       await refreshProfile();
       await refreshGamification();
 
-      const start = Date.now();
-      let gate =
-        profileComplete ||
-        Boolean(
-          upserted?.full_name && upserted?.main_role_id && upserted?.city_id && upserted?.avatar_url
-        );
+      G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+      G.__OVERLOOKED_RECOVERY__ = false;
+      G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+      G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
 
-      while (!gate && Date.now() - start < 2500) {
-        await new Promise((r) => setTimeout(r, 150));
-        await refreshProfile();
-        gate =
-          profileComplete ||
-          Boolean(
-            upserted?.full_name &&
-              upserted?.main_role_id &&
-              upserted?.city_id &&
-              upserted?.avatar_url
-          );
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.sessionStorage.removeItem('overlooked.allowCreateProfile');
       }
 
       showToast('Welcome to Overlooked!');
@@ -626,6 +695,14 @@ export default function CreateProfileScreen() {
     Platform.OS === 'web'
       ? { style: styles.wrapper }
       : { behavior: 'padding' as const, style: styles.wrapper };
+
+  if (!allowedCreateProfileRef.current) {
+    return (
+      <View style={styles.blockedWrapper}>
+        <ActivityIndicator color={GOLD} />
+      </View>
+    );
+  }
 
   return (
     <Wrapper {...wrapperProps}>
@@ -1089,6 +1166,13 @@ export default function CreateProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+  blockedWrapper: {
+    flex: 1,
+    backgroundColor: DARK_BG,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
   wrapper: {
     flex: 1,
     backgroundColor: DARK_BG,

@@ -12,24 +12,6 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 const isWeb = typeof window !== "undefined" && typeof document !== "undefined";
 const isDev = typeof __DEV__ !== "undefined" ? __DEV__ : false;
 
-function shouldDetectSessionInUrl() {
-  if (!isWeb) return false;
-
-  try {
-    const hash = window.location.hash || "";
-    const search = window.location.search || "";
-
-    return (
-      hash.includes("access_token=") ||
-      hash.includes("refresh_token=") ||
-      search.includes("code=") ||
-      search.includes("type=")
-    );
-  } catch {
-    return false;
-  }
-}
-
 export const supabase =
   SUPABASE_URL && SUPABASE_ANON_KEY
     ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -37,7 +19,22 @@ export const supabase =
           ? {
               persistSession: true,
               autoRefreshToken: true,
-              detectSessionInUrl: shouldDetectSessionInUrl(),
+
+              /**
+               * IMPORTANT:
+               * Keep this false on web.
+               *
+               * Your app already manually handles Supabase auth links in:
+               * - App.tsx
+               * - SignInScreen.tsx
+               * - NewPassword.tsx
+               *
+               * If this is true, Supabase can auto-create a temporary reset-password
+               * session before NewPassword.tsx controls the flow. That can make the
+               * app think the user is normally signed in with an incomplete profile,
+               * which then redirects to CreateProfile.
+               */
+              detectSessionInUrl: false,
             }
           : {
               persistSession: true,

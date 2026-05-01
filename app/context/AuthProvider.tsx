@@ -48,6 +48,10 @@ if (typeof G.__OVERLOOKED_EMAIL_CONFIRM__ === "undefined") {
   G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
 }
 
+if (typeof G.__OVERLOOKED_PASSWORD_RESET_DONE__ === "undefined") {
+  G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+}
+
 if (typeof G.__OVERLOOKED_FORCE_NEW_PASSWORD__ === "undefined") {
   G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
 }
@@ -266,6 +270,12 @@ function isInvalidRefreshTokenError(error: any): boolean {
   );
 }
 
+function isPasswordResetFlowActive() {
+  return Boolean(
+    G.__OVERLOOKED_RECOVERY__ ||
+      G.__OVERLOOKED_FORCE_NEW_PASSWORD__
+  );
+}
 /**
  * Prevents Supabase/storage/network calls from blocking app startup forever.
  */
@@ -291,8 +301,25 @@ async function clearPersistedAuthSession() {
   try {
     if (Platform.OS === "web") {
       if (typeof window !== "undefined" && window.localStorage) {
-        window.localStorage.removeItem(NATIVE_AUTH_STORAGE_KEY);
+        const keysToRemove: string[] = [];
+
+        for (let i = 0; i < window.localStorage.length; i += 1) {
+          const key = window.localStorage.key(i);
+          if (!key) continue;
+
+          if (
+            key === NATIVE_AUTH_STORAGE_KEY ||
+            key.startsWith("sb-") ||
+            key.includes("supabase") ||
+            key.includes("overlooked.supabase.auth")
+          ) {
+            keysToRemove.push(key);
+          }
+        }
+
+        keysToRemove.forEach((key) => window.localStorage.removeItem(key));
       }
+
       return;
     }
 
@@ -321,6 +348,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function loadProfile(uid: string, force = false) {
     if (!uid) {
+      setProfileChecked(true);
+      return;
+    }
+
+    if (isPasswordResetFlowActive()) {
+      console.log("🔐 Skipping profile load during password reset flow.");
       setProfileChecked(true);
       return;
     }
@@ -433,7 +466,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const tryNavigateToCreateProfile = () => {
-    if (G.__OVERLOOKED_RECOVERY__ || G.__OVERLOOKED_FORCE_NEW_PASSWORD__) return;
+    const resetFlowActive = isPasswordResetFlowActive();
+
+    if (resetFlowActive) {
+      console.log("🔐 Blocked CreateProfile navigation during password reset.");
+      return;
+    }
+
+    /**
+     * CreateProfile is ONLY allowed after a genuine email confirmation.
+     * Password reset, normal sign-in, token refresh, or stale sessions must never trigger it.
+     */
+    if (!G.__OVERLOOKED_EMAIL_CONFIRM__) {
+      return;
+    }
+
     if (!pendingCreateProfileRedirectRef.current) return;
     if (!navigationRef.isReady()) return;
 
@@ -457,13 +504,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     G.__OVERLOOKED_RECOVERY__ = true;
     G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
     G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
+    G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+
     pendingCreateProfileRedirectRef.current = false;
   };
 
+  const markPasswordResetDone = () => {
+  G.__OVERLOOKED_RECOVERY__ = false;
+  G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+  G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+  G.__OVERLOOKED_PASSWORD_RESET_DONE__ = true;
+
+  pendingCreateProfileRedirectRef.current = false;
+};
   const markEmailConfirmationMode = () => {
+    if (isPasswordResetFlowActive()) {
+      console.log("🔐 Ignoring email-confirm mode during password reset.");
+      return;
+    }
+
     G.__OVERLOOKED_RECOVERY__ = false;
     G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+    G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
     G.__OVERLOOKED_EMAIL_CONFIRM__ = true;
+
     pendingCreateProfileRedirectRef.current = true;
   };
 
@@ -490,13 +554,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const recoveredUid = data?.session?.user?.id ?? null;
 
       if (recoveredUid) {
+        if (isPasswordResetFlowActive()) {
+          console.log("🔐 Missing-session recovery found reset session; ignoring normal auth.");
+          return;
+        }
+
         latestAuthUserIdRef.current = recoveredUid;
         setUserId(recoveredUid);
 
-        if (!G.__OVERLOOKED_RECOVERY__ && !G.__OVERLOOKED_FORCE_NEW_PASSWORD__) {
-          await loadProfile(recoveredUid);
-        }
-
+        await loadProfile(recoveredUid);
         return;
       }
 
@@ -515,124 +581,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (userId) {
       lastLoadedProfileForRef.current = null;
       await loadProfile(userId, true);
-    }
-  };
-
-  const finishPasswordRecoveryAsSignedInUser = async (
-    fallbackUserId?: string | null
-  ) => {
-    console.log(
-      "✅ Password reset complete → converting recovery session into normal app session"
-    );
-
-    G.__OVERLOOKED_RECOVERY__ = false;
-    G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
-    G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-    pendingCreateProfileRedirectRef.current = false;
-
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      const clean = window.location.origin;
-      window.history.replaceState({}, document.title, clean);
-    }
-
-    let sessionData: any = null;
-    let sessionError: any = null;
-
-    try {
-      const result = await withTimeout(supabase.auth.getSession(), 8000);
-      sessionData = result.data;
-      sessionError = result.error;
-    } catch (e: any) {
-      console.warn(
-        "AuthProvider USER_UPDATED getSession timeout/error:",
-        e?.message || String(e)
-      );
-    }
-
-    if (sessionError) {
-      console.warn(
-        "AuthProvider USER_UPDATED getSession error:",
-        sessionError.message
-      );
-    }
-
-    const updatedUid = sessionData?.session?.user?.id ?? fallbackUserId ?? null;
-
-    if (!updatedUid) {
-      clearLocalAuthState();
-
-      if (!ready && mountedRef.current) {
-        authBootstrappedRef.current = true;
-        setReady(true);
-      }
-
-      resetToSignIn();
-      return;
-    }
-
-    latestAuthUserIdRef.current = updatedUid;
-    setUserId(updatedUid);
-
-    registerAndSavePushToken(updatedUid).catch(() => {});
-
-    let profileData: any = null;
-    let profileError: any = null;
-
-    try {
-      const result = await withTimeout(
-        supabase
-          .from("users")
-          .select("id, full_name, main_role_id, city_id")
-          .eq("id", updatedUid)
-          .maybeSingle(),
-        8000
-      );
-
-      profileData = result.data;
-      profileError = result.error;
-    } catch (e: any) {
-      console.warn(
-        "AuthProvider USER_UPDATED profile reload timeout/error:",
-        e?.message || String(e)
-      );
-    }
-
-    if (profileError) {
-      console.warn(
-        "AuthProvider USER_UPDATED profile reload error:",
-        profileError.message
-      );
-    }
-
-    if (profileData) {
-      setProfile({
-        id: profileData.id,
-        full_name: profileData.full_name,
-        main_role_id: profileData.main_role_id,
-        city_id: profileData.city_id,
-      });
-
-      lastLoadedProfileForRef.current = profileData.id;
-      setProfileChecked(true);
-    } else {
-      setProfile(null);
-      lastLoadedProfileForRef.current = null;
-      setProfileChecked(true);
-    }
-
-    const recoveredProfileComplete = Boolean(
-      profileData?.full_name && profileData?.main_role_id && profileData?.city_id
-    );
-
-    if (!ready && mountedRef.current) {
-      authBootstrappedRef.current = true;
-      setReady(true);
-    }
-
-    if (recoveredProfileComplete) {
-      resetToMainTabs();
-    } else {
-      resetToCreateProfile();
     }
   };
 
@@ -686,15 +634,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const resumedUid = data?.session?.user?.id ?? null;
 
           if (resumedUid) {
+            if (isPasswordResetFlowActive()) {
+              console.log("🔐 Resume found reset session; keeping it out of normal auth.");
+              return;
+            }
+
             latestAuthUserIdRef.current = resumedUid;
             setUserId((prev) => (prev === resumedUid ? prev : resumedUid));
 
-            if (
-              !G.__OVERLOOKED_RECOVERY__ &&
-              !G.__OVERLOOKED_FORCE_NEW_PASSWORD__
-            ) {
-              await loadProfile(resumedUid, G.__OVERLOOKED_EMAIL_CONFIRM__);
-            }
+            await loadProfile(resumedUid, G.__OVERLOOKED_EMAIL_CONFIRM__);
 
             if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
               pendingCreateProfileRedirectRef.current = true;
@@ -717,6 +665,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const init = async () => {
       try {
+        /**
+         * This is set by NewPassword.tsx right before web redirect to /signin.
+         * It survives reload, unlike globalThis flags.
+         */
+        const justResetPassword =
+          Platform.OS === "web" &&
+          typeof window !== "undefined" &&
+          window.sessionStorage.getItem("overlooked.justResetPassword") === "true";
+
+        if (justResetPassword) {
+          console.log("🔐 justResetPassword detected — forcing clean signed-out SignIn.");
+
+          window.sessionStorage.removeItem("overlooked.justResetPassword");
+
+          G.__OVERLOOKED_RECOVERY__ = false;
+          G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+          G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+          G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+
+          pendingCreateProfileRedirectRef.current = false;
+
+          try {
+            await supabase.auth.signOut({ scope: "local" as any });
+          } catch {}
+
+          await clearPersistedAuthSession();
+          clearLocalAuthState();
+
+          authBootstrappedRef.current = true;
+
+          if (mounted) {
+            setReady(true);
+          }
+
+          setTimeout(() => {
+            resetToSignIn();
+          }, 0);
+
+          return;
+        }
+
         const initialUrl =
           Platform.OS === "web" ? null : await Linking.getInitialURL();
 
@@ -730,8 +719,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else if (shouldBeEmailConfirm) {
           markEmailConfirmationMode();
         } else {
-          G.__OVERLOOKED_RECOVERY__ = false;
-          G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+          if (!G.__OVERLOOKED_PASSWORD_RESET_DONE__) {
+            G.__OVERLOOKED_RECOVERY__ = false;
+            G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+          }
+
+          pendingCreateProfileRedirectRef.current = false;
         }
 
         const { data, error } = await withTimeout(
@@ -756,15 +749,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const uid = data?.session?.user?.id ?? null;
 
         if (uid) {
+          if (shouldBeRecovery || isPasswordResetFlowActive()) {
+            console.log("🔐 Init found recovery/reset session; not treating as normal sign-in.");
+
+            latestAuthUserIdRef.current = null;
+            setUserId(null);
+            setProfile(null);
+            setProfileChecked(false);
+
+            authBootstrappedRef.current = true;
+            setReady(true);
+
+            setTimeout(() => {
+              tryNavigateToNewPassword();
+            }, 0);
+
+            return;
+          }
+
           latestAuthUserIdRef.current = uid;
           setUserId(uid);
 
-          if (!shouldBeRecovery) {
-            registerAndSavePushToken(uid).catch(() => {});
-            await loadProfile(uid, true);
-          }
+          registerAndSavePushToken(uid).catch(() => {});
+          await loadProfile(uid, true);
 
-          if (shouldBeEmailConfirm && !shouldBeRecovery) {
+          if (shouldBeEmailConfirm) {
             pendingCreateProfileRedirectRef.current = true;
           }
         } else {
@@ -814,6 +823,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (isNativeEmailConfirmationUrl(url)) {
+        if (isPasswordResetFlowActive()) {
+          console.log("🔐 Ignoring native email-confirm URL during password reset.");
+          return;
+        }
+
         markEmailConfirmationMode();
 
         if (mounted) {
@@ -905,8 +919,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           (event === "SIGNED_IN" || event === "INITIAL_SESSION") &&
           authEventIsEmailConfirmation &&
           !isRecoveryUrl(activeUrl) &&
-          !G.__OVERLOOKED_RECOVERY__ &&
-          !G.__OVERLOOKED_FORCE_NEW_PASSWORD__
+          !isPasswordResetFlowActive()
         ) {
           console.log("✅ Email confirmation flow detected");
 
@@ -932,13 +945,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (event === "USER_UPDATED") {
-          console.log("🔐 USER_UPDATED fired");
+  console.log("🔐 USER_UPDATED fired");
 
-          if (G.__OVERLOOKED_RECOVERY__ || G.__OVERLOOKED_FORCE_NEW_PASSWORD__) {
-            await finishPasswordRecoveryAsSignedInUser(session?.user?.id ?? null);
-            return;
-          }
-        }
+  if (isPasswordResetFlowActive()) {
+    console.log(
+      "🔐 Password recovery USER_UPDATED ignored by AuthProvider. NewPassword owns this flow."
+    );
+
+    if (!ready && mounted) {
+      authBootstrappedRef.current = true;
+      setReady(true);
+    }
+
+    return;
+  }
+}
 
         if (event === "SIGNED_IN" && !isRecoveryUrl(activeUrl)) {
           if (!G.__OVERLOOKED_FORCE_NEW_PASSWORD__) {
@@ -947,19 +968,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (event === "SIGNED_OUT") {
-          G.__OVERLOOKED_RECOVERY__ = false;
+          const wasPasswordResetFlow = isPasswordResetFlowActive();
+
           G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-          G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+          pendingCreateProfileRedirectRef.current = false;
+
+          if (!wasPasswordResetFlow) {
+            G.__OVERLOOKED_RECOVERY__ = false;
+            G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+            G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+          }
         }
 
         const uid = session?.user?.id ?? null;
 
         if (uid) {
           const inRecoveryFlow =
-            G.__OVERLOOKED_RECOVERY__ ||
-            G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
-            event === "PASSWORD_RECOVERY" ||
-            isRecoveryUrl(activeUrl);
+  G.__OVERLOOKED_RECOVERY__ ||
+  G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+  event === "PASSWORD_RECOVERY" ||
+  isRecoveryUrl(activeUrl);
 
           if (inRecoveryFlow) {
             console.log(
@@ -1050,15 +1078,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!ready) return;
+  if (!ready) return;
 
-    if (G.__OVERLOOKED_FORCE_NEW_PASSWORD__ || G.__OVERLOOKED_RECOVERY__) {
-      tryNavigateToNewPassword();
-      return;
-    }
+  if (G.__OVERLOOKED_PASSWORD_RESET_DONE__) {
+    resetToSignIn();
+    return;
+  }
 
-    tryNavigateToCreateProfile();
-  }, [ready, userId, profile]);
+  if (isPasswordResetFlowActive()) {
+    tryNavigateToNewPassword();
+    return;
+  }
+
+  tryNavigateToCreateProfile();
+}, [ready, userId, profile]);
 
   const profileComplete = useMemo(() => {
     if (!profile) return false;
@@ -1067,13 +1100,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [profile]);
 
   const shouldRouteToCreateProfile = useMemo(() => {
+    const resetFlowActive = isPasswordResetFlowActive();
+
     return Boolean(
       userId &&
         profileChecked &&
         !profile &&
         G.__OVERLOOKED_EMAIL_CONFIRM__ &&
-        !G.__OVERLOOKED_RECOVERY__ &&
-        !G.__OVERLOOKED_FORCE_NEW_PASSWORD__
+        !resetFlowActive
     );
   }, [userId, profile, profileChecked]);
 
