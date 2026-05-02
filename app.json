@@ -49,6 +49,10 @@
               "host": "reset-password"
             },
             {
+              "scheme": "overlooked",
+              "host": "new-password"
+            },
+            {
               "scheme": "https",
               "host": "overlooked.cloud",
               "pathPrefix": "/"

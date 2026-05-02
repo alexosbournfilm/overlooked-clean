@@ -60,8 +60,9 @@ export default function NewPassword() {
 
     try {
       const queryPart = url.includes("?")
-        ? url.split("?")[1]?.split("#")[0]
+        ? url.substring(url.indexOf("?") + 1).split("#")[0]
         : "";
+
       const hashPart = url.includes("#") ? url.split("#")[1] : "";
 
       if (queryPart) {
@@ -89,10 +90,17 @@ export default function NewPassword() {
     let params: Record<string, string> = {};
 
     if (Platform.OS === "web" && typeof window !== "undefined") {
-      rawUrl = window.location.href;
+      rawUrl =
+        (globalThis as any).__OVERLOOKED_RESET_URL__ ||
+        window.location.href;
+
       params = collectParamsFromUrl(rawUrl);
     } else {
-      rawUrl = latestNativeUrlRef.current || (await Linking.getInitialURL());
+      rawUrl =
+        latestNativeUrlRef.current ||
+        (globalThis as any).__OVERLOOKED_RESET_URL__ ||
+        (await Linking.getInitialURL());
+
       latestNativeUrlRef.current = rawUrl;
       params = collectParamsFromUrl(rawUrl);
     }
@@ -139,6 +147,7 @@ export default function NewPassword() {
     (globalThis as any).__OVERLOOKED_RECOVERY__ = false;
     (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
     (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
+    (globalThis as any).__OVERLOOKED_RESET_URL__ = null;
   };
 
   const resetToSignInNative = () => {
@@ -197,6 +206,8 @@ export default function NewPassword() {
     try {
       markResetDone();
 
+      (globalThis as any).__OVERLOOKED_RESET_URL__ = null;
+
       try {
         await Promise.race([
           supabase.auth.signOut({ scope: "local" as any }),
@@ -224,6 +235,8 @@ export default function NewPassword() {
       }, 500);
     } catch (e) {
       console.log("goToSignIn error:", e);
+
+      (globalThis as any).__OVERLOOKED_RESET_URL__ = null;
 
       await clearSupabaseAuthStorage();
 
@@ -406,6 +419,7 @@ export default function NewPassword() {
 
     const linkingSub = Linking.addEventListener("url", ({ url }) => {
       latestNativeUrlRef.current = url;
+      (globalThis as any).__OVERLOOKED_RESET_URL__ = url;
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
@@ -644,11 +658,11 @@ export default function NewPassword() {
 
         <View style={styles.card}>
           <Text style={styles.title}>Set a New Password</Text>
-<Text style={styles.subtitle}>Enter your new password below.</Text>
+          <Text style={styles.subtitle}>Enter your new password below.</Text>
 
-<Text style={styles.passwordHint}>
-  Password must be at least 6 characters. Numbers, symbols, and uppercase letters are optional.
-</Text>
+          <Text style={styles.passwordHint}>
+            Password must be at least 6 characters. Numbers, symbols, and uppercase letters are optional.
+          </Text>
 
           <View style={styles.inputRow}>
             <Ionicons name="lock-closed" size={16} color={SUB} />
@@ -707,7 +721,7 @@ export default function NewPassword() {
               console.log("🔥 TOUCHABLE PRESSED");
               void updatePassword();
             }}
-            disabled={false}
+            disabled={loading || signingOut}
             style={[
               styles.button,
               (loading || signingOut) && { opacity: 0.6 },
@@ -724,8 +738,7 @@ export default function NewPassword() {
 
           {!sessionReady && !status && (
             <Text style={styles.error}>
-              Waiting for valid reset link. You can still press Update Password
-              to retry.
+              Waiting for valid reset link. You can still press Update Password to retry.
             </Text>
           )}
         </View>
@@ -753,12 +766,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   passwordHint: {
-  color: SUB,
-  textAlign: "center",
-  fontSize: 13,
-  lineHeight: 18,
-  marginBottom: 18,
-},
+    color: SUB,
+    textAlign: "center",
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 18,
+  },
   subtitle: { color: SUB, textAlign: "center", marginBottom: 18 },
   inputRow: {
     flexDirection: "row",

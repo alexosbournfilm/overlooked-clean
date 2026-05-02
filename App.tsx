@@ -203,15 +203,13 @@ export default function App() {
      * Do NOT exchange the recovery code here.
      * Do NOT call setSession here.
      *
-     * If App.tsx creates the temporary recovery session first,
-     * the rest of the app sees:
-     *
-     * userId exists + profile incomplete
-     *
-     * and redirects to CreateProfile.
+     * Store the original reset URL so NewPassword.tsx can read it.
+     * This prevents the reset token/code from being lost during navigation.
      */
     if (isResetPasswordLink || type === "recovery") {
       console.log("🔐 Reset password link detected → NewPassword owns this flow");
+
+      (globalThis as any).__OVERLOOKED_RESET_URL__ = url;
 
       markPasswordResetFlow();
       setInitialAuthRouteName("SignIn");
@@ -370,6 +368,11 @@ export default function App() {
             href.toLowerCase().includes("type=recovery")
           ) {
             markPasswordResetFlow();
+
+            /**
+             * Store web reset URL too, in case NewPassword needs it.
+             */
+            (globalThis as any).__OVERLOOKED_RESET_URL__ = href;
           }
         }
 
