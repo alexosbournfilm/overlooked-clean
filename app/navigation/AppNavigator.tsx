@@ -234,7 +234,15 @@ export default function AppNavigator({
      * This blocks password reset, normal sign-in, stale nav state, and missing profile redirects.
      */
     if (shouldRouteToCreateProfile || !profileComplete) {
-  resetToCreateProfile();
+  const currentRoute = navigationRef.getCurrentRoute();
+
+  // CRITICAL:
+  // Do not reset CreateProfile while the user is already filling it in.
+  // This prevents the role-selection loop after choosing a profile picture.
+  if (currentRoute?.name !== "CreateProfile") {
+    resetToCreateProfile();
+  }
+
   return;
 }
 

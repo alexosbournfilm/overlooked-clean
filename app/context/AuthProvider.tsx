@@ -475,6 +475,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   if (!userId) return;
   if (!profileChecked) return;
+  if (!navigationRef.isReady()) return;
 
   const complete = Boolean(
     profile?.id &&
@@ -484,23 +485,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   if (complete) return;
-  if (!navigationRef.isReady()) return;
+
+  const currentRoute = navigationRef.getCurrentRoute();
+
+  // CRITICAL:
+  // Do not reset CreateProfile while already on CreateProfile.
+  // This was causing the profile setup to restart after image upload.
+  if (currentRoute?.name === "CreateProfile") {
+    return;
+  }
 
   pendingCreateProfileRedirectRef.current = false;
   resetToCreateProfile();
 };
 
   const tryNavigateToNewPassword = () => {
-    if (!G.__OVERLOOKED_FORCE_NEW_PASSWORD__) return;
-    if (!navigationRef.isReady()) return;
+  if (!G.__OVERLOOKED_FORCE_NEW_PASSWORD__) return;
+  if (!navigationRef.isReady()) return;
 
-    navigationRef.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [{ name: "NewPassword" as never }],
-      })
-    );
-  };
+  const currentRoute = navigationRef.getCurrentRoute();
+
+  // Prevent NewPassword flashing/remount loop.
+  if (currentRoute?.name === "NewPassword") {
+    return;
+  }
+
+  navigationRef.dispatch(
+    CommonActions.reset({
+      index: 0,
+      routes: [{ name: "NewPassword" as never }],
+    })
+  );
+};
 
   const markRecoveryMode = () => {
     G.__OVERLOOKED_RECOVERY__ = true;

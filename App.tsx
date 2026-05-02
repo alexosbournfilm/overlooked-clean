@@ -127,7 +127,7 @@ export default function App() {
 
   const notificationListener = useRef<any>(null);
   const responseListener = useRef<any>(null);
-  const recoveryNavArmedRef = useRef(true);
+  
 
   const [courierLoaded] = useCourierFonts({
     CourierPrime_400Regular,
@@ -207,19 +207,23 @@ export default function App() {
      * This prevents the reset token/code from being lost during navigation.
      */
     if (isResetPasswordLink || type === "recovery") {
-      console.log("🔐 Reset password link detected → NewPassword owns this flow");
+  console.log("🔐 Reset password link detected → NewPassword owns this flow");
 
-      (globalThis as any).__OVERLOOKED_RESET_URL__ = url;
+  (globalThis as any).__OVERLOOKED_RESET_URL__ = url;
 
-      markPasswordResetFlow();
-      setInitialAuthRouteName("SignIn");
+  markPasswordResetFlow();
+  setInitialAuthRouteName("SignIn");
 
-      setTimeout(() => {
-        navigate("NewPassword");
-      }, 300);
-
-      return;
+  setTimeout(() => {
+    try {
+      navigate("NewPassword");
+    } catch (e) {
+      console.log("NewPassword navigation skipped:", e);
     }
+  }, 300);
+
+  return;
+}
 
     /**
      * Signup confirmation is allowed to create a session here.
@@ -262,28 +266,7 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
-    const { data: subscription } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") {
-        if (!recoveryNavArmedRef.current) return;
-        recoveryNavArmedRef.current = false;
-
-        console.log("🚨 PASSWORD_RECOVERY event received");
-
-        markPasswordResetFlow();
-
-        setTimeout(() => {
-          navigate("NewPassword");
-        }, 300);
-
-        setTimeout(() => {
-          recoveryNavArmedRef.current = true;
-        }, 800);
-      }
-    });
-
-    return () => subscription.subscription.unsubscribe();
-  }, []);
+  
 
   useEffect(() => {
     if (Platform.OS === "web") return;
