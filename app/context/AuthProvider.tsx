@@ -466,27 +466,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const tryNavigateToCreateProfile = () => {
-    const resetFlowActive = isPasswordResetFlowActive();
+  const resetFlowActive = isPasswordResetFlowActive();
 
-    if (resetFlowActive) {
-      console.log("🔐 Blocked CreateProfile navigation during password reset.");
-      return;
-    }
+  if (resetFlowActive) {
+    console.log("🔐 Blocked CreateProfile navigation during password reset.");
+    return;
+  }
 
-    /**
-     * CreateProfile is ONLY allowed after a genuine email confirmation.
-     * Password reset, normal sign-in, token refresh, or stale sessions must never trigger it.
-     */
-    if (!G.__OVERLOOKED_EMAIL_CONFIRM__) {
-      return;
-    }
+  if (!userId) return;
+  if (!profileChecked) return;
 
-    if (!pendingCreateProfileRedirectRef.current) return;
-    if (!navigationRef.isReady()) return;
+  const complete = Boolean(
+    profile?.id &&
+      profile?.full_name &&
+      profile?.main_role_id &&
+      profile?.city_id
+  );
 
-    pendingCreateProfileRedirectRef.current = false;
-    resetToCreateProfile();
-  };
+  if (complete) return;
+  if (!navigationRef.isReady()) return;
+
+  pendingCreateProfileRedirectRef.current = false;
+  resetToCreateProfile();
+};
 
   const tryNavigateToNewPassword = () => {
     if (!G.__OVERLOOKED_FORCE_NEW_PASSWORD__) return;
@@ -1100,16 +1102,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [profile]);
 
   const shouldRouteToCreateProfile = useMemo(() => {
-    const resetFlowActive = isPasswordResetFlowActive();
+  const resetFlowActive = isPasswordResetFlowActive();
 
-    return Boolean(
-      userId &&
-        profileChecked &&
-        !profile &&
-        G.__OVERLOOKED_EMAIL_CONFIRM__ &&
-        !resetFlowActive
-    );
-  }, [userId, profile, profileChecked]);
+  const complete = Boolean(
+    profile?.id &&
+      profile?.full_name &&
+      profile?.main_role_id &&
+      profile?.city_id
+  );
+
+  return Boolean(userId && profileChecked && !complete && !resetFlowActive);
+}, [userId, profile, profileChecked]);
 
   const value = useMemo(
     () => ({

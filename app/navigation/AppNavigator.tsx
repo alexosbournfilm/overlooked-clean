@@ -233,19 +233,10 @@ export default function AppNavigator({
      * CreateProfile is only allowed after a real email-confirmation flow.
      * This blocks password reset, normal sign-in, stale nav state, and missing profile redirects.
      */
-    if (shouldRouteToCreateProfile && createProfileAllowed) {
-      resetToCreateProfile();
-      return;
-    }
-
-    /**
-     * If profile is incomplete but this is NOT email confirmation,
-     * send user to Sign In instead of CreateProfile.
-     */
-    if (!profileComplete) {
-      resetToAuth();
-      return;
-    }
+    if (shouldRouteToCreateProfile || !profileComplete) {
+  resetToCreateProfile();
+  return;
+}
 
     if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
       G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
@@ -354,20 +345,18 @@ export default function AppNavigator({
    * CreateProfile can only be the initial route if create-profile flow is allowed.
    * shouldRouteToCreateProfile alone is NOT enough.
    */
-  const rootInitialRouteName =
-    isPasswordResetFlow
-      ? "NewPassword"
-      : isPasswordResetDone
-      ? "Auth"
-      : !userId
-      ? "Auth"
-      : shouldRouteToCreateProfile && allowCreateProfileFlow
-      ? "CreateProfile"
-      : profileComplete
-      ? mustShowPaywall
-        ? "Paywall"
-        : "MainTabs"
-      : "Auth";
+const rootInitialRouteName =
+  isPasswordResetFlow
+    ? "NewPassword"
+    : isPasswordResetDone
+    ? "Auth"
+    : !userId
+    ? "Auth"
+    : shouldRouteToCreateProfile || !profileComplete
+    ? "CreateProfile"
+    : mustShowPaywall
+    ? "Paywall"
+    : "MainTabs";
 
   return (
     <NavigationContainer

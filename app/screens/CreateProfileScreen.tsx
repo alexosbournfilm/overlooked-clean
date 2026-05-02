@@ -240,7 +240,7 @@ const rankMatch = (candidate: string, query: string) => {
 };
 
 export default function CreateProfileScreen() {
-  const allowedCreateProfileRef = useRef(isRealCreateProfileFlow());
+  const allowedCreateProfileRef = useRef(true);
 
   const { width } = useWindowDimensions();
   const { refreshProfile } = useAuth();
@@ -292,11 +292,28 @@ export default function CreateProfileScreen() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!allowedCreateProfileRef.current) {
-      console.log('🚫 Blocked CreateProfile: not a real email-confirmation flow.');
+  let mounted = true;
+
+  const checkSession = async () => {
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+
+    if (!mounted) return;
+
+    if (error || !user?.id) {
+      console.log('🚫 CreateProfile blocked: no authenticated user.');
       resetHardToSignIn();
     }
-  }, []);
+  };
+
+  checkSession();
+
+  return () => {
+    mounted = false;
+  };
+}, []);
 
   useEffect(() => {
     if (!allowedCreateProfileRef.current) return;

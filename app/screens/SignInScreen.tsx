@@ -357,26 +357,16 @@ export default function SignInScreen() {
     return;
   }
 
-  if (allowCreateProfile) {
-    try {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'CreateProfile' }],
-      });
-    } catch (e) {
-      console.log('CreateProfile navigation error:', e);
-      showError('Navigation Error', 'Could not open profile setup.');
-    }
-
-    return;
+  try {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'CreateProfile' }],
+    });
+  } catch (e) {
+    console.log('CreateProfile navigation error:', e);
+    showError('Navigation Error', 'Could not open profile setup.');
   }
 
-  showError(
-    'Profile not found',
-    'Please sign in again. If this is a new account, use your email confirmation link first.'
-  );
-
-  await supabase.auth.signOut();
   return;
 }
 
