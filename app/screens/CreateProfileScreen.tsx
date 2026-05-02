@@ -59,35 +59,6 @@ type OnboardingStage = 'role' | 'city' | 'name' | 'image' | 'review';
 
 const G = globalThis as any;
 
-function isRealCreateProfileFlow() {
-  if (G.__OVERLOOKED_EMAIL_CONFIRM__ === true) {
-    return true;
-  }
-
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    const href = window.location.href.toLowerCase();
-    const path = window.location.pathname.toLowerCase();
-
-    const isRecovery =
-      href.includes('type=recovery') ||
-      path.includes('reset-password') ||
-      path.includes('new-password');
-
-    if (isRecovery) {
-      return false;
-    }
-
-    const isSignupConfirm =
-      href.includes('type=signup') ||
-      href.includes('type=invite') ||
-      window.sessionStorage.getItem('overlooked.allowCreateProfile') === 'true';
-
-    return Boolean(isSignupConfirm);
-  }
-
-  return false;
-}
-
 function resetHardToSignIn() {
   G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
   G.__OVERLOOKED_RECOVERY__ = false;
@@ -240,7 +211,7 @@ const rankMatch = (candidate: string, query: string) => {
 };
 
 export default function CreateProfileScreen() {
-  const allowedCreateProfileRef = useRef(false);
+  const allowedCreateProfileRef = useRef(true);
 
   const { width } = useWindowDimensions();
   const { refreshProfile } = useAuth();
@@ -267,6 +238,7 @@ export default function CreateProfileScreen() {
   const [image, setImage] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [croppedImageUri, setCroppedImageUri] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
 
   const [cropperOpen, setCropperOpen] = useState(false);
@@ -277,6 +249,7 @@ export default function CreateProfileScreen() {
 
   const [cityId, setCityId] = useState<number | null>(null);
   const [cityLabel, setCityLabel] = useState<string | null>(null);
+  const [selectedCountryCode, setSelectedCountryCode] = useState<string | null>(null);
 
   const [roleSearchModalVisible, setRoleSearchModalVisible] = useState(false);
   const [roleSearchTerm, setRoleSearchTerm] = useState('');
@@ -290,65 +263,35 @@ export default function CreateProfileScreen() {
   const [isSearchingCities, setIsSearchingCities] = useState(false);
 
   const [saving, setSaving] = useState(false);
-const [sessionChecked, setSessionChecked] = useState(false);
-  useEffect(() => {
-  let mounted = true;
 
-  const checkSession = async () => {
-    try {
-      const { data: sessionData, error: sessionError } =
-        await supabase.auth.getSession();
+  useEffect(() => {
+    let mounted = true;
+
+    const checkSession = async () => {
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
 
       if (!mounted) return;
 
-      if (sessionError) {
-        console.log('🚫 CreateProfile session error:', sessionError.message);
-      }
-
-      const sessionUser = sessionData?.session?.user;
-
-      if (!sessionUser?.id) {
-        console.log('🚫 CreateProfile blocked: no active Supabase session.');
-
-        allowedCreateProfileRef.current = false;
-        setSessionChecked(true);
-
-        Alert.alert(
-          'Session expired',
-          'Please sign in again to finish creating your profile.'
-        );
-
+      if (error || !user?.id) {
+        console.log('🚫 CreateProfile blocked: no authenticated user.');
         resetHardToSignIn();
-        return;
       }
+    };
 
-      allowedCreateProfileRef.current = true;
-      setSessionChecked(true);
+    checkSession();
 
-      await fetchCreativeRoles();
-    } catch (err: any) {
-      console.log('🚫 CreateProfile session check failed:', err?.message || err);
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
-      allowedCreateProfileRef.current = false;
-      setSessionChecked(true);
-
-      Alert.alert(
-        'Session expired',
-        'Please sign in again to finish creating your profile.'
-      );
-
-      resetHardToSignIn();
-    }
-  };
-
-  checkSession();
-
-  return () => {
-    mounted = false;
-  };
-}, []);
-
-  
+  useEffect(() => {
+    if (!allowedCreateProfileRef.current) return;
+    fetchCreativeRoles();
+  }, []);
 
   useEffect(() => {
     if (!allowedCreateProfileRef.current) return;
@@ -591,6 +534,7 @@ const [sessionChecked, setSessionChecked] = useState(false);
     if (result.canceled || !result.assets.length) return;
 
     const asset = result.assets[0];
+
     if (!asset?.uri) {
       Alert.alert('Image Error', 'Could not read selected image.');
       return;
@@ -605,37 +549,23 @@ const [sessionChecked, setSessionChecked] = useState(false);
       setUploadingImage(true);
 
       const previewUri = await makePreviewUri(croppedUri);
+
       setImage(previewUri);
       setImagePreview(previewUri);
+      setCroppedImageUri(croppedUri);
 
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+      // Important:
+      // Do NOT upload to Supabase here.
+      // The upload now happens only after the user presses Confirm & Enter.
+      setImageUrl(null);
 
-      if (userError) throw userError;
-      if (!user?.id) throw new Error('User not authenticated');
-
-      const fileName = `avatar_${Date.now()}.jpg`;
-      const path = `user_${user.id}/${fileName}`;
-
-      const fileBody = await uriToUploadBody(croppedUri);
-
-      const publicUrl = await uploadImageToBucket({
-        bucket: 'avatars',
-        path,
-        fileBody,
-        contentType: 'image/jpeg',
-      });
-
-      setImageUrl(`${publicUrl}?t=${Date.now()}`);
       setCropperOpen(false);
       setCropSource(null);
 
       animateStageChange('review');
     } catch (err: any) {
-      console.error('Avatar upload error:', err);
-      Alert.alert('Upload Error', err?.message ?? 'Could not upload image.');
+      console.error('Avatar crop error:', err);
+      Alert.alert('Image Error', err?.message ?? 'Could not prepare image.');
     } finally {
       setUploadingImage(false);
     }
@@ -652,7 +582,7 @@ const [sessionChecked, setSessionChecked] = useState(false);
       return;
     }
 
-    if (!imageUrl) {
+    if (!croppedImageUri && !imageUrl) {
       Alert.alert('Profile image required', 'Please add a profile image before continuing.');
       return;
     }
@@ -661,27 +591,65 @@ const [sessionChecked, setSessionChecked] = useState(false);
 
     try {
       const { data: sessionData, error: userErr } = await supabase.auth.getUser();
+
       if (userErr) throw userErr;
 
-      const userId = sessionData.user?.id;
-      if (!userId) throw new Error('User not authenticated');
+      const user = sessionData.user;
+      const userId = user?.id;
 
-      const { error } = await supabase
+      if (!userId) {
+        throw new Error('User not authenticated');
+      }
+
+      let finalAvatarUrl = imageUrl ? imageUrl.split('?')[0] : null;
+
+      if (croppedImageUri && !finalAvatarUrl) {
+        setUploadingImage(true);
+
+        const fileName = `avatar_${Date.now()}.jpg`;
+        const path = `user_${userId}/${fileName}`;
+
+        const fileBody = await uriToUploadBody(croppedImageUri);
+
+        const publicUrl = await uploadImageToBucket({
+          bucket: 'avatars',
+          path,
+          fileBody,
+          contentType: 'image/jpeg',
+        });
+
+        finalAvatarUrl = publicUrl;
+        setImageUrl(`${publicUrl}?t=${Date.now()}`);
+        setUploadingImage(false);
+      }
+
+      if (!finalAvatarUrl) {
+        throw new Error('Could not prepare profile image.');
+      }
+
+      const { data: savedProfile, error } = await supabase
         .from('users')
         .upsert(
           {
             id: userId,
+            email: user.email,
             full_name: fullName.trim(),
             main_role_id: mainRole,
             city_id: cityId,
-            avatar_url: imageUrl ? imageUrl.split('?')[0] : null,
+            country_code: selectedCountryCode,
+            avatar_url: finalAvatarUrl,
+            updated_at: new Date().toISOString(),
           },
           { onConflict: 'id' }
         )
-        .select('id, full_name, main_role_id, city_id, avatar_url')
+        .select('id, full_name, main_role_id, city_id, country_code, avatar_url')
         .maybeSingle();
 
       if (error) throw error;
+
+      if (!savedProfile?.id) {
+        throw new Error('Profile was not saved correctly.');
+      }
 
       await refreshProfile();
       await refreshGamification();
@@ -701,12 +669,7 @@ const [sessionChecked, setSessionChecked] = useState(false);
         navigationRef.dispatch(
           CommonActions.reset({
             index: 0,
-            routes: [
-              {
-                name: 'MainTabs',
-                state: { index: 0, routes: [{ name: 'Featured' }] },
-              },
-            ],
+            routes: [{ name: 'MainTabs' }],
           })
         );
       }
@@ -714,6 +677,7 @@ const [sessionChecked, setSessionChecked] = useState(false);
       console.error('Create profile error:', err);
       Alert.alert('Error', err?.message ?? 'Could not create profile.');
     } finally {
+      setUploadingImage(false);
       setSaving(false);
     }
   };
@@ -743,16 +707,13 @@ const [sessionChecked, setSessionChecked] = useState(false);
       ? { style: styles.wrapper }
       : { behavior: 'padding' as const, style: styles.wrapper };
 
-  if (!sessionChecked || !allowedCreateProfileRef.current) {
-  return (
-    <View style={styles.blockedWrapper}>
-      <ActivityIndicator color={GOLD} />
-      <Text style={{ color: TEXT_MUTED, marginTop: 12 }}>
-        Checking your session...
-      </Text>
-    </View>
-  );
-}
+  if (!allowedCreateProfileRef.current) {
+    return (
+      <View style={styles.blockedWrapper}>
+        <ActivityIndicator color={GOLD} />
+      </View>
+    );
+  }
 
   return (
     <Wrapper {...wrapperProps}>
@@ -964,10 +925,10 @@ const [sessionChecked, setSessionChecked] = useState(false);
                   <Text style={styles.requiredLabel}>Required</Text>
 
                   {!!uploadingImage && (
-                    <Text style={styles.uploadingText}>Saving your profile image...</Text>
+                    <Text style={styles.uploadingText}>Preparing your profile image...</Text>
                   )}
 
-                  {stage === 'image' && imageUrl && !uploadingImage && (
+                  {stage === 'image' && displayImage && !uploadingImage && (
                     <TouchableOpacity
                       onPress={() => animateStageChange('review')}
                       style={styles.inlineContinueButton}
@@ -1093,6 +1054,7 @@ const [sessionChecked, setSessionChecked] = useState(false);
                       onPress={() => {
                         setCityId(item.value);
                         setCityLabel(item.label);
+                        setSelectedCountryCode(item.country || null);
                         setCitySearchModalVisible(false);
 
                         if (stage === 'city') {
