@@ -240,7 +240,7 @@ const rankMatch = (candidate: string, query: string) => {
 };
 
 export default function CreateProfileScreen() {
-  const allowedCreateProfileRef = useRef(true);
+  const allowedCreateProfileRef = useRef(false);
 
   const { width } = useWindowDimensions();
   const { refreshProfile } = useAuth();
@@ -290,20 +290,53 @@ export default function CreateProfileScreen() {
   const [isSearchingCities, setIsSearchingCities] = useState(false);
 
   const [saving, setSaving] = useState(false);
-
+const [sessionChecked, setSessionChecked] = useState(false);
   useEffect(() => {
   let mounted = true;
 
   const checkSession = async () => {
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser();
+    try {
+      const { data: sessionData, error: sessionError } =
+        await supabase.auth.getSession();
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    if (error || !user?.id) {
-      console.log('🚫 CreateProfile blocked: no authenticated user.');
+      if (sessionError) {
+        console.log('🚫 CreateProfile session error:', sessionError.message);
+      }
+
+      const sessionUser = sessionData?.session?.user;
+
+      if (!sessionUser?.id) {
+        console.log('🚫 CreateProfile blocked: no active Supabase session.');
+
+        allowedCreateProfileRef.current = false;
+        setSessionChecked(true);
+
+        Alert.alert(
+          'Session expired',
+          'Please sign in again to finish creating your profile.'
+        );
+
+        resetHardToSignIn();
+        return;
+      }
+
+      allowedCreateProfileRef.current = true;
+      setSessionChecked(true);
+
+      await fetchCreativeRoles();
+    } catch (err: any) {
+      console.log('🚫 CreateProfile session check failed:', err?.message || err);
+
+      allowedCreateProfileRef.current = false;
+      setSessionChecked(true);
+
+      Alert.alert(
+        'Session expired',
+        'Please sign in again to finish creating your profile.'
+      );
+
       resetHardToSignIn();
     }
   };
@@ -315,10 +348,7 @@ export default function CreateProfileScreen() {
   };
 }, []);
 
-  useEffect(() => {
-    if (!allowedCreateProfileRef.current) return;
-    fetchCreativeRoles();
-  }, []);
+  
 
   useEffect(() => {
     if (!allowedCreateProfileRef.current) return;
@@ -713,13 +743,16 @@ export default function CreateProfileScreen() {
       ? { style: styles.wrapper }
       : { behavior: 'padding' as const, style: styles.wrapper };
 
-  if (!allowedCreateProfileRef.current) {
-    return (
-      <View style={styles.blockedWrapper}>
-        <ActivityIndicator color={GOLD} />
-      </View>
-    );
-  }
+  if (!sessionChecked || !allowedCreateProfileRef.current) {
+  return (
+    <View style={styles.blockedWrapper}>
+      <ActivityIndicator color={GOLD} />
+      <Text style={{ color: TEXT_MUTED, marginTop: 12 }}>
+        Checking your session...
+      </Text>
+    </View>
+  );
+}
 
   return (
     <Wrapper {...wrapperProps}>

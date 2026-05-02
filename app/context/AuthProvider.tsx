@@ -465,7 +465,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
-  const tryNavigateToCreateProfile = () => {
+  const tryNavigateToCreateProfile = async () => {
   const resetFlowActive = isPasswordResetFlowActive();
 
   if (resetFlowActive) {
@@ -476,6 +476,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   if (!userId) return;
   if (!profileChecked) return;
   if (!navigationRef.isReady()) return;
+
+  const { data: sessionData, error: sessionError } =
+    await supabase.auth.getSession();
+
+  if (sessionError) {
+    console.log(
+      "CreateProfile redirect blocked — session error:",
+      sessionError.message
+    );
+    return;
+  }
+
+  const sessionUserId = sessionData?.session?.user?.id;
+
+  if (!sessionUserId) {
+    console.log("CreateProfile redirect blocked — no active session.");
+    return;
+  }
+
+  if (sessionUserId !== userId) {
+    console.log("CreateProfile redirect blocked — session/user mismatch.");
+    return;
+  }
 
   const complete = Boolean(
     profile?.id &&
@@ -488,9 +511,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const currentRoute = navigationRef.getCurrentRoute();
 
-  // CRITICAL:
-  // Do not reset CreateProfile while already on CreateProfile.
-  // This was causing the profile setup to restart after image upload.
   if (currentRoute?.name === "CreateProfile") {
     return;
   }
@@ -664,7 +684,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
               pendingCreateProfileRedirectRef.current = true;
-              tryNavigateToCreateProfile();
+              void tryNavigateToCreateProfile();
             }
           }
         }
@@ -811,7 +831,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }, 0);
         } else if (shouldBeEmailConfirm) {
           setTimeout(() => {
-            tryNavigateToCreateProfile();
+            void tryNavigateToCreateProfile();
           }, 0);
         }
       } catch (e: any) {
@@ -882,7 +902,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         setTimeout(() => {
-          tryNavigateToCreateProfile();
+          void tryNavigateToCreateProfile();
         }, 0);
       }
     });
@@ -958,7 +978,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setReady(true);
           }
 
-          tryNavigateToCreateProfile();
+          void tryNavigateToCreateProfile();
           return;
         }
 
@@ -1031,7 +1051,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
             pendingCreateProfileRedirectRef.current = true;
-            tryNavigateToCreateProfile();
+            void tryNavigateToCreateProfile();
           }
 
           if (!ready && mounted) {
@@ -1108,7 +1128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return;
   }
 
-  tryNavigateToCreateProfile();
+  void tryNavigateToCreateProfile();
 }, [ready, userId, profile]);
 
   const profileComplete = useMemo(() => {

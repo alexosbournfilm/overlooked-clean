@@ -254,11 +254,16 @@ export default function App() {
       console.log("✅ Session restored from tokens");
     }
 
-    if (type === "signup") {
-      console.log("✅ Signup confirmation link detected");
-      markSignupConfirmFlow();
-      setInitialAuthRouteName("SignIn");
-    }
+    if (type === "signup" || code || access_token) {
+  console.log("✅ Signup confirmation link detected");
+  markSignupConfirmFlow();
+
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.sessionStorage.setItem("overlooked.allowCreateProfile", "true");
+  }
+
+  setInitialAuthRouteName("SignIn");
+}
 
     if (Platform.OS === "web" && typeof window !== "undefined") {
       const clean = window.location.origin + window.location.pathname;

@@ -128,6 +128,7 @@ export default function AppNavigator({
   }, [ready, userId, profileComplete, shouldRouteToCreateProfile]);
 
   useEffect(() => {
+  const runRedirectCheck = async () => {
     if (!ready || !navReady) return;
     if (!navigationRef.isReady()) return;
     if (!hasBootstrappedNavRef.current) return;
@@ -233,12 +234,16 @@ export default function AppNavigator({
      * CreateProfile is only allowed after a real email-confirmation flow.
      * This blocks password reset, normal sign-in, stale nav state, and missing profile redirects.
      */
-    if (shouldRouteToCreateProfile || !profileComplete) {
+    if (userId && shouldRouteToCreateProfile && !profileComplete) {
+  const { data: sessionData } = await supabase.auth.getSession();
+
+  if (!sessionData?.session?.user?.id) {
+    resetToAuth();
+    return;
+  }
+
   const currentRoute = navigationRef.getCurrentRoute();
 
-  // CRITICAL:
-  // Do not reset CreateProfile while the user is already filling it in.
-  // This prevents the role-selection loop after choosing a profile picture.
   if (currentRoute?.name !== "CreateProfile") {
     resetToCreateProfile();
   }
@@ -255,14 +260,17 @@ export default function AppNavigator({
     }
 
     resetToMainTabs();
-  }, [
-    ready,
-    navReady,
-    userId,
-    profileComplete,
-    shouldRouteToCreateProfile,
-    initialAuthRouteName,
-  ]);
+    };
+
+  void runRedirectCheck();
+}, [
+  ready,
+  navReady,
+  userId,
+  profileComplete,
+  shouldRouteToCreateProfile,
+  initialAuthRouteName,
+]);
 
   useEffect(() => {
     if (!userId) {
@@ -360,11 +368,9 @@ const rootInitialRouteName =
     ? "Auth"
     : !userId
     ? "Auth"
-    : shouldRouteToCreateProfile || !profileComplete
-    ? "CreateProfile"
-    : mustShowPaywall
-    ? "Paywall"
-    : "MainTabs";
+    : profileComplete
+    ? "MainTabs"
+    : "Auth";
 
   return (
     <NavigationContainer

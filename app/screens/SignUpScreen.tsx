@@ -52,7 +52,7 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const emailRedirectTo = useMemo(() => {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    return `${window.location.origin}/signin`;
+    return window.location.origin;
   }
 
   return 'overlooked://callback';
@@ -646,7 +646,7 @@ If we become aware of content or behaviour that may involve child exploitation o
 
 5. CONTACT
 For child safety concerns, abuse reports, or urgent safeguarding issues, contact:
-alexosbournfilm@gmail.com
+overlookedsupport@gmail.com
 
 6. LEGAL COMPLIANCE
 - Overlooked complies with applicable child safety laws and platform rules.

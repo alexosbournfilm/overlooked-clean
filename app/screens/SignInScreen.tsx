@@ -357,7 +357,27 @@ export default function SignInScreen() {
     return;
   }
 
+  const { data: sessionCheck } = await supabase.auth.getSession();
+
+  if (!sessionCheck?.session?.user?.id) {
+    showError(
+      'Session expired',
+      'Please sign in again to finish creating your profile.'
+    );
+    return;
+  }
+
   try {
+    const parentNav = navigation.getParent?.();
+
+    if (parentNav) {
+      parentNav.reset({
+        index: 0,
+        routes: [{ name: 'CreateProfile' }],
+      });
+      return;
+    }
+
     navigation.reset({
       index: 0,
       routes: [{ name: 'CreateProfile' }],
