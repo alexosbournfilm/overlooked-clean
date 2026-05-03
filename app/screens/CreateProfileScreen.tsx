@@ -676,13 +676,13 @@ export default function CreateProfileScreen() {
             full_name: fullName.trim(),
             main_role_id: mainRole,
             city_id: cityId,
-            country_code: selectedCountryCode,
+            
             avatar_url: finalAvatarUrl,
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'id' }
         )
-        .select('id, full_name, main_role_id, city_id, country_code, avatar_url')
+        .select('id, full_name, main_role_id, city_id, avatar_url')
         .maybeSingle(),
       20000
     );
@@ -1070,35 +1070,36 @@ export default function CreateProfileScreen() {
                   </View>
 
                   <View style={styles.reviewActions}>
-                    <TouchableOpacity
-                      onPress={() => animateStageChange('image')}
-                      style={styles.backButton}
-                      activeOpacity={0.9}
-                      disabled={loading}
-                    >
-                      <Text style={styles.backButtonText}>Back</Text>
-                    </TouchableOpacity>
+  <TouchableOpacity
+    onPress={() => animateStageChange('image')}
+    style={styles.backButton}
+    activeOpacity={0.9}
+    disabled={loading}
+  >
+    <Text style={styles.backButtonText}>Back</Text>
+  </TouchableOpacity>
 
-                    <TouchableOpacity
-                      onPress={handleSubmit}
-                      style={[
-                        styles.submitButton,
-                        styles.submitButtonReview,
-                        loading && { opacity: 0.6 },
-                      ]}
-                      disabled={loading}
-                      activeOpacity={0.9}
-                    >
-                      {loading ? (
-                        <ActivityIndicator color="#000" />
-                      ) : (
-                        <Text style={styles.submitText}>Confirm & Enter</Text>
-                      )}
-                    </TouchableOpacity>
-                    {!!submitStatus && (
+  <TouchableOpacity
+    onPress={handleSubmit}
+    style={[
+      styles.submitButton,
+      styles.submitButtonReview,
+      loading && { opacity: 0.6 },
+    ]}
+    disabled={loading}
+    activeOpacity={0.9}
+  >
+    {loading ? (
+      <ActivityIndicator color="#000" />
+    ) : (
+      <Text style={styles.submitText}>Confirm & Enter</Text>
+    )}
+  </TouchableOpacity>
+</View>
+
+{!!submitStatus && (
   <Text style={styles.submitStatusText}>{submitStatus}</Text>
 )}
-                  </View>
                 </>
               )}
             </View>
