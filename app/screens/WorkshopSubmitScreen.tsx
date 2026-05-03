@@ -800,9 +800,41 @@ async function createMuxDirectUpload(input: {
     },
   });
 
-  if (error) throw error;
+  if (error) {
+    let detail = error.message || "Unknown Edge Function error";
+
+    try {
+      const context = (error as any)?.context;
+
+      if (context) {
+        const cloned = context.clone?.() ?? context;
+
+        try {
+          const json = await cloned.json();
+          detail = JSON.stringify(json, null, 2);
+        } catch {
+          try {
+            detail = await cloned.text();
+          } catch {}
+        }
+      }
+    } catch {}
+
+    console.warn("mux-create-upload failed:", detail);
+
+    throw new Error(`Mux upload setup failed: ${detail}`);
+  }
+
   if (!data?.uploadUrl || !data?.uploadId) {
-    throw new Error("Mux upload URL was not returned.");
+    console.warn("mux-create-upload missing fields:", data);
+
+    throw new Error(
+      `Mux upload setup failed: Edge Function did not return uploadUrl/uploadId. Response: ${JSON.stringify(
+        data,
+        null,
+        2
+      )}`
+    );
   }
 
   return {
