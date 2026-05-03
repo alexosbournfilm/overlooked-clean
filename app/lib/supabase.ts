@@ -16,12 +16,26 @@ export const supabase =
   SUPABASE_URL && SUPABASE_ANON_KEY
     ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         auth: isWeb
-  ? {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: false,
-      storageKey: "overlooked.supabase.auth",
-    }
+          ? {
+              persistSession: true,
+              autoRefreshToken: true,
+
+              /**
+               * IMPORTANT:
+               * Keep this false on web.
+               *
+               * Your app already manually handles Supabase auth links in:
+               * - App.tsx
+               * - SignInScreen.tsx
+               * - NewPassword.tsx
+               *
+               * If this is true, Supabase can auto-create a temporary reset-password
+               * session before NewPassword.tsx controls the flow. That can make the
+               * app think the user is normally signed in with an incomplete profile,
+               * which then redirects to CreateProfile.
+               */
+              detectSessionInUrl: false,
+            }
           : {
               persistSession: true,
               autoRefreshToken: true,
@@ -88,6 +102,6 @@ export async function giveXp(
 export type UserTier = "free" | "pro";
 
 export const TIER_SUBMISSION_LIMITS: Record<UserTier, number> = {
-  free: 0,
-  pro: 2,
+  free: 1,
+  pro: 999999,
 };

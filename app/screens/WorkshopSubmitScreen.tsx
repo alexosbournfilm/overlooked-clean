@@ -563,6 +563,64 @@ async function captureFirstFrameWeb(
     return null;
   }
 }
+async function canUserSubmitLifetimeFilm(
+  userId: string,
+  tier: string | null | undefined
+): Promise<{
+  allowed: boolean;
+  used: number;
+  remaining: number;
+  reason: null | "not_logged_in" | "no_free_uploads_left";
+}> {
+  if (!userId) {
+    return {
+      allowed: false,
+      used: 0,
+      remaining: 0,
+      reason: "not_logged_in",
+    };
+  }
+
+  const tierNorm = String(tier ?? "").toLowerCase().trim();
+
+  if (tierNorm === "pro") {
+    return {
+      allowed: true,
+      used: 0,
+      remaining: 999999,
+      reason: null,
+    };
+  }
+
+  const { count, error } = await supabase
+    .from("submissions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+
+  if (error) {
+    throw error;
+  }
+
+  const used = count ?? 0;
+  const limit = 1;
+  const remaining = Math.max(0, limit - used);
+
+  if (remaining <= 0) {
+    return {
+      allowed: false,
+      used,
+      remaining: 0,
+      reason: "no_free_uploads_left",
+    };
+  }
+
+  return {
+    allowed: true,
+    used,
+    remaining,
+    reason: null,
+  };
+}
 
 async function fetchCurrentChallenge(): Promise<MonthlyChallenge> {
   try {
@@ -1096,10 +1154,31 @@ export default function WorkshopSubmitScreen() {
         return;
       }
 
-      if (tierNorm !== "pro") {
-        setUpgradeVisible(true);
-        return;
-      }
+      const {
+  data: { user },
+  error: uErr,
+} = await supabase.auth.getUser();
+
+if (uErr) {
+  notify("Please try again", "We couldn’t verify your account right now.", setStatus);
+  return;
+}
+
+if (!user) {
+  notify("Please sign in", "You must be logged in to upload.", setStatus);
+  return;
+}
+
+const canUpload = await canUserSubmitLifetimeFilm(user.id, tierNorm);
+
+if (!canUpload.allowed) {
+  setUpgradeVisible(true);
+  return notify(
+    "Upgrade required",
+    "You’ve already used your free film upload. Upgrade to Pro to upload more films.",
+    setStatus
+  );
+}
 
       setStatus(alreadyCompleted ? "Already completed — You already completed this workshop lesson." : "");
       setDurationSec(null);
@@ -1208,10 +1287,16 @@ export default function WorkshopSubmitScreen() {
     const tierNorm = String(profile?.tier ?? "").toLowerCase().trim();
     setUserTier(tierNorm || null);
 
-    if (tierNorm !== "pro") {
-      setUpgradeVisible(true);
-      return;
-    }
+    const canUpload = await canUserSubmitLifetimeFilm(user.id, tierNorm);
+
+if (!canUpload.allowed) {
+  setUpgradeVisible(true);
+  return notify(
+    "Upgrade required",
+    "You’ve already used your free film upload. Upgrade to Pro to upload more films.",
+    setStatus
+  );
+}
 
     setStatus(alreadyCompleted ? "Already completed — You already completed this workshop lesson." : "");
     setDurationSec(null);
@@ -1370,11 +1455,17 @@ export default function WorkshopSubmitScreen() {
       const tierNorm = String(profile?.tier ?? "").toLowerCase().trim();
       setUserTier(tierNorm || null);
 
-      if (tierNorm !== "pro") {
-        setLoading(false);
-        setUpgradeVisible(true);
-        return notify("Upgrade required", "Submitting is available on Pro.", setStatus);
-      }
+      const canUpload = await canUserSubmitLifetimeFilm(user.id, tierNorm);
+
+if (!canUpload.allowed) {
+  setLoading(false);
+  setUpgradeVisible(true);
+  return notify(
+    "Upgrade required",
+    "You’ve already used your free film upload. Upgrade to Pro to upload more films.",
+    setStatus
+  );
+}
 
       if (!currentChallenge) {
         const fresh = await fetchCurrentChallenge();
@@ -1387,25 +1478,7 @@ export default function WorkshopSubmitScreen() {
         throw new Error("Could not find the current monthly challenge.");
       }
 
-      const { data: monthlyCheck, error: monthlyCheckError } = await supabase.rpc("can_submit_this_month", {
-        p_user_id: user.id,
-      });
-
-      if (monthlyCheckError) throw monthlyCheckError;
-
-      const monthlyRow = Array.isArray(monthlyCheck) ? monthlyCheck[0] : monthlyCheck;
-
-      if (!monthlyRow?.allowed) {
-        if (monthlyRow?.reason === "no_submissions_left") {
-          throw new Error("You’ve used all submissions for this month.");
-        }
-        if (monthlyRow?.reason === "tier_too_low") {
-          setLoading(false);
-          setUpgradeVisible(true);
-          return notify("Upgrade required", "Submitting is available on Pro.", setStatus);
-        }
-        throw new Error("You can’t submit to the monthly challenge right now.");
-      }
+      
 
       if (isWorkshopMode && pathKey && typeof step === "number") {
         const { data: existingProgress, error: progressCheckError } = await supabase
@@ -1779,7 +1852,8 @@ return (
                   <Text style={styles.infoMiniTitle}>Rules</Text>
                   <View style={styles.infoList}>
                     <Text style={styles.infoBullet}>• File size must be 5GB or under</Text>
-                    <Text style={styles.infoBullet}>• Pro Overlooked is required to upload videos</Text>
+                    <Text style={styles.infoBullet}>• Your first film upload is free</Text>
+<Text style={styles.infoBullet}>• Pro is required for additional uploads</Text>
                     <Text style={styles.infoBullet}>• Your film must be original</Text>
                     <Text style={styles.infoBullet}>• No stolen, hateful, or harmful content</Text>
                     <Text style={styles.infoBullet}>• Thumbnail is required</Text>
@@ -1858,7 +1932,7 @@ return (
                   <View style={styles.uploadBox}>
                     <TouchableOpacity style={styles.primaryBtn} onPress={pickFile} activeOpacity={0.92}>
                       <Text style={styles.primaryBtnText}>{localUri ? "Pick a different file" : "Pick a file"}</Text>
-                      <Text style={styles.primaryBtnSub}>Pro required • Max file size: 5GB</Text>
+                      <Text style={styles.primaryBtnSub}>1 free upload • Pro for unlimited • Max file size: 5GB</Text>
                     </TouchableOpacity>
 
                     {localUri ? (
@@ -2139,7 +2213,8 @@ return (
 
           <ScrollView style={{ marginBottom: 16 }}>
             <Text style={styles.modalText}>• File size: max 5GB.</Text>
-            <Text style={styles.modalText}>• Pro Overlooked is required to upload videos.</Text>
+            <Text style={styles.modalText}>• Your first film upload is free.</Text>
+<Text style={styles.modalText}>• Pro is required for additional uploads.</Text>
             <Text style={styles.modalText}>• Keep it original. No stolen footage or unlicensed material.</Text>
             <Text style={styles.modalText}>
               • Keep it appropriate. No hate, harassment, or explicit harmful content.
