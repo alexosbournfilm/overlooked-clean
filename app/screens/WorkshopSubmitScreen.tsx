@@ -146,6 +146,43 @@ function formatDur(sec?: number | null) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+async function pickWebVideoFile(): Promise<File | null> {
+  if (Platform.OS !== "web") return null;
+
+  return new Promise((resolve) => {
+    try {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "video/*";
+      input.style.display = "none";
+
+      input.onchange = () => {
+        const file = input.files?.[0] ?? null;
+
+        try {
+          document.body.removeChild(input);
+        } catch {}
+
+        resolve(file);
+      };
+
+      input.oncancel = () => {
+        try {
+          document.body.removeChild(input);
+        } catch {}
+
+        resolve(null);
+      };
+
+      document.body.appendChild(input);
+      input.click();
+    } catch (err) {
+      console.warn("pickWebVideoFile failed:", err);
+      resolve(null);
+    }
+  });
+}
+
 function mediaKindFromMime(
   mime: string | null | undefined
 ): "file_audio" | "file_video" | "youtube" {
@@ -1124,61 +1161,69 @@ export default function WorkshopSubmitScreen() {
 
  const pickFile = async () => {
   try {
+    // WEB: open the browser file picker FIRST.
+    // Safari requires file input click to happen immediately from the user's tap/click.
     if (Platform.OS === "web") {
-      const tierNorm = (userTier ?? "").toLowerCase().trim();
+      const file = await pickWebVideoFile();
 
-      if (!tierNorm) {
-        notify("Loading your account…", "Try again in 1 second.", setStatus);
-
-        (async () => {
-          try {
-            const {
-              data: { user },
-              error: uErr,
-            } = await supabase.auth.getUser();
-
-            if (uErr || !user) return;
-
-            const { data: profile } = await supabase
-              .from("users")
-              .select("tier")
-              .eq("id", user.id)
-              .single();
-
-            if (profile?.tier) {
-              setUserTier(String(profile.tier).toLowerCase().trim());
-            }
-          } catch {}
-        })();
-
+      if (!file) {
+        setStatus("No file selected.");
         return;
       }
 
+      setStatus("Checking your account…");
+
       const {
-  data: { user },
-  error: uErr,
-} = await supabase.auth.getUser();
+        data: { user },
+        error: uErr,
+      } = await supabase.auth.getUser();
 
-if (uErr) {
-  notify("Please try again", "We couldn’t verify your account right now.", setStatus);
-  return;
-}
+      if (uErr) {
+        notify("Please try again", "We couldn’t verify your account right now.", setStatus);
+        return;
+      }
 
-if (!user) {
-  notify("Please sign in", "You must be logged in to upload.", setStatus);
-  return;
-}
+      if (!user) {
+        notify("Please sign in", "You must be logged in to upload.", setStatus);
+        return;
+      }
 
-const canUpload = await canUserSubmitLifetimeFilm(user.id, tierNorm);
+      const { data: profile, error: pErr } = await supabase
+        .from("users")
+        .select("tier")
+        .eq("id", user.id)
+        .single();
 
-if (!canUpload.allowed) {
-  setUpgradeVisible(true);
-  return notify(
-    "Upgrade required",
-    "You’ve already used your free film upload. Upgrade to Pro to upload more films.",
-    setStatus
-  );
-}
+      if (pErr) {
+        notify("Please try again", "We couldn’t verify your account right now.", setStatus);
+        return;
+      }
+
+      const tierNorm = String(profile?.tier ?? "").toLowerCase().trim();
+      setUserTier(tierNorm || null);
+
+      const canUpload = await canUserSubmitLifetimeFilm(user.id, tierNorm);
+
+      if (!canUpload.allowed) {
+        setUpgradeVisible(true);
+        return notify(
+          "Upgrade required",
+          "You’ve already used your free film upload. Upgrade to Pro to upload more films.",
+          setStatus
+        );
+      }
+
+      const bytes = typeof file.size === "number" ? file.size : null;
+
+      if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
+        notify(
+          "File too large",
+          `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
+          setStatus
+        );
+        resetSelectedFile();
+        return;
+      }
 
       setStatus(alreadyCompleted ? "Already completed — You already completed this workshop lesson." : "");
       setDurationSec(null);
@@ -1193,58 +1238,22 @@ if (!canUpload.allowed) {
       setWebFile(null);
       setProgressPct(0);
 
-      const pick = await DocumentPicker.getDocumentAsync({
-        type: ["video/*"] as any,
-        copyToCacheDirectory: true,
-      });
-
-      if (pick.canceled) return;
-
-      const asset: any = pick.assets?.[0];
-      if (!asset?.uri) {
-        notify("No file", "Please choose a file.", setStatus);
-        return;
-      }
-
-      if (!asset.file) {
-        notify(
-          "Picker issue",
-          "Your browser didn’t provide the actual file object. Try selecting from device storage or use Chrome.",
-          setStatus
-        );
-        return;
-      }
-
-      let bytes: number | null = null;
-      const f: File = asset.file;
-      bytes = typeof f.size === "number" ? f.size : null;
-
       if (objectUrlRef.current) {
         try {
           URL.revokeObjectURL(objectUrlRef.current);
         } catch {}
       }
 
-      const objUrl = URL.createObjectURL(f);
+      const objUrl = URL.createObjectURL(file);
       objectUrlRef.current = objUrl;
 
-      setWebFile(f);
+      setWebFile(file);
       setLocalUri(objUrl);
       setFileSizeBytes(bytes);
 
-      if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
-        notify(
-          "File too large",
-          `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
-          setStatus
-        );
-        resetSelectedFile();
-        return;
-      }
-
       setThumbLoading(true);
-      const src = objectUrlRef.current ?? asset.uri;
-      const thumb = await captureFirstFrameWeb(src);
+
+      const thumb = await captureFirstFrameWeb(objUrl);
 
       if (thumb?.dataUrl) {
         setThumbUri(thumb.dataUrl);
@@ -1258,6 +1267,7 @@ if (!canUpload.allowed) {
       return;
     }
 
+    // MOBILE / NATIVE
     const {
       data: { user },
       error: uErr,
@@ -1289,14 +1299,14 @@ if (!canUpload.allowed) {
 
     const canUpload = await canUserSubmitLifetimeFilm(user.id, tierNorm);
 
-if (!canUpload.allowed) {
-  setUpgradeVisible(true);
-  return notify(
-    "Upgrade required",
-    "You’ve already used your free film upload. Upgrade to Pro to upload more films.",
-    setStatus
-  );
-}
+    if (!canUpload.allowed) {
+      setUpgradeVisible(true);
+      return notify(
+        "Upgrade required",
+        "You’ve already used your free film upload. Upgrade to Pro to upload more films.",
+        setStatus
+      );
+    }
 
     setStatus(alreadyCompleted ? "Already completed — You already completed this workshop lesson." : "");
     setDurationSec(null);
@@ -1319,6 +1329,7 @@ if (!canUpload.allowed) {
     if (pick.canceled) return;
 
     const asset: any = pick.assets?.[0];
+
     if (!asset?.uri) {
       notify("No file", "Please choose a file.", setStatus);
       return;
@@ -1327,10 +1338,13 @@ if (!canUpload.allowed) {
     let bytes: number | null = null;
 
     if (typeof asset.size === "number") bytes = asset.size;
+
     if (bytes == null) {
       try {
         const info = await FileSystem.getInfoAsync(asset.uri, { size: true } as any);
-        if (info?.exists && typeof (info as any)?.size === "number") bytes = (info as any).size;
+        if (info?.exists && typeof (info as any)?.size === "number") {
+          bytes = (info as any).size;
+        }
       } catch {}
     }
 
@@ -1352,10 +1366,12 @@ if (!canUpload.allowed) {
 
     try {
       const thumb = await VideoThumbnails.getThumbnailAsync(asset.uri, { time: 120 });
+
       if (thumb?.uri) setThumbUri(thumb.uri);
 
       const w = (thumb as any)?.width;
       const h = (thumb as any)?.height;
+
       if (typeof w === "number" && typeof h === "number" && w > 0 && h > 0) {
         setThumbAspect(w / h);
       }
@@ -1368,7 +1384,7 @@ if (!canUpload.allowed) {
     setStatus(`Loaded file • ${formatBytes(bytes)}`);
   } catch (e: any) {
     console.warn("pickFile failed:", e?.message ?? e);
-    notify("Could not open picker", "Try again.", setStatus);
+    notify("Could not open picker", e?.message ?? "Try again.", setStatus);
   }
 };
 
@@ -2109,18 +2125,18 @@ return (
                   </View>
 
                   <TouchableOpacity
-                    style={[
-                      styles.submitBtn,
-                      (!agreed || loading || !customThumbUri || (isWorkshopMode && alreadyCompleted)) && {
-                        opacity: 0.6,
-                      },
-                    ]}
-                    onPress={handleSubmit}
-                    disabled={loading || !agreed || !customThumbUri || (isWorkshopMode && alreadyCompleted)}
-                    activeOpacity={0.92}
-                  >
-                    <Text style={styles.submitText}>{submitButtonText}</Text>
-                  </TouchableOpacity>
+  style={[
+    styles.submitBtn,
+    (loading || (isWorkshopMode && alreadyCompleted)) && {
+      opacity: 0.6,
+    },
+  ]}
+  onPress={handleSubmit}
+  disabled={loading || (isWorkshopMode && alreadyCompleted)}
+  activeOpacity={0.92}
+>
+  <Text style={styles.submitText}>{submitButtonText}</Text>
+</TouchableOpacity>
 
                   <View style={styles.formFootnoteWrap}>
   <Text style={styles.formFootnote}>{footnoteText}</Text>
