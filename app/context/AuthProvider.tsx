@@ -27,6 +27,7 @@ type AuthContextType = {
   profileComplete: boolean;
   shouldRouteToCreateProfile: boolean;
   refreshProfile: () => Promise<void>;
+  setProfileCompleteFromSavedProfile: (profile: MinimalProfile) => void;
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -36,6 +37,7 @@ const AuthContext = createContext<AuthContextType>({
   profileComplete: false,
   shouldRouteToCreateProfile: false,
   refreshProfile: async () => {},
+  setProfileCompleteFromSavedProfile: () => {},
 });
 
 const G = globalThis as any;
@@ -1146,17 +1148,42 @@ setUserId((prev) => (prev === uid ? prev : uid));
   return Boolean(userId && profileChecked && !complete && !resetFlowActive);
 }, [userId, profile, profileChecked]);
 
+const setProfileCompleteFromSavedProfile = (savedProfile: MinimalProfile) => {
+  if (!savedProfile?.id) return;
+
+  latestAuthUserIdRef.current = savedProfile.id;
+  lastLoadedProfileForRef.current = savedProfile.id;
+  inFlightProfileForRef.current = null;
+
+  setUserId(savedProfile.id);
+  setProfile({
+    id: savedProfile.id,
+    full_name: savedProfile.full_name,
+    main_role_id: savedProfile.main_role_id,
+    city_id: savedProfile.city_id,
+  });
+  setProfileChecked(true);
+
+  pendingCreateProfileRedirectRef.current = false;
+
+  G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+  G.__OVERLOOKED_RECOVERY__ = false;
+  G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+  G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+};
+
   const value = useMemo(
-    () => ({
-      ready,
-      userId,
-      profile,
-      profileComplete,
-      shouldRouteToCreateProfile,
-      refreshProfile,
-    }),
-    [ready, userId, profile, profileComplete, shouldRouteToCreateProfile]
-  );
+  () => ({
+    ready,
+    userId,
+    profile,
+    profileComplete,
+    shouldRouteToCreateProfile,
+    refreshProfile,
+    setProfileCompleteFromSavedProfile,
+  }),
+  [ready, userId, profile, profileComplete, shouldRouteToCreateProfile]
+);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

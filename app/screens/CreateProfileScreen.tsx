@@ -214,7 +214,7 @@ export default function CreateProfileScreen() {
   const allowedCreateProfileRef = useRef(true);
 
   const { width } = useWindowDimensions();
-  const { refreshProfile } = useAuth();
+  const { refreshProfile, setProfileCompleteFromSavedProfile } = useAuth();
   const { refresh: refreshGamification } = useGamification();
 
   const isMobile = width < 768;
@@ -657,6 +657,13 @@ export default function CreateProfileScreen() {
   throw new Error('Profile was saved but is incomplete.');
 }
 console.log('✅ Profile saved:', savedProfile);
+
+setProfileCompleteFromSavedProfile({
+  id: savedProfile.id,
+  full_name: savedProfile.full_name,
+  main_role_id: savedProfile.main_role_id,
+  city_id: savedProfile.city_id,
+});
 
 G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
 G.__OVERLOOKED_RECOVERY__ = false;
