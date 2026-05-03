@@ -572,6 +572,7 @@ export default function CreateProfileScreen() {
   };
 
   const handleSubmit = async () => {
+    console.log('✅ Confirm & Enter pressed');
     if (!allowedCreateProfileRef.current) {
       resetHardToSignIn();
       return;
@@ -655,8 +656,9 @@ export default function CreateProfileScreen() {
 ) {
   throw new Error('Profile was saved but is incomplete.');
 }
+console.log('✅ Profile saved:', savedProfile);
 
-      G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
 G.__OVERLOOKED_RECOVERY__ = false;
 G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
 G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
@@ -665,12 +667,7 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
   window.sessionStorage.removeItem('overlooked.allowCreateProfile');
 }
 
-await refreshProfile();
-await refreshGamification();
-
-showToast('Welcome to Overlooked!');
-
-      if (navigationRef.isReady()) {
+if (navigationRef.isReady()) {
   navigationRef.dispatch(
     CommonActions.reset({
       index: 0,
@@ -686,6 +683,18 @@ showToast('Welcome to Overlooked!');
     })
   );
 }
+
+setTimeout(() => {
+  refreshProfile().catch((e: any) => {
+    console.log('Background refreshProfile failed:', e?.message || e);
+  });
+
+  refreshGamification().catch((e: any) => {
+    console.log('Background refreshGamification failed:', e?.message || e);
+  });
+}, 300);
+
+showToast('Welcome to Overlooked!');
     } catch (err: any) {
       console.error('Create profile error:', err);
       Alert.alert('Error', err?.message ?? 'Could not create profile.');
