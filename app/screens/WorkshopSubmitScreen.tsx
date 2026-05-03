@@ -145,6 +145,26 @@ function formatDur(sec?: number | null) {
   const s = Math.floor(sec % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
 }
+async function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out. Please check your connection and try again.`));
+    }, ms);
+  });
+
+  try {
+    const result = await Promise.race([promise, timeoutPromise]);
+    return result as T;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
 
 async function pickWebVideoFile(): Promise<File | null> {
   if (Platform.OS !== "web") return null;
@@ -618,33 +638,6 @@ async function canUserSubmitLifetimeFilm(
     };
   }
 
-  // Use the Supabase SQL function as the main source of truth.
-  const { data: allowedFromDb, error: rpcError } = await supabase.rpc(
-    "can_insert_lifetime_submission",
-    {
-      p_user_id: userId,
-    }
-  );
-
-  if (!rpcError && typeof allowedFromDb === "boolean") {
-    if (allowedFromDb) {
-      return {
-        allowed: true,
-        used: 0,
-        remaining: 1,
-        reason: null,
-      };
-    }
-
-    return {
-      allowed: false,
-      used: 1,
-      remaining: 0,
-      reason: "no_free_uploads_left",
-    };
-  }
-
-  // Fallback check if the RPC ever fails.
   const tierNorm = String(tier ?? "").toLowerCase().trim();
 
   if (tierNorm === "pro") {
@@ -656,16 +649,60 @@ async function canUserSubmitLifetimeFilm(
     };
   }
 
-  const { count, error } = await supabase
-    .from("submissions")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId);
+  try {
+  const rpcResult: any = await withTimeout<any>(
+    supabase.rpc("can_insert_lifetime_submission", {
+      p_user_id: userId,
+    }) as any,
+    6000,
+    "Upload limit check"
+  );
 
-  if (error) {
-    throw error;
+  const allowedFromDb = rpcResult?.data;
+  const rpcError = rpcResult?.error;
+
+  if (!rpcError && typeof allowedFromDb === "boolean") {
+      if (allowedFromDb) {
+        return {
+          allowed: true,
+          used: 0,
+          remaining: 1,
+          reason: null,
+        };
+      }
+
+      return {
+        allowed: false,
+        used: 1,
+        remaining: 0,
+        reason: "no_free_uploads_left",
+      };
+    }
+
+    if (rpcError) {
+      console.warn("can_insert_lifetime_submission RPC error:", rpcError.message);
+    }
+  } catch (e: any) {
+    console.warn("can_insert_lifetime_submission timed out or failed:", e?.message ?? e);
   }
 
-  const used = count ?? 0;
+  const countResult: any = await withTimeout<any>(
+  supabase
+    .from("submissions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId) as any,
+  6000,
+  "Fallback submission count"
+);
+
+const count = countResult?.count;
+const error = countResult?.error;
+
+if (error) {
+  throw error;
+}
+
+const used = count ?? 0;
   const remaining = Math.max(0, 1 - used);
 
   if (remaining <= 0) {
@@ -1189,108 +1226,126 @@ export default function WorkshopSubmitScreen() {
   try {
     // WEB: check upload limit BEFORE opening the file picker.
     if (Platform.OS === "web") {
-      setStatus("Checking your upload limit…");
+  setStatus("Checking your upload limit…");
 
-      const {
-        data: { user },
-        error: uErr,
-      } = await supabase.auth.getUser();
+  const sessionResult: any = await withTimeout<any>(
+  supabase.auth.getSession() as any,
+  6000,
+  "Session check"
+);
 
-      if (uErr) {
-        notify("Please try again", "We couldn’t verify your account right now.", setStatus);
-        return;
-      }
+const session = sessionResult?.data?.session ?? null;
+const sessionErr = sessionResult?.error;
 
-      if (!user) {
-        notify("Please sign in", "You must be logged in to upload.", setStatus);
-        return;
-      }
+  if (sessionErr) {
+    notify("Please try again", "We couldn’t verify your account right now.", setStatus);
+    return;
+  }
 
-      const { data: profile, error: pErr } = await supabase
-        .from("users")
-        .select("tier")
-        .eq("id", user.id)
-        .single();
+  if (!session?.user) {
+    notify("Please sign in", "You must be logged in to upload.", setStatus);
+    return;
+  }
 
-      if (pErr) {
-        notify("Please try again", "We couldn’t verify your account right now.", setStatus);
-        return;
-      }
+  setStatus("Checking your membership…");
 
-      const tierNorm = String(profile?.tier ?? "").toLowerCase().trim();
-      setUserTier(tierNorm || null);
+  const profileResult: any = await withTimeout<any>(
+  supabase
+    .from("users")
+    .select("tier")
+    .eq("id", session.user.id)
+    .single() as any,
+  6000,
+  "Membership check"
+);
 
-      const canUpload = await canUserSubmitLifetimeFilm(user.id, tierNorm);
+const profile = profileResult?.data;
+const pErr = profileResult?.error;
 
-      if (!canUpload.allowed) {
-        setUpgradeVisible(true);
-        return notify(
-          "Upgrade required",
-          "You’ve already used your free film upload. Upgrade to Pro to upload more films.",
-          setStatus
-        );
-      }
+  if (pErr) {
+    notify("Please try again", "We couldn’t verify your account right now.", setStatus);
+    return;
+  }
 
-      const file = await pickWebVideoFile();
+  const tierNorm = String(profile?.tier ?? "").toLowerCase().trim();
+  setUserTier(tierNorm || null);
 
-      if (!file) {
-        setStatus("No file selected.");
-        return;
-      }
+  setStatus("Checking your upload limit…");
 
-      const bytes = typeof file.size === "number" ? file.size : null;
+  const canUpload = await canUserSubmitLifetimeFilm(session.user.id, tierNorm);
 
-      if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
-        notify(
-          "File too large",
-          `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
-          setStatus
-        );
-        resetSelectedFile();
-        return;
-      }
+  if (!canUpload.allowed) {
+    setUpgradeVisible(true);
+    setStatus("");
+    return notify(
+      "Upgrade required",
+      "You’ve already used your free film upload. Upgrade to Pro to upload more films.",
+      setStatus
+    );
+  }
 
-      setStatus(alreadyCompleted ? "Already completed — You already completed this workshop lesson." : "");
-      setDurationSec(null);
-      setThumbUri(null);
-      setThumbAspect(16 / 9);
-      setThumbLoading(false);
+  setStatus("Opening file picker…");
 
-      removeCustomThumbnail();
-      closePreview();
+  const file = await pickWebVideoFile();
 
-      setLocalUri(null);
-      setWebFile(null);
-      setProgressPct(0);
+  if (!file) {
+    setStatus("No file selected.");
+    return;
+  }
 
-      if (objectUrlRef.current) {
-        try {
-          URL.revokeObjectURL(objectUrlRef.current);
-        } catch {}
-      }
+  const bytes = typeof file.size === "number" ? file.size : null;
 
-      const objUrl = URL.createObjectURL(file);
-      objectUrlRef.current = objUrl;
+  if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
+    notify(
+      "File too large",
+      `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
+      setStatus
+    );
+    resetSelectedFile();
+    return;
+  }
 
-      setWebFile(file);
-      setLocalUri(objUrl);
-      setFileSizeBytes(bytes);
+  setStatus(alreadyCompleted ? "Already completed — You already completed this workshop lesson." : "");
+  setDurationSec(null);
+  setThumbUri(null);
+  setThumbAspect(16 / 9);
+  setThumbLoading(false);
 
-      setThumbLoading(true);
+  removeCustomThumbnail();
+  closePreview();
 
-      const thumb = await captureFirstFrameWeb(objUrl);
+  setLocalUri(null);
+  setWebFile(null);
+  setProgressPct(0);
 
-      if (thumb?.dataUrl) {
-        setThumbUri(thumb.dataUrl);
-        setThumbAspect(thumb.aspect || 16 / 9);
-      } else {
-        setThumbUri(null);
-      }
+  if (objectUrlRef.current) {
+    try {
+      URL.revokeObjectURL(objectUrlRef.current);
+    } catch {}
+  }
 
-      setThumbLoading(false);
-      setStatus(`Loaded file • ${formatBytes(bytes)}`);
-      return;
-    }
+  const objUrl = URL.createObjectURL(file);
+  objectUrlRef.current = objUrl;
+
+  setWebFile(file);
+  setLocalUri(objUrl);
+  setFileSizeBytes(bytes);
+
+  setThumbLoading(true);
+
+  const thumb = await captureFirstFrameWeb(objUrl);
+
+  if (thumb?.dataUrl) {
+    setThumbUri(thumb.dataUrl);
+    setThumbAspect(thumb.aspect || 16 / 9);
+  } else {
+    setThumbUri(null);
+  }
+
+  setThumbLoading(false);
+  setStatus(`Loaded file • ${formatBytes(bytes)}`);
+  return;
+}
 
     // MOBILE / NATIVE
     const {
