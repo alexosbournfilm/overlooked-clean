@@ -939,7 +939,12 @@ export default function WorkshopSubmitScreen() {
   const [rulesVisible, setRulesVisible] = useState(false);
 
   const [upgradeVisible, setUpgradeVisible] = useState(false);
-  const [userTier, setUserTier] = useState<string | null>(null);
+const [userTier, setUserTier] = useState<string | null>(null);
+
+// Web picker needs this preloaded.
+// Do not run async Supabase checks immediately before opening the web file picker.
+const [uploadAllowed, setUploadAllowed] = useState<boolean | null>(null);
+const [uploadLimitLoading, setUploadLimitLoading] = useState(false);
   const [storyModeOpen, setStoryModeOpen] = useState(false);
   const [storyModeItem, setStoryModeItem] = useState<{
     title?: string | null;
@@ -955,6 +960,49 @@ export default function WorkshopSubmitScreen() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewNonce, setPreviewNonce] = useState(0);
+
+  const refreshUploadLimit = async () => {
+  try {
+    setUploadLimitLoading(true);
+
+    const sessionResult: any = await withTimeout<any>(
+      supabase.auth.getSession() as any,
+      6000,
+      "Session check"
+    );
+
+    const session = sessionResult?.data?.session ?? null;
+
+    if (!session?.user) {
+      setUserTier(null);
+      setUploadAllowed(false);
+      return;
+    }
+
+    const profileResult: any = await withTimeout<any>(
+      supabase
+        .from("users")
+        .select("tier")
+        .eq("id", session.user.id)
+        .single() as any,
+      6000,
+      "Membership check"
+    );
+
+    const profile = profileResult?.data;
+    const tierNorm = String(profile?.tier ?? "").toLowerCase().trim();
+
+    setUserTier(tierNorm || null);
+
+    const canUpload = await canUserSubmitLifetimeFilm(session.user.id, tierNorm);
+    setUploadAllowed(canUpload.allowed);
+  } catch (e: any) {
+    console.warn("refreshUploadLimit failed:", e?.message ?? e);
+    setUploadAllowed(null);
+  } finally {
+    setUploadLimitLoading(false);
+  }
+};
 
   useEffect(() => {
     let alive = true;
@@ -990,6 +1038,10 @@ export default function WorkshopSubmitScreen() {
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+  refreshUploadLimit();
+}, []);
 
   useEffect(() => {
     if (!isWorkshopMode || !pathKey || typeof step !== "number") return;
@@ -1225,58 +1277,23 @@ export default function WorkshopSubmitScreen() {
  const pickFile = async () => {
   try {
     // WEB: check upload limit BEFORE opening the file picker.
-    if (Platform.OS === "web") {
-  setStatus("Checking your upload limit…");
+   if (Platform.OS === "web") {
+  // Important:
+  // The browser file picker must open directly from the click.
+  // So we use the preloaded uploadAllowed state instead of doing async checks here.
 
-  const sessionResult: any = await withTimeout<any>(
-  supabase.auth.getSession() as any,
-  6000,
-  "Session check"
-);
-
-const session = sessionResult?.data?.session ?? null;
-const sessionErr = sessionResult?.error;
-
-  if (sessionErr) {
-    notify("Please try again", "We couldn’t verify your account right now.", setStatus);
-    return;
+  if (uploadLimitLoading || uploadAllowed === null) {
+    setStatus("Checking your upload limit…");
+    refreshUploadLimit();
+    return notify(
+      "Please wait",
+      "We’re still checking your upload limit. Try again in a moment.",
+      setStatus
+    );
   }
 
-  if (!session?.user) {
-    notify("Please sign in", "You must be logged in to upload.", setStatus);
-    return;
-  }
-
-  setStatus("Checking your membership…");
-
-  const profileResult: any = await withTimeout<any>(
-  supabase
-    .from("users")
-    .select("tier")
-    .eq("id", session.user.id)
-    .single() as any,
-  6000,
-  "Membership check"
-);
-
-const profile = profileResult?.data;
-const pErr = profileResult?.error;
-
-  if (pErr) {
-    notify("Please try again", "We couldn’t verify your account right now.", setStatus);
-    return;
-  }
-
-  const tierNorm = String(profile?.tier ?? "").toLowerCase().trim();
-  setUserTier(tierNorm || null);
-
-  setStatus("Checking your upload limit…");
-
-  const canUpload = await canUserSubmitLifetimeFilm(session.user.id, tierNorm);
-
-  if (!canUpload.allowed) {
+  if (uploadAllowed === false) {
     setUpgradeVisible(true);
-    setStatus("");
     return notify(
       "Upgrade required",
       "You’ve already used your free film upload. Upgrade to Pro to upload more films.",
@@ -1739,6 +1756,7 @@ if (isWorkshopMode) {
 }
 
 setStatus("Submitted! 🎉");
+await refreshUploadLimit();
 
       const successTitle = isWorkshopMode ? "Workshop submitted!" : "Film uploaded!";
 const successMessage = isWorkshopMode
