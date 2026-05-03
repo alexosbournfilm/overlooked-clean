@@ -618,6 +618,33 @@ async function canUserSubmitLifetimeFilm(
     };
   }
 
+  // Use the Supabase SQL function as the main source of truth.
+  const { data: allowedFromDb, error: rpcError } = await supabase.rpc(
+    "can_insert_lifetime_submission",
+    {
+      p_user_id: userId,
+    }
+  );
+
+  if (!rpcError && typeof allowedFromDb === "boolean") {
+    if (allowedFromDb) {
+      return {
+        allowed: true,
+        used: 0,
+        remaining: 1,
+        reason: null,
+      };
+    }
+
+    return {
+      allowed: false,
+      used: 1,
+      remaining: 0,
+      reason: "no_free_uploads_left",
+    };
+  }
+
+  // Fallback check if the RPC ever fails.
   const tierNorm = String(tier ?? "").toLowerCase().trim();
 
   if (tierNorm === "pro") {
@@ -639,8 +666,7 @@ async function canUserSubmitLifetimeFilm(
   }
 
   const used = count ?? 0;
-  const limit = 1;
-  const remaining = Math.max(0, limit - used);
+  const remaining = Math.max(0, 1 - used);
 
   if (remaining <= 0) {
     return {
@@ -1161,17 +1187,9 @@ export default function WorkshopSubmitScreen() {
 
  const pickFile = async () => {
   try {
-    // WEB: open the browser file picker FIRST.
-    // Safari requires file input click to happen immediately from the user's tap/click.
+    // WEB: check upload limit BEFORE opening the file picker.
     if (Platform.OS === "web") {
-      const file = await pickWebVideoFile();
-
-      if (!file) {
-        setStatus("No file selected.");
-        return;
-      }
-
-      setStatus("Checking your account…");
+      setStatus("Checking your upload limit…");
 
       const {
         data: { user },
@@ -1211,6 +1229,13 @@ export default function WorkshopSubmitScreen() {
           "You’ve already used your free film upload. Upgrade to Pro to upload more films.",
           setStatus
         );
+      }
+
+      const file = await pickWebVideoFile();
+
+      if (!file) {
+        setStatus("No file selected.");
+        return;
       }
 
       const bytes = typeof file.size === "number" ? file.size : null;
