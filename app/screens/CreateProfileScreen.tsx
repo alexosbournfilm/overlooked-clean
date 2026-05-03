@@ -670,18 +670,16 @@ export default function CreateProfileScreen() {
       supabase
         .from('users')
         .upsert(
-          {
-            id: userId,
-            email: user.email,
-            full_name: fullName.trim(),
-            main_role_id: mainRole,
-            city_id: cityId,
-            
-            avatar_url: finalAvatarUrl,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'id' }
-        )
+  {
+    id: userId,
+    email: user.email,
+    full_name: fullName.trim(),
+    main_role_id: mainRole,
+    city_id: cityId,
+    avatar_url: finalAvatarUrl,
+  },
+  { onConflict: 'id' }
+)
         .select('id, full_name, main_role_id, city_id, avatar_url')
         .maybeSingle(),
       20000
