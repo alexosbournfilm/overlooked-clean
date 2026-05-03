@@ -125,6 +125,28 @@ function base64ToUint8Array(base64: string) {
   return bytes;
 }
 
+function withTimeout<T = any>(promise: PromiseLike<T>, ms = 15000): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new Error(
+          'This step took too long. Please check your internet/storage settings and try again.'
+        )
+      );
+    }, ms);
+
+    Promise.resolve(promise)
+      .then((value: any) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error: any) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
 async function uploadImageToBucket(opts: {
   bucket: string;
   path: string;
@@ -263,6 +285,7 @@ export default function CreateProfileScreen() {
   const [isSearchingCities, setIsSearchingCities] = useState(false);
 
   const [saving, setSaving] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -572,63 +595,79 @@ export default function CreateProfileScreen() {
   };
 
   const handleSubmit = async () => {
-    console.log('✅ Confirm & Enter pressed');
-    if (!allowedCreateProfileRef.current) {
-      resetHardToSignIn();
-      return;
+  console.log('✅ Confirm & Enter pressed');
+  setSubmitStatus('Starting profile setup...');
+
+  if (!allowedCreateProfileRef.current) {
+    resetHardToSignIn();
+    return;
+  }
+
+  if (!fullName.trim() || !mainRole || !cityId) {
+    setSubmitStatus(null);
+    Alert.alert('Missing Info', 'Please fill in your name, main role, and city.');
+    return;
+  }
+
+  if (!croppedImageUri && !imageUrl) {
+    setSubmitStatus(null);
+    Alert.alert('Profile image required', 'Please add a profile image before continuing.');
+    return;
+  }
+
+  setSaving(true);
+
+  try {
+    setSubmitStatus('Checking your account...');
+
+    const { data: sessionData, error: userErr } = await withTimeout(
+      supabase.auth.getUser(),
+      12000
+    );
+
+    if (userErr) throw userErr;
+
+    const user = sessionData.user;
+    const userId = user?.id;
+
+    if (!userId) {
+      throw new Error('User not authenticated. Please sign in again.');
     }
 
-    if (!fullName.trim() || !mainRole || !cityId) {
-      Alert.alert('Missing Info', 'Please fill in your name, main role, and city.');
-      return;
-    }
+    let finalAvatarUrl = imageUrl ? imageUrl.split('?')[0] : null;
 
-    if (!croppedImageUri && !imageUrl) {
-      Alert.alert('Profile image required', 'Please add a profile image before continuing.');
-      return;
-    }
+    if (croppedImageUri && !finalAvatarUrl) {
+      setUploadingImage(true);
+      setSubmitStatus('Uploading profile image...');
 
-    setSaving(true);
+      const fileName = `avatar_${Date.now()}.jpg`;
+      const path = `user_${userId}/${fileName}`;
 
-    try {
-      const { data: sessionData, error: userErr } = await supabase.auth.getUser();
+      const fileBody = await withTimeout(uriToUploadBody(croppedImageUri), 15000);
 
-      if (userErr) throw userErr;
-
-      const user = sessionData.user;
-      const userId = user?.id;
-
-      if (!userId) {
-        throw new Error('User not authenticated');
-      }
-
-      let finalAvatarUrl = imageUrl ? imageUrl.split('?')[0] : null;
-
-      if (croppedImageUri && !finalAvatarUrl) {
-        setUploadingImage(true);
-
-        const fileName = `avatar_${Date.now()}.jpg`;
-        const path = `user_${userId}/${fileName}`;
-
-        const fileBody = await uriToUploadBody(croppedImageUri);
-
-        const publicUrl = await uploadImageToBucket({
+      const publicUrl = await withTimeout(
+        uploadImageToBucket({
           bucket: 'avatars',
           path,
           fileBody,
           contentType: 'image/jpeg',
-        });
+        }),
+        20000
+      );
 
-        finalAvatarUrl = publicUrl;
-        setImageUrl(`${publicUrl}?t=${Date.now()}`);
-        setUploadingImage(false);
-      }
+      finalAvatarUrl = publicUrl;
+      setImageUrl(`${publicUrl}?t=${Date.now()}`);
+      setUploadingImage(false);
+    }
 
-      if (!finalAvatarUrl) {
-        throw new Error('Could not prepare profile image.');
-      }
+    if (!finalAvatarUrl) {
+      throw new Error('Could not prepare profile image.');
+    }
 
-      const { data: savedProfile, error } = await supabase
+    setSubmitStatus('Saving your profile...');
+
+    const { data: savedProfile, error } = await withTimeout(
+      supabase
         .from('users')
         .upsert(
           {
@@ -644,83 +683,95 @@ export default function CreateProfileScreen() {
           { onConflict: 'id' }
         )
         .select('id, full_name, main_role_id, city_id, country_code, avatar_url')
-        .maybeSingle();
-
-      if (error) throw error;
-
-      if (
-  !savedProfile?.id ||
-  !savedProfile?.full_name ||
-  !savedProfile?.main_role_id ||
-  !savedProfile?.city_id
-) {
-  throw new Error('Profile was saved but is incomplete.');
-}
-console.log('✅ Profile saved:', savedProfile);
-
-G.__OVERLOOKED_PROFILE_JUST_COMPLETED__ = true;
-
-setProfileCompleteFromSavedProfile({
-  id: savedProfile.id,
-  full_name: savedProfile.full_name,
-  main_role_id: savedProfile.main_role_id,
-  city_id: savedProfile.city_id,
-});
-
-G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-G.__OVERLOOKED_RECOVERY__ = false;
-G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
-G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
-
-if (Platform.OS === 'web' && typeof window !== 'undefined') {
-  window.sessionStorage.removeItem('overlooked.allowCreateProfile');
-}
-
-setTimeout(() => {
-  if (navigationRef.isReady()) {
-    navigationRef.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [
-          {
-            name: 'MainTabs',
-            state: {
-              index: 0,
-              routes: [{ name: 'Featured' }],
-            },
-          },
-        ],
-      })
+        .maybeSingle(),
+      20000
     );
-  }
-}, 50);
 
-setTimeout(() => {
-  refreshProfile()
-    .catch((e: any) => {
-      console.log('Background refreshProfile failed:', e?.message || e);
-    })
-    .finally(() => {
-      setTimeout(() => {
-        G.__OVERLOOKED_PROFILE_JUST_COMPLETED__ = false;
-      }, 1500);
+    if (error) throw error;
+
+    if (
+      !savedProfile?.id ||
+      !savedProfile?.full_name ||
+      !savedProfile?.main_role_id ||
+      !savedProfile?.city_id
+    ) {
+      throw new Error('Profile was saved but is incomplete.');
+    }
+
+    console.log('✅ Profile saved:', savedProfile);
+
+    setSubmitStatus('Opening Overlooked...');
+
+    G.__OVERLOOKED_PROFILE_JUST_COMPLETED__ = true;
+
+    setProfileCompleteFromSavedProfile({
+      id: savedProfile.id,
+      full_name: savedProfile.full_name,
+      main_role_id: savedProfile.main_role_id,
+      city_id: savedProfile.city_id,
     });
 
-  refreshGamification().catch((e: any) => {
-    console.log('Background refreshGamification failed:', e?.message || e);
-  });
-}, 300);
+    G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+    G.__OVERLOOKED_RECOVERY__ = false;
+    G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+    G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
 
-showToast('Welcome to Overlooked!');
-    } catch (err: any) {
-      console.error('Create profile error:', err);
-      Alert.alert('Error', err?.message ?? 'Could not create profile.');
-    } finally {
-      setUploadingImage(false);
-      setSaving(false);
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.sessionStorage.removeItem('overlooked.allowCreateProfile');
     }
-  };
 
+    setTimeout(() => {
+      if (navigationRef.isReady()) {
+        navigationRef.dispatch(
+          CommonActions.reset({
+            index: 0,
+            routes: [
+              {
+                name: 'MainTabs',
+                state: {
+                  index: 0,
+                  routes: [{ name: 'Featured' }],
+                },
+              },
+            ],
+          })
+        );
+      }
+    }, 50);
+
+    setTimeout(() => {
+      refreshProfile()
+        .catch((e: any) => {
+          console.log('Background refreshProfile failed:', e?.message || e);
+        })
+        .finally(() => {
+          setTimeout(() => {
+            G.__OVERLOOKED_PROFILE_JUST_COMPLETED__ = false;
+          }, 1500);
+        });
+
+      refreshGamification().catch((e: any) => {
+        console.log('Background refreshGamification failed:', e?.message || e);
+      });
+    }, 300);
+
+    showToast('Welcome to Overlooked!');
+  } catch (err: any) {
+    console.error('Create profile error:', err);
+
+    const message =
+      err?.message ||
+      err?.error_description ||
+      'Could not create profile. Please try again.';
+
+    setSubmitStatus(`Error: ${message}`);
+
+    Alert.alert('Error', message);
+  } finally {
+    setUploadingImage(false);
+    setSaving(false);
+  }
+};
   const loading = saving || uploadingImage;
   const displayImage = imagePreview || image || imageUrl;
 
@@ -1044,6 +1095,9 @@ showToast('Welcome to Overlooked!');
                         <Text style={styles.submitText}>Confirm & Enter</Text>
                       )}
                     </TouchableOpacity>
+                    {!!submitStatus && (
+  <Text style={styles.submitStatusText}>{submitStatus}</Text>
+)}
                   </View>
                 </>
               )}
@@ -1506,7 +1560,14 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 2 },
   },
-
+submitStatusText: {
+  marginTop: 10,
+  color: TEXT_MUTED,
+  fontSize: 12,
+  lineHeight: 17,
+  textAlign: 'center',
+  fontFamily: SYSTEM_SANS,
+},
   selectButtonText: {
     color: TEXT_IVORY,
     fontSize: 15,
