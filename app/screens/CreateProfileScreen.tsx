@@ -658,6 +658,8 @@ export default function CreateProfileScreen() {
 }
 console.log('✅ Profile saved:', savedProfile);
 
+G.__OVERLOOKED_PROFILE_JUST_COMPLETED__ = true;
+
 setProfileCompleteFromSavedProfile({
   id: savedProfile.id,
   full_name: savedProfile.full_name,
@@ -674,27 +676,35 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
   window.sessionStorage.removeItem('overlooked.allowCreateProfile');
 }
 
-if (navigationRef.isReady()) {
-  navigationRef.dispatch(
-    CommonActions.reset({
-      index: 0,
-      routes: [
-        {
-          name: 'MainTabs',
-          state: {
-            index: 0,
-            routes: [{ name: 'Featured' }],
+setTimeout(() => {
+  if (navigationRef.isReady()) {
+    navigationRef.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: 'MainTabs',
+            state: {
+              index: 0,
+              routes: [{ name: 'Featured' }],
+            },
           },
-        },
-      ],
-    })
-  );
-}
+        ],
+      })
+    );
+  }
+}, 50);
 
 setTimeout(() => {
-  refreshProfile().catch((e: any) => {
-    console.log('Background refreshProfile failed:', e?.message || e);
-  });
+  refreshProfile()
+    .catch((e: any) => {
+      console.log('Background refreshProfile failed:', e?.message || e);
+    })
+    .finally(() => {
+      setTimeout(() => {
+        G.__OVERLOOKED_PROFILE_JUST_COMPLETED__ = false;
+      }, 1500);
+    });
 
   refreshGamification().catch((e: any) => {
     console.log('Background refreshGamification failed:', e?.message || e);

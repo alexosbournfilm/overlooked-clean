@@ -57,6 +57,9 @@ if (typeof G.__OVERLOOKED_PASSWORD_RESET_DONE__ === "undefined") {
 if (typeof G.__OVERLOOKED_FORCE_NEW_PASSWORD__ === "undefined") {
   G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
 }
+if (typeof G.__OVERLOOKED_PROFILE_JUST_COMPLETED__ === "undefined") {
+  G.__OVERLOOKED_PROFILE_JUST_COMPLETED__ = false;
+}
 
 const NATIVE_AUTH_STORAGE_KEY = "overlooked.supabase.auth";
 
@@ -472,6 +475,11 @@ setUserId((prev) => (prev === uid ? prev : uid));
 
   const tryNavigateToCreateProfile = () => {
   const resetFlowActive = isPasswordResetFlowActive();
+
+  if (G.__OVERLOOKED_PROFILE_JUST_COMPLETED__) {
+    console.log("✅ Profile just completed — blocking CreateProfile redirect.");
+    return;
+  }
 
   if (resetFlowActive) {
     console.log("🔐 Blocked CreateProfile navigation during password reset.");
@@ -1145,7 +1153,13 @@ setUserId((prev) => (prev === uid ? prev : uid));
       profile?.city_id
   );
 
-  return Boolean(userId && profileChecked && !complete && !resetFlowActive);
+  return Boolean(
+  userId &&
+    profileChecked &&
+    !complete &&
+    !resetFlowActive &&
+    !G.__OVERLOOKED_PROFILE_JUST_COMPLETED__
+);
 }, [userId, profile, profileChecked]);
 
 const setProfileCompleteFromSavedProfile = (savedProfile: MinimalProfile) => {
