@@ -647,32 +647,45 @@ export default function CreateProfileScreen() {
 
       if (error) throw error;
 
-      if (!savedProfile?.id) {
-        throw new Error('Profile was not saved correctly.');
-      }
-
-      await refreshProfile();
-      await refreshGamification();
+      if (
+  !savedProfile?.id ||
+  !savedProfile?.full_name ||
+  !savedProfile?.main_role_id ||
+  !savedProfile?.city_id
+) {
+  throw new Error('Profile was saved but is incomplete.');
+}
 
       G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-      G.__OVERLOOKED_RECOVERY__ = false;
-      G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
-      G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+G.__OVERLOOKED_RECOVERY__ = false;
+G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
 
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.sessionStorage.removeItem('overlooked.allowCreateProfile');
-      }
+if (Platform.OS === 'web' && typeof window !== 'undefined') {
+  window.sessionStorage.removeItem('overlooked.allowCreateProfile');
+}
 
-      showToast('Welcome to Overlooked!');
+await refreshProfile();
+await refreshGamification();
+
+showToast('Welcome to Overlooked!');
 
       if (navigationRef.isReady()) {
-        navigationRef.dispatch(
-          CommonActions.reset({
+  navigationRef.dispatch(
+    CommonActions.reset({
+      index: 0,
+      routes: [
+        {
+          name: 'MainTabs',
+          state: {
             index: 0,
-            routes: [{ name: 'MainTabs' }],
-          })
-        );
-      }
+            routes: [{ name: 'Featured' }],
+          },
+        },
+      ],
+    })
+  );
+}
     } catch (err: any) {
       console.error('Create profile error:', err);
       Alert.alert('Error', err?.message ?? 'Could not create profile.');

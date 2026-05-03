@@ -386,7 +386,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      if (latestAuthUserIdRef.current !== uid) return;
+      if (latestAuthUserIdRef.current && latestAuthUserIdRef.current !== uid) return;
+
+latestAuthUserIdRef.current = uid;
+setUserId((prev) => (prev === uid ? prev : uid));
 
       if (!data) {
         setProfile(null);
@@ -465,7 +468,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
-  const tryNavigateToCreateProfile = async () => {
+  const tryNavigateToCreateProfile = () => {
   const resetFlowActive = isPasswordResetFlowActive();
 
   if (resetFlowActive) {
@@ -476,29 +479,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   if (!userId) return;
   if (!profileChecked) return;
   if (!navigationRef.isReady()) return;
-
-  const { data: sessionData, error: sessionError } =
-    await supabase.auth.getSession();
-
-  if (sessionError) {
-    console.log(
-      "CreateProfile redirect blocked — session error:",
-      sessionError.message
-    );
-    return;
-  }
-
-  const sessionUserId = sessionData?.session?.user?.id;
-
-  if (!sessionUserId) {
-    console.log("CreateProfile redirect blocked — no active session.");
-    return;
-  }
-
-  if (sessionUserId !== userId) {
-    console.log("CreateProfile redirect blocked — session/user mismatch.");
-    return;
-  }
 
   const complete = Boolean(
     profile?.id &&
@@ -511,6 +491,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const currentRoute = navigationRef.getCurrentRoute();
 
+  // CRITICAL:
+  // Do not reset CreateProfile while already on CreateProfile.
+  // This was causing the profile setup to restart after image upload.
   if (currentRoute?.name === "CreateProfile") {
     return;
   }
@@ -616,12 +599,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const refreshProfile = async () => {
-    if (userId) {
-      lastLoadedProfileForRef.current = null;
-      await loadProfile(userId, true);
-    }
-  };
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
 
+  const freshUserId = user?.id ?? userId;
+
+  if (error) {
+    console.warn("refreshProfile getUser error:", error.message);
+  }
+
+  if (freshUserId) {
+    latestAuthUserIdRef.current = freshUserId;
+    setUserId(freshUserId);
+
+    lastLoadedProfileForRef.current = null;
+    await loadProfile(freshUserId, true);
+  }
+};
   useEffect(() => {
     mountedRef.current = true;
     let mounted = true;
@@ -684,7 +680,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
               pendingCreateProfileRedirectRef.current = true;
-              void tryNavigateToCreateProfile();
+              tryNavigateToCreateProfile();
             }
           }
         }
@@ -831,7 +827,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }, 0);
         } else if (shouldBeEmailConfirm) {
           setTimeout(() => {
-            void tryNavigateToCreateProfile();
+            tryNavigateToCreateProfile();
           }, 0);
         }
       } catch (e: any) {
@@ -902,7 +898,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         setTimeout(() => {
-          void tryNavigateToCreateProfile();
+          tryNavigateToCreateProfile();
         }, 0);
       }
     });
@@ -978,7 +974,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setReady(true);
           }
 
-          void tryNavigateToCreateProfile();
+          tryNavigateToCreateProfile();
           return;
         }
 
@@ -1051,7 +1047,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
             pendingCreateProfileRedirectRef.current = true;
-            void tryNavigateToCreateProfile();
+            tryNavigateToCreateProfile();
           }
 
           if (!ready && mounted) {
@@ -1128,7 +1124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return;
   }
 
-  void tryNavigateToCreateProfile();
+  tryNavigateToCreateProfile();
 }, [ready, userId, profile]);
 
   const profileComplete = useMemo(() => {
