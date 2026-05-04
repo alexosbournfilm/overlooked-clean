@@ -27,6 +27,7 @@ import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { emitChatBadgeRefresh } from '../lib/chatBadgeEvents';
 import { sendPushNotification } from '../lib/sendPush';
+import { useAppRefresh } from '../context/AppRefreshContext';
 /* ------------------------------- Noir palette ------------------------------- */
 const DARK_BG = '#000000';
 const ELEVATED = '#000000';
@@ -128,6 +129,9 @@ type LoadState = 'idle' | 'checking' | 'ready' | 'missing';
 export default function ChatRoom() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const { triggerAppRefresh } = useAppRefresh();
+
+  const [refreshing, setRefreshing] = useState(false);
 
   const {
     conversation: routeConversation,
@@ -960,6 +964,38 @@ for (const m of reversed)
     }
   };
 
+  const onRefresh = async () => {
+  if (!conversation?.id) return;
+
+  setRefreshing(true);
+
+  try {
+    triggerAppRefresh();
+
+    await Promise.allSettled([
+      fetchUserAndMessages(),
+      conversation.is_group ? refreshMembers() : Promise.resolve(),
+    ]);
+
+    if (userId) {
+      await supabase.from('conversation_reads').upsert(
+        {
+          user_id: userId,
+          conversation_id: conversation.id,
+          last_read_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'user_id,conversation_id',
+        }
+      );
+    }
+
+    emitChatBadgeRefresh();
+  } finally {
+    setRefreshing(false);
+  }
+};
+
   const setupRealtime = (convId: string) => {
     const messageChannel =
       supabase
@@ -1581,6 +1617,14 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
   windowSize={7}
   updateCellsBatchingPeriod={16}
   keyboardShouldPersistTaps="handled"
+  refreshControl={
+    <RefreshControl
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      tintColor={GOLD}
+      progressBackgroundColor={ELEVATED}
+    />
+  }
 />
 
     {typingUser && (

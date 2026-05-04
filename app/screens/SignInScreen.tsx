@@ -310,75 +310,78 @@ export default function SignInScreen() {
   };
 
   const finishPostAuthRedirect = async (opts?: { allowCreateProfile?: boolean }) => {
-    if (didFinishRedirectRef.current) return;
-    didFinishRedirectRef.current = true;
+  if (didFinishRedirectRef.current) return;
+  didFinishRedirectRef.current = true;
 
-    const allowCreateProfile = Boolean(opts?.allowCreateProfile);
+  const allowCreateProfile = Boolean(opts?.allowCreateProfile);
 
-    const { data: u } = await supabase.auth.getUser();
-    const user = u?.user;
-    const userId = user?.id;
+  const { data: u } = await supabase.auth.getUser();
+  const user = u?.user;
+  const userId = user?.id;
 
-    if (!userId) {
-      showError('Error', 'No active session found after sign-in.');
-      return;
-    }
+  if (!userId) {
+    // No logged-in user = stay on SignIn.
+    didFinishRedirectRef.current = false;
+    return;
+  }
 
-    const { data: profile, error: profileError } = await supabase
-      .from('users')
-      .select('id, full_name, main_role_id, city_id')
-      .eq('id', userId)
-      .maybeSingle();
+  const { data: profile, error: profileError } = await supabase
+    .from('users')
+    .select('id, full_name, main_role_id, city_id')
+    .eq('id', userId)
+    .maybeSingle();
 
-    if (profileError) {
-      console.log('Profile fetch error:', profileError);
-      showError('Error', 'Could not load your profile. Please try again.');
-      return;
-    }
+  if (profileError) {
+    console.log('Profile fetch error:', profileError);
 
-    const profileComplete = Boolean(
-      profile?.id && profile?.full_name && profile?.main_role_id && profile?.city_id
-    );
-
-    if (!profileComplete) {
-  allowCreateProfileOnceRef.current = false;
-
-  const isPasswordResetFlow =
-    (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
-    (globalThis as any).__OVERLOOKED_RECOVERY__ ||
-    (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
-
-  if (isPasswordResetFlow) {
+    // Do not push the user to CreateProfile if profile loading fails.
+    // Sign out and leave them on SignIn.
     await supabase.auth.signOut();
-    showError(
-      'Password reset complete',
-      'Please sign in again with your new password.'
-    );
+    allowCreateProfileOnceRef.current = false;
+    didFinishRedirectRef.current = false;
+
+    showError('Error', 'Could not load your profile. Please sign in again.');
     return;
   }
 
-  try {
-  const parentNav = navigation.getParent?.();
+  const profileComplete = Boolean(
+    profile?.id && profile?.full_name && profile?.main_role_id && profile?.city_id
+  );
 
-  if (parentNav) {
-    parentNav.reset({
-      index: 0,
-      routes: [{ name: 'CreateProfile' }],
-    });
-    return;
-  }
+  if (!profileComplete) {
+    const isPasswordResetFlow =
+      (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+      (globalThis as any).__OVERLOOKED_RECOVERY__ ||
+      (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
 
-  navigation.reset({
-    index: 0,
-    routes: [{ name: 'CreateProfile' }],
-  });
-} catch (e) {
-  console.log('CreateProfile navigation error:', e);
-  showError('Navigation Error', 'Could not open profile setup.');
-}
+    if (isPasswordResetFlow) {
+      await supabase.auth.signOut();
+      allowCreateProfileOnceRef.current = false;
+      didFinishRedirectRef.current = false;
 
-return;
-}
+      showError(
+        'Password reset complete',
+        'Please sign in again with your new password.'
+      );
+      return;
+    }
+
+    // IMPORTANT:
+    // Only go to CreateProfile after a real fresh signup confirmation.
+    // If the app opens with an old/incomplete saved session, sign out and stay on SignIn.
+    if (!allowCreateProfile) {
+      console.log(
+        'Incomplete profile found without fresh signup confirmation. Signing out and staying on SignIn.'
+      );
+
+      await supabase.auth.signOut();
+      allowCreateProfileOnceRef.current = false;
+      didFinishRedirectRef.current = false;
+
+      return;
+    }
+
+    allowCreateProfileOnceRef.current = false;
 
     try {
       const parentNav = navigation.getParent?.();
@@ -386,20 +389,46 @@ return;
       if (parentNav) {
         parentNav.reset({
           index: 0,
-          routes: [{ name: 'MainTabs' }],
+          routes: [{ name: 'CreateProfile' }],
         });
         return;
       }
 
       navigation.reset({
         index: 0,
-        routes: [{ name: 'MainTabs' }],
+        routes: [{ name: 'CreateProfile' }],
       });
     } catch (e) {
-      console.log('MainTabs navigation error:', e);
-      showError('Navigation Error', 'Signed in, but could not open the app.');
+      console.log('CreateProfile navigation error:', e);
+      didFinishRedirectRef.current = false;
+      showError('Navigation Error', 'Could not open profile setup.');
     }
-  };
+
+    return;
+  }
+
+  // Profile is complete, so the user is allowed inside the app.
+  try {
+    const parentNav = navigation.getParent?.();
+
+    if (parentNav) {
+      parentNav.reset({
+        index: 0,
+        routes: [{ name: 'MainTabs' }],
+      });
+      return;
+    }
+
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'MainTabs' }],
+    });
+  } catch (e) {
+    console.log('MainTabs navigation error:', e);
+    didFinishRedirectRef.current = false;
+    showError('Navigation Error', 'Signed in, but could not open the app.');
+  }
+};
 
   const handleAuthDeepLink = async (url: string) => {
     try {
@@ -425,7 +454,9 @@ return;
       const signedInUser = userData?.user;
 
       const allowCreateProfile =
-        authType === 'signup' && Boolean(signedInUser && isFreshlyConfirmedUser(signedInUser));
+  authType === 'signup' ||
+  authType === 'email_change' ||
+  Boolean(signedInUser && isFreshlyConfirmedUser(signedInUser));
 
       allowCreateProfileOnceRef.current = allowCreateProfile;
 

@@ -30,6 +30,7 @@ import { UpgradeModal } from "../../components/UpgradeModal";
 import dayjs from "dayjs";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
+import { useAppRefresh } from "../context/AppRefreshContext";
 
 /* ------------------------------- palette ------------------------------- */
 
@@ -916,6 +917,7 @@ async function uploadFileToMuxDirectUrl(opts: {
 export default function WorkshopSubmitScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<WorkshopSubmitRouteParams, "WorkshopSubmit">>();
+  const { triggerAppRefresh } = useAppRefresh();
   const { width } = useWindowDimensions();
   const isMobileWeb = Platform.OS === "web" && width < 768;
   const isWide = width >= 1100;
@@ -1781,6 +1783,10 @@ try {
 
 try {
   await refreshStreak?.();
+} catch {}
+
+try {
+  triggerAppRefresh();
 } catch {}
 
 if (isWorkshopMode) {

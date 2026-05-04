@@ -114,7 +114,49 @@ function markSignupConfirmFlow() {
   (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = true;
   (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
 }
+function isAllowedEmailConfirmCreateProfileFlow() {
+  return Boolean((globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__);
+}
 
+async function isCurrentUserProfileComplete(userId: string) {
+  const { data: profile, error } = await supabase
+    .from("users")
+    .select("id, full_name, main_role_id, city_id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.log("Profile startup check error:", error.message);
+    return false;
+  }
+
+  return Boolean(
+    profile?.id &&
+      profile?.full_name &&
+      profile?.main_role_id &&
+      profile?.city_id
+  );
+}
+
+async function forceSignInForIncompleteProfile(reason: string) {
+  console.log(`🛑 Incomplete profile blocked from startup: ${reason}`);
+
+  try {
+    await supabase.auth.signOut();
+  } catch (e) {
+    console.log("Sign out during incomplete-profile cleanup failed:", e);
+  }
+
+  try {
+    if (Platform.OS !== "web") {
+      await SecureStore.deleteItemAsync("supabaseSession");
+    }
+  } catch {}
+
+  (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+  (globalThis as any).__OVERLOOKED_RECOVERY__ = false;
+  (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+}
 export default function App() {
   const [appIsReady, setAppIsReady] = useState(false);
 
@@ -254,16 +296,11 @@ export default function App() {
       console.log("✅ Session restored from tokens");
     }
 
-    if (type === "signup" || code || access_token) {
-  console.log("✅ Signup confirmation link detected");
-  markSignupConfirmFlow();
-
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    window.sessionStorage.setItem("overlooked.allowCreateProfile", "true");
-  }
-
-  setInitialAuthRouteName("SignIn");
-}
+    if (type === "signup") {
+      console.log("✅ Signup confirmation link detected");
+      markSignupConfirmFlow();
+      setInitialAuthRouteName("SignIn");
+    }
 
     if (Platform.OS === "web" && typeof window !== "undefined") {
       const clean = window.location.origin + window.location.pathname;
@@ -372,35 +409,54 @@ export default function App() {
         }
 
         const { data: sessionData } = await supabase.auth.getSession();
-        const session = sessionData?.session ?? null;
+const session = sessionData?.session ?? null;
 
-        /**
-         * Do not treat a recovery session as a normal logged-in session here.
-         * It belongs to NewPassword.tsx.
-         */
-        const isPasswordResetFlow =
-          (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
-          (globalThis as any).__OVERLOOKED_RECOVERY__ ||
-          (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
+/**
+ * Do not treat a recovery session as a normal logged-in session here.
+ * It belongs to NewPassword.tsx.
+ */
+const isPasswordResetFlow =
+  (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+  (globalThis as any).__OVERLOOKED_RECOVERY__ ||
+  (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
 
-        if (session && !isPasswordResetFlow) {
-          try {
-            await SecureStore.setItemAsync(
-              "supabaseSession",
-              JSON.stringify(session)
-            );
-          } catch {}
+const isEmailConfirmFlow = isAllowedEmailConfirmCreateProfileFlow();
 
-          if (Platform.OS !== "web") {
-            savePushTokenForUser(session.user.id).catch((err) => {
-              console.log("Push token save skipped:", err?.message || err);
-            });
-          }
+/**
+ * IMPORTANT FIX:
+ *
+ * If the app opens with an old saved session and the profile is incomplete,
+ * do NOT allow AppNavigator/AuthProvider to send the user to CreateProfile.
+ *
+ * Only a real email confirmation flow can continue toward CreateProfile.
+ */
+if (session && !isPasswordResetFlow) {
+  const profileComplete = await isCurrentUserProfileComplete(session.user.id);
 
-          setInitialAuthRouteName("SignIn");
-        } else {
-          setInitialAuthRouteName("SignIn");
-        }
+  if (!profileComplete && !isEmailConfirmFlow) {
+    await forceSignInForIncompleteProfile("cold app open with stale incomplete session");
+    setInitialAuthRouteName("SignIn");
+  } else {
+    try {
+      if (Platform.OS !== "web") {
+        await SecureStore.setItemAsync(
+          "supabaseSession",
+          JSON.stringify(session)
+        );
+      }
+    } catch {}
+
+    if (Platform.OS !== "web") {
+      savePushTokenForUser(session.user.id).catch((err) => {
+        console.log("Push token save skipped:", err?.message || err);
+      });
+    }
+
+    setInitialAuthRouteName("SignIn");
+  }
+} else {
+  setInitialAuthRouteName("SignIn");
+}
 
         linkSub = Linking.addEventListener("url", async (ev) => {
           await handleDeepLink(ev.url);
@@ -422,37 +478,64 @@ export default function App() {
   }, [handleDeepLink, savePushTokenForUser]);
 
   useEffect(() => {
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        const isPasswordResetFlow =
-          (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
-          (globalThis as any).__OVERLOOKED_RECOVERY__ ||
-          (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
+  const { data: subscription } = supabase.auth.onAuthStateChange(
+    async (event, session) => {
+      const isPasswordResetFlow =
+        (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+        (globalThis as any).__OVERLOOKED_RECOVERY__ ||
+        (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
 
-        /**
-         * Never run normal post-login work while password reset is active.
-         */
-        if (isPasswordResetFlow) {
-          return;
-        }
+      /**
+       * Never run normal post-login work while password reset is active.
+       */
+      if (isPasswordResetFlow) {
+        return;
+      }
 
-        if (
-          Platform.OS !== "web" &&
-          session?.user?.id &&
-          (event === "SIGNED_IN" ||
-            event === "TOKEN_REFRESHED" ||
-            event === "INITIAL_SESSION" ||
-            event === "USER_UPDATED")
-        ) {
-          savePushTokenForUser(session.user.id).catch((err) => {
-            console.log("Push token save skipped:", err?.message || err);
-          });
+      /**
+       * IMPORTANT FIX:
+       *
+       * If Supabase restores an old incomplete session after app startup,
+       * kill it unless this is the real email-confirmation flow.
+       */
+      if (
+        session?.user?.id &&
+        (event === "SIGNED_IN" ||
+          event === "INITIAL_SESSION" ||
+          event === "TOKEN_REFRESHED")
+      ) {
+        const isEmailConfirmFlow = isAllowedEmailConfirmCreateProfileFlow();
+
+        if (!isEmailConfirmFlow) {
+          const profileComplete = await isCurrentUserProfileComplete(session.user.id);
+
+          if (!profileComplete) {
+            await forceSignInForIncompleteProfile(
+              `auth state ${event} with incomplete profile`
+            );
+            setInitialAuthRouteName("SignIn");
+            return;
+          }
         }
       }
-    );
 
-    return () => subscription.subscription.unsubscribe();
-  }, [savePushTokenForUser]);
+      if (
+        Platform.OS !== "web" &&
+        session?.user?.id &&
+        (event === "SIGNED_IN" ||
+          event === "TOKEN_REFRESHED" ||
+          event === "INITIAL_SESSION" ||
+          event === "USER_UPDATED")
+      ) {
+        savePushTokenForUser(session.user.id).catch((err) => {
+          console.log("Push token save skipped:", err?.message || err);
+        });
+      }
+    }
+  );
+
+  return () => subscription.subscription.unsubscribe();
+}, [savePushTokenForUser]);
 
   useEffect(() => {
     if (appIsReady && fontsLoaded) {

@@ -6,6 +6,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,6 +21,7 @@ import { giveXp, supabase, type UserTier } from '../lib/supabase';
 import { useGamification } from '../context/GamificationContext';
 import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 import { UpgradeModal } from '../../components/UpgradeModal';
+import { useAppRefresh } from '../context/AppRefreshContext';
 
 /* -------------------------------- palette -------------------------------- */
 const BG = '#050505';
@@ -5604,6 +5606,7 @@ const WorkshopScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const isDesktop = width >= 960;
   const navigation = useNavigation<any>();
+  const { triggerAppRefresh } = useAppRefresh();
 
   const {
     userId,
@@ -5678,7 +5681,8 @@ const WorkshopScreen: React.FC = () => {
   });
 
   const [workshopLoading, setWorkshopLoading] = useState(true);
-  const [surgeryFeedbackState, setSurgeryFeedbackState] = useState<Record<number, boolean>>({});
+const [refreshing, setRefreshing] = useState(false);
+const [surgeryFeedbackState, setSurgeryFeedbackState] = useState<Record<number, boolean>>({});
 
   const hasProAccess = userProfile?.tier === 'pro';
 
@@ -5796,6 +5800,36 @@ const WorkshopScreen: React.FC = () => {
       run();
     }, [refreshGamification, refreshStreak, loadWorkshopProgress])
   );
+
+  const onRefresh = useCallback(async () => {
+  if (refreshing) return;
+
+  setRefreshing(true);
+
+  try {
+    triggerAppRefresh();
+
+    try {
+      await refreshGamification?.();
+    } catch {}
+
+    try {
+      await refreshStreak?.();
+    } catch {}
+
+    try {
+      await loadWorkshopProgress();
+    } catch {}
+  } finally {
+    setRefreshing(false);
+  }
+}, [
+  refreshing,
+  triggerAppRefresh,
+  refreshGamification,
+  refreshStreak,
+  loadWorkshopProgress,
+]);
 
   const activePath = PATHS.find((p) => p.key === selectedPath) || PATHS[0];
   const lessons = useMemo(() => buildPathLessons(selectedPath), [selectedPath]);
@@ -5981,10 +6015,21 @@ const WorkshopScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+  style={styles.scroll}
+  contentContainerStyle={styles.scrollContent}
+  showsVerticalScrollIndicator={false}
+  refreshControl={
+    Platform.OS !== 'web' ? (
+      <RefreshControl
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        tintColor={GOLD}
+        colors={[GOLD]}
+        progressBackgroundColor={BG}
+      />
+    ) : undefined
+  }
+>
         <View style={[styles.pageWrap, { paddingTop: insets.top + 40 }]}>
           <View style={[styles.mainLayout, !isDesktop && styles.mainLayoutMobile]}>
             {isDesktop ? (

@@ -13,6 +13,7 @@ import {
   TextInput,
   TouchableOpacity,
   Platform,
+    RefreshControl,
   ViewToken,
   Image,
   ActivityIndicator,
@@ -43,7 +44,7 @@ import { supabase, giveXp, XP_VALUES } from '../lib/supabase';
 import { useGamification } from '../context/GamificationContext';
 import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '../context/AuthProvider';
-
+import { useAppRefresh } from '../context/AppRefreshContext';
 
 
 const SYSTEM_SANS = Platform.select({
@@ -1617,6 +1618,7 @@ const FeaturedScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { userId } = useAuth();
+  const { triggerAppRefresh } = useAppRefresh();
 const isGuest = !userId;
 const openShareSlug = route.params?.openShareSlug ?? null;
 const openSubmissionId = route.params?.openSubmissionId ?? null;
@@ -2120,6 +2122,29 @@ const fetchContent = async (uid: string | null, cat: Category, searchTextQ: stri
     setRefreshing(false);
   }
 };
+
+const onRefresh = useCallback(async () => {
+  if (refreshing) return;
+
+  setRefreshing(true);
+
+  try {
+    triggerAppRefresh();
+
+    await initChallengesIfNeeded();
+
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth?.user?.id ?? null;
+
+    setCurrentUserId(uid);
+
+    await fetchContent(uid, category, searchQ);
+  } catch (e: any) {
+    console.warn('Featured refresh error:', e?.message || e);
+  } finally {
+    setRefreshing(false);
+  }
+}, [refreshing, triggerAppRefresh, category, searchQ, sort, filmCategory]);
 
 const promptSignIn = (message: string) => {
   Alert.alert(
@@ -3375,6 +3400,17 @@ return (
   data={submissions}
   renderItem={renderSubmissionItem}
   keyExtractor={(item: any) => item.id}
+  refreshControl={
+  Platform.OS !== 'web' ? (
+    <RefreshControl
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      tintColor={GOLD}
+      colors={[GOLD]}
+      progressBackgroundColor="#000000"
+    />
+  ) : undefined
+}
   ListHeaderComponent={
   <View style={{ alignItems: 'center' }}>
     {/* CATEGORY ONLY — above winner */}

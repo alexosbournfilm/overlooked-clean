@@ -19,6 +19,7 @@ import {
   Modal,
   TouchableOpacity,
   ScrollView,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -39,6 +40,7 @@ import {
   emitChatBadgeRefresh,
   subscribeChatBadgeRefresh,
 } from '../lib/chatBadgeEvents';
+import { useAppRefresh } from '../context/AppRefreshContext';
 /* ────────────────────────────────────────────────────────────
    CINEMATIC NOIR — black/white with gold accent
    ──────────────────────────────────────────────────────────── */
@@ -145,9 +147,12 @@ const unhideKeyFor = (userId: string) =>
   `OVERLOOKED_UNHIDE_SET:${userId}`;
 
 export default function ChatsScreen() {
-    const navigation = useNavigation<any>();
+  const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
+  const { triggerAppRefresh } = useAppRefresh();
+
+  const [refreshing, setRefreshing] = useState(false);
 
   const [meId, setMeId] = useState<string | null>(null);
   const isGuest = !meId;
@@ -830,6 +835,36 @@ const queueUnreadRefresh = useCallback(() => {
     },
         [meId, fetchHides, fetchBlockedUsers, loadUnreadConversationIds]
   );
+const onRefresh = useCallback(async () => {
+  setRefreshing(true);
+
+  try {
+    triggerAppRefresh();
+
+    await fetchUserChats({
+      showSpinner: false,
+    });
+
+    if (meId) {
+      await Promise.allSettled([
+        fetchHides(meId),
+        fetchBlockedUsers(meId),
+        loadUnreadConversationIds(meId),
+      ]);
+    }
+
+    emitChatBadgeRefresh();
+  } finally {
+    setRefreshing(false);
+  }
+}, [
+  triggerAppRefresh,
+  fetchUserChats,
+  meId,
+  fetchHides,
+  fetchBlockedUsers,
+  loadUnreadConversationIds,
+]);
 
   // initial / focus fetch
   useEffect(() => {
@@ -2307,17 +2342,14 @@ updateCellsBatchingPeriod={16}
                 found.
               </Text>
             }
-            onRefresh={() =>
-              fetchUserChats(
-                {
-                  showSpinner:
-                    true,
-                }
-              )
-            }
-            refreshing={
-              loadingChats
-            }
+            refreshControl={
+  <RefreshControl
+    refreshing={refreshing}
+    onRefresh={onRefresh}
+    tintColor={GOLD}
+    progressBackgroundColor={T.card}
+  />
+}
             removeClippedSubviews
             windowSize={9}
             initialNumToRender={
@@ -2360,14 +2392,14 @@ updateCellsBatchingPeriod={16}
     </Text>
   )
 }
-          onRefresh={() =>
-            fetchUsers(
-              userQuery
-            )
-          }
-          refreshing={
-            loadingUsers
-          }
+          refreshControl={
+  <RefreshControl
+    refreshing={refreshing}
+    onRefresh={onRefresh}
+    tintColor={GOLD}
+    progressBackgroundColor={T.card}
+  />
+}
           removeClippedSubviews
           windowSize={10}
           initialNumToRender={

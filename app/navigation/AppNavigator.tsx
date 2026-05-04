@@ -43,6 +43,14 @@ const NAV_THEME = {
 function getAllowCreateProfileFlow() {
   const G = globalThis as any;
 
+  const resetFlowActive = Boolean(
+    G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+      G.__OVERLOOKED_RECOVERY__ ||
+      G.__OVERLOOKED_PASSWORD_RESET_DONE__
+  );
+
+  if (resetFlowActive) return false;
+
   if (G.__OVERLOOKED_EMAIL_CONFIRM__ === true) {
     return true;
   }
@@ -233,7 +241,7 @@ export default function AppNavigator({
      * CreateProfile is only allowed after a real email-confirmation flow.
      * This blocks password reset, normal sign-in, stale nav state, and missing profile redirects.
      */
-    if (shouldRouteToCreateProfile || !profileComplete) {
+    if (!profileComplete) {
   const currentRoute = navigationRef.getCurrentRoute();
 
   if (G.__OVERLOOKED_PROFILE_JUST_COMPLETED__) {
@@ -241,9 +249,23 @@ export default function AppNavigator({
     return;
   }
 
-  // CRITICAL:
-  // Do not reset CreateProfile while the user is already filling it in.
-  // This prevents the role-selection loop after choosing a profile picture.
+  /**
+   * CRITICAL FIX:
+   * CreateProfile is only allowed after real email confirmation.
+   * For every other incomplete session, force SignIn instead.
+   */
+  if (!createProfileAllowed) {
+    try {
+      supabase.auth.signOut();
+    } catch {}
+
+    if (currentRoute?.name !== "Auth") {
+      resetToAuth();
+    }
+
+    return;
+  }
+
   if (currentRoute?.name !== "CreateProfile") {
     resetToCreateProfile();
   }
@@ -367,8 +389,10 @@ const rootInitialRouteName =
     ? "Auth"
     : G.__OVERLOOKED_PROFILE_JUST_COMPLETED__
     ? "MainTabs"
-    : shouldRouteToCreateProfile || !profileComplete
+    : !profileComplete && allowCreateProfileFlow
     ? "CreateProfile"
+    : !profileComplete && !allowCreateProfileFlow
+    ? "Auth"
     : mustShowPaywall
     ? "Paywall"
     : "MainTabs";

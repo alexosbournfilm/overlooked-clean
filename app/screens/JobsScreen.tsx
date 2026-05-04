@@ -36,6 +36,7 @@ import { supabase, XP_VALUES, type UserTier } from '../lib/supabase';
 import { useGamification } from '../context/GamificationContext';
 import { getCurrentUserTierOrFree } from '../lib/membership';
 import { UpgradeModal } from '../../components/UpgradeModal';
+import { useAppRefresh } from '../context/AppRefreshContext';
 
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
@@ -311,6 +312,7 @@ export default function JobsScreen() {
   const { show, ToastView } = useToast();
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
+  const { triggerAppRefresh } = useAppRefresh();
 
   const promptSignIn = (message: string) => {
   if (Platform.OS === 'web') {
@@ -1525,13 +1527,17 @@ if (!me) {
   paddingBottom: Platform.OS === 'web' ? 150 : 230,
 }}
         refreshing={activeTab === 'my' ? loadingMyJobs : isRefreshing}
-        onRefresh={() => {
-          if (activeTab === 'my') {
-            void fetchMyJobs();
-          } else {
-            void fetchJobs('refresh');
-          }
-        }}
+onRefresh={() => {
+  triggerAppRefresh();
+
+  if (activeTab === 'my') {
+    void fetchMyJobs();
+  } else {
+    void fetchJobs('refresh');
+  }
+
+  void refreshGamification?.();
+}}
         showsVerticalScrollIndicator={false}
         removeClippedSubviews={Platform.OS !== 'web'}
         ItemSeparatorComponent={() => <View style={styles.rowSpacer} />}

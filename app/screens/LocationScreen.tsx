@@ -13,12 +13,14 @@ import {
   Platform,
   Alert,
   Image,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthProvider';
+import { useAppRefresh } from '../context/AppRefreshContext';
 
 const IS_WEB = Platform.OS === 'web';
 
@@ -241,8 +243,10 @@ const IconText: React.FC<{
 
 export default function LocationScreen() {
   const insets = useSafeAreaInsets();
+  const { triggerAppRefresh } = useAppRefresh();
 
   const [city, setCity] = useState<DropdownOption | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [cityItems, setCityItems] = useState<DropdownOption[]>([]);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
   const [citySearchTerm, setCitySearchTerm] = useState('');
@@ -358,6 +362,26 @@ export default function LocationScreen() {
     setSearched(true);
     setActiveTab('creatives');
   };
+
+    const onRefresh = useCallback(async () => {
+    if (refreshing) return;
+
+    setRefreshing(true);
+
+    try {
+      triggerAppRefresh();
+
+      if (city) {
+        await handleSearch();
+      } else if (citySearchTerm.trim().length >= 2) {
+        await fetchCities(citySearchTerm);
+      }
+    } catch (e: any) {
+      console.warn('Location refresh error:', e?.message || e);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshing, triggerAppRefresh, city, citySearchTerm, fetchCities]);
 
   const fetchConversationById = async (conversationId: string) => {
     const { data, error } = await supabase
@@ -588,15 +612,26 @@ export default function LocationScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView
-        style={styles.screen}
-        contentContainerStyle={[
-          styles.container,
-          { paddingTop: insets.top > 0 ? 4 : 10 },
-        ]}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        showsVerticalScrollIndicator={false}
-      >
+  style={styles.screen}
+  contentContainerStyle={[
+    styles.container,
+    { paddingTop: insets.top > 0 ? 4 : 10 },
+  ]}
+  keyboardShouldPersistTaps="handled"
+  keyboardDismissMode="on-drag"
+  showsVerticalScrollIndicator={false}
+  refreshControl={
+    Platform.OS !== 'web' ? (
+      <RefreshControl
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        tintColor={GOLD}
+        colors={[GOLD]}
+        progressBackgroundColor={DARK_BG}
+      />
+    ) : undefined
+  }
+>
         <View style={styles.content}>
           <View style={styles.heroCard}>
            

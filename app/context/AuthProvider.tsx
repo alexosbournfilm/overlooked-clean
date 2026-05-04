@@ -281,6 +281,21 @@ function isPasswordResetFlowActive() {
       G.__OVERLOOKED_FORCE_NEW_PASSWORD__
   );
 }
+function isCreateProfileAllowedNow() {
+  if (isPasswordResetFlowActive()) return false;
+
+  if (G.__OVERLOOKED_EMAIL_CONFIRM__ === true) {
+    return true;
+  }
+
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    return (
+      window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true"
+    );
+  }
+
+  return false;
+}
 /**
  * Prevents Supabase/storage/network calls from blocking app startup forever.
  */
@@ -473,7 +488,7 @@ setUserId((prev) => (prev === uid ? prev : uid));
     );
   };
 
-  const tryNavigateToCreateProfile = () => {
+  const tryNavigateToCreateProfile = async () => {
   const resetFlowActive = isPasswordResetFlowActive();
 
   if (G.__OVERLOOKED_PROFILE_JUST_COMPLETED__) {
@@ -499,11 +514,38 @@ setUserId((prev) => (prev === uid ? prev : uid));
 
   if (complete) return;
 
+  const createProfileAllowed = isCreateProfileAllowedNow();
+
+  /**
+   * CRITICAL FIX:
+   * Incomplete profile can only open CreateProfile during the real email-confirmation flow.
+   * Any other incomplete/stale restored session must be signed out and sent to SignIn.
+   */
+  if (!createProfileAllowed) {
+    console.log(
+      "🛑 Blocked random CreateProfile redirect. Incomplete profile without email confirmation."
+    );
+
+    pendingCreateProfileRedirectRef.current = false;
+
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.log("Sign out after blocked CreateProfile redirect failed:", e);
+    }
+
+    await clearPersistedAuthSession();
+    clearLocalAuthState();
+
+    setTimeout(() => {
+      resetToSignIn();
+    }, 0);
+
+    return;
+  }
+
   const currentRoute = navigationRef.getCurrentRoute();
 
-  // CRITICAL:
-  // Do not reset CreateProfile while already on CreateProfile.
-  // This was causing the profile setup to restart after image upload.
   if (currentRoute?.name === "CreateProfile") {
     return;
   }
@@ -688,10 +730,10 @@ setUserId((prev) => (prev === uid ? prev : uid));
 
             await loadProfile(resumedUid, G.__OVERLOOKED_EMAIL_CONFIRM__);
 
-            if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
-              pendingCreateProfileRedirectRef.current = true;
-              tryNavigateToCreateProfile();
-            }
+           if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
+  pendingCreateProfileRedirectRef.current = true;
+  void tryNavigateToCreateProfile();
+}
           }
         }
       } catch (e: any) {
@@ -1056,9 +1098,9 @@ setUserId((prev) => (prev === uid ? prev : uid));
           await loadProfile(uid, event === "SIGNED_IN" || event === "USER_UPDATED");
 
           if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
-            pendingCreateProfileRedirectRef.current = true;
-            tryNavigateToCreateProfile();
-          }
+  pendingCreateProfileRedirectRef.current = true;
+  void tryNavigateToCreateProfile();
+}
 
           if (!ready && mounted) {
             authBootstrappedRef.current = true;
@@ -1134,8 +1176,8 @@ setUserId((prev) => (prev === uid ? prev : uid));
     return;
   }
 
-  tryNavigateToCreateProfile();
-}, [ready, userId, profile]);
+  void tryNavigateToCreateProfile();
+}, [ready, userId, profile, profileChecked]);
 
   const profileComplete = useMemo(() => {
     if (!profile) return false;
@@ -1153,13 +1195,16 @@ setUserId((prev) => (prev === uid ? prev : uid));
       profile?.city_id
   );
 
+  const createProfileAllowed = isCreateProfileAllowedNow();
+
   return Boolean(
-  userId &&
-    profileChecked &&
-    !complete &&
-    !resetFlowActive &&
-    !G.__OVERLOOKED_PROFILE_JUST_COMPLETED__
-);
+    userId &&
+      profileChecked &&
+      !complete &&
+      !resetFlowActive &&
+      !G.__OVERLOOKED_PROFILE_JUST_COMPLETED__ &&
+      createProfileAllowed
+  );
 }, [userId, profile, profileChecked]);
 
 const setProfileCompleteFromSavedProfile = (savedProfile: MinimalProfile) => {

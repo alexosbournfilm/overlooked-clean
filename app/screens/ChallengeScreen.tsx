@@ -24,6 +24,7 @@ import { Audio, Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase, type UserTier } from '../lib/supabase';
 import { UpgradeModal } from '../../components/UpgradeModal';
+import { useAppRefresh } from '../context/AppRefreshContext';
 
 /* ------------------------------- palette ------------------------------- */
 const DARK_BG = '#000000';
@@ -225,6 +226,7 @@ const ThumbMedia: React.FC<{ uri: string }> = ({ uri }) => {
 const WorkshopScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const { triggerAppRefresh } = useAppRefresh();
 
   const promptSignIn = (message: string) => {
     if (Platform.OS === 'web') {
@@ -524,10 +526,20 @@ const WorkshopScreen: React.FC = () => {
     }, [])
   );
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadWorkshop({ silent: true });
-  };
+  const onRefresh = useCallback(async () => {
+  if (refreshing) return;
+
+  setRefreshing(true);
+
+  try {
+    triggerAppRefresh();
+    await loadWorkshop({ silent: true });
+  } catch (e: any) {
+    console.warn('Workshop refresh error:', e?.message || e);
+  } finally {
+    setRefreshing(false);
+  }
+}, [refreshing, triggerAppRefresh]);
 
   const hasAccess = (_product: WorkshopProduct): boolean => {
     return userProfile?.tier === 'pro';
@@ -933,13 +945,14 @@ const WorkshopScreen: React.FC = () => {
 ]}
               showsVerticalScrollIndicator={false}
               refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={onRefresh}
-                  tintColor={GOLD}
-                  progressBackgroundColor={DARK_ELEVATED}
-                />
-              }
+  <RefreshControl
+    refreshing={refreshing}
+    onRefresh={onRefresh}
+    tintColor={GOLD}
+    colors={[GOLD]}
+    progressBackgroundColor={DARK_ELEVATED}
+  />
+}
             >
               {!hasAnything && (
                 <View style={styles.emptyState}>

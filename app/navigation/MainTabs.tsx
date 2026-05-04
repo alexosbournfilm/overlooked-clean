@@ -36,6 +36,7 @@ import { subscribeChatBadgeRefresh } from '../lib/chatBadgeEvents';
 import { SettingsModalProvider } from '../context/SettingsModalContext';
 import SettingsButton from '../../components/SettingsButton';
 import SettingsModal from '../../components/SettingsModal';
+import { AppRefreshProvider } from '../context/AppRefreshContext';
 
 import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 import { registerAndSavePushToken } from '../lib/pushRegistration';
@@ -1448,22 +1449,60 @@ export default function MainTabs() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { userId } = useAuth();
-const [chatUnreadCount, setChatUnreadCount] = useState(0);
-const [badgeUserId, setBadgeUserId] = useState<string | null>(null);
-const navUnreadRefreshTimeout = useRef<any>(null);
+
+const [badgeUserId, setBadgeUserId] = useState<string | null>(userId ?? null);
+const [chatUnreadConversationIds, setChatUnreadConversationIds] = useState<Set<string>>(new Set());
+
+const chatUnreadCount = chatUnreadConversationIds.size;
+
 const unreadRequestInFlight = useRef(false);
+const pendingUnreadRefresh = useRef(false);
 const unreadRefreshTimeout = useRef<any>(null);
-const isGuest = !userId;
+
+const isGuest = !badgeUserId;
+
 useEffect(() => {
-  setBadgeUserId(userId ?? null);
+  if (userId) {
+    setBadgeUserId(userId);
+  }
 }, [userId]);
+
+useEffect(() => {
+  let mounted = true;
+
+  const bootstrapBadgeUser = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (mounted) {
+      setBadgeUserId(session?.user?.id ?? null);
+    }
+  };
+
+  bootstrapBadgeUser();
+
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((_event, session) => {
+    if (mounted) {
+      setBadgeUserId(session?.user?.id ?? null);
+    }
+  });
+
+  return () => {
+    mounted = false;
+    subscription.unsubscribe();
+  };
+}, []);
 const loadChatUnreadCount = useCallback(async () => {
   if (!badgeUserId) {
-    setChatUnreadCount(0);
+    setChatUnreadConversationIds(new Set());
     return;
   }
 
   if (unreadRequestInFlight.current) {
+    pendingUnreadRefresh.current = true;
     return;
   }
 
@@ -1486,10 +1525,10 @@ const loadChatUnreadCount = useCallback(async () => {
       return;
     }
 
-    const conversationIds = (conversations || []).map((c: any) => c.id);
+    const conversationIds = (conversations || []).map((c: any) => String(c.id));
 
     if (!conversationIds.length) {
-      setChatUnreadCount(0);
+      setChatUnreadConversationIds(new Set());
       return;
     }
 
@@ -1511,8 +1550,9 @@ const loadChatUnreadCount = useCallback(async () => {
     }
 
     const readsMap = new Map<string, string>();
+
     (reads || []).forEach((row: any) => {
-      readsMap.set(row.conversation_id, row.last_read_at);
+      readsMap.set(String(row.conversation_id), row.last_read_at);
     });
 
     const {
@@ -1532,24 +1572,33 @@ const loadChatUnreadCount = useCallback(async () => {
       return;
     }
 
-    const unreadConversationIds = new Set<string>();
+    const unreadIds = new Set<string>();
 
     (messages || []).forEach((msg: any) => {
-      const lastReadAt = readsMap.get(msg.conversation_id);
+      const conversationId = String(msg.conversation_id);
+      const lastReadAt = readsMap.get(conversationId);
 
       if (
         !lastReadAt ||
         new Date(msg.sent_at).getTime() > new Date(lastReadAt).getTime()
       ) {
-        unreadConversationIds.add(msg.conversation_id);
+        unreadIds.add(conversationId);
       }
     });
 
-    setChatUnreadCount(unreadConversationIds.size);
+    setChatUnreadConversationIds(unreadIds);
   } catch (e: any) {
     console.error('loadChatUnreadCount error:', e?.message || e);
   } finally {
     unreadRequestInFlight.current = false;
+
+    if (pendingUnreadRefresh.current) {
+      pendingUnreadRefresh.current = false;
+
+      setTimeout(() => {
+        loadChatUnreadCount();
+      }, 100);
+    }
   }
 }, [badgeUserId]);
 const queueUnreadRefresh = useCallback(() => {
@@ -1559,8 +1608,16 @@ const queueUnreadRefresh = useCallback(() => {
 
   unreadRefreshTimeout.current = setTimeout(() => {
     loadChatUnreadCount();
-  }, 250);
+  }, 150);
 }, [loadChatUnreadCount]);
+
+useEffect(() => {
+  return () => {
+    if (unreadRefreshTimeout.current) {
+      clearTimeout(unreadRefreshTimeout.current);
+    }
+  };
+}, []);
 useEffect(() => {
   const unsubscribe = subscribeChatBadgeRefresh(() => {
     queueUnreadRefresh();
@@ -1571,7 +1628,7 @@ useEffect(() => {
     
   useEffect(() => {
   if (!badgeUserId) {
-    setChatUnreadCount(0);
+    setChatUnreadConversationIds(new Set());
     return;
   }
 
@@ -1614,7 +1671,25 @@ const shouldHideTopBar = false;
         schema: 'public',
         table: 'messages',
       },
-      () => {
+      (payload: any) => {
+        const newMessage = payload.new;
+
+        const conversationId = String(newMessage?.conversation_id || '');
+        const senderId = String(newMessage?.sender_id || '');
+
+        if (!conversationId) {
+          queueUnreadRefresh();
+          return;
+        }
+
+        if (senderId && senderId !== badgeUserId) {
+          setChatUnreadConversationIds((prev) => {
+            const next = new Set(prev);
+            next.add(conversationId);
+            return next;
+          });
+        }
+
         queueUnreadRefresh();
       }
     )
@@ -1641,7 +1716,9 @@ const shouldHideTopBar = false;
         queueUnreadRefresh();
       }
     )
-    .subscribe();
+    .subscribe((status) => {
+      console.log('MainTabs chat badge realtime status:', status);
+    });
 
   return () => {
     supabase.removeChannel(channel);
@@ -1818,15 +1895,16 @@ useEffect(() => {
 );
 
   return (
+  <AppRefreshProvider>
     <SettingsModalProvider>
       <View
-  style={{
-    flex: 1,
-    backgroundColor: DARK_BG,
-    overflow: 'hidden',
-    position: 'relative',
-  }}
->
+        style={{
+          flex: 1,
+          backgroundColor: DARK_BG,
+          overflow: 'hidden',
+          position: 'relative',
+        }}
+      >
        
 
         <SafeAreaView
@@ -1907,9 +1985,10 @@ useEffect(() => {
     onClose={() => setShowLeaderboard(false)}
   />
 )}
-      </View>
+            </View>
     </SettingsModalProvider>
-  );
+  </AppRefreshProvider>
+);
 }
 
 /* -------------------------------- Styles -------------------------------- */

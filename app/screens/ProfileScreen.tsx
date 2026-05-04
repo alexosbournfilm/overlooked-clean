@@ -22,6 +22,7 @@ import {
   ImageBackground,
   Animated,
   Easing,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { openChat } from '../navigation/navigationRef';
@@ -43,6 +44,7 @@ import { Buffer } from "buffer";
 import { useMonthlyStreak } from "../lib/useMonthlyStreak";
 import YoutubePlayer from "react-native-youtube-iframe";
 import * as Clipboard from 'expo-clipboard';
+import { useAppRefresh } from '../context/AppRefreshContext';
 
 /* ---------- Noir palette ---------- */
 const GOLD = '#C6A664';
@@ -986,11 +988,13 @@ function withTimeout<T>(promise: Promise<T>, ms = 20000): Promise<T> {
   });
 }
 export default function ProfileScreen() {
-    const route = useRoute<any>();
+  const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
+  const { triggerAppRefresh } = useAppRefresh();
+  const [refreshing, setRefreshing] = useState(false);
 
   // Responsive flags
 const isMobile = width < 768;
@@ -4779,6 +4783,35 @@ const renderSubmissionsSection = () => {
   );
 };
 
+const onRefresh = useCallback(async () => {
+  setRefreshing(true);
+
+  try {
+    triggerAppRefresh();
+
+    await fetchProfile();
+
+    try {
+      await refreshStreak?.();
+    } catch {}
+
+    if (profile?.id) {
+      await Promise.allSettled([
+        fetchPortfolioItems(profile.id),
+        fetchShowreelList(profile.id),
+        fetchUserSubmissions(profile.id),
+      ]);
+    }
+  } finally {
+    setRefreshing(false);
+  }
+}, [
+  triggerAppRefresh,
+  fetchProfile,
+  refreshStreak,
+  profile?.id,
+]);
+
 /* ---------- MAIN RENDER ---------- */
 
 if (!authReady || isLoading) {
@@ -4876,6 +4909,14 @@ return (
     paddingTop: 20,
     paddingBottom: 40 + Math.max(insets.bottom, 8),
   }}
+  refreshControl={
+    <RefreshControl
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      tintColor={GOLD}
+      progressBackgroundColor={COLORS.card}
+    />
+  }
 >
     <View
   style={{
