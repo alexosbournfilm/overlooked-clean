@@ -25,6 +25,7 @@ type AuthContextType = {
   userId: string | null;
   profile: MinimalProfile | null;
   profileComplete: boolean;
+  profileChecked: boolean;
   shouldRouteToCreateProfile: boolean;
   refreshProfile: () => Promise<void>;
   setProfileCompleteFromSavedProfile: (profile: MinimalProfile) => void;
@@ -35,6 +36,7 @@ const AuthContext = createContext<AuthContextType>({
   userId: null,
   profile: null,
   profileComplete: false,
+  profileChecked: false,
   shouldRouteToCreateProfile: false,
   refreshProfile: async () => {},
   setProfileCompleteFromSavedProfile: () => {},
@@ -1237,11 +1239,19 @@ const setProfileCompleteFromSavedProfile = (savedProfile: MinimalProfile) => {
     userId,
     profile,
     profileComplete,
+    profileChecked,
     shouldRouteToCreateProfile,
     refreshProfile,
     setProfileCompleteFromSavedProfile,
   }),
-  [ready, userId, profile, profileComplete, shouldRouteToCreateProfile]
+  [
+    ready,
+    userId,
+    profile,
+    profileComplete,
+    profileChecked,
+    shouldRouteToCreateProfile,
+  ]
 );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

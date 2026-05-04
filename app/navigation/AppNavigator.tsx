@@ -84,8 +84,13 @@ export default function AppNavigator({
 }: {
   initialAuthRouteName: "SignIn" | "CreateProfile";
 }) {
-  const { ready, userId, profileComplete, shouldRouteToCreateProfile } =
-    useAuth();
+  const {
+  ready,
+  userId,
+  profileComplete,
+  profileChecked,
+  shouldRouteToCreateProfile,
+} = useAuth();
 
   const [initialState, setInitialState] = useState<InitialState | undefined>();
   const [navReady, setNavReady] = useState(false);
@@ -136,6 +141,7 @@ export default function AppNavigator({
   }, [ready, userId, profileComplete, shouldRouteToCreateProfile]);
 
   useEffect(() => {
+  const runRedirectLogic = async () => {
     if (!ready || !navReady) return;
     if (!navigationRef.isReady()) return;
     if (!hasBootstrappedNavRef.current) return;
@@ -218,9 +224,11 @@ export default function AppNavigator({
 
     const authSnapshot = `${userId ?? "guest"}:${
       profileComplete ? "complete" : "incomplete"
-    }:${shouldRouteToCreateProfile ? "createprofile" : "normal"}:${
-      createProfileAllowed ? "createallowed" : "createnotallowed"
-    }:${G.__OVERLOOKED_EMAIL_CONFIRM__ ? "emailconfirm" : "noemailconfirm"}`;
+    }:${profileChecked ? "checked" : "notchecked"}:${
+      shouldRouteToCreateProfile ? "createprofile" : "normal"
+    }:${createProfileAllowed ? "createallowed" : "createnotallowed"}:${
+      G.__OVERLOOKED_EMAIL_CONFIRM__ ? "emailconfirm" : "noemailconfirm"
+    }`;
 
     const prevSnapshot = lastAuthSnapshotRef.current;
     lastAuthSnapshotRef.current = authSnapshot;
@@ -238,40 +246,48 @@ export default function AppNavigator({
     }
 
     /**
-     * CreateProfile is only allowed after a real email-confirmation flow.
-     * This blocks password reset, normal sign-in, stale nav state, and missing profile redirects.
+     * CRITICAL FIX:
+     * Only treat the profile as incomplete AFTER AuthProvider has finished checking it.
+     * This prevents normal sign-in from being instantly cancelled while the profile is still loading.
      */
-    if (!profileComplete) {
-  const currentRoute = navigationRef.getCurrentRoute();
+    if (userId && profileChecked && !profileComplete) {
+      const latestRoute = navigationRef.getCurrentRoute();
 
-  if (G.__OVERLOOKED_PROFILE_JUST_COMPLETED__) {
-    resetToMainTabs();
-    return;
-  }
+      if (G.__OVERLOOKED_PROFILE_JUST_COMPLETED__) {
+        resetToMainTabs();
+        return;
+      }
 
-  /**
-   * CRITICAL FIX:
-   * CreateProfile is only allowed after real email confirmation.
-   * For every other incomplete session, force SignIn instead.
-   */
-  if (!createProfileAllowed) {
-    try {
-      supabase.auth.signOut();
-    } catch {}
+      /**
+       * CreateProfile is only allowed after real email confirmation.
+       * For every other incomplete session, force SignIn instead.
+       */
+      if (!createProfileAllowed) {
+        try {
+          await supabase.auth.signOut();
+        } catch {}
 
-    if (currentRoute?.name !== "Auth") {
-      resetToAuth();
+        if (latestRoute?.name !== "Auth") {
+          resetToAuth();
+        }
+
+        return;
+      }
+
+      if (latestRoute?.name !== "CreateProfile") {
+        resetToCreateProfile();
+      }
+
+      return;
     }
 
-    return;
-  }
-
-  if (currentRoute?.name !== "CreateProfile") {
-    resetToCreateProfile();
-  }
-
-  return;
-}
+    /**
+     * If a user is signed in but the profile check is still running,
+     * do nothing yet. AuthProvider will update profileChecked when done.
+     */
+    if (userId && !profileChecked) {
+      return;
+    }
 
     if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
       G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
@@ -282,14 +298,18 @@ export default function AppNavigator({
     }
 
     resetToMainTabs();
-  }, [
-    ready,
-    navReady,
-    userId,
-    profileComplete,
-    shouldRouteToCreateProfile,
-    initialAuthRouteName,
-  ]);
+  };
+
+  void runRedirectLogic();
+}, [
+  ready,
+  navReady,
+  userId,
+  profileComplete,
+  profileChecked,
+  shouldRouteToCreateProfile,
+  initialAuthRouteName,
+]);
 
   useEffect(() => {
     if (!userId) {
@@ -389,6 +409,8 @@ const rootInitialRouteName =
     ? "Auth"
     : G.__OVERLOOKED_PROFILE_JUST_COMPLETED__
     ? "MainTabs"
+    : !profileChecked
+    ? "Auth"
     : !profileComplete && allowCreateProfileFlow
     ? "CreateProfile"
     : !profileComplete && !allowCreateProfileFlow
