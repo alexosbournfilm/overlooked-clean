@@ -14,6 +14,7 @@ import AppNavigator from "./app/navigation/AppNavigator";
 import { supabase } from "./app/lib/supabase";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { AuthProvider } from "./app/context/AuthProvider";
+import { AppRefreshProvider } from "./app/context/AppRefreshContext";
 import { GamificationProvider } from "./app/context/GamificationContext";
 import { navigate } from "./app/navigation/navigationRef";
 import { registerAndSavePushToken } from "./app/lib/registerAndSavePushToken";
@@ -114,6 +115,7 @@ function markSignupConfirmFlow() {
   (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = true;
   (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
 }
+
 function isAllowedEmailConfirmCreateProfileFlow() {
   return Boolean((globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__);
 }
@@ -157,6 +159,7 @@ async function forceSignInForIncompleteProfile(reason: string) {
   (globalThis as any).__OVERLOOKED_RECOVERY__ = false;
   (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
 }
+
 export default function App() {
   const [appIsReady, setAppIsReady] = useState(false);
 
@@ -169,7 +172,6 @@ export default function App() {
 
   const notificationListener = useRef<any>(null);
   const responseListener = useRef<any>(null);
-  
 
   const [courierLoaded] = useCourierFonts({
     CourierPrime_400Regular,
@@ -249,23 +251,23 @@ export default function App() {
      * This prevents the reset token/code from being lost during navigation.
      */
     if (isResetPasswordLink || type === "recovery") {
-  console.log("🔐 Reset password link detected → NewPassword owns this flow");
+      console.log("🔐 Reset password link detected → NewPassword owns this flow");
 
-  (globalThis as any).__OVERLOOKED_RESET_URL__ = url;
+      (globalThis as any).__OVERLOOKED_RESET_URL__ = url;
 
-  markPasswordResetFlow();
-  setInitialAuthRouteName("SignIn");
+      markPasswordResetFlow();
+      setInitialAuthRouteName("SignIn");
 
-  setTimeout(() => {
-    try {
-      navigate("NewPassword");
-    } catch (e) {
-      console.log("NewPassword navigation skipped:", e);
+      setTimeout(() => {
+        try {
+          navigate("NewPassword");
+        } catch (e) {
+          console.log("NewPassword navigation skipped:", e);
+        }
+      }, 300);
+
+      return;
     }
-  }, 300);
-
-  return;
-}
 
     /**
      * Signup confirmation is allowed to create a session here.
@@ -307,8 +309,6 @@ export default function App() {
       window.history.replaceState({}, document.title, clean);
     }
   }, []);
-
-  
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -409,54 +409,58 @@ export default function App() {
         }
 
         const { data: sessionData } = await supabase.auth.getSession();
-const session = sessionData?.session ?? null;
+        const session = sessionData?.session ?? null;
 
-/**
- * Do not treat a recovery session as a normal logged-in session here.
- * It belongs to NewPassword.tsx.
- */
-const isPasswordResetFlow =
-  (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
-  (globalThis as any).__OVERLOOKED_RECOVERY__ ||
-  (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
+        /**
+         * Do not treat a recovery session as a normal logged-in session here.
+         * It belongs to NewPassword.tsx.
+         */
+        const isPasswordResetFlow =
+          (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+          (globalThis as any).__OVERLOOKED_RECOVERY__ ||
+          (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
 
-const isEmailConfirmFlow = isAllowedEmailConfirmCreateProfileFlow();
+        const isEmailConfirmFlow = isAllowedEmailConfirmCreateProfileFlow();
 
-/**
- * IMPORTANT FIX:
- *
- * If the app opens with an old saved session and the profile is incomplete,
- * do NOT allow AppNavigator/AuthProvider to send the user to CreateProfile.
- *
- * Only a real email confirmation flow can continue toward CreateProfile.
- */
-if (session && !isPasswordResetFlow) {
-  const profileComplete = await isCurrentUserProfileComplete(session.user.id);
+        /**
+         * IMPORTANT FIX:
+         *
+         * If the app opens with an old saved session and the profile is incomplete,
+         * do NOT allow AppNavigator/AuthProvider to send the user to CreateProfile.
+         *
+         * Only a real email confirmation flow can continue toward CreateProfile.
+         */
+        if (session && !isPasswordResetFlow) {
+          const profileComplete = await isCurrentUserProfileComplete(
+            session.user.id
+          );
 
-  if (!profileComplete && !isEmailConfirmFlow) {
-    await forceSignInForIncompleteProfile("cold app open with stale incomplete session");
-    setInitialAuthRouteName("SignIn");
-  } else {
-    try {
-      if (Platform.OS !== "web") {
-        await SecureStore.setItemAsync(
-          "supabaseSession",
-          JSON.stringify(session)
-        );
-      }
-    } catch {}
+          if (!profileComplete && !isEmailConfirmFlow) {
+            await forceSignInForIncompleteProfile(
+              "cold app open with stale incomplete session"
+            );
+            setInitialAuthRouteName("SignIn");
+          } else {
+            try {
+              if (Platform.OS !== "web") {
+                await SecureStore.setItemAsync(
+                  "supabaseSession",
+                  JSON.stringify(session)
+                );
+              }
+            } catch {}
 
-    if (Platform.OS !== "web") {
-      savePushTokenForUser(session.user.id).catch((err) => {
-        console.log("Push token save skipped:", err?.message || err);
-      });
-    }
+            if (Platform.OS !== "web") {
+              savePushTokenForUser(session.user.id).catch((err) => {
+                console.log("Push token save skipped:", err?.message || err);
+              });
+            }
 
-    setInitialAuthRouteName("SignIn");
-  }
-} else {
-  setInitialAuthRouteName("SignIn");
-}
+            setInitialAuthRouteName("SignIn");
+          }
+        } else {
+          setInitialAuthRouteName("SignIn");
+        }
 
         linkSub = Linking.addEventListener("url", async (ev) => {
           await handleDeepLink(ev.url);
@@ -478,64 +482,66 @@ if (session && !isPasswordResetFlow) {
   }, [handleDeepLink, savePushTokenForUser]);
 
   useEffect(() => {
-  const { data: subscription } = supabase.auth.onAuthStateChange(
-    async (event, session) => {
-      const isPasswordResetFlow =
-        (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
-        (globalThis as any).__OVERLOOKED_RECOVERY__ ||
-        (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
+    const { data: subscription } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        const isPasswordResetFlow =
+          (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+          (globalThis as any).__OVERLOOKED_RECOVERY__ ||
+          (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
 
-      /**
-       * Never run normal post-login work while password reset is active.
-       */
-      if (isPasswordResetFlow) {
-        return;
-      }
+        /**
+         * Never run normal post-login work while password reset is active.
+         */
+        if (isPasswordResetFlow) {
+          return;
+        }
 
-      /**
-       * IMPORTANT FIX:
-       *
-       * If Supabase restores an old incomplete session after app startup,
-       * kill it unless this is the real email-confirmation flow.
-       */
-      if (
-        session?.user?.id &&
-        (event === "SIGNED_IN" ||
-          event === "INITIAL_SESSION" ||
-          event === "TOKEN_REFRESHED")
-      ) {
-        const isEmailConfirmFlow = isAllowedEmailConfirmCreateProfileFlow();
+        /**
+         * IMPORTANT FIX:
+         *
+         * If Supabase restores an old incomplete session after app startup,
+         * kill it unless this is the real email-confirmation flow.
+         */
+        if (
+          session?.user?.id &&
+          (event === "SIGNED_IN" ||
+            event === "INITIAL_SESSION" ||
+            event === "TOKEN_REFRESHED")
+        ) {
+          const isEmailConfirmFlow = isAllowedEmailConfirmCreateProfileFlow();
 
-        if (!isEmailConfirmFlow) {
-          const profileComplete = await isCurrentUserProfileComplete(session.user.id);
-
-          if (!profileComplete) {
-            await forceSignInForIncompleteProfile(
-              `auth state ${event} with incomplete profile`
+          if (!isEmailConfirmFlow) {
+            const profileComplete = await isCurrentUserProfileComplete(
+              session.user.id
             );
-            setInitialAuthRouteName("SignIn");
-            return;
+
+            if (!profileComplete) {
+              await forceSignInForIncompleteProfile(
+                `auth state ${event} with incomplete profile`
+              );
+              setInitialAuthRouteName("SignIn");
+              return;
+            }
           }
         }
-      }
 
-      if (
-        Platform.OS !== "web" &&
-        session?.user?.id &&
-        (event === "SIGNED_IN" ||
-          event === "TOKEN_REFRESHED" ||
-          event === "INITIAL_SESSION" ||
-          event === "USER_UPDATED")
-      ) {
-        savePushTokenForUser(session.user.id).catch((err) => {
-          console.log("Push token save skipped:", err?.message || err);
-        });
+        if (
+          Platform.OS !== "web" &&
+          session?.user?.id &&
+          (event === "SIGNED_IN" ||
+            event === "TOKEN_REFRESHED" ||
+            event === "INITIAL_SESSION" ||
+            event === "USER_UPDATED")
+        ) {
+          savePushTokenForUser(session.user.id).catch((err) => {
+            console.log("Push token save skipped:", err?.message || err);
+          });
+        }
       }
-    }
-  );
+    );
 
-  return () => subscription.subscription.unsubscribe();
-}, [savePushTokenForUser]);
+    return () => subscription.subscription.unsubscribe();
+  }, [savePushTokenForUser]);
 
   useEffect(() => {
     if (appIsReady && fontsLoaded) {
@@ -561,9 +567,11 @@ if (session && !isPasswordResetFlow) {
             >
               <StatusBar style="light" />
               <AuthProvider>
-                <GamificationProvider>
-                  <AppNavigator initialAuthRouteName={initialAuthRouteName} />
-                </GamificationProvider>
+                <AppRefreshProvider>
+                  <GamificationProvider>
+                    <AppNavigator initialAuthRouteName={initialAuthRouteName} />
+                  </GamificationProvider>
+                </AppRefreshProvider>
               </AuthProvider>
             </GestureHandlerRootView>
           </SafeAreaProvider>
