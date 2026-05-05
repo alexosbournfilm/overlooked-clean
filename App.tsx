@@ -252,19 +252,25 @@ async function handleWebSignupHashImmediately() {
     rawType === "signups" ||
     rawType.startsWith("signup");
 
-  const isRecoveryHash = rawType === "recovery" || href.toLowerCase().includes("type=recovery");
+  const isRecoveryHash =
+    rawType === "recovery" || href.toLowerCase().includes("type=recovery");
 
   if (!accessToken || !refreshToken || !isSignupHash || isRecoveryHash) {
     return false;
   }
 
-  console.log("✅ Early web signup hash detected. Confirming email then redirecting to SignIn.");
+  console.log("✅ Early web signup hash detected. Confirming email then going to SignIn.");
 
   try {
-    const { error } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    });
+    const { error } = await Promise.race([
+      supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      }),
+      new Promise<any>((resolve) =>
+        setTimeout(() => resolve({ error: null, timedOut: true }), 2500)
+      ),
+    ]);
 
     if (error) {
       console.log("Early setSession after confirmation failed:", error.message);
@@ -273,8 +279,15 @@ async function handleWebSignupHashImmediately() {
     console.log("Early setSession exception:", e);
   }
 
+  /**
+   * Clear local session so confirmation does not auto-open CreateProfile.
+   * The user will manually sign in, then missing profile will route to CreateProfile.
+   */
   try {
-    await supabase.auth.signOut({ scope: "local" } as any);
+    await Promise.race([
+      supabase.auth.signOut({ scope: "local" } as any),
+      new Promise((resolve) => setTimeout(resolve, 1200)),
+    ]);
   } catch (e) {
     console.log("Early local sign out after confirmation skipped:", e);
   }
@@ -286,8 +299,18 @@ async function handleWebSignupHashImmediately() {
 
   clearCreateProfileAllowedStorage();
 
-  window.history.replaceState({}, document.title, window.location.origin + "/signin");
-  window.location.replace("/signin");
+  /**
+   * Important:
+   * Remove the token hash immediately.
+   * Then force /signin.
+   */
+  try {
+    window.history.replaceState({}, document.title, window.location.origin + "/signin");
+  } catch {}
+
+  setTimeout(() => {
+    window.location.replace("/signin");
+  }, 50);
 
   return true;
 }
@@ -539,9 +562,15 @@ const isSignupLikeConfirmation =
   try {
     const handledEarlySignupHash = await handleWebSignupHashImmediately();
 
-    if (handledEarlySignupHash) {
-      return;
-    }
+if (handledEarlySignupHash) {
+  setInitialAuthRouteName("SignIn");
+
+  if (mounted) {
+    setAppIsReady(true);
+  }
+
+  return;
+}
 
     if (Platform.OS === "web" && typeof window !== "undefined") {
           const path = window.location.pathname || "";
