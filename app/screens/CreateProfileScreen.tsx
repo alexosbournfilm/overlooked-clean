@@ -651,20 +651,51 @@ export default function CreateProfileScreen() {
   try {
     setSubmitStatus('Checking your account...');
 
-    const { data: sessionData, error: userErr } = await withTimeout(
-      supabase.auth.getUser(),
-      12000
-    );
+let sessionUser: any = null;
+let lastAuthError: any = null;
 
-    if (userErr) throw userErr;
+for (let attempt = 1; attempt <= 10; attempt += 1) {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
-    const user = sessionData.user;
-    const userId = user?.id;
+  if (sessionError) {
+    lastAuthError = sessionError;
+  }
 
-    if (!userId) {
-      throw new Error('User not authenticated. Please sign in again.');
-    }
+  if (sessionData?.session?.user?.id) {
+    sessionUser = sessionData.session.user;
+    break;
+  }
 
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+
+  if (userError) {
+    lastAuthError = userError;
+  }
+
+  if (userData?.user?.id) {
+    sessionUser = userData.user;
+    break;
+  }
+
+  setSubmitStatus(`Checking your account... ${attempt}/10`);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+}
+
+const user = sessionUser;
+const userId = user?.id;
+
+if (!userId) {
+  console.log('CreateProfile submit auth missing:', lastAuthError?.message || lastAuthError);
+
+  setSubmitStatus(null);
+
+  Alert.alert(
+    'Session expired',
+    'Your email is confirmed, but your sign-in session is missing. Please sign in again, then you will be sent back to Create Profile.'
+  );
+
+  throw new Error('Auth session missing. Please sign in again.');
+}
     let finalAvatarUrl = imageUrl ? imageUrl.split('?')[0] : null;
 
     if (croppedImageUri && !finalAvatarUrl) {
@@ -703,7 +734,7 @@ export default function CreateProfileScreen() {
         .upsert(
   {
     id: userId,
-    email: user.email,
+    email: user.email ?? '',
     full_name: fullName.trim(),
     main_role_id: mainRole,
     city_id: cityId,
