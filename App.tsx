@@ -362,22 +362,26 @@ export default function App() {
       console.log("✅ Session restored from tokens");
     }
 
-    const isSignupLikeConfirmation =
-      type === "signup" ||
-      type === "invite" ||
-      (!!code && !isResetPasswordLink && type !== "recovery") ||
-      (!!access_token && !!refresh_token && type !== "recovery");
+    const normalizedType = (type || "").toLowerCase();
 
+const isSignupLikeConfirmation =
+  normalizedType === "signup" ||
+  normalizedType === "signups" ||
+  normalizedType === "invite" ||
+  normalizedType.startsWith("signup") ||
+  (!!code && !isResetPasswordLink && normalizedType !== "recovery") ||
+  (!!access_token && !!refresh_token && normalizedType !== "recovery");
     if (isSignupLikeConfirmation) {
   console.log("✅ Signup/email confirmation link detected");
 
   /**
-   * At this point, exchangeCodeForSession/setSession has already run above.
-   * That means the email confirmation has been processed.
+   * The email is confirmed after exchangeCodeForSession/setSession succeeds above.
+   * Now send the user back to SignIn.
    *
-   * Now we deliberately send the user back to SignIn.
-   * After they manually sign in, your SignIn flow will send them to
-   * CreateProfile if their profile is still missing.
+   * Important:
+   * We clear the temporary session and remove the token URL hash.
+   * The user can then manually sign in.
+   * If their profile is missing, SignIn will send them to CreateProfile.
    */
   (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
   (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
@@ -395,6 +399,7 @@ export default function App() {
   setInitialAuthRouteName("SignIn");
 
   if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.history.replaceState({}, document.title, window.location.origin + "/signin");
     window.location.replace("/signin");
     return;
   }
@@ -409,7 +414,6 @@ export default function App() {
 
   return;
 }
-
     if (Platform.OS === "web" && typeof window !== "undefined") {
       const clean = window.location.origin + window.location.pathname;
       window.history.replaceState({}, document.title, clean);
