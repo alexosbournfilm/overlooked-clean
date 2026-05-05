@@ -64,9 +64,13 @@ function resetHardToSignIn() {
   G.__OVERLOOKED_RECOVERY__ = false;
   G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
   G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+  G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+  G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
 
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     window.sessionStorage.removeItem('overlooked.allowCreateProfile');
+    window.sessionStorage.removeItem('overlooked.manualSignIn');
+    window.sessionStorage.removeItem('overlooked.createProfileAllowed');
 
     if (window.location.pathname !== '/signin') {
       window.location.replace('/signin');
@@ -87,6 +91,26 @@ function resetHardToSignIn() {
       })
     );
   }
+}
+
+function createProfileIsAllowedByFlow() {
+  if (
+    G.__OVERLOOKED_EMAIL_CONFIRM__ === true ||
+    G.__OVERLOOKED_MANUAL_SIGN_IN__ === true ||
+    G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === true
+  ) {
+    return true;
+  }
+
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    return (
+      window.sessionStorage.getItem('overlooked.allowCreateProfile') === 'true' ||
+      window.sessionStorage.getItem('overlooked.manualSignIn') === 'true' ||
+      window.sessionStorage.getItem('overlooked.createProfileAllowed') === 'true'
+    );
+  }
+
+  return false;
 }
 
 const showToast = (msg: string) => {
@@ -288,28 +312,67 @@ export default function CreateProfileScreen() {
   const [submitStatus, setSubmitStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    let mounted = true;
+  let mounted = true;
 
-    const checkSession = async () => {
-      const {
-        data: { user },
-        error,
-      } = await supabase.auth.getUser();
+  const checkSession = async () => {
+    /**
+     * CreateProfile is only allowed during:
+     * - fresh email confirmation
+     * - manual sign-in with confirmed email but missing profile
+     *
+     * If this screen is opened randomly, block it.
+     */
+    if (!createProfileIsAllowedByFlow()) {
+      console.log('🚫 CreateProfile blocked: no allowed create-profile flow.');
+      allowedCreateProfileRef.current = false;
+      resetHardToSignIn();
+      return;
+    }
+
+    /**
+     * Important:
+     * Supabase auth can take a moment to settle after email confirmation/manual sign-in.
+     * Do not immediately kick the user back to SignIn on the first failed getUser().
+     */
+    let user: any = null;
+    let lastError: any = null;
+
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      const { data, error } = await supabase.auth.getUser();
 
       if (!mounted) return;
 
-      if (error || !user?.id) {
-        console.log('🚫 CreateProfile blocked: no authenticated user.');
-        resetHardToSignIn();
+      user = data?.user ?? null;
+      lastError = error;
+
+      if (user?.id) {
+        console.log('✅ CreateProfile authenticated user found:', user.id);
+        allowedCreateProfileRef.current = true;
+        return;
       }
-    };
 
-    checkSession();
+      console.log(`⏳ Waiting for CreateProfile auth session... attempt ${attempt}`);
 
-    return () => {
-      mounted = false;
-    };
-  }, []);
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    }
+
+    if (!mounted) return;
+
+    console.log(
+      '🚫 CreateProfile blocked after retry: no authenticated user.',
+      lastError?.message || ''
+    );
+
+    allowedCreateProfileRef.current = false;
+    resetHardToSignIn();
+  };
+
+  checkSession();
+
+  return () => {
+    mounted = false;
+  };
+}, []);
 
   useEffect(() => {
     if (!allowedCreateProfileRef.current) return;
@@ -710,14 +773,17 @@ export default function CreateProfileScreen() {
     });
 
     G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-    G.__OVERLOOKED_RECOVERY__ = false;
-    G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
-    G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+G.__OVERLOOKED_RECOVERY__ = false;
+G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
 
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.sessionStorage.removeItem('overlooked.allowCreateProfile');
-    }
-
+if (Platform.OS === 'web' && typeof window !== 'undefined') {
+  window.sessionStorage.removeItem('overlooked.allowCreateProfile');
+  window.sessionStorage.removeItem('overlooked.manualSignIn');
+  window.sessionStorage.removeItem('overlooked.createProfileAllowed');
+}
     setTimeout(() => {
       if (navigationRef.isReady()) {
         navigationRef.dispatch(
