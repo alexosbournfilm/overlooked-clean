@@ -113,7 +113,12 @@ function markSignupConfirmFlow() {
   (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
   (globalThis as any).__OVERLOOKED_RECOVERY__ = false;
   (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = true;
+  (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
   (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.sessionStorage.setItem("overlooked.allowCreateProfile", "true");
+  }
 }
 
 function isAllowedEmailConfirmCreateProfileFlow() {

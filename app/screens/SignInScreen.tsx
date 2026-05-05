@@ -671,8 +671,17 @@ export default function SignInScreen() {
         return;
       }
 
-      const allowCreateProfile = false;
-allowCreateProfileOnceRef.current = false;
+      /**
+ * Manual sign-in is allowed to continue to CreateProfile
+ * if the user is confirmed but has not created a profile yet.
+ *
+ * This is safe because it only happens after the user actively presses Sign In.
+ * It does NOT apply to random restored sessions on app startup.
+ */
+(globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = true;
+
+const allowCreateProfile = true;
+allowCreateProfileOnceRef.current = true;
 
 await finishPostAuthRedirect({ allowCreateProfile });
 

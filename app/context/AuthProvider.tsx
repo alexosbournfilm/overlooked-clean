@@ -63,6 +63,10 @@ if (typeof G.__OVERLOOKED_PROFILE_JUST_COMPLETED__ === "undefined") {
   G.__OVERLOOKED_PROFILE_JUST_COMPLETED__ = false;
 }
 
+if (typeof G.__OVERLOOKED_MANUAL_SIGN_IN__ === "undefined") {
+  G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+}
+
 const NATIVE_AUTH_STORAGE_KEY = "overlooked.supabase.auth";
 
 /* =====================================================
@@ -286,10 +290,25 @@ function isPasswordResetFlowActive() {
 function isCreateProfileAllowedNow() {
   if (isPasswordResetFlowActive()) return false;
 
+  /**
+   * Fresh email confirmation link is allowed.
+   */
   if (G.__OVERLOOKED_EMAIL_CONFIRM__ === true) {
     return true;
   }
 
+  /**
+   * Manual sign-in is allowed.
+   * This is what lets a recently confirmed user sign in again
+   * and continue to CreateProfile if they have not made a profile yet.
+   */
+  if (G.__OVERLOOKED_MANUAL_SIGN_IN__ === true) {
+    return true;
+  }
+
+  /**
+   * Web fallback for email confirmation flow.
+   */
   if (Platform.OS === "web" && typeof window !== "undefined") {
     return (
       window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true"
@@ -1056,18 +1075,18 @@ setUserId((prev) => (prev === uid ? prev : uid));
         }
 
         if (event === "SIGNED_OUT") {
-          const wasPasswordResetFlow = isPasswordResetFlowActive();
+  const wasPasswordResetFlow = isPasswordResetFlowActive();
 
-          G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-          pendingCreateProfileRedirectRef.current = false;
+  G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+  G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+  pendingCreateProfileRedirectRef.current = false;
 
-          if (!wasPasswordResetFlow) {
-            G.__OVERLOOKED_RECOVERY__ = false;
-            G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
-            G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
-          }
-        }
-
+  if (!wasPasswordResetFlow) {
+    G.__OVERLOOKED_RECOVERY__ = false;
+    G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+    G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+  }
+}
         const uid = session?.user?.id ?? null;
 
         if (uid) {
@@ -1231,6 +1250,7 @@ const setProfileCompleteFromSavedProfile = (savedProfile: MinimalProfile) => {
   G.__OVERLOOKED_RECOVERY__ = false;
   G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
   G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+  G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
 };
 
   const value = useMemo(

@@ -55,6 +55,10 @@ function getAllowCreateProfileFlow() {
     return true;
   }
 
+  if (G.__OVERLOOKED_MANUAL_SIGN_IN__ === true) {
+    return true;
+  }
+
   if (Platform.OS === "web" && typeof window !== "undefined") {
     return (
       window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true"
@@ -156,10 +160,11 @@ export default function AppNavigator({
     const resetDone = G.__OVERLOOKED_PASSWORD_RESET_DONE__ === true;
 
     const createProfileAllowed =
-      G.__OVERLOOKED_EMAIL_CONFIRM__ === true ||
-      (Platform.OS === "web" &&
-        typeof window !== "undefined" &&
-        window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true");
+  G.__OVERLOOKED_EMAIL_CONFIRM__ === true ||
+  G.__OVERLOOKED_MANUAL_SIGN_IN__ === true ||
+  (Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true");
 
     const resetToAuth = () => {
       navigationRef.dispatch(
