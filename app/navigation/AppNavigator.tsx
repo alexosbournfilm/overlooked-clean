@@ -158,14 +158,14 @@ export default function AppNavigator({
     const resetDone = G.__OVERLOOKED_PASSWORD_RESET_DONE__ === true;
 
     const createProfileAllowed =
-  G.__OVERLOOKED_EMAIL_CONFIRM__ === true ||
-  G.__OVERLOOKED_MANUAL_SIGN_IN__ === true ||
-  G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === true ||
-  (Platform.OS === "web" &&
-    typeof window !== "undefined" &&
-    (window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
-      window.sessionStorage.getItem("overlooked.manualSignIn") === "true" ||
-      window.sessionStorage.getItem("overlooked.createProfileAllowed") === "true"));
+      G.__OVERLOOKED_EMAIL_CONFIRM__ === true ||
+      G.__OVERLOOKED_MANUAL_SIGN_IN__ === true ||
+      G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === true ||
+      (Platform.OS === "web" &&
+        typeof window !== "undefined" &&
+        (window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
+          window.sessionStorage.getItem("overlooked.manualSignIn") === "true" ||
+          window.sessionStorage.getItem("overlooked.createProfileAllowed") === "true"));
 
     const resetToAuth = () => {
       navigationRef.dispatch(
@@ -201,18 +201,18 @@ export default function AppNavigator({
       );
     };
 
-    /**
-     * Password reset is finished.
-     * Force Sign In. Never CreateProfile.
-     */
     if (resetDone) {
       G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
       G.__OVERLOOKED_RECOVERY__ = false;
       G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
       G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+      G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+      G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
 
       if (Platform.OS === "web" && typeof window !== "undefined") {
         window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+        window.sessionStorage.removeItem("overlooked.manualSignIn");
+        window.sessionStorage.removeItem("overlooked.createProfileAllowed");
         window.sessionStorage.setItem("overlooked.justResetPassword", "true");
       }
 
@@ -220,31 +220,9 @@ export default function AppNavigator({
       return;
     }
 
-    /**
-     * Password reset owns its own navigation.
-     * Never redirect password-reset users to CreateProfile.
-     */
     if (resetFlowActive) {
       return;
     }
-
-    const authSnapshot = `${userId ?? "guest"}:${
-      profileComplete ? "complete" : "incomplete"
-    }:${profileChecked ? "checked" : "notchecked"}:${
-      shouldRouteToCreateProfile ? "createprofile" : "normal"
-    }:${createProfileAllowed ? "createallowed" : "createnotallowed"}:${
-      G.__OVERLOOKED_EMAIL_CONFIRM__ ? "emailconfirm" : "noemailconfirm"
-    }`;
-
-    const prevSnapshot = lastAuthSnapshotRef.current;
-    lastAuthSnapshotRef.current = authSnapshot;
-
-    if (!hasHandledPostMountRedirectRef.current) {
-      hasHandledPostMountRedirectRef.current = true;
-      return;
-    }
-
-    if (prevSnapshot === authSnapshot) return;
 
     if (!userId) {
       resetToAuth();
@@ -252,11 +230,17 @@ export default function AppNavigator({
     }
 
     /**
-     * CRITICAL FIX:
-     * Only treat the profile as incomplete AFTER AuthProvider has finished checking it.
-     * This prevents normal sign-in from being instantly cancelled while the profile is still loading.
+     * IMPORTANT:
+     * Do not make any decision until AuthProvider has actually checked the profile.
      */
-    if (userId && profileChecked && !profileComplete) {
+    if (!profileChecked) {
+      return;
+    }
+
+    /**
+     * Profile is incomplete.
+     */
+    if (!profileComplete) {
       const latestRoute = navigationRef.getCurrentRoute();
 
       if (G.__OVERLOOKED_PROFILE_JUST_COMPLETED__) {
@@ -265,49 +249,49 @@ export default function AppNavigator({
       }
 
       /**
-       * CreateProfile is only allowed after real email confirmation.
-       * For every other incomplete session, force SignIn instead.
+       * Allowed cases:
+       * - fresh email confirmation
+       * - manual sign-in after confirmed email
        */
-      if (!createProfileAllowed) {
-        try {
-          await supabase.auth.signOut();
-        } catch {}
-
-        if (latestRoute?.name !== "Auth") {
-          resetToAuth();
+      if (createProfileAllowed) {
+        if (latestRoute?.name !== "CreateProfile") {
+          resetToCreateProfile();
         }
 
         return;
       }
 
-      if (latestRoute?.name !== "CreateProfile") {
-        resetToCreateProfile();
+      /**
+       * Blocked case:
+       * - random restored incomplete session on cold app open
+       */
+      try {
+        await supabase.auth.signOut();
+      } catch {}
+
+      if (latestRoute?.name !== "Auth") {
+        resetToAuth();
       }
 
       return;
     }
 
     /**
-     * If a user is signed in but the profile check is still running,
-     * do nothing yet. AuthProvider will update profileChecked when done.
+     * Profile is complete. Now and only now clear create-profile permissions.
      */
-    if (userId && !profileChecked) {
-      return;
+    G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+    G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+    G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+      window.sessionStorage.removeItem("overlooked.manualSignIn");
+      window.sessionStorage.removeItem("overlooked.createProfileAllowed");
     }
 
-    if (profileComplete) {
-  G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-  G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-  G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
-
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    window.sessionStorage.removeItem("overlooked.allowCreateProfile");
-    window.sessionStorage.removeItem("overlooked.manualSignIn");
-    window.sessionStorage.removeItem("overlooked.createProfileAllowed");
-  }
-}
-
-    resetToMainTabs();
+    if (currentRoute?.name !== "MainTabs") {
+      resetToMainTabs();
+    }
   };
 
   void runRedirectLogic();
@@ -320,7 +304,6 @@ export default function AppNavigator({
   shouldRouteToCreateProfile,
   initialAuthRouteName,
 ]);
-
   useEffect(() => {
     if (!userId) {
       setIsPaid(null);
