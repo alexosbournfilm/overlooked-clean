@@ -15,6 +15,7 @@ export const linking: LinkingOptions<any> = {
     screens: {
       // ROOT SCREENS
       NewPassword: "reset-password",
+      CreateProfile: "create-profile",
 
       // AUTH STACK
       Auth: {

@@ -369,38 +369,62 @@ export default function App() {
       (!!access_token && !!refresh_token && type !== "recovery");
 
     if (isSignupLikeConfirmation) {
-      console.log("✅ Signup/email confirmation link detected");
+  console.log("✅ Signup/email confirmation link detected");
 
-      markSignupConfirmFlow();
-      setInitialAuthRouteName("SignIn");
+  markSignupConfirmFlow();
+  setInitialAuthRouteName("SignIn");
 
-      /**
-       * Do not open CreateProfile until Supabase has a real session.
-       * Otherwise CreateProfile loads but cannot save:
-       * "Auth session missing!"
-       */
-      const session = await waitForRealSession(12, 400);
+  /**
+   * Wait for Supabase to actually store the session before navigating.
+   */
+  const session = await waitForRealSession(15, 400);
 
-      if (session?.user?.id) {
-        console.log("✅ Session ready after confirmation → CreateProfile");
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+  const cleanPath =
+    isSignupLikeConfirmation ? "/create-profile" : window.location.pathname;
 
-        setTimeout(() => {
-          try {
-            navigate("CreateProfile" as never);
-          } catch (e) {
-            console.log("CreateProfile navigation after email confirmation skipped:", e);
-          }
-        }, 150);
-      } else {
-        console.log("⚠️ Email confirmed but no session found. Staying on SignIn.");
+  const clean = window.location.origin + cleanPath;
+  window.history.replaceState({}, document.title, clean);
+}
 
-        (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
-        (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-        (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+  if (session?.user?.id) {
+    console.log("✅ Session ready after confirmation → CreateProfile");
 
-        clearCreateProfileAllowedStorage();
+    /**
+     * Use two attempts because NavigationContainer may not be ready
+     * on the first render after a magic-link callback.
+     */
+    setTimeout(() => {
+      try {
+        navigate("CreateProfile" as never);
+      } catch (e) {
+        console.log("CreateProfile navigation after confirmation attempt 1 skipped:", e);
       }
-    }
+    }, 300);
+
+    setTimeout(() => {
+      try {
+        navigate("CreateProfile" as never);
+      } catch (e) {
+        console.log("CreateProfile navigation after confirmation attempt 2 skipped:", e);
+      }
+    }, 900);
+
+    return;
+  }
+
+  console.log("⚠️ Email confirmed but no session found. Sending to SignIn.");
+
+  (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
+  (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+  (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+
+  clearCreateProfileAllowedStorage();
+
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.location.replace("/signin");
+  }
+}
 
     if (Platform.OS === "web" && typeof window !== "undefined") {
       const clean = window.location.origin + window.location.pathname;
