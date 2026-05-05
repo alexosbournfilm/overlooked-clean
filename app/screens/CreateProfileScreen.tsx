@@ -690,11 +690,35 @@ if (!userId) {
   setSubmitStatus(null);
 
   Alert.alert(
-    'Session expired',
-    'Your email is confirmed, but your sign-in session is missing. Please sign in again, then you will be sent back to Create Profile.'
+    'Please sign in again',
+    'Your email is confirmed, but your session is missing. Sign in again with this account and you will be sent back to Create Profile.'
   );
 
-  throw new Error('Auth session missing. Please sign in again.');
+  G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+  G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+  G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.sessionStorage.removeItem('overlooked.allowCreateProfile');
+    window.sessionStorage.removeItem('overlooked.manualSignIn');
+    window.sessionStorage.removeItem('overlooked.createProfileAllowed');
+  }
+
+  if (navigationRef.isReady()) {
+    navigationRef.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: 'Auth',
+            params: { screen: 'SignIn' },
+          },
+        ],
+      })
+    );
+  }
+
+  return;
 }
     let finalAvatarUrl = imageUrl ? imageUrl.split('?')[0] : null;
 

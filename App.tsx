@@ -102,11 +102,30 @@ function parseAuthParamsFromUrl(url: string) {
   };
 }
 
+function setCreateProfileAllowedStorage() {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.sessionStorage.setItem("overlooked.allowCreateProfile", "true");
+    window.sessionStorage.setItem("overlooked.createProfileAllowed", "true");
+  }
+}
+
+function clearCreateProfileAllowedStorage() {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+    window.sessionStorage.removeItem("overlooked.manualSignIn");
+    window.sessionStorage.removeItem("overlooked.createProfileAllowed");
+  }
+}
+
 function markPasswordResetFlow() {
   (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
   (globalThis as any).__OVERLOOKED_RECOVERY__ = true;
   (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
+  (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+  (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
   (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+
+  clearCreateProfileAllowedStorage();
 }
 
 function markSignupConfirmFlow() {
@@ -114,15 +133,55 @@ function markSignupConfirmFlow() {
   (globalThis as any).__OVERLOOKED_RECOVERY__ = false;
   (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = true;
   (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+  (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = true;
   (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
 
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    window.sessionStorage.setItem("overlooked.allowCreateProfile", "true");
-  }
+  setCreateProfileAllowedStorage();
 }
 
-function isAllowedEmailConfirmCreateProfileFlow() {
-  return Boolean((globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__);
+/**
+ * Allows incomplete profiles ONLY when this is a valid create-profile flow:
+ * - email confirmation
+ * - manual sign-in with a confirmed account
+ * - durable create-profile allowed flag
+ *
+ * This keeps the old random CreateProfile glitch blocked,
+ * while preserving valid onboarding.
+ */
+function isAllowedCreateProfileFlow() {
+  const G = globalThis as any;
+
+  if (G.__OVERLOOKED_EMAIL_CONFIRM__ === true) return true;
+  if (G.__OVERLOOKED_MANUAL_SIGN_IN__ === true) return true;
+  if (G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === true) return true;
+
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    return (
+      window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
+      window.sessionStorage.getItem("overlooked.manualSignIn") === "true" ||
+      window.sessionStorage.getItem("overlooked.createProfileAllowed") === "true"
+    );
+  }
+
+  return false;
+}
+
+async function waitForRealSession(maxAttempts = 10, delayMs = 400) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const { data, error } = await supabase.auth.getSession();
+
+    if (error) {
+      console.log("waitForRealSession getSession error:", error.message);
+    }
+
+    if (data?.session?.user?.id) {
+      return data.session;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  return null;
 }
 
 async function isCurrentUserProfileComplete(userId: string) {
@@ -163,6 +222,11 @@ async function forceSignInForIncompleteProfile(reason: string) {
   (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
   (globalThis as any).__OVERLOOKED_RECOVERY__ = false;
   (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+  (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
+  (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+  (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+
+  clearCreateProfileAllowedStorage();
 }
 
 export default function App() {
@@ -227,6 +291,7 @@ export default function App() {
       !!token_hash ||
       type === "recovery" ||
       type === "signup" ||
+      type === "invite" ||
       isResetPasswordLink;
 
     if (!isSupabaseAuthCallback) return;
@@ -245,15 +310,9 @@ export default function App() {
     }
 
     /**
-     * CRITICAL FIX:
-     *
      * Password reset must be handled ONLY by NewPassword.tsx.
-     *
      * Do NOT exchange the recovery code here.
      * Do NOT call setSession here.
-     *
-     * Store the original reset URL so NewPassword.tsx can read it.
-     * This prevents the reset token/code from being lost during navigation.
      */
     if (isResetPasswordLink || type === "recovery") {
       console.log("🔐 Reset password link detected → NewPassword owns this flow");
@@ -265,7 +324,7 @@ export default function App() {
 
       setTimeout(() => {
         try {
-          navigate("NewPassword");
+          navigate("NewPassword" as never);
         } catch (e) {
           console.log("NewPassword navigation skipped:", e);
         }
@@ -275,7 +334,7 @@ export default function App() {
     }
 
     /**
-     * Signup confirmation is allowed to create a session here.
+     * Signup/email confirmation is allowed to create a session here.
      * Password recovery is not.
      */
     if (code) {
@@ -304,23 +363,44 @@ export default function App() {
     }
 
     const isSignupLikeConfirmation =
-  type === "signup" ||
-  type === "invite" ||
-  (!!code && !isResetPasswordLink && type !== "recovery");
+      type === "signup" ||
+      type === "invite" ||
+      (!!code && !isResetPasswordLink && type !== "recovery") ||
+      (!!access_token && !!refresh_token && type !== "recovery");
 
-if (isSignupLikeConfirmation) {
-  console.log("✅ Signup/email confirmation link detected");
-  markSignupConfirmFlow();
-  setInitialAuthRouteName("SignIn");
+    if (isSignupLikeConfirmation) {
+      console.log("✅ Signup/email confirmation link detected");
 
-  setTimeout(() => {
-    try {
-      navigate("CreateProfile");
-    } catch (e) {
-      console.log("CreateProfile navigation after email confirmation skipped:", e);
+      markSignupConfirmFlow();
+      setInitialAuthRouteName("SignIn");
+
+      /**
+       * Do not open CreateProfile until Supabase has a real session.
+       * Otherwise CreateProfile loads but cannot save:
+       * "Auth session missing!"
+       */
+      const session = await waitForRealSession(12, 400);
+
+      if (session?.user?.id) {
+        console.log("✅ Session ready after confirmation → CreateProfile");
+
+        setTimeout(() => {
+          try {
+            navigate("CreateProfile" as never);
+          } catch (e) {
+            console.log("CreateProfile navigation after email confirmation skipped:", e);
+          }
+        }, 150);
+      } else {
+        console.log("⚠️ Email confirmed but no session found. Staying on SignIn.");
+
+        (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
+        (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+        (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+
+        clearCreateProfileAllowedStorage();
+      }
     }
-  }, 500);
-}
 
     if (Platform.OS === "web" && typeof window !== "undefined") {
       const clean = window.location.origin + window.location.pathname;
@@ -438,22 +518,23 @@ if (isSignupLikeConfirmation) {
           (globalThis as any).__OVERLOOKED_RECOVERY__ ||
           (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
 
-        const isEmailConfirmFlow = isAllowedEmailConfirmCreateProfileFlow();
+        const isCreateProfileAllowedFlow = isAllowedCreateProfileFlow();
 
         /**
-         * IMPORTANT FIX:
-         *
          * If the app opens with an old saved session and the profile is incomplete,
          * do NOT allow AppNavigator/AuthProvider to send the user to CreateProfile.
          *
-         * Only a real email confirmation flow can continue toward CreateProfile.
+         * But DO allow:
+         * - fresh email confirmation
+         * - manual sign-in
+         * - durable create-profile allowed flag
          */
         if (session && !isPasswordResetFlow) {
           const profileComplete = await isCurrentUserProfileComplete(
             session.user.id
           );
 
-          if (!profileComplete && !isEmailConfirmFlow) {
+          if (!profileComplete && !isCreateProfileAllowedFlow) {
             await forceSignInForIncompleteProfile(
               "cold app open with stale incomplete session"
             );
@@ -515,10 +596,8 @@ if (isSignupLikeConfirmation) {
         }
 
         /**
-         * IMPORTANT FIX:
-         *
          * If Supabase restores an old incomplete session after app startup,
-         * kill it unless this is the real email-confirmation flow.
+         * kill it only when it is NOT a valid CreateProfile flow.
          */
         if (
           session?.user?.id &&
@@ -526,20 +605,24 @@ if (isSignupLikeConfirmation) {
             event === "INITIAL_SESSION" ||
             event === "TOKEN_REFRESHED")
         ) {
-          const isEmailConfirmFlow = isAllowedEmailConfirmCreateProfileFlow();
+          const isCreateProfileAllowedFlow = isAllowedCreateProfileFlow();
+          const profileComplete = await isCurrentUserProfileComplete(session.user.id);
 
-          if (!isEmailConfirmFlow) {
-            const profileComplete = await isCurrentUserProfileComplete(
-              session.user.id
+          if (!profileComplete && !isCreateProfileAllowedFlow) {
+            console.log("🚨 APP.TSX SIGNING OUT INCOMPLETE PROFILE", {
+              event,
+              allowedCreateProfile: isCreateProfileAllowedFlow,
+              emailConfirm: (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__,
+              manualSignIn: (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__,
+              createAllowed: (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__,
+            });
+
+            await forceSignInForIncompleteProfile(
+              `auth state ${event} with incomplete profile`
             );
 
-            if (!profileComplete) {
-              await forceSignInForIncompleteProfile(
-                `auth state ${event} with incomplete profile`
-              );
-              setInitialAuthRouteName("SignIn");
-              return;
-            }
+            setInitialAuthRouteName("SignIn");
+            return;
           }
         }
 
