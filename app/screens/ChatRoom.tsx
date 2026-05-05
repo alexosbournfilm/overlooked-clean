@@ -904,15 +904,14 @@ useFocusEffect(
     })
   );
 
-const reversed = [...normalized].reverse();
-
-setMessages(reversed);
+setMessages(normalized);
 
 const fromMsgs: Record<
   string,
   { id: string; full_name: string }
 > = {};
-for (const m of reversed)
+
+for (const m of normalized)
 
       
         if (m.sender?.id)
@@ -1087,9 +1086,8 @@ for (const m of reversed)
       convoChannel;
   };
 
-      const scrollToBottom = (animated = true) =>
-  flatListRef.current?.scrollToOffset({
-    offset: 0,
+  const scrollToBottom = (animated = true) =>
+  flatListRef.current?.scrollToEnd({
     animated,
   });
 
@@ -1609,7 +1607,6 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
   data={messages}
   renderItem={renderItem}
   keyExtractor={(item) => item.id}
-  inverted
   contentContainerStyle={{ padding: 16, paddingTop: 8, paddingBottom: 12 }}
   removeClippedSubviews={Platform.OS !== 'ios'}
   initialNumToRender={12}
