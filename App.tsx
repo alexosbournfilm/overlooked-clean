@@ -371,59 +371,43 @@ export default function App() {
     if (isSignupLikeConfirmation) {
   console.log("✅ Signup/email confirmation link detected");
 
-  markSignupConfirmFlow();
-  setInitialAuthRouteName("SignIn");
-
   /**
-   * Wait for Supabase to actually store the session before navigating.
+   * At this point, exchangeCodeForSession/setSession has already run above.
+   * That means the email confirmation has been processed.
+   *
+   * Now we deliberately send the user back to SignIn.
+   * After they manually sign in, your SignIn flow will send them to
+   * CreateProfile if their profile is still missing.
    */
-  const session = await waitForRealSession(15, 400);
-
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-  const cleanPath =
-    isSignupLikeConfirmation ? "/create-profile" : window.location.pathname;
-
-  const clean = window.location.origin + cleanPath;
-  window.history.replaceState({}, document.title, clean);
-}
-
-  if (session?.user?.id) {
-    console.log("✅ Session ready after confirmation → CreateProfile");
-
-    /**
-     * Use two attempts because NavigationContainer may not be ready
-     * on the first render after a magic-link callback.
-     */
-    setTimeout(() => {
-      try {
-        navigate("CreateProfile" as never);
-      } catch (e) {
-        console.log("CreateProfile navigation after confirmation attempt 1 skipped:", e);
-      }
-    }, 300);
-
-    setTimeout(() => {
-      try {
-        navigate("CreateProfile" as never);
-      } catch (e) {
-        console.log("CreateProfile navigation after confirmation attempt 2 skipped:", e);
-      }
-    }, 900);
-
-    return;
-  }
-
-  console.log("⚠️ Email confirmed but no session found. Sending to SignIn.");
-
   (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
   (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
   (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+  (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
 
   clearCreateProfileAllowedStorage();
 
+  try {
+    await supabase.auth.signOut({ scope: "local" } as any);
+  } catch (e) {
+    console.log("Local sign out after email confirmation skipped:", e);
+  }
+
+  setInitialAuthRouteName("SignIn");
+
   if (Platform.OS === "web" && typeof window !== "undefined") {
     window.location.replace("/signin");
+    return;
   }
+
+  setTimeout(() => {
+    try {
+      navigate("Auth" as never, { screen: "SignIn" } as never);
+    } catch (e) {
+      console.log("Navigate to SignIn after confirmation skipped:", e);
+    }
+  }, 150);
+
+  return;
 }
 
     if (Platform.OS === "web" && typeof window !== "undefined") {
