@@ -229,6 +229,69 @@ async function forceSignInForIncompleteProfile(reason: string) {
   clearCreateProfileAllowedStorage();
 }
 
+async function handleWebSignupHashImmediately() {
+  if (Platform.OS !== "web" || typeof window === "undefined") {
+    return false;
+  }
+
+  const href = window.location.href || "";
+  const hash = window.location.hash || "";
+
+  if (!hash.includes("access_token=") && !hash.includes("refresh_token=")) {
+    return false;
+  }
+
+  const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
+
+  const accessToken = hashParams.get("access_token");
+  const refreshToken = hashParams.get("refresh_token");
+  const rawType = (hashParams.get("type") || "").toLowerCase();
+
+  const isSignupHash =
+    rawType === "signup" ||
+    rawType === "signups" ||
+    rawType.startsWith("signup");
+
+  const isRecoveryHash = rawType === "recovery" || href.toLowerCase().includes("type=recovery");
+
+  if (!accessToken || !refreshToken || !isSignupHash || isRecoveryHash) {
+    return false;
+  }
+
+  console.log("✅ Early web signup hash detected. Confirming email then redirecting to SignIn.");
+
+  try {
+    const { error } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+
+    if (error) {
+      console.log("Early setSession after confirmation failed:", error.message);
+    }
+  } catch (e) {
+    console.log("Early setSession exception:", e);
+  }
+
+  try {
+    await supabase.auth.signOut({ scope: "local" } as any);
+  } catch (e) {
+    console.log("Early local sign out after confirmation skipped:", e);
+  }
+
+  (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
+  (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+  (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+  (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+
+  clearCreateProfileAllowedStorage();
+
+  window.history.replaceState({}, document.title, window.location.origin + "/signin");
+  window.location.replace("/signin");
+
+  return true;
+}
+
 export default function App() {
   const [appIsReady, setAppIsReady] = useState(false);
 
@@ -473,8 +536,14 @@ const isSignupLikeConfirmation =
     let linkSub: { remove: () => void } | null = null;
 
     async function init() {
-      try {
-        if (Platform.OS === "web" && typeof window !== "undefined") {
+  try {
+    const handledEarlySignupHash = await handleWebSignupHashImmediately();
+
+    if (handledEarlySignupHash) {
+      return;
+    }
+
+    if (Platform.OS === "web" && typeof window !== "undefined") {
           const path = window.location.pathname || "";
           const href = window.location.href || "";
 
