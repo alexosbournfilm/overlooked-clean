@@ -537,30 +537,21 @@ setUserId((prev) => (prev === uid ? prev : uid));
   const createProfileAllowed = isCreateProfileAllowedNow();
 
   /**
-   * CRITICAL FIX:
-   * Incomplete profile can only open CreateProfile during the real email-confirmation flow.
-   * Any other incomplete/stale restored session must be signed out and sent to SignIn.
+   * IMPORTANT:
+   * AuthProvider must NOT sign the user out here.
+   *
+   * If CreateProfile is not allowed, just do nothing.
+   * AppNavigator handles stale/random incomplete sessions.
+   *
+   * Signing out here causes the flash:
+   * CreateProfile opens → flags/state race → signOut → SignIn.
    */
   if (!createProfileAllowed) {
     console.log(
-      "🛑 Blocked random CreateProfile redirect. Incomplete profile without email confirmation."
+      "🛑 AuthProvider blocked CreateProfile navigation, but did not sign out."
     );
 
     pendingCreateProfileRedirectRef.current = false;
-
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      console.log("Sign out after blocked CreateProfile redirect failed:", e);
-    }
-
-    await clearPersistedAuthSession();
-    clearLocalAuthState();
-
-    setTimeout(() => {
-      resetToSignIn();
-    }, 0);
-
     return;
   }
 
@@ -1209,7 +1200,13 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
     return;
   }
 
-  void tryNavigateToCreateProfile();
+  /**
+   * Only attempt CreateProfile navigation if the flow is actually allowed.
+   * Otherwise, do nothing and let AppNavigator handle normal/stale sessions.
+   */
+  if (isCreateProfileAllowedNow()) {
+    void tryNavigateToCreateProfile();
+  }
 }, [ready, userId, profile, profileChecked]);
 
   const profileComplete = useMemo(() => {
