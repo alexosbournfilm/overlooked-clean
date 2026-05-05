@@ -303,11 +303,24 @@ export default function App() {
       console.log("✅ Session restored from tokens");
     }
 
-    if (type === "signup") {
-      console.log("✅ Signup confirmation link detected");
-      markSignupConfirmFlow();
-      setInitialAuthRouteName("SignIn");
+    const isSignupLikeConfirmation =
+  type === "signup" ||
+  type === "invite" ||
+  (!!code && !isResetPasswordLink && type !== "recovery");
+
+if (isSignupLikeConfirmation) {
+  console.log("✅ Signup/email confirmation link detected");
+  markSignupConfirmFlow();
+  setInitialAuthRouteName("SignIn");
+
+  setTimeout(() => {
+    try {
+      navigate("CreateProfile");
+    } catch (e) {
+      console.log("CreateProfile navigation after email confirmation skipped:", e);
     }
+  }, 500);
+}
 
     if (Platform.OS === "web" && typeof window !== "undefined") {
       const clean = window.location.origin + window.location.pathname;

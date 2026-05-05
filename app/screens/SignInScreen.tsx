@@ -713,6 +713,57 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
       return;
     }
 
+    const { data: existingProfile, error: existingProfileError } = await supabase
+  .from('users')
+  .select('id, full_name, main_role_id, city_id')
+  .eq('id', userId)
+  .maybeSingle();
+
+if (existingProfileError) {
+  console.log('Manual sign-in profile check error:', existingProfileError);
+  showError('Login Error', 'Could not check your profile. Please try again.');
+  return;
+}
+
+const existingProfileComplete = Boolean(
+  existingProfile?.id &&
+    existingProfile?.full_name &&
+    existingProfile?.main_role_id &&
+    existingProfile?.city_id
+);
+
+if (!existingProfileComplete) {
+  /**
+   * This is a confirmed user manually signing in before profile creation.
+   * This must go to CreateProfile.
+   */
+  (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = true;
+  (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = true;
+  (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
+
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.sessionStorage.setItem('overlooked.manualSignIn', 'true');
+    window.sessionStorage.setItem('overlooked.createProfileAllowed', 'true');
+  }
+
+  const parentNav = navigation.getParent?.();
+
+  if (parentNav) {
+    parentNav.reset({
+      index: 0,
+      routes: [{ name: 'CreateProfile' }],
+    });
+    return;
+  }
+
+  navigation.reset({
+    index: 0,
+    routes: [{ name: 'CreateProfile' }],
+  });
+
+  return;
+}
+
     /**
      * Manual sign-in is allowed to continue to CreateProfile
      * if this confirmed user has not created a profile yet.

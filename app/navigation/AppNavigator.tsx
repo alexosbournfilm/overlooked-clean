@@ -241,40 +241,47 @@ export default function AppNavigator({
      * Profile is incomplete.
      */
     if (!profileComplete) {
-      const latestRoute = navigationRef.getCurrentRoute();
+  const latestRoute = navigationRef.getCurrentRoute();
 
-      if (G.__OVERLOOKED_PROFILE_JUST_COMPLETED__) {
-        resetToMainTabs();
-        return;
-      }
+  if (G.__OVERLOOKED_PROFILE_JUST_COMPLETED__) {
+    resetToMainTabs();
+    return;
+  }
 
-      /**
-       * Allowed cases:
-       * - fresh email confirmation
-       * - manual sign-in after confirmed email
-       */
-      if (createProfileAllowed) {
-        if (latestRoute?.name !== "CreateProfile") {
-          resetToCreateProfile();
-        }
+  /**
+   * CRITICAL FIX:
+   * If the app is already on CreateProfile, do NOT sign the user out.
+   *
+   * This prevents:
+   * CreateProfile flash → flag race → signOut → SignIn
+   */
+  if (latestRoute?.name === "CreateProfile") {
+    return;
+  }
 
-        return;
-      }
+  /**
+   * Allowed cases:
+   * - fresh email confirmation
+   * - manual sign-in after confirmed email
+   */
+  if (createProfileAllowed) {
+    resetToCreateProfile();
+    return;
+  }
 
-      /**
-       * Blocked case:
-       * - random restored incomplete session on cold app open
-       */
-      try {
-        await supabase.auth.signOut();
-      } catch {}
+  /**
+   * Blocked case:
+   * - random restored incomplete session on cold app open
+   *
+   * Only do this when the user is NOT already on CreateProfile.
+   */
+  try {
+    await supabase.auth.signOut();
+  } catch {}
 
-      if (latestRoute?.name !== "Auth") {
-        resetToAuth();
-      }
-
-      return;
-    }
+  resetToAuth();
+  return;
+}
 
     /**
      * Profile is complete. Now and only now clear create-profile permissions.
