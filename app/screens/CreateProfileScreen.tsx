@@ -60,37 +60,17 @@ type OnboardingStage = 'role' | 'city' | 'name' | 'image' | 'review';
 const G = globalThis as any;
 
 function resetHardToSignIn() {
-  G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-  G.__OVERLOOKED_RECOVERY__ = false;
-  G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
-  G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
-  G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-  G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+  console.log('🚫 CreateProfile wanted to reset to SignIn, but hard reset is disabled here.');
 
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    window.sessionStorage.removeItem('overlooked.allowCreateProfile');
-    window.sessionStorage.removeItem('overlooked.manualSignIn');
-    window.sessionStorage.removeItem('overlooked.createProfileAllowed');
-
-    if (window.location.pathname !== '/signin') {
-      window.location.replace('/signin');
-      return;
-    }
-  }
-
-  if (navigationRef.isReady()) {
-    navigationRef.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [
-          {
-            name: 'Auth',
-            params: { screen: 'SignIn' },
-          },
-        ],
-      })
-    );
-  }
+  /**
+   * IMPORTANT:
+   * Do NOT clear create-profile flags here.
+   * Do NOT sign out here.
+   * Do NOT navigation.reset here.
+   *
+   * AppNavigator/AuthProvider are responsible for invalid-session routing.
+   * CreateProfileScreen should not kick users out while auth is still settling.
+   */
 }
 
 function createProfileIsAllowedByFlow() {
@@ -316,34 +296,20 @@ export default function CreateProfileScreen() {
 
   const checkSession = async () => {
     /**
-     * CreateProfile is only allowed during:
-     * - fresh email confirmation
-     * - manual sign-in with confirmed email but missing profile
-     *
-     * If this screen is opened randomly, block it.
+     * CreateProfile should only be entered through allowed flows.
+     * But do not kick the user out from this screen.
+     * AppNavigator handles invalid routes.
      */
     if (!createProfileIsAllowedByFlow()) {
-      console.log('🚫 CreateProfile blocked: no allowed create-profile flow.');
-      allowedCreateProfileRef.current = false;
-      resetHardToSignIn();
-      return;
+      console.log('⚠️ CreateProfile opened without allowed flag. Waiting, not resetting.');
     }
 
-    /**
-     * Important:
-     * Supabase auth can take a moment to settle after email confirmation/manual sign-in.
-     * Do not immediately kick the user back to SignIn on the first failed getUser().
-     */
-    let user: any = null;
-    let lastError: any = null;
-
-    for (let attempt = 1; attempt <= 8; attempt += 1) {
+    for (let attempt = 1; attempt <= 20; attempt += 1) {
       const { data, error } = await supabase.auth.getUser();
 
       if (!mounted) return;
 
-      user = data?.user ?? null;
-      lastError = error;
+      const user = data?.user ?? null;
 
       if (user?.id) {
         console.log('✅ CreateProfile authenticated user found:', user.id);
@@ -351,20 +317,22 @@ export default function CreateProfileScreen() {
         return;
       }
 
-      console.log(`⏳ Waiting for CreateProfile auth session... attempt ${attempt}`);
+      console.log(
+        `⏳ CreateProfile waiting for auth session... attempt ${attempt}`,
+        error?.message || ''
+      );
 
-      await new Promise((resolve) => setTimeout(resolve, 350));
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
+    /**
+     * Still do NOT reset here.
+     * Show blocked/loading state if needed, but don't navigate away.
+     */
     if (!mounted) return;
 
-    console.log(
-      '🚫 CreateProfile blocked after retry: no authenticated user.',
-      lastError?.message || ''
-    );
-
-    allowedCreateProfileRef.current = false;
-    resetHardToSignIn();
+    console.log('⚠️ CreateProfile could not find user after retry. Staying put.');
+    allowedCreateProfileRef.current = true;
   };
 
   checkSession();
@@ -861,13 +829,8 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
       ? { style: styles.wrapper }
       : { behavior: 'padding' as const, style: styles.wrapper };
 
-  if (!allowedCreateProfileRef.current) {
-    return (
-      <View style={styles.blockedWrapper}>
-        <ActivityIndicator color={GOLD} />
-      </View>
-    );
-  }
+  // Do not block-render CreateProfile during auth settling.
+// AppNavigator is responsible for invalid routing.
 
   return (
     <Wrapper {...wrapperProps}>
