@@ -51,18 +51,15 @@ function getAllowCreateProfileFlow() {
 
   if (resetFlowActive) return false;
 
-  if (G.__OVERLOOKED_EMAIL_CONFIRM__ === true) {
-    return true;
-  }
-
-  if (G.__OVERLOOKED_MANUAL_SIGN_IN__ === true) {
-    return true;
-  }
+  if (G.__OVERLOOKED_EMAIL_CONFIRM__ === true) return true;
+  if (G.__OVERLOOKED_MANUAL_SIGN_IN__ === true) return true;
+  if (G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === true) return true;
 
   if (Platform.OS === "web" && typeof window !== "undefined") {
     return (
       window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
-      window.sessionStorage.getItem("overlooked.manualSignIn") === "true"
+      window.sessionStorage.getItem("overlooked.manualSignIn") === "true" ||
+      window.sessionStorage.getItem("overlooked.createProfileAllowed") === "true"
     );
   }
 
@@ -163,10 +160,12 @@ export default function AppNavigator({
     const createProfileAllowed =
   G.__OVERLOOKED_EMAIL_CONFIRM__ === true ||
   G.__OVERLOOKED_MANUAL_SIGN_IN__ === true ||
+  G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === true ||
   (Platform.OS === "web" &&
     typeof window !== "undefined" &&
     (window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
-      window.sessionStorage.getItem("overlooked.manualSignIn") === "true"));
+      window.sessionStorage.getItem("overlooked.manualSignIn") === "true" ||
+      window.sessionStorage.getItem("overlooked.createProfileAllowed") === "true"));
 
     const resetToAuth = () => {
       navigationRef.dispatch(
@@ -296,13 +295,17 @@ export default function AppNavigator({
       return;
     }
 
-    if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
-      G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-    }
+    if (profileComplete) {
+  G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+  G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+  G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
 
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      window.sessionStorage.removeItem("overlooked.allowCreateProfile");
-    }
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+    window.sessionStorage.removeItem("overlooked.manualSignIn");
+    window.sessionStorage.removeItem("overlooked.createProfileAllowed");
+  }
+}
 
     resetToMainTabs();
   };

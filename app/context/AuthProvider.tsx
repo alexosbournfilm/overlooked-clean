@@ -48,6 +48,10 @@ if (typeof G.__OVERLOOKED_RECOVERY__ === "undefined") {
   G.__OVERLOOKED_RECOVERY__ = false;
 }
 
+if (typeof G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === "undefined") {
+  G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+}
+
 if (typeof G.__OVERLOOKED_EMAIL_CONFIRM__ === "undefined") {
   G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
 }
@@ -298,10 +302,15 @@ function isCreateProfileAllowedNow() {
     return true;
   }
 
+  if (G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === true) {
+    return true;
+  }
+
   if (Platform.OS === "web" && typeof window !== "undefined") {
     return (
       window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
-      window.sessionStorage.getItem("overlooked.manualSignIn") === "true"
+      window.sessionStorage.getItem("overlooked.manualSignIn") === "true" ||
+      window.sessionStorage.getItem("overlooked.createProfileAllowed") === "true"
     );
   }
 
@@ -611,6 +620,12 @@ setUserId((prev) => (prev === uid ? prev : uid));
     G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
     G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
     G.__OVERLOOKED_EMAIL_CONFIRM__ = true;
+    G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = true;
+
+if (Platform.OS === "web" && typeof window !== "undefined") {
+  window.sessionStorage.setItem("overlooked.createProfileAllowed", "true");
+  window.sessionStorage.setItem("overlooked.allowCreateProfile", "true");
+}
 
     pendingCreateProfileRedirectRef.current = true;
   };
@@ -1068,8 +1083,15 @@ setUserId((prev) => (prev === uid ? prev : uid));
   const wasPasswordResetFlow = isPasswordResetFlowActive();
 
   G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-  G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-  pendingCreateProfileRedirectRef.current = false;
+G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+pendingCreateProfileRedirectRef.current = false;
+
+if (Platform.OS === "web" && typeof window !== "undefined") {
+  window.sessionStorage.removeItem("overlooked.manualSignIn");
+  window.sessionStorage.removeItem("overlooked.createProfileAllowed");
+  window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+}
 
   if (!wasPasswordResetFlow) {
     G.__OVERLOOKED_RECOVERY__ = false;
@@ -1237,10 +1259,17 @@ const setProfileCompleteFromSavedProfile = (savedProfile: MinimalProfile) => {
   pendingCreateProfileRedirectRef.current = false;
 
   G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-  G.__OVERLOOKED_RECOVERY__ = false;
-  G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
-  G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
-  G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+G.__OVERLOOKED_RECOVERY__ = false;
+G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+
+if (Platform.OS === "web" && typeof window !== "undefined") {
+  window.sessionStorage.removeItem("overlooked.manualSignIn");
+  window.sessionStorage.removeItem("overlooked.createProfileAllowed");
+  window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+}
 };
 
   const value = useMemo(

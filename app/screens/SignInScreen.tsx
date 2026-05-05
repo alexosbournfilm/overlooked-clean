@@ -648,10 +648,12 @@ export default function SignInScreen() {
    * need to know this was a real manual sign-in, not a random restored session.
    */
   (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = true;
+(globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = true;
 
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    window.sessionStorage.setItem('overlooked.manualSignIn', 'true');
-  }
+if (Platform.OS === 'web' && typeof window !== 'undefined') {
+  window.sessionStorage.setItem('overlooked.manualSignIn', 'true');
+  window.sessionStorage.setItem('overlooked.createProfileAllowed', 'true');
+}
 
   try {
     didFinishRedirectRef.current = false;
@@ -664,9 +666,11 @@ export default function SignInScreen() {
 
     if (error) {
       (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+      (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
 
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         window.sessionStorage.removeItem('overlooked.manualSignIn');
+        window.sessionStorage.removeItem('overlooked.createProfileAllowed');
       }
 
       showError('Login Error', error.message);
@@ -678,9 +682,11 @@ export default function SignInScreen() {
 
     if (!userId) {
       (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+      (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
 
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         window.sessionStorage.removeItem('overlooked.manualSignIn');
+        window.sessionStorage.removeItem('overlooked.createProfileAllowed');
       }
 
       showError('Error', 'Login failed. Please try again.');
@@ -691,9 +697,11 @@ export default function SignInScreen() {
 
     if (!isConfirmed) {
       (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+      (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
 
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         window.sessionStorage.removeItem('overlooked.manualSignIn');
+        window.sessionStorage.removeItem('overlooked.createProfileAllowed');
       }
 
       await supabase.auth.signOut();
@@ -717,9 +725,11 @@ export default function SignInScreen() {
     console.log('SignIn exception:', err);
 
     (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+    (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       window.sessionStorage.removeItem('overlooked.manualSignIn');
+      window.sessionStorage.removeItem('overlooked.createProfileAllowed');
     }
 
     showError('Login Error', 'Something went wrong. Please try again.');
