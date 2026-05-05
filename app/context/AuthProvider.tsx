@@ -290,28 +290,18 @@ function isPasswordResetFlowActive() {
 function isCreateProfileAllowedNow() {
   if (isPasswordResetFlowActive()) return false;
 
-  /**
-   * Fresh email confirmation link is allowed.
-   */
   if (G.__OVERLOOKED_EMAIL_CONFIRM__ === true) {
     return true;
   }
 
-  /**
-   * Manual sign-in is allowed.
-   * This is what lets a recently confirmed user sign in again
-   * and continue to CreateProfile if they have not made a profile yet.
-   */
   if (G.__OVERLOOKED_MANUAL_SIGN_IN__ === true) {
     return true;
   }
 
-  /**
-   * Web fallback for email confirmation flow.
-   */
   if (Platform.OS === "web" && typeof window !== "undefined") {
     return (
-      window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true"
+      window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
+      window.sessionStorage.getItem("overlooked.manualSignIn") === "true"
     );
   }
 

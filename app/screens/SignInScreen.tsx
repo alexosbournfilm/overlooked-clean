@@ -630,70 +630,103 @@ export default function SignInScreen() {
   };
 
   const handleSignIn = async () => {
-    const trimmedEmail = email.trim();
+  const trimmedEmail = email.trim();
 
-    if (!trimmedEmail || !password) {
-      showError('Sign in to continue', 'Enter your email and password.');
+  if (!trimmedEmail || !password) {
+    showError('Sign in to continue', 'Enter your email and password.');
+    return;
+  }
+
+  if (loading) return;
+  setLoading(true);
+
+  /**
+   * CRITICAL:
+   * This must be set BEFORE supabase.auth.signInWithPassword().
+   *
+   * Supabase fires SIGNED_IN immediately, and AuthProvider/AppNavigator
+   * need to know this was a real manual sign-in, not a random restored session.
+   */
+  (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = true;
+
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.sessionStorage.setItem('overlooked.manualSignIn', 'true');
+  }
+
+  try {
+    didFinishRedirectRef.current = false;
+    allowCreateProfileOnceRef.current = true;
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: trimmedEmail,
+      password,
+    });
+
+    if (error) {
+      (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.sessionStorage.removeItem('overlooked.manualSignIn');
+      }
+
+      showError('Login Error', error.message);
       return;
     }
 
-    if (loading) return;
-    setLoading(true);
+    const user = data?.user;
+    const userId = user?.id;
 
-    try {
-      didFinishRedirectRef.current = false;
-      allowCreateProfileOnceRef.current = false;
+    if (!userId) {
+      (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: trimmedEmail,
-        password,
-      });
-
-      if (error) {
-        showError('Login Error', error.message);
-        return;
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.sessionStorage.removeItem('overlooked.manualSignIn');
       }
 
-      const user = data?.user;
-      const userId = user?.id;
-
-      if (!userId) {
-        showError('Error', 'Login failed. Please try again.');
-        return;
-      }
-
-      const isConfirmed = !!user?.email_confirmed_at;
-      if (!isConfirmed) {
-        showError(
-          'Email not confirmed',
-          'Please confirm your email first, then try signing in again.'
-        );
-        return;
-      }
-
-      /**
- * Manual sign-in is allowed to continue to CreateProfile
- * if the user is confirmed but has not created a profile yet.
- *
- * This is safe because it only happens after the user actively presses Sign In.
- * It does NOT apply to random restored sessions on app startup.
- */
-(globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = true;
-
-const allowCreateProfile = true;
-allowCreateProfileOnceRef.current = true;
-
-await finishPostAuthRedirect({ allowCreateProfile });
-
-    
-    } catch (err: any) {
-      console.log('SignIn exception:', err);
-      showError('Login Error', 'Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
+      showError('Error', 'Login failed. Please try again.');
+      return;
     }
-  };
 
+    const isConfirmed = !!user?.email_confirmed_at;
+
+    if (!isConfirmed) {
+      (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.sessionStorage.removeItem('overlooked.manualSignIn');
+      }
+
+      await supabase.auth.signOut();
+
+      showError(
+        'Email not confirmed',
+        'Please confirm your email first, then try signing in again.'
+      );
+      return;
+    }
+
+    /**
+     * Manual sign-in is allowed to continue to CreateProfile
+     * if this confirmed user has not created a profile yet.
+     */
+    const allowCreateProfile = true;
+    allowCreateProfileOnceRef.current = true;
+
+    await finishPostAuthRedirect({ allowCreateProfile });
+  } catch (err: any) {
+    console.log('SignIn exception:', err);
+
+    (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.sessionStorage.removeItem('overlooked.manualSignIn');
+    }
+
+    showError('Login Error', 'Something went wrong. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
   const MODAL_SIDE_PAD = isPhone ? 14 : 18;
   const maxModalWidth = (cap: number) => Math.min(cap, Math.max(260, width - MODAL_SIDE_PAD * 2));
   const modalMaxHeight = Math.max(260, height - insets.top - insets.bottom - 24);

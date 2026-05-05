@@ -61,7 +61,8 @@ function getAllowCreateProfileFlow() {
 
   if (Platform.OS === "web" && typeof window !== "undefined") {
     return (
-      window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true"
+      window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
+      window.sessionStorage.getItem("overlooked.manualSignIn") === "true"
     );
   }
 
@@ -164,7 +165,8 @@ export default function AppNavigator({
   G.__OVERLOOKED_MANUAL_SIGN_IN__ === true ||
   (Platform.OS === "web" &&
     typeof window !== "undefined" &&
-    window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true");
+    (window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
+      window.sessionStorage.getItem("overlooked.manualSignIn") === "true"));
 
     const resetToAuth = () => {
       navigationRef.dispatch(
