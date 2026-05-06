@@ -116,6 +116,50 @@ function clearCreateProfileAllowedStorage() {
     window.sessionStorage.removeItem("overlooked.createProfileAllowed");
   }
 }
+function clearAllCreateProfileFlags() {
+  (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
+  (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+  (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+  (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+  (globalThis as any).__OVERLOOKED_CONFIRMING_EMAIL_ONLY__ = false;
+
+  clearCreateProfileAllowedStorage();
+}
+
+function markEmailConfirmationOnlyFlow() {
+  /**
+   * This means:
+   * Email confirmation link should ONLY send user to SignIn.
+   * It must NOT open CreateProfile automatically.
+   */
+  (globalThis as any).__OVERLOOKED_CONFIRMING_EMAIL_ONLY__ = true;
+
+  (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
+  (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+  (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+  (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+
+  clearCreateProfileAllowedStorage();
+}
+
+function sendToSignInNow() {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    try {
+      window.history.replaceState({}, document.title, window.location.origin + "/signin");
+    } catch {}
+
+    window.location.replace("/signin");
+    return;
+  }
+
+  setTimeout(() => {
+    try {
+      navigate("Auth" as never, { screen: "SignIn" } as never);
+    } catch (e) {
+      console.log("Navigate to SignIn skipped:", e);
+    }
+  }, 100);
+}
 
 function markPasswordResetFlow() {
   (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
@@ -150,6 +194,8 @@ function markSignupConfirmFlow() {
  */
 function isAllowedCreateProfileFlow() {
   const G = globalThis as any;
+
+  if (G.__OVERLOOKED_CONFIRMING_EMAIL_ONLY__ === true) return false;
 
   if (G.__OVERLOOKED_EMAIL_CONFIRM__ === true) return true;
   if (G.__OVERLOOKED_MANUAL_SIGN_IN__ === true) return true;
@@ -259,58 +305,28 @@ async function handleWebSignupHashImmediately() {
     return false;
   }
 
-  console.log("✅ Early web signup hash detected. Confirming email then going to SignIn.");
+  console.log("✅ Early web signup hash detected → SignIn only");
+
+  markEmailConfirmationOnlyFlow();
 
   try {
-    const { error } = await Promise.race([
-      supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      }),
-      new Promise<any>((resolve) =>
-        setTimeout(() => resolve({ error: null, timedOut: true }), 2500)
-      ),
-    ]);
-
-    if (error) {
-      console.log("Early setSession after confirmation failed:", error.message);
-    }
+    await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
   } catch (e) {
     console.log("Early setSession exception:", e);
   }
 
-  /**
-   * Clear local session so confirmation does not auto-open CreateProfile.
-   * The user will manually sign in, then missing profile will route to CreateProfile.
-   */
   try {
-    await Promise.race([
-      supabase.auth.signOut({ scope: "local" } as any),
-      new Promise((resolve) => setTimeout(resolve, 1200)),
-    ]);
+    await supabase.auth.signOut({ scope: "local" } as any);
   } catch (e) {
-    console.log("Early local sign out after confirmation skipped:", e);
+    console.log("Early local sign out skipped:", e);
   }
 
-  (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
-  (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-  (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
-  (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+  clearAllCreateProfileFlags();
 
-  clearCreateProfileAllowedStorage();
-
-  /**
-   * Important:
-   * Remove the token hash immediately.
-   * Then force /signin.
-   */
-  try {
-    window.history.replaceState({}, document.title, window.location.origin + "/signin");
-  } catch {}
-
-  setTimeout(() => {
-    window.location.replace("/signin");
-  }, 50);
+  sendToSignInNow();
 
   return true;
 }
@@ -351,160 +367,144 @@ export default function App() {
   }, []);
 
   const handleDeepLink = useCallback(async (url: string | null) => {
-    if (!url) return;
+  if (!url) return;
 
-    const lowerUrl = url.toLowerCase();
+  const lowerUrl = url.toLowerCase();
 
-    const isResetPasswordLink =
-      lowerUrl.includes("reset-password") ||
-      lowerUrl.includes("new-password") ||
-      lowerUrl.includes("newpassword") ||
-      lowerUrl.includes("type=recovery");
+  const isResetPasswordLink =
+    lowerUrl.includes("reset-password") ||
+    lowerUrl.includes("new-password") ||
+    lowerUrl.includes("newpassword") ||
+    lowerUrl.includes("type=recovery");
 
-    const {
-      code,
-      access_token,
-      refresh_token,
-      type,
-      error_description,
-      token_hash,
-    } = parseAuthParamsFromUrl(url);
+  const {
+    code,
+    access_token,
+    refresh_token,
+    type,
+    error_description,
+    token_hash,
+  } = parseAuthParamsFromUrl(url);
 
-    const isSupabaseAuthCallback =
-      !!code ||
-      !!access_token ||
-      !!refresh_token ||
-      !!token_hash ||
-      type === "recovery" ||
-      type === "signup" ||
-      type === "invite" ||
-      isResetPasswordLink;
+  const normalizedType = (type || "").toLowerCase();
 
-    if (!isSupabaseAuthCallback) return;
+  const isSignupLikeConfirmation =
+    normalizedType === "signup" ||
+    normalizedType === "signups" ||
+    normalizedType === "invite" ||
+    normalizedType.startsWith("signup") ||
+    (!!code && !isResetPasswordLink && normalizedType !== "recovery") ||
+    (!!access_token && !!refresh_token && normalizedType !== "recovery");
 
-    console.log("🔗 Supabase auth callback detected:", {
-      hasCode: !!code,
-      hasTokens: !!access_token || !!refresh_token,
-      hasTokenHash: !!token_hash,
-      type,
-      isResetPasswordLink,
-    });
+  const isSupabaseAuthCallback =
+    !!code ||
+    !!access_token ||
+    !!refresh_token ||
+    !!token_hash ||
+    normalizedType === "recovery" ||
+    normalizedType === "signup" ||
+    normalizedType === "signups" ||
+    normalizedType === "invite" ||
+    isResetPasswordLink;
 
-    if (error_description) {
-      console.error("Supabase auth callback error:", error_description);
-      return;
-    }
+  if (!isSupabaseAuthCallback) return;
 
-    /**
-     * Password reset must be handled ONLY by NewPassword.tsx.
-     * Do NOT exchange the recovery code here.
-     * Do NOT call setSession here.
-     */
-    if (isResetPasswordLink || type === "recovery") {
-      console.log("🔐 Reset password link detected → NewPassword owns this flow");
+  console.log("🔗 Supabase auth callback detected:", {
+    hasCode: !!code,
+    hasTokens: !!access_token || !!refresh_token,
+    hasTokenHash: !!token_hash,
+    type,
+    isResetPasswordLink,
+    isSignupLikeConfirmation,
+  });
 
-      (globalThis as any).__OVERLOOKED_RESET_URL__ = url;
-
-      markPasswordResetFlow();
-      setInitialAuthRouteName("SignIn");
-
-      setTimeout(() => {
-        try {
-          navigate("NewPassword" as never);
-        } catch (e) {
-          console.log("NewPassword navigation skipped:", e);
-        }
-      }, 300);
-
-      return;
-    }
-
-    /**
-     * Signup/email confirmation is allowed to create a session here.
-     * Password recovery is not.
-     */
-    if (code) {
-      const { error } = await supabase.auth.exchangeCodeForSession(url);
-
-      if (error) {
-        console.error("exchangeCodeForSession ERROR:", error.message);
-        return;
-      }
-
-      console.log("✅ Signup session exchanged from code");
-    }
-
-    if (access_token && refresh_token) {
-      const { error } = await supabase.auth.setSession({
-        access_token,
-        refresh_token,
-      });
-
-      if (error) {
-        console.error("setSession ERROR:", error.message);
-        return;
-      }
-
-      console.log("✅ Session restored from tokens");
-    }
-
-    const normalizedType = (type || "").toLowerCase();
-
-const isSignupLikeConfirmation =
-  normalizedType === "signup" ||
-  normalizedType === "signups" ||
-  normalizedType === "invite" ||
-  normalizedType.startsWith("signup") ||
-  (!!code && !isResetPasswordLink && normalizedType !== "recovery") ||
-  (!!access_token && !!refresh_token && normalizedType !== "recovery");
-    if (isSignupLikeConfirmation) {
-  console.log("✅ Signup/email confirmation link detected");
-
-  /**
-   * The email is confirmed after exchangeCodeForSession/setSession succeeds above.
-   * Now send the user back to SignIn.
-   *
-   * Important:
-   * We clear the temporary session and remove the token URL hash.
-   * The user can then manually sign in.
-   * If their profile is missing, SignIn will send them to CreateProfile.
-   */
-  (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
-  (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-  (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
-  (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
-
-  clearCreateProfileAllowedStorage();
-
-  try {
-    await supabase.auth.signOut({ scope: "local" } as any);
-  } catch (e) {
-    console.log("Local sign out after email confirmation skipped:", e);
-  }
-
-  setInitialAuthRouteName("SignIn");
-
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    window.history.replaceState({}, document.title, window.location.origin + "/signin");
-    window.location.replace("/signin");
+  if (error_description) {
+    console.error("Supabase auth callback error:", error_description);
+    sendToSignInNow();
     return;
   }
 
-  setTimeout(() => {
-    try {
-      navigate("Auth" as never, { screen: "SignIn" } as never);
-    } catch (e) {
-      console.log("Navigate to SignIn after confirmation skipped:", e);
-    }
-  }, 150);
+  if (isResetPasswordLink || normalizedType === "recovery") {
+    console.log("🔐 Reset password link detected → NewPassword owns this flow");
 
-  return;
-}
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      const clean = window.location.origin + window.location.pathname;
-      window.history.replaceState({}, document.title, clean);
+    (globalThis as any).__OVERLOOKED_RESET_URL__ = url;
+
+    markPasswordResetFlow();
+    setInitialAuthRouteName("SignIn");
+
+    setTimeout(() => {
+      try {
+        navigate("NewPassword" as never);
+      } catch (e) {
+        console.log("NewPassword navigation skipped:", e);
+      }
+    }, 300);
+
+    return;
+  }
+
+  /**
+   * IMPORTANT:
+   * Signup confirmation links should ONLY confirm the email,
+   * then send the user to SignIn.
+   *
+   * They must NOT enable CreateProfile automatically.
+   */
+  if (isSignupLikeConfirmation) {
+    console.log("✅ Signup confirmation link detected → confirm email, then SignIn only");
+
+    markEmailConfirmationOnlyFlow();
+    setInitialAuthRouteName("SignIn");
+
+    try {
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(url);
+
+        if (error) {
+          console.error("exchangeCodeForSession ERROR:", error.message);
+        } else {
+          console.log("✅ Confirmation code exchanged successfully");
+        }
+      }
+
+      if (access_token && refresh_token) {
+        const { error } = await supabase.auth.setSession({
+          access_token,
+          refresh_token,
+        });
+
+        if (error) {
+          console.error("setSession ERROR:", error.message);
+        } else {
+          console.log("✅ Confirmation session restored successfully");
+        }
+      }
+    } catch (e) {
+      console.log("Confirmation handling exception:", e);
     }
-  }, []);
+
+    /**
+     * Clear the temporary confirmation session locally.
+     * User must now manually sign in.
+     */
+    try {
+      await supabase.auth.signOut({ scope: "local" } as any);
+    } catch (e) {
+      console.log("Local sign out after confirmation skipped:", e);
+    }
+
+    clearAllCreateProfileFlags();
+    setInitialAuthRouteName("SignIn");
+
+    sendToSignInNow();
+    return;
+  }
+
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    const clean = window.location.origin + window.location.pathname;
+    window.history.replaceState({}, document.title, clean);
+  }
+}, []);
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -704,6 +704,19 @@ if (handledEarlySignupHash) {
         if (isPasswordResetFlow) {
           return;
         }
+
+        if ((globalThis as any).__OVERLOOKED_CONFIRMING_EMAIL_ONLY__ === true) {
+  console.log("✅ Confirmation-only auth event ignored:", event);
+
+  if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
+    try {
+      await supabase.auth.signOut({ scope: "local" } as any);
+    } catch {}
+  }
+
+  setInitialAuthRouteName("SignIn");
+  return;
+}
 
         /**
          * If Supabase restores an old incomplete session after app startup,
