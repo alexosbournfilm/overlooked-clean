@@ -1917,12 +1917,14 @@ return (
 
     <View style={[styles.webScrollShell, isMobileWeb && styles.webScrollShellMobileWeb]}>
       <ScrollView
-        style={[styles.scrollView, isMobileWeb && styles.scrollViewMobileWeb]}
-        contentContainerStyle={[styles.scroll, isMobileWeb && styles.scrollMobileWeb]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        bounces={false}
-      >
+  style={[styles.scrollView, isMobileWeb && styles.scrollViewMobileWeb]}
+  contentContainerStyle={[styles.scroll, isMobileWeb && styles.scrollMobileWeb]}
+  showsVerticalScrollIndicator={true}
+  keyboardShouldPersistTaps="handled"
+  bounces={Platform.OS !== "web"}
+  scrollEnabled
+  nestedScrollEnabled
+>
         <View
           style={[
             styles.pageWrap,
@@ -2668,13 +2670,23 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: CINEMA.bg,
+    ...(Platform.OS === "web"
+      ? ({
+          height: "100dvh",
+          maxHeight: "100dvh",
+          overflow: "hidden",
+        } as any)
+      : {}),
   },
 
   webScrollShell: {
     flex: 1,
+    width: "100%",
     ...(Platform.OS === "web"
       ? ({
           height: "100dvh",
+          maxHeight: "100dvh",
+          overflow: "hidden",
         } as any)
       : {}),
   },
@@ -2682,20 +2694,24 @@ const styles = StyleSheet.create({
   webScrollShellMobileWeb: {
     ...(Platform.OS === "web"
       ? ({
-          height: "auto",
-          overflow: "visible",
+          height: "100dvh",
+          maxHeight: "100dvh",
+          overflow: "hidden",
         } as any)
       : {}),
   },
 
   scrollView: {
     flex: 1,
+    width: "100%",
     ...(Platform.OS === "web"
       ? ({
-          height: "100dvh",
+          height: "100%",
+          maxHeight: "100%",
           overflowY: "auto",
           overflowX: "hidden",
           WebkitOverflowScrolling: "touch",
+          touchAction: "pan-y",
         } as any)
       : {}),
   },
@@ -2703,9 +2719,12 @@ const styles = StyleSheet.create({
   scrollViewMobileWeb: {
     ...(Platform.OS === "web"
       ? ({
-          height: "auto",
-          overflowY: "visible",
-          overflowX: "visible",
+          height: "100%",
+          maxHeight: "100%",
+          overflowY: "auto",
+          overflowX: "hidden",
+          WebkitOverflowScrolling: "touch",
+          touchAction: "pan-y",
         } as any)
       : {}),
   },
@@ -2721,7 +2740,8 @@ const styles = StyleSheet.create({
   scrollMobileWeb: {
     ...(Platform.OS === "web"
       ? ({
-          minHeight: "auto",
+          flexGrow: 1,
+          paddingBottom: 140,
         } as any)
       : {}),
   },
@@ -2740,16 +2760,16 @@ const styles = StyleSheet.create({
   },
 
   pageWrapPhone: {
-  paddingHorizontal: 14,
-  paddingTop: 14,
-},
+    paddingHorizontal: 14,
+    paddingTop: 14,
+  },
 
   topNavRow: {
-  marginBottom: 14,
-  marginTop: Platform.OS === "ios" ? 10 : 6,
-  flexDirection: "row",
-  alignItems: "center",
-},
+    marginBottom: 14,
+    marginTop: Platform.OS === "ios" ? 10 : 6,
+    flexDirection: "row",
+    alignItems: "center",
+  },
 
   backBtn: {
     minHeight: 44,
@@ -2828,16 +2848,16 @@ const styles = StyleSheet.create({
   },
 
   infoColumnWide: {
-  flex: 0.36,
-},
+    flex: 0.36,
+  },
 
   formColumn: {
     width: "100%",
   },
 
   formColumnWide: {
-  flex: 0.64,
-},
+    flex: 0.64,
+  },
 
   infoToggleCard: {
     backgroundColor: CINEMA.panel,
@@ -3428,26 +3448,26 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
 
- formFootnoteWrap: {
-  marginTop: 12,
-  alignItems: "center",
-},
+  formFootnoteWrap: {
+    marginTop: 12,
+    alignItems: "center",
+  },
 
-formFootnote: {
-  color: CINEMA.textDim,
-  fontSize: 13,
-  textAlign: "center",
-  lineHeight: 19,
-},
+  formFootnote: {
+    color: CINEMA.textDim,
+    fontSize: 13,
+    textAlign: "center",
+    lineHeight: 19,
+  },
 
-processingNote: {
-  color: CINEMA.brass,
-  fontSize: 13,
-  textAlign: "center",
-  lineHeight: 19,
-  marginTop: 8,
-  maxWidth: 520,
-},
+  processingNote: {
+    color: CINEMA.brass,
+    fontSize: 13,
+    textAlign: "center",
+    lineHeight: 19,
+    marginTop: 8,
+    maxWidth: 520,
+  },
 
   modalOverlay: {
     flex: 1,
