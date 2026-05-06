@@ -128,7 +128,7 @@ function base64ToUint8Array(base64: string) {
 
   return bytes;
 }
-
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 function withTimeout<T = any>(promise: PromiseLike<T>, ms = 15000): Promise<any> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -280,8 +280,10 @@ export default function CreateProfileScreen() {
   const [roleSearchModalVisible, setRoleSearchModalVisible] = useState(false);
   const [roleSearchTerm, setRoleSearchTerm] = useState('');
   const [roleItems, setRoleItems] = useState<DropdownOption[]>([]);
-  const [roleSearchItems, setRoleSearchItems] = useState<DropdownOption[]>([]);
-  const [isSearchingRoles, setIsSearchingRoles] = useState(false);
+const [roleSearchItems, setRoleSearchItems] = useState<DropdownOption[]>([]);
+const [isLoadingRoles, setIsLoadingRoles] = useState(false);
+const [isSearchingRoles, setIsSearchingRoles] = useState(false);
+const [roleLoadError, setRoleLoadError] = useState<string | null>(null);
 
   const [citySearchModalVisible, setCitySearchModalVisible] = useState(false);
   const [citySearchTerm, setCitySearchTerm] = useState('');
@@ -437,11 +439,18 @@ export default function CreateProfileScreen() {
   };
 
   const openRoleSelector = () => {
-    setRoleSearchTerm('');
-    setRoleSearchItems([]);
-    setIsSearchingRoles(false);
-    setRoleSearchModalVisible(true);
-  };
+  setRoleSearchTerm('');
+  setRoleSearchItems([]);
+  setRoleLoadError(null);
+  setIsSearchingRoles(false);
+  setRoleSearchModalVisible(true);
+
+  // Important on mobile:
+  // If the first role fetch failed or returned empty, retry when the modal opens.
+  if (roleItems.length === 0) {
+    fetchCreativeRoles();
+  }
+};
 
   const openCitySelector = () => {
     setCitySearchTerm('');
@@ -451,65 +460,141 @@ export default function CreateProfileScreen() {
   };
 
   const fetchCreativeRoles = async () => {
-    const { data, error } = await supabase.from('creative_roles').select('id, name').order('name');
+  if (isLoadingRoles) return;
 
-    if (error) {
-      console.error('Error fetching roles:', error.message);
+  setIsLoadingRoles(true);
+  setRoleLoadError(null);
+
+  let lastError: any = null;
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const { data, error } = await withTimeout(
+        supabase
+          .from('creative_roles')
+          .select('id, name')
+          .order('name', { ascending: true }),
+        9000
+      );
+
+      if (error) throw error;
+
+      const mapped = (data || [])
+        .filter((r: any) => r?.id && r?.name)
+        .map((r: any) => ({
+          label: r.name,
+          value: r.id,
+        }));
+
+      setRoleItems(mapped);
+      setRoleSearchItems(mapped);
+      setRoleLoadError(null);
+      setIsLoadingRoles(false);
       return;
+    } catch (err: any) {
+      lastError = err;
+      console.log(`Role load attempt ${attempt} failed:`, err?.message || err);
+      await sleep(700);
     }
+  }
 
-    if (data) {
-      setRoleItems(data.map((r) => ({ label: r.name, value: r.id })));
-    }
-  };
+  setIsLoadingRoles(false);
+  setRoleItems([]);
+  setRoleSearchItems([]);
+  setRoleLoadError(
+    lastError?.message || 'Could not load roles. Please check your connection and try again.'
+  );
+};
 
-  const fetchSearchRoles = useCallback(async (text: string) => {
+  const fetchSearchRoles = useCallback(
+  async (text: string) => {
     const q = text.trim();
     const reqId = ++roleSearchReq.current;
 
     if (!q) {
-      setRoleSearchItems([]);
+      setRoleSearchItems(roleItems);
       setIsSearchingRoles(false);
+      setRoleLoadError(null);
       return;
     }
 
+    /**
+     * Mobile reliability fix:
+     * Search the roles already loaded into memory first.
+     * This means the dropdown responds instantly and does not depend
+     * on a fresh Supabase request for every typed letter.
+     */
+    const localMatches = roleItems
+      .filter((item) => normalizeText(item.label).includes(normalizeText(q)))
+      .sort((a, b) => {
+        const aRank = rankMatch(a.label, q);
+        const bRank = rankMatch(b.label, q);
+
+        if (aRank !== bRank) return aRank - bRank;
+        return a.label.localeCompare(b.label);
+      });
+
+    setRoleSearchItems(localMatches);
+
+    if (localMatches.length > 0) {
+      setIsSearchingRoles(false);
+      setRoleLoadError(null);
+      return;
+    }
+
+    /**
+     * Backup search:
+     * Only ask Supabase if the local list has no matches.
+     */
     setIsSearchingRoles(true);
+    setRoleLoadError(null);
 
     try {
-      const { data, error } = await supabase
-        .from('creative_roles')
-        .select('id, name')
-        .ilike('name', `%${q}%`)
-        .limit(100);
+      const { data, error } = await withTimeout(
+        supabase
+          .from('creative_roles')
+          .select('id, name')
+          .ilike('name', `%${q}%`)
+          .order('name', { ascending: true })
+          .limit(100),
+        9000
+      );
 
       if (reqId !== roleSearchReq.current) return;
 
-      if (error) {
-        console.error('Role fetch error:', error.message);
-        setRoleSearchItems([]);
-        return;
-      }
+      if (error) throw error;
 
-      const mapped = (data || []).map((r) => ({
-        label: r.name,
-        value: r.id,
-      }));
+      const mapped = (data || [])
+        .filter((r: any) => r?.id && r?.name)
+        .map((r: any) => ({
+          label: r.name,
+          value: r.id,
+        }));
 
       const ordered = mapped.sort((a, b) => {
         const aRank = rankMatch(a.label, q);
         const bRank = rankMatch(b.label, q);
+
         if (aRank !== bRank) return aRank - bRank;
         return a.label.localeCompare(b.label);
       });
 
       setRoleSearchItems(ordered);
-    } catch (e) {
-      console.error('Role fetch fatal:', e);
-      if (reqId === roleSearchReq.current) setRoleSearchItems([]);
+    } catch (e: any) {
+      console.error('Role fetch fatal:', e?.message || e);
+
+      if (reqId === roleSearchReq.current) {
+        setRoleLoadError(e?.message || 'Role search is taking too long. Please try again.');
+        setRoleSearchItems([]);
+      }
     } finally {
-      if (reqId === roleSearchReq.current) setIsSearchingRoles(false);
+      if (reqId === roleSearchReq.current) {
+        setIsSearchingRoles(false);
+      }
     }
-  }, []);
+  },
+  [roleItems]
+);
 
   const getFlag = (countryCode: string) => {
     return countryCode
@@ -1287,43 +1372,60 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
             />
 
             <View style={styles.modalResultsArea}>
-              {isSearchingRoles ? (
-                <View style={styles.modalLoadingWrap}>
-                  <ActivityIndicator color={GOLD} />
-                </View>
-              ) : (
-                <FlatList
-                  data={roleSearchTerm.trim().length > 0 ? roleSearchItems : roleItems}
-                  keyExtractor={(item) => item.value.toString()}
-                  style={styles.resultsList}
-                  keyboardShouldPersistTaps="handled"
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={styles.listItem}
-                      onPress={() => {
-                        setMainRole(item.value);
-                        setMainRoleLabel(item.label);
-                        setRoleSearchModalVisible(false);
+  {isLoadingRoles || (isSearchingRoles && roleSearchItems.length === 0) ? (
+    <View style={styles.modalLoadingWrap}>
+      <ActivityIndicator color={GOLD} size="large" />
+      <Text style={styles.loadingText}>Loading roles...</Text>
+    </View>
+  ) : roleLoadError ? (
+    <View style={styles.modalLoadingWrap}>
+      <Text style={styles.emptyText}>{roleLoadError}</Text>
 
-                        if (stage === 'role') {
-                          animateStageChange('city', () => {
-                            setTimeout(() => {
-                              openCitySelector();
-                            }, 700);
-                          });
-                        }
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.listItemText}>{item.label}</Text>
-                    </TouchableOpacity>
-                  )}
-                  ListEmptyComponent={
-                    <Text style={styles.emptyText}>Start typing to search roles.</Text>
-                  }
-                />
-              )}
-            </View>
+      <TouchableOpacity
+        onPress={fetchCreativeRoles}
+        style={styles.retryButton}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.retryButtonText}>Try Again</Text>
+      </TouchableOpacity>
+    </View>
+  ) : (
+    <FlatList
+      data={roleSearchTerm.trim().length > 0 ? roleSearchItems : roleItems}
+      keyExtractor={(item) => item.value.toString()}
+      style={styles.resultsList}
+      keyboardShouldPersistTaps="handled"
+      renderItem={({ item }) => (
+        <TouchableOpacity
+          style={styles.listItem}
+          onPress={() => {
+            setMainRole(item.value);
+            setMainRoleLabel(item.label);
+            setRoleSearchModalVisible(false);
+
+            if (stage === 'role') {
+              animateStageChange('city', () => {
+                setTimeout(() => {
+                  openCitySelector();
+                }, 700);
+              });
+            }
+          }}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.listItemText}>{item.label}</Text>
+        </TouchableOpacity>
+      )}
+      ListEmptyComponent={
+        <Text style={styles.emptyText}>
+          {roleSearchTerm.trim().length > 0
+            ? 'No matching roles found. Try a broader search like “actor”, “editor”, or “director”.'
+            : 'Roles are loading. If nothing appears, tap Try Again.'}
+        </Text>
+      }
+    />
+  )}
+</View>
 
             <TouchableOpacity
               onPress={() => setRoleSearchModalVisible(false)}
@@ -1892,6 +1994,33 @@ submitStatusText: {
     fontFamily: SYSTEM_SANS,
     lineHeight: 18,
   },
+
+  loadingText: {
+  marginTop: 12,
+  color: TEXT_MUTED,
+  fontSize: 13,
+  fontFamily: SYSTEM_SANS,
+  textAlign: 'center',
+},
+
+retryButton: {
+  marginTop: 16,
+  backgroundColor: GOLD,
+  borderRadius: 999,
+  paddingVertical: 11,
+  paddingHorizontal: 18,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+retryButtonText: {
+  color: '#000',
+  fontSize: 12,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  textTransform: 'uppercase',
+  letterSpacing: 0.7,
+},
 
   closeModalButton: {
     marginTop: 16,
