@@ -696,75 +696,89 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
     } catch {}
 
     const appStateSub = AppState.addEventListener("change", async (state) => {
+  try {
+    if (state !== "active") return;
+
+    /**
+     * IMPORTANT WEB FIX:
+     * On web, switching browser tabs and coming back fires AppState "active".
+     * We do NOT want to reload session/profile or touch navigation on every tab focus.
+     *
+     * Manual refresh should be handled only by your own refresh buttons / triggerAppRefresh().
+     */
+    if (Platform.OS === "web") {
       try {
-        if (state === "active") {
-          try {
-            supabase.auth.startAutoRefresh();
-          } catch {}
+        supabase.auth.startAutoRefresh();
+      } catch {}
 
-          const activeUrl =
-            Platform.OS === "web" ? null : await Linking.getInitialURL();
+      return;
+    }
 
-          if (isRecoveryUrl(activeUrl)) {
-            markRecoveryMode();
-            tryNavigateToNewPassword();
-            return;
-          }
+    try {
+      supabase.auth.startAutoRefresh();
+    } catch {}
 
-          if (isEmailConfirmationUrl(activeUrl)) {
-            markEmailConfirmationMode();
-          }
+    const activeUrl = await Linking.getInitialURL();
 
-          const { data, error } = await withTimeout(
-            supabase.auth.getSession(),
-            8000
-          );
+    if (isRecoveryUrl(activeUrl)) {
+      markRecoveryMode();
+      tryNavigateToNewPassword();
+      return;
+    }
 
-          if (error) {
-            if (isInvalidRefreshTokenError(error)) {
-              await clearPersistedAuthSession();
-              clearLocalAuthState();
-              return;
-            }
+    if (isEmailConfirmationUrl(activeUrl)) {
+      markEmailConfirmationMode();
+    }
 
-            console.warn(
-              "AuthProvider resume session check error:",
-              error.message
-            );
-            return;
-          }
+    const { data, error } = await withTimeout(
+      supabase.auth.getSession(),
+      8000
+    );
 
-          const resumedUid = data?.session?.user?.id ?? null;
-
-          if (resumedUid) {
-            if (isPasswordResetFlowActive()) {
-              console.log("🔐 Resume found reset session; keeping it out of normal auth.");
-              return;
-            }
-
-            latestAuthUserIdRef.current = resumedUid;
-            setUserId((prev) => (prev === resumedUid ? prev : resumedUid));
-
-            await loadProfile(resumedUid, G.__OVERLOOKED_EMAIL_CONFIRM__);
-
-           if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
-  pendingCreateProfileRedirectRef.current = true;
-  void tryNavigateToCreateProfile();
-}
-          }
-        }
-      } catch (e: any) {
-        console.warn(
-          "AuthProvider AppState handler error:",
-          e?.message || String(e)
-        );
-
-        if (!ready && mounted) {
-          authBootstrappedRef.current = true;
-          setReady(true);
-        }
+    if (error) {
+      if (isInvalidRefreshTokenError(error)) {
+        await clearPersistedAuthSession();
+        clearLocalAuthState();
+        return;
       }
-    });
+
+      console.warn(
+        "AuthProvider resume session check error:",
+        error.message
+      );
+      return;
+    }
+
+    const resumedUid = data?.session?.user?.id ?? null;
+
+    if (resumedUid) {
+      if (isPasswordResetFlowActive()) {
+        console.log("🔐 Resume found reset session; keeping it out of normal auth.");
+        return;
+      }
+
+      latestAuthUserIdRef.current = resumedUid;
+      setUserId((prev) => (prev === resumedUid ? prev : resumedUid));
+
+      await loadProfile(resumedUid, G.__OVERLOOKED_EMAIL_CONFIRM__);
+
+      if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
+        pendingCreateProfileRedirectRef.current = true;
+        void tryNavigateToCreateProfile();
+      }
+    }
+  } catch (e: any) {
+    console.warn(
+      "AuthProvider AppState handler error:",
+      e?.message || String(e)
+    );
+
+    if (!ready && mounted) {
+      authBootstrappedRef.current = true;
+      setReady(true);
+    }
+  }
+});
 
     const init = async () => {
       try {
@@ -977,6 +991,18 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log("Auth event →", event);
+
+        if (Platform.OS === "web" && event === "TOKEN_REFRESHED") {
+  const refreshedUid = session?.user?.id ?? null;
+
+  /**
+   * Supabase can refresh tokens when the browser tab becomes active again.
+   * If it is the same logged-in user, do not reload profile or touch navigation.
+   */
+  if (refreshedUid && refreshedUid === latestAuthUserIdRef.current) {
+    return;
+  }
+}
 
         if (event === "PASSWORD_RECOVERY") {
           const initialUrl =

@@ -36,7 +36,7 @@ import { subscribeChatBadgeRefresh } from '../lib/chatBadgeEvents';
 import { SettingsModalProvider } from '../context/SettingsModalContext';
 import SettingsButton from '../../components/SettingsButton';
 import SettingsModal from '../../components/SettingsModal';
-import { AppRefreshProvider } from '../context/AppRefreshContext';
+
 
 import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 import { registerAndSavePushToken } from '../lib/pushRegistration';
@@ -1895,99 +1895,96 @@ useEffect(() => {
 );
 
   return (
-  <AppRefreshProvider>
-    <SettingsModalProvider>
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: DARK_BG,
-          overflow: 'hidden',
-          position: 'relative',
-        }}
+  <SettingsModalProvider>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: DARK_BG,
+        overflow: 'hidden',
+        position: 'relative',
+      }}
+    >
+      <SafeAreaView
+        style={[
+          styles.safeArea,
+          { paddingTop: contentTopPadding },
+        ]}
+        edges={['left', 'right', 'bottom']}
       >
-       
+        <Tab.Navigator
+          screenOptions={screenOptions}
+          detachInactiveScreens={Platform.OS === 'web' ? false : true}
+          backBehavior="history"
+        >
+          <Tab.Screen name="Featured" component={FeaturedWrapped} />
+          <Tab.Screen name="Workshop" component={WorkshopWrapped} />
+          <Tab.Screen name="Challenge" component={ChallengeWrapped} />
+          <Tab.Screen name="Location" component={LocationWrapped} />
+          <Tab.Screen name="Jobs" component={JobsWrapped} />
 
-        <SafeAreaView
-  style={[
-    styles.safeArea,
-    { paddingTop: contentTopPadding },
-  ]}
-  edges={['left', 'right', 'bottom']}
->
-          <Tab.Navigator
-  screenOptions={screenOptions}
-  detachInactiveScreens={true}
->
-            <Tab.Screen name="Featured" component={FeaturedWrapped} />
-            <Tab.Screen name="Workshop" component={WorkshopWrapped} />
-            <Tab.Screen name="Challenge" component={ChallengeWrapped} />
-            <Tab.Screen name="Location" component={LocationWrapped} />
-            <Tab.Screen name="Jobs" component={JobsWrapped} />
+          <Tab.Screen
+            name="Chats"
+            component={ChatsWrapped}
+            options={{
+              unmountOnBlur: false,
+            }}
+          />
 
-            <Tab.Screen
-  name="Chats"
-  component={ChatsWrapped}
-  options={{
-    unmountOnBlur: false,
-  }}
-/>
+          <Tab.Screen
+            name="Profile"
+            component={ProfileWrapped}
+            listeners={({ navigation }) => ({
+              tabPress: () => {
+                navigation.navigate('Profile', {
+                  userId: undefined,
+                  user: undefined,
+                });
+              },
+            })}
+          />
+        </Tab.Navigator>
+      </SafeAreaView>
 
-<Tab.Screen
-  name="Profile"
-  component={ProfileWrapped}
-  listeners={({ navigation }) => ({
-    tabPress: () => {
-      navigation.navigate('Profile', {
-        userId: undefined,
-        user: undefined,
-      });
-    },
-  })}
-/>
+      {Platform.OS === 'web' ? (
+        <WebTopBar
+          onOpenUpload={handleOpenUpload}
+          onOpenLeaderboard={() => setShowLeaderboard(true)}
+        />
+      ) : (
+        <Animated.View
+          pointerEvents={shouldHideTopBar ? 'none' : 'auto'}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 99999,
+            elevation: 99999,
+            transform: [{ translateY: topBarTranslateY }],
+          }}
+        >
+          <TopBar
+            topOffset={topOffset}
+            navHeight={NAV_HEIGHT}
+            topInset={insets.top}
+            onOpenUpload={handleOpenUpload}
+            onOpenLeaderboard={() => {
+              setShowLeaderboard(true);
+            }}
+          />
+        </Animated.View>
+      )}
 
-            
-          </Tab.Navigator>
-        </SafeAreaView>
-         {Platform.OS === 'web' ? (
-  <WebTopBar
-    onOpenUpload={handleOpenUpload}
-    onOpenLeaderboard={() => setShowLeaderboard(true)}
-  />
-) : (
-  <Animated.View
-  pointerEvents={shouldHideTopBar ? 'none' : 'auto'}
-  style={{
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 99999,
-    elevation: 99999,
-    transform: [{ translateY: topBarTranslateY }],
-  }}
->
-  <TopBar
-    topOffset={topOffset}
-    navHeight={NAV_HEIGHT}
-    topInset={insets.top}
-    onOpenUpload={handleOpenUpload}
-    onOpenLeaderboard={() => {
-      setShowLeaderboard(true);
-    }}
-  />
-</Animated.View>
-)}
+      <SettingsModal />
 
-        <SettingsModal />
-        {showLeaderboard && (
-  <LeaderboardModal
-    visible={showLeaderboard}
-    onClose={() => setShowLeaderboard(false)}
-  />
-)}
-            </View>
-    </SettingsModalProvider>
-  </AppRefreshProvider>
+      {showLeaderboard && (
+        <LeaderboardModal
+          visible={showLeaderboard}
+          onClose={() => setShowLeaderboard(false)}
+        />
+      )}
+    </View>
+  </SettingsModalProvider>
 );
 }
 
