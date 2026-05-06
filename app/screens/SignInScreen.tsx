@@ -349,63 +349,52 @@ export default function SignInScreen() {
   );
 
   if (!profileComplete) {
-    const isPasswordResetFlow =
-      (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
-      (globalThis as any).__OVERLOOKED_RECOVERY__ ||
-      (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
+  const isPasswordResetFlow =
+    (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+    (globalThis as any).__OVERLOOKED_RECOVERY__ ||
+    (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
 
-    if (isPasswordResetFlow) {
-      await supabase.auth.signOut();
-      allowCreateProfileOnceRef.current = false;
-      didFinishRedirectRef.current = false;
-
-      showError(
-        'Password reset complete',
-        'Please sign in again with your new password.'
-      );
-      return;
-    }
-
-    // IMPORTANT:
-    // Only go to CreateProfile after a real fresh signup confirmation.
-    // If the app opens with an old/incomplete saved session, sign out and stay on SignIn.
-    if (!allowCreateProfile) {
-      console.log(
-        'Incomplete profile found without fresh signup confirmation. Signing out and staying on SignIn.'
-      );
-
-      await supabase.auth.signOut();
-      allowCreateProfileOnceRef.current = false;
-      didFinishRedirectRef.current = false;
-
-      return;
-    }
-
+  if (isPasswordResetFlow) {
+    await supabase.auth.signOut();
     allowCreateProfileOnceRef.current = false;
+    didFinishRedirectRef.current = false;
 
-    try {
-      const parentNav = navigation.getParent?.();
+    showError(
+      'Password reset complete',
+      'Please sign in again with your new password.'
+    );
+    return;
+  }
 
-      if (parentNav) {
-        parentNav.reset({
-          index: 0,
-          routes: [{ name: 'CreateProfile' }],
-        });
-        return;
-      }
+  /**
+   * FIX:
+   * Confirmed signed-in users with no profile should always go to CreateProfile.
+   */
+  allowCreateProfileOnceRef.current = false;
 
-      navigation.reset({
+  try {
+    const parentNav = navigation.getParent?.();
+
+    if (parentNav) {
+      parentNav.reset({
         index: 0,
         routes: [{ name: 'CreateProfile' }],
       });
-    } catch (e) {
-      console.log('CreateProfile navigation error:', e);
-      didFinishRedirectRef.current = false;
-      showError('Navigation Error', 'Could not open profile setup.');
+      return;
     }
 
-    return;
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'CreateProfile' }],
+    });
+  } catch (e) {
+    console.log('CreateProfile navigation error:', e);
+    didFinishRedirectRef.current = false;
+    showError('Navigation Error', 'Could not open profile setup.');
   }
+
+  return;
+}
 
   // Profile is complete, so the user is allowed inside the app.
   try {

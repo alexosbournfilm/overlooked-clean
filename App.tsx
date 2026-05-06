@@ -640,37 +640,25 @@ if (handledEarlySignupHash) {
          * - durable create-profile allowed flag
          */
         if (session && !isPasswordResetFlow) {
-          const profileComplete = await isCurrentUserProfileComplete(
-            session.user.id
-          );
+  try {
+    if (Platform.OS !== "web") {
+      await SecureStore.setItemAsync(
+        "supabaseSession",
+        JSON.stringify(session)
+      );
+    }
+  } catch {}
 
-          if (!profileComplete && !isCreateProfileAllowedFlow) {
-            await forceSignInForIncompleteProfile(
-              "cold app open with stale incomplete session"
-            );
-            setInitialAuthRouteName("SignIn");
-          } else {
-            try {
-              if (Platform.OS !== "web") {
-                await SecureStore.setItemAsync(
-                  "supabaseSession",
-                  JSON.stringify(session)
-                );
-              }
-            } catch {}
+  if (Platform.OS !== "web") {
+    savePushTokenForUser(session.user.id).catch((err) => {
+      console.log("Push token save skipped:", err?.message || err);
+    });
+  }
 
-            if (Platform.OS !== "web") {
-              savePushTokenForUser(session.user.id).catch((err) => {
-                console.log("Push token save skipped:", err?.message || err);
-              });
-            }
-
-            setInitialAuthRouteName("SignIn");
-          }
-        } else {
-          setInitialAuthRouteName("SignIn");
-        }
-
+  setInitialAuthRouteName("SignIn");
+} else {
+  setInitialAuthRouteName("SignIn");
+}
         linkSub = Linking.addEventListener("url", async (ev) => {
           await handleDeepLink(ev.url);
         });
@@ -710,31 +698,13 @@ if (handledEarlySignupHash) {
          * kill it only when it is NOT a valid CreateProfile flow.
          */
         if (
-          session?.user?.id &&
-          (event === "SIGNED_IN" ||
-            event === "INITIAL_SESSION" ||
-            event === "TOKEN_REFRESHED")
-        ) {
-          const isCreateProfileAllowedFlow = isAllowedCreateProfileFlow();
-          const profileComplete = await isCurrentUserProfileComplete(session.user.id);
-
-          if (!profileComplete && !isCreateProfileAllowedFlow) {
-            console.log("🚨 APP.TSX SIGNING OUT INCOMPLETE PROFILE", {
-              event,
-              allowedCreateProfile: isCreateProfileAllowedFlow,
-              emailConfirm: (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__,
-              manualSignIn: (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__,
-              createAllowed: (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__,
-            });
-
-            await forceSignInForIncompleteProfile(
-              `auth state ${event} with incomplete profile`
-            );
-
-            setInitialAuthRouteName("SignIn");
-            return;
-          }
-        }
+  session?.user?.id &&
+  (event === "SIGNED_IN" ||
+    event === "INITIAL_SESSION" ||
+    event === "TOKEN_REFRESHED")
+) {
+  console.log("✅ Auth session active:", event);
+}
 
         if (
           Platform.OS !== "web" &&

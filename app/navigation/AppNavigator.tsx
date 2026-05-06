@@ -51,15 +51,13 @@ function getAllowCreateProfileFlow() {
 
   if (resetFlowActive) return false;
 
-  /**
-   * Email confirmation must NOT allow CreateProfile.
-   * Only manual sign-in can.
-   */
+  if (G.__OVERLOOKED_EMAIL_CONFIRM__ === true) return true;
   if (G.__OVERLOOKED_MANUAL_SIGN_IN__ === true) return true;
   if (G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === true) return true;
 
   if (Platform.OS === "web" && typeof window !== "undefined") {
     return (
+      window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
       window.sessionStorage.getItem("overlooked.manualSignIn") === "true" ||
       window.sessionStorage.getItem("overlooked.createProfileAllowed") === "true"
     );
@@ -160,12 +158,14 @@ export default function AppNavigator({
     const resetDone = G.__OVERLOOKED_PASSWORD_RESET_DONE__ === true;
 
     const createProfileAllowed =
-  G.__OVERLOOKED_MANUAL_SIGN_IN__ === true ||
-  G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === true ||
-  (Platform.OS === "web" &&
-    typeof window !== "undefined" &&
-    (window.sessionStorage.getItem("overlooked.manualSignIn") === "true" ||
-      window.sessionStorage.getItem("overlooked.createProfileAllowed") === "true"));
+      G.__OVERLOOKED_EMAIL_CONFIRM__ === true ||
+      G.__OVERLOOKED_MANUAL_SIGN_IN__ === true ||
+      G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === true ||
+      (Platform.OS === "web" &&
+        typeof window !== "undefined" &&
+        (window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
+          window.sessionStorage.getItem("overlooked.manualSignIn") === "true" ||
+          window.sessionStorage.getItem("overlooked.createProfileAllowed") === "true"));
 
     const resetToAuth = () => {
       navigationRef.dispatch(
@@ -248,39 +248,16 @@ export default function AppNavigator({
     return;
   }
 
-  /**
-   * CRITICAL FIX:
-   * If the app is already on CreateProfile, do NOT sign the user out.
-   *
-   * This prevents:
-   * CreateProfile flash → flag race → signOut → SignIn
-   */
   if (latestRoute?.name === "CreateProfile") {
     return;
   }
 
   /**
- * Allowed case:
- * - manual sign-in after confirmed email
- *
- * Email confirmation alone must stay on SignIn.
- */
-  if (createProfileAllowed) {
-    resetToCreateProfile();
-    return;
-  }
-
-  /**
-   * Blocked case:
-   * - random restored incomplete session on cold app open
-   *
-   * Only do this when the user is NOT already on CreateProfile.
+   * FIX:
+   * A signed-in confirmed user with no profile should go to CreateProfile.
+   * Do NOT sign them out here.
    */
-  try {
-    await supabase.auth.signOut();
-  } catch {}
-
-  resetToAuth();
+  resetToCreateProfile();
   return;
 }
 

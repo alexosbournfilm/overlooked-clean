@@ -52,7 +52,7 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const emailRedirectTo = useMemo(() => {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    return window.location.origin;
+    return `${window.location.origin}/signin`;
   }
 
   return 'overlooked://callback';
@@ -435,10 +435,10 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
                 style={styles.emailModalPrimary}
                 onPress={() => {
                   setEmailSentVisible(false);
-                  navigation.navigate('CheckEmail', { email: emailSentTo });
+                  navigation.navigate('SignIn');
                 }}
               >
-                <Text style={styles.emailModalPrimaryText}>Go to Check Email</Text>
+                <Text style={styles.emailModalPrimaryText}>Go to Sign In</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
