@@ -131,12 +131,12 @@ function markPasswordResetFlow() {
 function markSignupConfirmFlow() {
   (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
   (globalThis as any).__OVERLOOKED_RECOVERY__ = false;
-  (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = true;
+  (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
   (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-  (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = true;
+  (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
   (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
 
-  setCreateProfileAllowedStorage();
+  clearCreateProfileAllowedStorage();
 }
 
 /**
