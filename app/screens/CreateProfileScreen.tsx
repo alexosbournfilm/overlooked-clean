@@ -871,37 +871,21 @@ const userId = user?.id;
 if (!userId) {
   console.log('CreateProfile submit auth missing:', lastAuthError?.message || lastAuthError);
 
-  setSubmitStatus(null);
-
-  Alert.alert(
-    'Please sign in again',
-    'Your email is confirmed, but your session is missing. Sign in again with this account and you will be sent back to Create Profile.'
+  setSubmitStatus(
+    'Your account session is still loading. Please wait a moment, then press Confirm & Enter again.'
   );
 
-  G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-  G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-  G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+  Alert.alert(
+    'Session still loading',
+    'Your account is not fully ready yet. Please wait a few seconds, then press Confirm & Enter again.'
+  );
 
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    window.sessionStorage.removeItem('overlooked.allowCreateProfile');
-    window.sessionStorage.removeItem('overlooked.manualSignIn');
-    window.sessionStorage.removeItem('overlooked.createProfileAllowed');
-  }
-
-  if (navigationRef.isReady()) {
-    navigationRef.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [
-          {
-            name: 'Auth',
-            params: { screen: 'SignIn' },
-          },
-        ],
-      })
-    );
-  }
-
+  /**
+   * Important:
+   * Do NOT clear create-profile flags here.
+   * Do NOT send the user back to Sign In here.
+   * This was causing the broken flow on web.
+   */
   return;
 }
     let finalAvatarUrl = imageUrl ? imageUrl.split('?')[0] : null;
