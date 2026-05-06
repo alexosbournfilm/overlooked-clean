@@ -431,45 +431,97 @@ export default function SignInScreen() {
 };
 
   const handleAuthDeepLink = async (url: string) => {
-    try {
-      if (!url || !url.includes('code=')) return;
+  try {
+    if (!url || !url.includes('code=')) return;
 
-      if (deepLinkHandledRef.current === url) return;
-      deepLinkHandledRef.current = url;
+    if (deepLinkHandledRef.current === url) return;
+    deepLinkHandledRef.current = url;
 
-      const authType = parseAuthTypeFromUrl(url);
+    const authType = parseAuthTypeFromUrl(url);
 
-      const { error } = await supabase.auth.exchangeCodeForSession(url);
+    /**
+     * IMPORTANT:
+     * Email confirmation links create a temporary Supabase session.
+     * We DO NOT want that session to automatically enter CreateProfile.
+     */
+    (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+    (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+    (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = true;
 
-      if (error) {
-        console.log('exchangeCodeForSession error:', error);
-        showError(
-          'Email Confirmation',
-          'Could not finish email confirmation. Please open the newest confirmation email link again.'
-        );
-        return;
-      }
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.sessionStorage.removeItem('overlooked.manualSignIn');
+      window.sessionStorage.removeItem('overlooked.createProfileAllowed');
+    }
 
-      const { data: userData } = await supabase.auth.getUser();
-      const signedInUser = userData?.user;
+    const { error } = await supabase.auth.exchangeCodeForSession(url);
 
-      const allowCreateProfile =
-  authType === 'signup' ||
-  authType === 'email_change' ||
-  Boolean(signedInUser && isFreshlyConfirmedUser(signedInUser));
+    if (error) {
+      console.log('exchangeCodeForSession error:', error);
+      showError(
+        'Email Confirmation',
+        'Could not finish email confirmation. Please open the newest confirmation email link again.'
+      );
+      return;
+    }
 
-      allowCreateProfileOnceRef.current = allowCreateProfile;
+    /**
+     * CRITICAL FIX:
+     * After confirming the email, immediately sign out.
+     * This makes native mobile behave like web:
+     * the user is returned to Sign In and must manually sign in.
+     */
+    if (authType === 'signup' || authType === 'email_change') {
+      await supabase.auth.signOut();
+
+      allowCreateProfileOnceRef.current = false;
+      didFinishRedirectRef.current = false;
+
+      (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+      (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+      (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
 
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         const clean = window.location.origin + window.location.pathname;
         window.history.replaceState({}, document.title, clean);
+
+        window.sessionStorage.removeItem('overlooked.manualSignIn');
+        window.sessionStorage.removeItem('overlooked.createProfileAllowed');
       }
 
-      await finishPostAuthRedirect({ allowCreateProfile });
-    } catch (e) {
-      console.log('handleAuthDeepLink exception:', e);
+      try {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'SignIn' }],
+        });
+      } catch (e) {
+        console.log('SignIn reset after confirmation error:', e);
+      }
+
+      showError(
+        'Email confirmed',
+        'Your email has been confirmed. Please sign in to continue.'
+      );
+
+      return;
     }
-  };
+
+    /**
+     * Password reset / recovery flows can still continue normally
+     * if you use them elsewhere.
+     */
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const clean = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, clean);
+    }
+
+    await supabase.auth.signOut();
+
+    allowCreateProfileOnceRef.current = false;
+    didFinishRedirectRef.current = false;
+  } catch (e) {
+    console.log('handleAuthDeepLink exception:', e);
+  }
+};
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
@@ -490,11 +542,21 @@ export default function SignInScreen() {
         const { data: refreshedSessionData } = await supabase.auth.getSession();
         if (!mounted) return;
 
-        if (refreshedSessionData?.session?.user && !didFinishRedirectRef.current) {
-          await finishPostAuthRedirect({
-            allowCreateProfile: allowCreateProfileOnceRef.current,
-          });
-        }
+        const isManualSignIn =
+  (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ === true ||
+  (Platform.OS === 'web' &&
+    typeof window !== 'undefined' &&
+    window.sessionStorage.getItem('overlooked.manualSignIn') === 'true');
+
+if (
+  refreshedSessionData?.session?.user &&
+  !didFinishRedirectRef.current &&
+  isManualSignIn
+) {
+  await finishPostAuthRedirect({
+    allowCreateProfile: allowCreateProfileOnceRef.current,
+  });
+}
 
         const sub = Linking.addEventListener('url', (event) => {
           void handleAuthDeepLink(event.url);
