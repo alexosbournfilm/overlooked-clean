@@ -88,7 +88,8 @@ const GUN_PREVIEW_MP3 =
   'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/gun%20preview.mp3';
 
 /* ✅ card sizing */
-const WORKSHOP_CARD_MIN_HEIGHT = 196;
+const WORKSHOP_CARD_MIN_HEIGHT = 208;
+const WORKSHOP_WEB_CARD_HEIGHT = 230;
 
 /* ------------------------------- fonts --------------------------------- */
 const SYSTEM_SANS = Platform.select({
@@ -122,6 +123,8 @@ type UserProfile = {
   tier: UserTier;
 };
 
+type WorkshopFilter = 'all' | 'luts' | 'sound';
+
 /* --------------------------- shimmer component -------------------------- */
 const ShimmerThumb: React.FC<{ size: number }> = ({ size }) => {
   const pulse = useRef(new Animated.Value(0)).current;
@@ -143,7 +146,9 @@ const ShimmerThumb: React.FC<{ size: number }> = ({ size }) => {
         }),
       ])
     );
+
     anim.start();
+
     return () => anim.stop();
   }, [pulse]);
 
@@ -158,7 +163,7 @@ const ShimmerThumb: React.FC<{ size: number }> = ({ size }) => {
   });
 
   return (
-    <View style={[styles.thumbPlaceholder, { height: size, borderRadius: 14 }]}>
+    <View style={[styles.thumbPlaceholder, { width: size, height: size, borderRadius: 16 }]}>
       <Ionicons name="film-outline" size={22} color={GOLD} />
       <Text style={styles.thumbPlaceholderText}>Preview</Text>
 
@@ -184,20 +189,25 @@ const IconThumb: React.FC<{ icon: keyof typeof Ionicons.glyphMap; label?: string
 }) => {
   return (
     <LinearGradient
-      colors={['#121212', '#0B0B0B']}
+      colors={['#151515', '#080808']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={styles.iconThumb}
     >
       <View style={styles.iconThumbGlow} />
-      <View style={styles.iconThumbInner}>
-        <Ionicons name={icon} size={28} color={GOLD} />
+
+      <View style={styles.iconThumbCenter}>
+        <View style={styles.iconThumbInner}>
+          <Ionicons name={icon} size={24} color={GOLD} style={styles.iconThumbIcon} />
+        </View>
+
+        <Text style={styles.iconThumbLabel} numberOfLines={1}>
+          {label || 'AUDIO'}
+        </Text>
       </View>
-      <Text style={styles.iconThumbLabel}>{label || 'AUDIO'}</Text>
     </LinearGradient>
   );
 };
-
 /* ---------------------- web thumbs --------------------- */
 const ThumbMedia: React.FC<{ uri: string }> = ({ uri }) => {
   if (IS_WEB) {
@@ -208,7 +218,7 @@ const ThumbMedia: React.FC<{ uri: string }> = ({ uri }) => {
           {
             width: 88,
             height: 88,
-            borderRadius: 14,
+            borderRadius: 16,
             objectFit: 'cover',
             display: 'block',
           } as any
@@ -239,6 +249,7 @@ const WorkshopScreen: React.FC = () => {
       } else {
         navigation.navigate('Auth', { screen: 'SignUp' });
       }
+
       return;
     }
 
@@ -260,6 +271,8 @@ const WorkshopScreen: React.FC = () => {
 
   const [lutProducts, setLutProducts] = useState<WorkshopProduct[]>([]);
   const [soundProducts, setSoundProducts] = useState<WorkshopProduct[]>([]);
+
+  const [activeFilter, setActiveFilter] = useState<WorkshopFilter>('all');
 
   const [purchases, setPurchases] = useState<WorkshopPurchase[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -292,9 +305,22 @@ const WorkshopScreen: React.FC = () => {
     return 1;
   }, [SCREEN_W]);
 
+  const shouldShowLuts = activeFilter === 'all' || activeFilter === 'luts';
+  const shouldShowSound = activeFilter === 'all' || activeFilter === 'sound';
+
+  const filteredItemCount = useMemo(() => {
+    if (activeFilter === 'luts') return lutProducts.length;
+    if (activeFilter === 'sound') return soundProducts.length;
+    return lutProducts.length + soundProducts.length;
+  }, [activeFilter, lutProducts.length, soundProducts.length]);
+
   const cardScalesRef = useRef<Record<string, Animated.Value>>({});
+
   const getCardScale = (id: string) => {
-    if (!cardScalesRef.current[id]) cardScalesRef.current[id] = new Animated.Value(1);
+    if (!cardScalesRef.current[id]) {
+      cardScalesRef.current[id] = new Animated.Value(1);
+    }
+
     return cardScalesRef.current[id];
   };
 
@@ -368,6 +394,7 @@ const WorkshopScreen: React.FC = () => {
         const hasCinemaAlready = fetched.some((p) => {
           const slug = (p.slug || '').toLowerCase();
           const name = (p.name || '').toLowerCase();
+
           return slug === 'cinema-luts' || name === 'cinema luts' || name.includes('cinema luts');
         });
 
@@ -391,6 +418,7 @@ const WorkshopScreen: React.FC = () => {
         const hasBreakingBadAlready = fetched.some((p) => {
           const slug = (p.slug || '').toLowerCase();
           const name = (p.name || '').toLowerCase();
+
           return (
             slug === 'breaking-bad-luts' ||
             name === 'breaking bad luts' ||
@@ -438,67 +466,67 @@ const WorkshopScreen: React.FC = () => {
         const nextLuts = mappedFetched;
 
         const nextSoundFx: WorkshopProduct[] = [
-          {
-            id: 'local-swooshes-pack',
-            name: 'Swooshes Pack',
-            slug: 'swooshes-pack',
-            description: '6 cinematic swooshes.',
-            price_cents: 0,
-            currency: 'GBP',
-            image_url: null,
-            file_url: SWOOSHES_ZIP,
-            preview_url: SWOOSH_PREVIEW_MP3,
-            thumb_icon: 'swap-horizontal-outline',
-            thumb_label: 'SWOOSH',
-            is_active: true,
-            created_at: new Date(Date.now() + 2).toISOString(),
-          },
-          {
-            id: 'local-impacts-pack',
-            name: 'Impacts Pack',
-            slug: 'impacts-pack',
-            description: '6 cinematic impacts.',
-            price_cents: 0,
-            currency: 'GBP',
-            image_url: null,
-            file_url: IMPACTS_ZIP,
-            preview_url: IMPACT_PREVIEW_MP3,
-            thumb_icon: 'flash-outline',
-            thumb_label: 'IMPACT',
-            is_active: true,
-            created_at: new Date(Date.now() + 3).toISOString(),
-          },
-          {
-            id: 'local-risers-pack',
-            name: 'Risers Pack',
-            slug: 'risers-pack',
-            description: '6 cinematic risers ranging from sci-fi to horror.',
-            price_cents: 0,
-            currency: 'GBP',
-            image_url: null,
-            file_url: RISERS_ZIP,
-            preview_url: RISER_PREVIEW_MP3,
-            thumb_icon: 'trending-up-outline',
-            thumb_label: 'RISER',
-            is_active: true,
-            created_at: new Date(Date.now() + 4).toISOString(),
-          },
-          {
-            id: 'local-gun-shots-pack',
-            name: 'Gun Shots Pack',
-            slug: 'gun-shots-pack',
-            description: 'A variety of gunshots.',
-            price_cents: 0,
-            currency: 'GBP',
-            image_url: null,
-            file_url: GUN_SHOTS_ZIP,
-            preview_url: GUN_PREVIEW_MP3,
-            thumb_icon: 'volume-high-outline',
-            thumb_label: 'SHOTS',
-            is_active: true,
-            created_at: new Date(Date.now() + 5).toISOString(),
-          },
-        ];
+  {
+    id: 'local-swooshes-pack',
+    name: 'Swooshes Pack',
+    slug: 'swooshes-pack',
+    description: '6 cinematic swooshes.',
+    price_cents: 0,
+    currency: 'GBP',
+    image_url: null,
+    file_url: SWOOSHES_ZIP,
+    preview_url: SWOOSH_PREVIEW_MP3,
+    thumb_icon: 'radio-outline',
+    thumb_label: 'SWOOSH',
+    is_active: true,
+    created_at: new Date(Date.now() + 2).toISOString(),
+  },
+  {
+    id: 'local-impacts-pack',
+    name: 'Impacts Pack',
+    slug: 'impacts-pack',
+    description: '6 cinematic impacts.',
+    price_cents: 0,
+    currency: 'GBP',
+    image_url: null,
+    file_url: IMPACTS_ZIP,
+    preview_url: IMPACT_PREVIEW_MP3,
+    thumb_icon: 'pulse-outline',
+    thumb_label: 'IMPACT',
+    is_active: true,
+    created_at: new Date(Date.now() + 3).toISOString(),
+  },
+  {
+    id: 'local-risers-pack',
+    name: 'Risers Pack',
+    slug: 'risers-pack',
+    description: '6 cinematic risers ranging from sci-fi to horror.',
+    price_cents: 0,
+    currency: 'GBP',
+    image_url: null,
+    file_url: RISERS_ZIP,
+    preview_url: RISER_PREVIEW_MP3,
+    thumb_icon: 'analytics-outline',
+    thumb_label: 'RISER',
+    is_active: true,
+    created_at: new Date(Date.now() + 4).toISOString(),
+  },
+  {
+    id: 'local-gun-shots-pack',
+    name: 'Gun Shots Pack',
+    slug: 'gun-shots-pack',
+    description: 'A variety of gunshots.',
+    price_cents: 0,
+    currency: 'GBP',
+    image_url: null,
+    file_url: GUN_SHOTS_ZIP,
+    preview_url: GUN_PREVIEW_MP3,
+    thumb_icon: 'disc-outline',
+    thumb_label: 'SHOTS',
+    is_active: true,
+    created_at: new Date(Date.now() + 5).toISOString(),
+  },
+];
 
         setLutProducts(nextLuts);
         setSoundProducts(nextSoundFx);
@@ -527,19 +555,19 @@ const WorkshopScreen: React.FC = () => {
   );
 
   const onRefresh = useCallback(async () => {
-  if (refreshing) return;
+    if (refreshing) return;
 
-  setRefreshing(true);
+    setRefreshing(true);
 
-  try {
-    triggerAppRefresh();
-    await loadWorkshop({ silent: true });
-  } catch (e: any) {
-    console.warn('Workshop refresh error:', e?.message || e);
-  } finally {
-    setRefreshing(false);
-  }
-}, [refreshing, triggerAppRefresh]);
+    try {
+      triggerAppRefresh();
+      await loadWorkshop({ silent: true });
+    } catch (e: any) {
+      console.warn('Workshop refresh error:', e?.message || e);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshing, triggerAppRefresh]);
 
   const hasAccess = (_product: WorkshopProduct): boolean => {
     return userProfile?.tier === 'pro';
@@ -561,6 +589,7 @@ const WorkshopScreen: React.FC = () => {
         'Coming soon',
         'You have access, but the download link for this pack has not been set yet.'
       );
+
       return;
     }
 
@@ -615,6 +644,7 @@ const WorkshopScreen: React.FC = () => {
 
   const isAudio = (url: string) => {
     const lower = url.toLowerCase();
+
     return (
       lower.endsWith('.mp3') ||
       lower.endsWith('.m4a') ||
@@ -627,6 +657,7 @@ const WorkshopScreen: React.FC = () => {
 
   const previewIsLikelyVideo = (url: string) => {
     const lower = url.toLowerCase();
+
     return lower.endsWith('.mp4') || lower.endsWith('.mov') || lower.includes('video');
   };
 
@@ -646,8 +677,10 @@ const WorkshopScreen: React.FC = () => {
     setPreviewAspect(16 / 9);
 
     const asset = (product.preview_url || product.image_url) ?? null;
-    if (!asset) setPreviewKind('none');
-    else if (isAudio(asset)) {
+
+    if (!asset) {
+      setPreviewKind('none');
+    } else if (isAudio(asset)) {
       setPreviewKind('audio');
       setPreviewAspect(16 / 9);
     } else if (previewIsLikelyVideo(asset)) {
@@ -664,6 +697,7 @@ const WorkshopScreen: React.FC = () => {
         webVideoRef.current.pause();
         webVideoRef.current.currentTime = 0;
       }
+
       if (IS_WEB && webAudioRef.current) {
         webAudioRef.current.pause();
         webAudioRef.current.currentTime = 0;
@@ -672,6 +706,7 @@ const WorkshopScreen: React.FC = () => {
       if (videoRef.current) {
         await videoRef.current.stopAsync();
       }
+
       if (audioRef.current) {
         await audioRef.current.stopAsync();
         await audioRef.current.unloadAsync();
@@ -697,6 +732,7 @@ const WorkshopScreen: React.FC = () => {
         if (previewKind === 'audio') {
           const el = webAudioRef.current;
           if (!el) return;
+
           if (!el.paused) {
             el.pause();
             setIsPlaying(false);
@@ -704,12 +740,14 @@ const WorkshopScreen: React.FC = () => {
             await el.play().catch(() => {});
             setIsPlaying(!el.paused);
           }
+
           return;
         }
 
         if (previewKind === 'video') {
           const el = webVideoRef.current;
           if (!el) return;
+
           if (!el.paused) {
             el.pause();
             setIsPlaying(false);
@@ -717,6 +755,7 @@ const WorkshopScreen: React.FC = () => {
             await el.play().catch(() => {});
             setIsPlaying(!el.paused);
           }
+
           return;
         }
 
@@ -730,16 +769,23 @@ const WorkshopScreen: React.FC = () => {
             { shouldPlay: true, isMuted, volume: 1.0 },
             (status) => {
               if (!status.isLoaded) return;
+
               setIsPlaying(!!status.isPlaying);
-              if (status.didJustFinish) setIsPlaying(false);
+
+              if (status.didJustFinish) {
+                setIsPlaying(false);
+              }
             }
           );
+
           audioRef.current = created.sound;
           setIsPlaying(true);
+
           return;
         }
 
         const st = await audioRef.current.getStatusAsync();
+
         if (st.isLoaded && st.isPlaying) {
           await audioRef.current.pauseAsync();
           setIsPlaying(false);
@@ -747,11 +793,13 @@ const WorkshopScreen: React.FC = () => {
           await audioRef.current.playAsync();
           setIsPlaying(true);
         }
+
         return;
       }
 
       if (previewKind === 'video') {
         if (!videoRef.current) return;
+
         if (isPlaying) {
           await videoRef.current.pauseAsync();
           setIsPlaying(false);
@@ -771,16 +819,20 @@ const WorkshopScreen: React.FC = () => {
         if (previewKind === 'audio') {
           const el = webAudioRef.current;
           if (!el) return;
+
           el.muted = next;
           setIsMuted(next);
+
           return;
         }
 
         if (previewKind === 'video') {
           const el = webVideoRef.current;
           if (!el) return;
+
           el.muted = next;
           setIsMuted(next);
+
           return;
         }
 
@@ -793,24 +845,77 @@ const WorkshopScreen: React.FC = () => {
         if (audioRef.current) {
           await audioRef.current.setIsMutedAsync(next);
         }
+
         setIsMuted(next);
+
         return;
       }
 
       if (previewKind === 'video') {
         if (!videoRef.current) return;
+
         await videoRef.current.setIsMutedAsync(next);
         setIsMuted(next);
       }
     } catch {}
   };
 
-  const renderProductCard = (product: WorkshopProduct, opts?: { forceFullRow?: boolean }) => {
+  const renderFilterChip = (value: WorkshopFilter, label: string) => {
+  const selected = activeFilter === value;
+
+  return (
+    <TouchableOpacity
+      key={value}
+      style={[styles.filterChip, selected ? styles.filterChipActive : null]}
+      activeOpacity={0.86}
+      onPress={() => setActiveFilter(value)}
+    >
+      <Text style={[styles.filterChipText, selected ? styles.filterChipTextActive : null]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+};
+
+const renderFilterSection = () => {
+  return (
+    <View style={styles.filterSection}>
+      <Text style={styles.filterEyebrow}>Workshop Library</Text>
+      <Text style={styles.filterTitle}>Choose your tools</Text>
+
+      <View style={styles.filterChipsOuter}>
+        <View style={styles.filterChipsRow}>
+          {renderFilterChip('all', 'All')}
+          {renderFilterChip('luts', 'LUTs')}
+          {renderFilterChip('sound', 'Sound FX')}
+        </View>
+      </View>
+    </View>
+  );
+};
+  const renderSectionHeader = (
+    title: string,
+    icon: keyof typeof Ionicons.glyphMap,
+    pill: string
+  ) => {
+    return (
+      <View style={styles.sectionHeaderRow}>
+        <View style={styles.sectionHeaderLeft}>
+          <Ionicons name={icon} size={15} color={GOLD} />
+          <Text style={styles.sectionHeaderTitle}>{title}</Text>
+        </View>
+
+        <View style={styles.sectionHeaderPill}>
+          <Text style={styles.sectionHeaderPillText}>{pill}</Text>
+        </View>
+      </View>
+    );
+  };
+
+  const renderProductCard = (product: WorkshopProduct) => {
     const access = hasAccess(product);
     const scale = getCardScale(product.id);
-
-    const isBreakingBad = (product.slug || '').toLowerCase() === 'breaking-bad-luts';
-    const fullRow = opts?.forceFullRow || (columns === 2 && isBreakingBad ? true : false);
+    const isSound = !product.image_url;
 
     return (
       <View
@@ -818,7 +923,6 @@ const WorkshopScreen: React.FC = () => {
         style={[
           styles.gridItem,
           columns === 2 ? styles.gridItemTwoCol : styles.gridItemOneCol,
-          columns === 2 && fullRow ? styles.gridItemFullRow : null,
         ]}
       >
         <AnimatedTouchableOpacity
@@ -829,7 +933,7 @@ const WorkshopScreen: React.FC = () => {
           onPressOut={() => animateCardScale(product.id, 1)}
           {...(IS_WEB
             ? ({
-                onMouseEnter: () => animateCardScale(product.id, 1.015),
+                onMouseEnter: () => animateCardScale(product.id, 1.012),
                 onMouseLeave: () => animateCardScale(product.id, 1),
               } as any)
             : null)}
@@ -839,76 +943,73 @@ const WorkshopScreen: React.FC = () => {
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[
-  styles.card,
-  IS_WEB && columns === 2
-    ? {
-        height: 248,
-      }
-    : null,
-]}
+              styles.card,
+              IS_WEB && columns === 2
+                ? {
+                    height: WORKSHOP_WEB_CARD_HEIGHT,
+                  }
+                : null,
+            ]}
           >
             <View style={styles.cardGlow} />
+            <View style={styles.cardTopLine} />
 
-            <View style={styles.thumbWrap}>
-              {product.image_url ? (
-                <ThumbMedia uri={product.image_url} />
-              ) : product.thumb_icon ? (
-                <IconThumb icon={product.thumb_icon} label={product.thumb_label} />
-              ) : (
-                <ShimmerThumb size={88} />
-              )}
-            </View>
+            <View style={styles.cardInner}>
+              {!isSound && (
+  <View style={styles.thumbWrap}>
+    {product.image_url ? (
+      <ThumbMedia uri={product.image_url} />
+    ) : (
+      <ShimmerThumb size={88} />
+    )}
+  </View>
+)}
 
-            <View style={styles.cardBody}>
-              <View>
-                <View style={styles.cardTopMetaRow}>
-                  <View style={styles.cardTypePill}>
-                    <Ionicons
-                      name={product.image_url ? 'color-filter-outline' : 'musical-notes-outline'}
-                      size={12}
-                      color={GOLD}
-                    />
-                    <Text style={styles.cardTypePillText}>
-                      {product.image_url ? 'Workshop pack' : 'Sound pack'}
+              <View style={styles.cardBody}>
+                <View style={styles.cardMainContent}>
+                  <View style={styles.cardTopMetaRow}>
+                    <View style={styles.cardTypePill}>
+                      <Ionicons
+                        name={isSound ? 'musical-notes-outline' : 'color-filter-outline'}
+                        size={12}
+                        color={GOLD}
+                      />
+
+                      <Text style={styles.cardTypePillText}>
+                        {isSound ? 'Sound pack' : 'Workshop pack'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.badgeProOnly}>
+                      <Ionicons name="sparkles-outline" size={12} color={GOLD} />
+                      <Text style={styles.badgeProOnlyText}>Pro only</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.cardTitle} numberOfLines={2}>
+                    {product.name}
+                  </Text>
+
+                  {product.description ? (
+                    <Text style={styles.cardDescription} numberOfLines={IS_WEB ? 2 : 3}>
+                      {product.description}
+                    </Text>
+                  ) : null}
+
+                  <View style={styles.metaRow}>
+                    <Text style={styles.metaHint}>
+                      {access ? 'Tap to preview' : 'Preview available • unlock with Pro'}
                     </Text>
                   </View>
+                </View>
 
-                  <View style={styles.badgeProOnly}>
-                    <Ionicons name="sparkles-outline" size={12} color={GOLD} />
-                    <Text style={styles.badgeProOnlyText}>Pro only</Text>
+                <View style={styles.cardBottomRow}>
+                  <View style={styles.cardActionLeft}>{renderCTA(product)}</View>
+
+                  <View style={styles.previewChip}>
+                    <Ionicons name="play-circle-outline" size={15} color={TEXT_IVORY} />
+                    <Text style={styles.previewChipText}>Preview</Text>
                   </View>
-                </View>
-
-                <Text style={styles.cardTitle}>{product.name}</Text>
-
-                {product.description ? (
-                  <Text
-  style={[
-    styles.cardDescription,
-    IS_WEB && columns === 2
-      ? {
-          minHeight: 32,
-        }
-      : null,
-  ]}
->
-  {product.description}
-</Text>
-                ) : null}
-
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaHint}>
-                    {access ? 'Tap to preview' : 'Preview available • unlock with Pro'}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.cardBottomRow}>
-                <View style={styles.cardActionLeft}>{renderCTA(product)}</View>
-
-                <View style={styles.previewChip}>
-                  <Ionicons name="play-circle-outline" size={15} color={TEXT_IVORY} />
-                  <Text style={styles.previewChipText}>Preview</Text>
                 </View>
               </View>
             </View>
@@ -939,21 +1040,20 @@ const WorkshopScreen: React.FC = () => {
           ) : (
             <ScrollView
               style={styles.scroll}
-              contentContainerStyle={[
-  styles.scrollContent,
-  columns === 2 ? styles.gridContent : null,
-]}
+              contentContainerStyle={styles.scrollContent}
               showsVerticalScrollIndicator={false}
               refreshControl={
-  <RefreshControl
-    refreshing={refreshing}
-    onRefresh={onRefresh}
-    tintColor={GOLD}
-    colors={[GOLD]}
-    progressBackgroundColor={DARK_ELEVATED}
-  />
-}
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor={GOLD}
+                  colors={[GOLD]}
+                  progressBackgroundColor={DARK_ELEVATED}
+                />
+              }
             >
+              {hasAnything ? renderFilterSection() : null}
+
               {!hasAnything && (
                 <View style={styles.emptyState}>
                   <LinearGradient
@@ -964,40 +1064,47 @@ const WorkshopScreen: React.FC = () => {
                   >
                     <Ionicons name="cube-outline" size={28} color={TEXT_MUTED} />
                   </LinearGradient>
+
                   <Text style={styles.emptyTitle}>Nothing in the crate yet</Text>
                   <Text style={styles.emptyText}>Your first Workshop pack will drop here soon.</Text>
                 </View>
               )}
 
-              {lutProducts.length > 0 && (
-                <View style={styles.sectionHeaderRow}>
-                  <View style={styles.sectionHeaderLeft}>
-                    <Ionicons name="color-filter-outline" size={16} color={GOLD} />
-                    <Text style={styles.sectionHeaderTitle}>Instant Cinema Looks</Text>
-                  </View>
+              {shouldShowLuts && lutProducts.length > 0 && (
+                <View style={styles.sectionBlock}>
+                  {renderSectionHeader('Instant Cinema Looks', 'color-filter-outline', 'Color')}
 
-                  <View style={styles.sectionHeaderPill}>
-                    <Text style={styles.sectionHeaderPillText}>Color</Text>
+                  <View style={[styles.grid, columns === 2 ? styles.gridTwoCol : null]}>
+                    {lutProducts.map((p) => renderProductCard(p))}
                   </View>
                 </View>
               )}
 
-              {lutProducts.map((p) => renderProductCard(p))}
+              {shouldShowSound && soundProducts.length > 0 && (
+                <View style={styles.sectionBlock}>
+                  {renderSectionHeader('Sound Effects', 'musical-notes-outline', 'Audio')}
 
-              {soundProducts.length > 0 && (
-                <View style={[styles.sectionHeaderRow, styles.sectionHeaderRowSpaced]}>
-                  <View style={styles.sectionHeaderLeft}>
-                    <Ionicons name="musical-notes-outline" size={16} color={GOLD} />
-                    <Text style={styles.sectionHeaderTitle}>Sound Effects</Text>
-                  </View>
-
-                  <View style={styles.sectionHeaderPill}>
-                    <Text style={styles.sectionHeaderPillText}>Audio</Text>
+                  <View style={[styles.grid, columns === 2 ? styles.gridTwoCol : null]}>
+                    {soundProducts.map((p) => renderProductCard(p))}
                   </View>
                 </View>
               )}
 
-              {soundProducts.map((p) => renderProductCard(p, { forceFullRow: false }))}
+              {hasAnything && filteredItemCount === 0 && (
+                <View style={styles.emptyState}>
+                  <LinearGradient
+                    colors={['#161616', '#0E0E0E']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.emptyStateIconWrap}
+                  >
+                    <Ionicons name="search-outline" size={28} color={TEXT_MUTED} />
+                  </LinearGradient>
+
+                  <Text style={styles.emptyTitle}>No tools found</Text>
+                  <Text style={styles.emptyText}>Try another Workshop category.</Text>
+                </View>
+              )}
 
               <View style={{ height: 20 }} />
             </ScrollView>
@@ -1057,6 +1164,7 @@ const WorkshopScreen: React.FC = () => {
                               <View style={styles.audioIconPill}>
                                 <Ionicons name="musical-notes-outline" size={18} color={GOLD} />
                               </View>
+
                               <Text style={styles.audioTitle} numberOfLines={2}>
                                 Audio preview
                               </Text>
@@ -1098,6 +1206,7 @@ const WorkshopScreen: React.FC = () => {
                                   size={18}
                                   color={TEXT_IVORY}
                                 />
+
                                 <Text style={styles.videoControlText}>
                                   {isPlaying ? 'Pause' : 'Play'}
                                 </Text>
@@ -1113,6 +1222,7 @@ const WorkshopScreen: React.FC = () => {
                                   size={18}
                                   color={TEXT_IVORY}
                                 />
+
                                 <Text style={styles.videoControlText}>
                                   {isMuted ? 'Muted' : 'Sound'}
                                 </Text>
@@ -1148,11 +1258,16 @@ const WorkshopScreen: React.FC = () => {
                                 onLoadedMetadata={(e: any) => {
                                   const el = e?.currentTarget as HTMLVideoElement | null;
                                   if (!el) return;
+
                                   const w = el.videoWidth || 0;
                                   const h = el.videoHeight || 0;
+
                                   if (w > 0 && h > 0) {
                                     const next = w / h;
-                                    if (Number.isFinite(next)) setPreviewAspect(next);
+
+                                    if (Number.isFinite(next)) {
+                                      setPreviewAspect(next);
+                                    }
                                   }
                                 }}
                                 onPlay={() => setIsPlaying(true)}
@@ -1178,9 +1293,13 @@ const WorkshopScreen: React.FC = () => {
                                   const ns = status?.naturalSize;
                                   const w = ns?.width || 0;
                                   const h = ns?.height || 0;
+
                                   if (w > 0 && h > 0) {
                                     const next = w / h;
-                                    if (Number.isFinite(next)) setPreviewAspect(next);
+
+                                    if (Number.isFinite(next)) {
+                                      setPreviewAspect(next);
+                                    }
                                   }
                                 }}
                               />
@@ -1197,6 +1316,7 @@ const WorkshopScreen: React.FC = () => {
                                   size={18}
                                   color={TEXT_IVORY}
                                 />
+
                                 <Text style={styles.videoControlText}>
                                   {isPlaying ? 'Pause' : 'Play'}
                                 </Text>
@@ -1212,6 +1332,7 @@ const WorkshopScreen: React.FC = () => {
                                   size={18}
                                   color={TEXT_IVORY}
                                 />
+
                                 <Text style={styles.videoControlText}>
                                   {isMuted ? 'Muted' : 'Sound'}
                                 </Text>
@@ -1243,6 +1364,7 @@ const WorkshopScreen: React.FC = () => {
                         size={14}
                         color={GOLD}
                       />
+
                       <Text style={styles.modalMetaText}>
                         {hasAccess(selectedProduct) ? 'Unlocked' : 'Locked'}
                       </Text>
@@ -1322,7 +1444,6 @@ const WorkshopScreen: React.FC = () => {
 };
 
 export default WorkshopScreen;
-
 /* -------------------------------- styles ------------------------------- */
 const styles = StyleSheet.create({
   safeArea: {
@@ -1366,76 +1487,175 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 82,
+    paddingTop: IS_WEB ? 18 : 8,
+    paddingBottom: 92,
   },
 
-  gridContent: {
-  flexDirection: 'row',
-  flexWrap: 'wrap',
-  justifyContent: 'space-between',
-  alignItems: 'stretch',
-},
+  filterSection: {
+    width: '100%',
+    maxWidth: IS_WEB ? 420 : 320,
+    alignSelf: 'center',
+    marginTop: IS_WEB ? 0 : 4,
+    marginBottom: IS_WEB ? 22 : 14,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+  },
+  filterTopRow: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterTitleBlock: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterEyebrow: {
+    fontSize: IS_WEB ? 7 : 5.8,
+    color: GOLD,
+    fontWeight: '900',
+    letterSpacing: IS_WEB ? 1.2 : 0.9,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+    marginBottom: 2,
+    textAlign: 'center',
+    opacity: 0.9,
+  },
+  filterTitle: {
+    fontSize: IS_WEB ? 10.5 : 8.4,
+    color: TEXT_IVORY,
+    fontWeight: '900',
+    letterSpacing: IS_WEB ? 0.8 : 0.55,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
+    marginBottom: IS_WEB ? 10 : 7,
+  },
+  filterSummaryPill: {
+    display: 'none',
+  },
+  filterSummaryText: {
+    display: 'none',
+  },
+  filterChipsOuter: {
+    alignSelf: 'center',
+    paddingHorizontal: IS_WEB ? 5 : 4,
+    paddingVertical: IS_WEB ? 5 : 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.035)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.065)',
+  },
+  filterChipsScroller: {
+    alignSelf: 'center',
+    maxWidth: '100%',
+  },
+  filterChipsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: IS_WEB ? 5 : 4,
+  },
+  filterChip: {
+    minHeight: IS_WEB ? 24 : 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: IS_WEB ? 13 : 10,
+    paddingVertical: IS_WEB ? 6 : 5,
+    borderRadius: 999,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+  },
+  filterChipActive: {
+    backgroundColor: GOLD,
+    borderColor: GOLD,
+    shadowColor: GOLD,
+    shadowOpacity: 0.18,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 7,
+  },
+  filterChipText: {
+    fontSize: IS_WEB ? 7.8 : 6.8,
+    color: TEXT_SOFT,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: IS_WEB ? 0.7 : 0.45,
+    fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
+  },
+  filterChipTextActive: {
+    color: '#050505',
+  },
 
-gridItem: {
-  marginBottom: 14,
-  alignSelf: 'stretch',
-},
+  sectionBlock: {
+    width: '100%',
+    marginBottom: 20,
+  },
 
-gridItemOneCol: {
-  width: '100%',
-},
+  grid: {
+    width: '100%',
+    gap: 14,
+  },
+  gridTwoCol: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'stretch',
+    gap: 0,
+  },
 
-gridItemTwoCol: {
-  width: '49%',
-},
-
-gridItemFullRow: {
-  width: '100%',
-},
+  gridItem: {
+    marginBottom: 14,
+    alignSelf: 'stretch',
+  },
+  gridItemOneCol: {
+    width: '100%',
+  },
+  gridItemTwoCol: {
+    width: '49.2%',
+  },
 
   sectionHeaderRow: {
     width: '100%',
-    marginTop: 4,
-    marginBottom: 12,
+    marginBottom: 10,
     paddingHorizontal: 2,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  sectionHeaderRowSpaced: {
-    marginTop: 18,
-  },
   sectionHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 7,
     flexShrink: 1,
   },
   sectionHeaderTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '900',
     color: TEXT_IVORY,
-    letterSpacing: 1.2,
+    letterSpacing: 1,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
     flexShrink: 1,
   },
   sectionHeaderPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: 1,
     borderColor: BORDER,
-    marginLeft: 10,
   },
   sectionHeaderPillText: {
-    fontSize: 8.8,
+    fontSize: 8.1,
     fontWeight: '900',
     color: TEXT_SOFT,
     textTransform: 'uppercase',
-    letterSpacing: 0.9,
+    letterSpacing: 0.8,
     fontFamily: SYSTEM_SANS,
   },
 
@@ -1471,54 +1691,66 @@ gridItemFullRow: {
   },
 
   cardShadowWrap: {
-  width: '100%',
-  borderRadius: 24,
-  flex: 1,
-},
+    width: '100%',
+    borderRadius: 24,
+    flex: 1,
+  },
 
-card: {
-  flexDirection: 'row',
-  padding: 12,
-  borderRadius: 24,
-  borderWidth: 1,
-  borderColor: BORDER,
-  shadowColor: '#000',
-  shadowOpacity: 0.4,
-  shadowOffset: { width: 0, height: 8 },
-  shadowRadius: 14,
-  elevation: 7,
-  width: '100%',
-  minHeight: WORKSHOP_CARD_MIN_HEIGHT,
-  alignItems: 'flex-start',
-  overflow: 'hidden',
-  backgroundColor: DARK_ELEVATED,
-},
+  card: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: BORDER,
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 14,
+    elevation: 7,
+    width: '100%',
+    minHeight: WORKSHOP_CARD_MIN_HEIGHT,
+    overflow: 'hidden',
+    backgroundColor: DARK_ELEVATED,
+  },
   cardGlow: {
     position: 'absolute',
-    top: -40,
-    right: -20,
-    width: 120,
-    height: 120,
+    top: -46,
+    right: -28,
+    width: 128,
+    height: 128,
     borderRadius: 999,
-    backgroundColor: 'rgba(198,166,100,0.07)',
+    backgroundColor: 'rgba(198,166,100,0.065)',
+  },
+  cardTopLine: {
+    position: 'absolute',
+    top: 0,
+    left: 16,
+    right: 16,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  cardInner: {
+    flex: 1,
+    flexDirection: 'row',
+    padding: 12,
+    alignItems: 'stretch',
   },
 
   thumbWrap: {
     width: 88,
     marginRight: 12,
     paddingTop: 6,
+    alignItems: 'center',
     justifyContent: 'flex-start',
   },
   thumb: {
     width: 88,
     height: 88,
-    borderRadius: 14,
+    borderRadius: 16,
   },
 
   iconThumb: {
     width: 88,
     height: 88,
-    borderRadius: 14,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -1527,39 +1759,52 @@ card: {
   },
   iconThumbGlow: {
     position: 'absolute',
-    width: 60,
-    height: 60,
+    width: 66,
+    height: 66,
     borderRadius: 999,
-    backgroundColor: 'rgba(198,166,100,0.09)',
-    top: 8,
+    backgroundColor: 'rgba(198,166,100,0.1)',
+    top: 10,
     right: 8,
   },
-  iconThumbInner: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: '#111111',
-    borderWidth: 1,
-    borderColor: BORDER,
+  iconThumbCenter: {
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 22,
+    paddingTop: 0,
+    paddingBottom: 0,
+  },
+  iconThumbInner: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#0F0F0F',
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  iconThumbIcon: {
+    includeFontPadding: false,
+    textAlign: 'center',
+    textAlignVertical: 'center',
   },
   iconThumbLabel: {
-    position: 'absolute',
-    bottom: 9,
-    fontSize: 8.5,
+    height: 10,
+    lineHeight: 10,
+    fontSize: 7.2,
     color: TEXT_SOFT,
     fontWeight: '900',
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    letterSpacing: 0.65,
     fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
+    maxWidth: 72,
+    includeFontPadding: false,
   },
 
   thumbPlaceholder: {
-    width: 88,
-    height: 88,
-    borderRadius: 14,
     backgroundColor: '#111111',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1586,18 +1831,20 @@ card: {
   },
 
   cardBody: {
-  flex: 1,
-  justifyContent: 'space-between',
-  height: '100%',
-},
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'space-between',
+  },
+  cardMainContent: {
+    flexShrink: 1,
+  },
 
   cardTopMetaRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
     gap: 8,
-    flexWrap: 'wrap',
   },
   cardTypePill: {
     flexDirection: 'row',
@@ -1638,10 +1885,10 @@ card: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(255,255,255,0.035)',
     borderWidth: 1,
     borderColor: BORDER,
-    flexShrink: 1,
+    flexShrink: 0,
   },
   badgeProOnlyText: {
     fontSize: 8.2,
@@ -1653,14 +1900,12 @@ card: {
   },
 
   cardDescription: {
-  marginTop: 5,
-  fontSize: 10.4,
-  color: TEXT_MUTED,
-  lineHeight: 15,
-  fontFamily: SYSTEM_SANS,
-},
-
-
+    marginTop: 5,
+    fontSize: 10.4,
+    color: TEXT_MUTED,
+    lineHeight: 15,
+    fontFamily: SYSTEM_SANS,
+  },
 
   metaRow: {
     flexDirection: 'row',
@@ -1676,16 +1921,15 @@ card: {
   },
 
   cardBottomRow: {
-  marginTop: 'auto',
-  paddingTop: 12,
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 10,
-},
+    paddingTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
   cardActionLeft: {
     flexShrink: 1,
-    maxWidth: '68%',
+    maxWidth: '66%',
   },
 
   previewChip: {
@@ -1695,10 +1939,11 @@ card: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(255,255,255,0.035)',
     borderWidth: 1,
     borderColor: BORDER,
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
+    flexShrink: 0,
   },
   previewChipText: {
     fontSize: 9,
