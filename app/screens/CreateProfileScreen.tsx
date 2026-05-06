@@ -420,21 +420,16 @@ const [roleLoadError, setRoleLoadError] = useState<string | null>(null);
   }, []);
 
   useEffect(() => {
-  if (!allowedCreateProfileRef.current) return;
-  if (hasStartedSequence.current) return;
-
-  const timer = setTimeout(async () => {
+    if (!allowedCreateProfileRef.current) return;
+    if (hasStartedSequence.current) return;
     hasStartedSequence.current = true;
 
-    if (roleItems.length === 0) {
-      await fetchCreativeRoles();
-    }
+    const timer = setTimeout(() => {
+      openRoleSelector();
+    }, 900);
 
-    openRoleSelector();
-  }, 1400);
-
-  return () => clearTimeout(timer);
-}, []);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (!allowedCreateProfileRef.current) return;
@@ -513,21 +508,17 @@ const [roleLoadError, setRoleLoadError] = useState<string | null>(null);
     });
   };
 
-  const openRoleSelector = async () => {
+  const openRoleSelector = () => {
   setRoleSearchTerm('');
+  setRoleSearchItems([]);
   setRoleLoadError(null);
   setIsSearchingRoles(false);
-
-  if (roleItems.length > 0) {
-    setRoleSearchItems(roleItems);
-  } else {
-    setRoleSearchItems([]);
-  }
-
   setRoleSearchModalVisible(true);
 
-  if (roleItems.length === 0 && !isLoadingRoles) {
-    await fetchCreativeRoles();
+  // Important on mobile:
+  // If the first role fetch failed or returned empty, retry when the modal opens.
+  if (roleItems.length === 0) {
+    fetchCreativeRoles();
   }
 };
 
