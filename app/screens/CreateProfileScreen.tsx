@@ -271,6 +271,40 @@ const rankMatch = (candidate: string, query: string) => {
 
   return 999;
 };
+const ProfilePreviewImage = ({
+  uri,
+  style,
+}: {
+  uri: string;
+  style: any;
+}) => {
+  if (Platform.OS === 'web') {
+    return React.createElement('img', {
+      src: uri,
+      style: {
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+        display: 'block',
+      },
+      onError: (e: any) => {
+        console.log('Web profile preview image failed:', e);
+      },
+    });
+  }
+
+  return (
+    <Image
+      key={uri}
+      source={{ uri }}
+      style={style}
+      resizeMode="cover"
+      onError={(e) => {
+        console.log('Native profile preview image failed:', e?.nativeEvent);
+      }}
+    />
+  );
+};
 
 export default function CreateProfileScreen() {
   const allowedCreateProfileRef = useRef(true);
@@ -1205,33 +1239,28 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
                     },
                   ]}
                 >
-                  <TouchableOpacity
-                    onPress={pickImage}
-                    activeOpacity={0.92}
-                    style={[
-                      styles.avatarButton,
-                      stage === 'image' && styles.avatarButtonActive,
-                      isMobile && styles.avatarButtonMobile,
-                    ]}
-                    disabled={loading}
-                  >
-                    {displayImage ? (
-                      <Image
-  key={displayImage}
-  source={{ uri: displayImage }}
-  style={styles.avatarImage}
-  resizeMode="cover"
-  onError={(e) => {
-    console.log('Avatar preview failed to load:', e?.nativeEvent);
-  }}
-/>
-                    ) : (
-                      <View style={styles.avatarFallback}>
-                        <Ionicons name="camera-outline" size={30} color={GOLD} />
-                        <Text style={styles.avatarFallbackText}>Add Profile Image</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
+                 <TouchableOpacity
+  onPress={pickImage}
+  activeOpacity={0.92}
+  style={[
+    styles.avatarButton,
+    stage === 'image' && styles.avatarButtonActive,
+    isMobile && styles.avatarButtonMobile,
+  ]}
+  disabled={loading}
+>
+  {displayImage ? (
+    <ProfilePreviewImage
+      uri={displayImage}
+      style={styles.avatarImage}
+    />
+  ) : (
+    <View style={styles.avatarFallback}>
+      <Ionicons name="camera-outline" size={30} color={GOLD} />
+      <Text style={styles.avatarFallbackText}>Add Profile Image</Text>
+    </View>
+  )}
+</TouchableOpacity>
 
                   <TouchableOpacity
                     onPress={pickImage}
@@ -1273,14 +1302,9 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
 
                     {!!displayImage && (
   <View style={styles.reviewAvatarWrap}>
-    <Image
-      key={displayImage}
-      source={{ uri: displayImage }}
+    <ProfilePreviewImage
+      uri={displayImage}
       style={styles.reviewAvatar}
-      resizeMode="cover"
-      onError={(e) => {
-        console.log('Review avatar failed to load:', e?.nativeEvent);
-      }}
     />
   </View>
 )}
@@ -1676,16 +1700,17 @@ const styles = StyleSheet.create({
   },
 
   avatarButton: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
-    backgroundColor: ELEVATED,
-    borderWidth: 1.5,
-    borderColor: 'rgba(198,166,100,0.30)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
+  width: 132,
+  height: 132,
+  borderRadius: 66,
+  backgroundColor: ELEVATED,
+  borderWidth: 1.5,
+  borderColor: 'rgba(198,166,100,0.30)',
+  alignItems: 'center',
+  justifyContent: 'center',
+  overflow: 'hidden',
+  position: 'relative',
+},
 
   avatarButtonMobile: {
     width: 146,
@@ -1874,16 +1899,16 @@ submitStatusText: {
   },
 
   reviewAvatarWrap: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    overflow: 'hidden',
-    marginBottom: 18,
-    borderWidth: 1.5,
-    borderColor: GOLD,
-    backgroundColor: '#151515',
-  },
-
+  width: 110,
+  height: 110,
+  borderRadius: 55,
+  overflow: 'hidden',
+  marginBottom: 18,
+  borderWidth: 1.5,
+  borderColor: GOLD,
+  backgroundColor: '#151515',
+  position: 'relative',
+},
   reviewAvatar: {
     width: '100%',
     height: '100%',
