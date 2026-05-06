@@ -202,20 +202,56 @@ async function uriToUploadBody(uri: string): Promise<Blob | Uint8Array> {
 async function makePreviewUri(uri: string) {
   if (!uri) return uri;
 
-  if (Platform.OS === 'web') {
-    const response = await fetch(uri);
-    if (!response.ok) throw new Error('Could not prepare preview image.');
-    const blob = await response.blob();
-
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(String(reader.result));
-      reader.onerror = () => reject(new Error('Could not prepare preview image.'));
-      reader.readAsDataURL(blob);
-    });
+  /**
+   * Mobile can display local file URIs directly.
+   */
+  if (Platform.OS !== 'web') {
+    return uri;
   }
 
-  return uri;
+  /**
+   * Web fix:
+   * If AvatarCropper already gives us a base64/data image, use it directly.
+   */
+  if (uri.startsWith('data:image')) {
+    return uri;
+  }
+
+  /**
+   * Web fix:
+   * Convert blob/object URLs into a stable base64 preview.
+   * This makes the profile image show immediately on the review screen,
+   * before the Supabase upload happens.
+   */
+  try {
+    const response = await fetch(uri);
+
+    if (!response.ok) {
+      console.log('Preview fetch failed, falling back to original URI.');
+      return uri;
+    }
+
+    const blob = await response.blob();
+
+    return await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+
+      reader.onloadend = () => {
+        const result = String(reader.result || uri);
+        resolve(result);
+      };
+
+      reader.onerror = () => {
+        console.log('Preview FileReader failed, falling back to original URI.');
+        resolve(uri);
+      };
+
+      reader.readAsDataURL(blob);
+    });
+  } catch (err) {
+    console.log('makePreviewUri web fallback:', err);
+    return uri;
+  }
 }
 
 const normalizeText = (text: string) => text.trim().toLowerCase();
@@ -684,31 +720,60 @@ const [roleLoadError, setRoleLoadError] = useState<string | null>(null);
   };
 
   const handleAvatarCropped = async (croppedUri: string) => {
-    try {
-      setUploadingImage(true);
+  try {
+    setUploadingImage(true);
 
-      const previewUri = await makePreviewUri(croppedUri);
+    /**
+     * Web/mobile preview fix:
+     * Set the raw cropped URI immediately so the review screen has
+     * something to show straight away.
+     */
+    setImage(croppedUri);
+    setImagePreview(croppedUri);
+    setCroppedImageUri(croppedUri);
+    setImageUrl(null);
 
-      setImage(previewUri);
-      setImagePreview(previewUri);
+    setCropperOpen(false);
+    setCropSource(null);
+
+    /**
+     * Then prepare the safest preview version.
+     * On web this becomes a stable base64 image.
+     * On mobile it stays as the local file URI.
+     */
+    const previewUri = await makePreviewUri(croppedUri);
+
+    setImage(previewUri);
+    setImagePreview(previewUri);
+
+    /**
+     * Only move to review after preview is ready.
+     */
+    animateStageChange('review');
+  } catch (err: any) {
+    console.error('Avatar crop error:', err);
+
+    /**
+     * Final fallback:
+     * Even if preview conversion fails, still allow the user to see/use
+     * the original cropped image URI.
+     */
+    if (croppedUri) {
+      setImage(croppedUri);
+      setImagePreview(croppedUri);
       setCroppedImageUri(croppedUri);
-
-      // Important:
-      // Do NOT upload to Supabase here.
-      // The upload now happens only after the user presses Confirm & Enter.
       setImageUrl(null);
-
       setCropperOpen(false);
       setCropSource(null);
-
       animateStageChange('review');
-    } catch (err: any) {
-      console.error('Avatar crop error:', err);
-      Alert.alert('Image Error', err?.message ?? 'Could not prepare image.');
-    } finally {
-      setUploadingImage(false);
+      return;
     }
-  };
+
+    Alert.alert('Image Error', err?.message ?? 'Could not prepare image.');
+  } finally {
+    setUploadingImage(false);
+  }
+};
 
   const handleSubmit = async () => {
   console.log('✅ Confirm & Enter pressed');
@@ -1152,10 +1217,14 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
                   >
                     {displayImage ? (
                       <Image
-                        source={{ uri: displayImage }}
-                        style={styles.avatarImage}
-                        resizeMode="cover"
-                      />
+  key={displayImage}
+  source={{ uri: displayImage }}
+  style={styles.avatarImage}
+  resizeMode="cover"
+  onError={(e) => {
+    console.log('Avatar preview failed to load:', e?.nativeEvent);
+  }}
+/>
                     ) : (
                       <View style={styles.avatarFallback}>
                         <Ionicons name="camera-outline" size={30} color={GOLD} />
@@ -1203,14 +1272,18 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
                     <Text style={styles.reviewTitle}>Confirm your profile</Text>
 
                     {!!displayImage && (
-                      <View style={styles.reviewAvatarWrap}>
-                        <Image
-                          source={{ uri: displayImage }}
-                          style={styles.reviewAvatar}
-                          resizeMode="cover"
-                        />
-                      </View>
-                    )}
+  <View style={styles.reviewAvatarWrap}>
+    <Image
+      key={displayImage}
+      source={{ uri: displayImage }}
+      style={styles.reviewAvatar}
+      resizeMode="cover"
+      onError={(e) => {
+        console.log('Review avatar failed to load:', e?.nativeEvent);
+      }}
+    />
+  </View>
+)}
 
                     <View style={styles.reviewRow}>
                       <Text style={styles.reviewLabel}>Name</Text>
