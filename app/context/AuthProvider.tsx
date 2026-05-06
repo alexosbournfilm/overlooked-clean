@@ -468,23 +468,32 @@ setUserId((prev) => (prev === uid ? prev : uid));
   };
 
   const resetToMainTabs = () => {
-    if (!navigationRef.isReady()) return;
+  if (!navigationRef.isReady()) return;
 
-    navigationRef.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [
-          {
-            name: "MainTabs",
-            state: {
-              index: 0,
-              routes: [{ name: "Featured" }],
-            },
-          },
-        ],
-      })
-    );
-  };
+  const currentRoute = navigationRef.getCurrentRoute();
+  const currentRouteName = currentRoute?.name;
+
+  const alreadyInsideMainTabs =
+    currentRouteName === "MainTabs" ||
+    currentRouteName === "Featured" ||
+    currentRouteName === "Workshop" ||
+    currentRouteName === "Challenge" ||
+    currentRouteName === "Location" ||
+    currentRouteName === "Jobs" ||
+    currentRouteName === "Chats" ||
+    currentRouteName === "Profile";
+
+  if (alreadyInsideMainTabs) {
+    return;
+  }
+
+  navigationRef.dispatch(
+    CommonActions.reset({
+      index: 0,
+      routes: [{ name: "MainTabs" }],
+    })
+  );
+};
 
   const resetToCreateProfile = () => {
     if (!navigationRef.isReady()) return;
@@ -696,75 +705,93 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
     } catch {}
 
     const appStateSub = AppState.addEventListener("change", async (state) => {
+  try {
+    if (state !== "active") return;
+
+    /**
+     * WEB FIX:
+     * Browser tab focus/blur can trigger AppState "active".
+     * Do not re-run auth/profile/navigation logic just because the user
+     * clicked away from the tab and came back.
+     *
+     * Manual browser refresh still reloads the app normally.
+     * Native iOS/Android resume behavior stays unchanged.
+     */
+    if (Platform.OS === "web") {
       try {
-        if (state === "active") {
-          try {
-            supabase.auth.startAutoRefresh();
-          } catch {}
+        supabase.auth.startAutoRefresh();
+      } catch {}
 
-          const activeUrl =
-            Platform.OS === "web" ? null : await Linking.getInitialURL();
+      return;
+    }
 
-          if (isRecoveryUrl(activeUrl)) {
-            markRecoveryMode();
-            tryNavigateToNewPassword();
-            return;
-          }
+    try {
+      supabase.auth.startAutoRefresh();
+    } catch {}
 
-          if (isEmailConfirmationUrl(activeUrl)) {
-            markEmailConfirmationMode();
-          }
+    const activeUrl = await Linking.getInitialURL();
 
-          const { data, error } = await withTimeout(
-            supabase.auth.getSession(),
-            8000
-          );
+    if (isRecoveryUrl(activeUrl)) {
+      markRecoveryMode();
+      tryNavigateToNewPassword();
+      return;
+    }
 
-          if (error) {
-            if (isInvalidRefreshTokenError(error)) {
-              await clearPersistedAuthSession();
-              clearLocalAuthState();
-              return;
-            }
+    if (isEmailConfirmationUrl(activeUrl)) {
+      markEmailConfirmationMode();
+    }
 
-            console.warn(
-              "AuthProvider resume session check error:",
-              error.message
-            );
-            return;
-          }
+    const { data, error } = await withTimeout(
+      supabase.auth.getSession(),
+      8000
+    );
 
-          const resumedUid = data?.session?.user?.id ?? null;
-
-          if (resumedUid) {
-            if (isPasswordResetFlowActive()) {
-              console.log("🔐 Resume found reset session; keeping it out of normal auth.");
-              return;
-            }
-
-            latestAuthUserIdRef.current = resumedUid;
-            setUserId((prev) => (prev === resumedUid ? prev : resumedUid));
-
-            await loadProfile(resumedUid, G.__OVERLOOKED_EMAIL_CONFIRM__);
-
-           if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
-  pendingCreateProfileRedirectRef.current = true;
-  void tryNavigateToCreateProfile();
-}
-          }
-        }
-      } catch (e: any) {
-        console.warn(
-          "AuthProvider AppState handler error:",
-          e?.message || String(e)
-        );
-
-        if (!ready && mounted) {
-          authBootstrappedRef.current = true;
-          setReady(true);
-        }
+    if (error) {
+      if (isInvalidRefreshTokenError(error)) {
+        await clearPersistedAuthSession();
+        clearLocalAuthState();
+        return;
       }
-    });
+
+      console.warn(
+        "AuthProvider resume session check error:",
+        error.message
+      );
+      return;
+    }
+
+    const resumedUid = data?.session?.user?.id ?? null;
+
+    if (resumedUid) {
+      if (isPasswordResetFlowActive()) {
+        console.log(
+          "🔐 Resume found reset session; keeping it out of normal auth."
+        );
+        return;
+      }
+
+      latestAuthUserIdRef.current = resumedUid;
+      setUserId((prev) => (prev === resumedUid ? prev : resumedUid));
+
+      await loadProfile(resumedUid, G.__OVERLOOKED_EMAIL_CONFIRM__);
+
+      if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
+        pendingCreateProfileRedirectRef.current = true;
+        void tryNavigateToCreateProfile();
+      }
+    }
+  } catch (e: any) {
+    console.warn(
+      "AuthProvider AppState handler error:",
+      e?.message || String(e)
+    );
+
+    if (!ready && mounted) {
+      authBootstrappedRef.current = true;
+      setReady(true);
+    }
+  }
+});
 
     const init = async () => {
       try {

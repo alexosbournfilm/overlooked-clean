@@ -274,9 +274,21 @@ export default function AppNavigator({
       window.sessionStorage.removeItem("overlooked.createProfileAllowed");
     }
 
-    if (currentRoute?.name !== "MainTabs") {
-      resetToMainTabs();
-    }
+    const currentRouteName = currentRoute?.name;
+
+const alreadyInsideMainTabs =
+  currentRouteName === "MainTabs" ||
+  currentRouteName === "Featured" ||
+  currentRouteName === "Workshop" ||
+  currentRouteName === "Challenge" ||
+  currentRouteName === "Location" ||
+  currentRouteName === "Jobs" ||
+  currentRouteName === "Chats" ||
+  currentRouteName === "Profile";
+
+if (!alreadyInsideMainTabs) {
+  resetToMainTabs();
+}
   };
 
   void runRedirectLogic();
