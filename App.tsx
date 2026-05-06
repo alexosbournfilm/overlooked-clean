@@ -131,33 +131,44 @@ function markPasswordResetFlow() {
 function markSignupConfirmFlow() {
   (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
   (globalThis as any).__OVERLOOKED_RECOVERY__ = false;
+
+  /**
+   * Email confirmation is NOT allowed to open CreateProfile.
+   * User must manually sign in first.
+   */
   (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = true;
   (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-  (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = true;
+  (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
   (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
 
-  setCreateProfileAllowedStorage();
+  clearCreateProfileAllowedStorage();
 }
 
 /**
- * Allows incomplete profiles ONLY when this is a valid create-profile flow:
- * - email confirmation
- * - manual sign-in with a confirmed account
- * - durable create-profile allowed flag
+ * Allows incomplete profiles ONLY after manual sign-in.
  *
- * This keeps the old random CreateProfile glitch blocked,
- * while preserving valid onboarding.
+ * Email confirmation alone must stay on SignIn.
  */
 function isAllowedCreateProfileFlow() {
   const G = globalThis as any;
 
-  if (G.__OVERLOOKED_EMAIL_CONFIRM__ === true) return true;
+  const resetFlowActive = Boolean(
+    G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+      G.__OVERLOOKED_RECOVERY__ ||
+      G.__OVERLOOKED_PASSWORD_RESET_DONE__
+  );
+
+  if (resetFlowActive) return false;
+
+  /**
+   * Email confirmation must NOT allow CreateProfile.
+   * Only manual sign-in can.
+   */
   if (G.__OVERLOOKED_MANUAL_SIGN_IN__ === true) return true;
   if (G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === true) return true;
 
   if (Platform.OS === "web" && typeof window !== "undefined") {
     return (
-      window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
       window.sessionStorage.getItem("overlooked.manualSignIn") === "true" ||
       window.sessionStorage.getItem("overlooked.createProfileAllowed") === "true"
     );
@@ -634,11 +645,13 @@ if (handledEarlySignupHash) {
          * If the app opens with an old saved session and the profile is incomplete,
          * do NOT allow AppNavigator/AuthProvider to send the user to CreateProfile.
          *
-         * But DO allow:
-         * - fresh email confirmation
-         * - manual sign-in
-         * - durable create-profile allowed flag
-         */
+         /**
+ * But DO allow:
+ * - manual sign-in
+ * - durable create-profile allowed flag
+ *
+ * Email confirmation alone must stay on SignIn.
+ */
         if (session && !isPasswordResetFlow) {
           const profileComplete = await isCurrentUserProfileComplete(
             session.user.id

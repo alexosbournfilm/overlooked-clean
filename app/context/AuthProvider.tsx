@@ -63,6 +63,7 @@ if (typeof G.__OVERLOOKED_PASSWORD_RESET_DONE__ === "undefined") {
 if (typeof G.__OVERLOOKED_FORCE_NEW_PASSWORD__ === "undefined") {
   G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
 }
+
 if (typeof G.__OVERLOOKED_PROFILE_JUST_COMPLETED__ === "undefined") {
   G.__OVERLOOKED_PROFILE_JUST_COMPLETED__ = false;
 }
@@ -236,7 +237,6 @@ function isNativeEmailConfirmationUrl(url?: string | null): boolean {
   if (isNativeRecoveryUrl(url)) return false;
 
   const lower = url.toLowerCase();
-
   const type = getUrlParam(url, "type")?.toLowerCase() || "";
 
   const hasSignupType =
@@ -286,17 +286,17 @@ function isInvalidRefreshTokenError(error: any): boolean {
 }
 
 function isPasswordResetFlowActive() {
-  return Boolean(
-    G.__OVERLOOKED_RECOVERY__ ||
-      G.__OVERLOOKED_FORCE_NEW_PASSWORD__
-  );
+  return Boolean(G.__OVERLOOKED_RECOVERY__ || G.__OVERLOOKED_FORCE_NEW_PASSWORD__);
 }
+
+/**
+ * IMPORTANT:
+ * Email confirmation must NOT count as permission to enter CreateProfile.
+ *
+ * Only manual sign-in can allow CreateProfile.
+ */
 function isCreateProfileAllowedNow() {
   if (isPasswordResetFlowActive()) return false;
-
-  if (G.__OVERLOOKED_EMAIL_CONFIRM__ === true) {
-    return true;
-  }
 
   if (G.__OVERLOOKED_MANUAL_SIGN_IN__ === true) {
     return true;
@@ -308,7 +308,6 @@ function isCreateProfileAllowedNow() {
 
   if (Platform.OS === "web" && typeof window !== "undefined") {
     return (
-      window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
       window.sessionStorage.getItem("overlooked.manualSignIn") === "true" ||
       window.sessionStorage.getItem("overlooked.createProfileAllowed") === "true"
     );
@@ -316,6 +315,7 @@ function isCreateProfileAllowedNow() {
 
   return false;
 }
+
 /**
  * Prevents Supabase/storage/network calls from blocking app startup forever.
  */
@@ -369,6 +369,18 @@ async function clearPersistedAuthSession() {
       "AuthProvider clearPersistedAuthSession error:",
       e?.message || String(e)
     );
+  }
+}
+
+function clearCreateProfileFlags() {
+  G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+  G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+  G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.sessionStorage.removeItem("overlooked.manualSignIn");
+    window.sessionStorage.removeItem("overlooked.createProfileAllowed");
+    window.sessionStorage.removeItem("overlooked.allowCreateProfile");
   }
 }
 
@@ -426,10 +438,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      if (latestAuthUserIdRef.current && latestAuthUserIdRef.current !== uid) return;
+      if (latestAuthUserIdRef.current && latestAuthUserIdRef.current !== uid) {
+        return;
+      }
 
-latestAuthUserIdRef.current = uid;
-setUserId((prev) => (prev === uid ? prev : uid));
+      latestAuthUserIdRef.current = uid;
+      setUserId((prev) => (prev === uid ? prev : uid));
 
       if (!data) {
         setProfile(null);
@@ -508,117 +522,142 @@ setUserId((prev) => (prev === uid ? prev : uid));
     );
   };
 
+  const handleEmailConfirmationCompleted = async () => {
+    /**
+     * Native email confirmation creates a temporary Supabase session.
+     * That session must be removed so the user must manually sign in.
+     */
+    try {
+      await supabase.auth.signOut({ scope: "local" as any });
+    } catch {}
+
+    clearCreateProfileFlags();
+    pendingCreateProfileRedirectRef.current = false;
+
+    await clearPersistedAuthSession();
+    clearLocalAuthState();
+    resetToSignIn();
+  };
+
   const tryNavigateToCreateProfile = async () => {
-  const resetFlowActive = isPasswordResetFlowActive();
+    const resetFlowActive = isPasswordResetFlowActive();
 
-  if (G.__OVERLOOKED_PROFILE_JUST_COMPLETED__) {
-    console.log("✅ Profile just completed — blocking CreateProfile redirect.");
-    return;
-  }
+    if (G.__OVERLOOKED_PROFILE_JUST_COMPLETED__) {
+      console.log("✅ Profile just completed — blocking CreateProfile redirect.");
+      return;
+    }
 
-  if (resetFlowActive) {
-    console.log("🔐 Blocked CreateProfile navigation during password reset.");
-    return;
-  }
+    if (resetFlowActive) {
+      console.log("🔐 Blocked CreateProfile navigation during password reset.");
+      return;
+    }
 
-  if (!userId) return;
-  if (!profileChecked) return;
-  if (!navigationRef.isReady()) return;
+    if (!userId) return;
+    if (!profileChecked) return;
+    if (!navigationRef.isReady()) return;
 
-  const complete = Boolean(
-    profile?.id &&
-      profile?.full_name &&
-      profile?.main_role_id &&
-      profile?.city_id
-  );
-
-  if (complete) return;
-
-  const createProfileAllowed = isCreateProfileAllowedNow();
-
-  /**
-   * IMPORTANT:
-   * AuthProvider must NOT sign the user out here.
-   *
-   * If CreateProfile is not allowed, just do nothing.
-   * AppNavigator handles stale/random incomplete sessions.
-   *
-   * Signing out here causes the flash:
-   * CreateProfile opens → flags/state race → signOut → SignIn.
-   */
-  if (!createProfileAllowed) {
-    console.log(
-      "🛑 AuthProvider blocked CreateProfile navigation, but did not sign out."
+    const complete = Boolean(
+      profile?.id &&
+        profile?.full_name &&
+        profile?.main_role_id &&
+        profile?.city_id
     );
 
+    if (complete) return;
+
+    const createProfileAllowed = isCreateProfileAllowedNow();
+
+    /**
+     * CreateProfile must only open after manual sign-in.
+     */
+    if (!createProfileAllowed) {
+      console.log(
+        "🛑 AuthProvider blocked CreateProfile navigation because this was not a manual sign-in."
+      );
+
+      pendingCreateProfileRedirectRef.current = false;
+      return;
+    }
+
+    const currentRoute = navigationRef.getCurrentRoute();
+
+    if (currentRoute?.name === "CreateProfile") {
+      return;
+    }
+
     pendingCreateProfileRedirectRef.current = false;
-    return;
-  }
-
-  const currentRoute = navigationRef.getCurrentRoute();
-
-  if (currentRoute?.name === "CreateProfile") {
-    return;
-  }
-
-  pendingCreateProfileRedirectRef.current = false;
-  resetToCreateProfile();
-};
+    resetToCreateProfile();
+  };
 
   const tryNavigateToNewPassword = () => {
-  if (!G.__OVERLOOKED_FORCE_NEW_PASSWORD__) return;
-  if (!navigationRef.isReady()) return;
+    if (!G.__OVERLOOKED_FORCE_NEW_PASSWORD__) return;
+    if (!navigationRef.isReady()) return;
 
-  const currentRoute = navigationRef.getCurrentRoute();
+    const currentRoute = navigationRef.getCurrentRoute();
 
-  // Prevent NewPassword flashing/remount loop.
-  if (currentRoute?.name === "NewPassword") {
-    return;
-  }
+    if (currentRoute?.name === "NewPassword") {
+      return;
+    }
 
-  navigationRef.dispatch(
-    CommonActions.reset({
-      index: 0,
-      routes: [{ name: "NewPassword" as never }],
-    })
-  );
-};
+    navigationRef.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: "NewPassword" as never }],
+      })
+    );
+  };
 
   const markRecoveryMode = () => {
     G.__OVERLOOKED_RECOVERY__ = true;
     G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
     G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = true;
     G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+    G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+    G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
 
     pendingCreateProfileRedirectRef.current = false;
   };
 
   const markPasswordResetDone = () => {
-  G.__OVERLOOKED_RECOVERY__ = false;
-  G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-  G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
-  G.__OVERLOOKED_PASSWORD_RESET_DONE__ = true;
+    G.__OVERLOOKED_RECOVERY__ = false;
+    G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+    G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+    G.__OVERLOOKED_PASSWORD_RESET_DONE__ = true;
+    G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+    G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
 
-  pendingCreateProfileRedirectRef.current = false;
-};
+    pendingCreateProfileRedirectRef.current = false;
+  };
+
   const markEmailConfirmationMode = () => {
     if (isPasswordResetFlowActive()) {
       console.log("🔐 Ignoring email-confirm mode during password reset.");
       return;
     }
 
+    /**
+     * IMPORTANT:
+     * Email confirmation must NOT allow CreateProfile.
+     *
+     * The user confirms email, lands on SignIn, then manually signs in.
+     */
     G.__OVERLOOKED_RECOVERY__ = false;
     G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
     G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+
     G.__OVERLOOKED_EMAIL_CONFIRM__ = true;
-    G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = true;
 
-if (Platform.OS === "web" && typeof window !== "undefined") {
-  window.sessionStorage.setItem("overlooked.createProfileAllowed", "true");
-  window.sessionStorage.setItem("overlooked.allowCreateProfile", "true");
-}
+    // CRITICAL: do NOT allow CreateProfile from confirmation link.
+    G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+    G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
 
-    pendingCreateProfileRedirectRef.current = true;
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.sessionStorage.removeItem("overlooked.createProfileAllowed");
+      window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+      window.sessionStorage.removeItem("overlooked.manualSignIn");
+    }
+
+    pendingCreateProfileRedirectRef.current = false;
   };
 
   const safelyHandleMissingSession = async () => {
@@ -626,10 +665,7 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
     clearingSessionRef.current = true;
 
     try {
-      const { data, error } = await withTimeout(
-        supabase.auth.getSession(),
-        8000
-      );
+      const { data, error } = await withTimeout(supabase.auth.getSession(), 8000);
 
       if (error) {
         if (isInvalidRefreshTokenError(error)) {
@@ -645,7 +681,9 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
 
       if (recoveredUid) {
         if (isPasswordResetFlowActive()) {
-          console.log("🔐 Missing-session recovery found reset session; ignoring normal auth.");
+          console.log(
+            "🔐 Missing-session recovery found reset session; ignoring normal auth."
+          );
           return;
         }
 
@@ -668,25 +706,26 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
   };
 
   const refreshProfile = async () => {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
 
-  const freshUserId = user?.id ?? userId;
+    const freshUserId = user?.id ?? userId;
 
-  if (error) {
-    console.warn("refreshProfile getUser error:", error.message);
-  }
+    if (error) {
+      console.warn("refreshProfile getUser error:", error.message);
+    }
 
-  if (freshUserId) {
-    latestAuthUserIdRef.current = freshUserId;
-    setUserId(freshUserId);
+    if (freshUserId) {
+      latestAuthUserIdRef.current = freshUserId;
+      setUserId(freshUserId);
 
-    lastLoadedProfileForRef.current = null;
-    await loadProfile(freshUserId, true);
-  }
-};
+      lastLoadedProfileForRef.current = null;
+      await loadProfile(freshUserId, true);
+    }
+  };
+
   useEffect(() => {
     mountedRef.current = true;
     let mounted = true;
@@ -696,103 +735,90 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
     } catch {}
 
     const appStateSub = AppState.addEventListener("change", async (state) => {
-  try {
-    if (state !== "active") return;
-
-    /**
-     * IMPORTANT WEB FIX:
-     * On web, switching browser tabs and coming back fires AppState "active".
-     * We do NOT want to reload session/profile or touch navigation on every tab focus.
-     *
-     * Manual refresh should be handled only by your own refresh buttons / triggerAppRefresh().
-     */
-    if (Platform.OS === "web") {
       try {
-        supabase.auth.startAutoRefresh();
-      } catch {}
+        if (state !== "active") return;
 
-      return;
-    }
+        if (Platform.OS === "web") {
+          try {
+            supabase.auth.startAutoRefresh();
+          } catch {}
 
-    try {
-      supabase.auth.startAutoRefresh();
-    } catch {}
+          return;
+        }
 
-    const activeUrl = await Linking.getInitialURL();
+        try {
+          supabase.auth.startAutoRefresh();
+        } catch {}
 
-    if (isRecoveryUrl(activeUrl)) {
-      markRecoveryMode();
-      tryNavigateToNewPassword();
-      return;
-    }
+        const activeUrl = await Linking.getInitialURL();
 
-    if (isEmailConfirmationUrl(activeUrl)) {
-      markEmailConfirmationMode();
-    }
+        if (isRecoveryUrl(activeUrl)) {
+          markRecoveryMode();
+          tryNavigateToNewPassword();
+          return;
+        }
 
-    const { data, error } = await withTimeout(
-      supabase.auth.getSession(),
-      8000
-    );
+        if (isEmailConfirmationUrl(activeUrl)) {
+          markEmailConfirmationMode();
+          await handleEmailConfirmationCompleted();
+          return;
+        }
 
-    if (error) {
-      if (isInvalidRefreshTokenError(error)) {
-        await clearPersistedAuthSession();
-        clearLocalAuthState();
-        return;
+        const { data, error } = await withTimeout(
+          supabase.auth.getSession(),
+          8000
+        );
+
+        if (error) {
+          if (isInvalidRefreshTokenError(error)) {
+            await clearPersistedAuthSession();
+            clearLocalAuthState();
+            return;
+          }
+
+          console.warn("AuthProvider resume session check error:", error.message);
+          return;
+        }
+
+        const resumedUid = data?.session?.user?.id ?? null;
+
+        if (resumedUid) {
+          if (isPasswordResetFlowActive()) {
+            console.log(
+              "🔐 Resume found reset session; keeping it out of normal auth."
+            );
+            return;
+          }
+
+          latestAuthUserIdRef.current = resumedUid;
+          setUserId((prev) => (prev === resumedUid ? prev : resumedUid));
+
+          await loadProfile(resumedUid, false);
+        }
+      } catch (e: any) {
+        console.warn(
+          "AuthProvider AppState handler error:",
+          e?.message || String(e)
+        );
+
+        if (!ready && mounted) {
+          authBootstrappedRef.current = true;
+          setReady(true);
+        }
       }
-
-      console.warn(
-        "AuthProvider resume session check error:",
-        error.message
-      );
-      return;
-    }
-
-    const resumedUid = data?.session?.user?.id ?? null;
-
-    if (resumedUid) {
-      if (isPasswordResetFlowActive()) {
-        console.log("🔐 Resume found reset session; keeping it out of normal auth.");
-        return;
-      }
-
-      latestAuthUserIdRef.current = resumedUid;
-      setUserId((prev) => (prev === resumedUid ? prev : resumedUid));
-
-      await loadProfile(resumedUid, G.__OVERLOOKED_EMAIL_CONFIRM__);
-
-      if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
-        pendingCreateProfileRedirectRef.current = true;
-        void tryNavigateToCreateProfile();
-      }
-    }
-  } catch (e: any) {
-    console.warn(
-      "AuthProvider AppState handler error:",
-      e?.message || String(e)
-    );
-
-    if (!ready && mounted) {
-      authBootstrappedRef.current = true;
-      setReady(true);
-    }
-  }
-});
+    });
 
     const init = async () => {
       try {
-        /**
-         * This is set by NewPassword.tsx right before web redirect to /signin.
-         * It survives reload, unlike globalThis flags.
-         */
         const justResetPassword =
           Platform.OS === "web" &&
           typeof window !== "undefined" &&
           window.sessionStorage.getItem("overlooked.justResetPassword") === "true";
 
         if (justResetPassword) {
-          console.log("🔐 justResetPassword detected — forcing clean signed-out SignIn.");
+          console.log(
+            "🔐 justResetPassword detected — forcing clean signed-out SignIn."
+          );
 
           window.sessionStorage.removeItem("overlooked.justResetPassword");
 
@@ -800,6 +826,8 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
           G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
           G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
           G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+          G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+          G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
 
           pendingCreateProfileRedirectRef.current = false;
 
@@ -867,7 +895,9 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
 
         if (uid) {
           if (shouldBeRecovery || isPasswordResetFlowActive()) {
-            console.log("🔐 Init found recovery/reset session; not treating as normal sign-in.");
+            console.log(
+              "🔐 Init found recovery/reset session; not treating as normal sign-in."
+            );
 
             latestAuthUserIdRef.current = null;
             setUserId(null);
@@ -884,15 +914,22 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
             return;
           }
 
+          if (shouldBeEmailConfirm) {
+            authBootstrappedRef.current = true;
+            setReady(true);
+
+            setTimeout(() => {
+              void handleEmailConfirmationCompleted();
+            }, 0);
+
+            return;
+          }
+
           latestAuthUserIdRef.current = uid;
           setUserId(uid);
 
           registerAndSavePushToken(uid).catch(() => {});
           await loadProfile(uid, true);
-
-          if (shouldBeEmailConfirm) {
-            pendingCreateProfileRedirectRef.current = true;
-          }
         } else {
           latestAuthUserIdRef.current = null;
           setUserId(null);
@@ -907,10 +944,6 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
         if (shouldBeRecovery) {
           setTimeout(() => {
             tryNavigateToNewPassword();
-          }, 0);
-        } else if (shouldBeEmailConfirm) {
-          setTimeout(() => {
-            tryNavigateToCreateProfile();
           }, 0);
         }
       } catch (e: any) {
@@ -941,9 +974,13 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
 
       if (isNativeEmailConfirmationUrl(url)) {
         if (isPasswordResetFlowActive()) {
-          console.log("🔐 Ignoring native email-confirm URL during password reset.");
+          console.log(
+            "🔐 Ignoring native email-confirm URL during password reset."
+          );
           return;
         }
+
+        console.log("✅ Native email confirmation detected — staying on SignIn");
 
         markEmailConfirmationMode();
 
@@ -952,37 +989,8 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
           setReady(true);
         }
 
-        try {
-          const { data, error } = await withTimeout(
-            supabase.auth.getSession(),
-            8000
-          );
-
-          if (error && !isInvalidRefreshTokenError(error)) {
-            console.warn(
-              "AuthProvider email confirmation getSession error:",
-              error.message
-            );
-          }
-
-          const confirmedUid = data?.session?.user?.id ?? null;
-
-          if (confirmedUid) {
-            latestAuthUserIdRef.current = confirmedUid;
-            setUserId(confirmedUid);
-            registerAndSavePushToken(confirmedUid).catch(() => {});
-            await loadProfile(confirmedUid, true);
-          }
-        } catch (e: any) {
-          console.warn(
-            "AuthProvider native email confirmation handler error:",
-            e?.message || String(e)
-          );
-        }
-
-        setTimeout(() => {
-          tryNavigateToCreateProfile();
-        }, 0);
+        await handleEmailConfirmationCompleted();
+        return;
       }
     });
 
@@ -993,16 +1001,12 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
         console.log("Auth event →", event);
 
         if (Platform.OS === "web" && event === "TOKEN_REFRESHED") {
-  const refreshedUid = session?.user?.id ?? null;
+          const refreshedUid = session?.user?.id ?? null;
 
-  /**
-   * Supabase can refresh tokens when the browser tab becomes active again.
-   * If it is the same logged-in user, do not reload profile or touch navigation.
-   */
-  if (refreshedUid && refreshedUid === latestAuthUserIdRef.current) {
-    return;
-  }
-}
+          if (refreshedUid && refreshedUid === latestAuthUserIdRef.current) {
+            return;
+          }
+        }
 
         if (event === "PASSWORD_RECOVERY") {
           const initialUrl =
@@ -1013,10 +1017,7 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
             G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
             isRecoveryUrl(initialUrl);
 
-          console.log(
-            "🔐 PASSWORD_RECOVERY event received. okRecovery=",
-            okRecovery
-          );
+          console.log("🔐 PASSWORD_RECOVERY event received. okRecovery=", okRecovery);
 
           if (okRecovery) {
             markRecoveryMode();
@@ -1050,45 +1051,35 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
           !isRecoveryUrl(activeUrl) &&
           !isPasswordResetFlowActive()
         ) {
-          console.log("✅ Email confirmation flow detected");
+          console.log("✅ Email confirmation flow detected — staying on SignIn");
 
           markEmailConfirmationMode();
-
-          const confirmedUid = session?.user?.id ?? null;
-
-          if (confirmedUid) {
-            latestAuthUserIdRef.current = confirmedUid;
-            setUserId(confirmedUid);
-            registerAndSavePushToken(confirmedUid).catch(() => {});
-            await loadProfile(confirmedUid, true);
-            pendingCreateProfileRedirectRef.current = true;
-          }
 
           if (!ready && mounted) {
             authBootstrappedRef.current = true;
             setReady(true);
           }
 
-          tryNavigateToCreateProfile();
+          await handleEmailConfirmationCompleted();
           return;
         }
 
         if (event === "USER_UPDATED") {
-  console.log("🔐 USER_UPDATED fired");
+          console.log("🔐 USER_UPDATED fired");
 
-  if (isPasswordResetFlowActive()) {
-    console.log(
-      "🔐 Password recovery USER_UPDATED ignored by AuthProvider. NewPassword owns this flow."
-    );
+          if (isPasswordResetFlowActive()) {
+            console.log(
+              "🔐 Password recovery USER_UPDATED ignored by AuthProvider. NewPassword owns this flow."
+            );
 
-    if (!ready && mounted) {
-      authBootstrappedRef.current = true;
-      setReady(true);
-    }
+            if (!ready && mounted) {
+              authBootstrappedRef.current = true;
+              setReady(true);
+            }
 
-    return;
-  }
-}
+            return;
+          }
+        }
 
         if (event === "SIGNED_IN" && !isRecoveryUrl(activeUrl)) {
           if (!G.__OVERLOOKED_FORCE_NEW_PASSWORD__) {
@@ -1097,33 +1088,26 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
         }
 
         if (event === "SIGNED_OUT") {
-  const wasPasswordResetFlow = isPasswordResetFlowActive();
+          const wasPasswordResetFlow = isPasswordResetFlowActive();
 
-  G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
-pendingCreateProfileRedirectRef.current = false;
+          clearCreateProfileFlags();
+          pendingCreateProfileRedirectRef.current = false;
 
-if (Platform.OS === "web" && typeof window !== "undefined") {
-  window.sessionStorage.removeItem("overlooked.manualSignIn");
-  window.sessionStorage.removeItem("overlooked.createProfileAllowed");
-  window.sessionStorage.removeItem("overlooked.allowCreateProfile");
-}
+          if (!wasPasswordResetFlow) {
+            G.__OVERLOOKED_RECOVERY__ = false;
+            G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+            G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+          }
+        }
 
-  if (!wasPasswordResetFlow) {
-    G.__OVERLOOKED_RECOVERY__ = false;
-    G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
-    G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
-  }
-}
         const uid = session?.user?.id ?? null;
 
         if (uid) {
           const inRecoveryFlow =
-  G.__OVERLOOKED_RECOVERY__ ||
-  G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
-  event === "PASSWORD_RECOVERY" ||
-  isRecoveryUrl(activeUrl);
+            G.__OVERLOOKED_RECOVERY__ ||
+            G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+            event === "PASSWORD_RECOVERY" ||
+            isRecoveryUrl(activeUrl);
 
           if (inRecoveryFlow) {
             console.log(
@@ -1147,10 +1131,14 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
           registerAndSavePushToken(uid).catch(() => {});
           await loadProfile(uid, event === "SIGNED_IN" || event === "USER_UPDATED");
 
-          if (G.__OVERLOOKED_EMAIL_CONFIRM__) {
-  pendingCreateProfileRedirectRef.current = true;
-  void tryNavigateToCreateProfile();
-}
+          /**
+           * IMPORTANT:
+           * Only manual sign-in can open CreateProfile.
+           * Email confirmation cannot.
+           */
+          if (isCreateProfileAllowedNow()) {
+            void tryNavigateToCreateProfile();
+          }
 
           if (!ready && mounted) {
             authBootstrappedRef.current = true;
@@ -1214,26 +1202,25 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
   }, []);
 
   useEffect(() => {
-  if (!ready) return;
+    if (!ready) return;
 
-  if (G.__OVERLOOKED_PASSWORD_RESET_DONE__) {
-    resetToSignIn();
-    return;
-  }
+    if (G.__OVERLOOKED_PASSWORD_RESET_DONE__) {
+      resetToSignIn();
+      return;
+    }
 
-  if (isPasswordResetFlowActive()) {
-    tryNavigateToNewPassword();
-    return;
-  }
+    if (isPasswordResetFlowActive()) {
+      tryNavigateToNewPassword();
+      return;
+    }
 
-  /**
-   * Only attempt CreateProfile navigation if the flow is actually allowed.
-   * Otherwise, do nothing and let AppNavigator handle normal/stale sessions.
-   */
-  if (isCreateProfileAllowedNow()) {
-    void tryNavigateToCreateProfile();
-  }
-}, [ready, userId, profile, profileChecked]);
+    /**
+     * Only manual sign-in can open CreateProfile.
+     */
+    if (isCreateProfileAllowedNow()) {
+      void tryNavigateToCreateProfile();
+    }
+  }, [ready, userId, profile, profileChecked]);
 
   const profileComplete = useMemo(() => {
     if (!profile) return false;
@@ -1242,79 +1229,79 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
   }, [profile]);
 
   const shouldRouteToCreateProfile = useMemo(() => {
-  const resetFlowActive = isPasswordResetFlowActive();
+    const resetFlowActive = isPasswordResetFlowActive();
 
-  const complete = Boolean(
-    profile?.id &&
-      profile?.full_name &&
-      profile?.main_role_id &&
-      profile?.city_id
-  );
+    const complete = Boolean(
+      profile?.id &&
+        profile?.full_name &&
+        profile?.main_role_id &&
+        profile?.city_id
+    );
 
-  const createProfileAllowed = isCreateProfileAllowedNow();
+    const createProfileAllowed = isCreateProfileAllowedNow();
 
-  return Boolean(
-    userId &&
-      profileChecked &&
-      !complete &&
-      !resetFlowActive &&
-      !G.__OVERLOOKED_PROFILE_JUST_COMPLETED__ &&
-      createProfileAllowed
-  );
-}, [userId, profile, profileChecked]);
+    return Boolean(
+      userId &&
+        profileChecked &&
+        !complete &&
+        !resetFlowActive &&
+        !G.__OVERLOOKED_PROFILE_JUST_COMPLETED__ &&
+        createProfileAllowed
+    );
+  }, [userId, profile, profileChecked]);
 
-const setProfileCompleteFromSavedProfile = (savedProfile: MinimalProfile) => {
-  if (!savedProfile?.id) return;
+  const setProfileCompleteFromSavedProfile = (savedProfile: MinimalProfile) => {
+    if (!savedProfile?.id) return;
 
-  latestAuthUserIdRef.current = savedProfile.id;
-  lastLoadedProfileForRef.current = savedProfile.id;
-  inFlightProfileForRef.current = null;
+    latestAuthUserIdRef.current = savedProfile.id;
+    lastLoadedProfileForRef.current = savedProfile.id;
+    inFlightProfileForRef.current = null;
 
-  setUserId(savedProfile.id);
-  setProfile({
-    id: savedProfile.id,
-    full_name: savedProfile.full_name,
-    main_role_id: savedProfile.main_role_id,
-    city_id: savedProfile.city_id,
-  });
-  setProfileChecked(true);
+    setUserId(savedProfile.id);
+    setProfile({
+      id: savedProfile.id,
+      full_name: savedProfile.full_name,
+      main_role_id: savedProfile.main_role_id,
+      city_id: savedProfile.city_id,
+    });
+    setProfileChecked(true);
 
-  pendingCreateProfileRedirectRef.current = false;
+    pendingCreateProfileRedirectRef.current = false;
 
-  G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-G.__OVERLOOKED_RECOVERY__ = false;
-G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
-G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
-G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+    G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+    G.__OVERLOOKED_RECOVERY__ = false;
+    G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+    G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+    G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+    G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
 
-if (Platform.OS === "web" && typeof window !== "undefined") {
-  window.sessionStorage.removeItem("overlooked.manualSignIn");
-  window.sessionStorage.removeItem("overlooked.createProfileAllowed");
-  window.sessionStorage.removeItem("overlooked.allowCreateProfile");
-}
-};
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.sessionStorage.removeItem("overlooked.manualSignIn");
+      window.sessionStorage.removeItem("overlooked.createProfileAllowed");
+      window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+    }
+  };
 
   const value = useMemo(
-  () => ({
-    ready,
-    userId,
-    profile,
-    profileComplete,
-    profileChecked,
-    shouldRouteToCreateProfile,
-    refreshProfile,
-    setProfileCompleteFromSavedProfile,
-  }),
-  [
-    ready,
-    userId,
-    profile,
-    profileComplete,
-    profileChecked,
-    shouldRouteToCreateProfile,
-  ]
-);
+    () => ({
+      ready,
+      userId,
+      profile,
+      profileComplete,
+      profileChecked,
+      shouldRouteToCreateProfile,
+      refreshProfile,
+      setProfileCompleteFromSavedProfile,
+    }),
+    [
+      ready,
+      userId,
+      profile,
+      profileComplete,
+      profileChecked,
+      shouldRouteToCreateProfile,
+    ]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -51,13 +51,15 @@ function getAllowCreateProfileFlow() {
 
   if (resetFlowActive) return false;
 
-  if (G.__OVERLOOKED_EMAIL_CONFIRM__ === true) return true;
+  /**
+   * Email confirmation must NOT allow CreateProfile.
+   * Only manual sign-in can.
+   */
   if (G.__OVERLOOKED_MANUAL_SIGN_IN__ === true) return true;
   if (G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === true) return true;
 
   if (Platform.OS === "web" && typeof window !== "undefined") {
     return (
-      window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
       window.sessionStorage.getItem("overlooked.manualSignIn") === "true" ||
       window.sessionStorage.getItem("overlooked.createProfileAllowed") === "true"
     );
@@ -158,14 +160,12 @@ export default function AppNavigator({
     const resetDone = G.__OVERLOOKED_PASSWORD_RESET_DONE__ === true;
 
     const createProfileAllowed =
-      G.__OVERLOOKED_EMAIL_CONFIRM__ === true ||
-      G.__OVERLOOKED_MANUAL_SIGN_IN__ === true ||
-      G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === true ||
-      (Platform.OS === "web" &&
-        typeof window !== "undefined" &&
-        (window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
-          window.sessionStorage.getItem("overlooked.manualSignIn") === "true" ||
-          window.sessionStorage.getItem("overlooked.createProfileAllowed") === "true"));
+  G.__OVERLOOKED_MANUAL_SIGN_IN__ === true ||
+  G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === true ||
+  (Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    (window.sessionStorage.getItem("overlooked.manualSignIn") === "true" ||
+      window.sessionStorage.getItem("overlooked.createProfileAllowed") === "true"));
 
     const resetToAuth = () => {
       navigationRef.dispatch(
@@ -260,10 +260,11 @@ export default function AppNavigator({
   }
 
   /**
-   * Allowed cases:
-   * - fresh email confirmation
-   * - manual sign-in after confirmed email
-   */
+ * Allowed case:
+ * - manual sign-in after confirmed email
+ *
+ * Email confirmation alone must stay on SignIn.
+ */
   if (createProfileAllowed) {
     resetToCreateProfile();
     return;
