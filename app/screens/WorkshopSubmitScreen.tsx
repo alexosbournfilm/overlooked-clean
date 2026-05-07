@@ -1399,120 +1399,151 @@ const [uploadLimitLoading, setUploadLimitLoading] = useState(false);
 }
 
     // MOBILE / NATIVE
-    const {
-      data: { user },
-      error: uErr,
-    } = await supabase.auth.getUser();
+const {
+  data: { user },
+  error: uErr,
+} = await supabase.auth.getUser();
 
-    if (uErr) {
-      notify("Please try again", "We couldn’t verify your account right now.", setStatus);
-      return;
+if (uErr) {
+  notify("Please try again", "We couldn’t verify your account right now.", setStatus);
+  return;
+}
+
+if (!user) {
+  notify("Please sign in", "You must be logged in to upload.", setStatus);
+  return;
+}
+
+const { data: profile, error: pErr } = await supabase
+  .from("users")
+  .select("tier")
+  .eq("id", user.id)
+  .single();
+
+if (pErr) {
+  notify("Please try again", "We couldn’t verify your Pro status right now.", setStatus);
+  return;
+}
+
+const tierNorm = String(profile?.tier ?? "").toLowerCase().trim();
+setUserTier(tierNorm || null);
+
+const canUpload = await canUserSubmitLifetimeFilm(user.id, tierNorm);
+
+if (!canUpload.allowed) {
+  setUpgradeVisible(true);
+  return notify(
+    "Upgrade required",
+    "You’ve already used your free film upload. Upgrade to Pro to upload more films.",
+    setStatus
+  );
+}
+
+setStatus("Opening video picker…");
+
+const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+if (!permission.granted) {
+  notify("Permission needed", "Please allow video library access.", setStatus);
+  return;
+}
+
+const result = await ImagePicker.launchImageLibraryAsync({
+  mediaTypes: ["videos"] as any,
+  allowsEditing: false,
+  quality: 1,
+  selectionLimit: 1,
+});
+
+if (result.canceled) {
+  setStatus("No file selected.");
+  return;
+}
+
+const asset: any = result.assets?.[0];
+
+if (!asset?.uri) {
+  notify("No file", "Please choose a video file.", setStatus);
+  return;
+}
+
+setStatus(alreadyCompleted ? "Already completed — You already completed this workshop lesson." : "");
+setDurationSec(null);
+setThumbUri(null);
+setThumbAspect(16 / 9);
+setThumbLoading(false);
+
+removeCustomThumbnail();
+closePreview();
+
+setLocalUri(null);
+setWebFile(null);
+setProgressPct(0);
+
+let bytes: number | null = null;
+
+if (typeof asset.fileSize === "number") {
+  bytes = asset.fileSize;
+}
+
+if (bytes == null && typeof asset.size === "number") {
+  bytes = asset.size;
+}
+
+if (bytes == null) {
+  try {
+    const info = await FileSystem.getInfoAsync(asset.uri, { size: true } as any);
+
+    if (info?.exists && typeof (info as any)?.size === "number") {
+      bytes = (info as any).size;
     }
+  } catch {}
+}
 
-    if (!user) {
-      notify("Please sign in", "You must be logged in to upload.", setStatus);
-      return;
-    }
+if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
+  notify(
+    "File too large",
+    `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
+    setStatus
+  );
+  resetSelectedFile();
+  return;
+}
 
-    const { data: profile, error: pErr } = await supabase
-      .from("users")
-      .select("tier")
-      .eq("id", user.id)
-      .single();
+setWebFile(null);
+setLocalUri(asset.uri);
+setFileSizeBytes(bytes);
 
-    if (pErr) {
-      notify("Please try again", "We couldn’t verify your Pro status right now.", setStatus);
-      return;
-    }
+if (typeof asset.duration === "number") {
+  const dSec = Math.round((asset.duration || 0) / 1000);
+  if (dSec > 0) setDurationSec(dSec);
+}
 
-    const tierNorm = String(profile?.tier ?? "").toLowerCase().trim();
-    setUserTier(tierNorm || null);
+setStatus(`Loaded file • ${formatBytes(bytes)}`);
 
-    const canUpload = await canUserSubmitLifetimeFilm(user.id, tierNorm);
+setThumbLoading(true);
 
-    if (!canUpload.allowed) {
-      setUpgradeVisible(true);
-      return notify(
-        "Upgrade required",
-        "You’ve already used your free film upload. Upgrade to Pro to upload more films.",
-        setStatus
-      );
-    }
+try {
+  const thumb = await VideoThumbnails.getThumbnailAsync(asset.uri, { time: 1000 });
 
-    setStatus(alreadyCompleted ? "Already completed — You already completed this workshop lesson." : "");
-    setDurationSec(null);
-    setThumbUri(null);
-    setThumbAspect(16 / 9);
-    setThumbLoading(false);
+  if (thumb?.uri) {
+    setThumbUri(thumb.uri);
+  }
 
-    removeCustomThumbnail();
-    closePreview();
+  const w = (thumb as any)?.width;
+  const h = (thumb as any)?.height;
 
-    setLocalUri(null);
-    setWebFile(null);
-    setProgressPct(0);
+  if (typeof w === "number" && typeof h === "number" && w > 0 && h > 0) {
+    setThumbAspect(w / h);
+  }
+} catch (thumbErr: any) {
+  console.warn("Thumbnail generation failed:", thumbErr?.message ?? thumbErr);
+  setThumbUri(null);
+} finally {
+  setThumbLoading(false);
+}
 
-    const pick = await DocumentPicker.getDocumentAsync({
-      type: ["video/*"] as any,
-      copyToCacheDirectory: true,
-    });
-
-    if (pick.canceled) return;
-
-    const asset: any = pick.assets?.[0];
-
-    if (!asset?.uri) {
-      notify("No file", "Please choose a file.", setStatus);
-      return;
-    }
-
-    let bytes: number | null = null;
-
-    if (typeof asset.size === "number") bytes = asset.size;
-
-    if (bytes == null) {
-      try {
-        const info = await FileSystem.getInfoAsync(asset.uri, { size: true } as any);
-        if (info?.exists && typeof (info as any)?.size === "number") {
-          bytes = (info as any).size;
-        }
-      } catch {}
-    }
-
-    setWebFile(null);
-    setLocalUri(asset.uri);
-    setFileSizeBytes(bytes);
-
-    if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
-      notify(
-        "File too large",
-        `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
-        setStatus
-      );
-      resetSelectedFile();
-      return;
-    }
-
-    setThumbLoading(true);
-
-    try {
-      const thumb = await VideoThumbnails.getThumbnailAsync(asset.uri, { time: 120 });
-
-      if (thumb?.uri) setThumbUri(thumb.uri);
-
-      const w = (thumb as any)?.width;
-      const h = (thumb as any)?.height;
-
-      if (typeof w === "number" && typeof h === "number" && w > 0 && h > 0) {
-        setThumbAspect(w / h);
-      }
-    } catch {
-      setThumbUri(null);
-    } finally {
-      setThumbLoading(false);
-    }
-
-    setStatus(`Loaded file • ${formatBytes(bytes)}`);
+return;
   } catch (e: any) {
     console.warn("pickFile failed:", e?.message ?? e);
     notify("Could not open picker", e?.message ?? "Try again.", setStatus);
