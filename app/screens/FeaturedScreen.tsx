@@ -1618,7 +1618,7 @@ const FeaturedScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { userId } = useAuth();
-  const { triggerAppRefresh } = useAppRefresh();
+ const { refreshKey, triggerAppRefresh } = useAppRefresh();
 const isGuest = !userId;
 const openShareSlug = route.params?.openShareSlug ?? null;
 const openSubmissionId = route.params?.openSubmissionId ?? null;
@@ -1874,6 +1874,26 @@ const categoryHeaderTopOffset =
   })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [sort, searchQ, filmCategory]);
+
+useEffect(() => {
+  if (initialLoading) return;
+
+  (async () => {
+    try {
+      await initChallengesIfNeeded();
+
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth?.user?.id ?? null;
+
+      setCurrentUserId(uid);
+      await fetchContent(uid, category, searchQ);
+    } catch (e: any) {
+      console.warn('Featured refreshKey refresh error:', e?.message || e);
+    }
+  })();
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [refreshKey]);
 
 
   const baseCols =
@@ -3411,6 +3431,9 @@ return (
     />
   ) : undefined
 }
+alwaysBounceVertical={true}
+bounces={true}
+overScrollMode="always"
   ListHeaderComponent={
   <View style={{ alignItems: 'center' }}>
     {/* CATEGORY ONLY — above winner */}
