@@ -57,10 +57,12 @@ const SYSTEM_SANS = Platform.select({
 /* -------------------------------- types -------------------------------- */
 type WorkshopPathKey =
   | 'acting'
+  | 'selftape'
   | 'editing'
   | 'cinematography'
   | 'directing'
   | 'sound'
+  | 'colorgrading'
   | 'filmmaker';
 
 type LessonKind =
@@ -152,6 +154,15 @@ const PATHS: PathMeta[] = [
     description:
       'Performance work built around truth, emotional control, camera presence, inner life, previous circumstances, and imagination.',
   },
+    {
+    key: 'selftape',
+    label: 'Self Tape',
+    shortLabel: 'Self Tape',
+    subtitle: 'Auditions • Frame • Delivery',
+    icon: 'phone-portrait-outline',
+    description:
+      'A practical course for actors learning how to shoot, perform, frame, light, edit, and submit stronger self tapes.',
+  },
   {
     key: 'editing',
     label: 'Editing',
@@ -188,6 +199,15 @@ const PATHS: PathMeta[] = [
     description:
       'Audio-first storytelling using sound design, off-screen presence, silence, pressure, and perspective.',
   },
+    {
+    key: 'colorgrading',
+    label: 'Color Grading',
+    shortLabel: 'Color',
+    subtitle: 'Balance • Look • Resolve',
+    icon: 'color-palette-outline',
+    description:
+      'A practical DaVinci Resolve free-version path covering correction, contrast, skin tones, shot matching, looks, nodes, scopes, and final delivery.',
+  },
   {
     key: 'filmmaker',
     label: 'All In One Filmmaker',
@@ -202,6 +222,9 @@ const PATH_IMAGES: Record<WorkshopPathKey, { uri: string }> = {
   acting: {
   uri: 'https://images.unsplash.com/photo-1513106580091-1d82408b8cd6?auto=format&fit=crop&w=1200&q=80',
 },
+  selftape: {
+  uri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=1200&q=80',
+},
 editing: {
   uri: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1200&q=80',
 },
@@ -214,6 +237,9 @@ editing: {
   sound: {
     uri: 'https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&w=1200&q=80',
   },
+    colorgrading: {
+  uri: 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?auto=format&fit=crop&w=1200&q=80',
+},
   filmmaker: {
     uri: 'https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&w=1200&q=80',
   },
@@ -980,7 +1006,1896 @@ I didn’t know what would make you stay.`,
     'Learning: This is the integration rep. Bring together action, circumstance, listening, adjustment, previous circumstances, and economy. The scene should feel not “well performed,” but inevitable and lived.'
   ),
 ];
+/* ------------------------------ SELF TAPE ------------------------------ */
+/* 35 unique non-boss lessons — monologue-heavy, in-depth self tape course */
+const SELFTAPE_BASE: LessonSeed[] = [
+  makeSeed(
+    'Semi-Supine Camera Reset',
+    'Foundation',
+    'Release tension before filming so the camera sees thought, not panic.',
+    `Actor preparation before taping:
+Lie on your back with knees bent, feet flat, and head supported lightly if needed. Let the floor hold your weight. Place your hands on the side ribs and notice the ribs widening as breath enters. Do not force a “deep actor breath.” Let the breath drop. Then gently hum on an easy sound. Move from hum into the first line.
 
+Mindset option:
+Listen to one quiet instrumental track before filming. Choose music that makes you feel exposed but brave. Turn it off before recording.
+
+MONOLOGUE:
+“I keep thinking there will be a moment where I suddenly feel ready.
+Like the room will change, or my hands will stop shaking, or I will become the kind of person who knows exactly what to do.
+But that moment is not coming.
+So this is what I have instead.
+My breath.
+My voice.
+This small amount of courage.
+And the fact that I am still here.”
+
+As if 1:
+You are recording your first serious audition after years of secretly believing you are not a real actor.
+
+As if 2:
+You are making a final video message before leaving your old life behind forever.
+
+As if 3:
+You are a young royal about to address a nation after your family has collapsed.
+
+As if 4:
+You are a criminal calmly recording a confession, but only half of it is true.
+
+As if 5:
+You are speaking to the person who humiliated you, and this is the first time you refuse to shrink.`,
+    'Train breath release, camera readiness, emotional availability, and calm presence before a self tape.',
+    'A self tape monologue where the actor appears relaxed, available, and alive in close-up.',
+    [
+      'Do the semi-supine breath release before filming.',
+      'Do not force emotion; let breath make the body available.',
+      'Film at least 3 as-if versions and choose the one that changes the scene most.',
+    ],
+    'drill',
+    'The tape should feel like a human being deciding to be seen.',
+    'Learning: Many bad self tapes begin with tension. Semi-supine work helps release unnecessary muscular effort before camera work. The aim is not relaxation for its own sake; the aim is readiness. A ready actor can receive, think, breathe, and change.'
+  ),
+
+  makeSeed(
+    'Featured Feedback Before You Tape',
+    'Foundation',
+    'Train your eye by watching other creatives before judging yourself.',
+    `Before recording, go to the Featured page. Watch 2 creative submissions and leave specific, useful comments.
+
+Good comments:
+“Your eyes changed before the line, which made the moment believable.”
+“The tape felt honest, but the sound was slightly too low.”
+“The stillness worked because the stakes were clear.”
+“I understood what you wanted from the other person.”
+“The final pause was powerful — do not rush it.”
+
+Then film this solo self tape:
+
+MONOLOGUE:
+“I watched it back.
+That was the mistake.
+In my head, it felt different.
+Braver.
+Cleaner.
+Like I was finally showing people what I can do.
+But on the screen, I saw every little thing I hate about myself.
+The blinking.
+The smiling when I am scared.
+The way I apologize before anyone has even criticized me.
+And still, somehow, there was one second where I believed myself.
+One second.
+Maybe that is enough to start with.”
+
+As if 1:
+You are an actor watching your first self tape and almost deleting it.
+
+As if 2:
+You are a filmmaker watching footage of someone you love who has died.
+
+As if 3:
+You are a spy reviewing surveillance footage and realizing you were caught emotionally, not physically.
+
+As if 4:
+You are a parent watching your child perform and seeing your own fear reflected back.
+
+As if 5:
+You are a famous performer after a public failure, deciding whether to continue.`,
+    'Train artistic observation, generosity, self-review, and practical self-tape improvement.',
+    'A monologue tape recorded after giving feedback to other creatives on Featured.',
+    [
+      'Comment on 2 Featured submissions first.',
+      'Your feedback must be kind, specific, and useful.',
+      'After filming, write one note about your own tape as if you were helping another actor.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Actors grow faster when they stop only judging themselves and start observing craft. Watching other tapes teaches what reads on camera: eyes, breath, sound, framing, stillness, and truthful shifts.'
+  ),
+
+  makeSeed(
+    'Clean Frame Monologue',
+    'Foundation',
+    'Set the frame so the acting becomes the main event.',
+    `Set up:
+Use landscape framing unless instructed otherwise. Frame from just above the head to mid-chest. Keep the background clean. Put the camera at eye level or slightly above. Avoid bright windows behind you.
+
+MONOLOGUE:
+“You are looking at the wrong things.
+The wall, the light, the chair, the corner of the room.
+I know because I do it too.
+I look for anything that proves I do not belong here.
+A shadow.
+A bad angle.
+A stupid mark on the wall.
+Anything except the person standing in front of me.
+So look at me.
+Not the room.
+Me.”
+
+As if 1:
+You are speaking to casting through the camera and demanding they actually see your potential.
+
+As if 2:
+You are confronting a lover who keeps avoiding emotional intimacy by criticizing small things.
+
+As if 3:
+You are a prisoner being filmed for evidence, trying to control what the world notices.
+
+As if 4:
+You are a ghost trying to make one living person finally see you.
+
+As if 5:
+You are a celebrity in a documentary, furious that people only see the image, not the human being.`,
+    'Train framing, background control, camera confidence, and clean audition presentation.',
+    'A visually clean self tape where the frame helps the actor instead of distracting from them.',
+    [
+      'Remove distracting objects behind you.',
+      'Keep the camera still and at a flattering height.',
+      'Check the frame before doing emotional work.',
+    ],
+    'technical',
+    'Casting should notice your face and behavior before they notice your room.',
+    'Learning: Self-tape setup is not about expensive production. It is about removing obstacles. A clean frame lets casting relax and watch the actor’s thoughts, not the background.'
+  ),
+
+  makeSeed(
+    'Front Light Truth Test',
+    'Foundation',
+    'Use light that reveals your eyes without making the tape look fake.',
+    `Set up:
+Place a window, lamp, or soft light in front of you or slightly to the side. Avoid standing with a bright window behind you. Film one bad version with backlight, then one clean version with front light.
+
+MONOLOGUE:
+“I used to think darkness protected me.
+If no one could see my face, no one could ask what happened.
+No one could tell when I was lying.
+No one could see the moment I changed my mind.
+But now I am tired of hiding in bad light.
+So here.
+Look properly.
+This is my face when I tell the truth.”
+
+As if 1:
+You are confessing something to the person you betrayed.
+
+As if 2:
+You are auditioning for a role that could change your life, and you refuse to hide.
+
+As if 3:
+You are a political prisoner giving forbidden testimony.
+
+As if 4:
+You are a vampire stepping into sunlight for the first time because love matters more than survival.
+
+As if 5:
+You are an older version of yourself speaking to your younger self through a recording.`,
+    'Train lighting awareness, eye visibility, and truthful close-up presence.',
+    'Two lighting tests plus a final properly lit monologue tape.',
+    [
+      'Make sure both eyes are visible.',
+      'Do not use harsh light directly under the face.',
+      'Watch the tape back with the sound off and check whether the eyes still tell the story.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Lighting is access. If the eyes are hidden, much of the acting is hidden. For self tapes, clear soft light usually beats dramatic shadow.'
+  ),
+
+  makeSeed(
+    'Sound and Intimate Speech',
+    'Foundation',
+    'Speak quietly without disappearing.',
+    `Sound preparation:
+Turn off fans, TVs, music, washing machines, loud air conditioning, and notifications. Record a test. Listen back with headphones.
+
+Vocal preparation:
+Start with an easy hum. Let the lips buzz. Move into “mmm,” then “vvv,” then speak the first line on the same easy breath. Keep the jaw free.
+
+MONOLOGUE:
+“I am not raising my voice.
+That does not mean I am not serious.
+People always think pain has to get louder before it becomes real.
+But mine went the other way.
+It got smaller.
+Quieter.
+Sharper.
+So listen carefully.
+Because I am only going to say this once.”
+
+As if 1:
+You are warning someone you love before they make a dangerous mistake.
+
+As if 2:
+You are a villain who never needs to shout because everyone already fears you.
+
+As if 3:
+You are in a hospital corridor and must not wake the person behind the door.
+
+As if 4:
+You are being recorded secretly and need one person to understand the hidden message.
+
+As if 5:
+You are a child finally speaking calmly to a parent who always screamed.`,
+    'Train clean audio, vocal ease, quiet intensity, and self-tape clarity.',
+    'A self tape where every word is audible even when the performance stays intimate.',
+    [
+      'Listen back before submitting.',
+      'Do not mumble in the name of realism.',
+      'Let quiet speech stay supported by breath.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Good self-tape sound allows intimate acting. The actor should not need to shout to be heard. Supported quiet speech is often more powerful than volume.'
+  ),
+
+  makeSeed(
+    'Professional Slate Into Character',
+    'Foundation',
+    'Move from simple introduction into private circumstance.',
+    `Slate:
+Look into the lens and say:
+“Hi, my name is [your name]. I am reading for [role]. I am based in [city/country].”
+
+Pause. Let the slate end. Shift eyeline just beside the lens. Begin the monologue.
+
+MONOLOGUE:
+“I know I smiled when I came in.
+That is habit.
+I smile when I am nervous.
+I smile when I am angry.
+I smile when someone has hurt me so badly that if I stop smiling, the whole room will know.
+So please do not mistake it for comfort.
+I am not comfortable.
+I am just well trained.”
+
+As if 1:
+You are an actor slating for a casting director who once rejected you cruelly.
+
+As if 2:
+You are a spouse at a dinner party, quietly confronting your partner without anyone else hearing.
+
+As if 3:
+You are a royal bride giving a private interview after realizing the marriage is a prison.
+
+As if 4:
+You are a hostage forced to appear calm on camera while sending a hidden signal.
+
+As if 5:
+You are a teacher speaking to a student who has learned to hide pain the same way you did.`,
+    'Train clean slating, transition, camera discipline, and immediate character life.',
+    'A professional slate followed by a monologue with a clear emotional shift.',
+    [
+      'Keep the slate simple and human.',
+      'Do not perform the slate as the character.',
+      'Let there be a real breath between slate and scene.',
+    ],
+    'technical',
+    undefined,
+    'Learning: A slate is a professional hello. The scene is private life. The actor must be able to move from one to the other without carrying awkward slate energy into the performance.'
+  ),
+
+  makeSeed(
+    'One Line, Ten Worlds',
+    'Foundation',
+    'Use one line to prove that circumstance changes everything.',
+    `Film this single line ten times:
+
+LINE:
+“You came back.”
+
+As if 1:
+You are relieved because the person returned from war.
+
+As if 2:
+You are furious because they promised never to return.
+
+As if 3:
+You are terrified because you buried them yesterday.
+
+As if 4:
+You are a detective realizing the suspect has returned to the crime scene.
+
+As if 5:
+You are a child seeing a parent who abandoned you.
+
+As if 6:
+You are a ruler seeing the traitor you secretly loved.
+
+As if 7:
+You are pretending not to care, but this is the only person you wanted to see.
+
+As if 8:
+You are a ghost and they are the first person who can hear you.
+
+As if 9:
+You are a criminal whose alibi has just collapsed.
+
+As if 10:
+You are an actor seeing your dream return after you gave it up.
+
+After filming, choose the 3 versions that feel most different from each other.`,
+    'Train imagination, playable circumstance, and extreme variation inside minimal text.',
+    'Ten short takes of one line, with at least three completely different interpretations.',
+    [
+      'Do not change the words.',
+      'Do not rely on accents or gimmicks.',
+      'Let each circumstance change your body, breath, timing, and need.',
+    ],
+    'drill',
+    undefined,
+    'Learning: The line is not the performance. Circumstance is the performance. When the imagined event changes radically, the same words can become romance, horror, grief, comedy, revenge, or hope.'
+  ),
+
+  makeSeed(
+    'Audition Monologue: The Missed Call',
+    'Performance',
+    'Play a contemporary emotional monologue with relationship history.',
+    `Before filming:
+Go to Featured and leave one comment on a performance where you believed the actor’s listening or stillness.
+
+MONOLOGUE:
+“I called you six times.
+I know that sounds dramatic when I say it out loud.
+Six.
+Like I was counting.
+I was counting.
+The first time, I thought you were busy.
+The second time, I thought your phone was dead.
+The third time, I thought something terrible had happened to you.
+By the fourth, I understood.
+By the fifth, I hated myself for still hoping.
+And by the sixth, I was not calling because I needed you anymore.
+I was calling so I would remember this moment.
+The moment I finally stopped waiting.”
+
+As if 1:
+You are ending a romantic relationship after years of being ignored.
+
+As if 2:
+You are speaking to a parent who never arrived when you needed them.
+
+As if 3:
+You are a soldier leaving a final voicemail before a dangerous mission.
+
+As if 4:
+You are blackmailing someone, and the calls were proof of their guilt.
+
+As if 5:
+You are in a comedy-drama and trying not to admit how pathetic the six calls make you feel.`,
+    'Train emotional history, personal stakes, and controlled vulnerability in a solo self tape.',
+    'A complete contemporary monologue with a clear emotional journey.',
+    [
+      'Comment on Featured before filming.',
+      'Decide who you are speaking to before the first line.',
+      'Do not rush the number sequence; each call should cost something different.',
+    ],
+    'scene',
+    undefined,
+    'Learning: A strong audition monologue has turns. The actor should not play one emotion from start to finish. Track each call as a new realization.'
+  ),
+
+  makeSeed(
+    'Comedy Monologue Without Begging for Laughs',
+    'Performance',
+    'Let comedy come from embarrassment, not performance tricks.',
+    `MONOLOGUE:
+“I brought flowers to a breakup.
+Yes, I hear it now.
+At the time, it felt thoughtful.
+Soft.
+Mature, even.
+I thought, if someone is going to destroy me emotionally, the least I can do is provide a nice visual.
+And then you opened the door and said, ‘Are those for me?’
+And I said, ‘Technically.’
+Which is not a sentence a confident person says.
+So now I am standing here with twelve roses, no dignity, and the strange feeling that even the flowers are disappointed in me.”
+
+As if 1:
+You are still trying to save the relationship and using humor as a last tactic.
+
+As if 2:
+You are telling the story at your own wedding to someone else years later.
+
+As if 3:
+You are a villain explaining the one heartbreak that made you ridiculous before it made you cruel.
+
+As if 4:
+You are on a first date trying to make your emotional damage sound charming.
+
+As if 5:
+You are alone in your room after the breakup, practicing the funny version because the real version hurts too much.`,
+    'Train comedy self-taping through truth, timing, embarrassment, and need.',
+    'A comedic monologue that stays grounded and human.',
+    [
+      'Do not pull faces to make it funny.',
+      'Play the pain underneath the joke.',
+      'Let the rhythm be conversational, not stand-up comedy unless the as-if demands it.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Comedy works when the actor takes the situation seriously. The character is not trying to entertain casting; they are trying to survive embarrassment.'
+  ),
+
+  makeSeed(
+    'Thriller Monologue: The Calm Warning',
+    'Performance',
+    'Create danger through control rather than volume.',
+    `MONOLOGUE:
+“You should leave now.
+Not because I am angry.
+Anger would be safer.
+Anger makes people sloppy.
+They shout, they point, they break things, they say too much.
+I am not angry anymore.
+I passed angry about ten minutes ago.
+Now I am clear.
+And clarity is a much colder room to be trapped in.
+So take your coat.
+Take your keys.
+Take whatever version of yourself you think can still walk out of here untouched.
+And leave.”
+
+As if 1:
+You are warning someone you love before you lose control.
+
+As if 2:
+You are a crime boss giving a final chance to a traitor.
+
+As if 3:
+You are a victim who has secretly become more dangerous than the abuser.
+
+As if 4:
+You are an artificial intelligence calmly explaining why humans should be afraid.
+
+As if 5:
+You are a parent speaking to the person who hurt your child.`,
+    'Train contained threat, stillness, and genre control in a self tape.',
+    'A thriller-style monologue where danger increases without shouting.',
+    [
+      'Keep the voice controlled.',
+      'Use stillness as pressure.',
+      'Let the final “leave” feel like the last door before violence.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Threat on camera is often stronger when it is contained. The actor must know exactly what they are capable of, even if they never show it.'
+  ),
+
+  makeSeed(
+    'Period Drama Monologue',
+    'Performance',
+    'Use formal language with real human stakes.',
+    `MONOLOGUE:
+“You mistake my silence for agreement.
+That has been your error from the beginning.
+I was silent because I was taught that a quiet woman is easier to praise.
+I was silent because every room I entered had already decided the shape of my life.
+I was silent because speaking would have cost me everything.
+But you have spent so long admiring my restraint that you forgot restraint is not the same as obedience.
+And now, at last, you shall learn the difference.”
+
+As if 1:
+You are a noblewoman refusing an arranged marriage.
+
+As if 2:
+You are a servant speaking privately to the master who underestimated you.
+
+As if 3:
+You are a queen addressing the court after betrayal.
+
+As if 4:
+You are a modern politician using old-fashioned restraint as a weapon.
+
+As if 5:
+You are speaking to your younger self, wishing you had said this years ago.`,
+    'Train heightened text, status, restraint, and period-style audition performance.',
+    'A period-style monologue that feels truthful rather than stiff.',
+    [
+      'Do not use a fake posh voice.',
+      'Let the language be formal but the need be raw.',
+      'Find the exact moment silence becomes power.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Period work is not about sounding fancy. It is about pressure under rules. The stronger the social restraint, the more powerful the private rebellion.'
+  ),
+
+  makeSeed(
+    'Music Into Character Rhythm',
+    'Performance',
+    'Use music privately to find the character’s emotional weather.',
+    `Preparation:
+Choose one piece of music that gives you the character’s rhythm. Do not use it in the final tape. Listen once before filming, then turn it off.
+
+Choose music for one of these:
+- Grief that cannot move quickly.
+- Confidence that is secretly fragile.
+- Revenge that feels elegant.
+- Hope that feels almost embarrassing.
+- Panic hidden under politeness.
+
+MONOLOGUE:
+“I had a whole speech prepared.
+It was better than this.
+Sharper.
+Cleaner.
+There was a line in the middle that would have made you feel terrible, and I was looking forward to that.
+But then I saw your face.
+And suddenly the speech felt like a costume.
+Something I put on because the truth was too plain.
+So here is the truth.
+I missed you.
+I hated that I missed you.
+And I came here to punish you for it.”
+
+As if 1:
+You are trying to win back an ex but cannot forgive them yet.
+
+As if 2:
+You are a spy confronting the handler who abandoned you.
+
+As if 3:
+You are a child speaking to an absent parent as an adult.
+
+As if 4:
+You are a ghost appearing to the person who forgot you.
+
+As if 5:
+You are a villain realizing love made you weak.`,
+    'Train private preparation, emotional rhythm, and monologue transformation through music.',
+    'A monologue tape shaped by a private music choice, with no music in the final submission.',
+    [
+      'Use music only before recording.',
+      'Let the music affect rhythm and inner temperature, not create melodrama.',
+      'Film two versions with two totally different tracks.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Music can help actors find rhythm, temperature, and atmosphere. But the final tape must stand without it. The music is preparation, not decoration.'
+  ),
+
+  makeSeed(
+    'Voice Resonance Into Text',
+    'Technical',
+    'Warm the voice so emotional text stays supported.',
+    `Voice preparation:
+Hum gently on “mmm.”
+Move the vibration from lips to chest to head without pushing.
+Speak “many moving memories” slowly.
+Then speak the monologue with the same ease.
+
+MONOLOGUE:
+“My voice disappears when I need it most.
+In ordinary rooms, I can speak.
+I can order coffee.
+I can say thank you.
+I can answer the phone.
+But when something matters, when the words could change my life, my throat becomes a locked door.
+So I am opening it slowly.
+Not beautifully.
+Not bravely.
+Just enough to let the truth through.”
+
+As if 1:
+You are an actor who has lost confidence after a humiliating audition.
+
+As if 2:
+You are giving testimony in court against someone powerful.
+
+As if 3:
+You are confessing love to a best friend and expecting rejection.
+
+As if 4:
+You are a leader addressing frightened people after disaster.
+
+As if 5:
+You are a child in an adult body finally saying what was forbidden at home.`,
+    'Train vocal resonance, supported speech, and truthful clarity in emotional self tapes.',
+    'A self tape where the voice remains open and clear under pressure.',
+    [
+      'Do not squeeze the throat for emotion.',
+      'Keep breath moving through the line.',
+      'If the voice tightens, pause and return to hum.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Emotional acting often tightens the voice. Voice preparation helps the actor stay available without choking the text. Support allows vulnerability to be heard.'
+  ),
+
+  makeSeed(
+    'Articulation Without Overdoing It',
+    'Technical',
+    'Speak clearly while still sounding like a real person.',
+    `Articulation preparation:
+Gently warm lips, tongue, and jaw.
+Say:
+“Tip of the tongue, teeth, and lips.”
+“Red leather, yellow leather.”
+“Unique New York.”
+Then speak the monologue naturally, not like a school exercise.
+
+MONOLOGUE:
+“I know exactly what you heard.
+You heard the sentence.
+You heard the polite version.
+You heard the words arranged neatly enough that nobody could accuse me of being cruel.
+But you did not hear what I meant.
+So let me help you.
+When I said I was happy for you, I meant I hope it keeps you awake.
+When I said I understood, I meant I will remember.
+And when I said goodbye, I meant do not come back.”
+
+As if 1:
+You are being polite at a wedding where your ex is marrying someone else.
+
+As if 2:
+You are a diplomat threatening war without ever raising your voice.
+
+As if 3:
+You are a best friend pretending to forgive a betrayal.
+
+As if 4:
+You are a comedy character realizing your passive aggression is not as subtle as you thought.
+
+As if 5:
+You are a villain giving someone one final socially acceptable warning.`,
+    'Train diction, clarity, subtext, and clean self-tape speech.',
+    'A monologue tape where every word is clear without sounding over-pronounced.',
+    [
+      'Warm the mouth before recording.',
+      'Do not over-articulate like a robot.',
+      'Let clarity serve the thought, not replace it.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Articulation is not about sounding posh or artificial. It is about letting the thought arrive cleanly. In self tapes, unclear words can hide good acting.'
+  ),
+
+  makeSeed(
+    'One-Person Phone Scene',
+    'Audition Craft',
+    'Make the unseen person real without needing another actor.',
+    `Film this as a one-sided phone call. Leave space for the unheard person, but do not exaggerate the pauses.
+
+MONOLOGUE / PHONE SCENE:
+“Hi.
+No, please do not hang up.
+I know I said I would not call.
+I meant it when I said it.
+I mean most things when I say them. That is the problem.
+No, I am not drunk.
+I am annoyingly sober.
+I just found your note.
+The one behind the picture frame.
+I do not know why I moved it.
+Maybe some part of me knew you were still hiding there.
+No, I am not angry.
+I am past angry.
+I am standing in the part that comes after, and I do not know what it is called.”
+
+As if 1:
+You are calling an ex after discovering they still loved you.
+
+As if 2:
+You are calling a dead person’s voicemail because you found their final letter.
+
+As if 3:
+You are calling your criminal partner after finding proof they betrayed you.
+
+As if 4:
+You are leaving a message you know will be used as evidence.
+
+As if 5:
+You are in a romantic comedy and trying very hard not to sound insane.`,
+    'Train solo listening, imagined response, and phone-call realism for self tapes.',
+    'A one-sided phone scene where the other person feels present.',
+    [
+      'Do not add a second voice track.',
+      'Hear the other person specifically in your imagination.',
+      'Let what you “hear” change you.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Solo phone scenes test listening. The audience must feel the invisible partner through your pauses, interruptions, reactions, and changes of tactic.'
+  ),
+
+  makeSeed(
+    'Offscreen Reader Optional Scene',
+    'Audition Craft',
+    'Turn a two-person scene into a strong solo audition piece.',
+    `This can be taped with or without a reader. If alone, imagine the other lines.
+
+SCENE:
+INT. EMPTY THEATRE – NIGHT
+
+READER
+You missed your entrance.
+
+ACTOR
+I know.
+
+READER
+Everyone saw.
+
+ACTOR
+Good.
+
+READER
+Good?
+
+ACTOR
+Yes. I am tired of arriving exactly when people expect me.
+
+READER
+This is not bravery.
+
+ACTOR
+No. It is worse.
+It is honesty.
+
+If filming solo, only say the ACTOR lines and let the READER lines live silently.
+
+As if 1:
+You are an actor refusing to obey a director who has been humiliating you.
+
+As if 2:
+You are a revolutionary choosing public disgrace over obedience.
+
+As if 3:
+You are a child performer grown up, finally rejecting control.
+
+As if 4:
+You are in a dark comedy and this is the first honest mistake you have ever enjoyed.
+
+As if 5:
+You are a ghost in an abandoned theatre speaking to the role you never got to play.`,
+    'Train handling sides alone, silent listening, and offscreen partner imagination.',
+    'A self tape that works either with a reader or as a solo response scene.',
+    [
+      'If alone, do not rush the silent reader lines.',
+      'Let each unheard line affect you.',
+      'Keep the eyeline consistent.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Many actors do not always have a reader. You can still tape well if the imagined partner is specific and the silent beats are alive.'
+  ),
+
+  makeSeed(
+    'Status Flip Monologue',
+    'Audition Craft',
+    'Use the same words to move from powerless to powerful.',
+    `MONOLOGUE:
+“You think because I waited, I was weak.
+That is convenient for you.
+Weak people are easier to forgive.
+Weak people make better stories.
+You can say I was confused, emotional, young, afraid.
+You can say anything except the truth.
+I waited because timing matters.
+I waited because rooms reveal themselves.
+I waited because people like you always speak too soon.
+And now I know exactly where to place the knife.”
+
+As if 1:
+You are a betrayed lover revealing emotional power.
+
+As if 2:
+You are a political strategist destroying an opponent.
+
+As if 3:
+You are a servant in a period drama who has gathered secrets for years.
+
+As if 4:
+You are a bullied student years later, now interviewing the person who hurt you.
+
+As if 5:
+You are a supernatural creature who has been pretending to be human.`,
+    'Train status shift, control, and power reversal in a self tape.',
+    'A monologue where the actor begins contained and ends in command.',
+    [
+      'Do not start powerful too early.',
+      'Let the status rise line by line.',
+      'Make the final image dangerous without becoming cartoonish.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Status is readable through breath, stillness, timing, and permission. A strong status flip lets the audience watch power arrive.'
+  ),
+    makeSeed(
+    'Tears Not Required',
+    'Audition Craft',
+    'Play grief without chasing tears.',
+    `Preparation:
+Before filming, sit quietly and notice what your body does when it tries not to cry. Do not force tears. Let resistance be the action.
+
+MONOLOGUE:
+“Everyone keeps asking if I cried.
+As if that is the receipt.
+As if grief is only real when it leaves evidence on your face.
+I did not cry.
+I made tea.
+I folded the blanket on the chair.
+I answered three emails.
+I cleaned a glass that was already clean.
+And then I stood in the hallway for twenty minutes because I could not remember which room I was supposed to enter.
+So no.
+I did not cry.
+But do not tell me I did not feel it.”
+
+As if 1:
+You are grieving a parent and angry at people judging your reaction.
+
+As if 2:
+You are a detective describing the moment you found the victim, but the victim was someone you loved.
+
+As if 3:
+You are in a dark comedy, furious that grief has made you boring and practical.
+
+As if 4:
+You are an alien trying to explain human grief after experiencing it for the first time.
+
+As if 5:
+You are speaking at a funeral and refusing to perform sadness for the crowd.`,
+    'Train emotional truth, grief behavior, and avoiding forced tears in self tapes.',
+    'A grief monologue that feels specific without melodrama.',
+    [
+      'Do not try to cry.',
+      'Play the resistance to crying.',
+      'Let ordinary actions reveal the loss.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Tears are not proof of truth. Often the fight not to cry is more moving than crying. Casting wants believable behavior, not emotional tricks.'
+  ),
+
+  makeSeed(
+    'Audition Adjustment: Three Notes',
+    'Audition Craft',
+    'Practice taking direction by changing the whole scene.',
+    `Film the monologue three times, applying a different casting note each time.
+
+MONOLOGUE:
+“I said yes because everyone was watching.
+That is the embarrassing truth.
+Not because I wanted it.
+Not because I believed in it.
+Not because my heart opened and the world made sense.
+I said yes because the room went quiet, and silence has always made decisions for me.
+Then everyone clapped.
+And once people clap, it becomes very difficult to say, actually, I have made a terrible mistake.”
+
+Take 1 direction:
+Make it romantic drama — you said yes to a marriage proposal you regret.
+
+Take 2 direction:
+Make it political thriller — you agreed publicly to support a dangerous leader.
+
+Take 3 direction:
+Make it comedy — you accidentally agreed to be in a community musical and now cannot escape.
+
+Take 4 direction:
+Make it tragedy — your yes caused someone else’s life to collapse.
+
+Take 5 direction:
+Make it coming-of-age — this is the first time you understand your people-pleasing has consequences.`,
+    'Train direction-taking, flexibility, and major tonal reinterpretation.',
+    'Multiple takes of the same monologue with radically different audition notes.',
+    [
+      'Keep the text exactly the same.',
+      'Change genre, stakes, and relationship each time.',
+      'Do not just change volume or facial expression.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Casting may redirect you. Good actors do not defend their first choice; they transform. The test is whether you can rebuild the scene quickly under a new note.'
+  ),
+
+  makeSeed(
+    'Self Tape Editing Discipline',
+    'Technical',
+    'Edit simply so the performance stays central.',
+    `Film this monologue and export it cleanly. No music, no filters, no montage, no dramatic color effect.
+
+MONOLOGUE:
+“I wanted to fix it in the edit.
+That is what I always do.
+Cut before the awkward part.
+Brighten the dark bit.
+Hide the silence.
+Choose the take where I look better instead of the one where I am more honest.
+But this time, I am leaving the silence in.
+This time, I am not cutting away from the moment I get uncomfortable.
+Maybe that is where the truth is.
+Maybe that is the part I keep deleting.”
+
+As if 1:
+You are an actor deciding not to over-edit your audition.
+
+As if 2:
+You are a documentary subject realizing the edited version of your life is a lie.
+
+As if 3:
+You are a criminal deleting evidence but unable to delete one emotional truth.
+
+As if 4:
+You are a filmmaker apologizing for manipulating someone’s story.
+
+As if 5:
+You are speaking to your future self, asking them not to erase who you were.`,
+    'Train simple editing, take selection, and professional submission habits.',
+    'A cleanly edited self tape with no distracting effects.',
+    [
+      'Trim only the start and end.',
+      'Do not add music under the scene.',
+      'Choose the most truthful take, not the prettiest take.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Self-tape editing should be invisible. Casting is not looking for a music video. They want a clear, honest audition that opens quickly, plays cleanly, and ends without fuss.'
+  ),
+
+  makeSeed(
+    'Full Body to Close-Up Awareness',
+    'Technical',
+    'Understand how framing changes performance size.',
+    `Film the same monologue twice: once in a wider frame, once in a close self-tape frame.
+
+MONOLOGUE:
+“I can feel the difference when you stand far away.
+I become bigger.
+Louder.
+I start arranging myself so you understand.
+But when you come close, I cannot hide inside shape anymore.
+You see the thought before I polish it.
+You see the fear before I turn it into a joke.
+So maybe distance was never about you.
+Maybe I was the one who needed it.”
+
+As if 1:
+You are speaking to a lover who finally sees through you.
+
+As if 2:
+You are an actor realizing theatre habits are too large for camera.
+
+As if 3:
+You are a suspect under interrogation as the detective moves closer.
+
+As if 4:
+You are a performer on stage slowly becoming a real person.
+
+As if 5:
+You are a ghost who becomes visible only when someone comes close enough.`,
+    'Train performance scale, framing awareness, and camera economy.',
+    'Two versions of the same monologue showing clear adjustment for frame size.',
+    [
+      'Do not perform the close-up like a stage scene.',
+      'Let the wider frame use more body without becoming theatrical.',
+      'Compare which thoughts read better in close-up.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Frame size changes acting size. In close-up, thought is action. In wider shots, the body carries more information. A skilled actor adjusts without becoming fake.'
+  ),
+
+  makeSeed(
+    'Self Tape With Props',
+    'Technical',
+    'Use one object only if it deepens the scene.',
+    `Choose one simple object: a ring, key, mug, photograph, letter, scarf, or phone. Do not let it become busy. Let it hold private meaning.
+
+MONOLOGUE:
+“I kept it.
+I know I should not have.
+That would be the mature thing, apparently.
+Throw it away, delete the number, burn the letter, become new.
+But people who say that have never loved something they were supposed to survive.
+So yes, I kept it.
+Not because I want you back.
+Not because I forgive you.
+Because some proof should remain.
+Some version of me stood here before this happened.
+And she deserves evidence.”
+
+As if 1:
+The object belonged to someone who died.
+
+As if 2:
+The object proves a betrayal you are not ready to reveal.
+
+As if 3:
+The object is ridiculous and sentimental, and you hate that it still works on you.
+
+As if 4:
+The object is evidence in a crime, but you are emotionally attached to it.
+
+As if 5:
+The object is the last thing connecting you to your old identity before fame changed everything.`,
+    'Train prop discipline, object meaning, and private life on camera.',
+    'A self tape where one object adds emotional history without distracting.',
+    [
+      'Use only one object.',
+      'Do not stare at it constantly.',
+      'Let touch and hesitation reveal meaning.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Props in self tapes should be rare and purposeful. The object must support the acting, not become decoration. The audience should feel history through behavior.'
+  ),
+
+  makeSeed(
+    'The Casting Note: Less',
+    'Audition Craft',
+    'Do less while keeping the stakes high.',
+    `Film the monologue once fully, then again with the note: “Less. Let us come to you.”
+
+MONOLOGUE:
+“I know what you want from me.
+You want the big version.
+The broken glass version.
+The version where I finally say everything I have swallowed and the room goes silent.
+I imagined that version too.
+It was satisfying.
+But the truth is smaller.
+More humiliating.
+I do not want to destroy you.
+I want you to understand what you did.
+And I hate that I still care whether you understand.”
+
+As if 1:
+You are confronting an ex who will never apologize.
+
+As if 2:
+You are giving testimony but trying not to seem emotional.
+
+As if 3:
+You are a villain discovering revenge did not heal anything.
+
+As if 4:
+You are in a quiet indie film where the camera catches every avoided thought.
+
+As if 5:
+You are speaking to a parent who is too old to change.`,
+    'Train subtlety, self-tape restraint, and playable inner pressure.',
+    'Two takes: one fuller version and one reduced version that still carries stakes.',
+    [
+      'Do not make “less” mean empty.',
+      'Keep the objective active.',
+      'Let the second take live more in thought and breath.',
+    ],
+    'technical',
+    undefined,
+    'Learning: “Do less” does not mean “feel less.” It means stop presenting the feeling. Let the camera observe the life underneath.'
+  ),
+
+  makeSeed(
+    'The Casting Note: More Urgent',
+    'Audition Craft',
+    'Increase stakes without becoming messy.',
+    `Film the monologue once naturally, then again with the note: “Make it more urgent. You are running out of time.”
+
+MONOLOGUE:
+“There is something I need to say before you leave.
+No, do not do that.
+Do not smile like I am being dramatic.
+I have wasted too much time trying to sound reasonable.
+Reasonable people lose things quietly.
+I am done losing quietly.
+So stay there.
+Listen.
+For once in your life, do not make me chase you just to be heard.”
+
+As if 1:
+The person is walking out of the relationship forever.
+
+As if 2:
+The person is about to board a plane and disappear.
+
+As if 3:
+You have information that could save their life, but they do not trust you.
+
+As if 4:
+You are in a comedy and physically trying not to chase them down the street.
+
+As if 5:
+You are a ghost with only one minute of visibility before vanishing again.`,
+    'Train urgency, stakes, and controlled escalation for auditions.',
+    'Two takes of the monologue: natural and urgent.',
+    [
+      'Urgency is not just speed.',
+      'Do not sacrifice clarity.',
+      'Let time pressure change breath and tactics.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Urgency means something is being lost right now. It may affect pace, breath, interruption, and risk, but the actor must remain specific and understandable.'
+  ),
+
+  makeSeed(
+    'The Casting Note: Hide the Truth',
+    'Audition Craft',
+    'Play the lie underneath the text.',
+    `Film the monologue with a secret. The words sound reasonable, but the character is hiding something major.
+
+MONOLOGUE:
+“I do not know why everyone keeps asking me.
+I was there, yes.
+I have said that.
+I was in the room, I heard the argument, I saw him leave.
+That is all.
+People argue every day.
+People slam doors.
+People say things they do not mean.
+If every ugly sentence became evidence, none of us would survive.
+So no, I do not know what happened after.
+And I think it is cruel that you keep making me repeat it.”
+
+As if 1:
+You witnessed a crime and are protecting someone you love.
+
+As if 2:
+You committed the crime but have almost convinced yourself you did not.
+
+As if 3:
+You are innocent but hiding a different scandal that would ruin you.
+
+As if 4:
+You are a child covering for a parent.
+
+As if 5:
+You are in a courtroom drama and know the jury is beginning to doubt you.`,
+    'Train subtext, secrets, and controlled lying in self tapes.',
+    'A monologue where the actor’s hidden truth affects every line.',
+    [
+      'Decide the exact secret before filming.',
+      'Do not signal the lie too obviously.',
+      'Let fear of exposure change your listening and breath.',
+    ],
+    'scene',
+    undefined,
+    'Learning: A lie gives the actor action. The character must manage information, not merely “act suspicious.” A good tape lets casting sense pressure without seeing a cartoon liar.'
+  ),
+
+  makeSeed(
+    'Self Tape for Vulnerability',
+    'Audition Craft',
+    'Be open without asking the audience for pity.',
+    `MONOLOGUE:
+“I need help.
+There.
+I said it.
+And I hate how small it makes me feel.
+I know it should not.
+I know people say asking for help is strong, but people say many things when they are not the one standing here with nothing left to trade.
+So please do not make me perform dignity.
+I have been dignified all week.
+I wore clean clothes.
+I answered messages.
+I said I was fine in three different tones.
+I am not fine.
+I need help.”
+
+As if 1:
+You are asking a friend for money after hiding financial collapse.
+
+As if 2:
+You are a superhero asking an ordinary person to save you.
+
+As if 3:
+You are a parent asking your child for forgiveness.
+
+As if 4:
+You are in a dark comedy and disgusted by how sincere you sound.
+
+As if 5:
+You are a leader who has never admitted weakness before.`,
+    'Train vulnerability, pride, and need without melodrama.',
+    'A self tape where asking for help feels difficult, specific, and truthful.',
+    [
+      'Do not play for pity.',
+      'Keep pride alive.',
+      'Let the need break through resistance gradually.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Vulnerability is strongest when the character does not want to be vulnerable. The obstacle is dignity, pride, shame, or fear. Let the request cost something.'
+  ),
+
+  makeSeed(
+    'Public Mask Monologue',
+    'Audition Craft',
+    'Hide a private emergency behind social behavior.',
+    `MONOLOGUE:
+“Thank you all for coming.
+Really.
+It means more than I can say.
+The flowers are beautiful, the food is lovely, and I am sure if I stand here long enough, someone will tell me where to put my hands.
+That is the strange thing about days like this.
+Everyone knows what to do.
+Sign the card.
+Hug the family.
+Say the sentence.
+‘They would have loved this.’
+Maybe they would have.
+Maybe they would have hated it.
+Maybe they would have stood in the corner making jokes because grief made them uncomfortable too.
+Sorry.
+I said I would keep this brief.”
+
+As if 1:
+You are giving a funeral speech and trying not to break.
+
+As if 2:
+You are at an awards ceremony thanking someone who privately destroyed you.
+
+As if 3:
+You are a politician smiling through news that your career is over.
+
+As if 4:
+You are in a comedy and the event is a disastrous office leaving party.
+
+As if 5:
+You are a murderer giving a memorial speech for your victim and almost enjoying the performance.`,
+    'Train social mask, private pressure, and split behavior in self tapes.',
+    'A monologue where public politeness and private truth exist at the same time.',
+    [
+      'Keep the public mask believable.',
+      'Let the private emergency leak through cracks.',
+      'Do not reveal everything too early.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Screen acting often lives in dual reality. The character behaves one way for the room and another way internally. That tension creates camera life.'
+  ),
+
+  makeSeed(
+    'The Apology That Fails',
+    'Audition Craft',
+    'Let the apology collapse in real time.',
+    `MONOLOGUE:
+“I practiced this differently.
+In the version I practiced, I was calmer.
+I said the right things in the right order.
+I took responsibility.
+I gave you space.
+I did not ask for anything.
+It was a very good apology.
+You would have hated it.
+Because it was still about me.
+About sounding decent.
+About leaving here with one small piece of myself intact.
+So I am not going to do that.
+I hurt you.
+I knew I was hurting you.
+And at the time, I chose myself anyway.”
+
+As if 1:
+You are apologizing to a lover you cheated on.
+
+As if 2:
+You are a soldier apologizing to the family of someone you could not save.
+
+As if 3:
+You are a famous actor apologizing publicly but suddenly telling the real truth.
+
+As if 4:
+You are a sibling admitting you were the favorite and used it.
+
+As if 5:
+You are a villain discovering one apology might be the only decent thing left in you.`,
+    'Train apology, responsibility, shame, and truthful self-tape confession.',
+    'A monologue where the actor moves from rehearsed apology into real accountability.',
+    [
+      'Start controlled.',
+      'Let the prepared version fail.',
+      'Do not beg for forgiveness.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Apology scenes become powerful when the actor stops trying to be liked. Accountability is active. Shame, pride, fear, and love can all fight inside the same speech.'
+  ),
+
+  makeSeed(
+    'Classic Villain Reimagined',
+    'Audition Craft',
+    'Play villainy through logic, not evil.',
+    `MONOLOGUE:
+“You keep calling it cruelty because cruelty is easier to reject.
+Cruel people are monsters.
+Monsters can be killed.
+But what if I am not cruel?
+What if I am practical?
+What if every terrible thing I have done was simply the cost of building a world that survives?
+You hate the blood on my hands.
+Good.
+Someone should.
+But while you were protecting your conscience, I was protecting the future.
+So judge me if you like.
+Just do it from inside the city I saved.”
+
+As if 1:
+You are a revolutionary leader justifying violence.
+
+As if 2:
+You are a CEO defending a decision that ruined thousands of lives.
+
+As if 3:
+You are a fantasy ruler who sacrificed one village to save a kingdom.
+
+As if 4:
+You are a parent explaining an unforgivable choice made to protect your child.
+
+As if 5:
+You are a charming comedy villain who genuinely thinks everyone else is too sentimental.`,
+    'Train complex antagonists, moral logic, and self-tape power.',
+    'A villain-style monologue that feels intelligent and human.',
+    [
+      'Do not play “evil.”',
+      'Believe your own argument.',
+      'Let charm, grief, or exhaustion complicate the danger.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Strong villains rarely think they are villains. They have logic, wounds, values, and justifications. The actor’s job is to make the argument dangerously believable.'
+  ),
+
+  makeSeed(
+    'Romantic Lead Test',
+    'Audition Craft',
+    'Play love with obstacle, not softness alone.',
+    `MONOLOGUE:
+“I was fine before you.
+That is what annoys me most.
+I had systems.
+Routines.
+A perfectly acceptable relationship with loneliness.
+Then you arrived with your questions and your stupid laugh and your terrifying ability to notice when I was lying.
+And now everything has become inconveniently alive.
+So no, I am not saying this because it is easy.
+I am saying it because pretending not to love you has become more exhausting than whatever happens after I admit it.”
+
+As if 1:
+You are confessing love to your best friend before they marry someone else.
+
+As if 2:
+You are in a romantic comedy and furious at how obvious your feelings have become.
+
+As if 3:
+You are a spy confessing love even though it puts both of you in danger.
+
+As if 4:
+You are a period character admitting love across class boundaries.
+
+As if 5:
+You are a ghost confessing to someone who can feel you but cannot see you.`,
+    'Train romantic vulnerability, charm, stakes, and self-tape intimacy.',
+    'A romantic lead monologue with humor, fear, and genuine need.',
+    [
+      'Do not become soft from the first line.',
+      'Let resistance turn into confession.',
+      'Make the other person specific.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Romance needs obstacle. If love is easy, the scene is flat. The actor should play the risk of saying it, not just the beauty of feeling it.'
+  ),
+
+  makeSeed(
+    'Action Lead Stillness',
+    'Audition Craft',
+    'Show strength without posing.',
+    `MONOLOGUE:
+“I am not brave.
+Brave is what people call you after they survive what you did.
+In the moment, it is uglier than that.
+It is sweat and bad decisions and the horrible understanding that no one better is coming.
+So you move.
+Not because you are fearless.
+Because fear is standing there with you, and if you wait for it to leave, everyone dies.
+That is the truth.
+I was scared the whole time.
+I just moved anyway.”
+
+As if 1:
+You are an action hero explaining the rescue everyone calls heroic.
+
+As if 2:
+You are a firefighter after failing to save one person.
+
+As if 3:
+You are a soldier speaking to a younger recruit who worships you.
+
+As if 4:
+You are a superhero trying to convince a child that fear is normal.
+
+As if 5:
+You are a coward who accidentally became famous for bravery and hates the lie.`,
+    'Train grounded strength, action-character truth, and anti-hero vulnerability.',
+    'An action/drama monologue where courage feels human rather than posed.',
+    [
+      'Do not perform toughness.',
+      'Let fear remain present.',
+      'Keep the body still enough for the camera to read honesty.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Strong characters are more compelling when fear is present. Courage is not the absence of fear; it is action with fear still in the room.'
+  ),
+
+  makeSeed(
+    'Coming-of-Age Self Tape',
+    'Audition Craft',
+    'Play discovery as it happens, not after you understand it.',
+    `MONOLOGUE:
+“I think I have been waiting for permission.
+From you.
+From them.
+From some imaginary adult version of myself who arrives with better hair and a five-year plan.
+But nobody is coming.
+That is both the bad news and the good news.
+I can keep standing here, hoping someone tells me I am allowed to want more, or I can just want it.
+Messily.
+Embarrassingly.
+Without a guarantee.
+So that is what this is.
+Me wanting something out loud.”
+
+As if 1:
+You are telling your parents you are not following the life they planned.
+
+As if 2:
+You are an actor deciding to move city with no guarantee of success.
+
+As if 3:
+You are a young prince/princess refusing the throne’s expectations.
+
+As if 4:
+You are in a comedy and this speech happens after a ridiculous failure.
+
+As if 5:
+You are speaking to your future self, terrified they will be disappointed in you.`,
+    'Train youthful discovery, vulnerability, and active decision-making.',
+    'A coming-of-age monologue with a visible moment of self-permission.',
+    [
+      'Do not play the ending at the beginning.',
+      'Let the confidence arrive during the speech.',
+      'Keep the want specific.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Coming-of-age scenes are about becoming in real time. The actor must let the thought form while speaking, not arrive already wise.'
+  ),
+
+  makeSeed(
+    'Self Tape Panic Control',
+    'Technical',
+    'Use breath and focus when nerves hit during recording.',
+    `Preparation:
+Before filming, stand with soft knees. Exhale fully on “fff.” Let the next breath come in naturally. Pick one point just beside the lens. Keep the focus there.
+
+MONOLOGUE:
+“I am going to slow down.
+Not because I am calm.
+I am not calm.
+My heart is doing something dramatic and unnecessary.
+My mouth is dry.
+My brain has started offering me every possible way this could go wrong.
+Thank you, brain.
+Very creative.
+But I am going to slow down anyway.
+Because the story matters more than the panic.
+And the panic can come with me if it has to.”
+
+As if 1:
+You are calming yourself mid-audition.
+
+As if 2:
+You are talking yourself through a dangerous mission.
+
+As if 3:
+You are on live television after being asked a question you were not prepared for.
+
+As if 4:
+You are in a comedy and trying not to have a panic attack at a dinner party.
+
+As if 5:
+You are a doctor preparing to deliver impossible news.`,
+    'Train nervous-system control, breath, focus, and self-tape recovery.',
+    'A monologue where panic is present but does not destroy clarity.',
+    [
+      'Do not fight nerves; include them.',
+      'Use the exhale to slow down.',
+      'Keep the focus point steady.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Nerves are not failure. They are energy. A trained actor learns to let nerves exist while still serving the scene.'
+  ),
+
+  makeSeed(
+    'Callback Variation Drill',
+    'Mastery',
+    'Make one monologue feel like five different roles.',
+    `Film this monologue five times. Each version should feel like a different casting possibility.
+
+MONOLOGUE:
+“I know how this looks.
+That is the first thing people always say when they are guilty.
+I know that.
+I hear myself.
+But knowing how something looks is not the same as knowing what happened.
+You have a story already.
+I can see it in your face.
+You have put me in the correct little box, sealed the lid, written my name on it.
+But I am still here.
+Annoyingly alive.
+Still speaking.
+Still refusing to become convenient.”
+
+Version 1:
+Legal drama — you are falsely accused and fighting for your life.
+
+Version 2:
+Dark comedy — everyone has misunderstood something ridiculous, but the stakes are socially huge.
+
+Version 3:
+Political thriller — the accusation is part of a larger conspiracy.
+
+Version 4:
+Romantic drama — the person you love believes the worst about you.
+
+Version 5:
+Supernatural horror — they think you are human, and you are deciding whether to let them keep thinking that.`,
+    'Train callback flexibility, genre shift, and self-tape adaptability.',
+    'Five distinct takes of the same monologue, each suitable for a different casting tone.',
+    [
+      'Change the genre fully, not lightly.',
+      'Keep the text identical.',
+      'Let each version have different stakes, rhythm, and relationship.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Callback work often asks actors to adjust quickly. The actor must be able to keep the text and rebuild the world around it.'
+  ),
+
+  makeSeed(
+    'The Private Secret',
+    'Mastery',
+    'Let a hidden truth shape the whole tape.',
+    `Choose one secret before filming. Never say it directly.
+
+Possible secrets:
+- I caused the accident.
+- I am still in love with you.
+- I know you are lying.
+- I am leaving tonight.
+- I have already made the decision.
+- I am more afraid of success than failure.
+- I came here to say goodbye.
+
+MONOLOGUE:
+“You keep asking what changed.
+Nothing changed.
+That is the problem.
+The room is the same.
+You are the same.
+I am standing in the same place, hearing the same excuses, watching the same little performance of surprise.
+And maybe yesterday I would have helped you with it.
+Maybe yesterday I would have smiled and made it easier.
+But something in me has stopped moving toward you.
+I do not know how else to say it.
+The bridge is still there.
+I am just not crossing it anymore.”
+
+As if 1:
+You are ending a relationship but still love them.
+
+As if 2:
+You are firing someone who once saved your life.
+
+As if 3:
+You are a monarch cutting off a family member for the good of the kingdom.
+
+As if 4:
+You are a criminal deciding not to protect your partner anymore.
+
+As if 5:
+You are speaking to your old dream of acting after deciding to quit — or deciding not to.`,
+    'Train secrets, subtext, decision, and inner life.',
+    'A monologue where the hidden secret is never spoken but clearly affects everything.',
+    [
+      'Pick one secret and write it down before filming.',
+      'Do not reveal it directly.',
+      'Let the secret change the pauses and the final decision.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Subtext is often a secret in action. The audience does not need the full explanation, but they should feel the pressure of something unsaid.'
+  ),
+
+  makeSeed(
+    'Final Take Selection',
+    'Mastery',
+    'Choose the take that serves the role, not your ego.',
+    `Film this monologue three times:
+1. Most emotionally open.
+2. Most restrained.
+3. Most dangerous or surprising.
+
+Then watch all three and choose the best audition take.
+
+MONOLOGUE:
+“I know which version you prefer.
+The charming one.
+The one who makes everyone comfortable.
+The one who turns pain into a story people can admire.
+I can do that version.
+I have done that version for years.
+But I do not think that is the person standing here anymore.
+The person standing here is less pleasant.
+More honest.
+Harder to edit.
+And maybe that makes me wrong for the room.
+Or maybe, finally, it makes me right for it.”
+
+As if 1:
+You are choosing between being liked and being truthful in an audition.
+
+As if 2:
+You are a public figure refusing to repair your image.
+
+As if 3:
+You are a villain dropping the mask for the first time.
+
+As if 4:
+You are an actor sending a tape that feels risky but real.
+
+As if 5:
+You are speaking to casting directly, without begging them to approve of you.`,
+    'Train self-review, take selection, and professional judgment.',
+    'Three takes and one chosen final submission.',
+    [
+      'Do not automatically choose the prettiest take.',
+      'Choose the take with the clearest story.',
+      'Ask: which version would make casting want to see more?',
+    ],
+    'technical',
+    undefined,
+    'Learning: Self-tape mastery includes taste. The best take is not always the most emotional, attractive, or polished. It is the one that best serves the role and reveals a specific actor.'
+  ),
+
+  makeSeed(
+    'Featured Community Callback',
+    'Mastery',
+    'Use community feedback to improve your final tape.',
+    `Before filming:
+Go to Featured. Watch 3 submissions. Leave 3 comments:
+1. One note about performance truth.
+2. One note about technical clarity.
+3. One note about what made you keep watching.
+
+Then record this final monologue.
+
+MONOLOGUE:
+“I used to think being seen meant being chosen.
+That someone else had to point and say, yes, you.
+You are the one.
+You are allowed in the room.
+But I have watched people make things with no permission.
+Films in bedrooms.
+Songs in kitchens.
+Scenes taped against blank walls with borrowed light.
+And somehow, they were still alive.
+So maybe being seen starts earlier.
+Maybe it starts here.
+With making the thing.
+With telling the truth before anyone claps.
+With showing up before anyone asks.”
+
+As if 1:
+You are speaking as an actor to other unknown actors, urging them not to wait.
+
+As if 2:
+You are the founder of a creative movement inviting people into something bigger.
+
+As if 3:
+You are giving yourself one last chance before quitting.
+
+As if 4:
+You are in a film about artists building a future from nothing.
+
+As if 5:
+You are speaking directly to the person watching your tape, asking not for pity, but for attention.`,
+    'Train community engagement, artistic purpose, and final self-tape confidence.',
+    'A polished final monologue after giving feedback to other creatives.',
+    [
+      'Comment on Featured before filming.',
+      'Make the speech personal without becoming sentimental.',
+      'Let the final line feel like an invitation, not a plea.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Self-taping can feel lonely, but acting is not only private. Watching, supporting, and learning from other creatives builds taste and confidence. A creative community makes the individual actor stronger.'
+  ),
+
+  makeSeed(
+    'The No-Reader Audition',
+    'Mastery',
+    'Carry a full audition alone with invisible listening.',
+    `Film this as if another person is in the room, but only you speak.
+
+MONOLOGUE:
+“Do not answer yet.
+Please.
+If you answer too quickly, I will know you have practiced.
+And I cannot survive another practiced answer from you.
+So just listen.
+I am going to say the thing plainly, and then you can decide what kind of person you want to be.
+I know.
+I know about the money.
+I know about the messages.
+I know about Thursday.
+And I know that when I ask you why, you are going to look hurt, as if the question itself is the betrayal.
+So do not do that.
+Not this time.
+This time, respect me enough to tell the truth badly.”
+
+As if 1:
+You are confronting a partner about cheating.
+
+As if 2:
+You are a detective giving a suspect one chance to confess.
+
+As if 3:
+You are a child confronting a parent about a lifetime of lies.
+
+As if 4:
+You are a comedy character trying to conduct a serious confrontation but emotionally over-prepared.
+
+As if 5:
+You are a monarch confronting the advisor who sold out the kingdom.`,
+    'Train solo scene work, invisible partner listening, and sustained objective.',
+    'A self tape that feels like a two-person scene even though only the actor speaks.',
+    [
+      'Do not rush the moments where the other person would respond.',
+      'Hear their silent reactions.',
+      'Let each imagined answer change your next tactic.',
+    ],
+    'scene',
+    undefined,
+    'Learning: A monologue can still be a scene. If the other person is alive in your imagination, the tape gains listening, reaction, and tactical movement.'
+  ),
+
+  makeSeed(
+    'The Transformation Take',
+    'Mastery',
+    'Begin as one person and end as another.',
+    `MONOLOGUE:
+“At first, I thought this was about getting you to understand.
+That was sweet of me.
+Naive, but sweet.
+I prepared examples.
+Evidence.
+Little emotional exhibits from the museum of ways you disappointed me.
+But standing here now, I realize I do not need you to understand.
+Understanding would be nice.
+An apology would be elegant.
+A tear would be theatrical.
+But none of it is necessary.
+Because I did not come here to change your mind.
+I came here to change mine.
+And I have.”
+
+As if 1:
+You begin wanting reconciliation and end choosing freedom.
+
+As if 2:
+You begin as a victim and end as a threat.
+
+As if 3:
+You begin as a polite employee and end as someone quitting publicly.
+
+As if 4:
+You begin in romantic drama and end in revenge thriller.
+
+As if 5:
+You begin as an actor begging to be chosen and end as an artist choosing themselves.`,
+    'Train transformation, beat work, and a full emotional arc in close-up.',
+    'A monologue where the actor clearly changes from beginning to end.',
+    [
+      'Do not play the ending too early.',
+      'Mark the moment the objective changes.',
+      'Let the final sentence feel irreversible.',
+    ],
+    'scene',
+    undefined,
+    'Learning: Great tapes often contain a transformation. The viewer should be able to say: this person is not in the same place at the end as they were at the beginning.'
+  ),
+
+  makeSeed(
+    'The Self Tape Master Scene',
+    'Mastery',
+    'Combine setup, voice, imagination, stillness, and bold interpretation.',
+    `Full preparation:
+1. Do 3 minutes of semi-supine breath release.
+2. Hum gently into resonance.
+3. Warm articulation with tongue, lips, and jaw.
+4. Choose one piece of private music for the character’s emotional weather.
+5. Turn the music off.
+6. Check frame, light, sound, and eyeline.
+7. Record three radically different takes.
+
+FINAL MONOLOGUE:
+“If this is the only chance I get, then I do not want to waste it pretending.
+I have done that already.
+I have made myself smaller for rooms that were never going to choose me.
+I have laughed at jokes that cut me.
+I have thanked people for scraps and called it opportunity.
+I have waited outside doors that were not locked, just because no one invited me through.
+But I am tired now.
+Not defeated.
+Tired in the way a match is tired before it becomes fire.
+So look at me properly.
+Not as the safe choice.
+Not as the obvious one.
+As the person standing here with nothing polished left to hide behind.
+This is what I have.
+This voice.
+This body.
+This life.
+This take.”
+
+As if 1:
+You are an unknown actor sending the tape that could change everything.
+
+As if 2:
+You are a revolutionary speaking before the first act of rebellion.
+
+As if 3:
+You are a performer returning after public humiliation.
+
+As if 4:
+You are a young James Bond-type figure before becoming dangerous, elegant, and impossible to ignore.
+
+As if 5:
+You are speaking to every closed door in your life and deciding you no longer need permission.
+
+As if 6:
+You are a ghost, and this tape is the only proof you were ever here.
+
+As if 7:
+You are in a final audition where casting has underestimated you, and you know this is the moment they stop.`,
+    'Train complete self-tape mastery: preparation, technical clarity, emotional truth, and bold personal presence.',
+    'Three polished takes of a final monologue, each with a radically different interpretation.',
+    [
+      'Use real preparation before filming.',
+      'Record at least three different as-if versions.',
+      'Choose the take that feels most alive, not the one that feels safest.',
+    ],
+    'technical',
+    'This should feel like a complete audition piece: clean, specific, emotionally alive, and impossible to ignore.',
+    'Learning: Mastery is integration. Setup, light, sound, voice, body, imagination, and courage all serve one thing: a truthful actor under imaginary circumstances. The final tape should not feel like a perfect product. It should feel alive.'
+  ),
+];
 /* -------------------------------- EDITING -------------------------------- */
 /* 35 unique non-boss lessons split across 3 phases */
 const EDITING_FOUNDATION: LessonSeed[] = [
@@ -3500,6 +5415,994 @@ const SOUND_BASE: LessonSeed[] = [
     'Learning: This is the integration rep. Bring together dialogue discipline, perspective, worldbuilding, motif, subtraction, and musical judgment. A mature soundtrack feels designed from one point of view rather than accumulated from disconnected tricks.'
   ),
 ];
+
+/* ----------------------------- COLOR GRADING ----------------------------- */
+/* In-depth DaVinci Resolve Free lessons.
+   Each lesson gives the learner:
+   - where to go in Resolve
+   - what the tool means
+   - one simple actionable task
+   - a clear uploadable result
+   - practical grading theory
+*/
+
+const COLORGRADING_BASE: LessonSeed[] = [
+  makeSeed(
+    'DaVinci Resolve Setup and Color Page Tour',
+    'Foundation',
+    'Learn where everything lives before you start grading.',
+    'Open DaVinci Resolve Free. Create a new project, import one short clip into the Media Pool, drag it onto a timeline, then click the Color page at the bottom of Resolve. Find the Viewer, Timeline thumbnails, Nodes panel, Primaries wheels, Curves panel, Scopes, Gallery stills, Qualifier, Power Windows, Tracker, and Deliver page. Do not grade yet. Just learn the room.',
+    'Remove fear of the interface so color grading feels practical and controllable.',
+    'Upload a screenshot or short screen recording showing your clip on the Color page, with at least 5 main areas identified.',
+    [
+      'Use DaVinci Resolve Free.',
+      'Do not apply a LUT or grade yet.',
+      'Identify at least 5 areas: Viewer, Nodes, Primaries, Curves, Scopes, Gallery, Windows, Tracker, or Deliver.',
+      'Explain in one sentence what each area is for.',
+    ],
+    'technical',
+    undefined,
+    'Learning: The Color page is where grading happens. The Viewer shows the image, Nodes store corrections, Primaries control exposure and color balance, Curves shape contrast and color, Scopes measure the image, Qualifiers isolate colors, Power Windows isolate areas, Tracker follows movement, and Deliver exports the final clip.'
+  ),
+
+  makeSeed(
+    'RAW vs Non-RAW Footage',
+    'Foundation',
+    'Understand why some clips can be pushed further than others.',
+    'Import two clips if possible: one RAW/log clip and one normal Rec.709 phone or camera clip. In the Color page, click the Camera RAW panel if your clip supports RAW. Notice that RAW clips may allow ISO, white balance, tint, exposure, highlight recovery, and color space controls before the node grade. Then compare this with a normal compressed clip, where you mainly use nodes, wheels, curves, and secondaries.',
+    'Teach the difference between flexible footage and baked-in footage.',
+    'Upload a short comparison or written note explaining what controls were available for your RAW/log clip versus your normal clip.',
+    [
+      'Use RAW if you have it, but if not, compare log footage with normal Rec.709 footage.',
+      'Do not force a RAW workflow on a clip that is not RAW.',
+      'Explain which clip gives you more grading flexibility.',
+      'Avoid extreme corrections on compressed footage.',
+    ],
+    'technical',
+    undefined,
+    'Learning: RAW footage keeps more camera data available and can often be adjusted before the normal grade. Log footage is not always RAW, but it is usually flatter and designed for grading. Normal Rec.709 footage already has contrast and color baked in, so it can break faster if pushed too far.'
+  ),
+
+  makeSeed(
+    'Project Color Management Basics',
+    'Foundation',
+    'Set up a project so your footage transforms correctly before you grade.',
+    'Go to File > Project Settings > Color Management. For a beginner-friendly workflow, use DaVinci YRGB Color Managed if your footage needs proper color space handling. Set your timeline/output for standard web delivery, usually Rec.709 Gamma 2.4 or Rec.709-A depending on your platform and monitor. Import one clip and check whether it looks normal, too flat, or too contrasty. If it is log footage, assign the correct input color space if needed.',
+    'Teach learners that color management comes before creative grading.',
+    'Upload a screenshot of your Color Management settings and one still of your corrected clip.',
+    [
+      'Use Color Management before building a creative look.',
+      'Do not randomly apply LUTs just to make log footage look normal.',
+      'If you do not know the camera profile, write down your best guess.',
+      'The image should look technically normal before you stylise it.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Color management tells Resolve how to interpret your footage. A Sony S-Log clip, Blackmagic Film clip, iPhone HDR clip, and normal Rec.709 clip are not the same. If Resolve interprets footage incorrectly, every grade you build on top will be harder.'
+  ),
+
+  makeSeed(
+    'Where to Find Practice Footage',
+    'Foundation',
+    'Learn what kinds of footage are useful for grading practice.',
+    'Collect 3 short practice clips: one face close-up, one daylight exterior, and one low-light or night shot. You can use your own phone/camera footage, free camera test footage from camera manufacturers, royalty-free stock clips, or footage from a friend’s short film. Put them into one Resolve timeline named Color Practice.',
+    'Train students to choose footage that actually teaches grading skills.',
+    'Upload a screenshot of your practice timeline with 3 different clip types.',
+    [
+      'Use footage you have permission to upload or show.',
+      'Include at least one face shot.',
+      'Include one daylight shot.',
+      'Include one difficult shot: low light, mixed lighting, flat log, or overexposed sky.',
+    ],
+    'technical',
+    undefined,
+    'Learning: You learn grading faster when your footage has different problems. Faces teach skin tone, daylight teaches highlight control, night teaches shadow discipline, and mixed lighting teaches selective correction.'
+  ),
+
+  makeSeed(
+    'Scopes Before Eyes',
+    'Foundation',
+    'Use scopes to see what your monitor may hide.',
+    'Open the Color page. Click the Scopes button. View Waveform, RGB Parade, and Vectorscope. Look at your image without changing anything. On the Waveform, identify shadows, midtones, and highlights. On the RGB Parade, look for color imbalance. On the Vectorscope, look at saturation and skin tone direction.',
+    'Train objective image reading before creative decisions.',
+    'Upload a screenshot of your scopes and write 3 observations: one about exposure, one about color balance, and one about saturation.',
+    [
+      'Use Waveform, RGB Parade, and Vectorscope.',
+      'Do not rely only on your laptop screen.',
+      'Do not grade yet.',
+      'Write what the scopes reveal before making changes.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Scopes are measuring tools. Waveform shows brightness, Parade separates red/green/blue brightness, and Vectorscope shows color direction and saturation. Your eyes are creative; scopes keep you honest.'
+  ),
+
+  makeSeed(
+    'Base Exposure Correction',
+    'Correction',
+    'Fix brightness before chasing a cinematic look.',
+    'Choose one badly exposed clip. In the Color page, create Node 1 and label it Base Correction. Open Primaries wheels. Use Lift for shadows, Gamma for midtones, Gain for highlights, and Offset for the whole image. Watch the Waveform while correcting. Make the image readable without making it stylised.',
+    'Teach the difference between correction and style.',
+    'Upload a before-and-after clip or still where the image becomes clearer but still natural.',
+    [
+      'Use Primaries wheels only.',
+      'Do not use LUTs.',
+      'Keep the image natural.',
+      'Do not crush blacks or clip highlights unless the original footage gives you no choice.',
+    ],
+    'technical',
+    undefined,
+    'Learning: A base correction is the technical repair pass. Lift affects dark areas, Gamma affects middle brightness, Gain affects bright areas, and Offset shifts the whole image. Most bad grades happen because people skip this step.'
+  ),
+
+  makeSeed(
+    'White Balance With RGB Parade',
+    'Correction',
+    'Remove unwanted color casts using scopes.',
+    'Choose a clip that is too warm, too cool, too green, or too magenta. Open RGB Parade. Look at neutral areas such as white walls, grey clothing, paper, clouds, or pavement. Use Temperature/Tint or the color wheels to bring the red, green, and blue channels closer together in neutral areas. Do not remove all atmosphere.',
+    'Train practical white balance correction.',
+    'Upload a before-and-after showing a cleaner white balance.',
+    [
+      'Use RGB Parade while correcting.',
+      'Find at least one neutral object in the frame.',
+      'Do not make the image sterile unless the scene needs it.',
+      'Skin should look believable after correction.',
+    ],
+    'technical',
+    undefined,
+    'Learning: White balance controls whether the image feels too orange, blue, green, or magenta. Correct balance does not always mean perfectly neutral; it means believable for the scene.'
+  ),
+
+  makeSeed(
+    'Contrast Without Crushing',
+    'Correction',
+    'Add depth without destroying image information.',
+    'Take a flat clip. In Node 1, correct exposure first. In Node 2, label it Contrast. Use the Contrast/Pivot controls or Custom Curves to increase depth. Watch the Waveform. Keep important shadow detail visible and avoid hard clipping in highlights.',
+    'Train controlled contrast and image density.',
+    'Upload a clip or still where the image feels richer but still contains detail.',
+    [
+      'Use scopes while adjusting contrast.',
+      'Do not crush every shadow to black.',
+      'Do not clip important highlights.',
+      'Compare before and after using bypass.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Contrast gives shape. Too little contrast feels flat; too much contrast feels amateur and destroys detail. A good grade creates depth while keeping useful information.'
+  ),
+
+  makeSeed(
+    'Saturation Discipline',
+    'Color Control',
+    'Learn when color becomes too much.',
+    'Use one corrected clip. Create three versions: low saturation, natural saturation, and high saturation. Use the Saturation control and Vectorscope. Compare how each version changes the mood and how skin looks.',
+    'Train restraint and taste.',
+    'Upload three stills or a short split comparison showing low, natural, and high saturation.',
+    [
+      'Use the same clip for all versions.',
+      'Do not change contrast between versions.',
+      'Check the Vectorscope.',
+      'Choose the best version and explain why.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Saturation is emotional. Low saturation can feel serious, old, cold, or realistic. High saturation can feel energetic, artificial, comic, romantic, or cheap. The skill is knowing what the scene needs.'
+  ),
+
+  makeSeed(
+    'Skin Tone Line Basics',
+    'Skin Tones',
+    'Protect believable human color.',
+    'Use a clip with a face. Open the Vectorscope and enable the skin tone indicator if available. Correct the shot so the skin sits in a believable direction while the rest of the image stays natural. Use small temperature, tint, gamma, and saturation adjustments.',
+    'Train skin tone awareness.',
+    'Upload a corrected close-up where skin does not look too orange, green, grey, or magenta.',
+    [
+      'Use a face shot.',
+      'Check the Vectorscope.',
+      'Do not over-smooth or over-orange the skin.',
+      'The scene may be stylised, but the person must still feel human.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Audiences notice bad skin color immediately. Even in stylised films, skin usually needs controlled warmth, separation, and life.'
+  ),
+
+  makeSeed(
+    'Clean Node Tree: Correction, Balance, Look, Polish',
+    'Nodes',
+    'Build grades in an organised way.',
+    'Create a four-node structure. Node 1: Base Exposure. Node 2: White Balance. Node 3: Creative Look. Node 4: Polish. Label each node. Put only the correct type of adjustment in each node. Toggle nodes on and off to understand what each one does.',
+    'Train professional organisation inside Resolve.',
+    'Upload a screenshot of your labelled node tree and a graded still.',
+    [
+      'Use at least 4 serial nodes.',
+      'Label every node.',
+      'Do not put all changes into one node.',
+      'Each node must have a clear purpose.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Nodes are like layers of decisions, but more flexible. A clean node tree lets you fix problems, compare looks, protect skin, and change your grade without getting lost.'
+  ),
+
+  makeSeed(
+    'Shot Matching: Two Angles',
+    'Continuity',
+    'Make two shots feel like the same scene.',
+    'Use two clips from the same location or scene. Grade the first shot as your hero shot. Grab a still in the Gallery. Move to the second shot, wipe the still against it, and match exposure, contrast, white balance, saturation, and skin tone. Do not copy settings blindly; match how it feels.',
+    'Train continuity between cuts.',
+    'Upload a short two-shot sequence where the cut does not feel like a color jump.',
+    [
+      'Use at least 2 shots.',
+      'Use Gallery stills or split-screen comparison.',
+      'Match correction before adding style.',
+      'The two shots should feel like the same world.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Shot matching is one of the most important colorist skills. A single beautiful shot is not enough if the next shot feels like a different camera, time, or planet.'
+  ),
+
+  makeSeed(
+    'Gallery Stills for Matching',
+    'Workflow',
+    'Use stills like a real colorist.',
+    'Grade one hero shot. Right-click the Viewer and choose Grab Still. Use that still in the Gallery as your reference. Match two more shots to it using the still wipe or split comparison.',
+    'Train Resolve workflow and consistency.',
+    'Upload a three-shot sequence matched using one Gallery still.',
+    [
+      'Grab at least one still.',
+      'Use it as a reference, not decoration.',
+      'Match exposure first, then color, then style.',
+      'Show the hero still next to another shot if possible.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Gallery stills help you compare shots quickly. They stop you from grading each clip in isolation.'
+  ),
+
+  makeSeed(
+    'Working With Log Footage',
+    'Correction',
+    'Transform flat log footage into a normal image before styling it.',
+    'Use a log clip if available. First, identify the camera profile if you know it, such as S-Log3, C-Log, V-Log, BMD Film, or LogC. Use Color Management, Color Space Transform, or the correct technical LUT to bring it into Rec.709. Then do a normal base correction. Compare the flat original, transformed version, and final correction.',
+    'Teach learners not to confuse log conversion with creative grading.',
+    'Upload a three-stage comparison: flat log, normalized image, and corrected image.',
+    [
+      'Use log footage if possible.',
+      'Do not add a creative look before normalising the image.',
+      'Avoid stacking random LUTs.',
+      'Explain what camera/log profile you used or guessed.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Log footage looks grey because it stores more tonal information for grading. The first step is usually to transform it into a normal viewing space. After that, you build the creative look.'
+  ),
+
+  makeSeed(
+    'Working With Phone and Rec.709 Footage',
+    'Correction',
+    'Grade normal footage without breaking it.',
+    'Use a phone clip or normal camera clip that already has contrast and saturation. Do a gentle correction using Lift, Gamma, Gain, white balance, contrast, and saturation. Avoid heavy pushing. Use curves carefully and check for banding, noisy shadows, clipped highlights, and weird skin.',
+    'Teach realistic grading limits for baked footage.',
+    'Upload a natural corrected clip that looks better but not over-processed.',
+    [
+      'Use non-RAW, non-log footage.',
+      'Do not push colors aggressively.',
+      'Avoid extreme shadow recovery.',
+      'Keep skin and skies clean.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Rec.709 footage is already processed. It can still be graded, but it usually cannot survive the same extreme changes as RAW or log footage.'
+  ),
+
+  makeSeed(
+    'Warm Interior Look',
+    'Creative Look',
+    'Create warmth without turning everything orange.',
+    'Use an indoor shot. Start with base correction. In a Look node, warm the image slightly using Temperature, Gamma, or Color Warper/Curves if available. Add gentle contrast, reduce harsh highlights, and protect skin from becoming too orange. If practical lamps exist, let them feel warm while keeping shadows clean.',
+    'Train emotional warmth and restraint.',
+    'Upload a warm interior grade that feels intimate and believable.',
+    [
+      'Do not make skin unnaturally orange.',
+      'Keep shadows from becoming muddy.',
+      'The warmth should feel motivated by the room, memory, lamp, or emotion.',
+      'Use before/after comparison.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Warmth can suggest intimacy, nostalgia, romance, safety, or memory. Bad warmth turns everything orange. Good warmth still has separation between skin, walls, shadows, and highlights.'
+  ),
+
+  makeSeed(
+    'Cold Distance Look',
+    'Creative Look',
+    'Make a scene feel lonely, sterile, or emotionally distant.',
+    'Use an indoor or outdoor shot. Correct it first. In a Look node, cool the shadows and midtones slightly while keeping faces readable. Lower saturation if needed. Add contrast or density so the image does not become washed-out blue.',
+    'Train controlled cool grading.',
+    'Upload a cold version of the clip that feels intentional, not accidentally blue.',
+    [
+      'Do not simply drag the whole image blue.',
+      'Preserve skin readability.',
+      'Use contrast and saturation, not only temperature.',
+      'Explain what emotion the cold look creates.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Cool color can suggest loneliness, danger, modernity, sadness, sickness, winter, or emotional distance. The key is control: not everything should become the same shade of blue.'
+  ),
+
+  makeSeed(
+    'Daylight Exterior Correction',
+    'Natural Light',
+    'Control bright daylight without making the image dull.',
+    'Use an outdoor daytime clip. Balance exposure, reduce overly bright highlights if possible, control sky brightness, and keep faces natural. Use Gain or Highlights carefully. If the sky is too saturated, use Hue vs Sat or a qualifier to reduce only the sky.',
+    'Train daylight correction and highlight control.',
+    'Upload a corrected daylight clip with natural color and controlled highlights.',
+    [
+      'Watch the Waveform for clipping.',
+      'Do not darken the entire image just to save the sky.',
+      'Keep daylight alive and believable.',
+      'Faces should not become too dark.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Daylight grades often fail because the sky, pavement, or background becomes more important than the subject. Your job is to guide the viewer’s eye.'
+  ),
+
+  makeSeed(
+    'Night Scene Balance',
+    'Low Light',
+    'Make darkness feel intentional, not broken.',
+    'Use a night or low-light clip. Correct exposure only enough for the viewer to understand the subject. Keep shadows dark but not empty. Reduce ugly color casts using white balance or curves. If noise becomes obvious, avoid lifting shadows too far because the free version has limited noise reduction compared with Studio.',
+    'Train night grading discipline.',
+    'Upload a night grade that feels moody but still watchable.',
+    [
+      'Do not lift shadows until the image becomes grey.',
+      'Do not crush everything into black.',
+      'Keep the viewer’s attention on the important subject.',
+      'Do not over-saturate noisy shadows.',
+    ],
+    'technical',
+    undefined,
+    'Learning: A night scene does not need to be bright. It needs to be readable. Darkness is a creative tool when the audience can still understand the important information.'
+  ),
+
+  makeSeed(
+    'Power Window Face Focus',
+    'Windows',
+    'Guide the viewer’s eye with a subtle local adjustment.',
+    'Choose a shot with a face or main subject. Add a new node and label it Face Window. Open Power Windows, choose a circular or oval window, place it around the face, soften the edges, and slightly lift Gamma or Offset. Toggle the node to check that the adjustment is invisible but helpful.',
+    'Train subtle local correction.',
+    'Upload a before-and-after where the viewer naturally looks at the subject.',
+    [
+      'Use one Power Window.',
+      'Feather the window edges.',
+      'The viewer should not see the shape.',
+      'Keep the adjustment subtle.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Power Windows are masks for local grading. They let you brighten, darken, warm, cool, or shape one area without changing the whole frame.'
+  ),
+
+  makeSeed(
+    'Track a Power Window',
+    'Windows',
+    'Keep a local correction attached to a moving subject.',
+    'Place a Power Window around a moving face, hand, or object. Open the Tracker panel. Track forward and backward. Watch the clip and fix any slipping by adjusting the window or re-tracking. The correction should follow the subject naturally.',
+    'Train practical tracking inside Resolve Free.',
+    'Upload a clip where the local correction follows the moving subject cleanly.',
+    [
+      'Use a moving subject.',
+      'Track the Power Window.',
+      'Fix obvious slips.',
+      'The correction should not float away from the subject.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Tracking attaches a window to movement. This lets you brighten a face, darken a background, or isolate an object even when the camera or subject moves.'
+  ),
+
+  makeSeed(
+    'Qualifier: Isolate One Color',
+    'Secondary Correction',
+    'Change one color without changing the whole image.',
+    'Choose a clip with a clear colored object, such as a red jacket, blue wall, green plant, yellow car, or orange light. Add a new node and label it Color Isolation. Open the Qualifier eyedropper, select the color, view the matte/highlight mode, then refine Hue, Saturation, and Luminance until only the target is selected. Adjust that color’s hue, saturation, or brightness.',
+    'Train secondary correction.',
+    'Upload a before-and-after where one selected color changes cleanly.',
+    [
+      'Use the Qualifier.',
+      'Refine the matte before adjusting the color.',
+      'Use blur/clean controls if needed.',
+      'Avoid flickering edges or damaged skin.',
+    ],
+    'technical',
+    undefined,
+    'Learning: A qualifier selects pixels by color. It is useful for changing clothing, skies, walls, lights, plants, and other color areas. The quality of the matte matters more than the strength of the adjustment.'
+  ),
+
+  makeSeed(
+    'Change the Sky Only',
+    'Secondary Correction',
+    'Adjust a sky while leaving people and buildings alone.',
+    'Use a clip with visible sky. Add a node called Sky Control. Use the Qualifier to select the blue or bright sky. Refine the matte so it does not grab skin, clothing, or buildings. Lower sky luminance, reduce saturation, shift hue slightly, or add contrast. If the sky moves or the camera moves, track a Power Window around the sky to limit the selection.',
+    'Train targeted environmental grading.',
+    'Upload a before-and-after where the sky changes but the rest of the shot stays natural.',
+    [
+      'Only the sky should change.',
+      'Use a qualifier and/or Power Window.',
+      'Avoid halos around buildings or hair.',
+      'Do not make the sky look fake unless that is the creative goal.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Professional grading often controls the background separately from the subject. A sky can be darker, richer, softer, colder, or less distracting without changing the whole shot.'
+  ),
+
+  makeSeed(
+    'Protect Skin While Styling the World',
+    'Skin Tones',
+    'Make the environment stylised while keeping people believable.',
+    'Use a face clip. First create a creative look that changes the world: cooler shadows, warmer highlights, muted greens, or a stronger genre color. Then create a skin protection node. Use a qualifier to select skin, refine the matte, and gently correct skin back toward a believable tone. Keep the edges soft.',
+    'Train skin protection during stylised grading.',
+    'Upload a stylised grade where the background has a look but the face still feels alive.',
+    [
+      'Use a clip with visible skin.',
+      'Create a noticeable look first.',
+      'Use a qualifier or separate node to protect skin.',
+      'Avoid harsh mask edges.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Many cinematic grades separate the person from the world. You can push the background colder, greener, warmer, or more muted while keeping skin controlled.'
+  ),
+
+  makeSeed(
+    'Change Eye Color Subtly',
+    'Masking',
+    'Learn precise masking on a small facial detail.',
+    'Use a close-up where eyes are visible. Add a node called Eye Detail. Use a small circular Power Window around one eye, copy or create another for the second eye, feather lightly, then track if there is movement. Use Hue/Saturation or Offset very subtly to shift the eye color or brighten the iris. Do not affect the whites of the eyes too strongly.',
+    'Train precision masking and subtle beauty-style grading.',
+    'Upload a before-and-after where the eye color or brightness changes subtly and believably.',
+    [
+      'Use close-up footage only.',
+      'Mask the eyes carefully.',
+      'Track the windows if the face moves.',
+      'Do not make the eyes look fake or glowing unless intentionally stylised.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Small masks teach control. Eye work should usually be subtle: tiny brightness, contrast, or color changes can guide attention without looking artificial.'
+  ),
+
+  makeSeed(
+    'Mask a Specific Area',
+    'Masking',
+    'Change one part of the frame without affecting the rest.',
+    'Choose any area in a shot: a window, wall, face, hand, sign, lamp, car, or background corner. Add a Power Window around that area, feather it, then adjust brightness, saturation, or color temperature only inside the mask. If the camera moves, track it.',
+    'Train general masking skills.',
+    'Upload a before-and-after showing one masked area changed cleanly.',
+    [
+      'Use a Power Window.',
+      'Feather the mask.',
+      'The adjustment must stay inside the intended area.',
+      'Track the mask if there is movement.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Masking is local control. It is how colorists guide attention, fix problems, hide distractions, brighten faces, darken corners, and shape the image.'
+  ),
+
+  makeSeed(
+    'Day-for-Night Grade',
+    'Creative Transformation',
+    'Make a daytime shot feel like night.',
+    'Use a daytime exterior clip that does not have a blown-out sky. Correct it first. Then create a Day-for-Night look: lower overall exposure, cool the image, reduce saturation, deepen shadows, protect faces if needed, and darken the sky separately with a qualifier or window. Add a motivated light source if the scene has a lamp, window, moon direction, or screen.',
+    'Train believable time-of-day transformation.',
+    'Upload a day-for-night version of a daylight clip.',
+    [
+      'Use a daylight clip.',
+      'Darken and cool the image gradually.',
+      'Do not make faces unreadable.',
+      'Control the sky separately if visible.',
+      'Explain what the imagined light source is.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Day-for-night is not just making footage blue. It is exposure, contrast, saturation, sky control, and believable light direction working together.'
+  ),
+
+  makeSeed(
+    'Night-for-Day Attempt',
+    'Creative Transformation',
+    'Try to make a dark clip feel brighter without destroying it.',
+    'Use a night or low-light clip. Try to make it feel closer to early morning, dawn, or brighter interior light. Lift midtones carefully, reduce heavy color casts, control noise by not raising shadows too far, and add warmth or neutral balance where motivated. Compare how far the footage can go before it breaks.',
+    'Teach the limits of underexposed footage.',
+    'Upload a before-and-after and write one sentence explaining where the footage started to break.',
+    [
+      'Use a dark clip.',
+      'Do not make shadows grey and noisy.',
+      'Keep the result believable.',
+      'Explain the limits you discovered.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Turning night into day is much harder than day into night because missing shadow information cannot magically return. This lesson teaches technical limits and restraint.'
+  ),
+
+  makeSeed(
+    'Curves for Contrast Shape',
+    'Curves',
+    'Use curves to shape shadows, midtones, and highlights precisely.',
+    'Take a flat clip. Open Custom Curves. Create a gentle S-curve by lowering shadows slightly and lifting highlights slightly. Adjust the middle of the curve to protect skin brightness. Compare this with the regular Contrast slider.',
+    'Train curve-based tonal control.',
+    'Upload a before-and-after showing improved contrast from curves.',
+    [
+      'Use Custom Curves.',
+      'Avoid harsh S-curves.',
+      'Do not crush blacks or clip whites.',
+      'Explain how curves felt different from the contrast slider.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Curves give precise tonal shaping. The bottom of the curve controls shadows, the middle controls midtones, and the top controls highlights.'
+  ),
+
+  makeSeed(
+    'Hue vs Hue Color Shift',
+    'Curves',
+    'Shift one color family without damaging the whole image.',
+    'Open Curves and choose Hue vs Hue. Click or sample a color such as green foliage, blue sky, or a red object. Shift the hue slightly. For example, make neon green foliage more natural, push blue sky slightly cyan, or shift yellow lights warmer.',
+    'Train targeted color relationships.',
+    'Upload a clip where one color family changes cleanly.',
+    [
+      'Use Hue vs Hue.',
+      'Only shift one color family.',
+      'Keep the adjustment believable.',
+      'Do not damage skin tones.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Hue vs Hue changes one color into a nearby color. It is useful for refining greens, skies, clothing, walls, and production design.'
+  ),
+
+  makeSeed(
+    'Hue vs Sat Control',
+    'Curves',
+    'Reduce distracting colors without killing the whole image.',
+    'Use a clip with one overpowering color. Open Hue vs Sat. Select the distracting color and lower only that color’s saturation. Keep the rest of the image alive. Use the Vectorscope to watch saturation.',
+    'Train selective saturation control.',
+    'Upload a before-and-after where the distracting color becomes less dominant.',
+    [
+      'Use Hue vs Sat.',
+      'Do not globally desaturate the whole image.',
+      'Keep skin alive.',
+      'The viewer’s eye should go more naturally to the subject.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Selective saturation often looks more professional than global saturation. Instead of making everything dull, reduce only the colors that fight the story.'
+  ),
+
+  makeSeed(
+    'Luma vs Sat Polish',
+    'Finishing',
+    'Clean ugly saturation from shadows and highlights.',
+    'Open Luma vs Sat. Lower saturation in the deepest shadows and brightest highlights while keeping midtones alive. This can clean noisy colored shadows, strange highlight color, and cheap-looking digital saturation.',
+    'Train finishing polish.',
+    'Upload a polished clip with cleaner shadows and highlights.',
+    [
+      'Use Luma vs Sat.',
+      'Do not remove all color from midtones.',
+      'Check before and after carefully.',
+      'Skin should still have life.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Real images often look cleaner when extreme shadows and highlights are less saturated. This helps the grade feel more expensive.'
+  ),
+
+  makeSeed(
+    'Soft Filmic Look Without Paid Plugins',
+    'Look Building',
+    'Build a gentle cinematic look using only free Resolve tools.',
+    'Start with a corrected clip. Add a Look node. Use controlled contrast, slightly reduced saturation, softer highlight roll-off with curves, clean skin, and subtle shadow density. Add a very gentle vignette with a large Power Window if it helps. Do not use paid plugins.',
+    'Train tasteful plugin-free look building.',
+    'Upload a soft filmic grade made only with Resolve Free tools.',
+    [
+      'Use DaVinci Resolve Free tools only.',
+      'No paid plugins.',
+      'No extreme LUT dependency.',
+      'The image should feel polished, not heavily filtered.',
+    ],
+    'technical',
+    undefined,
+    'Learning: A filmic look usually comes from controlled contrast, good highlight handling, restrained saturation, clean skin, and intentional color separation. It is not just a LUT.'
+  ),
+
+  makeSeed(
+    'LUT Test Without Dependency',
+    'LUTs',
+    'Learn what LUTs can and cannot do.',
+    'Correct one clip first. Then create Version A with a LUT and Version B with a manual grade. In the LUT version, lower the key output or adjust before/after nodes if the LUT is too strong. Compare skin, contrast, shadows, highlights, and saturation.',
+    'Train healthy LUT judgment.',
+    'Upload two versions: LUT-based and manual.',
+    [
+      'Correct the image before applying a LUT.',
+      'Do not let the LUT destroy skin or exposure.',
+      'Create a manual version too.',
+      'Explain which version gives more control.',
+    ],
+    'technical',
+    undefined,
+    'Learning: LUTs can be useful starting points or technical transforms, but they are not magic. A colorist still needs correction, matching, and taste.'
+  ),
+
+  makeSeed(
+    'Teal and Warmth Without Cliché',
+    'Look Building',
+    'Create cool/warm separation without making it ugly.',
+    'Use a shot with a person, warm practical light, or warm skin. Correct it first. In the Look node, gently cool the shadows toward teal/blue and keep skin or highlights warm. Use curves, wheels, or split tonal adjustments. Keep saturation restrained.',
+    'Train popular cinematic color contrast with taste.',
+    'Upload a controlled teal-and-warm grade.',
+    [
+      'Keep skin believable.',
+      'Do not make shadows radioactive teal.',
+      'Do not over-orange faces.',
+      'The color contrast must support the scene.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Cool shadows and warm skin create separation because blue/teal and orange/warm tones contrast. The cheap version is extreme. The cinematic version is controlled.'
+  ),
+
+  makeSeed(
+    'Muted Drama Look',
+    'Look Building',
+    'Create seriousness through density and controlled color.',
+    'Use a dramatic shot. Correct it first. Lower saturation slightly, deepen contrast, protect skin brightness, and reduce distracting colors with Hue vs Sat. Keep one or two important colors alive so the image does not feel dead.',
+    'Train restrained dramatic grading.',
+    'Upload a muted dramatic grade that still feels alive.',
+    [
+      'Do not make the whole image grey.',
+      'Keep enough color separation.',
+      'Skin must not become lifeless.',
+      'Explain what emotion the grade creates.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Muted does not mean dead. A good dramatic grade often has lower saturation, stronger density, and carefully chosen color accents.'
+  ),
+
+  makeSeed(
+    'Memory Look',
+    'Subjective Color',
+    'Make color feel like recollection rather than realism.',
+    'Use a neutral clip. Decide what kind of memory it is: warm nostalgia, cold regret, dreamlike softness, or painful flashback. Adjust contrast, saturation, temperature, and highlight softness to match the emotion. Use a subtle vignette or local softness if needed.',
+    'Train emotional grading.',
+    'Upload a memory-style grade and explain the emotion in one sentence.',
+    [
+      'Choose one emotional direction.',
+      'Do not rely only on blur.',
+      'The look must feel connected to story.',
+      'Keep the subject readable.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Subjective color does not need to be realistic. It needs to express how the moment feels to the character.'
+  ),
+
+  makeSeed(
+    'Grade for Genre',
+    'Genre',
+    'Use color language to change the genre of the same clip.',
+    'Take one corrected clip and create two different grades: thriller, romance, social realism, noir, horror, coming-of-age, music video, or psychological drama. Change contrast, saturation, temperature, skin handling, and background color to fit each genre.',
+    'Train genre-specific grading choices.',
+    'Upload two versions of the same clip with clearly different genre identities.',
+    [
+      'Use the same clip for both versions.',
+      'Each grade must suggest a different genre.',
+      'Do not rely on music or text.',
+      'Explain what choices created each genre.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Genre is partly color language. Horror may use sickly greens or cold shadows. Romance may use warmth and softness. Noir may use strong contrast. Social realism may stay natural and restrained.'
+  ),
+
+  makeSeed(
+    'Reference Match: Joker-Inspired Look',
+    'Reference',
+    'Study a film look and recreate the mood without copying blindly.',
+    'Choose one still from Joker or a similar psychological drama as a reference. Study it before grading: Are the shadows green, yellow, blue, or neutral? Is the contrast hard or soft? Are skin tones warm or pale? Is the saturation rich or muted? Then grade your own clip to match the mood: controlled contrast, slightly dirty greens/yellows if appropriate, warm practicals, deep shadows, and skin that still feels human.',
+    'Train film-reference analysis and look recreation.',
+    'Upload your reference still beside your graded clip.',
+    [
+      'Use one specific reference still.',
+      'Do not claim it is an exact copy.',
+      'Match mood, contrast, saturation, and color direction.',
+      'Keep your own footage believable.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Matching a film look is not about copying numbers. It is observation: contrast, palette, skin, shadow color, highlight color, saturation, grain/texture if available, and emotional intention.'
+  ),
+
+  makeSeed(
+    'Reference Match: Clean Commercial Look',
+    'Reference',
+    'Create a polished, bright, premium-looking grade.',
+    'Choose a clean commercial or fashion reference. Correct your shot, lift exposure carefully, keep whites clean, protect skin, reduce messy color contamination, and use subtle contrast. Make the image feel bright, expensive, and controlled.',
+    'Train clean high-end grading.',
+    'Upload a reference and your polished commercial-style grade.',
+    [
+      'Use a bright reference still.',
+      'Do not over-saturate.',
+      'Whites should feel clean, not clipped.',
+      'Skin should look healthy and natural.',
+    ],
+    'technical',
+    undefined,
+    'Learning: A commercial look often values clean whites, healthy skin, controlled contrast, and minimal color contamination. It should feel effortless, not heavily filtered.'
+  ),
+
+  makeSeed(
+    'Reference Match: Horror or Thriller Look',
+    'Reference',
+    'Create tension through color and contrast.',
+    'Choose a horror or thriller reference. Study whether it uses cold shadows, green contamination, high contrast, low saturation, or strong darkness. Grade your clip to feel more tense using shadow color, controlled exposure, selective saturation, and darker edges.',
+    'Train mood-driven genre grading.',
+    'Upload your reference and your horror/thriller-inspired grade.',
+    [
+      'Use one specific reference.',
+      'Do not make the image unreadable.',
+      'Use darkness intentionally.',
+      'Explain what creates tension in your grade.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Thriller and horror grades often use unease: coldness, green casts, deep shadows, low saturation, or harsh contrast. But the viewer still needs to read the frame.'
+  ),
+
+  makeSeed(
+    'Fix Mixed Lighting',
+    'Problem Solving',
+    'Handle ugly color contamination from different light sources.',
+    'Use a shot with mixed light: daylight plus tungsten, fluorescent green, LED color, screen light, or colored practicals. First identify the main problem. Correct the overall image, then use qualifiers or windows to reduce the worst color cast in one area. Do not remove all natural lighting character.',
+    'Train real-world low-budget problem solving.',
+    'Upload a before-and-after where mixed lighting feels cleaner.',
+    [
+      'Identify the main color problem first.',
+      'Use secondaries if needed.',
+      'Do not over-correct until the scene feels fake.',
+      'Skin should improve.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Mixed lighting is common. The goal is not always perfect neutrality; the goal is making the shot feel intentional and watchable.'
+  ),
+
+  makeSeed(
+    'Remove a Color Distraction',
+    'Problem Solving',
+    'Make the viewer look where you want.',
+    'Choose a shot with a distracting bright object, such as a red sign, neon clothing, green plant, blue screen, or yellow wall. Use Hue vs Sat, Qualifier, or a Power Window to reduce the distraction. Keep the subject stronger than the background.',
+    'Train viewer attention control.',
+    'Upload a before-and-after where the distraction is reduced.',
+    [
+      'Only reduce the distracting element.',
+      'Do not flatten the whole image.',
+      'The viewer should look at the subject faster.',
+      'Avoid obvious mask edges.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Color grading is not only making things pretty. It is directing attention. Bright, saturated objects pull the eye, so colorists often reduce them.'
+  ),
+
+  makeSeed(
+    'Shape Light With Vignettes',
+    'Windows',
+    'Use darkness around the frame to guide focus.',
+    'Add a new node called Vignette. Use a large circular Power Window around the subject, invert it, feather heavily, and slightly darken the outside of the frame. Keep it subtle. Toggle the node to make sure it helps without looking like an obvious filter.',
+    'Train subtle frame shaping.',
+    'Upload a before-and-after with a tasteful vignette.',
+    [
+      'Use a large feathered Power Window.',
+      'Invert the window to affect the outside.',
+      'Keep the vignette subtle.',
+      'The viewer should not notice the shape.',
+    ],
+    'technical',
+    undefined,
+    'Learning: A vignette can guide attention by making edges less important. Bad vignettes look like dark circles. Good vignettes feel like natural focus.'
+  ),
+
+  makeSeed(
+    'Build a Look Across Three Shots',
+    'Continuity',
+    'Make one creative look survive across a scene.',
+    'Choose three shots from the same scene. Correct and match them first. Then create one creative look and apply it across the shots. Adjust each shot individually so the look feels consistent. Do not copy settings blindly if the lighting is different.',
+    'Train scene-level consistency.',
+    'Upload a three-shot graded sequence with one coherent look.',
+    [
+      'Use at least 3 shots.',
+      'Match before styling.',
+      'Do not copy settings blindly.',
+      'The shots should feel like one scene.',
+    ],
+    'technical',
+    undefined,
+    'Learning: A look is not one fixed preset. A real scene needs shot-by-shot balancing so the audience feels continuity.'
+  ),
+
+  makeSeed(
+    'Continuity Pass Before Creative Pass',
+    'Workflow',
+    'Separate technical matching from creative style.',
+    'Use a short scene of at least 4 shots. First do only correction and matching: exposure, white balance, contrast, and saturation. Then duplicate the timeline or create a new version and add the creative look afterward.',
+    'Train professional grading order.',
+    'Upload two exports or still sets: corrected pass and final creative pass.',
+    [
+      'Use at least 4 shots.',
+      'Correction/matching comes before style.',
+      'The creative look must sit on a stable base.',
+      'Show the difference between the passes.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Professional grading often happens in passes. First make the scene technically consistent. Then add mood. This prevents messy, unstable grades.'
+  ),
+
+  makeSeed(
+    'Black and White Grade',
+    'Style',
+    'Use luminance instead of color to create emotion.',
+    'Convert a clip to black and white. Do not simply desaturate and stop. Shape contrast using curves or primaries. Make faces readable, separate the subject from the background, and control highlights. Adjust individual color channels before full desaturation if needed to change how colors translate into brightness.',
+    'Train tonal storytelling.',
+    'Upload a black and white grade with strong shape and readable faces.',
+    [
+      'Do not only desaturate.',
+      'Shape contrast carefully.',
+      'Separate subject from background.',
+      'Keep important details readable.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Black and white grading reveals whether your image has strong tonal structure. Without color, brightness, contrast, and shape carry the story.'
+  ),
+
+  makeSeed(
+    'Music Video Color Punch',
+    'Style',
+    'Push color boldly while staying controlled.',
+    'Use a performance, dance, fashion, or montage clip. Create a bold grade with stronger saturation, unusual hue shifts, high contrast, or colored shadows/highlights. Use qualifiers or Hue curves to keep the image intentional rather than messy.',
+    'Train bolder creative grading.',
+    'Upload a stylised music-video-style grade.',
+    [
+      'The grade can be bold.',
+      'Keep intentional color separation.',
+      'Do not make skin accidentally ugly unless it is a deliberate stylised choice.',
+      'The frame must remain readable.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Bold grading still needs control. Strong color works best when the palette is organised, not when every color fights every other color.'
+  ),
+
+  makeSeed(
+    'Make a Clip Feel Expensive',
+    'Finishing',
+    'Polish an ordinary clip so it feels cleaner and more professional.',
+    'Choose an average-looking clip. Correct exposure and balance. Reduce distracting saturation, clean the shadows with Luma vs Sat, shape attention with a subtle window, protect skin, and soften harsh highlights with curves. Do not over-grade.',
+    'Train finishing taste.',
+    'Upload a before-and-after where the clip feels more polished and expensive.',
+    [
+      'Use at least 4 tools: primaries, curves, Hue vs Sat, Luma vs Sat, window, or qualifier.',
+      'Do not make the grade obvious.',
+      'The final image should feel cleaner, not filtered.',
+      'Write what made the biggest improvement.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Expensive-looking color is often subtle: clean balance, controlled contrast, good skin, reduced distractions, and careful highlight/shadow polish.'
+  ),
+
+  makeSeed(
+    'Before, Correction, Final Look',
+    'Review',
+    'Learn to present your grading process clearly.',
+    'Use one clip and create three versions: original, base correction, and final creative look. Export a side-by-side still or short sequence showing all three stages. Write what changed at each stage.',
+    'Train self-review and presentation.',
+    'Upload a comparison showing original, corrected, and final look.',
+    [
+      'Show three stages.',
+      'Do not hide the original.',
+      'Correction and look must be separate.',
+      'Explain what each stage improved.',
+    ],
+    'technical',
+    undefined,
+    'Learning: Separating original, correction, and final look helps you understand your decisions. It also helps clients, collaborators, and teachers give better notes.'
+  ),
+
+  makeSeed(
+    'Export Without Ruining the Grade',
+    'Delivery',
+    'Render your grade properly from Resolve Free.',
+    'Go to the Deliver page. Choose sensible web settings such as H.264 or H.265, Rec.709 output, and an appropriate resolution/frame rate for your timeline. Export the clip, then watch the rendered file outside Resolve. Compare it with the Resolve viewer.',
+    'Train delivery discipline.',
+    'Upload the final exported clip and mention whether the export matched your grade.',
+    [
+      'Use the Deliver page.',
+      'Watch the exported file after rendering.',
+      'Check for color, contrast, or gamma shifts.',
+      'Do not assume the grade is finished until export is checked.',
+    ],
+    'technical',
+    undefined,
+    'Learning: A grade is not finished inside the Color page. It is finished when the exported file still looks right on playback.'
+  ),
+
+  makeSeed(
+    'Color Notes From Another Creative',
+    'Feedback',
+    'Learn to use feedback without losing your taste.',
+    'Show one graded clip to another creative. Ask specific questions: Is the face readable? Is the mood clear? Are any colors distracting? Does it feel too dark, too saturated, too warm, or too cold? Choose one useful note and make a revised version.',
+    'Train color communication and revision.',
+    'Upload the original grade, the revised grade, and the note you responded to.',
+    [
+      'Ask for specific color feedback.',
+      'Do not accept every note blindly.',
+      'Make one meaningful revision.',
+      'Explain why you accepted or rejected the note.',
+    ],
+    'collab',
+    undefined,
+    'Learning: Color grading is collaborative. Clients often give emotional notes, not technical notes. A colorist learns to translate “make it moodier” or “it feels cheap” into practical image changes.'
+  ),
+
+  makeSeed(
+    'Mini Scene Grade',
+    'Integration',
+    'Grade a full short scene, not just one pretty shot.',
+    'Choose a 30–90 second scene with at least 4 shots. Complete the full workflow: import, color management, base correction, shot matching, skin control, creative look, local adjustments, finishing polish, and export. Use scopes and labelled nodes.',
+    'Train complete scene grading workflow.',
+    'Upload a finished graded scene that feels consistent and intentional.',
+    [
+      'Use at least 4 shots.',
+      'Match shots before the final look.',
+      'Use a clean node structure.',
+      'Export the finished scene.',
+    ],
+    'technical',
+    undefined,
+    'Learning: A colorist is judged by scenes, not isolated stills. The real skill is making multiple shots feel like one emotional world.'
+  ),
+
+  makeSeed(
+    'Colorist Proof Pass',
+    'Mastery Prep',
+    'Combine correction, matching, masks, secondaries, look, and delivery.',
+    'Choose your strongest footage. Build a polished grade using a clean node tree, scopes, shot matching, Power Windows, qualifiers, curves, skin protection, and a clear creative look. Export the final sequence and create a before/after presentation.',
+    'Prepare for the final boss by combining the full Resolve Free workflow.',
+    'Upload a polished graded sequence plus a before/after comparison.',
+    [
+      'Use DaVinci Resolve Free only.',
+      'Use labelled nodes.',
+      'Use scopes.',
+      'Use at least one local adjustment.',
+      'Use at least one secondary correction.',
+      'The final grade must feel intentional across the whole sequence.',
+    ],
+    'technical',
+    undefined,
+    'Learning: A strong colorist corrects exposure, balances color, matches shots, protects skin, shapes attention, controls specific colors, builds mood, and delivers consistently.'
+  ),
+];
+
 /* ------------------------------- FILMMAKER ------------------------------- */
 /* 35 unique non-boss lessons */
 const FILMMAKER_ROTATION: LessonSeed[] = [
@@ -4313,6 +7216,359 @@ const ACTING_BOSSES: Record<number, LessonSeed> = {
     'Learning: This is one of the clearest proofs that acting lives in action, not wording alone. If the hidden objective genuinely changes, the same text becomes a different event. If it does not, the actor is probably relying on line interpretation rather than playable behavior.'
   ),
 };
+const SELFTAPE_BOSSES: Record<number, LessonSeed> = {
+  8: makeSeed(
+    'Self Tape Boss 1 — Clean Audition Tape',
+    'Boss',
+    'Create a simple, professional self tape that proves you understand the basics.',
+    `This boss is your first full self-tape checkpoint. Treat it like a real audition request.
+
+Before filming:
+1. Go to Featured and watch 2 creative submissions.
+2. Leave one useful comment on each.
+3. Check your own setup: frame, light, sound, background, eyeline.
+4. Do a short breath and voice reset before recording.
+
+Setup requirements:
+- Landscape frame unless your app/audition instructions say otherwise.
+- Camera at eye level or slightly above.
+- Frame from just above the head to mid-chest.
+- Clean background.
+- Light coming from the front or front-side.
+- Reader, if used, placed near the camera and quieter than you.
+- If no reader is available, perform it as a solo monologue.
+
+SLATE:
+“Hi, my name is [your name]. I am reading for [role]. I am based in [city/country].”
+
+SCENE / MONOLOGUE:
+“I know this is probably not the perfect version.
+I can hear the little voice in my head already.
+The light could be better.
+My hands look strange.
+I should have waited until I felt ready.
+But ready is starting to feel like another word for hiding.
+So I am doing it now.
+Not perfectly.
+Not magically.
+Honestly.
+And maybe that is the first useful thing I have done all day.”
+
+As if 1:
+You are an actor sending your first serious audition tape after years of fear.
+
+As if 2:
+You are apologizing to someone who stopped believing you would ever show up.
+
+As if 3:
+You are making a final video message before leaving your old life behind.
+
+As if 4:
+You are a public figure making a statement after a humiliating failure.
+
+As if 5:
+You are speaking directly to casting, not begging them, but asking them to really watch you.
+
+Final task:
+Record 3 different takes using 3 different as-ifs. Submit the strongest one.`,
+    'Prove you can create a clean, watchable self tape with basic professional standards and truthful acting.',
+    'One finished self tape with a simple slate, clean setup, and one selected final monologue take.',
+    [
+      'Comment on 2 Featured submissions before filming.',
+      'Use clean framing, lighting, and audio.',
+      'Record at least 3 as-if versions.',
+      'Choose the take that feels most truthful, not the take where you look best.',
+      'Do not add music, filters, or dramatic editing.',
+    ],
+    'boss',
+    `Your tape should feel clean, simple, and easy to watch. The performance should feel alive without being overproduced. ${BOSS_COMMUNITY_NOTE}`,
+    'Learning: Boss 1 tests the foundation of self-taping. Casting should never struggle to see you, hear you, or understand the scene. Once the setup is clean, the actor’s job is to make the moment specific, truthful, and watchable.'
+  ),
+
+  16: makeSeed(
+    'Self Tape Boss 2 — Five As-If Audition Range',
+    'Boss',
+    'Use one monologue to prove that imagination can completely transform a self tape.',
+    `This boss tests range without changing the words. You will perform the same monologue in five completely different ways.
+
+Before filming:
+1. Do a voice warm-up: hum gently, release the jaw, speak the first line on breath.
+2. Choose a clean frame and consistent eyeline.
+3. Do not change costume, camera angle, or background between takes.
+4. Let only the inner world change.
+
+MONOLOGUE:
+“You keep saying I have changed.
+Maybe I have.
+Or maybe I just stopped translating myself into a language that made you comfortable.
+I used to soften everything.
+My opinions.
+My anger.
+My ambition.
+Even my happiness, if it made the room feel uneven.
+But I am tired of being easy to be around.
+I would rather be difficult and honest than loved for disappearing.”
+
+Take 1 — Romantic Drama:
+As if you are ending a relationship with someone who only loved the smaller version of you.
+
+Take 2 — Political Thriller:
+As if you are a young leader refusing to be controlled by advisors who underestimated you.
+
+Take 3 — Coming-of-Age:
+As if you are telling your family you are leaving home to become an actor, and they think it is a fantasy.
+
+Take 4 — Villain Origin:
+As if this is the moment a kind person becomes dangerous because nobody listened when they were gentle.
+
+Take 5 — Dark Comedy:
+As if you are trying to sound empowered but are still embarrassingly desperate for the other person to say they are proud of you.
+
+Final task:
+Film all five versions. Watch them back. Submit your strongest two takes: one most emotionally truthful, one most surprising.`,
+    'Prove you can make bold, playable choices and transform the same material without relying on gimmicks.',
+    'Five takes of the same monologue, with two selected final versions.',
+    [
+      'Keep the text exactly the same in every take.',
+      'Change the stakes, relationship, rhythm, and objective.',
+      'Do not just change volume or facial expression.',
+      'Submit two final takes: truthful and surprising.',
+      'Include a short note explaining why you chose them.',
+    ],
+    'boss',
+    `The five takes should feel like five different audition briefs, not five moods. ${BOSS_COMMUNITY_NOTE}`,
+    'Learning: Boss 2 tests imagination and range. Real range is not “sad, angry, happy.” Real range comes from different circumstances, different relationships, different stakes, and different objectives. The words stay the same, but the world changes.'
+  ),
+
+  24: makeSeed(
+    'Self Tape Boss 3 — Technical Rescue Tape',
+    'Boss',
+    'Diagnose a weak self tape and rebuild it into a professional one.',
+    `This boss tests whether you can fix your own tape before submitting it.
+
+Part 1 — Record the weak version on purpose:
+Film 20 seconds of the monologue with at least 3 problems:
+- Bad backlight.
+- Camera too low.
+- Messy background.
+- Reader too loud.
+- Sound too far away.
+- Too much movement.
+- Eyeline too far from lens.
+
+Part 2 — Diagnose:
+Watch it back and write down:
+1. What makes it hard to watch?
+2. What hides the acting?
+3. What makes the sound or image feel unprofessional?
+4. What would casting notice before they notice the performance?
+
+Part 3 — Fix:
+Correct the setup and film the same monologue again.
+
+MONOLOGUE:
+“I watched the first version and wanted to delete it.
+Not because it was hopeless.
+Because it told the truth too clearly.
+I had made everything harder than it needed to be.
+The room was fighting me.
+The light was fighting me.
+Even the angle made me look like I was apologizing for existing.
+So I fixed what I could.
+Not everything.
+Just enough to stop hiding behind the mess.
+Now, if this works or fails, at least it is really me.”
+
+As if 1:
+You are an actor learning to stop sabotaging your own auditions.
+
+As if 2:
+You are a filmmaker correcting a scene after realizing the technical choices were killing the story.
+
+As if 3:
+You are a person cleaning up their life before asking for a second chance.
+
+As if 4:
+You are a detective reconstructing a mistake that nearly cost someone their life.
+
+As if 5:
+You are in a comedy and horrified by how dramatic your bad first setup looked.
+
+Final task:
+Submit the before-and-after tape, or submit the improved final tape with a short note explaining the 3 fixes you made.`,
+    'Prove you can identify and correct common self-tape problems without expensive equipment.',
+    'A before-and-after self tape showing clear improvement in framing, lighting, sound, and performance focus.',
+    [
+      'Create a weak version intentionally.',
+      'Fix at least 3 technical issues.',
+      'Keep the acting truthful in the improved version.',
+      'Do not use filters, music, or heavy editing to hide problems.',
+      'Explain the technical fixes you made.',
+    ],
+    'boss',
+    `The final tape should be obviously cleaner, calmer, and easier to watch than the first version. ${BOSS_COMMUNITY_NOTE}`,
+    'Learning: Boss 3 trains self-diagnosis. Many actors lose auditions because of fixable technical issues. You do not need a studio. You need awareness: light the face, clean the frame, hear the words, stabilize the camera, and let the acting become visible.'
+  ),
+
+  32: makeSeed(
+    'Self Tape Boss 4 — Fictional Casting Brief',
+    'Boss',
+    'Respond to a casting brief like a professional actor.',
+    `This boss gives you a fictional casting brief. Follow it exactly.
+
+CASTING BRIEF:
+Project: Independent feature film.
+Tone: grounded drama with thriller tension.
+Role: A young creative who discovers someone close to them has been using their work without permission.
+Tape request:
+- Slate at the beginning.
+- One close self-tape frame.
+- No music.
+- No props unless essential.
+- Keep performance intimate.
+- Show restraint, not melodrama.
+- Submit one final take.
+
+Before filming:
+Go to Featured and comment on 3 submissions:
+1. One performance note.
+2. One technical note.
+3. One moment that made you keep watching.
+
+SLATE:
+“Hi, my name is [your name]. I am reading for the role of [role]. I am based in [city/country].”
+
+MONOLOGUE:
+“I saw my words in your mouth.
+That is the part I cannot stop thinking about.
+Not the opportunity.
+Not the money.
+Not even the fact that everyone clapped.
+It was the ease of it.
+The way you stood there and wore my life like it fitted you better.
+I kept waiting for you to look at me.
+Just once.
+Some tiny signal that you knew what you had taken.
+But you smiled.
+You thanked them.
+You called it your truth.
+And I sat there wondering how much of myself I would have to lose before anyone noticed it was missing.”
+
+Director note 1:
+Do it as quiet betrayal. You still love the person and hate that you do.
+
+Director note 2:
+Do it as controlled rage. You have already decided what you are going to do next.
+
+Director note 3:
+Do it as public humiliation. You are speaking moments after seeing it happen in front of a crowd.
+
+Director note 4:
+Do it as a thriller. The person you are speaking to is more powerful than you and may destroy your career.
+
+Director note 5:
+Do it as an artist reclaiming themselves. The pain is there, but the final beat becomes strength.
+
+Final task:
+Film at least 3 director-note versions. Submit the one that best fits the casting brief.`,
+    'Prove you can follow a brief, apply direction, and deliver a complete audition package.',
+    'A slate plus one final selected self tape that matches the fictional casting brief.',
+    [
+      'Follow every instruction in the casting brief.',
+      'Comment on 3 Featured submissions before filming.',
+      'Record at least 3 directed versions.',
+      'Choose the take that best fits the project tone, not just the biggest performance.',
+      'Keep the final tape clean, intimate, and professional.',
+    ],
+    'boss',
+    `The final tape should feel like it belongs in the fictional film described by the brief. ${BOSS_COMMUNITY_NOTE}`,
+    'Learning: Boss 4 tests audition discipline. Casting briefs are not suggestions. A professional actor reads the instructions, understands tone, follows technical requirements, and still brings bold imaginative life to the role.'
+  ),
+
+  40: makeSeed(
+    'Self Tape Boss 5 — Professional Audition Package',
+    'Boss',
+    'Create your strongest complete self-tape package and choose yourself with confidence.',
+    `This is the final self-tape boss. Treat it like a real professional audition package.
+
+Full preparation:
+1. Go to Featured and leave 3 useful comments on other creatives’ work.
+2. Do 3 minutes of semi-supine breath release.
+3. Hum gently into resonance.
+4. Warm articulation with lips, tongue, jaw, and breath.
+5. Choose one piece of private music for the character’s emotional world.
+6. Turn the music off before recording.
+7. Check frame, light, sound, background, and eyeline.
+8. Record three radically different takes.
+9. Watch them back once.
+10. Choose the strongest final take.
+
+SLATE:
+“Hi, my name is [your name]. I am reading for [role]. I am based in [city/country].”
+
+FINAL MONOLOGUE:
+“If this is the only chance I get, then I do not want to waste it pretending.
+I have done that already.
+I have made myself smaller for rooms that were never going to choose me.
+I have laughed at jokes that cut me.
+I have thanked people for scraps and called it opportunity.
+I have waited outside doors that were not locked, just because no one invited me through.
+But I am tired now.
+Not defeated.
+Tired in the way a match is tired before it becomes fire.
+So look at me properly.
+Not as the safe choice.
+Not as the obvious one.
+As the person standing here with nothing polished left to hide behind.
+This is what I have.
+This voice.
+This body.
+This life.
+This take.”
+
+Take 1 — The Unknown Actor:
+You are sending the audition that could change your life. You are scared, but the fear sharpens you.
+
+Take 2 — The Revolutionary:
+You are speaking before the first public act of rebellion. If the room believes you, everything changes.
+
+Take 3 — The Comeback:
+You are returning after public humiliation. People think you are finished. You know this is the beginning.
+
+Take 4 — The Future Star:
+You are the young lead nobody expected to be dangerous, elegant, intelligent, and impossible to ignore.
+
+Take 5 — The Ghost:
+This recording is the only proof you were here. You need one living person to remember you.
+
+Take 6 — The Closed Door:
+You are speaking to every gatekeeper who underestimated you and realizing you no longer need permission.
+
+Take 7 — The Final Audition:
+Casting has nearly made their decision. This is the take that makes them stop, lean in, and reconsider.
+
+Final package:
+- Slate.
+- One chosen final take.
+- Clean export.
+- No music under the scene.
+- No visual effects.
+- No apology note.
+- Optional short reflection: “I chose this take because…”`,
+    'Prove you can deliver a professional self tape package with technical clarity, acting truth, imaginative range, and final-take judgment.',
+    'A complete final self tape package: slate, polished final monologue, clean technical presentation, and optional short reflection.',
+    [
+      'Comment on 3 Featured submissions before filming.',
+      'Use real actor preparation before recording.',
+      'Record at least 3 radically different takes.',
+      'Choose the most alive and castable take.',
+      'Submit cleanly without over-editing, music, filters, or apologies.',
+    ],
+    'boss',
+    `This should feel like your strongest current self tape: technically clean, emotionally alive, specific, bold, and professional. ${BOSS_COMMUNITY_NOTE}`,
+    'Learning: Boss 5 is the full integration test. Self-tape mastery means preparation, technical control, imaginative boldness, emotional truth, and judgment. The final tape does not need to be perfect. It needs to be clear, alive, and unmistakably yours.'
+  ),
+};
 
 const CINEMATOGRAPHY_BOSSES: Record<number, LessonSeed> = {
   8: makeSeed(
@@ -4592,7 +7848,180 @@ const SOUND_BOSSES: Record<number, LessonSeed> = {
     'Learning: This is a subtraction exercise. Silence or near-silence only works when the scene has prepared for it. The drop should not feel like a trick; it should feel like the world itself briefly changing shape.'
   ),
 };
+const COLORGRADING_BOSSES: Record<number, LessonSeed> = {
+  8: makeSeed(
+    'Color Grading Boss 1 — Correct and Match a Dialogue Scene',
+    'Boss',
+    'Balance a short dialogue scene so every angle feels like the same world.',
+    'Take a 30–90 second dialogue scene with at least 3 shots. Open it in DaVinci Resolve Free and go to the Color page. First do a correction pass only: use Lift, Gamma, Gain, Offset, white balance, contrast, saturation, RGB Parade, Waveform, and Vectorscope. Choose one hero shot, grab a Gallery still, then match the other shots to it. Do not add a heavy creative style yet. The goal is invisible continuity.',
+    'Prove you can do practical correction, shot matching, and scene continuity before adding style.',
+    'A corrected and matched dialogue scene where every cut feels like it belongs in the same location, time, and lighting setup.',
+    [
+      'Use DaVinci Resolve Free only.',
+      'Use at least 3 shots.',
+      'Use scopes while correcting.',
+      'Create a clean node structure.',
+      'Use one hero shot and Gallery still for matching.',
+      'Do not apply a heavy look before matching.',
+      'The cuts should not jump in brightness, contrast, white balance, or saturation.',
+      'Export the corrected scene.',
+    ],
+    'boss',
+    `This is the foundation of real color work: invisible correction before visible style. ${BOSS_COMMUNITY_NOTE}`,
+    'Learning: This boss tests the most important beginner colorist skill: making a scene feel continuous. A real colorist first fixes exposure, white balance, contrast, and saturation so the viewer believes the scene. Good correction often disappears because nothing feels wrong.'
+  ),
 
+  16: makeSeed(
+    'Color Grading Boss 2 — RAW, Log, and Rec.709 Control Test',
+    'Boss',
+    'Prove you understand how different footage types behave when graded.',
+    'Use 2–3 different types of footage if possible: one RAW or log clip, one normal Rec.709 camera clip, and one phone clip. In DaVinci Resolve Free, treat each clip correctly. For RAW/log footage, use the proper RAW controls, Color Management, Color Space Transform, or technical LUT before styling. For Rec.709 or phone footage, use gentler corrections because the image is already baked. Create a clean corrected version of each clip, then write a short note explaining which one could be pushed the furthest and why.',
+    'Prove you understand the difference between flexible camera data and baked-in footage.',
+    'A short comparison showing corrected RAW/log, Rec.709, and/or phone footage, plus a short explanation of which footage handled grading best.',
+    [
+      'Use DaVinci Resolve Free only.',
+      'Use at least 2 different footage types.',
+      'Do not treat every clip the same way.',
+      'Use RAW controls only if the footage actually supports RAW.',
+      'Normalize log footage before building a look.',
+      'Avoid extreme pushing on compressed Rec.709 or phone footage.',
+      'Explain which footage gave you the most grading flexibility.',
+    ],
+    'boss',
+    `Different footage gives you different freedom. A strong colorist knows when to push and when to protect the image. ${BOSS_COMMUNITY_NOTE}`,
+    'Learning: RAW, log, and Rec.709 footage are not the same. RAW can often adjust camera-level settings, log usually needs a proper transform, and Rec.709 footage already has contrast and saturation baked in. This boss tests technical judgment, not just taste.'
+  ),
+
+  24: makeSeed(
+    'Color Grading Boss 3 — Warm vs Cold Emotional Versions',
+    'Boss',
+    'Create two emotional grades from the same footage.',
+    'Take one short scene and grade it twice using the exact same edit. Version A should feel warm, intimate, nostalgic, romantic, or human. Version B should feel cold, distant, uneasy, lonely, clinical, or threatening. Start both versions from the same clean base correction. Then change temperature, contrast, saturation, shadow color, highlight color, density, and skin handling to create two different emotional readings.',
+    'Prove you can change emotional meaning through controlled color choices.',
+    'Two graded versions of the same scene with clearly different emotional meanings.',
+    [
+      'Use the exact same footage in both versions.',
+      'Start from a clean correction before styling.',
+      'Skin must remain believable in both versions.',
+      'Do not rely on LUTs alone.',
+      'Each version must have a clear emotional purpose.',
+      'Export both versions.',
+      'Write one sentence explaining the emotion of each version.',
+    ],
+    'boss',
+    `The same scene should feel like two different emotional worlds. ${BOSS_COMMUNITY_NOTE}`,
+    'Learning: Color is emotional interpretation. Warmth, coolness, contrast, saturation, density, and shadow color can shift how the audience reads a scene without changing a single line of dialogue.'
+  ),
+
+  32: makeSeed(
+    'Color Grading Boss 4 — Skin, Sky, and Secondary Control',
+    'Boss',
+    'Stylise the image while controlling specific parts of the frame.',
+    'Choose a shot or short scene with a visible face and at least one strong background element, such as sky, wall, plant, light, window, clothing, or sign. Create a stylised grade, then use at least two secondary/local corrections: one to protect or improve skin, and one to control another area such as sky, background, clothing, eye detail, or a distracting object. Use Qualifiers, Power Windows, Curves, Hue vs Hue, Hue vs Sat, Luma vs Sat, and tracking if needed. The look should affect the world without ruining the person.',
+    'Prove you can use secondary correction, masking, and local control without damaging faces.',
+    'A stylised grade where skin remains believable and at least one specific background/object area is controlled separately.',
+    [
+      'Use at least one visible face.',
+      'Use at least two local or secondary corrections.',
+      'Use Vectorscope to check skin.',
+      'Use a Qualifier, Power Window, curve, or tracked mask.',
+      'Avoid harsh edges, halos, flicker, and obvious masks.',
+      'The look must affect the world, not ruin the face.',
+      'Export a before-and-after comparison.',
+    ],
+    'boss',
+    `The audience should feel the look, but still believe the human being. ${BOSS_COMMUNITY_NOTE}`,
+    'Learning: This boss tests a major jump in grading maturity: separating the subject from the world. Strong looks often fail when skin, skies, backgrounds, and objects all get dragged through the same adjustment. Professional-looking grading uses local control.'
+  ),
+
+  40: makeSeed(
+    'Color Grading Boss 5 — Reference Match Film Look',
+    'Boss',
+    'Recreate the feeling of a professional film still using your own footage.',
+    'Choose one film still as a reference. It could be inspired by Joker, a thriller, a romance, a commercial, a music video, a noir film, or any strong visual style. Study the still before grading: black level, contrast, saturation, skin tone, shadow color, highlight color, palette, background control, and overall mood. Then grade your own scene toward that look using Resolve Free tools only. You are not copying the exact camera or production design; you are rebuilding the emotional color language.',
+    'Prove you can analyse and rebuild a visual reference.',
+    'A reference still and your graded scene presented side by side, plus a short explanation of what you matched.',
+    [
+      'Use one specific reference still.',
+      'Use your own footage.',
+      'Use DaVinci Resolve Free only.',
+      'Do not use paid plugins.',
+      'Match emotional color language, not just brightness.',
+      'Analyse contrast, saturation, skin, shadows, highlights, and palette.',
+      'Explain what you matched and what you could not match.',
+      'Export the final reference-inspired grade.',
+    ],
+    'boss',
+    `This is how your eye gets sharper: observe, rebuild, compare, refine. ${BOSS_COMMUNITY_NOTE}`,
+    'Learning: Reference matching teaches visual analysis. You learn to see black level, highlight color, shadow density, saturation control, skin placement, contrast shape, and palette instead of simply saying “make it cinematic.”'
+  ),
+
+  48: makeSeed(
+    'Color Grading Boss 6 — Day-for-Night Transformation',
+    'Boss',
+    'Transform a daytime shot into a believable night-style grade.',
+    'Choose a daytime exterior or interior shot. Avoid footage with a completely blown-out white sky if possible. Start with a clean base correction. Then create a day-for-night grade: lower overall exposure, cool the image, reduce saturation, deepen shadows, control the sky separately if visible, and protect important faces or subjects with Power Windows. Decide where the imagined night light is coming from: moon, street lamp, window, screen, or practical light. Shape the grade around that light source.',
+    'Prove you can transform time of day using exposure, color, masks, and motivated lighting.',
+    'A before-and-after day-for-night transformation that still feels readable and intentional.',
+    [
+      'Use a daytime shot.',
+      'Use DaVinci Resolve Free only.',
+      'Create a clean base correction first.',
+      'Darken and cool the image without making it unreadable.',
+      'Control sky or bright background areas separately if needed.',
+      'Use at least one Power Window or secondary correction.',
+      'Explain the imagined night light source.',
+      'Export the final transformed clip.',
+    ],
+    'boss',
+    `This should feel like motivated night, not just a blue filter. ${BOSS_COMMUNITY_NOTE}`,
+    'Learning: Day-for-night is not just making footage blue. It requires exposure control, saturation control, shadow density, sky/background control, protected faces, and believable light direction.'
+  ),
+
+  56: makeSeed(
+    'Color Grading Boss 7 — Problem Shot Rescue',
+    'Boss',
+    'Save a difficult clip without pretending it is perfect.',
+    'Choose a difficult shot: mixed lighting, bad white balance, overexposed sky, underexposed face, noisy shadows, neon color contamination, phone footage, or a flat log clip that looks wrong. In Resolve Free, identify the biggest technical problem first. Build a rescue grade using correction, scopes, curves, qualifiers, masks, Hue vs Sat, Luma vs Sat, and careful contrast. The goal is not perfection. The goal is making the shot more intentional, watchable, and usable.',
+    'Prove you can solve real-world low-budget grading problems.',
+    'A rescued problem shot with a before-and-after comparison and a short note explaining what could and could not be fixed.',
+    [
+      'Use one genuinely difficult shot.',
+      'Identify the main problem before grading.',
+      'Use scopes to guide correction.',
+      'Use at least one secondary or local adjustment.',
+      'Do not over-correct until the image looks fake.',
+      'Explain what the footage could not recover.',
+      'Export a before-and-after comparison.',
+    ],
+    'boss',
+    `A strong colorist knows how to improve bad footage honestly, without destroying it. ${BOSS_COMMUNITY_NOTE}`,
+    'Learning: Not every problem can be fully fixed in color. Clipped highlights, missing shadow detail, compression artifacts, and noise have limits. This boss teaches practical rescue work and honest judgment.'
+  ),
+
+  64: makeSeed(
+    'Color Grading Boss 8 — Final Scene Grade and Delivery',
+    'Boss',
+    'Complete a polished grade from correction to export.',
+    'Grade a 1–3 minute scene in DaVinci Resolve Free. Build a clean labelled node structure. Correct every shot, match the scene, protect skin, create one coherent look, control at least one specific area with a mask or qualifier, polish shadows/highlights, and export the final film from the Deliver page. After export, watch the rendered file outside Resolve and check whether the grade survived delivery.',
+    'Prove full color grading control using only free Resolve tools.',
+    'A finished graded scene that feels professional, consistent, emotionally intentional, and properly exported.',
+    [
+      'Use DaVinci Resolve Free only.',
+      'Use a clean labelled node structure.',
+      'Use scopes throughout.',
+      'Use at least 4 shots.',
+      'Correct and match before adding the final look.',
+      'Use at least one Power Window or secondary correction.',
+      'Protect skin where relevant.',
+      'Export the final scene from the Deliver page.',
+      'Watch the exported file and check for color or contrast shifts.',
+    ],
+    'boss',
+    `This should feel like a finished color pass, not a filter. ${BOSS_COMMUNITY_NOTE}`,
+    'Learning: This is the full integration test. A real final grade is correction, matching, skin control, mood, local adjustments, finishing polish, and delivery. DaVinci Resolve Free is more than enough to build serious grading skill if your taste and process are disciplined.'
+  ),
+};
 const EDITING_BOSSES: Record<number, LessonSeed> = {
   8: makeSeed(
     'Editing Boss 1 — The Door Scene Recut',
@@ -5052,6 +8481,8 @@ function buildPathLessons(path: WorkshopPathKey): Lesson[] {
   switch (path) {
     case 'acting':
       return buildLessonsFromBase(ACTING_BASE, ACTING_BOSSES);
+          case 'selftape':
+      return buildLessonsFromBase(SELFTAPE_BASE, SELFTAPE_BOSSES);
     case 'editing':
       return buildEditingLessons();
     case 'cinematography':
@@ -5060,6 +8491,8 @@ function buildPathLessons(path: WorkshopPathKey): Lesson[] {
       return buildLessonsFromBase(DIRECTING_BASE, DIRECTING_BOSSES);
     case 'sound':
       return buildLessonsFromBase(SOUND_BASE, SOUND_BOSSES);
+    case 'colorgrading':
+      return buildLessonsFromBase(COLORGRADING_BASE, COLORGRADING_BOSSES);
     case 'filmmaker':
       return buildFilmmakerLessons();
     default:
@@ -5182,6 +8615,28 @@ const PATH_STAGE_META: Record<
         'Bring all your acting tools together in polished, high-level work.',
     },
   ],
+    selftape: [
+    {
+      title: 'Chapter 1 — Self Tape Foundations',
+      subtitle:
+        'Learn basic setup, framing, eyeline, audio, lighting, background, and simple audition discipline.',
+    },
+    {
+      title: 'Chapter 2 — Performance for Self Tape',
+      subtitle:
+        'Build truthful camera acting, reader work, emotional control, and take selection.',
+    },
+    {
+      title: 'Chapter 3 — Technical Polish',
+      subtitle:
+        'Improve lighting, sound, file quality, editing, slates, and professional presentation.',
+    },
+    {
+      title: 'Chapter 4 — Audition Mastery',
+      subtitle:
+        'Create complete casting-ready tapes with strong choices, clean delivery, and professional consistency.',
+    },
+  ],
   editing: [
     {
       title: 'Chapter 1 — Foundations',
@@ -5268,6 +8723,28 @@ const PATH_STAGE_META: Record<
       title: 'Chapter 4 — Sound Mastery',
       subtitle:
         'Design polished, authored sound worlds with precision and taste.',
+    },
+  ],
+    colorgrading: [
+    {
+      title: 'Chapter 1 — Correction Foundations',
+      subtitle:
+        'Learn Resolve, scopes, exposure, white balance, contrast, saturation, and clean node structure.',
+    },
+    {
+      title: 'Chapter 2 — Matching & Skin',
+      subtitle:
+        'Build continuity through shot matching, Gallery stills, skin tone control, windows, and qualifiers.',
+    },
+    {
+      title: 'Chapter 3 — Looks & Emotion',
+      subtitle:
+        'Create warm, cold, muted, memory, genre, and reference-led grades using free Resolve tools.',
+    },
+    {
+      title: 'Chapter 4 — Color Mastery',
+      subtitle:
+        'Bring correction, matching, secondary control, polish, feedback, and delivery into a finished grade.',
     },
   ],
   filmmaker: [
@@ -5661,23 +9138,27 @@ const WorkshopScreen: React.FC = () => {
   const [upgradeVisible, setUpgradeVisible] = useState(false);
 
   const [progressByPath, setProgressByPath] = useState<Record<WorkshopPathKey, number[]>>({
-    acting: [],
-    editing: [],
-    cinematography: [],
-    directing: [],
-    sound: [],
-    filmmaker: [],
+     acting: [],
+selftape: [],
+editing: [],
+cinematography: [],
+directing: [],
+sound: [],
+colorgrading: [],
+filmmaker: [],
   });
 
   const [surgeryProgressByPath, setSurgeryProgressByPath] = useState<
     Record<WorkshopPathKey, number[]>
   >({
-    acting: [],
-    editing: [],
-    cinematography: [],
-    directing: [],
-    sound: [],
-    filmmaker: [],
+     acting: [],
+selftape: [],
+editing: [],
+cinematography: [],
+directing: [],
+sound: [],
+colorgrading: [],
+filmmaker: [],
   });
 
   const [workshopLoading, setWorkshopLoading] = useState(true);
@@ -5690,20 +9171,24 @@ const [surgeryFeedbackState, setSurgeryFeedbackState] = useState<Record<number, 
     if (!userId) {
       setUserProfile(null);
       setProgressByPath({
-        acting: [],
-        editing: [],
-        cinematography: [],
-        directing: [],
-        sound: [],
-        filmmaker: [],
+         acting: [],
+selftape: [],
+editing: [],
+cinematography: [],
+directing: [],
+sound: [],
+colorgrading: [],
+filmmaker: [],
       });
       setSurgeryProgressByPath({
-        acting: [],
-        editing: [],
-        cinematography: [],
-        directing: [],
-        sound: [],
-        filmmaker: [],
+         acting: [],
+selftape: [],
+editing: [],
+cinematography: [],
+directing: [],
+sound: [],
+colorgrading: [],
+filmmaker: [],
       });
       setWorkshopLoading(false);
       return;
@@ -5714,12 +9199,14 @@ const [surgeryFeedbackState, setSurgeryFeedbackState] = useState<Record<number, 
     }
 
     const emptyMap: Record<WorkshopPathKey, number[]> = {
-      acting: [],
-      editing: [],
-      cinematography: [],
-      directing: [],
-      sound: [],
-      filmmaker: [],
+       acting: [],
+selftape: [],
+editing: [],
+cinematography: [],
+directing: [],
+sound: [],
+colorgrading: [],
+filmmaker: [],
     };
 
     try {
@@ -5747,12 +9234,14 @@ const [surgeryFeedbackState, setSurgeryFeedbackState] = useState<Record<number, 
       if (error) throw error;
 
       const nextMap: Record<WorkshopPathKey, number[]> = {
-        acting: [],
-        editing: [],
-        cinematography: [],
-        directing: [],
-        sound: [],
-        filmmaker: [],
+         acting: [],
+selftape: [],
+editing: [],
+cinematography: [],
+directing: [],
+sound: [],
+colorgrading: [],
+filmmaker: [],
       };
 
       (data || []).forEach((row: any) => {

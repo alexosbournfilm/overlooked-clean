@@ -67,6 +67,15 @@ const BREAKING_BAD_LUTS_PREVIEW_VIDEO =
 const BREAKING_BAD_LUTS_PREVIEW_IMAGE =
   'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/BREAKING%20BAD%20IMAGE_1.31.1.jpg';
 
+  /* ✅ High Exposure LUTs assets */
+const HIGH_EXPOSURE_LUTS_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/HIGH%20EXPOSURE%20LUTS.zip';
+
+const HIGH_EXPOSURE_LUTS_PREVIEW_VIDEO =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/HIGH%20EXPOSURE%20LUT%20PREVIEW.mp4';
+
+const HIGH_EXPOSURE_LUTS_PREVIEW_IMAGE =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/HEL%20IMAGE_2.2.2.jpg';
 /* ✅ Sound FX packs */
 const SWOOSHES_ZIP =
   'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/SWOOSHES.zip';
@@ -440,7 +449,35 @@ const WorkshopScreen: React.FC = () => {
           created_at: new Date(Date.now() + 1).toISOString(),
         };
 
-        if (!hasBreakingBadAlready) fetched = [...fetched, injectedBreakingBad];
+                if (!hasBreakingBadAlready) fetched = [...fetched, injectedBreakingBad];
+
+        const hasHighExposureAlready = fetched.some((p) => {
+          const slug = (p.slug || '').toLowerCase();
+          const name = (p.name || '').toLowerCase();
+
+          return (
+            slug === 'high-exposure-luts' ||
+            name === 'high exposure luts' ||
+            name.includes('high exposure')
+          );
+        });
+
+        const injectedHighExposure: WorkshopProduct = {
+          id: 'local-high-exposure-luts',
+          name: 'High Exposure LUTs',
+          slug: 'high-exposure-luts',
+          description:
+            'A bold cinematic LUT pack designed for bright, high-energy looks with clean contrast and polished color.',
+          price_cents: 0,
+          currency: 'GBP',
+          image_url: HIGH_EXPOSURE_LUTS_PREVIEW_IMAGE,
+          file_url: HIGH_EXPOSURE_LUTS_ZIP,
+          preview_url: HIGH_EXPOSURE_LUTS_PREVIEW_VIDEO,
+          is_active: true,
+          created_at: new Date(Date.now() + 2).toISOString(),
+        };
+
+        if (!hasHighExposureAlready) fetched = [...fetched, injectedHighExposure];
 
         const mappedFetched = fetched.map((product) => {
           const isStarter =
@@ -643,23 +680,27 @@ const WorkshopScreen: React.FC = () => {
   };
 
   const isAudio = (url: string) => {
-    const lower = url.toLowerCase();
+  const cleanUrl = url.split('?')[0].toLowerCase();
 
-    return (
-      lower.endsWith('.mp3') ||
-      lower.endsWith('.m4a') ||
-      lower.endsWith('.wav') ||
-      lower.endsWith('.ogg') ||
-      lower.includes('preview.mp3') ||
-      lower.includes('preview')
-    );
-  };
-
+  return (
+    cleanUrl.endsWith('.mp3') ||
+    cleanUrl.endsWith('.m4a') ||
+    cleanUrl.endsWith('.wav') ||
+    cleanUrl.endsWith('.ogg')
+  );
+};
   const previewIsLikelyVideo = (url: string) => {
-    const lower = url.toLowerCase();
+  const cleanUrl = url.split('?')[0].toLowerCase();
 
-    return lower.endsWith('.mp4') || lower.endsWith('.mov') || lower.includes('video');
-  };
+  return (
+    cleanUrl.endsWith('.mp4') ||
+    cleanUrl.endsWith('.mov') ||
+    cleanUrl.endsWith('.webm') ||
+    cleanUrl.includes('.mp4') ||
+    cleanUrl.includes('.mov') ||
+    cleanUrl.includes('.webm')
+  );
+};
 
   const openPreview = async (product: WorkshopProduct) => {
     try {

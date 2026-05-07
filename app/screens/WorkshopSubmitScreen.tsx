@@ -1397,8 +1397,7 @@ const [uploadLimitLoading, setUploadLimitLoading] = useState(false);
   setStatus(`Loaded file • ${formatBytes(bytes)}`);
   return;
 }
-
-    // MOBILE / NATIVE
+// MOBILE / NATIVE
 const {
   data: { user },
   error: uErr,
@@ -1449,7 +1448,7 @@ if (!permission.granted) {
 }
 
 const result = await ImagePicker.launchImageLibraryAsync({
-  mediaTypes: ["videos"] as any,
+  mediaTypes: ImagePicker.MediaTypeOptions.Videos,
   allowsEditing: false,
   quality: 1,
   selectionLimit: 1,
@@ -1468,6 +1467,7 @@ if (!asset?.uri) {
 }
 
 setStatus(alreadyCompleted ? "Already completed — You already completed this workshop lesson." : "");
+
 setDurationSec(null);
 setThumbUri(null);
 setThumbAspect(16 / 9);
@@ -1476,7 +1476,6 @@ setThumbLoading(false);
 removeCustomThumbnail();
 closePreview();
 
-setLocalUri(null);
 setWebFile(null);
 setProgressPct(0);
 
@@ -1510,38 +1509,21 @@ if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
   return;
 }
 
-setWebFile(null);
 setLocalUri(asset.uri);
 setFileSizeBytes(bytes);
 
 if (typeof asset.duration === "number") {
-  const dSec = Math.round((asset.duration || 0) / 1000);
-  if (dSec > 0) setDurationSec(dSec);
+  const rawDuration = asset.duration;
+
+  // Expo ImagePicker duration can be milliseconds on some platforms.
+  const dSec = rawDuration > 10000 ? Math.round(rawDuration / 1000) : Math.round(rawDuration);
+
+  if (dSec > 0) {
+    setDurationSec(dSec);
+  }
 }
 
-setStatus(`Loaded file • ${formatBytes(bytes)}`);
-
-setThumbLoading(true);
-
-try {
-  const thumb = await VideoThumbnails.getThumbnailAsync(asset.uri, { time: 1000 });
-
-  if (thumb?.uri) {
-    setThumbUri(thumb.uri);
-  }
-
-  const w = (thumb as any)?.width;
-  const h = (thumb as any)?.height;
-
-  if (typeof w === "number" && typeof h === "number" && w > 0 && h > 0) {
-    setThumbAspect(w / h);
-  }
-} catch (thumbErr: any) {
-  console.warn("Thumbnail generation failed:", thumbErr?.message ?? thumbErr);
-  setThumbUri(null);
-} finally {
-  setThumbLoading(false);
-}
+setStatus(`Loaded file • ${formatBytes(bytes)}. Now add a thumbnail and continue.`);
 
 return;
   } catch (e: any) {
@@ -2228,22 +2210,7 @@ return (
                       </Pressable>
                     </View>
                   ) : null}
-
-                  {localUri && Platform.OS !== "web" ? (
-                    <Video
-                      ref={videoRef}
-                      source={{ uri: localUri }}
-                      style={{ width: 1, height: 1, opacity: 0.0001 }}
-                      resizeMode={ResizeMode.CONTAIN}
-                      isMuted
-                      shouldPlay={false}
-                      onLoad={onVideoLoaded}
-                      onError={() => {
-                        setDurationSec(null);
-                        setStatus(`Media ready (duration unknown) • ${formatBytes(fileSizeBytes)}`);
-                      }}
-                    />
-                  ) : null}
+                  
 
                   {!!status && (
                     <View style={styles.statusRow}>
