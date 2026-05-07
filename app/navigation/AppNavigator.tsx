@@ -150,6 +150,10 @@ export default function AppNavigator({
 
     const currentRoute = navigationRef.getCurrentRoute();
 
+    if (currentRoute?.name === "WorkshopSubmit") {
+  return;
+}
+
     const resetFlowActive =
       G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
       G.__OVERLOOKED_RECOVERY__ ||
@@ -280,12 +284,12 @@ const alreadyInsideMainTabs =
   currentRouteName === "MainTabs" ||
   currentRouteName === "Featured" ||
   currentRouteName === "Workshop" ||
+  currentRouteName === "WorkshopSubmit" ||
   currentRouteName === "Challenge" ||
   currentRouteName === "Location" ||
   currentRouteName === "Jobs" ||
   currentRouteName === "Chats" ||
   currentRouteName === "Profile";
-
 if (!alreadyInsideMainTabs) {
   resetToMainTabs();
 }

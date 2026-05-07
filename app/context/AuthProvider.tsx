@@ -474,14 +474,15 @@ setUserId((prev) => (prev === uid ? prev : uid));
   const currentRouteName = currentRoute?.name;
 
   const alreadyInsideMainTabs =
-    currentRouteName === "MainTabs" ||
-    currentRouteName === "Featured" ||
-    currentRouteName === "Workshop" ||
-    currentRouteName === "Challenge" ||
-    currentRouteName === "Location" ||
-    currentRouteName === "Jobs" ||
-    currentRouteName === "Chats" ||
-    currentRouteName === "Profile";
+  currentRouteName === "MainTabs" ||
+  currentRouteName === "Featured" ||
+  currentRouteName === "Workshop" ||
+  currentRouteName === "WorkshopSubmit" ||
+  currentRouteName === "Challenge" ||
+  currentRouteName === "Location" ||
+  currentRouteName === "Jobs" ||
+  currentRouteName === "Chats" ||
+  currentRouteName === "Profile";
 
   if (alreadyInsideMainTabs) {
     return;
@@ -707,6 +708,18 @@ if (Platform.OS === "web" && typeof window !== "undefined") {
     const appStateSub = AppState.addEventListener("change", async (state) => {
   try {
     if (state !== "active") return;
+
+    const currentRoute = navigationRef.isReady()
+  ? navigationRef.getCurrentRoute()
+  : null;
+
+if (currentRoute?.name === "WorkshopSubmit") {
+  try {
+    supabase.auth.startAutoRefresh();
+  } catch {}
+
+  return;
+}
 
     /**
      * WEB FIX:
