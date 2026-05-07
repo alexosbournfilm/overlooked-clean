@@ -1116,7 +1116,7 @@ for (const m of normalized)
   );
 
   for (const recipientId of recipientIds) {
-    await sendPushNotification(recipientId, messageText);
+    await sendPushNotification(recipientId, messageText, userId);
   }
 };
 

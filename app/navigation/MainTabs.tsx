@@ -16,7 +16,7 @@ import {
   Image,
   ActivityIndicator,
   InteractionManager,
-  
+  AppState,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -1458,7 +1458,8 @@ const chatUnreadCount = chatUnreadConversationIds.size;
 const unreadRequestInFlight = useRef(false);
 const pendingUnreadRefresh = useRef(false);
 const unreadRefreshTimeout = useRef<any>(null);
-
+const unreadPollingRef = useRef<any>(null);
+const appStateRef = useRef(AppState.currentState);
 const isGuest = !badgeUserId;
 
 useEffect(() => {
@@ -1639,6 +1640,49 @@ useEffect(() => {
   loadChatUnreadCount();
 }, [badgeUserId, loadChatUnreadCount]);
 
+useEffect(() => {
+  if (!badgeUserId) {
+    if (unreadPollingRef.current) {
+      clearInterval(unreadPollingRef.current);
+      unreadPollingRef.current = null;
+    }
+
+    setChatUnreadConversationIds(new Set());
+    return;
+  }
+
+  // Immediate check when MainTabs is active
+  loadChatUnreadCount();
+
+  // Reliable fallback:
+  // keeps the bottom chat badge updated even when user is on Featured, Jobs,
+  // Challenge, Location, Workshop, Profile, etc.
+  unreadPollingRef.current = setInterval(() => {
+    loadChatUnreadCount();
+  }, 4000);
+
+  const subscription = AppState.addEventListener('change', (nextState) => {
+    const previousState = appStateRef.current;
+    appStateRef.current = nextState;
+
+    if (
+      previousState.match(/inactive|background/) &&
+      nextState === 'active'
+    ) {
+      loadChatUnreadCount();
+    }
+  });
+
+  return () => {
+    if (unreadPollingRef.current) {
+      clearInterval(unreadPollingRef.current);
+      unreadPollingRef.current = null;
+    }
+
+    subscription.remove();
+  };
+}, [badgeUserId, loadChatUnreadCount]);
+
   const isPhone = width < 420;
   const isTiny = width < 360;
 
@@ -1663,7 +1707,7 @@ const shouldHideTopBar = false;
   if (!badgeUserId) return;
 
   const channel = supabase
-    .channel(`main-tabs-chat-badge-${badgeUserId}`)
+    .channel(`main-tabs-global-chat-badge-${badgeUserId}`)
     .on(
       'postgres_changes',
       {
@@ -1671,25 +1715,44 @@ const shouldHideTopBar = false;
         schema: 'public',
         table: 'messages',
       },
-      (payload: any) => {
+      async (payload: any) => {
         const newMessage = payload.new;
 
         const conversationId = String(newMessage?.conversation_id || '');
         const senderId = String(newMessage?.sender_id || '');
+
+        // Ignore your own sent messages.
+        if (senderId === badgeUserId) {
+          queueUnreadRefresh();
+          return;
+        }
 
         if (!conversationId) {
           queueUnreadRefresh();
           return;
         }
 
-        if (senderId && senderId !== badgeUserId) {
-          setChatUnreadConversationIds((prev) => {
-            const next = new Set(prev);
-            next.add(conversationId);
-            return next;
-          });
+        // Check this conversation actually belongs to the current user.
+        const { data: convo, error } = await supabase
+          .from('conversations')
+          .select('id')
+          .eq('id', conversationId)
+          .contains('participant_ids', [badgeUserId])
+          .maybeSingle();
+
+        if (error || !convo?.id) {
+          queueUnreadRefresh();
+          return;
         }
 
+        // Instantly update the bottom tab badge.
+        setChatUnreadConversationIds((prev) => {
+          const next = new Set(prev);
+          next.add(conversationId);
+          return next;
+        });
+
+        // Then do a proper database refresh to stay accurate.
         queueUnreadRefresh();
       }
     )
@@ -1717,7 +1780,11 @@ const shouldHideTopBar = false;
       }
     )
     .subscribe((status) => {
-      console.log('MainTabs chat badge realtime status:', status);
+      console.log('MainTabs global chat badge realtime status:', status);
+
+      if (status === 'SUBSCRIBED') {
+        queueUnreadRefresh();
+      }
     });
 
   return () => {
