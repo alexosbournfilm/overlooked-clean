@@ -69,6 +69,7 @@ const MANIFESTO_LINES = [
   'No gatekeepers. Just collaborators, jobs, and a deadline.',
   'Post a job. Apply to one. Start filming.',
   'Submit your film to the monthly challenge.',
+  'Learn the craft through Film Bootcamp, then put it into practice.',
   'The industry makes you wait. We say don’t.',
 ];
 
@@ -133,10 +134,10 @@ const FEATURES: Feature[] = [
   {
     key: 'festival',
     title: 'Monthly Film Challenge',
-    subtitle: 'Top 2 screen in Rome (July)',
+    subtitle: 'Create, submit, and get seen',
     icon: 'trophy',
     detail:
-      'Upload a 1–15 minute film each month and climb the leaderboard. The top 2 highest-voted films every month will be screened at the Overlooked Film Festival 2026 this July in Rome (exact date yet to be decided).',
+      'Upload a 1–15 minute film each month, climb the leaderboard, and grow with the community. You can also learn filmmaking craft through Film Bootcamp, then use those skills in the monthly challenge.',
     cta: 'See this month',
     route: 'Featured',
   },
@@ -166,7 +167,7 @@ const EXTRA_FAQS = [
   {
     title: 'How do I apply for the festival?',
     body:
-      'You don’t apply in the traditional way — the community decides. Each month, films are ranked by votes from real users. The top 2 highest-voted films each month will be screened at the Overlooked Film Festival 2026 in July in Rome (exact date TBC). No judges — it’s the community we build.',
+      'You don’t apply in the traditional way — the community decides. Each month, films are ranked by votes from real users.',
   },
   {
     title: 'Live streams (bi-weekly reactions & reviews)',
@@ -174,9 +175,9 @@ const EXTRA_FAQS = [
       'Every two weeks we go live reacting to and reviewing OverLooked film submissions picked at random — not just the highest-voted films. We give spotlight to all levels of filmmakers.',
   },
   {
-    title: 'Workshop (tools updated every Friday)',
+    title: 'Film Bootcamp',
     body:
-      'The Workshop is where you’ll find filmmaking tools and editing tools to level up. It updates every Friday with new tools to help improve your filmmaking journey.',
+      'Film Bootcamp helps you learn filmmaking craft, sharpen your skills, and build confidence before putting your work into the monthly challenge.',
   },
 ];
 
@@ -1016,8 +1017,7 @@ if (!existingProfileComplete) {
       </ScrollView>
     </View>
   );
-
-  if (useSimpleMobileLayout) {
+    if (useSimpleMobileLayout) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
         <KeyboardAvoidingView
@@ -1376,6 +1376,19 @@ if (!existingProfileComplete) {
                   Meet collaborators, make a film each month, get seen by the community.
                 </Text>
 
+                <Text
+                  style={[
+                    styles.bootcampCopy,
+                    !isWide && {
+                      textAlign: 'center',
+                      alignSelf: 'center',
+                    },
+                  ]}
+                >
+                  Build your skills through Film Bootcamp, learn the craft, then put it into
+                  practice with monthly films.
+                </Text>
+
                 <View style={[styles.manifestoWrap, !isWide && { marginTop: 10 }]}>
                   <Text
                     numberOfLines={2}
@@ -1472,98 +1485,6 @@ if (!existingProfileComplete) {
                   );
                 })}
               </View>
-            </View>
-
-            <View style={[styles.fullWidthRow, !isWide && { marginTop: 4 }]}>
-              <View style={[styles.collapsibleCard, styles.fullCard]}>
-                <Pressable onPress={() => setAboutOpen((v) => !v)}>
-                  <View style={styles.collapsibleHeaderPressFull}>
-                    <View style={styles.centerRow}>
-                      <View style={styles.badgeIcon}>
-                        <Ionicons name="help-circle" size={18} color={T.olive} />
-                      </View>
-                      <Text style={styles.collapsibleTitle}>What is OverLooked?</Text>
-                    </View>
-                    <Ionicons
-                      style={styles.chevAbs}
-                      name={aboutOpen ? 'chevron-up' : 'chevron-down'}
-                      size={18}
-                      color={T.olive}
-                    />
-                  </View>
-                </Pressable>
-
-                {aboutOpen && (
-                  <View style={styles.aboutBody}>
-                    <Text style={styles.aboutLead}>
-                      OverLooked is a home for indie filmmaking — and a movement to make networking,
-                      collaboration, filming, visibility, and awards more accessible. Meet collaborators,
-                      build real momentum, and let the community decide what rises.
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              <View style={[styles.collapsibleCard, styles.fullCard]}>
-                <Pressable onPress={() => setWhyOpen((v) => !v)}>
-                  <View style={styles.collapsibleHeaderPressFull}>
-                    <View style={styles.centerRow}>
-                      <View style={styles.badgeIcon}>
-                        <Ionicons name="help-circle" size={18} color={T.olive} />
-                      </View>
-                      <Text style={styles.collapsibleTitle}>Why a monthly film challenge?</Text>
-                    </View>
-                    <Ionicons
-                      style={styles.chevAbs}
-                      name={whyOpen ? 'chevron-up' : 'chevron-down'}
-                      size={18}
-                      color={T.olive}
-                    />
-                  </View>
-                </Pressable>
-
-                {whyOpen && (
-                  <View style={{ paddingHorizontal: 18, paddingBottom: 16 }}>
-                    <Text style={styles.whyText}>
-                      Deadlines create momentum. One month is enough to plan, shoot, edit, and publish.
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              {EXTRA_FAQS.map((q, i) => {
-                const open = openFaqs.includes(i);
-                return (
-                  <View key={q.title} style={[styles.collapsibleCard, styles.fullCard]}>
-                    <Pressable
-                      onPress={() =>
-                        setOpenFaqs((p) => (p.includes(i) ? p.filter((x) => x !== i) : [...p, i]))
-                      }
-                    >
-                      <View style={styles.collapsibleHeaderPressFull}>
-                        <View style={styles.centerRow}>
-                          <View style={styles.badgeIcon}>
-                            <Ionicons name="help-circle" size={18} color={T.olive} />
-                          </View>
-                          <Text style={styles.collapsibleTitle}>{q.title}</Text>
-                        </View>
-                        <Ionicons
-                          style={styles.chevAbs}
-                          name={open ? 'chevron-up' : 'chevron-down'}
-                          size={18}
-                          color={T.olive}
-                        />
-                      </View>
-                    </Pressable>
-
-                    {open && (
-                      <View style={{ paddingHorizontal: 18, paddingBottom: 16 }}>
-                        <Text style={styles.aboutText}>{q.body}</Text>
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
             </View>
           </View>
         </ScrollView>
@@ -1879,6 +1800,15 @@ const styles = StyleSheet.create({
     color: T.sub,
     fontFamily: SYSTEM_SANS,
     opacity: 0.95,
+  },
+  bootcampCopy: {
+    marginTop: 10,
+    maxWidth: 620,
+    fontSize: 14.5,
+    lineHeight: 22,
+    color: T.sub,
+    fontFamily: SYSTEM_SANS,
+    opacity: 0.9,
   },
 
   manifestoWrap: { marginTop: 12 },
