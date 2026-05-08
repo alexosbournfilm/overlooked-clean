@@ -42,20 +42,26 @@ type FilmRow = {
 
   storage_path?: string | null;
   video_path?: string | null;
-  video_url?: string | null;
-  file_url?: string | null;
-  file_path?: string | null;
-  mp4_url?: string | null;
-  mp4_path?: string | null;
-  url?: string | null;
-  path?: string | null;
-
   youtube_url?: string | null;
+
   mime_type?: string | null;
   media_kind?: "file_audio" | "file_video" | "youtube" | null;
+  category?: string | null;
   film_category?: string | null;
   share_slug?: string | null;
-  share_enabled?: boolean | null;
+
+  mux_upload_id?: string | null;
+  mux_asset_id?: string | null;
+  mux_playback_id?: string | null;
+  mux_status?: string | null;
+
+  video_id?: string | null;
+  videos?: {
+    original_path?: string | null;
+    thumbnail_path?: string | null;
+    video_variants?: { path: string; label?: string | null }[] | null;
+  } | null;
+
   users?: {
     id: string;
     full_name: string;
@@ -92,11 +98,16 @@ function extractYoutubeId(url?: string | null) {
     if (v) return v;
 
     const parts = u.pathname.split("/").filter(Boolean);
+
     const embedIndex = parts.indexOf("embed");
-    if (embedIndex >= 0 && parts[embedIndex + 1]) return parts[embedIndex + 1];
+    if (embedIndex >= 0 && parts[embedIndex + 1]) {
+      return parts[embedIndex + 1];
+    }
 
     const shortsIndex = parts.indexOf("shorts");
-    if (shortsIndex >= 0 && parts[shortsIndex + 1]) return parts[shortsIndex + 1];
+    if (shortsIndex >= 0 && parts[shortsIndex + 1]) {
+      return parts[shortsIndex + 1];
+    }
 
     return null;
   } catch {
@@ -115,6 +126,7 @@ function stripQuery(url: string) {
 function pathFromPublicUrl(url: string) {
   const clean = stripQuery(url);
   const match = clean.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
+
   if (!match) return null;
 
   return {
@@ -123,38 +135,137 @@ function pathFromPublicUrl(url: string) {
   };
 }
 
-function pickMediaField(row: FilmRow) {
-  return (
-    row.storage_path ||
-    row.video_path ||
-    row.video_url ||
-    row.file_url ||
-    row.file_path ||
-    row.mp4_url ||
-    row.mp4_path ||
-    row.url ||
-    row.path ||
-    ""
-  )
-    .toString()
-    .trim();
+function cleanStoragePath(pathOrUrl?: string | null) {
+  if (!pathOrUrl) return null;
+
+  const raw = String(pathOrUrl).trim();
+  if (!raw) return null;
+
+  if (isAbsoluteUrl(raw)) {
+    const parsed = pathFromPublicUrl(raw);
+    if (parsed?.bucket === "films" && parsed.path) {
+      return parsed.path;
+    }
+
+    return raw;
+  }
+
+  let path = stripQuery(raw);
+
+  if (path.startsWith("/")) {
+    path = path.slice(1);
+  }
+
+  if (path.startsWith("films/")) {
+    path = path.replace(/^films\//, "");
+  }
+
+  return path;
+}
+
+function pickFastStartVariant(row: FilmRow): { path: string | null; thumb: string | null } {
+  const variants = row?.videos?.video_variants ?? [];
+
+  if (variants && variants.length > 0) {
+    const scored = variants
+      .map((v: any) => {
+        const label = String(v?.label || "").toLowerCase();
+        const m = /(\d{3,4})p/i.exec(label);
+        const h = m ? parseInt(m[1], 10) : 9999;
+
+        let priority = 1000 + h;
+        if (h <= 360) priority = 1 + h;
+        else if (h <= 480) priority = 10 + h;
+        else if (h <= 720) priority = 100 + h;
+
+        return { ...v, h, priority };
+      })
+      .sort((a: any, b: any) => a.priority - b.priority);
+
+    const best = scored[0] ?? variants[0];
+
+    return {
+      path:
+        best?.path ??
+        row?.video_path ??
+        row?.storage_path ??
+        row?.videos?.original_path ??
+        null,
+      thumb: row?.thumbnail_url ?? row?.videos?.thumbnail_path ?? null,
+    };
+  }
+
+  return {
+    path:
+      row?.video_path ??
+      row?.storage_path ??
+      row?.videos?.original_path ??
+      null,
+    thumb: row?.thumbnail_url ?? row?.videos?.thumbnail_path ?? null,
+  };
+}
+
+function isMuxReady(status?: string | null) {
+  const s = String(status || "").toLowerCase();
+  return s === "ready" || s === "asset_ready" || s === "playable";
+}
+
+function getMuxPlaybackUrl(playbackId?: string | null) {
+  if (!playbackId) return null;
+  return `https://stream.mux.com/${playbackId}.m3u8`;
 }
 
 async function signFilmMediaPath(pathOrUrl?: string | null) {
   if (!pathOrUrl) return null;
 
-  if (isAbsoluteUrl(pathOrUrl)) {
-    return pathOrUrl;
+  const cleaned = cleanStoragePath(pathOrUrl);
+  if (!cleaned) return null;
+
+  if (isAbsoluteUrl(cleaned)) {
+    return cleaned;
   }
 
-  const cleanPath = stripQuery(pathOrUrl);
+  try {
+    const { data, error } = await supabase.storage
+      .from("films")
+      .createSignedUrl(cleaned, 3600);
 
-  const { data } = supabase.storage.from("films").getPublicUrl(cleanPath);
-  if (data?.publicUrl) {
-    return data.publicUrl;
-  }
+    if (!error && data?.signedUrl) {
+      return data.signedUrl;
+    }
+  } catch {}
+
+  try {
+    const { data } = supabase.storage.from("films").getPublicUrl(cleaned);
+
+    if (data?.publicUrl) {
+      return data.publicUrl;
+    }
+  } catch {}
 
   return null;
+}
+
+function normalizeFilmRow(row: any): FilmRow {
+  const maybeUser = row?.users;
+  const user = Array.isArray(maybeUser) ? maybeUser[0] : maybeUser;
+
+  const picked = pickFastStartVariant(row as FilmRow);
+
+  return {
+    ...(row as FilmRow),
+    users: user
+      ? {
+          id: user.id,
+          full_name: user.full_name,
+          public_slug: user.public_slug ?? null,
+        }
+      : null,
+    description: row?.description ?? row?.word ?? null,
+    storage_path: picked.path ?? row?.storage_path ?? row?.video_path ?? null,
+    thumbnail_url: picked.thumb ?? row?.thumbnail_url ?? null,
+    film_category: row?.film_category ?? row?.category ?? null,
+  };
 }
 
 export default function SharedFilmScreen() {
@@ -163,9 +274,9 @@ export default function SharedFilmScreen() {
   const { width } = useWindowDimensions();
 
   const routeShareSlug =
-  route.params?.shareSlug ||
-  (route.params as any)?.openShareSlug ||
-  null;
+    route.params?.shareSlug ||
+    (route.params as any)?.openShareSlug ||
+    null;
 
   const pathShareSlug =
     Platform.OS === "web" && typeof window !== "undefined"
@@ -182,6 +293,7 @@ export default function SharedFilmScreen() {
   }, [routeShareSlug, pathShareSlug]);
 
   const isWide = width >= 900;
+
   const cardWidth = useMemo(() => {
     if (isWide) return Math.min(960, width - 48);
     return width - 20;
@@ -237,71 +349,170 @@ export default function SharedFilmScreen() {
     setPlayableVideoUrl(null);
 
     try {
-      const { data, error } = await supabase
-        .from("submissions")
-        .select(
-          `
+      const selectWithDescription = `
+        id,
+        user_id,
+        title,
+        description,
+        word,
+        votes,
+        submitted_at,
+        thumbnail_url,
+        storage_path,
+        video_path,
+        youtube_url,
+        mime_type,
+        media_kind,
+        category,
+        film_category,
+        share_slug,
+        mux_upload_id,
+        mux_asset_id,
+        mux_playback_id,
+        mux_status,
+        video_id,
+        users:user_id (
           id,
-          user_id,
-          title,
-          description,
-          word,
-          votes,
-          submitted_at,
-          thumbnail_url,
-          storage_path,
-          video_path,
-          video_url,
-          file_url,
-          file_path,
-          mp4_url,
-          mp4_path,
-          url,
-          path,
-          youtube_url,
-          mime_type,
-          media_kind,
-          film_category,
-          share_slug,
-          share_enabled,
-          users:user_id (
-            id,
-            full_name,
-            public_slug
+          full_name,
+          public_slug
+        ),
+        videos:video_id (
+          original_path,
+          thumbnail_path,
+          video_variants (
+            path,
+            label
           )
-        `
         )
+      `;
+
+      const selectWithoutDescription = `
+        id,
+        user_id,
+        title,
+        word,
+        votes,
+        submitted_at,
+        thumbnail_url,
+        storage_path,
+        video_path,
+        youtube_url,
+        mime_type,
+        media_kind,
+        category,
+        film_category,
+        share_slug,
+        mux_upload_id,
+        mux_asset_id,
+        mux_playback_id,
+        mux_status,
+        video_id,
+        users:user_id (
+          id,
+          full_name,
+          public_slug
+        ),
+        videos:video_id (
+          original_path,
+          thumbnail_path,
+          video_variants (
+            path,
+            label
+          )
+        )
+      `;
+
+      const selectMinimal = `
+        id,
+        user_id,
+        title,
+        word,
+        votes,
+        submitted_at,
+        thumbnail_url,
+        storage_path,
+        video_path,
+        youtube_url,
+        mime_type,
+        media_kind,
+        category,
+        share_slug,
+        mux_upload_id,
+        mux_asset_id,
+        mux_playback_id,
+        mux_status,
+        video_id,
+        users:user_id (
+          id,
+          full_name,
+          public_slug
+        ),
+        videos:video_id (
+          original_path,
+          thumbnail_path,
+          video_variants (
+            path,
+            label
+          )
+        )
+      `;
+
+      let result = await supabase
+        .from("submissions")
+        .select(selectWithDescription)
         .eq("share_slug", shareSlug)
         .maybeSingle();
 
-      if (error) throw error;
+      if (result.error) {
+        result = await supabase
+          .from("submissions")
+          .select(selectWithoutDescription)
+          .eq("share_slug", shareSlug)
+          .maybeSingle();
+      }
 
-      if (!data) {
+      if (result.error) {
+        result = await supabase
+          .from("submissions")
+          .select(selectMinimal)
+          .eq("share_slug", shareSlug)
+          .maybeSingle();
+      }
+
+      if (result.error) throw result.error;
+
+      if (!result.data) {
         setFilm(null);
         setErrorText("This film could not be found.");
         return;
       }
 
-      const row = data as FilmRow;
-
-      if (row.share_enabled === false) {
-        setFilm(null);
-        setErrorText("This shared film is no longer available.");
-        return;
-      }
+      const row = normalizeFilmRow(result.data);
 
       setFilm(row);
 
       const youtubeId = extractYoutubeId(row.youtube_url);
-      const isYoutube = row.media_kind === "youtube" || (!!row.youtube_url && !!youtubeId);
+      const isYoutube =
+        row.media_kind === "youtube" || (!!row.youtube_url && !!youtubeId);
 
-      if (!isYoutube) {
-        const rawMedia = pickMediaField(row);
-        const signed = await signFilmMediaPath(rawMedia);
-        setPlayableVideoUrl(signed);
-      } else {
+      if (isYoutube) {
         setPlayableVideoUrl(null);
+        return;
       }
+
+      const muxReady = isMuxReady(row.mux_status);
+      const muxUri = muxReady ? getMuxPlaybackUrl(row.mux_playback_id) : null;
+
+      if (muxUri) {
+        setPlayableVideoUrl(muxUri);
+        return;
+      }
+
+      const picked = pickFastStartVariant(row);
+      const rawMedia = picked.path || row.storage_path || row.video_path || null;
+      const signed = await signFilmMediaPath(rawMedia);
+
+      setPlayableVideoUrl(signed);
     } catch (e: any) {
       console.warn("SharedFilmScreen fetch error:", e?.message || e);
       setFilm(null);
@@ -361,6 +572,7 @@ export default function SharedFilmScreen() {
   };
 
   const youtubeId = extractYoutubeId(film?.youtube_url);
+
   const shouldShowYoutube =
     !!film && (film.media_kind === "youtube" || (!!film.youtube_url && !!youtubeId));
 
@@ -467,7 +679,9 @@ export default function SharedFilmScreen() {
                         resizeMode="cover"
                       />
                       <View style={styles.noVideoOverlay}>
-                        <Text style={styles.noVideoOverlayText}>Film file not available</Text>
+                        <Text style={styles.noVideoOverlayText}>
+                          Film file not available
+                        </Text>
                       </View>
                     </View>
                   ) : (
@@ -480,9 +694,7 @@ export default function SharedFilmScreen() {
                 <View style={styles.metaBlock}>
                   <Text style={styles.kicker}>Shared on Overlooked</Text>
 
-                  <Text style={styles.title}>
-                    {film.title || "Untitled Film"}
-                  </Text>
+                  <Text style={styles.title}>{film.title || "Untitled Film"}</Text>
 
                   {film.users?.full_name ? (
                     <TouchableOpacity onPress={goToCreator} activeOpacity={0.9}>
@@ -491,9 +703,11 @@ export default function SharedFilmScreen() {
                   ) : null}
 
                   <View style={styles.metaRow}>
-                    {film.film_category ? (
+                    {film.film_category || film.category ? (
                       <View style={styles.metaPill}>
-                        <Text style={styles.metaPillText}>{film.film_category}</Text>
+                        <Text style={styles.metaPillText}>
+                          {film.film_category || film.category}
+                        </Text>
                       </View>
                     ) : null}
 
@@ -650,25 +864,25 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   mediaWrap: {
-  width: "100%",
-  backgroundColor: "#000",
-  alignItems: "center",
-  justifyContent: "center",
-  overflow: "hidden",
-},
-video: {
-  width: "100%",
-  height: "100%",
-  backgroundColor: "#000",
-},
-mediaFallback: {
-  width: "100%",
-  height: "100%",
-  alignItems: "center",
-  justifyContent: "center",
-  backgroundColor: "#000",
-  position: "relative",
-}, 
+    width: "100%",
+    backgroundColor: "#000",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  video: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#000",
+  },
+  mediaFallback: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#000",
+    position: "relative",
+  },
   mediaFallbackText: {
     color: MUTE,
     fontSize: 14,
