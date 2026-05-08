@@ -57,9 +57,11 @@ function getAllowCreateProfileFlow() {
 
   if (Platform.OS === "web" && typeof window !== "undefined") {
     return (
-      window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
+      window.sessionStorage.getItem("overlooked.allowCreateProfile") ===
+        "true" ||
       window.sessionStorage.getItem("overlooked.manualSignIn") === "true" ||
-      window.sessionStorage.getItem("overlooked.createProfileAllowed") === "true"
+      window.sessionStorage.getItem("overlooked.createProfileAllowed") ===
+        "true"
     );
   }
 
@@ -70,8 +72,7 @@ function getPasswordResetFlowActive() {
   const G = globalThis as any;
 
   return Boolean(
-    G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
-      G.__OVERLOOKED_RECOVERY__
+    G.__OVERLOOKED_FORCE_NEW_PASSWORD__ || G.__OVERLOOKED_RECOVERY__
   );
 }
 
@@ -81,18 +82,22 @@ function getPasswordResetDone() {
   return Boolean(G.__OVERLOOKED_PASSWORD_RESET_DONE__);
 }
 
+function isPublicGuestRoute(routeName?: string | null) {
+  return routeName === "PublicProfile" || routeName === "SharedFilm";
+}
+
 export default function AppNavigator({
   initialAuthRouteName,
 }: {
   initialAuthRouteName: "SignIn" | "CreateProfile";
 }) {
   const {
-  ready,
-  userId,
-  profileComplete,
-  profileChecked,
-  shouldRouteToCreateProfile,
-} = useAuth();
+    ready,
+    userId,
+    profileComplete,
+    profileChecked,
+    shouldRouteToCreateProfile,
+  } = useAuth();
 
   const [initialState, setInitialState] = useState<InitialState | undefined>();
   const [navReady, setNavReady] = useState(false);
@@ -143,73 +148,150 @@ export default function AppNavigator({
   }, [ready, userId, profileComplete, shouldRouteToCreateProfile]);
 
   useEffect(() => {
-  const runRedirectLogic = async () => {
-    if (!ready || !navReady) return;
-    if (!navigationRef.isReady()) return;
-    if (!hasBootstrappedNavRef.current) return;
+    const runRedirectLogic = async () => {
+      if (!ready || !navReady) return;
+      if (!navigationRef.isReady()) return;
+      if (!hasBootstrappedNavRef.current) return;
 
-    const currentRoute = navigationRef.getCurrentRoute();
+      const currentRoute = navigationRef.getCurrentRoute();
+      const currentRouteName = currentRoute?.name;
 
-    if (currentRoute?.name === "WorkshopSubmit") {
-  return;
-}
+      if (currentRouteName === "WorkshopSubmit") {
+        return;
+      }
 
-    const resetFlowActive =
-      G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
-      G.__OVERLOOKED_RECOVERY__ ||
-      currentRoute?.name === "NewPassword";
+      const resetFlowActive =
+        G.__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+        G.__OVERLOOKED_RECOVERY__ ||
+        currentRouteName === "NewPassword";
 
-    const resetDone = G.__OVERLOOKED_PASSWORD_RESET_DONE__ === true;
+      const resetDone = G.__OVERLOOKED_PASSWORD_RESET_DONE__ === true;
 
-    const createProfileAllowed =
-      G.__OVERLOOKED_EMAIL_CONFIRM__ === true ||
-      G.__OVERLOOKED_MANUAL_SIGN_IN__ === true ||
-      G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === true ||
-      (Platform.OS === "web" &&
-        typeof window !== "undefined" &&
-        (window.sessionStorage.getItem("overlooked.allowCreateProfile") === "true" ||
-          window.sessionStorage.getItem("overlooked.manualSignIn") === "true" ||
-          window.sessionStorage.getItem("overlooked.createProfileAllowed") === "true"));
+      const createProfileAllowed =
+        G.__OVERLOOKED_EMAIL_CONFIRM__ === true ||
+        G.__OVERLOOKED_MANUAL_SIGN_IN__ === true ||
+        G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ === true ||
+        (Platform.OS === "web" &&
+          typeof window !== "undefined" &&
+          (window.sessionStorage.getItem("overlooked.allowCreateProfile") ===
+            "true" ||
+            window.sessionStorage.getItem("overlooked.manualSignIn") ===
+              "true" ||
+            window.sessionStorage.getItem(
+              "overlooked.createProfileAllowed"
+            ) === "true"));
 
-    const resetToAuth = () => {
-      navigationRef.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [
-            {
-              name: "Auth",
-              params: {
-                screen: "SignIn",
+      const resetToAuth = () => {
+        navigationRef.dispatch(
+          CommonActions.reset({
+            index: 0,
+            routes: [
+              {
+                name: "Auth",
+                params: {
+                  screen: "SignIn",
+                },
               },
-            },
-          ],
-        })
-      );
-    };
+            ],
+          })
+        );
+      };
 
-    const resetToCreateProfile = () => {
-      navigationRef.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [{ name: "CreateProfile" as never }],
-        })
-      );
-    };
+      const resetToCreateProfile = () => {
+        navigationRef.dispatch(
+          CommonActions.reset({
+            index: 0,
+            routes: [{ name: "CreateProfile" as never }],
+          })
+        );
+      };
 
-    const resetToMainTabs = () => {
-      navigationRef.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [{ name: "MainTabs" }],
-        })
-      );
-    };
+      const resetToMainTabs = () => {
+        navigationRef.dispatch(
+          CommonActions.reset({
+            index: 0,
+            routes: [{ name: "MainTabs" }],
+          })
+        );
+      };
 
-    if (resetDone) {
+      if (resetDone) {
+        G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+        G.__OVERLOOKED_RECOVERY__ = false;
+        G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+        G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+        G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+        G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+
+        if (Platform.OS === "web" && typeof window !== "undefined") {
+          window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+          window.sessionStorage.removeItem("overlooked.manualSignIn");
+          window.sessionStorage.removeItem("overlooked.createProfileAllowed");
+          window.sessionStorage.setItem("overlooked.justResetPassword", "true");
+        }
+
+        resetToAuth();
+        return;
+      }
+
+      if (resetFlowActive) {
+        return;
+      }
+
+      /**
+       * PUBLIC GUEST ROUTES
+       *
+       * These routes must be visible without signing in:
+       * - /creative/:slug → PublicProfile
+       * - /f/:shareSlug → SharedFilm
+       *
+       * This is what makes shared film links behave like public portfolio links.
+       */
+      if (!userId) {
+        if (isPublicGuestRoute(currentRouteName)) {
+          return;
+        }
+
+        resetToAuth();
+        return;
+      }
+
+      /**
+       * IMPORTANT:
+       * Do not make any decision until AuthProvider has actually checked the profile.
+       */
+      if (!profileChecked) {
+        return;
+      }
+
+      /**
+       * Profile is incomplete.
+       */
+      if (!profileComplete) {
+        const latestRoute = navigationRef.getCurrentRoute();
+        const latestRouteName = latestRoute?.name;
+
+        if (G.__OVERLOOKED_PROFILE_JUST_COMPLETED__) {
+          resetToMainTabs();
+          return;
+        }
+
+        if (latestRouteName === "CreateProfile") {
+          return;
+        }
+
+        /**
+         * A signed-in confirmed user with no profile should go to CreateProfile.
+         * Do NOT sign them out here.
+         */
+        resetToCreateProfile();
+        return;
+      }
+
+      /**
+       * Profile is complete. Now and only now clear create-profile permissions.
+       */
       G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-      G.__OVERLOOKED_RECOVERY__ = false;
-      G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
-      G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
       G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
       G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
 
@@ -217,94 +299,42 @@ export default function AppNavigator({
         window.sessionStorage.removeItem("overlooked.allowCreateProfile");
         window.sessionStorage.removeItem("overlooked.manualSignIn");
         window.sessionStorage.removeItem("overlooked.createProfileAllowed");
-        window.sessionStorage.setItem("overlooked.justResetPassword", "true");
       }
 
-      resetToAuth();
-      return;
-    }
+      /**
+       * Signed-in users should also be allowed to stay on public routes.
+       * This prevents opening a shared film while signed in from instantly resetting
+       * back to MainTabs.
+       */
+      const alreadyInsideAllowedAppRoute =
+        currentRouteName === "MainTabs" ||
+        currentRouteName === "Featured" ||
+        currentRouteName === "Workshop" ||
+        currentRouteName === "WorkshopSubmit" ||
+        currentRouteName === "Challenge" ||
+        currentRouteName === "Location" ||
+        currentRouteName === "Jobs" ||
+        currentRouteName === "Chats" ||
+        currentRouteName === "Profile" ||
+        currentRouteName === "PublicProfile" ||
+        currentRouteName === "SharedFilm";
 
-    if (resetFlowActive) {
-      return;
-    }
+      if (!alreadyInsideAllowedAppRoute) {
+        resetToMainTabs();
+      }
+    };
 
-    if (!userId) {
-      resetToAuth();
-      return;
-    }
+    void runRedirectLogic();
+  }, [
+    ready,
+    navReady,
+    userId,
+    profileComplete,
+    profileChecked,
+    shouldRouteToCreateProfile,
+    initialAuthRouteName,
+  ]);
 
-    /**
-     * IMPORTANT:
-     * Do not make any decision until AuthProvider has actually checked the profile.
-     */
-    if (!profileChecked) {
-      return;
-    }
-
-    /**
-     * Profile is incomplete.
-     */
-    if (!profileComplete) {
-  const latestRoute = navigationRef.getCurrentRoute();
-
-  if (G.__OVERLOOKED_PROFILE_JUST_COMPLETED__) {
-    resetToMainTabs();
-    return;
-  }
-
-  if (latestRoute?.name === "CreateProfile") {
-    return;
-  }
-
-  /**
-   * FIX:
-   * A signed-in confirmed user with no profile should go to CreateProfile.
-   * Do NOT sign them out here.
-   */
-  resetToCreateProfile();
-  return;
-}
-
-    /**
-     * Profile is complete. Now and only now clear create-profile permissions.
-     */
-    G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
-    G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-    G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
-
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      window.sessionStorage.removeItem("overlooked.allowCreateProfile");
-      window.sessionStorage.removeItem("overlooked.manualSignIn");
-      window.sessionStorage.removeItem("overlooked.createProfileAllowed");
-    }
-
-    const currentRouteName = currentRoute?.name;
-
-const alreadyInsideMainTabs =
-  currentRouteName === "MainTabs" ||
-  currentRouteName === "Featured" ||
-  currentRouteName === "Workshop" ||
-  currentRouteName === "WorkshopSubmit" ||
-  currentRouteName === "Challenge" ||
-  currentRouteName === "Location" ||
-  currentRouteName === "Jobs" ||
-  currentRouteName === "Chats" ||
-  currentRouteName === "Profile";
-if (!alreadyInsideMainTabs) {
-  resetToMainTabs();
-}
-  };
-
-  void runRedirectLogic();
-}, [
-  ready,
-  navReady,
-  userId,
-  profileComplete,
-  profileChecked,
-  shouldRouteToCreateProfile,
-  initialAuthRouteName,
-]);
   useEffect(() => {
     if (!userId) {
       setIsPaid(null);
@@ -394,24 +424,24 @@ if (!alreadyInsideMainTabs) {
    * CreateProfile can only be the initial route if create-profile flow is allowed.
    * shouldRouteToCreateProfile alone is NOT enough.
    */
-const rootInitialRouteName =
-  isPasswordResetFlow
-    ? "NewPassword"
-    : isPasswordResetDone
-    ? "Auth"
-    : !userId
-    ? "Auth"
-    : G.__OVERLOOKED_PROFILE_JUST_COMPLETED__
-    ? "MainTabs"
-    : !profileChecked
-    ? "Auth"
-    : !profileComplete && allowCreateProfileFlow
-    ? "CreateProfile"
-    : !profileComplete && !allowCreateProfileFlow
-    ? "Auth"
-    : mustShowPaywall
-    ? "Paywall"
-    : "MainTabs";
+  const rootInitialRouteName =
+    isPasswordResetFlow
+      ? "NewPassword"
+      : isPasswordResetDone
+      ? "Auth"
+      : !userId
+      ? "Auth"
+      : G.__OVERLOOKED_PROFILE_JUST_COMPLETED__
+      ? "MainTabs"
+      : !profileChecked
+      ? "Auth"
+      : !profileComplete && allowCreateProfileFlow
+      ? "CreateProfile"
+      : !profileComplete && !allowCreateProfileFlow
+      ? "Auth"
+      : mustShowPaywall
+      ? "Paywall"
+      : "MainTabs";
 
   return (
     <NavigationContainer

@@ -13,11 +13,9 @@ export const linking: LinkingOptions<any> = {
 
   config: {
     screens: {
-      // ROOT SCREENS
       NewPassword: "reset-password",
       CreateProfile: "create-profile",
 
-      // AUTH STACK
       Auth: {
         screens: {
           SignIn: "signin",
@@ -26,15 +24,9 @@ export const linking: LinkingOptions<any> = {
         },
       },
 
-      // MAIN TABS
       MainTabs: {
         screens: {
-          Featured: {
-            path: "f/:openShareSlug",
-            parse: {
-              openShareSlug: (value: string) => decodeURIComponent(value),
-            },
-          },
+          Featured: "featured",
           Jobs: "jobs",
           Challenge: "challenge",
           Location: "location",
@@ -47,6 +39,13 @@ export const linking: LinkingOptions<any> = {
         path: "creative/:slug",
         parse: {
           slug: (value: string) => decodeURIComponent(value),
+        },
+      },
+
+      SharedFilm: {
+        path: "f/:shareSlug",
+        parse: {
+          shareSlug: (value: string) => decodeURIComponent(value),
         },
       },
 

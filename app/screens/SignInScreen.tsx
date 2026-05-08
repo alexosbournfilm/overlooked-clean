@@ -2,7 +2,7 @@
 // ------------------------------------------------------------
 // MOBILE-FIRST SIGN IN
 // - Native mobile: direct sign-in screen (no website-like landing)
-// - Web: keeps the richer landing layout
+// - Web: simplified direct sign-in screen matching mobile style
 // - Removes blue cursor/selection highlight
 // - Smoother input focus + submit flow
 // - IMPORTANT: CreateProfile is ONLY allowed right after a
@@ -311,207 +311,207 @@ export default function SignInScreen() {
   };
 
   const finishPostAuthRedirect = async (opts?: { allowCreateProfile?: boolean }) => {
-  if (didFinishRedirectRef.current) return;
-  didFinishRedirectRef.current = true;
+    if (didFinishRedirectRef.current) return;
+    didFinishRedirectRef.current = true;
 
-  const allowCreateProfile = Boolean(opts?.allowCreateProfile);
+    const allowCreateProfile = Boolean(opts?.allowCreateProfile);
 
-  const { data: u } = await supabase.auth.getUser();
-  const user = u?.user;
-  const userId = user?.id;
+    const { data: u } = await supabase.auth.getUser();
+    const user = u?.user;
+    const userId = user?.id;
 
-  if (!userId) {
-    // No logged-in user = stay on SignIn.
-    didFinishRedirectRef.current = false;
-    return;
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from('users')
-    .select('id, full_name, main_role_id, city_id')
-    .eq('id', userId)
-    .maybeSingle();
-
-  if (profileError) {
-    console.log('Profile fetch error:', profileError);
-
-    // Do not push the user to CreateProfile if profile loading fails.
-    // Sign out and leave them on SignIn.
-    await supabase.auth.signOut();
-    allowCreateProfileOnceRef.current = false;
-    didFinishRedirectRef.current = false;
-
-    showError('Error', 'Could not load your profile. Please sign in again.');
-    return;
-  }
-
-  const profileComplete = Boolean(
-    profile?.id && profile?.full_name && profile?.main_role_id && profile?.city_id
-  );
-
-  if (!profileComplete) {
-  const isPasswordResetFlow =
-    (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
-    (globalThis as any).__OVERLOOKED_RECOVERY__ ||
-    (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
-
-  if (isPasswordResetFlow) {
-    await supabase.auth.signOut();
-    allowCreateProfileOnceRef.current = false;
-    didFinishRedirectRef.current = false;
-
-    showError(
-      'Password reset complete',
-      'Please sign in again with your new password.'
-    );
-    return;
-  }
-
-  /**
-   * FIX:
-   * Confirmed signed-in users with no profile should always go to CreateProfile.
-   */
-  allowCreateProfileOnceRef.current = false;
-
-  try {
-    const parentNav = navigation.getParent?.();
-
-    if (parentNav) {
-      parentNav.reset({
-        index: 0,
-        routes: [{ name: 'CreateProfile' }],
-      });
+    if (!userId) {
+      // No logged-in user = stay on SignIn.
+      didFinishRedirectRef.current = false;
       return;
     }
 
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'CreateProfile' }],
-    });
-  } catch (e) {
-    console.log('CreateProfile navigation error:', e);
-    didFinishRedirectRef.current = false;
-    showError('Navigation Error', 'Could not open profile setup.');
-  }
+    const { data: profile, error: profileError } = await supabase
+      .from('users')
+      .select('id, full_name, main_role_id, city_id')
+      .eq('id', userId)
+      .maybeSingle();
 
-  return;
-}
+    if (profileError) {
+      console.log('Profile fetch error:', profileError);
 
-  // Profile is complete, so the user is allowed inside the app.
-  try {
-    const parentNav = navigation.getParent?.();
-
-    if (parentNav) {
-      parentNav.reset({
-        index: 0,
-        routes: [{ name: 'MainTabs' }],
-      });
-      return;
-    }
-
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'MainTabs' }],
-    });
-  } catch (e) {
-    console.log('MainTabs navigation error:', e);
-    didFinishRedirectRef.current = false;
-    showError('Navigation Error', 'Signed in, but could not open the app.');
-  }
-};
-
-  const handleAuthDeepLink = async (url: string) => {
-  try {
-    if (!url || !url.includes('code=')) return;
-
-    if (deepLinkHandledRef.current === url) return;
-    deepLinkHandledRef.current = url;
-
-    const authType = parseAuthTypeFromUrl(url);
-
-    /**
-     * IMPORTANT:
-     * Email confirmation links create a temporary Supabase session.
-     * We DO NOT want that session to automatically enter CreateProfile.
-     */
-    (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-    (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
-    (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = true;
-
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.sessionStorage.removeItem('overlooked.manualSignIn');
-      window.sessionStorage.removeItem('overlooked.createProfileAllowed');
-    }
-
-    const { error } = await supabase.auth.exchangeCodeForSession(url);
-
-    if (error) {
-      console.log('exchangeCodeForSession error:', error);
-      showError(
-        'Email Confirmation',
-        'Could not finish email confirmation. Please open the newest confirmation email link again.'
-      );
-      return;
-    }
-
-    /**
-     * CRITICAL FIX:
-     * After confirming the email, immediately sign out.
-     * This makes native mobile behave like web:
-     * the user is returned to Sign In and must manually sign in.
-     */
-    if (authType === 'signup' || authType === 'email_change') {
+      // Do not push the user to CreateProfile if profile loading fails.
+      // Sign out and leave them on SignIn.
       await supabase.auth.signOut();
-
       allowCreateProfileOnceRef.current = false;
       didFinishRedirectRef.current = false;
 
+      showError('Error', 'Could not load your profile. Please sign in again.');
+      return;
+    }
+
+    const profileComplete = Boolean(
+      profile?.id && profile?.full_name && profile?.main_role_id && profile?.city_id
+    );
+
+    if (!profileComplete) {
+      const isPasswordResetFlow =
+        (globalThis as any).__OVERLOOKED_FORCE_NEW_PASSWORD__ ||
+        (globalThis as any).__OVERLOOKED_RECOVERY__ ||
+        (globalThis as any).__OVERLOOKED_PASSWORD_RESET_DONE__;
+
+      if (isPasswordResetFlow) {
+        await supabase.auth.signOut();
+        allowCreateProfileOnceRef.current = false;
+        didFinishRedirectRef.current = false;
+
+        showError(
+          'Password reset complete',
+          'Please sign in again with your new password.'
+        );
+        return;
+      }
+
+      /**
+       * FIX:
+       * Confirmed signed-in users with no profile should always go to CreateProfile.
+       */
+      allowCreateProfileOnceRef.current = false;
+
+      try {
+        const parentNav = navigation.getParent?.();
+
+        if (parentNav) {
+          parentNav.reset({
+            index: 0,
+            routes: [{ name: 'CreateProfile' }],
+          });
+          return;
+        }
+
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'CreateProfile' }],
+        });
+      } catch (e) {
+        console.log('CreateProfile navigation error:', e);
+        didFinishRedirectRef.current = false;
+        showError('Navigation Error', 'Could not open profile setup.');
+      }
+
+      return;
+    }
+
+    // Profile is complete, so the user is allowed inside the app.
+    try {
+      const parentNav = navigation.getParent?.();
+
+      if (parentNav) {
+        parentNav.reset({
+          index: 0,
+          routes: [{ name: 'MainTabs' }],
+        });
+        return;
+      }
+
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'MainTabs' }],
+      });
+    } catch (e) {
+      console.log('MainTabs navigation error:', e);
+      didFinishRedirectRef.current = false;
+      showError('Navigation Error', 'Signed in, but could not open the app.');
+    }
+  };
+
+  const handleAuthDeepLink = async (url: string) => {
+    try {
+      if (!url || !url.includes('code=')) return;
+
+      if (deepLinkHandledRef.current === url) return;
+      deepLinkHandledRef.current = url;
+
+      const authType = parseAuthTypeFromUrl(url);
+
+      /**
+       * IMPORTANT:
+       * Email confirmation links create a temporary Supabase session.
+       * We DO NOT want that session to automatically enter CreateProfile.
+       */
       (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
       (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
-      (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
+      (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = true;
 
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        const clean = window.location.origin + window.location.pathname;
-        window.history.replaceState({}, document.title, clean);
-
         window.sessionStorage.removeItem('overlooked.manualSignIn');
         window.sessionStorage.removeItem('overlooked.createProfileAllowed');
       }
 
-      try {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'SignIn' }],
-        });
-      } catch (e) {
-        console.log('SignIn reset after confirmation error:', e);
+      const { error } = await supabase.auth.exchangeCodeForSession(url);
+
+      if (error) {
+        console.log('exchangeCodeForSession error:', error);
+        showError(
+          'Email Confirmation',
+          'Could not finish email confirmation. Please open the newest confirmation email link again.'
+        );
+        return;
       }
 
-      showError(
-        'Email confirmed',
-        'Your email has been confirmed. Please sign in to continue.'
-      );
+      /**
+       * CRITICAL FIX:
+       * After confirming the email, immediately sign out.
+       * This makes native mobile behave like web:
+       * the user is returned to Sign In and must manually sign in.
+       */
+      if (authType === 'signup' || authType === 'email_change') {
+        await supabase.auth.signOut();
 
-      return;
+        allowCreateProfileOnceRef.current = false;
+        didFinishRedirectRef.current = false;
+
+        (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+        (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+        (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
+
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          const clean = window.location.origin + window.location.pathname;
+          window.history.replaceState({}, document.title, clean);
+
+          window.sessionStorage.removeItem('overlooked.manualSignIn');
+          window.sessionStorage.removeItem('overlooked.createProfileAllowed');
+        }
+
+        try {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'SignIn' }],
+          });
+        } catch (e) {
+          console.log('SignIn reset after confirmation error:', e);
+        }
+
+        showError(
+          'Email confirmed',
+          'Your email has been confirmed. Please sign in to continue.'
+        );
+
+        return;
+      }
+
+      /**
+       * Password reset / recovery flows can still continue normally
+       * if you use them elsewhere.
+       */
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        const clean = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, clean);
+      }
+
+      await supabase.auth.signOut();
+
+      allowCreateProfileOnceRef.current = false;
+      didFinishRedirectRef.current = false;
+    } catch (e) {
+      console.log('handleAuthDeepLink exception:', e);
     }
-
-    /**
-     * Password reset / recovery flows can still continue normally
-     * if you use them elsewhere.
-     */
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const clean = window.location.origin + window.location.pathname;
-      window.history.replaceState({}, document.title, clean);
-    }
-
-    await supabase.auth.signOut();
-
-    allowCreateProfileOnceRef.current = false;
-    didFinishRedirectRef.current = false;
-  } catch (e) {
-    console.log('handleAuthDeepLink exception:', e);
-  }
-};
+  };
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
@@ -533,20 +533,20 @@ export default function SignInScreen() {
         if (!mounted) return;
 
         const isManualSignIn =
-  (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ === true ||
-  (Platform.OS === 'web' &&
-    typeof window !== 'undefined' &&
-    window.sessionStorage.getItem('overlooked.manualSignIn') === 'true');
+          (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ === true ||
+          (Platform.OS === 'web' &&
+            typeof window !== 'undefined' &&
+            window.sessionStorage.getItem('overlooked.manualSignIn') === 'true');
 
-if (
-  refreshedSessionData?.session?.user &&
-  !didFinishRedirectRef.current &&
-  isManualSignIn
-) {
-  await finishPostAuthRedirect({
-    allowCreateProfile: allowCreateProfileOnceRef.current,
-  });
-}
+        if (
+          refreshedSessionData?.session?.user &&
+          !didFinishRedirectRef.current &&
+          isManualSignIn
+        ) {
+          await finishPostAuthRedirect({
+            allowCreateProfile: allowCreateProfileOnceRef.current,
+          });
+        }
 
         const sub = Linking.addEventListener('url', (event) => {
           void handleAuthDeepLink(event.url);
@@ -682,164 +682,165 @@ if (
   };
 
   const handleSignIn = async () => {
-  const trimmedEmail = email.trim();
+    const trimmedEmail = email.trim();
 
-  if (!trimmedEmail || !password) {
-    showError('Sign in to continue', 'Enter your email and password.');
-    return;
-  }
-
-  if (loading) return;
-  setLoading(true);
-
-  /**
-   * CRITICAL:
-   * This must be set BEFORE supabase.auth.signInWithPassword().
-   *
-   * Supabase fires SIGNED_IN immediately, and AuthProvider/AppNavigator
-   * need to know this was a real manual sign-in, not a random restored session.
-   */
-  (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = true;
-(globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = true;
-
-if (Platform.OS === 'web' && typeof window !== 'undefined') {
-  window.sessionStorage.setItem('overlooked.manualSignIn', 'true');
-  window.sessionStorage.setItem('overlooked.createProfileAllowed', 'true');
-}
-
-  try {
-    didFinishRedirectRef.current = false;
-    allowCreateProfileOnceRef.current = true;
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: trimmedEmail,
-      password,
-    });
-
-    if (error) {
-      (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-      (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
-
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.sessionStorage.removeItem('overlooked.manualSignIn');
-        window.sessionStorage.removeItem('overlooked.createProfileAllowed');
-      }
-
-      showError('Login Error', error.message);
+    if (!trimmedEmail || !password) {
+      showError('Sign in to continue', 'Enter your email and password.');
       return;
     }
 
-    const user = data?.user;
-    const userId = user?.id;
-
-    if (!userId) {
-      (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-      (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
-
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.sessionStorage.removeItem('overlooked.manualSignIn');
-        window.sessionStorage.removeItem('overlooked.createProfileAllowed');
-      }
-
-      showError('Error', 'Login failed. Please try again.');
-      return;
-    }
-
-    const isConfirmed = !!user?.email_confirmed_at;
-
-    if (!isConfirmed) {
-      (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-      (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
-
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.sessionStorage.removeItem('overlooked.manualSignIn');
-        window.sessionStorage.removeItem('overlooked.createProfileAllowed');
-      }
-
-      await supabase.auth.signOut();
-
-      showError(
-        'Email not confirmed',
-        'Please confirm your email first, then try signing in again.'
-      );
-      return;
-    }
-
-    const { data: existingProfile, error: existingProfileError } = await supabase
-  .from('users')
-  .select('id, full_name, main_role_id, city_id')
-  .eq('id', userId)
-  .maybeSingle();
-
-if (existingProfileError) {
-  console.log('Manual sign-in profile check error:', existingProfileError);
-  showError('Login Error', 'Could not check your profile. Please try again.');
-  return;
-}
-
-const existingProfileComplete = Boolean(
-  existingProfile?.id &&
-    existingProfile?.full_name &&
-    existingProfile?.main_role_id &&
-    existingProfile?.city_id
-);
-
-if (!existingProfileComplete) {
-  /**
-   * This is a confirmed user manually signing in before profile creation.
-   * This must go to CreateProfile.
-   */
-  (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = true;
-  (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = true;
-  (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
-
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    window.sessionStorage.setItem('overlooked.manualSignIn', 'true');
-    window.sessionStorage.setItem('overlooked.createProfileAllowed', 'true');
-  }
-
-  const parentNav = navigation.getParent?.();
-
-  if (parentNav) {
-    parentNav.reset({
-      index: 0,
-      routes: [{ name: 'CreateProfile' }],
-    });
-    return;
-  }
-
-  navigation.reset({
-    index: 0,
-    routes: [{ name: 'CreateProfile' }],
-  });
-
-  return;
-}
+    if (loading) return;
+    setLoading(true);
 
     /**
-     * Manual sign-in is allowed to continue to CreateProfile
-     * if this confirmed user has not created a profile yet.
+     * CRITICAL:
+     * This must be set BEFORE supabase.auth.signInWithPassword().
+     *
+     * Supabase fires SIGNED_IN immediately, and AuthProvider/AppNavigator
+     * need to know this was a real manual sign-in, not a random restored session.
      */
-    const allowCreateProfile = true;
-    allowCreateProfileOnceRef.current = true;
-
-    await finishPostAuthRedirect({ allowCreateProfile });
-  } catch (err: any) {
-    console.log('SignIn exception:', err);
-
-    (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
-    (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+    (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = true;
+    (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = true;
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.sessionStorage.removeItem('overlooked.manualSignIn');
-      window.sessionStorage.removeItem('overlooked.createProfileAllowed');
+      window.sessionStorage.setItem('overlooked.manualSignIn', 'true');
+      window.sessionStorage.setItem('overlooked.createProfileAllowed', 'true');
     }
 
-    showError('Login Error', 'Something went wrong. Please try again.');
-  } finally {
-    setLoading(false);
-  }
-};
+    try {
+      didFinishRedirectRef.current = false;
+      allowCreateProfileOnceRef.current = true;
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password,
+      });
+
+      if (error) {
+        (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+        (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.sessionStorage.removeItem('overlooked.manualSignIn');
+          window.sessionStorage.removeItem('overlooked.createProfileAllowed');
+        }
+
+        showError('Login Error', error.message);
+        return;
+      }
+
+      const user = data?.user;
+      const userId = user?.id;
+
+      if (!userId) {
+        (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+        (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.sessionStorage.removeItem('overlooked.manualSignIn');
+          window.sessionStorage.removeItem('overlooked.createProfileAllowed');
+        }
+
+        showError('Error', 'Login failed. Please try again.');
+        return;
+      }
+
+      const isConfirmed = !!user?.email_confirmed_at;
+
+      if (!isConfirmed) {
+        (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+        (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.sessionStorage.removeItem('overlooked.manualSignIn');
+          window.sessionStorage.removeItem('overlooked.createProfileAllowed');
+        }
+
+        await supabase.auth.signOut();
+
+        showError(
+          'Email not confirmed',
+          'Please confirm your email first, then try signing in again.'
+        );
+        return;
+      }
+
+      const { data: existingProfile, error: existingProfileError } = await supabase
+        .from('users')
+        .select('id, full_name, main_role_id, city_id')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (existingProfileError) {
+        console.log('Manual sign-in profile check error:', existingProfileError);
+        showError('Login Error', 'Could not check your profile. Please try again.');
+        return;
+      }
+
+      const existingProfileComplete = Boolean(
+        existingProfile?.id &&
+          existingProfile?.full_name &&
+          existingProfile?.main_role_id &&
+          existingProfile?.city_id
+      );
+
+      if (!existingProfileComplete) {
+        /**
+         * This is a confirmed user manually signing in before profile creation.
+         * This must go to CreateProfile.
+         */
+        (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = true;
+        (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = true;
+        (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
+
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.sessionStorage.setItem('overlooked.manualSignIn', 'true');
+          window.sessionStorage.setItem('overlooked.createProfileAllowed', 'true');
+        }
+
+        const parentNav = navigation.getParent?.();
+
+        if (parentNav) {
+          parentNav.reset({
+            index: 0,
+            routes: [{ name: 'CreateProfile' }],
+          });
+          return;
+        }
+
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'CreateProfile' }],
+        });
+
+        return;
+      }
+
+      /**
+       * Manual sign-in is allowed to continue to CreateProfile
+       * if this confirmed user has not created a profile yet.
+       */
+      const allowCreateProfile = true;
+      allowCreateProfileOnceRef.current = true;
+
+      await finishPostAuthRedirect({ allowCreateProfile });
+    } catch (err: any) {
+      console.log('SignIn exception:', err);
+
+      (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+      (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.sessionStorage.removeItem('overlooked.manualSignIn');
+        window.sessionStorage.removeItem('overlooked.createProfileAllowed');
+      }
+
+      showError('Login Error', 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const MODAL_SIDE_PAD = isPhone ? 14 : 18;
   const maxModalWidth = (cap: number) => Math.min(cap, Math.max(260, width - MODAL_SIDE_PAD * 2));
   const modalMaxHeight = Math.max(260, height - insets.top - insets.bottom - 24);
@@ -953,15 +954,15 @@ if (!existingProfileComplete) {
             onSubmitEditing={handleSignIn}
           />
           <TouchableOpacity
-  onPress={() => setShowPassword((prev) => !prev)}
-  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
->
-  <Ionicons
-    name={showPassword ? 'eye-off' : 'eye'}
-    size={18}
-    color={T.mute}
-  />
-</TouchableOpacity>
+            onPress={() => setShowPassword((prev) => !prev)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons
+              name={showPassword ? 'eye-off' : 'eye'}
+              size={18}
+              color={T.mute}
+            />
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity
@@ -1011,9 +1012,10 @@ if (!existingProfileComplete) {
             <Text style={{ textDecorationLine: 'underline' }}>Create an account</Text>
           </Text>
         </TouchableOpacity>
+
         <Text style={styles.supportText}>
-  For support, message overlookedsupport@gmail.com
-</Text>
+          For support, message overlookedsupport@gmail.com
+        </Text>
       </ScrollView>
     </View>
   );
@@ -1099,15 +1101,15 @@ if (!existingProfileComplete) {
                   onSubmitEditing={handleSignIn}
                 />
                 <TouchableOpacity
-  onPress={() => setShowPassword((prev) => !prev)}
-  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
->
-  <Ionicons
-    name={showPassword ? 'eye-off' : 'eye'}
-    size={18}
-    color={T.mute}
-  />
-</TouchableOpacity>
+                  onPress={() => setShowPassword((prev) => !prev)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons
+                    name={showPassword ? 'eye-off' : 'eye'}
+                    size={18}
+                    color={T.mute}
+                  />
+                </TouchableOpacity>
               </View>
 
               <TouchableOpacity
@@ -1152,9 +1154,10 @@ if (!existingProfileComplete) {
                   </Text>
                 </Text>
               </TouchableOpacity>
+
               <Text style={styles.supportText}>
-  For support, message overlookedsupport@gmail.com
-</Text>
+                For support, message overlookedsupport@gmail.com
+              </Text>
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -1184,335 +1187,31 @@ if (!existingProfileComplete) {
         <View style={styles.vignette} pointerEvents="none" />
         <View style={styles.topSheen} pointerEvents="none" />
 
-        <View
-          style={[
-            styles.topBarWrapper,
-            { paddingTop: insets.top, height: NAV_HEIGHT + insets.top },
-          ]}
-        >
-          <View
-            style={[
-              styles.topBarInner,
-              isNarrowNav && styles.topBarInnerNarrow,
-              isTinyNav && styles.topBarInnerTiny,
-              width < 420 && { paddingHorizontal: 12 },
-              { height: NAV_HEIGHT },
-              Platform.OS === 'web' ? ({ overflowX: 'hidden' } as any) : null,
-            ]}
-          >
-            {!isNarrowNav && (
-              <>
-                <Pressable onPress={() => navigation.navigate('Featured')} style={styles.brandWrap}>
-                  <Animated.Text
-                    style={[
-                      styles.brandTitle,
-                      { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
-                    ]}
-                  >
-                    OVERLOOKED
-                  </Animated.Text>
-                </Pressable>
-
-                <View style={styles.actionsRow}>
-                  <TouchableOpacity onPress={handleEnterAsGuest} style={styles.textAction}>
-                    <Text style={styles.textActionText}>Enter without account</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => navigation.navigate('SignUp')}
-                    style={styles.primaryChip}
-                  >
-                    <Text style={styles.primaryChipText}>Create an account</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity onPress={() => setShowSignIn(true)} style={styles.textAction}>
-                    <Text style={styles.textActionText}>Sign in</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-
-            {isNarrowNav && (
-              <>
-                <View style={styles.navRowTop}>
-                  <Pressable
-                    onPress={() => navigation.navigate('Featured')}
-                    style={styles.brandWrapNarrow}
-                  >
-                    <Animated.Text
-                      style={[
-                        styles.brandTitle,
-                        styles.brandTitleNarrow,
-                        { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
-                      ]}
-                    >
-                      OVERLOOKED
-                    </Animated.Text>
-                  </Pressable>
-                </View>
-
-                <View style={styles.navRowBottom}>
-                  <View style={styles.actionsRowNarrow}>
-                    <TouchableOpacity
-                      onPress={handleEnterAsGuest}
-                      style={[styles.textAction, styles.textActionNarrow]}
-                    >
-                      <Text style={[styles.textActionText, isTinyNav && styles.textActionTextTiny]}>
-                        Enter without account
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={() => navigation.navigate('SignUp')}
-                      style={[
-                        styles.primaryChip,
-                        styles.primaryChipNarrow,
-                        isTinyNav && styles.primaryChipTiny,
-                      ]}
-                    >
-                      <Text
-                        style={[styles.primaryChipText, isTinyNav && styles.primaryChipTextTiny]}
-                      >
-                        Create an account
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={() => setShowSignIn(true)}
-                      style={[styles.textAction, styles.textActionNarrow]}
-                    >
-                      <Text style={[styles.textActionText, isTinyNav && styles.textActionTextTiny]}>
-                        Sign in
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-
         <ScrollView
           style={[
-            { flex: 1, backgroundColor: T.bg },
+            { flex: 1, backgroundColor: 'transparent' },
             Platform.OS === 'web'
               ? ({ overscrollBehavior: 'none', overflowX: 'hidden' } as any)
               : null,
           ]}
           contentContainerStyle={[
-            styles.scrollBody,
+            styles.webAuthScroll,
             {
-              backgroundColor: T.bg,
-              paddingTop: NAV_HEIGHT + insets.top + 18,
-              paddingHorizontal: width < 420 ? 16 : 28,
-              paddingBottom: 64 + Math.max(insets.bottom, 0),
-              minHeight: Math.max(0, height - (NAV_HEIGHT + insets.top)),
-              width: '100%',
-              overflow: 'hidden',
-            } as any,
+              minHeight: height,
+              paddingTop: Math.max(insets.top, 28),
+              paddingBottom: Math.max(insets.bottom, 28),
+              paddingHorizontal: width < 420 ? 18 : 28,
+            },
           ]}
           keyboardShouldPersistTaps="handled"
           bounces={false}
           overScrollMode="never"
           showsVerticalScrollIndicator={false}
-          directionalLockEnabled
         >
-          <View
-            style={[
-              styles.wrap,
-              !isWide && {
-                flexDirection: 'column',
-                flexWrap: 'nowrap',
-                gap: 18,
-              },
-            ]}
-          >
-            <View
-              style={[
-                styles.heroCol,
-                !isWide && {
-                  flexBasis: 'auto',
-                  maxWidth: '100%',
-                  width: '100%',
-                  alignSelf: 'stretch',
-                  gap: 12,
-                },
-              ]}
-            >
-              <View
-                style={[
-                  styles.heroIntro,
-                  !isWide && {
-                    alignItems: 'center',
-                    maxWidth: '100%',
-                    width: '100%',
-                    alignSelf: 'stretch',
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.heroH1,
-                    !isWide && {
-                      textAlign: 'center',
-                      fontSize: isPhone ? 22 : 24,
-                      lineHeight: isPhone ? 28 : 30,
-                    },
-                  ]}
-                >
-                  Stop waiting to be discovered. Start creating.
-                </Text>
-
-                <Text
-                  style={[
-                    styles.heroCopy,
-                    !isWide && {
-                      textAlign: 'center',
-                      fontSize: 14.5,
-                      lineHeight: 20.5,
-                    },
-                  ]}
-                >
-                  Meet collaborators, make a film each month, get seen by the community.
-                </Text>
-
-                <Text
-                  style={[
-                    styles.bootcampCopy,
-                    !isWide && {
-                      textAlign: 'center',
-                      alignSelf: 'center',
-                    },
-                  ]}
-                >
-                  Build your skills through Film Bootcamp, learn the craft, then put it into
-                  practice with monthly films.
-                </Text>
-
-                <View style={[styles.manifestoWrap, !isWide && { marginTop: 10 }]}>
-                  <Text
-                    numberOfLines={2}
-                    style={[
-                      styles.manifestoText,
-                      !isWide && { textAlign: 'center', fontSize: 13 },
-                    ]}
-                  >
-                    {displayText}
-                    <Text style={{ opacity: caretVisible ? 1 : 0 }}>|</Text>
-                  </Text>
-                </View>
-              </View>
-
-              <View
-                style={[
-                  styles.heroImage,
-                  useSyncedHeights ? { height: heroSyncedHeight } : { aspectRatio: 1.8 },
-                  !isWide && { marginTop: 12 },
-                ]}
-              >
-                <Image
-                  source={{ uri: FILM_HERO_URL }}
-                  resizeMode="cover"
-                  style={[
-                    { position: 'absolute', left: 0, right: 0, width: '100%' },
-                    useSyncedHeights
-                      ? { top: -90, height: (heroSyncedHeight ?? 0) + 90 }
-                      : { top: 0, bottom: 0, height: '100%' },
-                  ]}
-                />
-                <View style={styles.heroOverlay} pointerEvents="none" />
-                <View style={styles.heroFilmGrain} pointerEvents="none" />
-                <View style={styles.heroEdgeFade} pointerEvents="none" />
-              </View>
-            </View>
-
-            <View
-              style={[
-                styles.cardCol,
-                isWide ? { marginTop: 10 } : { maxWidth: '100%', width: '100%' },
-              ]}
-            >
-              <View
-                style={styles.featuresSection}
-                onLayout={(e) => setFeaturesHeight(Math.round(e.nativeEvent.layout.height))}
-              >
-                {FEATURES.map((f, idx) => {
-                  const { scale, hovered, onHoverIn, onHoverOut, onPressIn, onPressOut } =
-                    useHoverScale();
-
-                  return (
-                    <Pressable
-                      key={f.key}
-                      onPress={() => setActiveFeature(f.key)}
-                      onHoverIn={onHoverIn}
-                      onHoverOut={onHoverOut}
-                      onPressIn={onPressIn}
-                      onPressOut={onPressOut}
-                    >
-                      <Animated.View
-                        style={[
-                          styles.featureItem,
-                          idx === FEATURES.length - 1 && { borderBottomWidth: 0 },
-                          { transform: [{ scale }] },
-                          hovered && styles.hoveredShadow,
-                        ]}
-                      >
-                        <View style={styles.featureNumber}>
-                          <Text style={styles.featureNumberText}>{idx + 1}</Text>
-                        </View>
-
-                        <View style={styles.featureIconWrap}>
-                          <Ionicons name={f.icon} size={18} color={T.olive} />
-                        </View>
-
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={styles.featureTitle} numberOfLines={1}>
-                            {f.title}
-                          </Text>
-                          <Text style={styles.featureSubtitle} numberOfLines={1}>
-                            {f.subtitle}
-                          </Text>
-                        </View>
-
-                        <Ionicons
-                          style={{ marginLeft: 6 }}
-                          name="chevron-forward"
-                          size={18}
-                          color={T.olive}
-                        />
-                      </Animated.View>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
+          <View style={styles.webAuthShell}>
+            {renderAuthForm(true)}
           </View>
         </ScrollView>
-
-        {showSignIn && (
-          <View
-            style={[
-              styles.modalBackdrop,
-              isShort && styles.modalBackdropShort,
-              {
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                zIndex: 9999,
-                elevation: 9999,
-              },
-            ]}
-          >
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={{ width: '100%', alignItems: 'center', justifyContent: 'center', flex: 1 }}
-            >
-              {renderAuthForm(false)}
-            </KeyboardAvoidingView>
-          </View>
-        )}
 
         <Modal
           transparent
@@ -1638,6 +1337,19 @@ const styles = StyleSheet.create({
     backgroundImage:
       'radial-gradient(ellipse at top, rgba(198,166,100,0.12) 0%, rgba(13,13,13,0) 70%)',
     opacity: Platform.OS === 'web' ? 1 : 0,
+  },
+
+  webAuthScroll: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  webAuthShell: {
+    width: '100%',
+    maxWidth: 420,
+    alignSelf: 'center',
+    justifyContent: 'center',
   },
 
   mobileContainer: {
@@ -2085,13 +1797,13 @@ const styles = StyleSheet.create({
   link: { textAlign: 'center', color: T.text, fontWeight: '800', fontFamily: SYSTEM_SANS },
 
   supportText: {
-  marginTop: 18,
-  textAlign: 'center',
-  fontSize: 13,
-  lineHeight: 18,
-  color: T.mute,
-  fontFamily: SYSTEM_SANS,
-},
+    marginTop: 18,
+    textAlign: 'center',
+    fontSize: 13,
+    lineHeight: 18,
+    color: T.mute,
+    fontFamily: SYSTEM_SANS,
+  },
 
   modalCard: {
     backgroundColor: T.card2,

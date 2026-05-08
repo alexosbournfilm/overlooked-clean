@@ -162,7 +162,10 @@ export default function SharedFilmScreen() {
   const route = useRoute<SharedFilmRoute>();
   const { width } = useWindowDimensions();
 
-  const routeShareSlug = route.params?.shareSlug;
+  const routeShareSlug =
+  route.params?.shareSlug ||
+  (route.params as any)?.openShareSlug ||
+  null;
 
   const pathShareSlug =
     Platform.OS === "web" && typeof window !== "undefined"
