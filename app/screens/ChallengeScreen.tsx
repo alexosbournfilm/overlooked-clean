@@ -136,7 +136,7 @@ const MUSIC_DRIFT_BETWEEN_ROOMS =
 const MUSIC_FOREST_VEIL =
   'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Forest%20Veil.wav';
 const MUSIC_GODDESS =
-  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Goddess.wav';
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Godess.wav';
 const MUSIC_IRON_JUMP =
   'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Iron%20Jump.wav';
 const MUSIC_IRON_PULSE =
