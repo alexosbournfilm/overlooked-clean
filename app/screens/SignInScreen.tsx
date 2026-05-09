@@ -1,8 +1,9 @@
 // app/screens/SignInScreen.tsx
 // ------------------------------------------------------------
 // MOBILE-FIRST SIGN IN
-// - Native mobile: direct sign-in screen (no website-like landing)
-// - Web: simplified direct sign-in screen matching mobile style
+// - Native mobile: direct sign-in screen
+// - Web: larger, cleaner centred sign-in card
+// - Web background cleaned up to remove harsh/ring-like edges
 // - Removes blue cursor/selection highlight
 // - Smoother input focus + submit flow
 // - IMPORTANT: CreateProfile is ONLY allowed right after a
@@ -26,7 +27,6 @@ import {
   Modal,
   ScrollView,
   Pressable,
-  Image,
   UIManager,
 } from 'react-native';
 import * as Linking from 'expo-linking';
@@ -34,18 +34,17 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
-import { resetToMain } from '../navigation/navigationRef';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const DARK_BG = '#0D0D0D';
-const DARK_ELEVATED = '#171717';
-const TEXT_IVORY = '#EDEBE6';
-const TEXT_MUTED = '#A7A6A2';
+const DARK_BG = '#0B0B0A';
+const DARK_ELEVATED = '#151515';
+const TEXT_IVORY = '#F1EFE8';
+const TEXT_MUTED = '#A9A7A0';
 const DIVIDER = '#2A2A2A';
-const GOLD = '#C6A664';
+const GOLD = '#D4B66F';
 
 const SYSTEM_SANS =
   Platform.select({ ios: 'System', android: 'Roboto', web: undefined }) || undefined;
@@ -55,14 +54,12 @@ const T = {
   card: DARK_ELEVATED,
   card2: '#111111',
   text: TEXT_IVORY,
-  sub: '#D0CEC8',
+  sub: '#D6D2C7',
   mute: TEXT_MUTED,
   accent: GOLD,
   olive: GOLD,
   border: '#2E2E2E',
 };
-
-const Grain = () => null;
 
 const MANIFESTO_LINES = [
   'Meet your crew this month. Make a film together.',
@@ -72,9 +69,6 @@ const MANIFESTO_LINES = [
   'Learn the craft through Film Bootcamp, then put it into practice.',
   'The industry makes you wait. We say don’t.',
 ];
-
-const FILM_HERO_URL =
-  'https://images.unsplash.com/photo-1524255684952-d7185b509571?q=80&w=1600&auto=format&fit=crop';
 
 const TYPE_MIN_MS = 25;
 const TYPE_MAX_MS = 90;
@@ -88,7 +82,6 @@ const CARET_BLINK_MS = 530;
 const TITLE_FADE_MS = 700;
 
 // Only allow CreateProfile when the account was confirmed very recently.
-// This tightly matches your rule: just confirmed email, then sign in.
 const FRESH_CONFIRMATION_WINDOW_MS = 30 * 60 * 1000;
 
 type FeatureKey = 'profile' | 'location' | 'jobs' | 'festival';
@@ -140,44 +133,6 @@ const FEATURES: Feature[] = [
       'Upload a 1–15 minute film each month, climb the leaderboard, and grow with the community. You can also learn filmmaking craft through Film Bootcamp, then use those skills in the monthly challenge.',
     cta: 'See this month',
     route: 'Featured',
-  },
-];
-
-const EXTRA_FAQS = [
-  {
-    title: 'Is Overlooked free?',
-    body: 'Yes — it’s entirely free to join. No card details required, just an email.',
-  },
-  {
-    title: 'How do I join my city chat?',
-    body: 'Go to Location, search your city, then tap “Join City Chat”.',
-  },
-  {
-    title: 'What counts as a valid submission?',
-    body: 'A 1–15 min film made for this month. Avoid copyrighted music.',
-  },
-  {
-    title: 'How do jobs work?',
-    body: 'Apply to a job and your profile is attached automatically for the poster.',
-  },
-  {
-    title: 'Can I vote more than once?',
-    body: 'You can vote once per film, and not on your own submissions.',
-  },
-  {
-    title: 'How do I apply for the festival?',
-    body:
-      'You don’t apply in the traditional way — the community decides. Each month, films are ranked by votes from real users.',
-  },
-  {
-    title: 'Live streams (bi-weekly reactions & reviews)',
-    body:
-      'Every two weeks we go live reacting to and reviewing OverLooked film submissions picked at random — not just the highest-voted films. We give spotlight to all levels of filmmakers.',
-  },
-  {
-    title: 'Film Bootcamp',
-    body:
-      'Film Bootcamp helps you learn filmmaking craft, sharpen your skills, and build confidence before putting your work into the monthly challenge.',
   },
 ];
 
@@ -256,14 +211,11 @@ export default function SignInScreen() {
 
   const isWide = width >= 980;
   const isPhone = width < 420;
-  const isNarrowNav = width < 520;
-  const isTinyNav = width < 360;
   const isShort = height < 720;
+  const isWeb = Platform.OS === 'web';
 
   const isNativeMobile = Platform.OS === 'ios' || Platform.OS === 'android';
   const useSimpleMobileLayout = isNativeMobile;
-
-  const NAV_HEIGHT = isWide ? 56 : isNarrowNav ? 108 : 48;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -271,14 +223,6 @@ export default function SignInScreen() {
   const [loading, setLoading] = useState(false);
   const [showSignIn, setShowSignIn] = useState(!useSimpleMobileLayout);
   const [activeFeature, setActiveFeature] = useState<FeatureKey | null>(null);
-
-  const [aboutOpen, setAboutOpen] = useState(false);
-  const [whyOpen, setWhyOpen] = useState(false);
-  const [openFaqs, setOpenFaqs] = useState<number[]>([]);
-
-  const [featuresHeight, setFeaturesHeight] = useState<number>(0);
-  const useSyncedHeights = isWide && featuresHeight > 0;
-  const heroSyncedHeight = useSyncedHeights ? Math.max(0, featuresHeight) : undefined;
 
   const titleOpacity = useRef(new Animated.Value(0)).current;
   const titleTranslate = useRef(new Animated.Value(8)).current;
@@ -314,14 +258,11 @@ export default function SignInScreen() {
     if (didFinishRedirectRef.current) return;
     didFinishRedirectRef.current = true;
 
-    const allowCreateProfile = Boolean(opts?.allowCreateProfile);
-
     const { data: u } = await supabase.auth.getUser();
     const user = u?.user;
     const userId = user?.id;
 
     if (!userId) {
-      // No logged-in user = stay on SignIn.
       didFinishRedirectRef.current = false;
       return;
     }
@@ -335,8 +276,6 @@ export default function SignInScreen() {
     if (profileError) {
       console.log('Profile fetch error:', profileError);
 
-      // Do not push the user to CreateProfile if profile loading fails.
-      // Sign out and leave them on SignIn.
       await supabase.auth.signOut();
       allowCreateProfileOnceRef.current = false;
       didFinishRedirectRef.current = false;
@@ -367,10 +306,6 @@ export default function SignInScreen() {
         return;
       }
 
-      /**
-       * FIX:
-       * Confirmed signed-in users with no profile should always go to CreateProfile.
-       */
       allowCreateProfileOnceRef.current = false;
 
       try {
@@ -397,7 +332,6 @@ export default function SignInScreen() {
       return;
     }
 
-    // Profile is complete, so the user is allowed inside the app.
     try {
       const parentNav = navigation.getParent?.();
 
@@ -429,11 +363,6 @@ export default function SignInScreen() {
 
       const authType = parseAuthTypeFromUrl(url);
 
-      /**
-       * IMPORTANT:
-       * Email confirmation links create a temporary Supabase session.
-       * We DO NOT want that session to automatically enter CreateProfile.
-       */
       (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = false;
       (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
       (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = true;
@@ -454,12 +383,6 @@ export default function SignInScreen() {
         return;
       }
 
-      /**
-       * CRITICAL FIX:
-       * After confirming the email, immediately sign out.
-       * This makes native mobile behave like web:
-       * the user is returned to Sign In and must manually sign in.
-       */
       if (authType === 'signup' || authType === 'email_change') {
         await supabase.auth.signOut();
 
@@ -495,10 +418,6 @@ export default function SignInScreen() {
         return;
       }
 
-      /**
-       * Password reset / recovery flows can still continue normally
-       * if you use them elsewhere.
-       */
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         const clean = window.location.origin + window.location.pathname;
         window.history.replaceState({}, document.title, clean);
@@ -692,13 +611,6 @@ export default function SignInScreen() {
     if (loading) return;
     setLoading(true);
 
-    /**
-     * CRITICAL:
-     * This must be set BEFORE supabase.auth.signInWithPassword().
-     *
-     * Supabase fires SIGNED_IN immediately, and AuthProvider/AppNavigator
-     * need to know this was a real manual sign-in, not a random restored session.
-     */
     (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = true;
     (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = true;
 
@@ -785,10 +697,6 @@ export default function SignInScreen() {
       );
 
       if (!existingProfileComplete) {
-        /**
-         * This is a confirmed user manually signing in before profile creation.
-         * This must go to CreateProfile.
-         */
         (globalThis as any).__OVERLOOKED_MANUAL_SIGN_IN__ = true;
         (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = true;
         (globalThis as any).__OVERLOOKED_EMAIL_CONFIRM__ = false;
@@ -816,14 +724,9 @@ export default function SignInScreen() {
         return;
       }
 
-      /**
-       * Manual sign-in is allowed to continue to CreateProfile
-       * if this confirmed user has not created a profile yet.
-       */
-      const allowCreateProfile = true;
       allowCreateProfileOnceRef.current = true;
 
-      await finishPostAuthRedirect({ allowCreateProfile });
+      await finishPostAuthRedirect({ allowCreateProfile: true });
     } catch (err: any) {
       console.log('SignIn exception:', err);
 
@@ -845,181 +748,206 @@ export default function SignInScreen() {
   const maxModalWidth = (cap: number) => Math.min(cap, Math.max(260, width - MODAL_SIDE_PAD * 2));
   const modalMaxHeight = Math.max(260, height - insets.top - insets.bottom - 24);
 
-  const renderAuthForm = (mobileMode = false) => (
-    <View
-      style={[
-        styles.authCard,
-        mobileMode ? styles.authCardMobile : null,
-        {
-          width: mobileMode ? '100%' : maxModalWidth(460),
-          maxHeight: mobileMode ? undefined : modalMaxHeight,
-          alignSelf: 'center',
-          padding: mobileMode ? 22 : isShort ? 16 : 20,
-        },
-      ]}
-    >
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-        overScrollMode="never"
-        contentContainerStyle={{ paddingBottom: mobileMode ? 0 : 14 }}
+  const renderAuthForm = (mobileMode = false) => {
+    const webCardWidth = Math.min(560, Math.max(330, width - 56));
+
+    return (
+      <View
+        style={[
+          styles.authCard,
+          mobileMode ? styles.authCardMobile : null,
+          isWeb && mobileMode ? styles.authCardWeb : null,
+          {
+            width: mobileMode ? (isWeb ? webCardWidth : '100%') : maxModalWidth(460),
+            maxHeight: mobileMode ? undefined : modalMaxHeight,
+            alignSelf: 'center',
+            padding:
+              mobileMode && isWeb
+                ? width >= 900
+                  ? 36
+                  : 28
+                : mobileMode
+                  ? 22
+                  : isShort
+                    ? 16
+                    : 20,
+          },
+        ]}
       >
-        {!mobileMode && (
-          <View style={styles.authHeader}>
-            <Text style={[styles.authTitle, isShort && styles.authTitleShort]}>
-              WELCOME BACK
-            </Text>
-            <Pressable onPress={() => setShowSignIn(false)} hitSlop={10}>
-              <Ionicons name="close" size={20} color={T.sub} />
-            </Pressable>
-          </View>
-        )}
-
-        {mobileMode && (
-          <View style={styles.mobileHeader}>
-            <Animated.Text
-              style={[
-                styles.mobileBrand,
-                { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
-              ]}
-            >
-              OVERLOOKED
-            </Animated.Text>
-
-            <Text style={styles.mobileTitle}>Sign in</Text>
-            <Text style={styles.mobileSubtitle}>
-              Welcome back. Get straight into your account.
-            </Text>
-          </View>
-        )}
-
-        {!mobileMode && <Text style={styles.subtitle}>Sign in to join this month’s journey.</Text>}
-
-        <View style={[styles.inputWrap, focus === 'email' && styles.inputWrapFocused]}>
-          <Ionicons name="mail" size={16} color={focus === 'email' ? T.olive : T.mute} />
-          <TextInput
-            ref={emailInputRef}
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor={T.mute}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            autoComplete="email"
-            textContentType="emailAddress"
-            keyboardAppearance="dark"
-            selectionColor={GOLD}
-            cursorColor={GOLD}
-            underlineColorAndroid="transparent"
-            value={email}
-            onChangeText={setEmail}
-            onFocus={() => setFocus('email')}
-            onBlur={() => setFocus(null)}
-            returnKeyType="next"
-            onSubmitEditing={() => passwordInputRef.current?.focus()}
-          />
-        </View>
-
-        <View
-          style={[
-            styles.inputWrap,
-            { marginTop: 12 },
-            focus === 'password' && styles.inputWrapFocused,
-          ]}
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          overScrollMode="never"
+          contentContainerStyle={{ paddingBottom: mobileMode ? 0 : 14 }}
         >
-          <Ionicons
-            name="lock-closed"
-            size={16}
-            color={focus === 'password' ? T.olive : T.mute}
-          />
-          <TextInput
-            ref={passwordInputRef}
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor={T.mute}
-            secureTextEntry={!showPassword}
-            autoCorrect={false}
-            autoComplete="password"
-            textContentType="password"
-            keyboardAppearance="dark"
-            selectionColor={GOLD}
-            cursorColor={GOLD}
-            underlineColorAndroid="transparent"
-            value={password}
-            onChangeText={setPassword}
-            onFocus={() => setFocus('password')}
-            onBlur={() => setFocus(null)}
-            returnKeyType="done"
-            onSubmitEditing={handleSignIn}
-          />
-          <TouchableOpacity
-            onPress={() => setShowPassword((prev) => !prev)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          {!mobileMode && (
+            <View style={styles.authHeader}>
+              <Text style={[styles.authTitle, isShort && styles.authTitleShort]}>
+                WELCOME BACK
+              </Text>
+              <Pressable onPress={() => setShowSignIn(false)} hitSlop={10}>
+                <Ionicons name="close" size={20} color={T.sub} />
+              </Pressable>
+            </View>
+          )}
+
+          {mobileMode && (
+            <View style={[styles.mobileHeader, isWeb && styles.webHeader]}>
+              <Animated.Text
+                style={[
+                  styles.mobileBrand,
+                  isWeb && styles.webBrand,
+                  { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
+                ]}
+              >
+                OVERLOOKED
+              </Animated.Text>
+
+              <Text style={[styles.mobileTitle, isWeb && styles.webTitle]}>Sign in</Text>
+              <Text style={[styles.mobileSubtitle, isWeb && styles.webSubtitle]}>
+                Welcome back. Get straight into your account.
+              </Text>
+            </View>
+          )}
+
+          {!mobileMode && <Text style={styles.subtitle}>Sign in to join this month’s journey.</Text>}
+
+          <View style={[styles.inputWrap, isWeb && styles.inputWrapWeb, focus === 'email' && styles.inputWrapFocused]}>
+            <Ionicons name="mail" size={17} color={focus === 'email' ? T.olive : T.mute} />
+            <TextInput
+              ref={emailInputRef}
+              style={[styles.input, isWeb && styles.inputWeb]}
+              placeholder="Email"
+              placeholderTextColor={T.mute}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              autoComplete="email"
+              textContentType="emailAddress"
+              keyboardAppearance="dark"
+              selectionColor={GOLD}
+              cursorColor={GOLD}
+              underlineColorAndroid="transparent"
+              value={email}
+              onChangeText={setEmail}
+              onFocus={() => setFocus('email')}
+              onBlur={() => setFocus(null)}
+              returnKeyType="next"
+              blurOnSubmit={false}
+              onSubmitEditing={() => passwordInputRef.current?.focus()}
+            />
+          </View>
+
+          <View
+            style={[
+              styles.inputWrap,
+              isWeb && styles.inputWrapWeb,
+              { marginTop: 14 },
+              focus === 'password' && styles.inputWrapFocused,
+            ]}
           >
             <Ionicons
-              name={showPassword ? 'eye-off' : 'eye'}
-              size={18}
-              color={T.mute}
+              name="lock-closed"
+              size={17}
+              color={focus === 'password' ? T.olive : T.mute}
             />
+            <TextInput
+              ref={passwordInputRef}
+              style={[styles.input, isWeb && styles.inputWeb]}
+              placeholder="Password"
+              placeholderTextColor={T.mute}
+              secureTextEntry={!showPassword}
+              autoCorrect={false}
+              autoComplete="password"
+              textContentType="password"
+              keyboardAppearance="dark"
+              selectionColor={GOLD}
+              cursorColor={GOLD}
+              underlineColorAndroid="transparent"
+              value={password}
+              onChangeText={setPassword}
+              onFocus={() => setFocus('password')}
+              onBlur={() => setFocus(null)}
+              returnKeyType="done"
+              onSubmitEditing={handleSignIn}
+            />
+            <TouchableOpacity
+              onPress={() => setShowPassword((prev) => !prev)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name={showPassword ? 'eye-off' : 'eye'}
+                size={19}
+                color={T.mute}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            onPress={() => {
+              if (!mobileMode) setShowSignIn(false);
+              navigation.navigate('ForgotPassword');
+            }}
+            style={{ marginTop: 12, alignSelf: mobileMode ? 'flex-start' : 'auto' }}
+          >
+            <Text style={styles.forgotText}>Forgot password?</Text>
           </TouchableOpacity>
-        </View>
 
-        <TouchableOpacity
-          onPress={() => {
-            if (!mobileMode) setShowSignIn(false);
-            navigation.navigate('ForgotPassword');
-          }}
-          style={{ marginTop: 10, alignSelf: mobileMode ? 'flex-start' : 'auto' }}
-        >
-          <Text style={styles.forgotText}>Forgot password?</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.button,
+              isWeb && styles.buttonWeb,
+              loading && { opacity: 0.9 },
+              mobileMode && { marginTop: 22 },
+            ]}
+            onPress={handleSignIn}
+            disabled={loading}
+            activeOpacity={0.9}
+          >
+            {loading ? (
+              <ActivityIndicator color={DARK_BG} />
+            ) : (
+              <Text style={[styles.buttonText, isWeb && styles.buttonTextWeb]}>
+                Sign In
+              </Text>
+            )}
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.button, loading && { opacity: 0.9 }, mobileMode && { marginTop: 18 }]}
-          onPress={handleSignIn}
-          disabled={loading}
-          activeOpacity={0.9}
-        >
-          {loading ? (
-            <ActivityIndicator color={DARK_BG} />
-          ) : (
-            <Text style={styles.buttonText}>Sign In</Text>
-          )}
-        </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              if (!mobileMode) setShowSignIn(false);
+              handleEnterAsGuest();
+            }}
+            style={{ marginTop: 16 }}
+          >
+            <Text style={styles.link}>
+              <Text style={{ textDecorationLine: 'underline' }}>Enter without an account</Text>
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() => {
-            if (!mobileMode) setShowSignIn(false);
-            handleEnterAsGuest();
-          }}
-          style={{ marginTop: 14 }}
-        >
-          <Text style={styles.link}>
-            <Text style={{ textDecorationLine: 'underline' }}>Enter without an account</Text>
+          <TouchableOpacity
+            onPress={() => {
+              if (!mobileMode) setShowSignIn(false);
+              navigation.navigate('SignUp');
+            }}
+            style={{ marginTop: 18 }}
+          >
+            <Text style={styles.link}>
+              New to OverLooked?{' '}
+              <Text style={{ textDecorationLine: 'underline' }}>Create an account</Text>
+            </Text>
+          </TouchableOpacity>
+
+          <Text style={styles.supportText}>
+            For support, message overlookedsupport@gmail.com
           </Text>
-        </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  };
 
-        <TouchableOpacity
-          onPress={() => {
-            if (!mobileMode) setShowSignIn(false);
-            navigation.navigate('SignUp');
-          }}
-          style={{ marginTop: 16 }}
-        >
-          <Text style={styles.link}>
-            New to OverLooked?{' '}
-            <Text style={{ textDecorationLine: 'underline' }}>Create an account</Text>
-          </Text>
-        </TouchableOpacity>
-
-        <Text style={styles.supportText}>
-          For support, message overlookedsupport@gmail.com
-        </Text>
-      </ScrollView>
-    </View>
-  );
-    if (useSimpleMobileLayout) {
+  if (useSimpleMobileLayout) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
         <KeyboardAvoidingView
@@ -1027,8 +955,8 @@ export default function SignInScreen() {
           style={{ flex: 1 }}
         >
           <View style={styles.bgSolid} />
-          <View style={styles.radialGlowTop} pointerEvents="none" />
-          <View style={styles.radialGlowBottom} pointerEvents="none" />
+          <View style={styles.mobileGlowTop} pointerEvents="none" />
+          <View style={styles.mobileGlowBottom} pointerEvents="none" />
 
           <View
             style={[
@@ -1039,133 +967,13 @@ export default function SignInScreen() {
               },
             ]}
           >
-            <View style={styles.authCardMobile}>
-              <View style={styles.mobileHeader}>
-                <Animated.Text
-                  style={[
-                    styles.mobileBrand,
-                    { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
-                  ]}
-                >
-                  OVERLOOKED
-                </Animated.Text>
-
-                <Text style={styles.mobileTitle}>Sign in</Text>
-                <Text style={styles.mobileSubtitle}>
-                  Welcome back. Get straight into your account.
-                </Text>
-              </View>
-
-              <View style={styles.inputWrap}>
-                <Ionicons name="mail" size={16} color={T.mute} />
-                <TextInput
-                  ref={emailInputRef}
-                  style={styles.input}
-                  placeholder="Email"
-                  placeholderTextColor={T.mute}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="email-address"
-                  autoComplete="email"
-                  textContentType="emailAddress"
-                  keyboardAppearance="dark"
-                  selectionColor={GOLD}
-                  cursorColor={GOLD}
-                  underlineColorAndroid="transparent"
-                  value={email}
-                  onChangeText={setEmail}
-                  returnKeyType="next"
-                  blurOnSubmit={false}
-                  onSubmitEditing={() => passwordInputRef.current?.focus()}
-                />
-              </View>
-
-              <View style={[styles.inputWrap, { marginTop: 12 }]}>
-                <Ionicons name="lock-closed" size={16} color={T.mute} />
-                <TextInput
-                  ref={passwordInputRef}
-                  style={styles.input}
-                  placeholder="Password"
-                  placeholderTextColor={T.mute}
-                  secureTextEntry={!showPassword}
-                  autoCorrect={false}
-                  autoComplete="password"
-                  textContentType="password"
-                  keyboardAppearance="dark"
-                  selectionColor={GOLD}
-                  cursorColor={GOLD}
-                  underlineColorAndroid="transparent"
-                  value={password}
-                  onChangeText={setPassword}
-                  returnKeyType="done"
-                  onSubmitEditing={handleSignIn}
-                />
-                <TouchableOpacity
-                  onPress={() => setShowPassword((prev) => !prev)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Ionicons
-                    name={showPassword ? 'eye-off' : 'eye'}
-                    size={18}
-                    color={T.mute}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity
-                onPress={() => navigation.navigate('ForgotPassword')}
-                style={{ marginTop: 10, alignSelf: 'flex-start' }}
-              >
-                <Text style={styles.forgotText}>Forgot password?</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.button, loading && { opacity: 0.9 }, { marginTop: 18 }]}
-                onPress={handleSignIn}
-                disabled={loading}
-                activeOpacity={0.9}
-              >
-                {loading ? (
-                  <ActivityIndicator color={DARK_BG} />
-                ) : (
-                  <Text style={styles.buttonText}>Sign In</Text>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={handleEnterAsGuest}
-                style={{ marginTop: 14 }}
-              >
-                <Text style={styles.link}>
-                  <Text style={{ textDecorationLine: 'underline' }}>
-                    Enter without an account
-                  </Text>
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => navigation.navigate('SignUp')}
-                style={{ marginTop: 16 }}
-              >
-                <Text style={styles.link}>
-                  New to OverLooked?{' '}
-                  <Text style={{ textDecorationLine: 'underline' }}>
-                    Create an account
-                  </Text>
-                </Text>
-              </TouchableOpacity>
-
-              <Text style={styles.supportText}>
-                For support, message overlookedsupport@gmail.com
-              </Text>
-            </View>
+            {renderAuthForm(true)}
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
-
-  return (
+    return (
     <SafeAreaView
       style={[
         { flex: 1, backgroundColor: T.bg },
@@ -1182,10 +990,11 @@ export default function SignInScreen() {
         style={{ flex: 1 }}
       >
         <View style={styles.bgSolid} />
-        <View style={styles.radialGlowTop} pointerEvents="none" />
-        <View style={styles.radialGlowBottom} pointerEvents="none" />
-        <View style={styles.vignette} pointerEvents="none" />
-        <View style={styles.topSheen} pointerEvents="none" />
+        <View style={styles.webGradientBase} pointerEvents="none" />
+        <View style={styles.webGlowCenter} pointerEvents="none" />
+        <View style={styles.webGlowLeft} pointerEvents="none" />
+        <View style={styles.webGlowRight} pointerEvents="none" />
+        <View style={styles.webSoftVignette} pointerEvents="none" />
 
         <ScrollView
           style={[
@@ -1198,9 +1007,9 @@ export default function SignInScreen() {
             styles.webAuthScroll,
             {
               minHeight: height,
-              paddingTop: Math.max(insets.top, 28),
-              paddingBottom: Math.max(insets.bottom, 28),
-              paddingHorizontal: width < 420 ? 18 : 28,
+              paddingTop: Math.max(insets.top, 34),
+              paddingBottom: Math.max(insets.bottom, 34),
+              paddingHorizontal: width < 420 ? 18 : 32,
             },
           ]}
           keyboardShouldPersistTaps="handled"
@@ -1287,7 +1096,7 @@ export default function SignInScreen() {
   );
 }
 
-const CARD_RADIUS = 16;
+const CARD_RADIUS = 22;
 
 const styles = StyleSheet.create({
   bgSolid: {
@@ -1298,44 +1107,69 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: T.bg,
   },
-  radialGlowTop: {
+
+  // Clean mobile glows. No hard circles or ring-like edges.
+  mobileGlowTop: {
     position: 'absolute',
-    top: -160,
-    left: -140,
+    top: -180,
+    left: -170,
     width: 420,
     height: 420,
     borderRadius: 420,
-    backgroundColor: 'rgba(198,166,100,0.14)',
-    opacity: 0.95,
+    backgroundColor: 'rgba(212,182,111,0.10)',
+    opacity: 0.7,
   },
-  radialGlowBottom: {
+  mobileGlowBottom: {
     position: 'absolute',
-    right: -160,
-    bottom: -160,
-    width: 440,
-    height: 440,
-    borderRadius: 440,
-    backgroundColor: 'rgba(198,166,100,0.08)',
-    opacity: 0.95,
+    right: -190,
+    bottom: -190,
+    width: 450,
+    height: 450,
+    borderRadius: 450,
+    backgroundColor: 'rgba(212,182,111,0.07)',
+    opacity: 0.65,
   },
-  vignette: {
+
+  // Web background rewritten to avoid the weird visible/rich edges.
+  // The glow is soft and gradient-based, not big solid circles.
+  webGradientBase: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
-    // @ts-ignore
+    backgroundColor: '#080808',
+    // @ts-ignore - web only
     backgroundImage:
-      'radial-gradient(ellipse at center, rgba(0,0,0,0) 35%, rgba(0,0,0,0.55) 100%)',
+      'linear-gradient(180deg, #11100D 0%, #090909 28%, #070707 100%)',
     opacity: Platform.OS === 'web' ? 1 : 0,
   },
-  topSheen: {
-    position: 'absolute',
-    top: -40,
-    left: 0,
-    right: 0,
-    height: 220,
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    // @ts-ignore
+  webGlowCenter: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+    // @ts-ignore - web only
     backgroundImage:
-      'radial-gradient(ellipse at top, rgba(198,166,100,0.12) 0%, rgba(13,13,13,0) 70%)',
+      'radial-gradient(circle at 50% 48%, rgba(212,182,111,0.085) 0%, rgba(212,182,111,0.035) 26%, rgba(0,0,0,0) 58%)',
+    opacity: Platform.OS === 'web' ? 1 : 0,
+  },
+  webGlowLeft: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+    // @ts-ignore - web only
+    backgroundImage:
+      'radial-gradient(circle at -8% 5%, rgba(212,182,111,0.14) 0%, rgba(212,182,111,0.045) 24%, rgba(0,0,0,0) 49%)',
+    opacity: Platform.OS === 'web' ? 1 : 0,
+  },
+  webGlowRight: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+    // @ts-ignore - web only
+    backgroundImage:
+      'radial-gradient(circle at 102% 88%, rgba(212,182,111,0.11) 0%, rgba(212,182,111,0.035) 25%, rgba(0,0,0,0) 52%)',
+    opacity: Platform.OS === 'web' ? 1 : 0,
+  },
+  webSoftVignette: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+    // @ts-ignore - web only
+    backgroundImage:
+      'radial-gradient(ellipse at center, rgba(0,0,0,0) 0%, rgba(0,0,0,0.16) 58%, rgba(0,0,0,0.54) 100%)',
     opacity: Platform.OS === 'web' ? 1 : 0,
   },
 
@@ -1347,8 +1181,9 @@ const styles = StyleSheet.create({
   },
   webAuthShell: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 620,
     alignSelf: 'center',
+    alignItems: 'center',
     justifyContent: 'center',
   },
 
@@ -1360,7 +1195,10 @@ const styles = StyleSheet.create({
 
   mobileHeader: {
     alignItems: 'center',
-    marginBottom: 18,
+    marginBottom: 20,
+  },
+  webHeader: {
+    marginBottom: 28,
   },
   mobileBrand: {
     fontSize: 22,
@@ -1369,12 +1207,22 @@ const styles = StyleSheet.create({
     letterSpacing: 2.6,
     fontFamily: SYSTEM_SANS,
   },
+  webBrand: {
+    fontSize: 25,
+    letterSpacing: 3.8,
+  },
   mobileTitle: {
     marginTop: 18,
     fontSize: 30,
     fontWeight: '900',
     color: T.text,
     fontFamily: SYSTEM_SANS,
+  },
+  webTitle: {
+    marginTop: 20,
+    fontSize: 36,
+    lineHeight: 43,
+    letterSpacing: -0.4,
   },
   mobileSubtitle: {
     marginTop: 8,
@@ -1384,324 +1232,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontFamily: SYSTEM_SANS,
   },
-
-  topBarWrapper: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(13,13,13,0.94)',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: DIVIDER,
-    zIndex: 20,
-  },
-  topBarInner: {
-    width: '100%',
-    maxWidth: 1200,
-    alignSelf: 'center',
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    position: 'relative',
-    // @ts-ignore
-    backdropFilter: 'saturate(135%) blur(10px)',
-    // @ts-ignore
-    WebkitBackdropFilter: 'saturate(135%) blur(10px)',
-  },
-  topBarInnerNarrow: {
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'stretch',
-    gap: 8,
-    paddingTop: 10,
-    paddingBottom: 10,
-  },
-  topBarInnerTiny: {
-    paddingTop: 8,
-    paddingBottom: 8,
-  },
-  navRowTop: { alignItems: 'center', justifyContent: 'center' },
-  navRowBottom: { alignItems: 'center', justifyContent: 'center' },
-
-  brandWrap: { paddingVertical: 4, paddingRight: 8 },
-  brandWrapNarrow: { paddingVertical: 0 },
-  brandTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: TEXT_IVORY,
-    letterSpacing: 2.2,
-    fontFamily: SYSTEM_SANS,
-    textShadowColor: 'rgba(0,0,0,0.65)',
-    textShadowOffset: { width: 0, height: 10 },
-    textShadowRadius: 22,
-  },
-  brandTitleNarrow: {
-    fontSize: 17,
-    letterSpacing: 2,
-  },
-
-  actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  actionsRowNarrow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-
-  primaryChip: {
-    backgroundColor: GOLD,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 10 },
-  },
-  primaryChipNarrow: { paddingVertical: 8, paddingHorizontal: 12 },
-  primaryChipTiny: { paddingVertical: 7, paddingHorizontal: 10 },
-  primaryChipText: {
-    color: DARK_BG,
-    fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-    fontFamily: SYSTEM_SANS,
-    textTransform: 'uppercase',
-  },
-  primaryChipTextTiny: { fontSize: 12.5, letterSpacing: 1.05 },
-
-  textAction: { paddingVertical: 8, paddingHorizontal: 10, borderRadius: 999 },
-  textActionNarrow: { paddingVertical: 8, paddingHorizontal: 12 },
-  textActionText: { color: TEXT_IVORY, fontWeight: '800', fontFamily: SYSTEM_SANS },
-  textActionTextTiny: { fontSize: 13 },
-
-  scrollBody: { paddingHorizontal: 28, paddingBottom: 64 },
-
-  wrap: {
-    width: '100%',
-    maxWidth: 1200,
-    alignSelf: 'center',
-    gap: 28,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'flex-start',
-  },
-
-  heroCol: { flexGrow: 1, flexBasis: 540, maxWidth: 780, gap: 16 },
-  heroIntro: { maxWidth: 680, width: '100%' },
-
-  heroH1: {
-    marginTop: 4,
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: '900',
-    color: T.text,
-    letterSpacing: 0.35,
-    fontFamily: SYSTEM_SANS,
-    textShadowColor: 'rgba(0,0,0,0.55)',
-    textShadowOffset: { width: 0, height: 10 },
-    textShadowRadius: 22,
-  },
-  heroCopy: {
+  webSubtitle: {
     marginTop: 10,
-    fontSize: 16,
-    lineHeight: 24,
-    color: T.sub,
-    fontFamily: SYSTEM_SANS,
-    opacity: 0.95,
-  },
-  bootcampCopy: {
-    marginTop: 10,
-    maxWidth: 620,
-    fontSize: 14.5,
-    lineHeight: 22,
-    color: T.sub,
-    fontFamily: SYSTEM_SANS,
-    opacity: 0.9,
-  },
-
-  manifestoWrap: { marginTop: 12 },
-  manifestoText: {
-    textAlign: 'left',
-    color: T.mute,
-    letterSpacing: 0.15,
-    fontSize: 13.5,
-    fontFamily: SYSTEM_SANS,
-  },
-
-  heroImage: {
-    marginTop: 16,
-    width: '100%',
-    borderRadius: CARD_RADIUS,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 14 },
-    backgroundColor: '#111',
-  },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.34)' },
-  heroFilmGrain: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    opacity: 0.14,
-  },
-  heroEdgeFade: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
-    // @ts-ignore
-    backgroundImage:
-      'linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,0.55) 100%)',
-    opacity: Platform.OS === 'web' ? 1 : 0,
-  },
-
-  cardCol: { flexGrow: 1, flexBasis: 420, maxWidth: 500 },
-
-  featuresSection: {
-    marginTop: 16,
-    backgroundColor: T.card,
-    borderRadius: CARD_RADIUS,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOpacity: 0.45,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 16 },
-  },
-  featureItem: {
-    paddingHorizontal: 16,
-    paddingRight: 20,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
-    backgroundColor: T.card,
-    minHeight: 60,
-  },
-  hoveredShadow: {
-    shadowOpacity: 0.55,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 18 },
-  },
-  featureNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  featureNumberText: { fontSize: 12, fontWeight: '800', color: T.text, fontFamily: SYSTEM_SANS },
-  featureIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  featureTitle: { fontSize: 15, fontWeight: '900', color: T.text, fontFamily: SYSTEM_SANS },
-  featureSubtitle: { fontSize: 12.5, color: T.sub, fontFamily: SYSTEM_SANS },
-
-  fullWidthRow: { width: '100%', flexBasis: '100%', gap: 16, marginTop: 8 },
-
-  collapsibleCard: {
-    backgroundColor: T.card,
-    borderRadius: CARD_RADIUS,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    shadowColor: '#000',
-    shadowOpacity: 0.45,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 16 },
-    overflow: 'hidden',
-    width: '100%',
-  },
-  fullCard: { width: '100%' },
-
-  centerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  chevAbs: { position: 'absolute', right: 18, top: '50%', marginTop: -9 },
-
-  collapsibleHeaderPressFull: {
-    paddingHorizontal: 18,
-    paddingRight: 48,
-    paddingVertical: 16,
-    minHeight: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  badgeIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  collapsibleTitle: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: T.text,
-    textAlign: 'center',
-    fontFamily: SYSTEM_SANS,
-  },
-
-  aboutBody: { paddingHorizontal: 18, paddingBottom: 16, width: '100%' },
-  aboutLead: {
-    marginTop: 2,
-    color: T.sub,
-    fontSize: 14.5,
-    lineHeight: 21.5,
-    textAlign: 'center',
-    fontFamily: SYSTEM_SANS,
-  },
-  aboutText: {
-    color: T.sub,
-    fontSize: 14,
-    lineHeight: 21,
-    textAlign: 'center',
-    fontFamily: SYSTEM_SANS,
-  },
-  whyText: {
-    color: T.sub,
-    fontSize: 14,
-    lineHeight: 21,
-    paddingTop: 2,
-    textAlign: 'center',
-    fontFamily: SYSTEM_SANS,
-  },
-
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.72)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 18,
-  },
-  modalBackdropShort: {
-    justifyContent: 'center',
-    paddingTop: 12,
-    paddingBottom: 12,
+    fontSize: 15.5,
+    lineHeight: 23,
+    maxWidth: 380,
   },
 
   authCard: {
     backgroundColor: T.card2,
-    borderRadius: 18,
+    borderRadius: 20,
     padding: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
@@ -1712,14 +1252,32 @@ const styles = StyleSheet.create({
   },
   authCardMobile: {
     width: '100%',
-    borderRadius: 20,
+    borderRadius: 22,
     paddingHorizontal: 18,
     paddingVertical: 24,
     backgroundColor: '#101010',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.065)',
   },
-  authHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  authCardWeb: {
+    borderRadius: 26,
+    backgroundColor: 'rgba(17,17,17,0.94)',
+    borderColor: 'rgba(255,255,255,0.095)',
+    shadowColor: '#000',
+    shadowOpacity: 0.64,
+    shadowRadius: 42,
+    shadowOffset: { width: 0, height: 26 },
+    // @ts-ignore - web only
+    backdropFilter: 'blur(14px) saturate(120%)',
+    // @ts-ignore - web only
+    WebkitBackdropFilter: 'blur(14px) saturate(120%)',
+  },
+
+  authHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   authTitle: {
     fontSize: 18,
     fontWeight: '900',
@@ -1727,7 +1285,10 @@ const styles = StyleSheet.create({
     letterSpacing: 6.5,
     fontFamily: SYSTEM_SANS,
   },
-  authTitleShort: { fontSize: 16, letterSpacing: 3.5 },
+  authTitleShort: {
+    fontSize: 16,
+    letterSpacing: 3.5,
+  },
 
   subtitle: {
     marginTop: 8,
@@ -1743,18 +1304,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-    borderRadius: 14,
+    borderColor: 'rgba(255,255,255,0.11)',
+    borderRadius: 15,
     paddingHorizontal: 14,
     paddingVertical: Platform.OS === 'web' ? 12 : 12,
-    backgroundColor: '#0C0C0C',
+    backgroundColor: '#0B0B0B',
+  },
+  inputWrapWeb: {
+    borderRadius: 17,
+    paddingHorizontal: 17,
+    paddingVertical: 15,
+    backgroundColor: 'rgba(7,7,7,0.88)',
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   inputWrapFocused: {
     borderColor: T.olive,
     shadowColor: T.olive,
     shadowOpacity: 0.22,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 7 },
   },
 
   input: {
@@ -1763,6 +1331,11 @@ const styles = StyleSheet.create({
     color: T.text,
     fontSize: 15,
     fontFamily: SYSTEM_SANS,
+    outlineStyle: 'none' as any,
+  },
+  inputWeb: {
+    fontSize: 16,
+    lineHeight: 22,
   },
 
   forgotText: {
@@ -1785,6 +1358,13 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 10 },
   },
+  buttonWeb: {
+    paddingVertical: 17,
+    borderRadius: 17,
+    shadowOpacity: 0.38,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+  },
   buttonText: {
     color: DARK_BG,
     fontSize: 15,
@@ -1793,11 +1373,20 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
   },
+  buttonTextWeb: {
+    fontSize: 15.5,
+    letterSpacing: 2,
+  },
 
-  link: { textAlign: 'center', color: T.text, fontWeight: '800', fontFamily: SYSTEM_SANS },
+  link: {
+    textAlign: 'center',
+    color: T.text,
+    fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
+  },
 
   supportText: {
-    marginTop: 18,
+    marginTop: 20,
     textAlign: 'center',
     fontSize: 13,
     lineHeight: 18,
@@ -1805,6 +1394,13 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+  },
   modalCard: {
     backgroundColor: T.card2,
     borderRadius: CARD_RADIUS,
@@ -1816,7 +1412,22 @@ const styles = StyleSheet.create({
     shadowRadius: 26,
     shadowOffset: { width: 0, height: 18 },
   },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  featureIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
   modalTitle: {
     fontSize: 18,
     fontWeight: '900',
@@ -1832,7 +1443,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontFamily: SYSTEM_SANS,
   },
-  modalButtonsRow: { flexDirection: 'row', gap: 10, justifyContent: 'flex-end', marginTop: 16 },
+  modalButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'flex-end',
+    marginTop: 16,
+  },
   modalSecondary: {
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -1864,5 +1480,44 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 1.2,
     fontFamily: SYSTEM_SANS,
+  },
+
+  // Kept to avoid breaking old references if you restore earlier landing sections.
+  topBarWrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(13,13,13,0.94)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DIVIDER,
+    zIndex: 20,
+  },
+  topBarInner: {
+    width: '100%',
+    maxWidth: 1200,
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    position: 'relative',
+    // @ts-ignore
+    backdropFilter: 'saturate(135%) blur(10px)',
+    // @ts-ignore
+    WebkitBackdropFilter: 'saturate(135%) blur(10px)',
+  },
+  brandTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    letterSpacing: 2.2,
+    fontFamily: SYSTEM_SANS,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
 });
