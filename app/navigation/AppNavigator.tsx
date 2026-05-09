@@ -82,8 +82,24 @@ function getPasswordResetDone() {
   return Boolean(G.__OVERLOOKED_PASSWORD_RESET_DONE__);
 }
 
+function getCurrentLeafRouteName(route: any): string | undefined {
+  if (!route) return undefined;
+
+  let current = route;
+
+  while (current?.state?.routes?.length) {
+    current = current.state.routes[current.state.index ?? 0];
+  }
+
+  return current?.name;
+}
+
 function isPublicGuestRoute(routeName?: string | null) {
-  return routeName === "PublicProfile" || routeName === "SharedFilm";
+  return (
+    routeName === "PublicProfile" ||
+    routeName === "SharedFilm" ||
+    routeName === "Featured"
+  );
 }
 
 export default function AppNavigator({
@@ -154,7 +170,8 @@ export default function AppNavigator({
       if (!hasBootstrappedNavRef.current) return;
 
       const currentRoute = navigationRef.getCurrentRoute();
-      const currentRouteName = currentRoute?.name;
+      const currentRouteName =
+        getCurrentLeafRouteName(currentRoute) ?? currentRoute?.name;
 
       if (currentRouteName === "WorkshopSubmit") {
         return;
@@ -242,10 +259,12 @@ export default function AppNavigator({
        * PUBLIC GUEST ROUTES
        *
        * These routes must be visible without signing in:
+       * - /featured → MainTabs > Featured
        * - /creative/:slug → PublicProfile
        * - /f/:shareSlug → SharedFilm
        *
-       * This is what makes shared film links behave like public portfolio links.
+       * This lets shared Featured links, public profile links, and film links open
+       * without forcing users to Sign In.
        */
       if (!userId) {
         if (isPublicGuestRoute(currentRouteName)) {
@@ -269,7 +288,8 @@ export default function AppNavigator({
        */
       if (!profileComplete) {
         const latestRoute = navigationRef.getCurrentRoute();
-        const latestRouteName = latestRoute?.name;
+        const latestRouteName =
+          getCurrentLeafRouteName(latestRoute) ?? latestRoute?.name;
 
         if (G.__OVERLOOKED_PROFILE_JUST_COMPLETED__) {
           resetToMainTabs();
