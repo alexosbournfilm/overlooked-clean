@@ -734,16 +734,8 @@ export default function SharedFilmScreen() {
                     <Text style={styles.description}>{film.description}</Text>
                   ) : null}
 
-                  <View style={styles.actions}>
-                    <TouchableOpacity
-                      onPress={openSpecificFilmInApp}
-                      activeOpacity={0.9}
-                      style={styles.primaryBtn}
-                    >
-                      <Text style={styles.primaryBtnText}>Open in Overlooked</Text>
-                    </TouchableOpacity>
-
-                    {film.users?.full_name ? (
+                  {film.users?.full_name ? (
+                    <View style={styles.actions}>
                       <TouchableOpacity
                         onPress={goToCreator}
                         activeOpacity={0.9}
@@ -751,8 +743,8 @@ export default function SharedFilmScreen() {
                       >
                         <Text style={styles.secondaryBtnText}>View Creator</Text>
                       </TouchableOpacity>
-                    ) : null}
-                  </View>
+                    </View>
+                  ) : null}
                 </View>
               </View>
 
@@ -980,9 +972,11 @@ const styles = StyleSheet.create({
     lineHeight: 23,
   },
   actions: {
-    flexDirection: Platform.OS === "web" ? "row" : "column",
-    alignItems: Platform.OS === "web" ? "center" : "stretch",
-    marginTop: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    alignSelf: "flex-start",
+    marginTop: 20,
   },
   primaryBtn: {
     minHeight: 46,
@@ -1003,7 +997,7 @@ const styles = StyleSheet.create({
   },
   secondaryBtn: {
     minHeight: 46,
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     borderRadius: 999,
     backgroundColor: "transparent",
     borderWidth: 1,
