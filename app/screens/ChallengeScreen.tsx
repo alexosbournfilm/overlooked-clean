@@ -67,15 +67,43 @@ const BREAKING_BAD_LUTS_PREVIEW_VIDEO =
 const BREAKING_BAD_LUTS_PREVIEW_IMAGE =
   'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/BREAKING%20BAD%20IMAGE_1.31.1.jpg';
 
-  /* ✅ High Exposure LUTs assets */
+/* ✅ High Exposure LUTs assets */
 const HIGH_EXPOSURE_LUTS_ZIP =
   'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/HIGH%20EXPOSURE%20LUTS.zip';
-
 const HIGH_EXPOSURE_LUTS_PREVIEW_VIDEO =
   'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/HIGH%20EXPOSURE%20LUT%20PREVIEW.mp4';
-
 const HIGH_EXPOSURE_LUTS_PREVIEW_IMAGE =
   'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/HEL%20IMAGE_2.2.2.jpg';
+
+/* ✅ Ancient / Historical LUT packs */
+const ANCIENT_EGYPT_LUTS_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/ANICENT%20EGYPT%20LUTS.zip';
+const ANCIENT_EGYPT_LUTS_PREVIEW_VIDEO =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/ancient%20EHYPT%20luts%20preview.mp4';
+const ANCIENT_EGYPT_LUTS_PREVIEW_IMAGE =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Still%202026-05-09%20172345_2.1.2%20(1).jpg';
+
+const ANCIENT_GREECE_LUTS_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/anient%20greece%20luts.zip';
+const ANCIENT_GREECE_LUTS_PREVIEW_VIDEO =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/ancient%20greece%20luts%20preview.mp4';
+const ANCIENT_GREECE_LUTS_PREVIEW_IMAGE =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Still%202026-05-09%20180942_2.1.3.jpg';
+
+const ANCIENT_ROME_LUTS_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/ANCIENT%20ROME%20LUTS.zip';
+const ANCIENT_ROME_LUTS_PREVIEW_VIDEO =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/ancient%20rome%20luts%20preview.mp4';
+const ANCIENT_ROME_LUTS_PREVIEW_IMAGE =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Still%202026-05-09%20170843_2.1.1.jpg';
+
+const VIKINGS_LUTS_ZIP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/vikings%20luts.zip';
+const VIKINGS_LUTS_PREVIEW_VIDEO =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/VIKINGS%20luts%20preview.mp4';
+const VIKINGS_LUTS_PREVIEW_IMAGE =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Still%202026-05-09%20180948_2.2.1.jpg';
+
 /* ✅ Sound FX packs */
 const SWOOSHES_ZIP =
   'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/SWOOSHES.zip';
@@ -95,6 +123,32 @@ const IMPACT_PREVIEW_MP3 =
   'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/impactpreview.mp3';
 const GUN_PREVIEW_MP3 =
   'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/gun%20preview.mp3';
+
+  /* ✅ Music tracks */
+const MUSIC_ABSENCE =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Absence.wav';
+const MUSIC_ANCIENT_CHANT =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Ancient%20chant.wav';
+const MUSIC_ATLAS_OF_THUNDER =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Atlas%20of%20Thunder.wav';
+const MUSIC_DRIFT_BETWEEN_ROOMS =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Drift%20Between%20Rooms-2.wav';
+const MUSIC_FOREST_VEIL =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Forest%20Veil.wav';
+const MUSIC_GODDESS =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Goddess.wav';
+const MUSIC_IRON_JUMP =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Iron%20Jump.wav';
+const MUSIC_IRON_PULSE =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Iron%20Pulse.wav';
+const MUSIC_ITS_COMING =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/It%27s%20coming.wav';
+const MUSIC_PURE_EPIC =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Pure%20Epic.wav';
+const MUSIC_SANDSTORM_VAULT =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/Sandstorm%20Vault.wav';
+const MUSIC_THE_GODS_ARE_COMING =
+  'https://sdatmuzzsebvckfmnqsv.supabase.co/storage/v1/object/public/workshop/The%20Gods%20Are%20Coming.wav';
 
 /* ✅ card sizing */
 const WORKSHOP_CARD_MIN_HEIGHT = 208;
@@ -132,7 +186,7 @@ type UserProfile = {
   tier: UserTier;
 };
 
-type WorkshopFilter = 'all' | 'luts' | 'sound';
+type WorkshopFilter = 'all' | 'luts' | 'music' | 'sound';
 
 /* --------------------------- shimmer component -------------------------- */
 const ShimmerThumb: React.FC<{ size: number }> = ({ size }) => {
@@ -217,6 +271,7 @@ const IconThumb: React.FC<{ icon: keyof typeof Ionicons.glyphMap; label?: string
     </LinearGradient>
   );
 };
+
 /* ---------------------- web thumbs --------------------- */
 const ThumbMedia: React.FC<{ uri: string }> = ({ uri }) => {
   if (IS_WEB) {
@@ -279,7 +334,8 @@ const WorkshopScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
 
   const [lutProducts, setLutProducts] = useState<WorkshopProduct[]>([]);
-  const [soundProducts, setSoundProducts] = useState<WorkshopProduct[]>([]);
+const [musicProducts, setMusicProducts] = useState<WorkshopProduct[]>([]);
+const [soundProducts, setSoundProducts] = useState<WorkshopProduct[]>([]);
 
   const [activeFilter, setActiveFilter] = useState<WorkshopFilter>('all');
 
@@ -315,13 +371,15 @@ const WorkshopScreen: React.FC = () => {
   }, [SCREEN_W]);
 
   const shouldShowLuts = activeFilter === 'all' || activeFilter === 'luts';
-  const shouldShowSound = activeFilter === 'all' || activeFilter === 'sound';
+const shouldShowMusic = activeFilter === 'all' || activeFilter === 'music';
+const shouldShowSound = activeFilter === 'all' || activeFilter === 'sound';
 
-  const filteredItemCount = useMemo(() => {
-    if (activeFilter === 'luts') return lutProducts.length;
-    if (activeFilter === 'sound') return soundProducts.length;
-    return lutProducts.length + soundProducts.length;
-  }, [activeFilter, lutProducts.length, soundProducts.length]);
+const filteredItemCount = useMemo(() => {
+  if (activeFilter === 'luts') return lutProducts.length;
+  if (activeFilter === 'music') return musicProducts.length;
+  if (activeFilter === 'sound') return soundProducts.length;
+  return lutProducts.length + musicProducts.length + soundProducts.length;
+}, [activeFilter, lutProducts.length, musicProducts.length, soundProducts.length]);
 
   const cardScalesRef = useRef<Record<string, Animated.Value>>({});
 
@@ -439,7 +497,7 @@ const WorkshopScreen: React.FC = () => {
           id: 'local-breaking-bad-luts',
           name: 'Breaking Bad LUTs',
           slug: 'breaking-bad-luts',
-          description: '7 LUTs inspired by Breaking Bad.',
+          description: '7 LUTs inspired by the bold desert tones and gritty crime-drama look of Breaking Bad.',
           price_cents: 0,
           currency: 'GBP',
           image_url: BREAKING_BAD_LUTS_PREVIEW_IMAGE,
@@ -449,7 +507,7 @@ const WorkshopScreen: React.FC = () => {
           created_at: new Date(Date.now() + 1).toISOString(),
         };
 
-                if (!hasBreakingBadAlready) fetched = [...fetched, injectedBreakingBad];
+        if (!hasBreakingBadAlready) fetched = [...fetched, injectedBreakingBad];
 
         const hasHighExposureAlready = fetched.some((p) => {
           const slug = (p.slug || '').toLowerCase();
@@ -479,6 +537,122 @@ const WorkshopScreen: React.FC = () => {
 
         if (!hasHighExposureAlready) fetched = [...fetched, injectedHighExposure];
 
+        const hasAncientEgyptAlready = fetched.some((p) => {
+          const slug = (p.slug || '').toLowerCase();
+          const name = (p.name || '').toLowerCase();
+
+          return (
+            slug === 'ancient-egypt-luts' ||
+            name === 'ancient egypt luts' ||
+            name.includes('ancient egypt') ||
+            name.includes('egypt luts')
+          );
+        });
+
+        const injectedAncientEgypt: WorkshopProduct = {
+          id: 'local-ancient-egypt-luts',
+          name: 'Ancient Egypt LUTs',
+          slug: 'ancient-egypt-luts',
+          description:
+            'A golden, dramatic LUT pack inspired by ancient Egypt — warm highlights, deep shadows, and mythic cinematic contrast.',
+          price_cents: 0,
+          currency: 'GBP',
+          image_url: ANCIENT_EGYPT_LUTS_PREVIEW_IMAGE,
+          file_url: ANCIENT_EGYPT_LUTS_ZIP,
+          preview_url: ANCIENT_EGYPT_LUTS_PREVIEW_VIDEO,
+          is_active: true,
+          created_at: new Date(Date.now() + 3).toISOString(),
+        };
+
+        if (!hasAncientEgyptAlready) fetched = [...fetched, injectedAncientEgypt];
+
+        const hasAncientGreeceAlready = fetched.some((p) => {
+          const slug = (p.slug || '').toLowerCase();
+          const name = (p.name || '').toLowerCase();
+
+          return (
+            slug === 'ancient-greece-luts' ||
+            name === 'ancient greece luts' ||
+            name.includes('ancient greece') ||
+            name.includes('greece luts')
+          );
+        });
+
+        const injectedAncientGreece: WorkshopProduct = {
+          id: 'local-ancient-greece-luts',
+          name: 'Ancient Greece LUTs',
+          slug: 'ancient-greece-luts',
+          description:
+            'A heroic cinematic LUT pack inspired by ancient Greece — sunlit warmth, strong silhouettes, and epic warrior tones.',
+          price_cents: 0,
+          currency: 'GBP',
+          image_url: ANCIENT_GREECE_LUTS_PREVIEW_IMAGE,
+          file_url: ANCIENT_GREECE_LUTS_ZIP,
+          preview_url: ANCIENT_GREECE_LUTS_PREVIEW_VIDEO,
+          is_active: true,
+          created_at: new Date(Date.now() + 4).toISOString(),
+        };
+
+        if (!hasAncientGreeceAlready) fetched = [...fetched, injectedAncientGreece];
+
+        const hasAncientRomeAlready = fetched.some((p) => {
+          const slug = (p.slug || '').toLowerCase();
+          const name = (p.name || '').toLowerCase();
+
+          return (
+            slug === 'ancient-rome-luts' ||
+            name === 'ancient rome luts' ||
+            name.includes('ancient rome') ||
+            name.includes('rome luts')
+          );
+        });
+
+        const injectedAncientRome: WorkshopProduct = {
+          id: 'local-ancient-rome-luts',
+          name: 'Ancient Rome LUTs',
+          slug: 'ancient-rome-luts',
+          description:
+            'A bold historical LUT pack inspired by ancient Rome — rich reds, bronze shadows, and gritty battlefield atmosphere.',
+          price_cents: 0,
+          currency: 'GBP',
+          image_url: ANCIENT_ROME_LUTS_PREVIEW_IMAGE,
+          file_url: ANCIENT_ROME_LUTS_ZIP,
+          preview_url: ANCIENT_ROME_LUTS_PREVIEW_VIDEO,
+          is_active: true,
+          created_at: new Date(Date.now() + 5).toISOString(),
+        };
+
+        if (!hasAncientRomeAlready) fetched = [...fetched, injectedAncientRome];
+
+        const hasVikingsAlready = fetched.some((p) => {
+          const slug = (p.slug || '').toLowerCase();
+          const name = (p.name || '').toLowerCase();
+
+          return (
+            slug === 'vikings-luts' ||
+            name === 'vikings luts' ||
+            name.includes('vikings') ||
+            name.includes('viking luts')
+          );
+        });
+
+        const injectedVikings: WorkshopProduct = {
+          id: 'local-vikings-luts',
+          name: 'Vikings LUTs',
+          slug: 'vikings-luts',
+          description:
+            'A cold, rugged LUT pack inspired by Viking landscapes — icy blues, earthy contrast, and raw cinematic atmosphere.',
+          price_cents: 0,
+          currency: 'GBP',
+          image_url: VIKINGS_LUTS_PREVIEW_IMAGE,
+          file_url: VIKINGS_LUTS_ZIP,
+          preview_url: VIKINGS_LUTS_PREVIEW_VIDEO,
+          is_active: true,
+          created_at: new Date(Date.now() + 6).toISOString(),
+        };
+
+        if (!hasVikingsAlready) fetched = [...fetched, injectedVikings];
+
         const mappedFetched = fetched.map((product) => {
           const isStarter =
             product.slug === 'starter-lut-pack' ||
@@ -500,73 +674,283 @@ const WorkshopScreen: React.FC = () => {
           };
         });
 
-        const nextLuts = mappedFetched;
-
-        const nextSoundFx: WorkshopProduct[] = [
-  {
-    id: 'local-swooshes-pack',
-    name: 'Swooshes Pack',
-    slug: 'swooshes-pack',
-    description: '6 cinematic swooshes.',
-    price_cents: 0,
-    currency: 'GBP',
-    image_url: null,
-    file_url: SWOOSHES_ZIP,
-    preview_url: SWOOSH_PREVIEW_MP3,
-    thumb_icon: 'radio-outline',
-    thumb_label: 'SWOOSH',
-    is_active: true,
-    created_at: new Date(Date.now() + 2).toISOString(),
-  },
-  {
-    id: 'local-impacts-pack',
-    name: 'Impacts Pack',
-    slug: 'impacts-pack',
-    description: '6 cinematic impacts.',
-    price_cents: 0,
-    currency: 'GBP',
-    image_url: null,
-    file_url: IMPACTS_ZIP,
-    preview_url: IMPACT_PREVIEW_MP3,
-    thumb_icon: 'pulse-outline',
-    thumb_label: 'IMPACT',
-    is_active: true,
-    created_at: new Date(Date.now() + 3).toISOString(),
-  },
-  {
-    id: 'local-risers-pack',
-    name: 'Risers Pack',
-    slug: 'risers-pack',
-    description: '6 cinematic risers ranging from sci-fi to horror.',
-    price_cents: 0,
-    currency: 'GBP',
-    image_url: null,
-    file_url: RISERS_ZIP,
-    preview_url: RISER_PREVIEW_MP3,
-    thumb_icon: 'analytics-outline',
-    thumb_label: 'RISER',
-    is_active: true,
-    created_at: new Date(Date.now() + 4).toISOString(),
-  },
-  {
-    id: 'local-gun-shots-pack',
-    name: 'Gun Shots Pack',
-    slug: 'gun-shots-pack',
-    description: 'A variety of gunshots.',
-    price_cents: 0,
-    currency: 'GBP',
-    image_url: null,
-    file_url: GUN_SHOTS_ZIP,
-    preview_url: GUN_PREVIEW_MP3,
-    thumb_icon: 'disc-outline',
-    thumb_label: 'SHOTS',
-    is_active: true,
-    created_at: new Date(Date.now() + 5).toISOString(),
-  },
+        const lutOrder = [
+  'ancient-rome-luts',
+  'high-exposure-luts',
+  'vikings-luts',
+  'breaking-bad-luts',
+  'ancient-greece-luts',
+  'cinema-luts',
+  'ancient-egypt-luts',
+  'starter-lut-pack',
 ];
 
+const nextLuts = [...mappedFetched].sort((a, b) => {
+  const aIndex = lutOrder.indexOf((a.slug || '').toLowerCase());
+  const bIndex = lutOrder.indexOf((b.slug || '').toLowerCase());
+
+  if (aIndex === -1 && bIndex === -1) {
+    return 0;
+  }
+
+  if (aIndex === -1) {
+    return 1;
+  }
+
+  if (bIndex === -1) {
+    return -1;
+  }
+
+  return aIndex - bIndex;
+});
+const nextMusic: WorkshopProduct[] = [
+  {
+    id: 'local-music-absence',
+    name: 'Absence',
+    slug: 'music-absence',
+    description: 'A cinematic music track with a dark, atmospheric tone.',
+    price_cents: 0,
+    currency: 'GBP',
+    image_url: null,
+    file_url: MUSIC_ABSENCE,
+    preview_url: MUSIC_ABSENCE,
+    thumb_icon: 'musical-note-outline',
+    thumb_label: 'MUSIC',
+    is_active: true,
+    created_at: new Date(Date.now() + 11).toISOString(),
+  },
+  {
+    id: 'local-music-ancient-chant',
+    name: 'Ancient Chant',
+    slug: 'music-ancient-chant',
+    description: 'A cinematic ancient-style chant for historical, fantasy, or dramatic scenes.',
+    price_cents: 0,
+    currency: 'GBP',
+    image_url: null,
+    file_url: MUSIC_ANCIENT_CHANT,
+    preview_url: MUSIC_ANCIENT_CHANT,
+    thumb_icon: 'musical-note-outline',
+    thumb_label: 'MUSIC',
+    is_active: true,
+    created_at: new Date(Date.now() + 12).toISOString(),
+  },
+  {
+    id: 'local-music-atlas-of-thunder',
+    name: 'Atlas of Thunder',
+    slug: 'music-atlas-of-thunder',
+    description: 'A powerful cinematic track with epic scale and dramatic weight.',
+    price_cents: 0,
+    currency: 'GBP',
+    image_url: null,
+    file_url: MUSIC_ATLAS_OF_THUNDER,
+    preview_url: MUSIC_ATLAS_OF_THUNDER,
+    thumb_icon: 'musical-note-outline',
+    thumb_label: 'MUSIC',
+    is_active: true,
+    created_at: new Date(Date.now() + 13).toISOString(),
+  },
+  {
+    id: 'local-music-drift-between-rooms',
+    name: 'Drift Between Rooms',
+    slug: 'music-drift-between-rooms',
+    description: 'A moody cinematic music cue for tension, movement, and atmosphere.',
+    price_cents: 0,
+    currency: 'GBP',
+    image_url: null,
+    file_url: MUSIC_DRIFT_BETWEEN_ROOMS,
+    preview_url: MUSIC_DRIFT_BETWEEN_ROOMS,
+    thumb_icon: 'musical-note-outline',
+    thumb_label: 'MUSIC',
+    is_active: true,
+    created_at: new Date(Date.now() + 14).toISOString(),
+  },
+  {
+    id: 'local-music-forest-veil',
+    name: 'Forest Veil',
+    slug: 'music-forest-veil',
+    description: 'An atmospheric cinematic track with a mysterious, natural feeling.',
+    price_cents: 0,
+    currency: 'GBP',
+    image_url: null,
+    file_url: MUSIC_FOREST_VEIL,
+    preview_url: MUSIC_FOREST_VEIL,
+    thumb_icon: 'musical-note-outline',
+    thumb_label: 'MUSIC',
+    is_active: true,
+    created_at: new Date(Date.now() + 15).toISOString(),
+  },
+  {
+    id: 'local-music-goddess',
+    name: 'Goddess',
+    slug: 'music-goddess',
+    description: 'A dramatic cinematic music track with mythic and emotional energy.',
+    price_cents: 0,
+    currency: 'GBP',
+    image_url: null,
+    file_url: MUSIC_GODDESS,
+    preview_url: MUSIC_GODDESS,
+    thumb_icon: 'musical-note-outline',
+    thumb_label: 'MUSIC',
+    is_active: true,
+    created_at: new Date(Date.now() + 16).toISOString(),
+  },
+  {
+    id: 'local-music-iron-jump',
+    name: 'Iron Jump',
+    slug: 'music-iron-jump',
+    description: 'A bold cinematic music track with impact and momentum.',
+    price_cents: 0,
+    currency: 'GBP',
+    image_url: null,
+    file_url: MUSIC_IRON_JUMP,
+    preview_url: MUSIC_IRON_JUMP,
+    thumb_icon: 'musical-note-outline',
+    thumb_label: 'MUSIC',
+    is_active: true,
+    created_at: new Date(Date.now() + 17).toISOString(),
+  },
+  {
+    id: 'local-music-iron-pulse',
+    name: 'Iron Pulse',
+    slug: 'music-iron-pulse',
+    description: 'A pulsing cinematic track for suspense, build-up, and action.',
+    price_cents: 0,
+    currency: 'GBP',
+    image_url: null,
+    file_url: MUSIC_IRON_PULSE,
+    preview_url: MUSIC_IRON_PULSE,
+    thumb_icon: 'musical-note-outline',
+    thumb_label: 'MUSIC',
+    is_active: true,
+    created_at: new Date(Date.now() + 18).toISOString(),
+  },
+  {
+    id: 'local-music-its-coming',
+    name: "It's Coming",
+    slug: 'music-its-coming',
+    description: 'A suspenseful cinematic track designed for tension and anticipation.',
+    price_cents: 0,
+    currency: 'GBP',
+    image_url: null,
+    file_url: MUSIC_ITS_COMING,
+    preview_url: MUSIC_ITS_COMING,
+    thumb_icon: 'musical-note-outline',
+    thumb_label: 'MUSIC',
+    is_active: true,
+    created_at: new Date(Date.now() + 19).toISOString(),
+  },
+  {
+    id: 'local-music-pure-epic',
+    name: 'Pure Epic',
+    slug: 'music-pure-epic',
+    description: 'An epic cinematic track built for trailers, battles, and heroic moments.',
+    price_cents: 0,
+    currency: 'GBP',
+    image_url: null,
+    file_url: MUSIC_PURE_EPIC,
+    preview_url: MUSIC_PURE_EPIC,
+    thumb_icon: 'musical-note-outline',
+    thumb_label: 'MUSIC',
+    is_active: true,
+    created_at: new Date(Date.now() + 20).toISOString(),
+  },
+  {
+    id: 'local-music-sandstorm-vault',
+    name: 'Sandstorm Vault',
+    slug: 'music-sandstorm-vault',
+    description: 'A cinematic music track with desert tension and dramatic atmosphere.',
+    price_cents: 0,
+    currency: 'GBP',
+    image_url: null,
+    file_url: MUSIC_SANDSTORM_VAULT,
+    preview_url: MUSIC_SANDSTORM_VAULT,
+    thumb_icon: 'musical-note-outline',
+    thumb_label: 'MUSIC',
+    is_active: true,
+    created_at: new Date(Date.now() + 21).toISOString(),
+  },
+  {
+    id: 'local-music-the-gods-are-coming',
+    name: 'The Gods Are Coming',
+    slug: 'music-the-gods-are-coming',
+    description: 'A grand cinematic track with mythic scale and dramatic power.',
+    price_cents: 0,
+    currency: 'GBP',
+    image_url: null,
+    file_url: MUSIC_THE_GODS_ARE_COMING,
+    preview_url: MUSIC_THE_GODS_ARE_COMING,
+    thumb_icon: 'musical-note-outline',
+    thumb_label: 'MUSIC',
+    is_active: true,
+    created_at: new Date(Date.now() + 22).toISOString(),
+  },
+];
+        const nextSoundFx: WorkshopProduct[] = [
+          {
+            id: 'local-swooshes-pack',
+            name: 'Swooshes Pack',
+            slug: 'swooshes-pack',
+            description: '6 cinematic swooshes.',
+            price_cents: 0,
+            currency: 'GBP',
+            image_url: null,
+            file_url: SWOOSHES_ZIP,
+            preview_url: SWOOSH_PREVIEW_MP3,
+            thumb_icon: 'radio-outline',
+            thumb_label: 'SWOOSH',
+            is_active: true,
+            created_at: new Date(Date.now() + 7).toISOString(),
+          },
+          {
+            id: 'local-impacts-pack',
+            name: 'Impacts Pack',
+            slug: 'impacts-pack',
+            description: '6 cinematic impacts.',
+            price_cents: 0,
+            currency: 'GBP',
+            image_url: null,
+            file_url: IMPACTS_ZIP,
+            preview_url: IMPACT_PREVIEW_MP3,
+            thumb_icon: 'pulse-outline',
+            thumb_label: 'IMPACT',
+            is_active: true,
+            created_at: new Date(Date.now() + 8).toISOString(),
+          },
+          {
+            id: 'local-risers-pack',
+            name: 'Risers Pack',
+            slug: 'risers-pack',
+            description: '6 cinematic risers ranging from sci-fi to horror.',
+            price_cents: 0,
+            currency: 'GBP',
+            image_url: null,
+            file_url: RISERS_ZIP,
+            preview_url: RISER_PREVIEW_MP3,
+            thumb_icon: 'analytics-outline',
+            thumb_label: 'RISER',
+            is_active: true,
+            created_at: new Date(Date.now() + 9).toISOString(),
+          },
+          {
+            id: 'local-gun-shots-pack',
+            name: 'Gun Shots Pack',
+            slug: 'gun-shots-pack',
+            description: 'A variety of gunshots.',
+            price_cents: 0,
+            currency: 'GBP',
+            image_url: null,
+            file_url: GUN_SHOTS_ZIP,
+            preview_url: GUN_PREVIEW_MP3,
+            thumb_icon: 'disc-outline',
+            thumb_label: 'SHOTS',
+            is_active: true,
+            created_at: new Date(Date.now() + 10).toISOString(),
+          },
+        ];
+
         setLutProducts(nextLuts);
-        setSoundProducts(nextSoundFx);
+setMusicProducts(nextMusic);
+setSoundProducts(nextSoundFx);
       }
 
       didLoadOnceRef.current = true;
@@ -610,30 +994,74 @@ const WorkshopScreen: React.FC = () => {
     return userProfile?.tier === 'pro';
   };
 
-  const openProductContent = (product: WorkshopProduct) => {
-    if (isGuest) {
-      promptSignIn('Create an account or sign in to access Workshop products.');
-      return;
-    }
+ const getDownloadFileName = (product: WorkshopProduct) => {
+  const fallbackName = `${product.slug || 'workshop-download'}`;
 
-    if (!hasAccess(product)) {
-      setUpgradeVisible(true);
-      return;
-    }
+  const url = product.file_url || '';
+  const cleanUrl = url.split('?')[0];
+  const lastPart = cleanUrl.split('/').pop();
 
-    if (!product.file_url) {
-      Alert.alert(
-        'Coming soon',
-        'You have access, but the download link for this pack has not been set yet.'
-      );
+  if (!lastPart) return fallbackName;
 
-      return;
-    }
+  try {
+    return decodeURIComponent(lastPart);
+  } catch {
+    return lastPart;
+  }
+};
 
-    Linking.openURL(product.file_url).catch(() => {
-      Alert.alert('Error', 'Unable to open this link on your device.');
-    });
-  };
+const forceWebDownload = async (url: string, fileName: string) => {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = fileName;
+    link.style.display = 'none';
+
+    document.body.appendChild(link);
+    link.click();
+
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(blobUrl);
+  } catch (error) {
+    console.warn('Workshop: forced download failed, opening URL instead:', error);
+    window.open(url, '_blank');
+  }
+};
+
+const openProductContent = async (product: WorkshopProduct) => {
+  if (isGuest) {
+    promptSignIn('Create an account or sign in to access Workshop products.');
+    return;
+  }
+
+  if (!hasAccess(product)) {
+    setUpgradeVisible(true);
+    return;
+  }
+
+  if (!product.file_url) {
+    Alert.alert(
+      'Coming soon',
+      'You have access, but the download link for this pack has not been set yet.'
+    );
+
+    return;
+  }
+
+  if (Platform.OS === 'web') {
+    const fileName = getDownloadFileName(product);
+    await forceWebDownload(product.file_url, fileName);
+    return;
+  }
+
+  Linking.openURL(product.file_url).catch(() => {
+    Alert.alert('Error', 'Unable to open this link on your device.');
+  });
+};
 
   const renderCTA = (product: WorkshopProduct) => {
     const access = hasAccess(product);
@@ -680,27 +1108,28 @@ const WorkshopScreen: React.FC = () => {
   };
 
   const isAudio = (url: string) => {
-  const cleanUrl = url.split('?')[0].toLowerCase();
+    const cleanUrl = url.split('?')[0].toLowerCase();
 
-  return (
-    cleanUrl.endsWith('.mp3') ||
-    cleanUrl.endsWith('.m4a') ||
-    cleanUrl.endsWith('.wav') ||
-    cleanUrl.endsWith('.ogg')
-  );
-};
+    return (
+      cleanUrl.endsWith('.mp3') ||
+      cleanUrl.endsWith('.m4a') ||
+      cleanUrl.endsWith('.wav') ||
+      cleanUrl.endsWith('.ogg')
+    );
+  };
+
   const previewIsLikelyVideo = (url: string) => {
-  const cleanUrl = url.split('?')[0].toLowerCase();
+    const cleanUrl = url.split('?')[0].toLowerCase();
 
-  return (
-    cleanUrl.endsWith('.mp4') ||
-    cleanUrl.endsWith('.mov') ||
-    cleanUrl.endsWith('.webm') ||
-    cleanUrl.includes('.mp4') ||
-    cleanUrl.includes('.mov') ||
-    cleanUrl.includes('.webm')
-  );
-};
+    return (
+      cleanUrl.endsWith('.mp4') ||
+      cleanUrl.endsWith('.mov') ||
+      cleanUrl.endsWith('.webm') ||
+      cleanUrl.includes('.mp4') ||
+      cleanUrl.includes('.mov') ||
+      cleanUrl.includes('.webm')
+    );
+  };
 
   const openPreview = async (product: WorkshopProduct) => {
     try {
@@ -902,38 +1331,40 @@ const WorkshopScreen: React.FC = () => {
   };
 
   const renderFilterChip = (value: WorkshopFilter, label: string) => {
-  const selected = activeFilter === value;
+    const selected = activeFilter === value;
 
-  return (
-    <TouchableOpacity
-      key={value}
-      style={[styles.filterChip, selected ? styles.filterChipActive : null]}
-      activeOpacity={0.86}
-      onPress={() => setActiveFilter(value)}
-    >
-      <Text style={[styles.filterChipText, selected ? styles.filterChipTextActive : null]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-};
+    return (
+      <TouchableOpacity
+        key={value}
+        style={[styles.filterChip, selected ? styles.filterChipActive : null]}
+        activeOpacity={0.86}
+        onPress={() => setActiveFilter(value)}
+      >
+        <Text style={[styles.filterChipText, selected ? styles.filterChipTextActive : null]}>
+          {label}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
 
-const renderFilterSection = () => {
-  return (
-    <View style={styles.filterSection}>
-      <Text style={styles.filterEyebrow}>Workshop Library</Text>
-      <Text style={styles.filterTitle}>Choose your tools</Text>
+  const renderFilterSection = () => {
+    return (
+      <View style={styles.filterSection}>
+        <Text style={styles.filterEyebrow}>Workshop Library</Text>
+        <Text style={styles.filterTitle}>Choose your tools</Text>
 
-      <View style={styles.filterChipsOuter}>
-        <View style={styles.filterChipsRow}>
-          {renderFilterChip('all', 'All')}
-          {renderFilterChip('luts', 'LUTs')}
-          {renderFilterChip('sound', 'Sound FX')}
+        <View style={styles.filterChipsOuter}>
+          <View style={styles.filterChipsRow}>
+            {renderFilterChip('all', 'All')}
+{renderFilterChip('luts', 'LUTs')}
+{renderFilterChip('music', 'Music')}
+{renderFilterChip('sound', 'Sound FX')}
+          </View>
         </View>
       </View>
-    </View>
-  );
-};
+    );
+  };
+
   const renderSectionHeader = (
     title: string,
     icon: keyof typeof Ionicons.glyphMap,
@@ -956,7 +1387,9 @@ const renderFilterSection = () => {
   const renderProductCard = (product: WorkshopProduct) => {
     const access = hasAccess(product);
     const scale = getCardScale(product.id);
-    const isSound = !product.image_url;
+    const isMusic = product.slug.startsWith('music-');
+const isSound = !product.image_url && !isMusic;
+const isAudioProduct = isMusic || isSound;
 
     return (
       <View
@@ -996,28 +1429,30 @@ const renderFilterSection = () => {
             <View style={styles.cardTopLine} />
 
             <View style={styles.cardInner}>
-              {!isSound && (
-  <View style={styles.thumbWrap}>
-    {product.image_url ? (
-      <ThumbMedia uri={product.image_url} />
-    ) : (
-      <ShimmerThumb size={88} />
-    )}
-  </View>
-)}
+             {!isAudioProduct && (
+                <View style={styles.thumbWrap}>
+                  {product.image_url ? (
+                    <ThumbMedia uri={product.image_url} />
+                  ) : (
+                    <ShimmerThumb size={88} />
+                  )}
+                </View>
+              )}
+
+              {isAudioProduct ? null : null}
 
               <View style={styles.cardBody}>
                 <View style={styles.cardMainContent}>
                   <View style={styles.cardTopMetaRow}>
                     <View style={styles.cardTypePill}>
                       <Ionicons
-                        name={isSound ? 'musical-notes-outline' : 'color-filter-outline'}
+                        name={isAudioProduct ? 'musical-notes-outline' : 'color-filter-outline'}
                         size={12}
                         color={GOLD}
                       />
 
                       <Text style={styles.cardTypePillText}>
-                        {isSound ? 'Sound pack' : 'Workshop pack'}
+                        {isMusic ? 'Music track' : isSound ? 'Sound pack' : 'Workshop pack'}
                       </Text>
                     </View>
 
@@ -1060,7 +1495,7 @@ const renderFilterSection = () => {
     );
   };
 
-  const hasAnything = lutProducts.length > 0 || soundProducts.length > 0;
+  const hasAnything = lutProducts.length > 0 || musicProducts.length > 0 || soundProducts.length > 0;
   const showBlockingLoader = loading && !didLoadOnceRef.current;
 
   return (
@@ -1120,6 +1555,16 @@ const renderFilterSection = () => {
                   </View>
                 </View>
               )}
+
+              {shouldShowMusic && musicProducts.length > 0 && (
+  <View style={styles.sectionBlock}>
+    {renderSectionHeader('Music', 'musical-note-outline', 'Songs')}
+
+    <View style={[styles.grid, columns === 2 ? styles.gridTwoCol : null]}>
+      {musicProducts.map((p) => renderProductCard(p))}
+    </View>
+  </View>
+)}
 
               {shouldShowSound && soundProducts.length > 0 && (
                 <View style={styles.sectionBlock}>
