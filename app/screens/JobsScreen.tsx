@@ -44,6 +44,11 @@ const SYSTEM_SANS = Platform.select({
   web: undefined,
   default: undefined,
 });
+const WEB_NO_OUTLINE =
+  Platform.OS === 'web'
+    ? ({ outlineStyle: 'none', outlineWidth: 0 } as any)
+    : null;
+
 
 
 /* ────────────────────────────────────────────────────────────
@@ -439,6 +444,11 @@ export default function JobsScreen() {
   const realtimeThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const citySearchInputRef = useRef<TextInput | null>(null);
 
+  const cityReqIdRef = useRef<number>(0);
+const latestCityTermRef = useRef<string>('');
+const cityFilterReqIdRef = useRef<number>(0);
+const latestCityFilterTermRef = useRef<string>('');
+
   // Tier / upgrade modal
   const [userTier, setUserTier] = useState<UserTier>('free');
   const [upgradeVisible, setUpgradeVisible] = useState(false);
@@ -803,81 +813,227 @@ const appsByJob: Record<number, { id: string; full_name?: string | null }[]> = {
     };
   }, [roleSearchTerm, jobRoleOverlayVisible, searchRolesSmooth]);
 
-  const prioritizeCityMatches = (
-    list: { id: number; name: string; country_code: string }[],
-    term: string
-  ) => {
-    const q = term.trim().toLowerCase();
-    return list.sort((a, b) => {
-      const A = a.name.toLowerCase();
-      const B = b.name.toLowerCase();
-      const score = (s: string) => (s === q ? 0 : s.startsWith(q) ? 1 : 2);
-      const cmp = score(A) - score(B);
-      return cmp !== 0 ? cmp : A.localeCompare(B);
-    });
+  const getFlag = (countryCode: string) =>
+  countryCode
+    .toUpperCase()
+    .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
+
+const parseCityQuery = (raw: string) => {
+  const s = (raw || '').trim();
+  const cleaned = s.replace(/[()]/g, '').replace(/\s+/g, ' ');
+  const lower = cleaned.toLowerCase();
+
+  const partsComma = lower
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  let cityPart = partsComma[0] || '';
+  let countryPart = partsComma[1] || '';
+
+  if (!countryPart) {
+    const tokens = lower.split(' ').filter(Boolean);
+    if (tokens.length >= 2) {
+      const last = tokens[tokens.length - 1];
+      if (/^[a-z]{2}$/.test(last)) {
+        countryPart = last;
+        cityPart = tokens.slice(0, -1).join(' ');
+      }
+    }
+  }
+
+  const cityQuery = (cityPart || '').trim();
+  const countryCode = (countryPart || '').trim();
+
+  return {
+    cityQuery,
+    countryCode: /^[a-z]{2}$/.test(countryCode) ? countryCode.toUpperCase() : '',
+  };
+};
+
+const prioritizeCityMatches = (
+  list: { id: number; name: string; country_code: string }[],
+  rawTerm: string
+) => {
+  const { cityQuery, countryCode } = parseCityQuery(rawTerm);
+  const q = cityQuery.trim();
+
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+
+  const qn = norm(q);
+
+  const score = (row: { name: string; country_code: string }) => {
+    const name = norm(row.name);
+    const cc = (row.country_code || '').toUpperCase();
+
+    const exactCity = name === qn;
+    const starts = name.startsWith(qn);
+    const contains = name.includes(qn);
+
+    if (countryCode && exactCity && cc === countryCode) return 0;
+    if (exactCity) return 1;
+    if (countryCode && starts && cc === countryCode) return 2;
+    if (starts) return 3;
+    if (countryCode && contains && cc === countryCode) return 4;
+    if (contains) return 5;
+    return 6;
   };
 
+  return list.sort((a, b) => {
+    const sa = score(a);
+    const sb = score(b);
+    if (sa !== sb) return sa - sb;
+
+    if (countryCode) {
+      const ac = (a.country_code || '').toUpperCase() === countryCode ? 0 : 1;
+      const bc = (b.country_code || '').toUpperCase() === countryCode ? 0 : 1;
+      if (ac !== bc) return ac - bc;
+    }
+
+    const an = a.name.toLowerCase();
+    const bn = b.name.toLowerCase();
+    if (an !== bn) return an.localeCompare(bn);
+    return (a.country_code || '').localeCompare(b.country_code || '');
+  });
+};
+
   const fetchCities = useCallback(
-    async (search: string) => {
-      const q = search.trim();
-      if (!q || q.length < 2) {
+  async (search: string) => {
+    const raw = (search || '').trim();
+    const { cityQuery, countryCode } = parseCityQuery(raw);
+
+    latestCityTermRef.current = raw;
+
+    if (cityQuery.length < 2) {
+      setCityItems([]);
+      setSearchingCities(false);
+      return;
+    }
+
+    const myReqId = ++cityReqIdRef.current;
+    setSearchingCities(true);
+
+    try {
+      const baseQuery = supabase
+        .from('cities')
+        .select('id, name, country_code')
+        .ilike('name', `%${cityQuery}%`)
+        .limit(120);
+
+      const primary = countryCode ? await baseQuery.eq('country_code', countryCode) : await baseQuery;
+
+      let finalData = primary.data;
+      let finalError = primary.error;
+
+      if (countryCode && (!finalData || finalData.length === 0)) {
+        const fallback = await supabase
+          .from('cities')
+          .select('id, name, country_code')
+          .ilike('name', `%${cityQuery}%`)
+          .limit(120);
+
+        finalData = fallback.data;
+        finalError = fallback.error;
+      }
+
+      if (myReqId !== cityReqIdRef.current) return;
+      if (latestCityTermRef.current !== raw) return;
+
+      if (finalError) {
+        console.error(finalError);
+        show('City search failed', 'error');
         setCityItems([]);
         return;
       }
-      setSearchingCities(true);
-      const { data, error } = await supabase
+
+      const prioritized = prioritizeCityMatches(finalData || [], raw);
+
+      setCityItems(
+        prioritized.map((c) => ({
+          value: c.id,
+          label: `${getFlag(c.country_code)} ${c.name}, ${c.country_code}`,
+          country: c.country_code,
+        }))
+      );
+    } finally {
+      if (myReqId === cityReqIdRef.current && latestCityTermRef.current === raw) {
+        setSearchingCities(false);
+      }
+    }
+  },
+  [show]
+);
+  const fetchFilterCities = useCallback(
+  async (search: string) => {
+    const raw = (search || '').trim();
+    const { cityQuery, countryCode } = parseCityQuery(raw);
+
+    latestCityFilterTermRef.current = raw;
+
+    if (cityQuery.length < 2) {
+      setCityFilterItems([]);
+      setSearchingFilterCities(false);
+      return;
+    }
+
+    const myReqId = ++cityFilterReqIdRef.current;
+    setSearchingFilterCities(true);
+
+    try {
+      const baseQuery = supabase
         .from('cities')
         .select('id, name, country_code')
-        .ilike('name', `%${q}%`)
-        .limit(50);
-      setSearchingCities(false);
-      if (error) {
-        console.error(error);
-        show('City search failed', 'error');
-      } else if (data) {
-        const prioritized = prioritizeCityMatches(data, q);
-        setCityItems(
-          prioritized.map((c) => ({
-            value: c.id,
-            label: `${c.name}, ${c.country_code}`,
-            country: c.country_code,
-          })) as CityOption[]
-        );
-      }
-    },
-    [show]
-  );
+        .ilike('name', `%${cityQuery}%`)
+        .limit(120);
 
-  const fetchFilterCities = useCallback(
-    async (search: string) => {
-      const q = search.trim();
-      if (!q || q.length < 2) {
+      const primary = countryCode ? await baseQuery.eq('country_code', countryCode) : await baseQuery;
+
+      let finalData = primary.data;
+      let finalError = primary.error;
+
+      if (countryCode && (!finalData || finalData.length === 0)) {
+        const fallback = await supabase
+          .from('cities')
+          .select('id, name, country_code')
+          .ilike('name', `%${cityQuery}%`)
+          .limit(120);
+
+        finalData = fallback.data;
+        finalError = fallback.error;
+      }
+
+      if (myReqId !== cityFilterReqIdRef.current) return;
+      if (latestCityFilterTermRef.current !== raw) return;
+
+      if (finalError) {
+        console.error(finalError);
+        show('City search failed', 'error');
         setCityFilterItems([]);
         return;
       }
-      setSearchingFilterCities(true);
-      const { data, error } = await supabase
-        .from('cities')
-        .select('id, name, country_code')
-        .ilike('name', `%${q}%`)
-        .limit(50);
-      setSearchingFilterCities(false);
-      if (error) {
-        console.error(error);
-        show('City search failed', 'error');
-      } else if (data) {
-        const prioritized = prioritizeCityMatches(data, q);
-        setCityFilterItems(
-          prioritized.map((c) => ({
-            value: c.id,
-            label: `${c.name}, ${c.country_code}`,
-            country: c.country_code,
-          })) as CityOption[]
-        );
+
+      const prioritized = prioritizeCityMatches(finalData || [], raw);
+
+      setCityFilterItems(
+        prioritized.map((c) => ({
+          value: c.id,
+          label: `${getFlag(c.country_code)} ${c.name}, ${c.country_code}`,
+          country: c.country_code,
+        }))
+      );
+    } finally {
+      if (myReqId === cityFilterReqIdRef.current && latestCityFilterTermRef.current === raw) {
+        setSearchingFilterCities(false);
       }
-    },
-    [show]
-  );
+    }
+  },
+  [show]
+);
 
   const fetchFilterRoles = useCallback(
     async (search: string) => {
@@ -1109,22 +1265,7 @@ if (!me) {
     []
   );
 
-  const renderCityItem = useCallback(
-    ({ item }: { item: CityOption }) => (
-      <TouchableOpacity
-        style={styles.listPickerItem}
-        onPress={() => {
-          setFormData((prev) => ({ ...prev, city: item }));
-          setJobCityOverlayVisible(false);
-        }}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.listPickerText}>{item.label}</Text>
-      </TouchableOpacity>
-    ),
-    []
-  );
-
+  
   const roleKey = useCallback((i: RoleOption) => String(i.value), []);
   const cityKey = useCallback((i: CityOption) => String(i.value), []);
 
@@ -1676,7 +1817,7 @@ onRefresh={() => {
 
               <Text style={styles.label}>Description</Text>
               <TextInput
-                style={[styles.input, { minHeight: 84 }]}
+                style={[styles.input, { minHeight: 84 }, WEB_NO_OUTLINE]}
                 placeholder="Short, clear description"
                 placeholderTextColor={T.mute}
                 value={formData.description}
@@ -1785,7 +1926,7 @@ onRefresh={() => {
 
                   <Text style={styles.label}>Amount</Text>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, WEB_NO_OUTLINE]}
                     placeholder="Amount"
                     placeholderTextColor={T.mute}
                     keyboardType="numeric"
@@ -1799,7 +1940,7 @@ onRefresh={() => {
 
               <Text style={styles.label}>Time</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, WEB_NO_OUTLINE]}
                 placeholder="e.g. 3-day shoot"
                 placeholderTextColor={T.mute}
                 value={formData.time}
@@ -1809,56 +1950,7 @@ onRefresh={() => {
               />
             </ScrollView>
 
-            {/* Inline City Search */}
-            {jobCityOverlayVisible && (
-  <View
-    style={[
-      styles.inlineOverlay,
-      { paddingTop: 0, justifyContent: 'flex-start' },
-    ]}
-  >
-    <View
-      style={[
-        styles.inlineSheet,
-        { marginTop: insets.top + 28 },
-      ]}
-    >
-                  <View style={styles.modalChromeLine} />
-                  <Text style={styles.modalTitle}>Search City</Text>
-                  <TextInput
-  ref={citySearchInputRef}
-  placeholder="Start typing…"
-  placeholderTextColor={T.mute}
-  value={citySearchTerm}
-  onChangeText={(text) => {
-    setCitySearchTerm(text);
-    void fetchCities(text);
-  }}
-  style={styles.searchInput}
-/>
-                  <FlatList
-                    data={cityItems}
-                    keyExtractor={cityKey}
-                    keyboardShouldPersistTaps="handled"
-                    renderItem={renderCityItem}
-                    style={{ maxHeight: '70%' as any }}
-                    removeClippedSubviews={false}
-                    windowSize={10}
-                    initialNumToRender={10}
-                  />
-                  {searchingCities && (
-                    <ActivityIndicator style={{ marginTop: 8 }} />
-                  )}
-                  <TouchableOpacity
-                    onPress={() => setJobCityOverlayVisible(false)}
-                    style={styles.closeModalButton}
-                    activeOpacity={0.92}
-                  >
-                    <Text style={styles.closeModalText}>Cancel</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
+          
 
             {/* Inline Role Search */}
             {jobRoleOverlayVisible && (
@@ -1881,7 +1973,7 @@ onRefresh={() => {
                     placeholderTextColor={T.mute}
                     value={roleSearchTerm}
                     onChangeText={(t) => setRoleSearchTerm(t)}
-                    style={styles.searchInput}
+                    style={[styles.searchInput, WEB_NO_OUTLINE]}
                     autoFocus
                   />
                   <FlatList
@@ -2019,59 +2111,221 @@ onRefresh={() => {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* City Filter Modal */}
-            {/* City Filter Modal */}
+            {/* Job City Search Modal */}
+      <Modal
+        visible={jobCityOverlayVisible}
+        animationType={Platform.OS === 'web' ? 'none' : 'slide'}
+        onRequestClose={() => setJobCityOverlayVisible(false)}
+      >
+        <SafeAreaView style={styles.cityModalSafeArea} edges={['top']}>
+          <View style={styles.cityModalShell}>
+            <View style={styles.cityModalHeader}>
+              <Text style={styles.cityModalTitle}>Choose a city</Text>
+
+              <TouchableOpacity
+                onPress={() => setJobCityOverlayVisible(false)}
+                style={styles.cityModalCloseIcon}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="close" size={18} color={T.text} />
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              ref={citySearchInputRef}
+              placeholder="Start typing a city..."
+              placeholderTextColor={T.mute}
+              value={citySearchTerm}
+              onChangeText={(text) => {
+                setCitySearchTerm(text);
+                void fetchCities(text);
+              }}
+              style={[styles.citySearchInput, WEB_NO_OUTLINE]}
+              autoFocus
+            />
+
+            {searchingCities ? (
+              <View style={styles.cityModalLoadingWrap}>
+                <ActivityIndicator color={GOLD} />
+              </View>
+            ) : (
+              <FlatList
+                data={cityItems}
+                keyExtractor={cityKey}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.cityListContent}
+                renderItem={({ item, index }) => {
+                  const selected = formData.city?.value === item.value;
+
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.cityPickerItem,
+                        selected && styles.cityPickerItemSelected,
+                      ]}
+                      onPress={() => {
+                        setFormData((prev) => ({ ...prev, city: item }));
+                        setJobCityOverlayVisible(false);
+                      }}
+                      activeOpacity={0.9}
+                    >
+                      <View style={styles.cityPickerItemLeft}>
+                        <View
+                          style={[
+                            styles.radioOuter,
+                            selected && styles.radioOuterSelected,
+                          ]}
+                        >
+                          {selected ? <View style={styles.radioInner} /> : null}
+                        </View>
+
+                        <Text
+                          style={[
+                            styles.cityPickerText,
+                            selected && styles.cityPickerTextSelected,
+                          ]}
+                        >
+                          {item.label}
+                        </Text>
+                      </View>
+
+                      {index === 0 && parseCityQuery(citySearchTerm).cityQuery.length >= 3 ? (
+                        <View style={styles.bestMatchBadge}>
+                          <Text style={styles.bestMatchText}>Best match</Text>
+                        </View>
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={
+                  citySearchTerm.trim().length >= 2 ? (
+                    <View style={styles.emptySearchState}>
+                      <Text style={styles.emptyText}>No matching cities found.</Text>
+                    </View>
+                  ) : null
+                }
+              />
+            )}
+
+            <TouchableOpacity
+              onPress={() => setJobCityOverlayVisible(false)}
+              style={styles.cityModalCancelButton}
+              activeOpacity={0.92}
+            >
+              <Text style={styles.cityModalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+   
+                  {/* City Filter Modal */}
       <Modal
         visible={cityFilterModalVisible}
         animationType={Platform.OS === 'web' ? 'none' : 'slide'}
         onRequestClose={() => setCityFilterModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalChromeLine} />
-          <Text style={styles.modalTitle}>Filter by City</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Type at least 2 letters…"
-            placeholderTextColor={T.mute}
-            value={cityFilterSearchTerm}
-            autoFocus
-            onChangeText={(t) => {
-              setCityFilterSearchTerm(t);
-              void fetchFilterCities(t);
-            }}
-          />
-          {searchingFilterCities && (
-            <ActivityIndicator style={{ marginTop: 10 }} />
-          )}
-          <FlatList
-            data={cityFilterItems}
-            keyExtractor={(i) => String(i.value)}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.listPickerItem}
-                onPress={() => {
-                  setFilterCity(item);
-                  setCityFilterModalVisible(false);
-                }}
-                activeOpacity={0.9}
-              >
-                <Text style={styles.listPickerText}>{item.label}</Text>
-              </TouchableOpacity>
-            )}
-            removeClippedSubviews={false}
-            windowSize={10}
-            initialNumToRender={12}
-          />
-          <TouchableOpacity
-            onPress={() => setCityFilterModalVisible(false)}
-            style={styles.closeModalButton}
-            activeOpacity={0.92}
-          >
-            <Text style={styles.closeModalText}>Close</Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
+        <SafeAreaView style={styles.cityModalSafeArea} edges={['top']}>
+          <View style={styles.cityModalShell}>
+            <View style={styles.cityModalHeader}>
+              <Text style={styles.cityModalTitle}>Choose a city</Text>
 
+              <TouchableOpacity
+                onPress={() => setCityFilterModalVisible(false)}
+                style={styles.cityModalCloseIcon}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="close" size={18} color={T.text} />
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              placeholder="Start typing a city..."
+              placeholderTextColor={T.mute}
+              value={cityFilterSearchTerm}
+              onChangeText={(text) => {
+                setCityFilterSearchTerm(text);
+                void fetchFilterCities(text);
+              }}
+              style={[styles.citySearchInput, WEB_NO_OUTLINE]}
+              autoFocus
+            />
+
+            {searchingFilterCities ? (
+              <View style={styles.cityModalLoadingWrap}>
+                <ActivityIndicator color={GOLD} />
+              </View>
+            ) : (
+              <FlatList
+                data={cityFilterItems}
+                keyExtractor={(item) => String(item.value)}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.cityListContent}
+                renderItem={({ item, index }) => {
+                  const selected = filterCity?.value === item.value;
+
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.cityPickerItem,
+                        selected && styles.cityPickerItemSelected,
+                      ]}
+                      onPress={() => {
+                        setFilterCity(item);
+                        setCityFilterModalVisible(false);
+                      }}
+                      activeOpacity={0.9}
+                    >
+                      <View style={styles.cityPickerItemLeft}>
+                        <View
+                          style={[
+                            styles.radioOuter,
+                            selected && styles.radioOuterSelected,
+                          ]}
+                        >
+                          {selected ? <View style={styles.radioInner} /> : null}
+                        </View>
+
+                        <Text
+                          style={[
+                            styles.cityPickerText,
+                            selected && styles.cityPickerTextSelected,
+                          ]}
+                        >
+                          {item.label}
+                        </Text>
+                      </View>
+
+                      {index === 0 && parseCityQuery(cityFilterSearchTerm).cityQuery.length >= 3 ? (
+                        <View style={styles.bestMatchBadge}>
+                          <Text style={styles.bestMatchText}>Best match</Text>
+                        </View>
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={
+                  cityFilterSearchTerm.trim().length >= 2 ? (
+                    <View style={styles.emptySearchState}>
+                      <Text style={styles.emptyText}>No matching cities found.</Text>
+                    </View>
+                  ) : null
+                }
+              />
+            )}
+
+            <TouchableOpacity
+              onPress={() => setCityFilterModalVisible(false)}
+              style={styles.cityModalCancelButton}
+              activeOpacity={0.92}
+            >
+              <Text style={styles.cityModalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
       {/* Role Filter Modal */}
       <Modal
         visible={roleFilterModalVisible}
@@ -2082,7 +2336,7 @@ onRefresh={() => {
           <View style={styles.modalChromeLine} />
           <Text style={styles.modalTitle}>Filter by Role</Text>
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, WEB_NO_OUTLINE]}
             placeholder="Start typing a role…"
             placeholderTextColor={T.mute}
             value={roleFilterSearchTerm}
@@ -2783,6 +3037,168 @@ filterPill: {
     fontSize: 15,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
+  },
+
+    cityModalSafeArea: {
+    flex: 1,
+    backgroundColor: T.bg,
+  },
+
+  cityModalShell: {
+    flex: 1,
+    backgroundColor: T.bg,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 16,
+  },
+
+  cityModalHeader: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+
+  cityModalTitle: {
+    color: T.text,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: -0.3,
+  },
+
+  cityModalCloseIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: T.surface2,
+    borderWidth: 1,
+    borderColor: T.lineSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  citySearchInput: {
+    minHeight: 50,
+    borderWidth: 1,
+    borderColor: T.lineSoft,
+    borderRadius: 15,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    color: T.text,
+    backgroundColor: T.surface3,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  cityModalLoadingWrap: {
+    paddingTop: 24,
+  },
+
+  cityListContent: {
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
+
+  cityPickerItem: {
+    minHeight: 58,
+    borderRadius: 16,
+    backgroundColor: T.surface2,
+    borderWidth: 1,
+    borderColor: T.lineSoft,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  cityPickerItemSelected: {
+    borderColor: '#3D3119',
+    backgroundColor: '#0E0D09',
+  },
+
+  cityPickerItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    paddingRight: 10,
+  },
+
+  radioOuter: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: T.mute,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  radioOuterSelected: {
+    borderColor: GOLD,
+  },
+
+  radioInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: GOLD,
+  },
+
+  cityPickerText: {
+    flex: 1,
+    fontSize: 14,
+    color: T.text,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '700',
+  },
+
+  cityPickerTextSelected: {
+    color: T.text,
+    fontWeight: '800',
+  },
+
+  bestMatchBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#18140B',
+    borderWidth: 1,
+    borderColor: '#3D3119',
+  },
+
+  bestMatchText: {
+    fontSize: 10,
+    color: GOLD,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+
+  emptySearchState: {
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
+
+  cityModalCancelButton: {
+    marginTop: 4,
+    minHeight: 50,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: T.surface2,
+    borderWidth: 1,
+    borderColor: T.lineSoft,
+  },
+
+  cityModalCancelText: {
+    color: T.sub,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 14,
+    fontWeight: '800',
   },
 
   /* Modal base */
