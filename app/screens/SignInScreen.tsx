@@ -749,31 +749,215 @@ export default function SignInScreen() {
   const modalMaxHeight = Math.max(260, height - insets.top - insets.bottom - 24);
 
   const renderAuthForm = (mobileMode = false) => {
-    const webCardWidth = Math.min(560, Math.max(330, width - 56));
+  const webCardWidth = Math.min(560, Math.max(330, width - 56));
 
-    return (
+  const FormContent = (
+    <>
+      {!mobileMode && (
+        <View style={styles.authHeader}>
+          <Text style={[styles.authTitle, isShort && styles.authTitleShort]}>
+            WELCOME BACK
+          </Text>
+          <Pressable onPress={() => setShowSignIn(false)} hitSlop={10}>
+            <Ionicons name="close" size={20} color={T.sub} />
+          </Pressable>
+        </View>
+      )}
+
+      {mobileMode && (
+        <View style={[styles.mobileHeader, isWeb && styles.webHeader]}>
+          <Animated.Text
+            style={[
+              styles.mobileBrand,
+              isWeb && styles.webBrand,
+              { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
+            ]}
+          >
+            OVERLOOKED
+          </Animated.Text>
+
+          <Text style={[styles.mobileTitle, isWeb && styles.webTitle]}>Sign in</Text>
+          <Text style={[styles.mobileSubtitle, isWeb && styles.webSubtitle]}>
+            Welcome back. Get straight into your account.
+          </Text>
+        </View>
+      )}
+
+      {!mobileMode && <Text style={styles.subtitle}>Sign in to join this month’s journey.</Text>}
+
+       <View
+  style={[
+    styles.inputWrap,
+    isWeb && styles.inputWrapWeb,
+    isWeb && focus === 'email' && styles.inputWrapFocused,
+  ]}
+>
+        <Ionicons name="mail" size={17} color={focus === 'email' ? T.olive : T.mute} />
+        <TextInput
+          ref={emailInputRef}
+          style={[styles.input, isWeb && styles.inputWeb]}
+          placeholder="Email"
+          placeholderTextColor={T.mute}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="email-address"
+          autoComplete="email"
+          textContentType="emailAddress"
+          keyboardAppearance="dark"
+          selectionColor={GOLD}
+          cursorColor={GOLD}
+          underlineColorAndroid="transparent"
+          value={email}
+          onChangeText={setEmail}
+          onFocus={() => {
+  if (isWeb) setFocus('email');
+}}
+onBlur={() => {
+  if (isWeb) setFocus(null);
+}}
+          returnKeyType="next"
+          blurOnSubmit={false}
+          onSubmitEditing={() => passwordInputRef.current?.focus()}
+        />
+      </View>
+
       <View
-        style={[
-          styles.authCard,
-          mobileMode ? styles.authCardMobile : null,
-          isWeb && mobileMode ? styles.authCardWeb : null,
-          {
-            width: mobileMode ? (isWeb ? webCardWidth : '100%') : maxModalWidth(460),
-            maxHeight: mobileMode ? undefined : modalMaxHeight,
-            alignSelf: 'center',
-            padding:
-              mobileMode && isWeb
-                ? width >= 900
-                  ? 36
-                  : 28
-                : mobileMode
-                  ? 22
-                  : isShort
-                    ? 16
-                    : 20,
-          },
-        ]}
+  style={[
+    styles.inputWrap,
+    isWeb && styles.inputWrapWeb,
+    { marginTop: 14 },
+    isWeb && focus === 'password' && styles.inputWrapFocused,
+  ]}
+>
+        <Ionicons
+          name="lock-closed"
+          size={17}
+          color={focus === 'password' ? T.olive : T.mute}
+        />
+        <TextInput
+          ref={passwordInputRef}
+          style={[styles.input, isWeb && styles.inputWeb]}
+          placeholder="Password"
+          placeholderTextColor={T.mute}
+          secureTextEntry={!showPassword}
+          autoCorrect={false}
+          autoComplete="password"
+          textContentType="password"
+          keyboardAppearance="dark"
+          selectionColor={GOLD}
+          cursorColor={GOLD}
+          underlineColorAndroid="transparent"
+          value={password}
+          onChangeText={setPassword}
+          onFocus={() => {
+  if (isWeb) setFocus('password');
+}}
+onBlur={() => {
+  if (isWeb) setFocus(null);
+}}
+          returnKeyType="done"
+          onSubmitEditing={handleSignIn}
+        />
+
+        <TouchableOpacity
+          onPress={() => setShowPassword((prev) => !prev)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons
+            name={showPassword ? 'eye-off' : 'eye'}
+            size={19}
+            color={T.mute}
+          />
+        </TouchableOpacity>
+      </View>
+
+      <TouchableOpacity
+        onPress={() => {
+          if (!mobileMode) setShowSignIn(false);
+          navigation.navigate('ForgotPassword');
+        }}
+        style={{ marginTop: 12, alignSelf: mobileMode ? 'flex-start' : 'auto' }}
       >
+        <Text style={styles.forgotText}>Forgot password?</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[
+          styles.button,
+          isWeb && styles.buttonWeb,
+          loading && { opacity: 0.9 },
+          mobileMode && { marginTop: 22 },
+        ]}
+        onPress={handleSignIn}
+        disabled={loading}
+        activeOpacity={0.9}
+      >
+        {loading ? (
+          <ActivityIndicator color={DARK_BG} />
+        ) : (
+          <Text style={[styles.buttonText, isWeb && styles.buttonTextWeb]}>
+            Sign In
+          </Text>
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() => {
+          if (!mobileMode) setShowSignIn(false);
+          handleEnterAsGuest();
+        }}
+        style={{ marginTop: 16 }}
+      >
+        <Text style={styles.link}>
+          <Text style={{ textDecorationLine: 'underline' }}>Enter without an account</Text>
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() => {
+          if (!mobileMode) setShowSignIn(false);
+          navigation.navigate('SignUp');
+        }}
+        style={{ marginTop: 18 }}
+      >
+        <Text style={styles.link}>
+          New to OverLooked?{' '}
+          <Text style={{ textDecorationLine: 'underline' }}>Create an account</Text>
+        </Text>
+      </TouchableOpacity>
+
+      <Text style={styles.supportText}>
+        For support, message overlookedsupport@gmail.com
+      </Text>
+    </>
+  );
+
+  return (
+    <View
+      style={[
+        styles.authCard,
+        mobileMode ? styles.authCardMobile : null,
+        isWeb && mobileMode ? styles.authCardWeb : null,
+        {
+          width: mobileMode ? (isWeb ? webCardWidth : '100%') : maxModalWidth(460),
+          maxHeight: mobileMode ? undefined : modalMaxHeight,
+          alignSelf: 'center',
+          padding:
+            mobileMode && isWeb
+              ? width >= 900
+                ? 36
+                : 28
+              : mobileMode
+                ? 22
+                : isShort
+                  ? 16
+                  : 20,
+        },
+      ]}
+    >
+      {isNativeMobile && mobileMode ? (
+        FormContent
+      ) : (
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -781,198 +965,43 @@ export default function SignInScreen() {
           overScrollMode="never"
           contentContainerStyle={{ paddingBottom: mobileMode ? 0 : 14 }}
         >
-          {!mobileMode && (
-            <View style={styles.authHeader}>
-              <Text style={[styles.authTitle, isShort && styles.authTitleShort]}>
-                WELCOME BACK
-              </Text>
-              <Pressable onPress={() => setShowSignIn(false)} hitSlop={10}>
-                <Ionicons name="close" size={20} color={T.sub} />
-              </Pressable>
-            </View>
-          )}
-
-          {mobileMode && (
-            <View style={[styles.mobileHeader, isWeb && styles.webHeader]}>
-              <Animated.Text
-                style={[
-                  styles.mobileBrand,
-                  isWeb && styles.webBrand,
-                  { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
-                ]}
-              >
-                OVERLOOKED
-              </Animated.Text>
-
-              <Text style={[styles.mobileTitle, isWeb && styles.webTitle]}>Sign in</Text>
-              <Text style={[styles.mobileSubtitle, isWeb && styles.webSubtitle]}>
-                Welcome back. Get straight into your account.
-              </Text>
-            </View>
-          )}
-
-          {!mobileMode && <Text style={styles.subtitle}>Sign in to join this month’s journey.</Text>}
-
-          <View style={[styles.inputWrap, isWeb && styles.inputWrapWeb, focus === 'email' && styles.inputWrapFocused]}>
-            <Ionicons name="mail" size={17} color={focus === 'email' ? T.olive : T.mute} />
-            <TextInput
-              ref={emailInputRef}
-              style={[styles.input, isWeb && styles.inputWeb]}
-              placeholder="Email"
-              placeholderTextColor={T.mute}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              autoComplete="email"
-              textContentType="emailAddress"
-              keyboardAppearance="dark"
-              selectionColor={GOLD}
-              cursorColor={GOLD}
-              underlineColorAndroid="transparent"
-              value={email}
-              onChangeText={setEmail}
-              onFocus={() => setFocus('email')}
-              onBlur={() => setFocus(null)}
-              returnKeyType="next"
-              blurOnSubmit={false}
-              onSubmitEditing={() => passwordInputRef.current?.focus()}
-            />
-          </View>
-
-          <View
-            style={[
-              styles.inputWrap,
-              isWeb && styles.inputWrapWeb,
-              { marginTop: 14 },
-              focus === 'password' && styles.inputWrapFocused,
-            ]}
-          >
-            <Ionicons
-              name="lock-closed"
-              size={17}
-              color={focus === 'password' ? T.olive : T.mute}
-            />
-            <TextInput
-              ref={passwordInputRef}
-              style={[styles.input, isWeb && styles.inputWeb]}
-              placeholder="Password"
-              placeholderTextColor={T.mute}
-              secureTextEntry={!showPassword}
-              autoCorrect={false}
-              autoComplete="password"
-              textContentType="password"
-              keyboardAppearance="dark"
-              selectionColor={GOLD}
-              cursorColor={GOLD}
-              underlineColorAndroid="transparent"
-              value={password}
-              onChangeText={setPassword}
-              onFocus={() => setFocus('password')}
-              onBlur={() => setFocus(null)}
-              returnKeyType="done"
-              onSubmitEditing={handleSignIn}
-            />
-            <TouchableOpacity
-              onPress={() => setShowPassword((prev) => !prev)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons
-                name={showPassword ? 'eye-off' : 'eye'}
-                size={19}
-                color={T.mute}
-              />
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            onPress={() => {
-              if (!mobileMode) setShowSignIn(false);
-              navigation.navigate('ForgotPassword');
-            }}
-            style={{ marginTop: 12, alignSelf: mobileMode ? 'flex-start' : 'auto' }}
-          >
-            <Text style={styles.forgotText}>Forgot password?</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.button,
-              isWeb && styles.buttonWeb,
-              loading && { opacity: 0.9 },
-              mobileMode && { marginTop: 22 },
-            ]}
-            onPress={handleSignIn}
-            disabled={loading}
-            activeOpacity={0.9}
-          >
-            {loading ? (
-              <ActivityIndicator color={DARK_BG} />
-            ) : (
-              <Text style={[styles.buttonText, isWeb && styles.buttonTextWeb]}>
-                Sign In
-              </Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => {
-              if (!mobileMode) setShowSignIn(false);
-              handleEnterAsGuest();
-            }}
-            style={{ marginTop: 16 }}
-          >
-            <Text style={styles.link}>
-              <Text style={{ textDecorationLine: 'underline' }}>Enter without an account</Text>
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => {
-              if (!mobileMode) setShowSignIn(false);
-              navigation.navigate('SignUp');
-            }}
-            style={{ marginTop: 18 }}
-          >
-            <Text style={styles.link}>
-              New to OverLooked?{' '}
-              <Text style={{ textDecorationLine: 'underline' }}>Create an account</Text>
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={styles.supportText}>
-            For support, message overlookedsupport@gmail.com
-          </Text>
+          {FormContent}
         </ScrollView>
-      </View>
-    );
-  };
+      )}
+    </View>
+  );
+};
 
   if (useSimpleMobileLayout) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{ flex: 1 }}
-        >
-          <View style={styles.bgSolid} />
-          <View style={styles.mobileGlowTop} pointerEvents="none" />
-          <View style={styles.mobileGlowBottom} pointerEvents="none" />
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+      <View style={{ flex: 1 }}>
+        <View style={styles.bgSolid} />
+        <View style={styles.mobileGlowTop} pointerEvents="none" />
+        <View style={styles.mobileGlowBottom} pointerEvents="none" />
 
-          <View
-            style={[
-              styles.mobileContainer,
-              {
-                paddingTop: Math.max(insets.top, 20),
-                paddingBottom: Math.max(insets.bottom, 20),
-              },
-            ]}
-          >
-            {renderAuthForm(true)}
-          </View>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    );
-  }
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={[
+            styles.mobileContainer,
+            {
+              flexGrow: 1,
+              paddingTop: Math.max(insets.top, 20),
+              paddingBottom: Math.max(insets.bottom, 20),
+            },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          overScrollMode="never"
+        >
+          {renderAuthForm(true)}
+        </ScrollView>
+      </View>
+    </SafeAreaView>
+  );
+}
     return (
     <SafeAreaView
       style={[
@@ -1326,18 +1355,17 @@ const styles = StyleSheet.create({
   },
 
   input: {
-    flex: 1,
-    paddingVertical: 2,
-    color: T.text,
-    fontSize: 15,
-    fontFamily: SYSTEM_SANS,
-    outlineStyle: 'none' as any,
-  },
-  inputWeb: {
-    fontSize: 16,
-    lineHeight: 22,
-  },
-
+  flex: 1,
+  paddingVertical: 2,
+  color: T.text,
+  fontSize: 15,
+  fontFamily: SYSTEM_SANS,
+},
+inputWeb: {
+  fontSize: 16,
+  lineHeight: 22,
+  outlineStyle: 'none' as any,
+},
   forgotText: {
     color: T.mute,
     fontSize: 13,
