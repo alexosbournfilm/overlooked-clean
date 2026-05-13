@@ -765,23 +765,28 @@ export default function SignInScreen() {
       )}
 
       {mobileMode && (
-        <View style={[styles.mobileHeader, isWeb && styles.webHeader]}>
-          <Animated.Text
-            style={[
-              styles.mobileBrand,
-              isWeb && styles.webBrand,
-              { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
-            ]}
-          >
-            OVERLOOKED
-          </Animated.Text>
+  <View style={[styles.mobileHeader, isWeb && styles.webHeader]}>
+    <Animated.Text
+      style={[
+        styles.mobileBrand,
+        isWeb && styles.webBrand,
+        { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
+      ]}
+    >
+      OVERLOOKED
+    </Animated.Text>
 
-          <Text style={[styles.mobileTitle, isWeb && styles.webTitle]}>Sign in</Text>
-          <Text style={[styles.mobileSubtitle, isWeb && styles.webSubtitle]}>
-            Welcome back. Get straight into your account.
-          </Text>
-        </View>
-      )}
+    <Text style={[styles.heroPrompt, isWeb && styles.heroPromptWeb]}>
+  <Text style={styles.heroHighlight}>Meet</Text> other creatives.{'\n'}
+  <Text style={styles.heroHighlight}>Share</Text> your work worldwide.
+</Text>
+
+    <Text style={[styles.mobileTitle, isWeb && styles.webTitle]}>Sign in</Text>
+    <Text style={[styles.mobileSubtitle, isWeb && styles.webSubtitle]}>
+      Welcome back. Get straight into your account.
+    </Text>
+  </View>
+)}
 
       {!mobileMode && <Text style={styles.subtitle}>Sign in to join this month’s journey.</Text>}
 
@@ -1240,13 +1245,34 @@ const styles = StyleSheet.create({
     fontSize: 25,
     letterSpacing: 3.8,
   },
+  heroPrompt: {
+  marginTop: 18,
+  fontSize: 22,
+  lineHeight: 28,
+  fontWeight: '800',
+  color: T.text,
+  textAlign: 'center',
+  letterSpacing: -0.2,
+  fontFamily: SYSTEM_SANS,
+  maxWidth: 320,
+},
+heroPromptWeb: {
+  marginTop: 20,
+  fontSize: 25,
+  lineHeight: 31,
+  maxWidth: 390,
+},
+heroHighlight: {
+  color: T.accent,
+  fontWeight: '900',
+},
   mobileTitle: {
-    marginTop: 18,
-    fontSize: 30,
-    fontWeight: '900',
-    color: T.text,
-    fontFamily: SYSTEM_SANS,
-  },
+  marginTop: 12,
+  fontSize: 30,
+  fontWeight: '900',
+  color: T.text,
+  fontFamily: SYSTEM_SANS,
+},
   webTitle: {
     marginTop: 20,
     fontSize: 36,
