@@ -20,12 +20,12 @@ import { supabase } from "../lib/supabase";
 import type { RootStackParamList } from "../navigation/navigationRef";
 
 const GOLD = "#C6A664";
-const BG = "#000000";
-const PANEL = "#080808";
-const PANEL_ALT = "#0D0D0D";
-const LINE = "rgba(255,255,255,0.07)";
-const TEXT = "#F8F6F1";
-const SUB = "rgba(237,235,230,0.72)";
+const BG = "#050505";
+const PANEL = "#0D0D0F";
+const PANEL_ALT = "#111114";
+const LINE = "rgba(255,255,255,0.10)";
+const TEXT = "#F4EFE6";
+const SUB = "rgba(255,255,255,0.72)";
 const MUTE = "rgba(237,235,230,0.52)";
 
 type SharedFilmRoute = RouteProp<RootStackParamList, "SharedFilm">;

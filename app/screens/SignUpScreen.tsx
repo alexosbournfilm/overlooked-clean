@@ -20,13 +20,13 @@ import { supabase } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 
 // DARK THEME PALETTE (aligned with MainTabs)
-const DARK_BG = '#0D0D0D';
-const DARK_CARD = '#171717';
-const DARK_INPUT = '#111111';
-const TEXT_IVORY = '#EDEBE6';
-const TEXT_MUTED = '#A7A6A2';
+const DARK_BG = '#050505';
+const DARK_CARD = '#111114';
+const DARK_INPUT = '#16161A';
+const TEXT_IVORY = '#F4EFE6';
+const TEXT_MUTED = '#A59D90';
 const GOLD = '#C6A664';
-const BORDER = '#2A2A2A';
+const BORDER = 'rgba(255,255,255,0.10)';
 
 export default function SignUpScreen() {
   const navigation = useNavigation<any>();

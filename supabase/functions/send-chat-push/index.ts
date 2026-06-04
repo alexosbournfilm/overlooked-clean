@@ -27,6 +27,7 @@ type UserRow = {
   id: string;
   full_name: string | null;
   expo_push_token: string | null;
+  notification_preferences?: Record<string, boolean> | null;
 };
 
 function isExpoPushToken(token: string | null | undefined): token is string {
@@ -35,6 +36,11 @@ function isExpoPushToken(token: string | null | undefined): token is string {
     token.startsWith("ExponentPushToken[") ||
     token.startsWith("ExpoPushToken[")
   );
+}
+
+function allowsNotification(user: UserRow, key: "direct_messages" | "group_messages") {
+  const prefs = user.notification_preferences ?? {};
+  return prefs[key] !== false;
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -109,7 +115,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const { data: recipients, error: recipientsError } = await supabase
       .from("users")
-      .select("id, full_name, expo_push_token")
+      .select("id, full_name, expo_push_token, notification_preferences")
       .in("id", recipientIds);
 
     if (recipientsError) {
@@ -119,8 +125,9 @@ serve(async (req: Request): Promise<Response> => {
       });
     }
 
-    const validRecipients = ((recipients ?? []) as UserRow[]).filter((user) =>
-      isExpoPushToken(user.expo_push_token)
+    const preferenceKey = conversation.is_group ? "group_messages" : "direct_messages";
+    const validRecipients = ((recipients ?? []) as UserRow[]).filter(
+      (user) => isExpoPushToken(user.expo_push_token) && allowsNotification(user, preferenceKey)
     );
 
     if (!validRecipients.length) {

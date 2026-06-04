@@ -37,6 +37,10 @@ import { useGamification } from '../context/GamificationContext';
 import { getCurrentUserTierOrFree } from '../lib/membership';
 import { UpgradeModal } from '../../components/UpgradeModal';
 import { useAppRefresh } from '../context/AppRefreshContext';
+import { reportContent, ReportReason } from '../utils/reportContent';
+import { blockUser } from '../utils/blockUser';
+import { validateMultipleSafeTexts, validateSafeText } from '../utils/moderation';
+import ReportContentModal from '../../components/ReportContentModal';
 
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
@@ -49,6 +53,19 @@ const WEB_NO_OUTLINE =
     ? ({ outlineStyle: 'none', outlineWidth: 0 } as any)
     : null;
 
+const logJobsIssue = (label: string, error?: unknown) => {
+  if (typeof __DEV__ === 'undefined' || !__DEV__) return;
+
+  const message =
+    error instanceof Error
+      ? error.message
+      : error && typeof error === 'object' && 'message' in error
+        ? String((error as { message?: unknown }).message)
+        : error;
+
+  console.log(label, message);
+};
+
 
 
 /* ────────────────────────────────────────────────────────────
@@ -59,17 +76,17 @@ const GOLD_SOFT = 'rgba(198,166,100,0.16)';
 const GOLD_LINE = 'rgba(198,166,100,0.28)';
 
 const T = {
-  bg: '#000000',
-  surface: '#070707',
-  surface2: '#0B0B0B',
-  surface3: '#101010',
-  text: '#FFFFFF',
-  sub: '#CFC7B8',
-  mute: '#8F8A82',
-  accent: '#FFFFFF',
-  line: '#151515',
-  lineSoft: '#1C1C1C',
-  glow: 'rgba(255,255,255,0.03)',
+  bg: '#050505',
+  surface: '#0D0D0F',
+  surface2: '#111114',
+  surface3: '#16161A',
+  text: '#F4EFE6',
+  sub: '#D8D2C8',
+  mute: '#9F927F',
+  accent: GOLD,
+  line: 'rgba(255,255,255,0.10)',
+  lineSoft: 'rgba(255,255,255,0.07)',
+  glow: 'rgba(198,166,100,0.08)',
 };
 
 const FONT_CINEMATIC =
@@ -89,9 +106,9 @@ const COLORS = {
   textPrimary: T.text,
   textSecondary: T.sub,
   primary: T.accent,
-  textOnPrimary: '#000000',
-  border: '#1E1E1E',
-  borderSoft: '#1A1A1A',
+  textOnPrimary: '#050505',
+  border: 'rgba(255,255,255,0.10)',
+  borderSoft: 'rgba(255,255,255,0.07)',
 };
 
 /**
@@ -120,6 +137,8 @@ type JobRow = {
   created_at: string;
   is_closed: boolean;
   remote: boolean;
+  is_removed?: boolean | null;
+  removed_reason?: string | null;
   users?: { id: string; full_name?: string | null } | null;
   cities?: { name?: string | null; country_code?: string | null } | null;
   creative_roles?: { name?: string | null } | null;
@@ -372,6 +391,8 @@ export default function JobsScreen() {
   const [activeTab, setActiveTab] = useState<'paid' | 'free' | 'my'>('free');
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [myJobs, setMyJobs] = useState<MyJob[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
   const [isLoadingInit, setIsLoadingInit] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [loadingMyJobs, setLoadingMyJobs] = useState<boolean>(false);
@@ -417,6 +438,10 @@ export default function JobsScreen() {
   });
 
   const [selectedJob, setSelectedJob] = useState<JobRow | null>(null);
+  const [reportTargetJob, setReportTargetJob] = useState<JobRow | null>(null);
+  const [reportReason, setReportReason] = useState<ReportReason>('Harassment or bullying');
+  const [reportDetails, setReportDetails] = useState('');
+  const [reportSubmitting, setReportSubmitting] = useState(false);
 
   // Apply state
   const [applyLoading, setApplyLoading] = useState<boolean>(false);
@@ -464,6 +489,39 @@ const latestCityFilterTermRef = useRef<string>('');
     []
   );
 
+  const fetchBlockedUsers = useCallback(async (uid?: string | null) => {
+    if (!uid) {
+      setBlockedUserIds(new Set());
+      return new Set<string>();
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('user_blocks')
+        .select('blocked_id')
+        .eq('blocker_id', uid);
+
+      if (error) {
+        if (typeof __DEV__ !== 'undefined' && __DEV__) {
+          console.log('fetchBlockedUsers unavailable', error.message);
+        }
+        setBlockedUserIds(new Set());
+        return new Set<string>();
+      }
+
+      const ids = new Set<string>((data || []).map((row: any) => row.blocked_id).filter(Boolean));
+      setBlockedUserIds(ids);
+      return ids;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : error;
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.log('fetchBlockedUsers unavailable', message);
+      }
+      setBlockedUserIds(new Set());
+      return new Set<string>();
+    }
+  }, []);
+
   /* ---------- Navigation header ---------- */
   useLayoutEffect(() => {
     // @ts-ignore
@@ -496,6 +554,11 @@ contentStyle: { backgroundColor: '#000000' },
   /* ---------- Initial loads ---------- */
   useEffect(() => {
     void fetchRoles();
+    supabase.auth.getUser().then(({ data }) => {
+      const uid = data.user?.id ?? null;
+      setCurrentUserId(uid);
+      void fetchBlockedUsers(uid);
+    });
   }, []);
 
   // Load current user tier
@@ -528,7 +591,7 @@ contentStyle: { backgroundColor: '#000000' },
   const fetchRoles = async () => {
     const { data, error } = await supabase.from('creative_roles').select('id, name').order('name');
     if (error) {
-      console.error(error);
+      logJobsIssue('fetchRoles unavailable', error);
       show('Could not load roles', 'error');
     } else setRoles(data || []);
   };
@@ -541,13 +604,25 @@ contentStyle: { backgroundColor: '#000000' },
       if (mode === 'init' && jobs.length === 0) setIsLoadingInit(true);
       if (mode === 'refresh') setIsRefreshing(true);
 
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const uid = user?.id ?? currentUserId;
+      if (uid && uid !== currentUserId) setCurrentUserId(uid);
+      const blockedIds = await fetchBlockedUsers(uid);
+
       let query = supabase
         .from('jobs')
         .select(`*, users(id, full_name), cities(name, country_code), creative_roles(name)`)
         .eq('type', activeTab === 'paid' ? 'Paid' : 'Free')
         .eq('is_closed', false)
+        .eq('is_removed', false)
         .order('created_at', { ascending: false })
 .order('created_at', { ascending: false });
+
+      if (blockedIds.size > 0) {
+        query = query.not('user_id', 'in', `(${Array.from(blockedIds).join(',')})`);
+      }
 
       if (filterCity?.value) query = query.eq('city_id', filterCity.value);
       if (filterRole?.value) query = query.eq('role_id', filterRole.value);
@@ -556,17 +631,17 @@ contentStyle: { backgroundColor: '#000000' },
       const { data, error } = await query;
 
       if (error) {
-        console.error(error);
+        logJobsIssue('fetchJobs unavailable', error);
         setJobs([]);
         show('Could not fetch jobs', 'error');
       } else {
-        setJobs((data as JobRow[]) || []);
+        setJobs(((data as JobRow[]) || []).filter((job) => !blockedIds.has(job.user_id)));
       }
 
       if (mode === 'init') setIsLoadingInit(false);
       if (mode === 'refresh') setIsRefreshing(false);
     },
-    [activeTab, filterCity?.value, filterRole?.value, includeRemote, jobs.length, show]
+    [activeTab, currentUserId, fetchBlockedUsers, filterCity?.value, filterRole?.value, includeRemote, jobs.length, show]
   );
 
   const fetchMyJobs = useCallback(async () => {
@@ -579,7 +654,7 @@ contentStyle: { backgroundColor: '#000000' },
     } = await supabase.auth.getUser();
 
     if (authErr || !user) {
-      if (authErr) console.error(authErr);
+      if (authErr) logJobsIssue('fetchMyJobs auth unavailable', authErr);
       setMyJobs([]);
       setLoadingMyJobs(false);
       return;
@@ -593,7 +668,7 @@ contentStyle: { backgroundColor: '#000000' },
       .order('created_at', { ascending: false });
 
     if (jobsErr) {
-      console.error(jobsErr);
+      logJobsIssue('fetchMyJobs jobs unavailable', jobsErr);
       show('Could not load your jobs.', 'error');
       setMyJobs([]);
       setLoadingMyJobs(false);
@@ -616,7 +691,7 @@ contentStyle: { backgroundColor: '#000000' },
   .in('job_id', jobIds);
 
 if (appsErr) {
-  console.error('fetchMyJobsWithApplicants applicationsErr', appsErr);
+  logJobsIssue('fetchMyJobsWithApplicants applications unavailable', appsErr);
   return;
 }
 
@@ -633,7 +708,7 @@ if (applicantIds.length) {
     .in('id', applicantIds);
 
   if (usersErr) {
-    console.error('fetchMyJobsWithApplicants usersErr', usersErr);
+    logJobsIssue('fetchMyJobsWithApplicants users unavailable', usersErr);
   } else {
     usersMap = Object.fromEntries(
       (usersData || []).map((u: any) => [
@@ -663,7 +738,7 @@ const appsByJob: Record<number, { id: string; full_name?: string | null }[]> = {
 
     setMyJobs(withApplicants);
   } catch (e: any) {
-    console.error('fetchMyJobs error', e?.message ?? e);
+    logJobsIssue('fetchMyJobs unavailable', e);
     show('Could not load your jobs.', 'error');
     setMyJobs([]);
   } finally {
@@ -681,7 +756,7 @@ const appsByJob: Record<number, { id: string; full_name?: string | null }[]> = {
         } = await supabase.auth.getUser();
 
         if (authErr || !user) {
-          if (authErr) console.error(authErr);
+          if (authErr) logJobsIssue('handleCloseJob auth unavailable', authErr);
           show('Please sign in to manage your jobs.', 'info');
           return;
         }
@@ -693,7 +768,7 @@ const appsByJob: Record<number, { id: string; full_name?: string | null }[]> = {
           .eq('user_id', user.id);
 
         if (error) {
-          console.error(error);
+          logJobsIssue('handleCloseJob unavailable', error);
           show('Could not close job.', 'error');
           return;
         }
@@ -703,7 +778,7 @@ const appsByJob: Record<number, { id: string; full_name?: string | null }[]> = {
 
         show('Job closed. It will no longer appear to applicants.', 'success');
       } catch (e: any) {
-        console.error('handleCloseJob error', e?.message ?? e);
+        logJobsIssue('handleCloseJob unavailable', e);
         show('Could not close job.', 'error');
       }
     },
@@ -784,7 +859,7 @@ const appsByJob: Record<number, { id: string; full_name?: string | null }[]> = {
       if (roleReqIdRef.current !== myReq) return;
 
       if (error) {
-        console.error(error);
+        logJobsIssue('searchRoles unavailable', error);
         show('Role search failed', 'error');
         return;
       }
@@ -945,7 +1020,7 @@ const prioritizeCityMatches = (
       if (latestCityTermRef.current !== raw) return;
 
       if (finalError) {
-        console.error(finalError);
+        logJobsIssue('searchCities unavailable', finalError);
         show('City search failed', 'error');
         setCityItems([]);
         return;
@@ -1011,7 +1086,7 @@ const prioritizeCityMatches = (
       if (latestCityFilterTermRef.current !== raw) return;
 
       if (finalError) {
-        console.error(finalError);
+        logJobsIssue('searchFilterCities unavailable', finalError);
         show('City search failed', 'error');
         setCityFilterItems([]);
         return;
@@ -1051,7 +1126,7 @@ const prioritizeCityMatches = (
         .limit(50);
       setSearchingFilterRoles(false);
       if (error) {
-        console.error(error);
+        logJobsIssue('searchFilterRoles unavailable', error);
         show('Role search failed', 'error');
       } else if (data) {
         let next = data.map((r) => ({ value: r.id, label: r.name })) as RoleOption[];
@@ -1087,6 +1162,18 @@ if (!formData.role_id || (!formData.city && !formData.remote)) {
   return;
 }
 
+    const moderation = validateMultipleSafeTexts([
+      { label: 'Job description', value: formData.description },
+      { label: 'Amount', value: formData.amount },
+      { label: 'Timing', value: formData.time },
+      { label: 'City', value: formData.city?.label },
+    ]);
+
+    if (!moderation.safe) {
+      Alert.alert('Content Not Allowed', moderation.message || 'Please edit the job before posting.');
+      return;
+    }
+
     const payload: Partial<JobRow> & {
       time?: string | null;
       amount?: string | null;
@@ -1107,7 +1194,7 @@ if (!formData.role_id || (!formData.city && !formData.remote)) {
 
     const { error } = await supabase.from('jobs').insert(payload);
     if (error) {
-      console.error(error);
+      logJobsIssue('submitJob unavailable', error);
       show('Failed to post job.', 'error');
     } else {
       setJobFormVisible(false);
@@ -1121,6 +1208,92 @@ if (!formData.role_id || (!formData.city && !formData.remote)) {
         'success'
       );
     }
+  };
+
+  const openJobReport = (job: JobRow) => {
+    if (!currentUserId) {
+      promptSignIn('Create an account or sign in to report jobs.');
+      return;
+    }
+
+    setReportTargetJob(job);
+    setReportReason('Harassment or bullying');
+    setReportDetails('');
+  };
+
+  const submitJobReport = async () => {
+    if (!reportTargetJob) return;
+
+    const detailsError = validateSafeText(reportDetails);
+    if (detailsError) {
+      Alert.alert('Content Not Allowed', detailsError);
+      return;
+    }
+
+    setReportSubmitting(true);
+    try {
+      const ok = await reportContent({
+        reportedUserId: reportTargetJob.user_id,
+        contentType: 'job',
+        contentId: String(reportTargetJob.id),
+        reason: reportReason,
+        details: reportDetails.trim() || null,
+      });
+
+      if (ok) {
+        setReportTargetJob(null);
+        setReportDetails('');
+      }
+    } finally {
+      setReportSubmitting(false);
+    }
+  };
+
+  const blockJobPoster = async (job: JobRow) => {
+    if (!currentUserId) {
+      promptSignIn('Create an account or sign in to block users.');
+      return;
+    }
+
+    if (job.user_id === currentUserId) {
+      Alert.alert('Not Allowed', 'You cannot block yourself.');
+      return;
+    }
+
+    const confirmed =
+      Platform.OS === 'web'
+        ? window.confirm(
+            'Block this user?\n\nThey won’t be able to interact with you, and their content will be removed from your feed.'
+          )
+        : await new Promise<boolean>((resolve) => {
+            Alert.alert(
+              'Block this user?',
+              'They won’t be able to interact with you, and their content will be removed from your feed.',
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Block', style: 'destructive', onPress: () => resolve(true) },
+              ]
+            );
+          });
+
+    if (!confirmed) return;
+
+    const ok = await blockUser({
+      blockedUserId: job.user_id,
+      reason: 'Blocked from Jobs',
+      showAlert: true,
+    });
+
+    if (!ok) return;
+
+    setBlockedUserIds((prev) => {
+      const next = new Set(prev);
+      next.add(job.user_id);
+      return next;
+    });
+    setJobs((prev) => prev.filter((row) => row.user_id !== job.user_id));
+    if (selectedJob?.user_id === job.user_id) setSelectedJob(null);
+    void fetchJobs('silent');
   };
 
   const checkAlreadyApplied = useCallback(async (jobId?: number) => {
@@ -1143,7 +1316,7 @@ if (!formData.role_id || (!formData.city && !formData.remote)) {
       .maybeSingle();
 
     if (error) {
-      console.error(error);
+      logJobsIssue('checkAlreadyApplied unavailable', error);
       setAlreadyApplied(false);
     } else {
       setAlreadyApplied(!!data);
@@ -1186,7 +1359,7 @@ if (!me) {
       .maybeSingle();
 
     if (checkErr) {
-      console.error(checkErr);
+      logJobsIssue('applyToJob check unavailable', checkErr);
       setApplyLoading(false);
       return show('Could not verify application status.', 'error');
     }
@@ -1205,7 +1378,7 @@ if (!me) {
     setApplyLoading(false);
 
     if (insertErr) {
-      console.error(insertErr);
+      logJobsIssue('applyToJob insert unavailable', insertErr);
       show('Application failed. Please try again.', 'error');
     } else {
       setAlreadyApplied(true);
@@ -1241,7 +1414,7 @@ if (!me) {
       setTimeout(() => {
         // @ts-ignore
         navigation.navigate('Profile', { user: userObj });
-      }, 0);
+      }, 180);
     } else {
       // @ts-ignore
       navigation.navigate('Profile', { user: userObj });
@@ -2439,8 +2612,7 @@ onRefresh={() => {
                   onPress={() => {
                     const u = selectedJob.users || undefined;
                     if (u?.id) {
-                      // @ts-ignore
-                      navigation.navigate('Profile', { user: u });
+                      goToProfile(u);
                     }
                   }}
                   activeOpacity={0.8}
@@ -2479,6 +2651,32 @@ onRefresh={() => {
                   />
                 </View>
               ) : null}
+
+              <View style={styles.safetyActionsRow}>
+                <TouchableOpacity
+                  style={styles.safetyActionButton}
+                  onPress={() => openJobReport(selectedJob)}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="flag-outline" size={15} color={T.sub} />
+                  <Text style={styles.safetyActionText}>Report</Text>
+                </TouchableOpacity>
+
+                {selectedJob.user_id !== currentUserId ? (
+                  <TouchableOpacity
+                    style={[styles.safetyActionButton, styles.safetyDangerButton]}
+                    onPress={() => blockJobPoster(selectedJob)}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="ban-outline" size={15} color="#FF8A8A" />
+                    <Text style={[styles.safetyActionText, { color: '#FF8A8A' }]}>Block User</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              <Text style={styles.safetyCopy}>
+                We review objectionable content reports within 24 hours.
+              </Text>
 
               <TouchableOpacity
                 style={[
@@ -2565,7 +2763,7 @@ onRefresh={() => {
       </Modal>
 
       {/* Tier / Upgrade Modal */}
-      <UpgradeModal
+<UpgradeModal
   visible={upgradeVisible}
   context={upgradeContext}
   onClose={() => setUpgradeVisible(false)}
@@ -2574,6 +2772,18 @@ onRefresh={() => {
     show('Pro upgrade flow coming soon.', 'info');
   }}
 />
+      <ReportContentModal
+        visible={!!reportTargetJob}
+        selectedReason={reportReason}
+        details={reportDetails}
+        submitting={reportSubmitting}
+        onReasonChange={setReportReason}
+        onDetailsChange={setReportDetails}
+        onClose={() => {
+          if (!reportSubmitting) setReportTargetJob(null);
+        }}
+        onSubmit={submitJobReport}
+      />
         </View>
   </SafeAreaView>
   );
@@ -3449,6 +3659,40 @@ filterPill: {
   },
   keyValueText: {
     color: T.sub,
+    fontFamily: SYSTEM_SANS,
+  },
+  safetyActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 14,
+  },
+  safetyActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: T.lineSoft,
+    backgroundColor: T.surface3,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  safetyDangerButton: {
+    borderColor: 'rgba(255,138,138,0.35)',
+  },
+  safetyActionText: {
+    color: T.sub,
+    fontSize: 12,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  safetyCopy: {
+    marginTop: 8,
+    color: T.mute,
+    fontSize: 12,
+    lineHeight: 17,
     fontFamily: SYSTEM_SANS,
   },
 

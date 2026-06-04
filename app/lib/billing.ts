@@ -40,13 +40,23 @@ function computeHasProAccess(row: {
   is_premium?: boolean | null;
   grandfathered?: boolean | null;
   subscription_status?: string | null;
+  cancel_at_period_end?: boolean | null;
   current_period_end?: string | null;
   premium_access_expires_at?: string | null;
 }) {
   const premiumByGrandfathered = Boolean(row.grandfathered);
+  if (premiumByGrandfathered) return true;
+
+  const bestAccessEnd = getBestAccessEnd(row);
+  const premiumByExpiry = isFuture(bestAccessEnd, 5_000);
+  const cancelScheduled = Boolean(row.cancel_at_period_end);
+
+  if (cancelScheduled) {
+    return premiumByExpiry;
+  }
+
   const premiumByTier = row.tier === 'pro';
   const premiumByFlag = Boolean(row.is_premium);
-  const premiumByExpiry = isFuture(row.premium_access_expires_at, 5_000);
 
   const premiumBySubscriptionWindow =
     isSubscriptionStatusActive(row.subscription_status) &&
@@ -103,24 +113,22 @@ export async function getMySubscriptionStatus() {
       isFuture(row.current_period_end, 5_000));
 
   const hasPaymentProviderSubscriptionRecord =
-  Boolean(row.stripe_customer_id) ||
-  Boolean(row.stripe_subscription_id) ||
-  Boolean(row.current_period_end) ||
-  Boolean(row.premium_access_expires_at) ||
-  Boolean(row.subscription_status);
-
-const isGrandfathered = Boolean(row.grandfathered);
-
-const isActiveSubscriber =
-  hasPaymentProviderSubscriptionRecord &&
-  !isGrandfathered &&
-  (
-    isSubscriptionStatusActive(row.subscription_status) ||
-    Boolean(row.stripe_subscription_id) ||
     Boolean(row.stripe_customer_id) ||
-    isFuture(row.current_period_end, 5_000) ||
-    isFuture(row.premium_access_expires_at, 5_000)
-  );
+    Boolean(row.stripe_subscription_id) ||
+    Boolean(row.current_period_end) ||
+    Boolean(row.premium_access_expires_at) ||
+    Boolean(row.subscription_status);
+
+  const isGrandfathered = Boolean(row.grandfathered);
+
+  const isActiveSubscriber =
+    hasPaymentProviderSubscriptionRecord &&
+    !isGrandfathered &&
+    (isSubscriptionStatusActive(row.subscription_status) ||
+      Boolean(row.stripe_subscription_id) ||
+      Boolean(row.stripe_customer_id) ||
+      isFuture(row.current_period_end, 5_000) ||
+      isFuture(row.premium_access_expires_at, 5_000));
 
   return {
     ...row,

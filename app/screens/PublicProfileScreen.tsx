@@ -4,10 +4,10 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 
 const COLORS = {
-  background: "#000000",
+  background: "#050505",
   primary: "#C6A664",
-  textPrimary: "#FFFFFF",
-  textSecondary: "#D0D0D0",
+  textPrimary: "#F4EFE6",
+  textSecondary: "#D8D2C8",
 };
 
 export default function PublicProfileScreen() {

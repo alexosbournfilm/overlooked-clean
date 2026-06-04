@@ -8,6 +8,7 @@ import {
   Text,
   Platform,
   Pressable,
+  PanResponder,
   useWindowDimensions,
   Animated,
   Easing,
@@ -32,6 +33,7 @@ import WorkshopScreen from '../screens/WorkshopScreen';
 import WorkshopSubmitScreen from '../screens/WorkshopSubmitScreen';
 import { useAuth } from '../context/AuthProvider';
 import { subscribeChatBadgeRefresh } from '../lib/chatBadgeEvents';
+import { useAppRefresh } from '../context/AppRefreshContext';
 
 import { SettingsModalProvider } from '../context/SettingsModalContext';
 import SettingsButton from '../../components/SettingsButton';
@@ -47,11 +49,11 @@ import { useGamification } from '../context/GamificationContext';
 const Tab = createBottomTabNavigator();
 
 /* ------------------------------- palette ------------------------------- */
-const DARK_BG = '#000000';
-const DARK_ELEVATED = '#000000';
-const TEXT_IVORY = '#EDEBE6';
-const TEXT_MUTED = '#A7A6A2';
-const DIVIDER = '#2A2A2A';
+const DARK_BG = '#050505';
+const DARK_ELEVATED = '#0D0D0F';
+const TEXT_IVORY = '#F4EFE6';
+const TEXT_MUTED = '#A59D90';
+const DIVIDER = 'rgba(255,255,255,0.10)';
 const GOLD = '#C6A664';
 
 /* ------------------------------- fonts --------------------------------- */
@@ -63,6 +65,21 @@ const SYSTEM_SANS = Platform.select({
 });
 
 /* ------------------------------- helpers ------------------------------- */
+
+const TAB_ROUTE_NAMES = [
+  'Featured',
+  'Workshop',
+  'Challenge',
+  'Location',
+  'Jobs',
+  'Chats',
+  'Profile',
+] as const;
+
+type TabRouteName = (typeof TAB_ROUTE_NAMES)[number];
+
+const getTabRouteIndex = (name?: string | null) =>
+  TAB_ROUTE_NAMES.findIndex((routeName) => routeName === name);
 
 function withTimeout<T = any>(promise: PromiseLike<T>, ms = 9000): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -79,6 +96,75 @@ function withTimeout<T = any>(promise: PromiseLike<T>, ms = 9000): Promise<any> 
       });
   });
 }
+
+function withLuxuryScreen<P extends object>(ScreenComponent: React.ComponentType<P>) {
+  const Wrapped = memo(function LuxuryScreenWrapper(props: P) {
+    return (
+      <View style={styles.luxuryScreenFrame}>
+        <ScreenComponent {...props} />
+      </View>
+    );
+  });
+
+  return Wrapped;
+}
+
+const LuxuryTabIcon = memo(function LuxuryTabIcon({
+  icon,
+  color,
+  focused,
+  isTiny,
+  showBadge,
+  badgeText,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  focused: boolean;
+  isTiny: boolean;
+  showBadge: boolean;
+  badgeText: string;
+}) {
+  const focus = useRef(new Animated.Value(focused ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.spring(focus, {
+      toValue: focused ? 1 : 0,
+      damping: 15,
+      stiffness: 180,
+      mass: 0.65,
+      useNativeDriver: true,
+    }).start();
+  }, [focus, focused]);
+
+  const scale = focus.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.1],
+  });
+
+  const translateY = focus.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -2],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        styles.tabIconOnly,
+        {
+          transform: [{ translateY }, { scale }],
+        },
+      ]}
+    >
+      <Ionicons name={icon} size={isTiny ? 20 : 22} color={color} />
+
+      {showBadge && (
+        <View style={styles.chatBadge}>
+          <Text style={styles.chatBadgeText}>{badgeText}</Text>
+        </View>
+      )}
+    </Animated.View>
+  );
+});
 
 /* ----------------------- Smooth Hover / Press ----------------------- */
 
@@ -97,7 +183,7 @@ const HoverPress = memo(function HoverPress({
   hitSlop?: any;
   accessibilityLabel?: string;
 }) {
-  const shouldAnimate = Platform.OS === 'web';
+  const shouldAnimate = !disabled;
 
   const scale = useRef(new Animated.Value(1)).current;
   const lift = useRef(new Animated.Value(0)).current;
@@ -142,11 +228,16 @@ const HoverPress = memo(function HoverPress({
       disabled={disabled}
       hitSlop={hitSlop}
       onPress={onPress}
-      onHoverIn={() => to(1.03, -1.5, 140)}
-      onHoverOut={() => to(1.0, 0, 160)}
+      {...(Platform.OS === 'web'
+        ? {
+            onHoverIn: () => to(1.03, -1.5, 140),
+            onHoverOut: () => to(1.0, 0, 160),
+          }
+        : null)}
       onPressIn={() => to(0.98, 0, 90)}
       onPressOut={() => to(1.0, 0, 140)}
       style={style}
+      android_ripple={{ color: 'rgba(198,166,100,0.08)', borderless: false }}
     >
       <Animated.View style={{ transform: [{ translateY: lift }, { scale }] }}>
         {children}
@@ -309,7 +400,7 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
                   compactText && { fontSize: 7.5, letterSpacing: 0.8 },
                 ]}
               >
-                STREAK
+                CONSISTENCY
               </Text>
             </View>
 
@@ -389,6 +480,7 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
 
   const [userCityId, setUserCityId] = useState<number | null>(null);
   const [userCityName, setUserCityName] = useState<string | null>(null);
+  const modalProgress = useRef(new Animated.Value(0)).current;
 
   const mountedRef = useRef(false);
   useEffect(() => {
@@ -397,6 +489,20 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
       mountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    modalProgress.stopAnimation();
+    modalProgress.setValue(0);
+
+    Animated.timing(modalProgress, {
+      toValue: 1,
+      duration: 240,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [modalProgress, visible]);
 
   const safeSet = (fn: () => void) => {
     if (!mountedRef.current) return;
@@ -616,14 +722,21 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
   return (
     <Modal
       visible={visible}
-      animationType="fade"
+      animationType="none"
       transparent
       statusBarTranslucent
       presentationStyle="overFullScreen"
       onRequestClose={onClose}
     >
-      <View style={styles.lbOverlay}>
-        <View
+      <Animated.View
+        style={[
+          styles.lbOverlay,
+          {
+            opacity: modalProgress,
+          },
+        ]}
+      >
+        <Animated.View
           style={[
             styles.lbCard,
             {
@@ -631,6 +744,20 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
               maxWidth: maxCardWidth,
               height: maxCardHeight,
               alignSelf: 'center',
+              transform: [
+                {
+                  translateY: modalProgress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [18, 0],
+                  }),
+                },
+                {
+                  scale: modalProgress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.975, 1],
+                  }),
+                },
+              ],
             },
           ]}
         >
@@ -698,8 +825,8 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
               </ScrollView>
             )}
           </View>
-        </View>
-      </View>
+        </Animated.View>
+      </Animated.View>
     </Modal>
   );
 });
@@ -1053,7 +1180,7 @@ const settingsSize =
           {isWide && (
             <View style={styles.topBarCenter}>
               <HoverPress
-                accessibilityLabel="Streak"
+                accessibilityLabel="Consistency"
                 style={{
                   borderRadius: 999,
                   width: '100%',
@@ -1183,7 +1310,7 @@ const settingsSize =
     {!isWide && (
         <View style={[styles.topBarInnerStreakRow, { paddingHorizontal: isPhone ? 10 : 14 }]}>
           <HoverPress
-            accessibilityLabel="Streak"
+            accessibilityLabel="Consistency"
             style={{
               borderRadius: 999,
               width: '100%',
@@ -1200,14 +1327,14 @@ const settingsSize =
 
 /* ---------------------- Screen wrapper --------------------- */
 
-const FeaturedWrapped = FeaturedScreen;
-const JobsWrapped = JobsScreen;
-const ChallengeWrapped = ChallengeScreen;
-const LocationWrapped = LocationScreen;
-const ProfileWrapped = ProfileScreen;
-const WorkshopWrapped = WorkshopScreen;
-const WorkshopSubmitWrapped = WorkshopSubmitScreen;
-const ChatsWrapped = ChatsStack;
+const FeaturedWrapped = withLuxuryScreen(FeaturedScreen);
+const JobsWrapped = withLuxuryScreen(JobsScreen);
+const ChallengeWrapped = withLuxuryScreen(ChallengeScreen);
+const LocationWrapped = withLuxuryScreen(LocationScreen);
+const ProfileWrapped = withLuxuryScreen(ProfileScreen);
+const WorkshopWrapped = withLuxuryScreen(WorkshopScreen);
+const WorkshopSubmitWrapped = withLuxuryScreen(WorkshopSubmitScreen);
+const ChatsWrapped = withLuxuryScreen(ChatsStack);
 
 /* ------------------------ Animated Tab Bar Button --------------------- */
 
@@ -1215,7 +1342,7 @@ const TabBarButton = memo(function TabBarButton(props: any) {
   const { children, onPress, accessibilityState } = props;
   const selected = !!accessibilityState?.selected;
 
-  const shouldAnimate = Platform.OS === 'web';
+  const shouldAnimate = true;
   const scale = useRef(new Animated.Value(1)).current;
   const lift = useRef(new Animated.Value(0)).current;
 
@@ -1263,11 +1390,16 @@ const TabBarButton = memo(function TabBarButton(props: any) {
     <Pressable
       {...props}
       onPress={onPress}
-      onHoverIn={() => to(1.06, -2, 130)}
-      onHoverOut={() => to(1.0, 0, 150)}
+      {...(Platform.OS === 'web'
+        ? {
+            onHoverIn: () => to(1.06, -2, 130),
+            onHoverOut: () => to(1.0, 0, 150),
+          }
+        : null)}
       onPressIn={() => to(0.97, 0, 90)}
       onPressOut={() => to(1.0, 0, 140)}
       style={[props.style, { flex: 1 }]}
+      android_ripple={{ color: 'rgba(198,166,100,0.10)', borderless: false }}
     >
       <Animated.View
         style={{
@@ -1449,6 +1581,24 @@ export default function MainTabs() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { userId } = useAuth();
+  const { triggerAppRefresh } = useAppRefresh();
+
+const activeRouteNameRef = useRef<TabRouteName>('Featured');
+
+const markActiveTab = useCallback(
+  (nextRouteName: string) => {
+    const nextIndex = getTabRouteIndex(nextRouteName);
+    if (nextIndex < 0) return;
+
+    const currentName = activeRouteNameRef.current;
+    const typedNext = nextRouteName as TabRouteName;
+
+    if (typedNext === currentName) return;
+
+    activeRouteNameRef.current = typedNext;
+  },
+  []
+);
 
 const [badgeUserId, setBadgeUserId] = useState<string | null>(userId ?? null);
 const [chatUnreadConversationIds, setChatUnreadConversationIds] = useState<Set<string>>(new Set());
@@ -1460,6 +1610,7 @@ const pendingUnreadRefresh = useRef(false);
 const unreadRefreshTimeout = useRef<any>(null);
 const unreadPollingRef = useRef<any>(null);
 const appStateRef = useRef(AppState.currentState);
+const resumeRefreshTimeoutRef = useRef<any>(null);
 const isGuest = !badgeUserId;
 
 useEffect(() => {
@@ -1522,7 +1673,8 @@ const loadChatUnreadCount = useCallback(async () => {
     );
 
     if (convoError) {
-      console.error('Unread count conversations error:', convoError.message);
+      console.log('Unread count conversations unavailable:', convoError.message);
+      setChatUnreadConversationIds(new Set());
       return;
     }
 
@@ -1546,7 +1698,8 @@ const loadChatUnreadCount = useCallback(async () => {
     );
 
     if (readsError) {
-      console.error('Unread count reads error:', readsError.message);
+      console.log('Unread count reads unavailable:', readsError.message);
+      setChatUnreadConversationIds(new Set());
       return;
     }
 
@@ -1569,7 +1722,8 @@ const loadChatUnreadCount = useCallback(async () => {
     );
 
     if (msgError) {
-      console.error('Unread count messages error:', msgError.message);
+      console.log('Unread count messages unavailable:', msgError.message);
+      setChatUnreadConversationIds(new Set());
       return;
     }
 
@@ -1589,7 +1743,8 @@ const loadChatUnreadCount = useCallback(async () => {
 
     setChatUnreadConversationIds(unreadIds);
   } catch (e: any) {
-    console.error('loadChatUnreadCount error:', e?.message || e);
+    console.log('loadChatUnreadCount unavailable:', e?.message || e);
+    setChatUnreadConversationIds(new Set());
   } finally {
     unreadRequestInFlight.current = false;
 
@@ -1659,29 +1814,52 @@ useEffect(() => {
   // Challenge, Location, Workshop, Profile, etc.
   unreadPollingRef.current = setInterval(() => {
     loadChatUnreadCount();
-  }, 4000);
-
-  const subscription = AppState.addEventListener('change', (nextState) => {
-    const previousState = appStateRef.current;
-    appStateRef.current = nextState;
-
-    if (
-      previousState.match(/inactive|background/) &&
-      nextState === 'active'
-    ) {
-      loadChatUnreadCount();
-    }
-  });
+  }, 12000);
 
   return () => {
     if (unreadPollingRef.current) {
       clearInterval(unreadPollingRef.current);
       unreadPollingRef.current = null;
     }
-
-    subscription.remove();
   };
 }, [badgeUserId, loadChatUnreadCount]);
+
+useEffect(() => {
+  const scheduleResumeRefresh = () => {
+    unreadRequestInFlight.current = false;
+    pendingUnreadRefresh.current = false;
+
+    if (resumeRefreshTimeoutRef.current) {
+      clearTimeout(resumeRefreshTimeoutRef.current);
+    }
+
+    resumeRefreshTimeoutRef.current = setTimeout(() => {
+      triggerAppRefresh();
+
+      if (badgeUserId) {
+        loadChatUnreadCount();
+      }
+    }, Platform.OS === 'web' ? 120 : 220);
+  };
+
+  const subscription = AppState.addEventListener('change', (nextState) => {
+    const previousState = appStateRef.current;
+    appStateRef.current = nextState;
+
+    if (previousState.match(/inactive|background/) && nextState === 'active') {
+      scheduleResumeRefresh();
+    }
+  });
+
+  return () => {
+    subscription.remove();
+
+    if (resumeRefreshTimeoutRef.current) {
+      clearTimeout(resumeRefreshTimeoutRef.current);
+      resumeRefreshTimeoutRef.current = null;
+    }
+  };
+}, [badgeUserId, loadChatUnreadCount, triggerAppRefresh]);
 
   const isPhone = width < 420;
   const isTiny = width < 360;
@@ -1851,6 +2029,21 @@ useEffect(() => {
   navigation.navigate('WorkshopSubmit', { mode: 'monthly' });
 }, [navigation, isGuest]);
 
+const tabPanResponder = useMemo(
+  () =>
+    PanResponder.create({
+      onMoveShouldSetPanResponder: () => {
+        // Posts and modals contain their own horizontal/wrapping controls.
+        // Keep tab changes explicit through the tab bar so those controls do not
+        // accidentally trigger cross-tab navigation.
+        return false;
+      },
+      onPanResponderRelease: () => {},
+      onPanResponderTerminate: () => {},
+    }),
+  []
+);
+
   const screenOptions = useCallback(
   ({ route }: any): any => ({
     headerShown: false,
@@ -1878,16 +2071,22 @@ useEffect(() => {
       borderColor: '#000000',
     },
 
-    lazy: true,
+    lazy: false,
     animation: 'none',
+    unmountOnBlur: false,
+    freezeOnBlur: false,
     tabBarStyle: {
-      backgroundColor: DARK_BG,
+      backgroundColor: 'rgba(5,5,5,0.98)',
       borderTopWidth: 1,
-      borderTopColor: 'rgba(255,255,255,0.06)',
+      borderTopColor: 'rgba(255,255,255,0.09)',
       height: TABBAR_HEIGHT,
       paddingTop: isTiny ? 5 : 6,
       paddingBottom: Platform.OS === 'ios' ? (isPhone ? 10 : 12) : 8,
-      elevation: 0,
+      elevation: 18,
+      shadowColor: '#000',
+      shadowOpacity: 0.24,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: -6 },
     },
     tabBarItemStyle: {
       alignItems: 'center',
@@ -1902,6 +2101,7 @@ useEffect(() => {
         <TabBarButton
           {...props}
           onPress={() => {
+            markActiveTab(route.name);
             props.onPress?.();
 
             if (isChatsTab) {
@@ -1913,7 +2113,7 @@ useEffect(() => {
         />
       );
     },
-    tabBarIcon: ({ color }: { color: string; focused: boolean }) => {
+    tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => {
       let icon: keyof typeof Ionicons.glyphMap = 'ellipse';
 
       switch (route.name) {
@@ -1946,19 +2146,18 @@ useEffect(() => {
       const badgeText = chatUnreadCount > 99 ? '99+' : String(chatUnreadCount);
 
       return (
-        <View style={styles.tabIconOnly}>
-          <Ionicons name={icon} size={isTiny ? 20 : 22} color={color} />
-
-          {showChatBadge && (
-            <View style={styles.chatBadge}>
-              <Text style={styles.chatBadgeText}>{badgeText}</Text>
-            </View>
-          )}
-        </View>
+        <LuxuryTabIcon
+          icon={icon}
+          color={color}
+          focused={focused}
+          isTiny={isTiny}
+          showBadge={showChatBadge}
+          badgeText={badgeText}
+        />
       );
     },
   }),
-  [TABBAR_HEIGHT, isPhone, isTiny, chatUnreadCount, loadChatUnreadCount]
+  [TABBAR_HEIGHT, isPhone, isTiny, chatUnreadCount, loadChatUnreadCount, markActiveTab]
 );
 
   return (
@@ -1978,38 +2177,52 @@ useEffect(() => {
         ]}
         edges={['left', 'right', 'bottom']}
       >
-        <Tab.Navigator
-          screenOptions={screenOptions}
-          detachInactiveScreens={Platform.OS === 'web' ? false : true}
-          backBehavior="history"
+        <View
+          style={styles.tabGestureSurface}
+          {...(Platform.OS === 'web' ? {} : tabPanResponder.panHandlers)}
         >
-          <Tab.Screen name="Featured" component={FeaturedWrapped} />
-          <Tab.Screen name="Workshop" component={WorkshopWrapped} />
-          <Tab.Screen name="Challenge" component={ChallengeWrapped} />
-          <Tab.Screen name="Location" component={LocationWrapped} />
-          <Tab.Screen name="Jobs" component={JobsWrapped} />
-
-          <Tab.Screen
-            name="Chats"
-            component={ChatsWrapped}
-            options={{
-              unmountOnBlur: false,
-            }}
-          />
-
-          <Tab.Screen
-            name="Profile"
-            component={ProfileWrapped}
-            listeners={({ navigation }) => ({
-              tabPress: () => {
-                navigation.navigate('Profile', {
-                  userId: undefined,
-                  user: undefined,
-                });
+          <Tab.Navigator
+            screenOptions={screenOptions}
+            detachInactiveScreens={false}
+            backBehavior="history"
+            screenListeners={{
+              state: (event: any) => {
+                const state = event?.data?.state;
+                const routeName = state?.routes?.[state.index ?? 0]?.name;
+                if (getTabRouteIndex(routeName) >= 0) {
+                  activeRouteNameRef.current = routeName as TabRouteName;
+                }
               },
-            })}
-          />
-        </Tab.Navigator>
+            }}
+          >
+              <Tab.Screen name="Featured" component={FeaturedWrapped} />
+              <Tab.Screen name="Workshop" component={WorkshopWrapped} />
+              <Tab.Screen name="Challenge" component={ChallengeWrapped} />
+              <Tab.Screen name="Location" component={LocationWrapped} />
+              <Tab.Screen name="Jobs" component={JobsWrapped} />
+
+              <Tab.Screen
+                name="Chats"
+                component={ChatsWrapped}
+                options={{
+                  unmountOnBlur: false,
+                }}
+              />
+
+              <Tab.Screen
+                name="Profile"
+                component={ProfileWrapped}
+                listeners={({ navigation }) => ({
+                  tabPress: () => {
+                    navigation.navigate('Profile', {
+                      userId: undefined,
+                      user: undefined,
+                    });
+                  },
+                })}
+              />
+          </Tab.Navigator>
+        </View>
       </SafeAreaView>
 
       {Platform.OS === 'web' ? (
@@ -2064,10 +2277,22 @@ const styles = StyleSheet.create({
   zIndex: 0,
 },
 
+  luxuryScreenFrame: {
+    flex: 1,
+    backgroundColor: DARK_BG,
+  },
+
+  tabGestureSurface: {
+    flex: 1,
+    backgroundColor: DARK_BG,
+  },
+
   tabIconOnly: {
   alignItems: 'center',
   justifyContent: 'center',
   position: 'relative',
+  width: 42,
+  height: 34,
 },
 
 chatBadge: {

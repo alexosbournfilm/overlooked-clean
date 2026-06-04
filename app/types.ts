@@ -57,12 +57,14 @@ export type Submission = {
   word: string;
   votes: number;
   is_winner: boolean;
+  hidden_on_profile?: boolean | null;
   submitted_at: string;
 
   // ✅ joined user data
   users?: {
     id: string;
     full_name: string;
+    avatar_url?: string | null;
   };
 };
 

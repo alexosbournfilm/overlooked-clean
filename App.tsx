@@ -1,7 +1,7 @@
 // App.tsx
 import "./app/polyfills"; // must stay first
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { View, Linking, Platform } from "react-native";
+import { View, Linking, Platform, LogBox } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
@@ -60,6 +60,11 @@ Notifications.setNotificationHandler({
     shouldSetBadge: false,
   }),
 });
+
+LogBox.ignoreLogs([
+  "TypeError: Network request failed",
+  "Network request failed",
+]);
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 

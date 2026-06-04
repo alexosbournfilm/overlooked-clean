@@ -1,6 +1,6 @@
 // components/SettingsButton.tsx
-import React from 'react';
-import { Pressable, View, Platform } from 'react-native';
+import React, { useCallback, useRef } from 'react';
+import { Animated, Easing, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import COLORS from '../app/theme/colors';
@@ -15,10 +15,25 @@ type Props = {
 export default function SettingsButton({ absolute = true, topOffset = 16, rightOffset = 12 }: Props) {
   const { open } = useSettingsModal();
   const insets = useSafeAreaInsets();
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const animateTo = useCallback(
+    (value: number, duration: number) => {
+      Animated.timing(scale, {
+        toValue: value,
+        duration,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    },
+    [scale]
+  );
 
   const Button = (
     <Pressable
       onPress={open}
+      onPressIn={() => animateTo(0.92, 90)}
+      onPressOut={() => animateTo(1, 150)}
       hitSlop={12}
       style={({ pressed }) => ({
         opacity: pressed ? 0.7 : 1,
@@ -37,11 +52,13 @@ export default function SettingsButton({ absolute = true, topOffset = 16, rightO
       accessibilityRole="button"
       accessibilityLabel="Open Settings"
     >
-      <Ionicons
-        name="settings-outline"
-        size={22}                          // slightly smaller = less intrusive
-        color={COLORS.textPrimary}
-      />
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <Ionicons
+          name="settings-outline"
+          size={22}                          // slightly smaller = less intrusive
+          color={COLORS.textPrimary}
+        />
+      </Animated.View>
     </Pressable>
   );
 

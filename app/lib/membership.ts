@@ -131,9 +131,20 @@ function computeEffectiveTier(row: {
   premium_access_expires_at?: string | null;
 }): UserTier {
   const premiumByGrandfathered = Boolean(row.grandfathered);
+  if (premiumByGrandfathered) return 'pro';
+
+  const bestAccessEnd = getBestAccessEnd({
+    premium_access_expires_at: row.premium_access_expires_at,
+    current_period_end: row.current_period_end,
+  });
+  const premiumByExpiry = isFuture(bestAccessEnd, 5_000);
+
+  if (Boolean(row.cancel_at_period_end)) {
+    return premiumByExpiry ? 'pro' : 'free';
+  }
+
   const premiumByTier = row.tier === 'pro';
   const premiumByFlag = Boolean(row.is_premium);
-  const premiumByExpiry = isFuture(row.premium_access_expires_at, 5_000);
 
   const subStatusActive = isSubscriptionStatusActive(row.subscription_status);
   const subPeriodStillActive = isFuture(row.current_period_end, 5_000);

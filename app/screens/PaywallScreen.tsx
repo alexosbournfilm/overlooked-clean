@@ -28,6 +28,12 @@ import {
   invalidateMembershipCache,
   getCurrentUserTier,
 } from '../lib/membership';
+import {
+  PRIVACY_POLICY_URL,
+  SUBSCRIPTION_PRICE_FALLBACK,
+  SUBSCRIPTION_TITLE,
+  TERMS_OF_USE_URL,
+} from '../lib/legal';
 
 /* -------------------------- Stripe Price IDs -------------------------- */
 const STRIPE_PRICE_MONTHLY = 'price_1S1jLxIaba42c4jIsVBQneb0';
@@ -35,10 +41,6 @@ const STRIPE_PRICE_MONTHLY = 'price_1S1jLxIaba42c4jIsVBQneb0';
 /* -------------------------- RevenueCat -------------------------- */
 const REVENUECAT_ANDROID_PUBLIC_SDK_KEY = 'goog_yNsgMdHFvNRzhpfDwICFHbSXuvC';
 const REVENUECAT_IOS_PUBLIC_SDK_KEY = 'appl_dOTwRcKraCRSTIBoaxPUVEEJcWh';
-
-/* -------------------------- Legal URLs -------------------------- */
-const PRIVACY_POLICY_URL = 'https://overlooked.cloud/privacy';
-const TERMS_OF_USE_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 
 type PlanKey = 'monthly';
 
@@ -75,13 +77,19 @@ function hasProAccess(row?: {
   subscription_status?: string | null;
   current_period_end?: string | null;
   premium_access_expires_at?: string | null;
+  cancel_at_period_end?: boolean | null;
 }) {
-  const proByTier = row?.tier === 'pro';
   const proByStatus = isActive(row?.subscription_status, row?.current_period_end);
 
   const expires = row?.premium_access_expires_at;
   const proByGrace =
     !!expires && new Date(expires).getTime() > Date.now() - 5_000;
+
+  if (row?.cancel_at_period_end) {
+    return proByStatus || proByGrace;
+  }
+
+  const proByTier = row?.tier === 'pro';
 
   return proByTier || proByStatus || proByGrace;
 }
@@ -161,11 +169,11 @@ async function openExternalManagementUrl(url?: string | null) {
 
 /* -------------------------- theme -------------------------- */
 
-const DARK_ELEVATED = '#171717';
-const TEXT_IVORY = '#EDEBE6';
-const TEXT_MUTED = 'rgba(237,235,230,0.60)';
-const TEXT_MUTED_2 = 'rgba(237,235,230,0.42)';
-const HAIRLINE = 'rgba(255,255,255,0.09)';
+const DARK_ELEVATED = '#111114';
+const TEXT_IVORY = '#F4EFE6';
+const TEXT_MUTED = 'rgba(255,255,255,0.64)';
+const TEXT_MUTED_2 = 'rgba(255,255,255,0.46)';
+const HAIRLINE = 'rgba(255,255,255,0.10)';
 const GOLD = '#C6A664';
 
 const OFFER_TILE_BG = 'rgba(46,212,122,0.12)';
@@ -367,7 +375,11 @@ export default function PaywallScreen() {
 
     if (error) return null;
 
-    setProEndsIso((data as any)?.premium_access_expires_at ?? null);
+    setProEndsIso(
+      (data as any)?.premium_access_expires_at ??
+        (data as any)?.current_period_end ??
+        null
+    );
     setCancelAtPeriodEnd(Boolean((data as any)?.cancel_at_period_end));
 
     return data as any;
@@ -913,17 +925,18 @@ export default function PaywallScreen() {
           <Text style={styles.selectedText}>{selectedSubLabel}</Text>
 
           <View style={styles.subscriptionInfoBox}>
-            <Text style={styles.subscriptionInfoTitle}>Overlooked Pro Monthly</Text>
+            <Text style={styles.subscriptionInfoTitle}>{SUBSCRIPTION_TITLE}</Text>
 
             <Text style={styles.subscriptionInfoText}>
-              Auto-renewable monthly subscription. Price: {rcPriceLabel ?? '£4.99'} per month.
+              Auto-renewable monthly subscription. Price: {rcPriceLabel ?? SUBSCRIPTION_PRICE_FALLBACK} per month.
             </Text>
 
             <Text style={styles.subscriptionInfoText}>
-              Payment will be charged to your Apple ID account at confirmation of purchase.
-              The subscription automatically renews unless cancelled at least 24 hours before
-              the end of the current period. You can manage or cancel your subscription in
-              your App Store account settings.
+              {Platform.OS === 'ios'
+                ? 'If you subscribe on iOS, payment will be charged to your Apple ID account at confirmation of purchase. The subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel your subscription in your App Store account settings.'
+                : Platform.OS === 'android'
+                ? 'If you subscribe on Android, payment will be charged through Google Play at confirmation of purchase. The subscription automatically renews unless cancelled before the end of the current period. You can manage or cancel your subscription in your Google Play account settings.'
+                : 'Payment is handled through the checkout method you choose. The subscription automatically renews unless cancelled before the end of the current period. You can manage or cancel your subscription from this membership screen or your payment provider.'}
             </Text>
 
             <View style={styles.legalLinksRow}>

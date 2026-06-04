@@ -39,12 +39,12 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const DARK_BG = '#0B0B0A';
-const DARK_ELEVATED = '#151515';
-const TEXT_IVORY = '#F1EFE8';
-const TEXT_MUTED = '#A9A7A0';
-const DIVIDER = '#2A2A2A';
-const GOLD = '#D4B66F';
+const DARK_BG = '#050505';
+const DARK_ELEVATED = '#111114';
+const TEXT_IVORY = '#F4EFE6';
+const TEXT_MUTED = '#A59D90';
+const DIVIDER = 'rgba(255,255,255,0.10)';
+const GOLD = '#C6A664';
 
 const SYSTEM_SANS =
   Platform.select({ ios: 'System', android: 'Roboto', web: undefined }) || undefined;
@@ -52,13 +52,13 @@ const SYSTEM_SANS =
 const T = {
   bg: DARK_BG,
   card: DARK_ELEVATED,
-  card2: '#111111',
+  card2: '#16161A',
   text: TEXT_IVORY,
-  sub: '#D6D2C7',
+  sub: '#D8D2C8',
   mute: TEXT_MUTED,
   accent: GOLD,
   olive: GOLD,
-  border: '#2E2E2E',
+  border: 'rgba(255,255,255,0.10)',
 };
 
 const MANIFESTO_LINES = [
@@ -332,26 +332,10 @@ export default function SignInScreen() {
       return;
     }
 
-    try {
-      const parentNav = navigation.getParent?.();
-
-      if (parentNav) {
-        parentNav.reset({
-          index: 0,
-          routes: [{ name: 'MainTabs' }],
-        });
-        return;
-      }
-
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'MainTabs' }],
-      });
-    } catch (e) {
-      console.log('MainTabs navigation error:', e);
-      didFinishRedirectRef.current = false;
-      showError('Navigation Error', 'Signed in, but could not open the app.');
-    }
+    // Complete-profile sign-ins are routed by AppNavigator after AuthProvider
+    // finishes its single profile check. Avoid resetting to MainTabs here too,
+    // otherwise Featured mounts twice and visibly reloads after sign-in.
+    return;
   };
 
   const handleAuthDeepLink = async (url: string) => {

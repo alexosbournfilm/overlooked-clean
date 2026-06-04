@@ -17,8 +17,8 @@ export type ChatsStackParamList = {
 
 const Stack = createStackNavigator<ChatsStackParamList>();
 
-const DARK_BG = '#0D0D0D';
-const TEXT_IVORY = '#EDEBE6';
+const DARK_BG = '#050505';
+const TEXT_IVORY = '#F4EFE6';
 
 const SYSTEM_SANS = Platform.select({
   ios: 'System',

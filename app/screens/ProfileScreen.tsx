@@ -23,6 +23,7 @@ import {
   Animated,
   Easing,
   RefreshControl,
+  InteractionManager,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { openChat } from '../navigation/navigationRef';
@@ -45,16 +46,21 @@ import { useMonthlyStreak } from "../lib/useMonthlyStreak";
 import YoutubePlayer from "react-native-youtube-iframe";
 import * as Clipboard from 'expo-clipboard';
 import { useAppRefresh } from '../context/AppRefreshContext';
+import { reportContent, ReportReason } from '../utils/reportContent';
+import { blockUser } from '../utils/blockUser';
+import { validateMultipleSafeTexts, validateSafeText } from '../utils/moderation';
+import ReportContentModal from '../../components/ReportContentModal';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /* ---------- Noir palette ---------- */
 const GOLD = '#C6A664';
 const COLORS = {
-  background: '#000000',
-  card: '#0A0A0A',
-  cardAlt: '#0E0E0E',
-  border: '#FFFFFF1A',
-  textPrimary: '#FFFFFF',
-  textSecondary: '#D0D0D0',
+  background: '#050505',
+  card: '#111114',
+  cardAlt: '#16161A',
+  border: 'rgba(255,255,255,0.10)',
+  textPrimary: '#F4EFE6',
+  textSecondary: '#D8D2C8',
   primary: GOLD,
   danger: '#FF6B6B',
 };
@@ -149,6 +155,14 @@ const ytThumb = (url: string) => {
   if (!id) return null;
   return `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
 };
+
+const submissionHiddenOnProfile = (submission: Pick<SubmissionRow, 'hidden_on_profile' | 'profile_hidden' | 'is_hidden_from_profile'>) =>
+  Boolean(
+    submission.hidden_on_profile ??
+      submission.profile_hidden ??
+      submission.is_hidden_from_profile ??
+      false
+  );
 
 
 /* Flag emoji from country code */
@@ -429,13 +443,6 @@ function ShowreelVideoInline({
   const opacity = useRef(new Animated.Value(0)).current;
 
   const progressRef = useRef<View>(null);
-
-  // Comments (submission modal)
-  const [comments, setComments] = useState<SubmissionCommentRow[]>([]);
-  const [loadingComments, setLoadingComments] = useState(false);
-  const [commentText, setCommentText] = useState("");
-  const [sendingComment, setSendingComment] = useState(false);
-  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
 
   // ✅ Still keep this for your fullscreen logic + audio behavior
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -846,6 +853,8 @@ interface ProfileData {
   banner_color?: string | null;
   public_slug?: string | null;
 is_profile_public?: boolean | null;
+  is_banned?: boolean | null;
+  banned_reason?: string | null;
 }
 
 type PortfolioType = 'image' | 'pdf' | 'audio' | 'video';
@@ -868,6 +877,8 @@ interface SubmissionRow {
   user_id: string;
   title: string | null;
   word: string | null;
+  category?: string | null;
+  film_category?: string | null;
   youtube_url: string | null;
   video_url?: string | null;
   video_path?: string | null;
@@ -878,15 +889,43 @@ interface SubmissionRow {
   mux_asset_id?: string | null;
   mux_playback_id?: string | null;
   mux_status?: string | null;
+  hidden_on_profile?: boolean | null;
+  profile_hidden?: boolean | null;
+  is_hidden_from_profile?: boolean | null;
+  collaboration_role?: string | null;
+  is_collaboration_credit?: boolean | null;
+  collaborator_credits?: any[] | null;
+  collaborators?: SubmissionCollaborator[];
+  users?: {
+    id: string;
+    full_name?: string | null;
+    avatar_url?: string | null;
+  } | null;
   submitted_at: string;
 }
+
+type SubmissionCollaborator = {
+  id: string;
+  submission_id: string;
+  user_id: string;
+  role?: string | null;
+  sort_order?: number | null;
+  users?: { id: string; full_name?: string | null; avatar_url?: string | null } | null;
+};
 
 interface SubmissionCommentRow {
   id: string;
   submission_id: string;
   user_id: string;
-  content: string;
+  comment?: string | null;
+  content?: string | null;
+  parent_comment_id?: string | null;
   created_at: string;
+  users?: {
+    id: string;
+    full_name?: string | null;
+    avatar_url?: string | null;
+  } | null;
   user?: {
     id: string;
     full_name?: string | null;
@@ -909,6 +948,157 @@ interface ShowreelRow {
   mux_status?: string | null;
   created_at: string;
   url: string;
+}
+
+async function attachProfileSubmissionCollaborators<T extends { id: string }>(
+  items: T[]
+): Promise<(T & { collaborators?: SubmissionCollaborator[] })[]> {
+  const ids = Array.from(new Set(items.map((item) => item.id).filter(Boolean)));
+  if (ids.length === 0) return items;
+
+  const normalizeSnapshotCredits = (
+    raw: any,
+    fallbackSubmissionId: string
+  ): SubmissionCollaborator[] => {
+    const list = Array.isArray(raw) ? raw : [];
+
+    return list
+      .map((row, index) => {
+        const user = row?.users || row?.user || null;
+        const userId = row?.user_id || user?.id || null;
+        const role = String(row?.role || "").trim();
+
+        if (!userId || !role) return null;
+
+        return {
+          id: row?.id || `${fallbackSubmissionId}-${userId}-${role}-${index}`,
+          submission_id: row?.submission_id || fallbackSubmissionId,
+          user_id: userId,
+          role,
+          sort_order: typeof row?.sort_order === "number" ? row.sort_order : index,
+          users: user
+            ? {
+                id: user.id || userId,
+                full_name: user.full_name ?? null,
+                avatar_url: user.avatar_url ?? null,
+              }
+            : null,
+        } as SubmissionCollaborator;
+      })
+      .filter(Boolean) as SubmissionCollaborator[];
+  };
+
+  const bySubmission = new Map<string, SubmissionCollaborator[]>();
+  const snapshotBySubmission = new Map<string, SubmissionCollaborator[]>();
+
+  try {
+    const { data, error } = await supabase
+      .from("submission_collaborators")
+      .select("id, submission_id, user_id, role, sort_order")
+      .in("submission_id", ids)
+      .order("sort_order", { ascending: true });
+
+    if (error) throw error;
+
+    const userIds = Array.from(
+      new Set(((data || []) as any[]).map((row) => row.user_id).filter(Boolean))
+    );
+    const usersById = new Map<string, { id: string; full_name?: string | null; avatar_url?: string | null }>();
+
+    if (userIds.length > 0) {
+      const { data: userRows, error: userError } = await supabase
+        .from("users")
+        .select("id, full_name, avatar_url")
+        .in("id", userIds);
+
+      if (userError) {
+        console.log("Profile submission collaborator users unavailable:", userError.message);
+      } else {
+        ((userRows || []) as any[]).forEach((user) => {
+          if (user?.id) {
+            usersById.set(user.id, {
+              id: user.id,
+              full_name: user.full_name ?? null,
+              avatar_url: user.avatar_url ?? null,
+            });
+          }
+        });
+      }
+    }
+
+    ((data || []) as any[]).forEach((row) => {
+      const submissionId = row.submission_id;
+      if (!submissionId) return;
+
+      const current = bySubmission.get(submissionId) || [];
+      current.push({
+        id: row.id,
+        submission_id: submissionId,
+        user_id: row.user_id,
+        role: row.role ?? null,
+        sort_order: row.sort_order ?? null,
+        users: usersById.get(row.user_id) ?? null,
+      });
+      bySubmission.set(submissionId, current);
+    });
+  } catch (e: any) {
+    console.log("Profile submission collaborators unavailable:", e?.message || e);
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("submissions")
+      .select("id, collaborator_credits")
+      .in("id", ids);
+
+    if (error) throw error;
+
+    ((data || []) as any[]).forEach((row) => {
+      const credits = normalizeSnapshotCredits(row?.collaborator_credits, row.id);
+      if (credits.length > 0) {
+        snapshotBySubmission.set(row.id, credits);
+      }
+    });
+  } catch (e: any) {
+    console.log("Profile submission collaborator snapshots unavailable:", e?.message || e);
+  }
+
+  items.forEach((item: any) => {
+    if (snapshotBySubmission.has(item.id)) return;
+
+    const credits = normalizeSnapshotCredits(item?.collaborator_credits, item.id);
+    if (credits.length > 0) {
+      snapshotBySubmission.set(item.id, credits);
+    }
+  });
+
+  return items.map((item) => {
+    const tableCredits = bySubmission.get(item.id) || [];
+    const snapshotCredits = snapshotBySubmission.get(item.id) || [];
+    const snapshotLookup = new Map(
+      snapshotCredits.map((credit) => [`${credit.user_id}:${credit.role || ""}`, credit])
+    );
+
+    const mergedTableCredits = tableCredits.map((credit) => {
+      if (credit.users) return credit;
+      return {
+        ...credit,
+        users: snapshotLookup.get(`${credit.user_id}:${credit.role || ""}`)?.users ?? null,
+      };
+    });
+
+    const tableKeys = new Set(
+      tableCredits.map((credit) => `${credit.user_id}:${credit.role || ""}`)
+    );
+    const snapshotOnly = snapshotCredits.filter(
+      (credit) => !tableKeys.has(`${credit.user_id}:${credit.role || ""}`)
+    );
+
+    return {
+      ...item,
+      collaborators: [...mergedTableCredits, ...snapshotOnly],
+    };
+  });
 }
 
 interface ApplicantUser {
@@ -1162,8 +1352,97 @@ const [sideRoleSearchFocused, setSideRoleSearchFocused] = useState(false);
   const [thumbUploading, setThumbUploading] = useState(false);
   const [thumbError, setThumbError] = useState<string | null>(null);
   const [activeSubmission, setActiveSubmission] = useState<SubmissionRow | null>(null);
+  const [comments, setComments] = useState<SubmissionCommentRow[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [sendingComment, setSendingComment] = useState(false);
+  const [submissionCommentsExpanded, setSubmissionCommentsExpanded] = useState(false);
+  const submissionWatchScrollRef = useRef<ScrollView | null>(null);
+  const submissionCommentInputRef = useRef<TextInput | null>(null);
   const [thumbUploadingId, setThumbUploadingId] = useState<string | null>(null);
   const [showreelThumbUploadingId, setShowreelThumbUploadingId] = useState<string | null>(null);
+  const [localHiddenSubmissionIds, setLocalHiddenSubmissionIds] = useState<Set<string>>(new Set());
+
+  const hiddenSubmissionStorageKey = useMemo(
+    () => (authUserId ? `overlooked:hidden-profile-submissions:${authUserId}` : null),
+    [authUserId]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!hiddenSubmissionStorageKey) {
+      setLocalHiddenSubmissionIds(new Set());
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    AsyncStorage.getItem(hiddenSubmissionStorageKey)
+      .then((raw) => {
+        if (cancelled) return;
+
+        if (!raw) {
+          setLocalHiddenSubmissionIds(new Set());
+          return;
+        }
+
+        const parsed = JSON.parse(raw);
+        setLocalHiddenSubmissionIds(new Set(Array.isArray(parsed) ? parsed.filter(Boolean) : []));
+      })
+      .catch((e) => {
+        console.log('Hidden submissions storage unavailable:', (e as any)?.message ?? e);
+        if (!cancelled) setLocalHiddenSubmissionIds(new Set());
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hiddenSubmissionStorageKey]);
+
+  const persistLocalHiddenSubmissionIds = useCallback(
+    async (ids: Set<string>) => {
+      if (!hiddenSubmissionStorageKey) return;
+
+      try {
+        const values = Array.from(ids);
+        if (values.length === 0) {
+          await AsyncStorage.removeItem(hiddenSubmissionStorageKey);
+        } else {
+          await AsyncStorage.setItem(hiddenSubmissionStorageKey, JSON.stringify(values));
+        }
+      } catch (e) {
+        console.log('Hidden submissions storage update unavailable:', (e as any)?.message ?? e);
+      }
+    },
+    [hiddenSubmissionStorageKey]
+  );
+
+  const isSubmissionHidden = useCallback(
+    (submission: SubmissionRow) =>
+      submissionHiddenOnProfile(submission) || localHiddenSubmissionIds.has(submission.id),
+    [localHiddenSubmissionIds]
+  );
+
+  const visibleSubmissions = useMemo(
+    () => submissions.filter((submission) => !isSubmissionHidden(submission)),
+    [isSubmissionHidden, submissions]
+  );
+
+  const visibleOwnedSubmissions = useMemo(
+    () => visibleSubmissions.filter((submission) => !submission.is_collaboration_credit),
+    [visibleSubmissions]
+  );
+
+  const visibleWorkedOnSubmissions = useMemo(
+    () => visibleSubmissions.filter((submission) => !!submission.is_collaboration_credit),
+    [visibleSubmissions]
+  );
+
+  const hiddenProfileSubmissions = useMemo(
+    () => submissions.filter((submission) => isSubmissionHidden(submission)),
+    [isSubmissionHidden, submissions]
+  );
 
   // audio
   const soundRef = useRef<Audio.Sound | null>(null);
@@ -1179,6 +1458,17 @@ const [sideRoleSearchFocused, setSideRoleSearchFocused] = useState(false);
   const [connectionsModalVisible, setConnectionsModalVisible] = useState(false);
   const [connectionsTab, setConnectionsTab] = useState<"supporters" | "supporting">("supporters");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [hasBlockedProfile, setHasBlockedProfile] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportReason, setReportReason] = useState<ReportReason>('Harassment or bullying');
+  const [reportDetails, setReportDetails] = useState('');
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{
+    type: 'profile' | 'comment';
+    reportedUserId?: string | null;
+    contentId?: string | null;
+    title?: string | null;
+  } | null>(null);
 
   const [imageViewerIndex, setImageViewerIndex] = useState<number | null>(null);
 
@@ -1291,6 +1581,22 @@ try {
 
   const own = !!authUserIdLocal && targetId === authUserIdLocal;
   setIsOwnProfile(own);
+  setHasBlockedProfile(false);
+  let blockedByMe = false;
+
+  if (!own && authUserIdLocal) {
+    const { data: blockRows } = await supabase
+      .from('user_blocks')
+      .select('blocked_id')
+      .eq('blocker_id', authUserIdLocal)
+      .eq('blocked_id', targetId)
+      .limit(1);
+
+    if ((blockRows || []).length > 0) {
+      blockedByMe = true;
+      setHasBlockedProfile(true);
+    }
+  }
 
       // 2) LOAD PROFILE DATA
       const { data, error: userError } = await supabase
@@ -1306,6 +1612,10 @@ try {
 
       const pd = data as ProfileData;
       setProfile(pd);
+
+      if (!own && pd.is_banned) {
+        Alert.alert('Profile unavailable', 'This profile is currently unavailable.');
+      }
 
       // 3) SUPPORT SYSTEM (only run when authUser.id EXISTS)
       try {
@@ -1401,6 +1711,16 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
       }
 
       await loadGamificationMeta(pd);
+
+      if (blockedByMe || (!own && pd.is_banned)) {
+        setPortfolioItems([]);
+        setShowreels([]);
+        setSubmissions([]);
+        setMyJobs([]);
+        setUserJobs([]);
+        setAlreadyAppliedJobIds([]);
+        return;
+      }
 
       if (targetId) {
         await Promise.all([
@@ -1825,7 +2145,83 @@ setMp4MainUrl(fallbackUrl ? `${fallbackUrl}${ts()}` : '');
         return;
       }
 
-      const rows = (data || []) as any[];
+      let rows = (data || []) as any[];
+
+      try {
+        const { data: collaborationRows, error: collaborationError } = await supabase
+          .from("submission_collaborators")
+          .select("role, submission_id, submissions:submission_id(*)")
+          .eq("user_id", targetUserId)
+          .order("created_at", { ascending: false });
+
+        if (collaborationError) {
+          console.log("Collaborated submissions unavailable:", collaborationError.message);
+        } else if (collaborationRows?.length) {
+          const seenIds = new Set(rows.map((row) => row.id));
+          const creditedRows = (collaborationRows as any[])
+            .map((row) => {
+              const submission = Array.isArray(row.submissions)
+                ? row.submissions[0]
+                : row.submissions;
+              return submission
+                ? {
+                    ...submission,
+                    collaboration_role: row.role ?? null,
+                    is_collaboration_credit: true,
+                  }
+                : null;
+            })
+            .filter((row) => row?.id && !seenIds.has(row.id));
+
+          rows = [...rows, ...creditedRows];
+        }
+      } catch (collabErr: any) {
+        console.log("Collaborated submissions fetch unavailable:", collabErr?.message || collabErr);
+      }
+
+      try {
+        const creatorIds = Array.from(
+          new Set(rows.map((row) => row?.user_id).filter(Boolean))
+        );
+
+        if (creatorIds.length > 0) {
+          const { data: creatorRows, error: creatorError } = await supabase
+            .from("users")
+            .select("id, full_name, avatar_url")
+            .in("id", creatorIds);
+
+          if (creatorError) {
+            console.log("Submission creators unavailable:", creatorError.message);
+          } else {
+            const creatorsById = new Map(
+              ((creatorRows || []) as any[]).map((user) => [
+                user.id,
+                {
+                  id: user.id,
+                  full_name: user.full_name ?? null,
+                  avatar_url: user.avatar_url ?? null,
+                },
+              ])
+            );
+
+            rows = rows.map((row) => ({
+              ...row,
+              users:
+                creatorsById.get(row.user_id) ||
+                (row.user_id === profile?.id
+                  ? {
+                      id: profile.id,
+                      full_name: profile.full_name,
+                      avatar_url: profile.avatar_url,
+                    }
+                  : row.users ?? null),
+            }));
+          }
+        }
+      } catch (creatorErr: any) {
+        console.log("Submission creators fetch unavailable:", creatorErr?.message || creatorErr);
+      }
+
       function isMuxReady(status?: string | null) {
   const s = String(status || '').toLowerCase();
   return s === 'ready' || s === 'asset_ready' || s === 'playable';
@@ -1926,7 +2322,8 @@ function getMuxThumbnailUrl(playbackId?: string | null) {
   })
 );
 
-      setSubmissions(withPlayableUrls);
+      const withCollaborators = await attachProfileSubmissionCollaborators(withPlayableUrls);
+      setSubmissions(withCollaborators as SubmissionRow[]);
     } finally {
       setLoadingSubmissions(false);
     }
@@ -2318,6 +2715,7 @@ const fetchCities = async (query: string) => {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 1,
       base64: false,
+      allowsEditing: false,
     });
     if (result.canceled || !result.assets?.length) return;
     setCropSource(result.assets[0].uri);
@@ -2744,6 +3142,67 @@ const changeShowreelThumbnail = async (row: ShowreelRow) => {
     }
   };
 
+  const updateSubmissionProfileVisibility = async (
+    submission: SubmissionRow,
+    hiddenOnProfile: boolean
+  ) => {
+    const previousHiddenIds = new Set(localHiddenSubmissionIds);
+    const nextHiddenIds = new Set(previousHiddenIds);
+    if (hiddenOnProfile) {
+      nextHiddenIds.add(submission.id);
+    } else {
+      nextHiddenIds.delete(submission.id);
+    }
+
+    const patchedSubmission = { ...submission, hidden_on_profile: hiddenOnProfile };
+
+    setLocalHiddenSubmissionIds(nextHiddenIds);
+    void persistLocalHiddenSubmissionIds(nextHiddenIds);
+
+    setSubmissions((prev) =>
+      prev.map((row) => (row.id === submission.id ? { ...row, hidden_on_profile: hiddenOnProfile } : row))
+    );
+
+    if (activeSubmission?.id === submission.id) {
+      setActiveSubmission(patchedSubmission);
+    }
+
+    if (hiddenOnProfile) {
+      setSubmissionModalOpen(false);
+      setActiveSubmission(null);
+    }
+
+    const hasRemoteVisibilityColumn =
+      Object.prototype.hasOwnProperty.call(submission as any, 'hidden_on_profile') ||
+      submissions.some((row) =>
+        Object.prototype.hasOwnProperty.call(row as any, 'hidden_on_profile')
+      );
+
+    if (!hasRemoteVisibilityColumn) {
+      return;
+    }
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        return;
+      }
+
+      const { error } = await supabase
+        .from('submissions')
+        .update({ hidden_on_profile: hiddenOnProfile })
+        .eq('id', submission.id)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+    } catch (e: any) {
+      console.log('Submission visibility will remain local for now:', e?.message ?? e);
+    }
+  };
+
 const uploadPendingShowreelThumbs = async (userId: string) => {
   const entries = Object.entries(pendingShowreelThumbs);
 
@@ -2799,6 +3258,18 @@ const resolvedPortfolioUrl =
     : mp4MainUrl
     ? stripBuster(mp4MainUrl)
     : profile?.portfolio_url ?? null;
+
+    const moderation = validateMultipleSafeTexts([
+      { label: 'Name', value: fullName },
+      { label: 'About', value: bio },
+      { label: 'Portfolio URL', value: resolvedPortfolioUrl },
+      { label: 'Side roles', value: sideRolesClean.join(', ') },
+    ]);
+
+    if (!moderation.safe) {
+      Alert.alert('Content Not Allowed', moderation.message || 'Please edit your profile before saving.');
+      return;
+    }
 
     const payload: any = {
       full_name: (fullName || '').trim() || null,
@@ -2896,6 +3367,275 @@ const label = city?.name ?? '';
     }, 250);
   }
 };
+
+  const reportProfile = () => {
+    if (!profile) return;
+    if (!currentUserId) {
+      promptSignIn('Create an account or sign in to report users.');
+      return;
+    }
+
+    setReportReason('Harassment or bullying');
+    setReportDetails('');
+    setReportTarget({
+      type: 'profile',
+      reportedUserId: profile.id,
+      contentId: profile.id,
+      title: profile.full_name || 'Profile',
+    });
+    setReportOpen(true);
+  };
+
+  const fetchSubmissionComments = async (submissionId: string) => {
+    setLoadingComments(true);
+
+    try {
+      const baseSelect = `
+        id,
+        submission_id,
+        user_id,
+        comment,
+        parent_comment_id,
+        created_at,
+        users:user_id(id, full_name, avatar_url)
+      `;
+
+      let { data, error } = await supabase
+        .from('submission_comments')
+        .select(baseSelect)
+        .eq('submission_id', submissionId)
+        .order('created_at', { ascending: true });
+
+      if (error && /parent_comment_id/i.test(error.message || '')) {
+        const fallback = await supabase
+          .from('submission_comments')
+          .select(`
+            id,
+            submission_id,
+            user_id,
+            comment,
+            created_at,
+            users:user_id(id, full_name, avatar_url)
+          `)
+          .eq('submission_id', submissionId)
+          .order('created_at', { ascending: true });
+        data = fallback.data;
+        error = fallback.error;
+      }
+
+      if (error) throw error;
+
+      setComments((data as any) || []);
+    } catch (e: any) {
+      console.warn('Profile fetch comments error:', e?.message || e);
+      setComments([]);
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const openSubmissionModal = async (submission: SubmissionRow) => {
+    setActiveSubmission(submission);
+    setSubmissionModalOpen(true);
+    setCommentText('');
+    setComments([]);
+    setSubmissionCommentsExpanded(false);
+
+    const scrollToPlayer = () => {
+      submissionWatchScrollRef.current?.scrollTo({ y: 0, animated: true });
+    };
+
+    InteractionManager.runAfterInteractions(scrollToPlayer);
+    setTimeout(scrollToPlayer, Platform.OS === 'web' ? 40 : 70);
+
+    await fetchSubmissionComments(submission.id);
+  };
+
+  const closeSubmissionModal = async () => {
+    try {
+      await pauseAllExcept(PAUSE_NONE_ID);
+    } catch {}
+    setSubmissionModalOpen(false);
+    setActiveSubmission(null);
+    setComments([]);
+    setCommentText('');
+    setSubmissionCommentsExpanded(false);
+  };
+
+  const submitSubmissionComment = async () => {
+    if (!activeSubmission) return;
+
+    if (!currentUserId) {
+      promptSignIn('Create an account or sign in to comment on films.');
+      return;
+    }
+
+    const text = commentText.trim();
+    if (!text || sendingComment) return;
+
+    const moderation = validateSafeText(text);
+    if (moderation) {
+      Alert.alert('Content Not Allowed', moderation);
+      return;
+    }
+
+    setSendingComment(true);
+
+    try {
+      let { error } = await supabase.from('submission_comments').insert([
+        {
+          submission_id: activeSubmission.id,
+          user_id: currentUserId,
+          comment: text,
+        },
+      ]);
+
+      if (error && /parent_comment_id/i.test(error.message || '')) {
+        const fallback = await supabase.from('submission_comments').insert([
+          {
+            submission_id: activeSubmission.id,
+            user_id: currentUserId,
+            comment: text,
+          },
+        ]);
+        error = fallback.error;
+      }
+
+      if (error) throw error;
+
+      setCommentText('');
+      await fetchSubmissionComments(activeSubmission.id);
+    } catch (e: any) {
+      Alert.alert('Could not post comment', e?.message || 'Please try again.');
+    } finally {
+      setSendingComment(false);
+    }
+  };
+
+  const reportSubmissionComment = async (comment: SubmissionCommentRow) => {
+    if (!currentUserId) {
+      promptSignIn('Create an account or sign in to report comments.');
+      return;
+    }
+
+    try {
+      await pauseAllExcept(PAUSE_NONE_ID);
+    } catch {}
+
+    setReportReason('Harassment or bullying');
+    setReportDetails('');
+    setReportTarget({
+      type: 'comment',
+      reportedUserId: comment.user_id,
+      contentId: comment.id,
+      title: comment.comment || comment.content || 'Comment',
+    });
+    setReportOpen(true);
+  };
+
+  const goToCommentUserProfile = async (userId?: string | null) => {
+    if (!userId) return;
+
+    await closeSubmissionModal();
+    navigation.navigate("Profile", { userId });
+  };
+
+  const submitProfileReport = async () => {
+    if (!reportTarget && !profile) return;
+
+    const detailsError = validateSafeText(reportDetails);
+    if (detailsError) {
+      Alert.alert('Content Not Allowed', detailsError);
+      return;
+    }
+
+    setReportSubmitting(true);
+    try {
+      const ok = await reportContent({
+        reportedUserId: reportTarget?.reportedUserId || profile?.id || null,
+        contentType: reportTarget?.type || 'profile',
+        contentId: reportTarget?.contentId || profile?.id || null,
+        reason: reportReason,
+        details: reportDetails.trim() || null,
+      });
+
+      if (ok) {
+        setReportOpen(false);
+        setReportDetails('');
+        setReportTarget(null);
+      }
+    } finally {
+      setReportSubmitting(false);
+    }
+  };
+
+  const blockProfileUser = async () => {
+    if (!profile) return;
+    if (!currentUserId) {
+      promptSignIn('Create an account or sign in to block users.');
+      return;
+    }
+
+    if (profile.id === currentUserId) {
+      Alert.alert('Not Allowed', 'You cannot block yourself.');
+      return;
+    }
+
+    const confirmed =
+      Platform.OS === 'web'
+        ? window.confirm(
+            'Block this user?\n\nThey won’t be able to interact with you, and their content will be removed from your feed.'
+          )
+        : await new Promise<boolean>((resolve) => {
+            Alert.alert(
+              'Block this user?',
+              'They won’t be able to interact with you, and their content will be removed from your feed.',
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Block', style: 'destructive', onPress: () => resolve(true) },
+              ]
+            );
+          });
+
+    if (!confirmed) return;
+
+    const ok = await blockUser({
+      blockedUserId: profile.id,
+      reason: 'Blocked from Profile',
+      showAlert: true,
+    });
+
+    if (ok) {
+      setHasBlockedProfile(true);
+      setUserJobs([]);
+      setSubmissions([]);
+      setPortfolioItems([]);
+    }
+  };
+
+  const toggleProfileSupport = async () => {
+    if (!currentUserId) {
+      promptSignIn("Create an account or sign in to support users.");
+      return;
+    }
+
+    const targetIdToSupport = profile?.id;
+    if (!targetIdToSupport) return;
+
+    if (isSupporting) {
+      const { error } = await unsupportUser(targetIdToSupport);
+      if (!error) {
+        setIsSupporting(false);
+        setSupportersCount((n) => Math.max(0, n - 1));
+      }
+    } else {
+      const { error } = await supportUser(targetIdToSupport);
+      if (!error) {
+        setIsSupporting(true);
+        setSupportersCount((n) => n + 1);
+      }
+    }
+  };
   /* ---------- dirty state ---------- */
 
   useEffect(() => {
@@ -3349,26 +4089,20 @@ paddingHorizontal: compactMobile ? 10 : 0,
     },
   ]}
 >
-      <View
-  style={{
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: compactMobile ? 8 : 18,
-    flexWrap: "wrap",
-  }}
->
+      <View style={styles.profileActionStack}>
+        <View style={styles.profilePrimaryActions}>
         {isOwnProfile ? (
           <TouchableOpacity
-            style={styles.utilityTextActionBtn}
+            style={styles.profilePrimaryAction}
             onPress={() => setShowEditModal(true)}
             activeOpacity={0.85}
           >
-            <Text style={styles.utilityTextActionBtnText}>Edit Profile</Text>
+            <Ionicons name="create-outline" size={16} color="#000" />
+            <Text style={styles.profilePrimaryActionText}>Edit Profile</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
-            style={styles.utilityTextActionBtn}
+            style={styles.profilePrimaryAction}
             onPress={startOneToOneChat}
             disabled={startingChat}
             activeOpacity={0.85}
@@ -3376,47 +4110,63 @@ paddingHorizontal: compactMobile ? 10 : 0,
             {startingChat ? (
               <ActivityIndicator color="#000" size="small" />
             ) : (
-              <Text
-  style={[styles.utilityTextActionBtnText, { color: COLORS.primary }]}
->
-  Message
-</Text>
+              <>
+                <Ionicons name="chatbubble-ellipses-outline" size={16} color="#000" />
+                <Text style={styles.profilePrimaryActionText}>Message</Text>
+              </>
             )}
           </TouchableOpacity>
         )}
 
-                {!isOwnProfile && profile && (
+        {!isOwnProfile && profile && (
           <TouchableOpacity
             activeOpacity={0.85}
-                        onPress={async () => {
-              if (!currentUserId) {
-                promptSignIn("Create an account or sign in to support users.");
-                return;
-              }
-
-              const targetIdToSupport = profile?.id;
-              if (!targetIdToSupport) return;
-
-              if (isSupporting) {
-                const { error } = await unsupportUser(targetIdToSupport);
-                if (!error) {
-                  setIsSupporting(false);
-                  setSupportersCount((n) => Math.max(0, n - 1));
-                }
-              } else {
-                const { error } = await supportUser(targetIdToSupport);
-                if (!error) {
-                  setIsSupporting(true);
-                  setSupportersCount((n) => n + 1);
-                }
-              }
-            }}
-            style={styles.utilityTextActionBtn}
+            onPress={toggleProfileSupport}
+            style={[styles.profileSecondaryAction, isSupporting && styles.profileSecondaryActionActive]}
           >
-            <Text style={styles.utilityTextActionBtnText}>
+            <Ionicons
+              name={isSupporting ? "checkmark-circle-outline" : "star-outline"}
+              size={15}
+              color={isSupporting ? COLORS.primary : COLORS.textPrimary}
+            />
+            <Text style={styles.profileSecondaryActionText}>
               {isSupporting ? "Supporting" : "Support"}
             </Text>
           </TouchableOpacity>
+        )}
+        </View>
+
+        {!isOwnProfile && profile && (
+          <View style={styles.profileSafetyActions}>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={reportProfile}
+              style={styles.profileSafetyAction}
+            >
+              <Ionicons name="flag-outline" size={14} color={COLORS.textSecondary} />
+              <Text style={styles.profileSafetyActionText}>Report</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={blockProfileUser}
+              style={[styles.profileSafetyAction, hasBlockedProfile && styles.profileSafetyActionBlocked]}
+            >
+              <Ionicons
+                name="ban-outline"
+                size={14}
+                color={hasBlockedProfile ? COLORS.danger : COLORS.textSecondary}
+              />
+              <Text
+                style={[
+                  styles.profileSafetyActionText,
+                  hasBlockedProfile && { color: COLORS.danger },
+                ]}
+              >
+                {hasBlockedProfile ? "Blocked" : "Block"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 
@@ -3542,6 +4292,7 @@ const renderMobileBannerActions = () => {
           onPress={() => setShowEditModal(true)}
           activeOpacity={0.85}
         >
+          <Ionicons name="create-outline" size={12} color="#000" />
           <Text style={styles.mobileBannerPrimaryBtnText}>Edit Profile</Text>
         </TouchableOpacity>
       ) : (
@@ -3555,46 +4306,56 @@ const renderMobileBannerActions = () => {
             {startingChat ? (
               <ActivityIndicator color="#000" size="small" />
             ) : (
-              <Text
-  style={[styles.mobileBannerPrimaryBtnText, { color: COLORS.primary }]}
->
-  Message
-</Text>
+              <>
+                <Ionicons name="chatbubble-ellipses-outline" size={12} color="#000" />
+                <Text style={styles.mobileBannerPrimaryBtnText} numberOfLines={1}>Message</Text>
+              </>
             )}
           </TouchableOpacity>
 
                     {profile && (
             <TouchableOpacity
               activeOpacity={0.85}
-                            onPress={async () => {
-                if (!currentUserId) {
-                  promptSignIn("Create an account or sign in to support users.");
-                  return;
-                }
-
-                const targetIdToSupport = profile?.id;
-                if (!targetIdToSupport) return;
-
-                if (isSupporting) {
-                  const { error } = await unsupportUser(targetIdToSupport);
-                  if (!error) {
-                    setIsSupporting(false);
-                    setSupportersCount((n) => Math.max(0, n - 1));
-                  }
-                } else {
-                  const { error } = await supportUser(targetIdToSupport);
-                  if (!error) {
-                    setIsSupporting(true);
-                    setSupportersCount((n) => n + 1);
-                  }
-                }
-              }}
-              style={styles.mobileBannerGhostBtn}
+              onPress={toggleProfileSupport}
+              style={[styles.mobileBannerGhostBtn, isSupporting && styles.mobileBannerGhostBtnActive]}
             >
-              <Text style={styles.mobileBannerGhostBtnText}>
+              <Ionicons
+                name={isSupporting ? "checkmark-circle-outline" : "star-outline"}
+                size={11}
+                color={COLORS.textPrimary}
+              />
+              <Text style={styles.mobileBannerGhostBtnText} numberOfLines={1}>
                 {isSupporting ? "Supporting" : "Support"}
               </Text>
             </TouchableOpacity>
+          )}
+
+          {profile && (
+            <>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={reportProfile}
+                style={styles.mobileBannerGhostBtn}
+              >
+                <Ionicons name="flag-outline" size={11} color={COLORS.textPrimary} />
+                <Text style={styles.mobileBannerGhostBtnText} numberOfLines={1}>Report</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={blockProfileUser}
+                style={[styles.mobileBannerGhostBtn, hasBlockedProfile && styles.mobileBannerDangerBtn]}
+              >
+                <Ionicons
+                  name="ban-outline"
+                  size={11}
+                  color={hasBlockedProfile ? COLORS.danger : COLORS.textPrimary}
+                />
+                <Text style={[styles.mobileBannerGhostBtnText, { color: COLORS.danger }]} numberOfLines={1}>
+                  {hasBlockedProfile ? "Blocked" : "Block"}
+                </Text>
+              </TouchableOpacity>
+            </>
           )}
         </>
       )}
@@ -3661,7 +4422,7 @@ paddingHorizontal: isMobileLike ? 4 : 0,
                       fontFamily: FONT_OBLIVION,
                     }}
                   >
-                    Filmmaking streak
+                    Filmmaking consistency
                   </Text>
 
                   <Text
@@ -3769,7 +4530,7 @@ paddingVertical: isMobileLike ? 3 : 4,
 
 const renderHero = () => {
   const avatarUrl = image || profile?.avatar_url || null;
-const heroBg = avatarUrl || null;
+const heroBg = avatarUrl;
 
   const bannerColor = displayBannerColor || GOLD;
   const level = displayLevel || 1;
@@ -3964,12 +4725,12 @@ const heroMaxW = isMobileLike ? contentMaxWidth : "100%";
               {/* Avatar + level */}
               <View style={{ alignItems: "center" }}>
                 <LinearGradient
-                  colors={[ringColor, "rgba(255,255,255,0.04)", "rgba(0,0,0,0.9)"]}
+                  colors={[ringColor, ringColor]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                   style={[styles.avatarRing, { borderColor: ringColor }]}
                 >
-                  <View style={[styles.avatarInner, isCompact && styles.avatarInnerCompact]}>
+                  <View style={[styles.avatarInner, isMobileLike && styles.avatarInnerMobile, isCompact && styles.avatarInnerCompact]}>
                     {avatarUrl ? (
                       <Image
   source={{ uri: avatarUrl }}
@@ -4669,233 +5430,626 @@ const renderSubmissionsSection = () => {
     );
   }
 
-  if (!submissions.length) return null;
+  if (!visibleOwnedSubmissions.length && !visibleWorkedOnSubmissions.length) return null;
 
-  const cols = isCompact ? 2 : isMobileLike ? 2 : width < 1100 ? 3 : 4;
- const usable = isMobileLike
-  ? contentMaxWidth
-  : Math.min(width, PAGE_MAX) - horizontalPad * 2;
+  const cols = isCompact || isMobileLike ? 2 : width < 1100 ? 3 : 4;
+  const usable = isMobileLike
+    ? contentMaxWidth
+    : Math.min(width, PAGE_MAX) - horizontalPad * 2;
   const tileW = Math.floor((usable - GRID_GAP * (cols - 1)) / cols);
   const tileH = Math.floor(tileW * (9 / 16));
 
   // Modal media sizing (always numeric → avoids TS error)
-  const modalMaxW = Math.min(Math.min(width, PAGE_MAX) - horizontalPad * 2, 760);
+  const modalInnerPad = isMobileLike ? SIDE_PAD_MOBILE : 12;
+  const modalMaxW = isMobileLike
+    ? Math.max(280, width - modalInnerPad * 2)
+    : Math.min(Math.min(width, PAGE_MAX) - horizontalPad * 2, 760);
   const modalMediaW = Math.max(280, Math.floor(modalMaxW));
   const modalMediaH = Math.floor(modalMediaW * (9 / 16));
 
-  return (
-    <View style={block.section}>
-      <Text style={block.sectionTitleCentered}>Submissions</Text>
+  const renderSubmissionGrid = (
+    title: string,
+    items: SubmissionRow[],
+    showCreditRole = false
+  ) => {
+    if (!items.length) return null;
 
-      <View style={[block.grid, { gap: GRID_GAP }]}>
-        {submissions.map((s) => {
-          const yt = s.youtube_url ? ytThumb(s.youtube_url) : null;
-          const mp4Thumb = s.thumbnail_url || null;
+    return (
+      <View style={block.section}>
+        <Text style={block.sectionTitleCentered}>{title}</Text>
 
-          return (
-            <Pressable
-              key={s.id}
-              onPress={() => {
-                setActiveSubmission(s);
-                setSubmissionModalOpen(true);
-              }}
-              style={{ width: tileW }}
-            >
-              <View
-                style={{
-                  height: tileH,
-                  borderRadius: 12,
-                  overflow: "hidden",
-                  borderWidth: 1,
-                  borderColor: COLORS.border,
-                  backgroundColor: "#000",
-                  alignItems: "center",
-                  justifyContent: "center",
+        <View style={[block.grid, { gap: GRID_GAP }]}>
+          {items.map((s) => {
+            const yt = s.youtube_url ? ytThumb(s.youtube_url) : null;
+            const mp4Thumb = s.thumbnail_url || null;
+            const thumb = yt || mp4Thumb;
+
+            return (
+              <Pressable
+                key={s.id}
+                onPress={() => {
+                  void openSubmissionModal(s);
                 }}
+                style={({ pressed }) => [
+                  { width: tileW },
+                  pressed && { opacity: 0.84 },
+                ]}
               >
-                {/* Thumbnail */}
-                {yt ? (
-                  <Image
-                    source={{ uri: yt }}
-                    style={{ width: "100%", height: "100%" }}
-                    resizeMode="cover"
-                  />
-                ) : mp4Thumb ? (
-                  <Image
-                    source={{ uri: mp4Thumb }}
-                    style={{ width: "100%", height: "100%" }}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <>
-                    <Ionicons name="videocam" size={28} color={COLORS.textSecondary} />
-                    <Text
-                      style={{
-                        marginTop: 6,
-                        color: COLORS.textSecondary,
-                        fontFamily: FONT_OBLIVION,
-                        fontSize: 11,
-                      }}
-                    >
-                      MP4 submission
-                    </Text>
-                  </>
-                )}
+                <View style={[styles.profileSubmissionTile, { height: tileH }]}>
+                  {thumb ? (
+                    <Image
+                      source={{ uri: thumb }}
+                      style={{ width: "100%", height: "100%" }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.profileSubmissionThumbFallback}>
+                      <Ionicons name="videocam" size={22} color={COLORS.textSecondary} />
+                    </View>
+                  )}
 
-                {/* overlay */}
-                <View
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    padding: 10,
-                    backgroundColor: "rgba(0,0,0,0.55)",
+                  <View style={styles.profileSubmissionQualityBadge}>
+                    <Text style={styles.profileSubmissionQualityText}>4K</Text>
+                  </View>
+
+                  <View style={styles.profileSubmissionTileOverlay}>
+                    <Text style={styles.profileSubmissionTileTitle} numberOfLines={1}>
+                      {s.title || "Untitled"}
+                    </Text>
+                    {showCreditRole ? (
+                      <Text style={styles.profileSubmissionTileMeta} numberOfLines={1}>
+                        {s.collaboration_role || "Collaborator"}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
+  const activeCreator =
+    activeSubmission?.users ||
+    (activeSubmission?.user_id === profile?.id
+      ? {
+          id: profile.id,
+          full_name: profile.full_name,
+          avatar_url: profile.avatar_url,
+        }
+      : null);
+  const profileWatchName =
+    activeCreator?.full_name || profile?.full_name || fullName || "Unknown creator";
+  const profileWatchAvatar =
+    activeCreator?.avatar_url ||
+    (activeSubmission?.user_id === profile?.id ? image || profile?.avatar_url : null);
+  const activeCreditRole = activeSubmission?.collaboration_role?.trim() || "";
+  const activeCreatorMeta = (
+    activeSubmission?.film_category ||
+    activeSubmission?.category ||
+    activeSubmission?.word ||
+    (activeSubmission?.is_collaboration_credit
+      ? activeCreditRole
+        ? `Worked on as ${activeCreditRole}`
+        : "Worked on"
+      : "Film")
+  ).toString();
+  const activeSubmissionCollaborators =
+    (((activeSubmission as any)?.collaborators || []) as SubmissionCollaborator[]);
+  const profileSubmissionSuggestions = activeSubmission
+    ? visibleSubmissions.filter((submission) => submission.id !== activeSubmission.id)
+    : [];
+  const openSubmissionComments = (focusComposer = false) => {
+    setSubmissionCommentsExpanded(true);
+    if (focusComposer) {
+      setTimeout(() => {
+        submissionCommentInputRef.current?.focus();
+      }, 60);
+    }
+  };
+
+  const renderActiveSubmissionMedia = () => (
+    <View style={styles.profileWatchPlayerWrap}>
+      <View
+        style={{
+          width: modalMediaW,
+          height: modalMediaH,
+          backgroundColor: "#000",
+          overflow: "hidden",
+        }}
+      >
+        {activeSubmission ? (
+          activeSubmission.youtube_url ? (
+            <YoutubePlayer
+              height={modalMediaH}
+              width={modalMediaW}
+              videoId={extractYoutubeId(activeSubmission.youtube_url) || undefined}
+              play={false}
+              webViewStyle={{ backgroundColor: "#000" }}
+              webViewProps={{
+                allowsInlineMediaPlayback: true,
+                mediaPlaybackRequiresUserAction: false,
+                // @ts-ignore
+                allowsFullscreenVideo: true,
+              }}
+              initialPlayerParams={{ rel: false }}
+            />
+          ) : activeSubmission.video_url || activeSubmission.video_path ? (
+            <ShowreelVideoInline
+              playerId={`submission_${activeSubmission.id}`}
+              filePathOrUrl={activeSubmission.video_url || activeSubmission.video_path || ""}
+              width={modalMediaW}
+              autoPlay={false}
+            />
+          ) : (
+            <View style={styles.profileWatchPlayerFallback}>
+              <Text style={[block.muted, { textAlign: "center" }]}>
+                No video found for this submission.
+              </Text>
+            </View>
+          )
+        ) : null}
+      </View>
+    </View>
+  );
+
+  const renderSubmissionCommentsPanel = () => (
+    <View style={styles.profileCommentsPanel}>
+      <View style={styles.profileCommentsHeader}>
+        <View>
+          <Text style={styles.profileCommentsTitle}>Comments</Text>
+          <Text style={styles.profileCommentsSubtitle}>
+            Shared with this film across Overlooked.
+          </Text>
+        </View>
+        <View style={styles.profileCommentsHeaderActions}>
+          {loadingComments ? <ActivityIndicator color={COLORS.primary} size="small" /> : null}
+          <TouchableOpacity
+            onPress={() => setSubmissionCommentsExpanded(false)}
+            activeOpacity={0.85}
+            style={styles.profileCommentsCollapseBtn}
+          >
+            <Ionicons name="chevron-up" size={16} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {loadingComments && comments.length === 0 ? (
+        <View style={styles.profileCommentsLoading}>
+          <ActivityIndicator color={COLORS.primary} />
+        </View>
+      ) : comments.length === 0 ? (
+        <View style={styles.profileCommentsEmpty}>
+          <Text style={styles.profileCommentsEmptyTitle}>No comments yet</Text>
+          <Text style={styles.profileCommentsEmptyText}>
+            Be the first to leave a note.
+          </Text>
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.profileCommentsList}
+          contentContainerStyle={styles.profileCommentsListContent}
+          showsVerticalScrollIndicator
+          nestedScrollEnabled
+        >
+          {comments.map((comment) => {
+            const user = comment.users || comment.user;
+            const body = comment.comment || comment.content || "";
+            return (
+              <View key={comment.id} style={styles.profileCommentCard}>
+                <TouchableOpacity
+                  onPress={() => {
+                    void goToCommentUserProfile(user?.id || comment.user_id);
                   }}
+                  activeOpacity={0.82}
+                  style={styles.profileCommentAvatarTap}
                 >
-                  <Text
-                    style={{
-                      color: COLORS.textPrimary,
-                      fontFamily: FONT_OBLIVION,
-                      fontWeight: "800",
-                    }}
-                    numberOfLines={1}
-                  >
-                    {s.title || "Untitled"}
-                  </Text>
+                  {user?.avatar_url ? (
+                    <Image source={{ uri: user.avatar_url }} style={styles.profileCommentAvatar} />
+                  ) : (
+                    <View style={styles.profileCommentAvatarFallback}>
+                      <Text style={styles.profileCommentAvatarText}>
+                        {(user?.full_name || "U").slice(0, 1).toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                <View style={styles.profileCommentBody}>
+                  <View style={styles.profileCommentTopRow}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        void goToCommentUserProfile(user?.id || comment.user_id);
+                      }}
+                      activeOpacity={0.82}
+                      style={styles.profileCommentNameTap}
+                    >
+                      <Text style={styles.profileCommentName} numberOfLines={1}>
+                        {user?.full_name || "Unknown"}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        void reportSubmissionComment(comment);
+                      }}
+                      activeOpacity={0.8}
+                      style={styles.profileCommentReport}
+                    >
+                      <Ionicons name="flag-outline" size={13} color={COLORS.textSecondary} />
+                      <Text style={styles.profileCommentReportText}>Report</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.profileCommentText}>{body}</Text>
                 </View>
               </View>
-            </Pressable>
-          );
-        })}
+            );
+          })}
+        </ScrollView>
+      )}
+
+      <View style={styles.profileCommentComposer}>
+        <TextInput
+          ref={submissionCommentInputRef}
+          value={commentText}
+          onChangeText={setCommentText}
+          placeholder={currentUserId ? "Add a comment..." : "Sign in to comment..."}
+          placeholderTextColor="rgba(255,255,255,0.38)"
+          style={[styles.profileCommentInput, WEB_NO_OUTLINE]}
+          multiline
+          maxLength={500}
+          onFocus={() => {
+            if (!currentUserId) {
+              promptSignIn('Create an account or sign in to comment on films.');
+            }
+          }}
+        />
+        <TouchableOpacity
+          onPress={submitSubmissionComment}
+          disabled={sendingComment || (!!currentUserId && !commentText.trim())}
+          style={[
+            styles.profileCommentPostBtn,
+            (sendingComment || (!!currentUserId && !commentText.trim())) && { opacity: 0.5 },
+          ]}
+          activeOpacity={0.9}
+        >
+          {sendingComment ? (
+            <ActivityIndicator color="#000" size="small" />
+          ) : (
+            <Text style={styles.profileCommentPostText}>
+              {currentUserId ? "Post" : "Sign In"}
+            </Text>
+          )}
+        </TouchableOpacity>
       </View>
+    </View>
+  );
+
+  const renderSubmissionCommentsPreview = () => {
+    const firstComment = comments[0];
+    const firstUser = firstComment?.users || firstComment?.user;
+    const firstBody = firstComment?.comment || firstComment?.content || "";
+
+    return (
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => openSubmissionComments(false)}
+        style={styles.profileWatchCommentsPreview}
+      >
+        <View style={styles.profileWatchCommentsPreviewHeader}>
+          <Text style={styles.profileWatchCommentsPreviewTitle}>Comments</Text>
+          <Text style={styles.profileWatchCommentsPreviewCount}>
+            {comments.length}
+          </Text>
+          {loadingComments ? <ActivityIndicator color={COLORS.primary} size="small" /> : null}
+          <Ionicons name="chevron-forward" size={16} color="rgba(216,210,200,0.70)" />
+        </View>
+
+        {firstComment ? (
+          <View style={styles.profileWatchCommentsPreviewRow}>
+            {firstUser?.avatar_url ? (
+              <Image
+                source={{ uri: firstUser.avatar_url }}
+                style={styles.profileWatchCommentsPreviewAvatar}
+              />
+            ) : (
+              <View style={styles.profileWatchCommentsPreviewAvatarFallback}>
+                <Text style={styles.profileWatchCommentsPreviewInitial}>
+                  {(firstUser?.full_name || "U").slice(0, 1).toUpperCase()}
+                </Text>
+              </View>
+            )}
+            <View style={styles.profileWatchCommentsPreviewBody}>
+              <Text style={styles.profileWatchCommentsPreviewName} numberOfLines={1}>
+                {firstUser?.full_name || "Unknown"}
+              </Text>
+              <Text style={styles.profileWatchCommentsPreviewText} numberOfLines={2}>
+                {firstBody}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => openSubmissionComments(true)}
+            style={styles.profileWatchCommentsPreviewInput}
+          >
+            <Text style={styles.profileWatchCommentsPreviewInputText}>
+              Add a comment...
+            </Text>
+          </TouchableOpacity>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  const renderSubmissionSuggestion = (submission: SubmissionRow) => {
+    const yt = submission.youtube_url ? ytThumb(submission.youtube_url) : null;
+    const thumb = yt || submission.thumbnail_url || null;
+    const role = submission.collaboration_role?.trim() || "";
+    const meta = submission.is_collaboration_credit
+      ? role
+        ? `Worked on as ${role}`
+        : "Worked on"
+      : submission.users?.full_name || profile?.full_name || profileWatchName;
+
+    return (
+      <TouchableOpacity
+        key={submission.id}
+        activeOpacity={0.9}
+        onPress={() => {
+          void openSubmissionModal(submission);
+        }}
+        style={styles.profileWatchSuggestionCard}
+      >
+        {thumb ? (
+          <Image
+            source={{ uri: thumb }}
+            style={styles.profileWatchSuggestionThumb}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={[styles.profileWatchSuggestionThumb, styles.profileWatchSuggestionFallback]}>
+            <Ionicons name="videocam" size={20} color={COLORS.textSecondary} />
+          </View>
+        )}
+        <View style={styles.profileWatchSuggestionBody}>
+          <Text style={styles.profileWatchSuggestionTitle} numberOfLines={2}>
+            {submission.title || "Untitled"}
+          </Text>
+          <Text style={styles.profileWatchSuggestionMeta} numberOfLines={1}>
+            {meta}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  return (
+    <>
+      {renderSubmissionGrid("Submissions", visibleOwnedSubmissions)}
+      {renderSubmissionGrid("Worked On", visibleWorkedOnSubmissions, true)}
 
       {/* Playback modal */}
       <Modal
         visible={submissionModalOpen}
         transparent
-        animationType="fade"
-        onRequestClose={async () => {
-  try {
-    await pauseAllExcept(PAUSE_NONE_ID);
-  } catch {}
-  setSubmissionModalOpen(false);
-  setActiveSubmission(null);
-}}
+        animationType="slide"
+        presentationStyle="overFullScreen"
+        hardwareAccelerated
+        statusBarTranslucent
+        onRequestClose={() => {
+          void closeSubmissionModal();
+        }}
       >
         <View
-          style={{
-            flex: 1,
-            backgroundColor: "#000000EE",
-            justifyContent: "center",
-            padding: 14,
-          }}
+          style={[
+            styles.profileWatchOverlay,
+            {
+              justifyContent: isMobileLike ? "flex-start" : "center",
+              paddingHorizontal: isMobileLike ? 0 : 14,
+              paddingTop: isMobileLike ? 0 : 28,
+              paddingBottom: isMobileLike ? 0 : 22,
+            },
+          ]}
         >
           <Pressable
             style={StyleSheet.absoluteFillObject}
-            onPress={async () => {
-  try {
-    await pauseAllExcept(PAUSE_NONE_ID);
-  } catch {}
-  setSubmissionModalOpen(false);
-  setActiveSubmission(null);
-}}
+            onPress={() => {
+              void closeSubmissionModal();
+            }}
           />
 
           <View
-            style={{
-              backgroundColor: COLORS.cardAlt,
-              borderRadius: 16,
-              borderWidth: 1,
-              borderColor: COLORS.border,
-              overflow: "hidden",
-              padding: 12,
-            }}
+            style={[
+              styles.profileWatchCard,
+              isMobileLike
+                ? styles.profileWatchCardMobile
+                : {
+                    maxWidth: modalMediaW + 24,
+                    maxHeight: "94%",
+                    borderRadius: 20,
+                    borderWidth: 1,
+                  },
+            ]}
           >
-            <Text
-              style={{
-                color: COLORS.textPrimary,
-                fontFamily: FONT_OBLIVION,
-                fontWeight: "900",
-                marginBottom: 8,
-              }}
+            <ScrollView
+              ref={submissionWatchScrollRef}
+              style={styles.profileWatchScroll}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="always"
+              contentContainerStyle={[
+                styles.profileWatchContent,
+                {
+                  paddingHorizontal: isMobileLike ? modalInnerPad : 10,
+                  paddingTop: isMobileLike ? Math.max(insets.top + 10, 54) : 8,
+                  paddingBottom: isMobileLike ? Math.max(insets.bottom + 30, 56) : 16,
+                },
+              ]}
             >
-              {activeSubmission?.title || "Untitled"}
-            </Text>
+              <View style={styles.profileWatchTopBar}>
+                <View style={{ flex: 1 }} />
+                <TouchableOpacity
+                  onPress={() => {
+                    void closeSubmissionModal();
+                  }}
+                  activeOpacity={0.9}
+                  hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+                  style={styles.profileWatchCloseCircle}
+                >
+                  <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+                </TouchableOpacity>
+              </View>
 
-            {/* ✅ Give the media a predictable 16:9 box */}
-            <View style={{ width: "100%", alignItems: "center", justifyContent: "center" }}>
-              <View
-                style={{
-                  width: modalMediaW,
-                  height: modalMediaH,
-                  backgroundColor: "#000",
-                  borderRadius: 14,
-                  overflow: "hidden",
-                }}
-              >
-                {activeSubmission ? (
-                  activeSubmission.youtube_url ? (
-                    <YoutubePlayer
-                      height={modalMediaH}
-                      width={modalMediaW}
-                      videoId={extractYoutubeId(activeSubmission.youtube_url) || undefined}
-                      play={false}
-                      webViewStyle={{ backgroundColor: "#000" }}
-                      webViewProps={{
-                        allowsInlineMediaPlayback: true,
-                        mediaPlaybackRequiresUserAction: false,
-                        // @ts-ignore
-                        allowsFullscreenVideo: true,
-                      }}
-                      initialPlayerParams={{ rel: false }}
-                    />
-                  ) : activeSubmission.video_url || activeSubmission.video_path ? (
-  <ShowreelVideoInline
-    playerId={`submission_${activeSubmission.id}`}
-    filePathOrUrl={activeSubmission.video_url || activeSubmission.video_path || ""}
-    width={Math.max(280, Math.min(width - horizontalPad * 2 - 24, 760))}
-    autoPlay={false}
-  />
-) : (
-                    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                      <Text style={[block.muted, { textAlign: "center" }]}>
-                        No video found for this submission.
+              {renderActiveSubmissionMedia()}
+
+              <View style={styles.profileWatchMetaBlock}>
+                <Text style={styles.profileWatchTitle} numberOfLines={2}>
+                  {activeSubmission?.title || "Untitled"}
+                </Text>
+
+                <View style={styles.profileWatchCreatorRow}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (activeCreator?.id) {
+                        void goToCommentUserProfile(activeCreator.id);
+                      }
+                    }}
+                    disabled={!activeCreator?.id}
+                    activeOpacity={0.85}
+                    style={styles.profileWatchCreatorTap}
+                  >
+                    <View style={styles.profileWatchCreatorAvatar}>
+                      {profileWatchAvatar ? (
+                        <Image
+                          source={{ uri: profileWatchAvatar }}
+                          style={styles.profileWatchCreatorAvatarImage}
+                        />
+                      ) : (
+                        <Text style={styles.profileWatchCreatorAvatarText}>
+                          {profileWatchName.slice(0, 1).toUpperCase()}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.profileWatchCreatorName} numberOfLines={1}>
+                        {profileWatchName}
+                      </Text>
+                      <Text style={styles.profileWatchCreatorMeta} numberOfLines={1}>
+                        {activeCreatorMeta}
                       </Text>
                     </View>
-                  )
-                ) : null}
-              </View>
-            </View>
+                  </TouchableOpacity>
 
-           {isOwnProfile && activeSubmission && (
-  <View style={{ gap: 10, marginTop: 12 }}>
-    <TouchableOpacity
-      onPress={() => deleteSubmission(activeSubmission)}
-      style={[styles.ghostBtn, { borderColor: COLORS.danger }]}
-    >
-      <Text style={[styles.ghostBtnText, { color: COLORS.danger }]}>
-        Delete submission
-      </Text>
-    </TouchableOpacity>
-  </View>
-)}
-            <TouchableOpacity
-              onPress={async () => {
-  try {
-    await pauseAllExcept(PAUSE_NONE_ID);
-  } catch {}
-  setSubmissionModalOpen(false);
-  setActiveSubmission(null);
-}}
-              style={[styles.ghostBtn, { marginTop: 12 }]}
-            >
-              <Text style={styles.ghostBtnText}>Close</Text>
-            </TouchableOpacity>
+                  {activeSubmissionCollaborators.length > 0 ? (
+                    <View style={styles.profileWatchCreditsInlineWrap}>
+                      {activeSubmissionCollaborators.map((item) => {
+                        const collaboratorName =
+                          item.users?.full_name ||
+                          (item.user_id ? "Collaborator" : "Credit");
+                        const canOpenProfile = !!item.users?.id;
+
+                        return (
+                          <TouchableOpacity
+                            key={`${item.user_id}-${item.role || "role"}`}
+                            activeOpacity={0.82}
+                            onPress={() => {
+                              if (item.users?.id) {
+                                void goToCommentUserProfile(item.users.id);
+                              }
+                            }}
+                            disabled={!canOpenProfile}
+                            style={styles.profileWatchCreditPerson}
+                          >
+                            {item.users?.avatar_url ? (
+                              <Image
+                                source={{ uri: item.users.avatar_url }}
+                                style={styles.profileWatchCreditAvatar}
+                              />
+                            ) : (
+                              <View style={styles.profileWatchCreditAvatarFallback}>
+                                <Text style={styles.profileWatchCreditAvatarInitial}>
+                                  {collaboratorName.slice(0, 1).toUpperCase()}
+                                </Text>
+                              </View>
+                            )}
+
+                            <View style={styles.profileWatchCreditTextWrap}>
+                              <Text style={styles.profileWatchCreditName} numberOfLines={1}>
+                                {collaboratorName}
+                              </Text>
+                              <Text style={styles.profileWatchCreditRole} numberOfLines={1}>
+                                {item.role || "Collaborator"}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ) : null}
+                </View>
+
+                <View style={styles.profileWatchActionsRow}>
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    onPress={() => {
+                      openSubmissionComments(true);
+                    }}
+                    style={styles.profileWatchActionChip}
+                  >
+                    <Ionicons name="chatbubble-ellipses-outline" size={18} color={COLORS.textPrimary} />
+                    <Text style={styles.profileWatchActionText}>Comment</Text>
+                    <Text style={styles.profileWatchActionMeta}>
+                      {comments.length}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {isOwnProfile && activeSubmission ? (
+                    <TouchableOpacity
+                      activeOpacity={0.9}
+                      onPress={() => {
+                        void updateSubmissionProfileVisibility(activeSubmission, true);
+                      }}
+                      style={styles.profileWatchActionChip}
+                    >
+                      <Ionicons name="eye-off-outline" size={18} color={COLORS.textPrimary} />
+                      <Text style={styles.profileWatchActionText}>Hide</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {activeSubmission?.user_id === currentUserId &&
+                  !activeSubmission?.is_collaboration_credit ? (
+                    <TouchableOpacity
+                      activeOpacity={0.9}
+                      onPress={() => {
+                        void deleteSubmission(activeSubmission);
+                      }}
+                      style={[styles.profileWatchActionChip, styles.profileWatchDangerChip]}
+                    >
+                      <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
+                      <Text style={styles.profileWatchDangerText}>Delete</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </View>
+
+              {submissionCommentsExpanded
+                ? renderSubmissionCommentsPanel()
+                : renderSubmissionCommentsPreview()}
+
+              {profileSubmissionSuggestions.length > 0 ? (
+                <View style={styles.profileWatchSuggestionsSection}>
+                  <Text style={styles.profileWatchSectionTitle}>Up next</Text>
+                  <View style={styles.profileWatchSuggestionsList}>
+                    {profileSubmissionSuggestions.map(renderSubmissionSuggestion)}
+                  </View>
+                </View>
+              ) : null}
+            </ScrollView>
           </View>
         </View>
       </Modal>
-    </View>
+    </>
   );
 };
 
@@ -5314,6 +6468,50 @@ return (
                 multiline
               />
             </View>
+
+            {isOwnProfile && hiddenProfileSubmissions.length > 0 && (
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Hidden submissions</Text>
+                <View style={styles.hiddenSubmissionList}>
+                  {hiddenProfileSubmissions.map((submission) => {
+                    const thumb = submission.youtube_url
+                      ? ytThumb(submission.youtube_url)
+                      : submission.thumbnail_url || null;
+
+                    return (
+                      <View key={submission.id} style={styles.hiddenSubmissionRow}>
+                        <View style={styles.hiddenSubmissionThumb}>
+                          {thumb ? (
+                            <Image source={{ uri: thumb }} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                          ) : (
+                            <Ionicons name="videocam" size={18} color={COLORS.textSecondary} />
+                          )}
+                        </View>
+
+                        <View style={styles.hiddenSubmissionCopy}>
+                          <Text style={styles.hiddenSubmissionTitle} numberOfLines={1}>
+                            {submission.title || "Untitled"}
+                          </Text>
+                          <Text style={styles.hiddenSubmissionMeta} numberOfLines={1}>
+                            Hidden from profile
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          onPress={() => {
+                            void updateSubmissionProfileVisibility(submission, false);
+                          }}
+                          style={styles.hiddenSubmissionAction}
+                          activeOpacity={0.86}
+                        >
+                          <Text style={styles.hiddenSubmissionActionText}>Unhide</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
 
             {/* Featured Showreel (MP4 only) */}
             <View style={styles.field}>
@@ -5904,6 +7102,27 @@ return (
     navigation.navigate("Profile", { userId: id });
   }}
 />
+    <ReportContentModal
+      visible={reportOpen}
+      title={reportTarget?.type === 'comment' ? 'Report Comment' : 'Report Profile'}
+      subtitle={
+        reportTarget?.type === 'comment'
+          ? 'Tell us what happened. Comment reports are reviewed within 24 hours.'
+          : 'Tell us what happened. Profile reports are reviewed within 24 hours.'
+      }
+      selectedReason={reportReason}
+      details={reportDetails}
+      submitting={reportSubmitting}
+      onReasonChange={setReportReason}
+      onDetailsChange={setReportDetails}
+      onClose={() => {
+        if (!reportSubmitting) {
+          setReportOpen(false);
+          setReportTarget(null);
+        }
+      }}
+      onSubmit={submitProfileReport}
+    />
   </>
 );
 } // ✅ CLOSE THE COMPONENT HERE
@@ -5948,47 +7167,76 @@ const styles = StyleSheet.create({
 
   mobileBannerActions: {
     position: "absolute",
-    right: 12,
-    bottom: 12,
+    right: 16,
+    bottom: 16,
+    width: 198,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: 6,
+    columnGap: 6,
+    maxWidth: "54%",
     zIndex: 50,
     elevation: 50,
   },
   mobileBannerPrimaryBtn: {
-    backgroundColor: "transparent",
-    borderWidth: 0,
-    paddingVertical: 2,
-    paddingHorizontal: 0,
+    flexBasis: "48%",
+    flexGrow: 1,
+    minWidth: 0,
+    minHeight: 32,
+    backgroundColor: "rgba(198,166,100,0.86)",
+    borderWidth: 1,
+    borderColor: "rgba(244,239,230,0.16)",
+    paddingVertical: 5,
+    paddingHorizontal: 7,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 0,
+    flexDirection: "row",
+    gap: 4,
+    borderRadius: 13,
   },
   mobileBannerPrimaryBtnText: {
-    color: COLORS.textPrimary,
-    fontWeight: "700",
-    letterSpacing: 0.8,
+    color: "#000",
+    fontWeight: "900",
+    letterSpacing: 0.45,
     fontFamily: FONT_OBLIVION,
-    fontSize: 11,
+    fontSize: 9,
     textTransform: "uppercase",
+    flexShrink: 1,
   },
   mobileBannerGhostBtn: {
-    backgroundColor: "transparent",
-    borderWidth: 0,
-    paddingVertical: 2,
-    paddingHorizontal: 0,
+    flexBasis: "48%",
+    flexGrow: 1,
+    minWidth: 0,
+    minHeight: 32,
+    backgroundColor: "rgba(255,255,255,0.075)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    paddingVertical: 5,
+    paddingHorizontal: 7,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 0,
+    flexDirection: "row",
+    gap: 4,
+    borderRadius: 13,
+  },
+  mobileBannerGhostBtnActive: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderColor: "rgba(255,255,255,0.20)",
+  },
+  mobileBannerDangerBtn: {
+    borderColor: "rgba(255,107,107,0.22)",
+    backgroundColor: "rgba(255,107,107,0.065)",
   },
   mobileBannerGhostBtnText: {
     color: COLORS.textPrimary,
-    fontWeight: "700",
-    letterSpacing: 0.8,
+    fontWeight: "900",
+    letterSpacing: 0.45,
     fontFamily: FONT_OBLIVION,
-    fontSize: 11,
+    fontSize: 9,
     textTransform: "uppercase",
+    flexShrink: 1,
   },
   roleWrap: {
     ...StyleSheet.absoluteFillObject,
@@ -6108,18 +7356,25 @@ const styles = StyleSheet.create({
   },
 
   avatarRing: {
-    padding: 3,
+    padding: 2,
     borderRadius: 999,
-    borderWidth: 2,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
   },
   avatarInner: {
     width: 80,
     height: 80,
     borderRadius: 999,
-    backgroundColor: "#000",
+    backgroundColor: "rgba(0,0,0,0.16)",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
+  },
+  avatarInnerMobile: {
+    width: 74,
+    height: 74,
   },
   avatarInnerCompact: {
     width: 64,
@@ -6156,6 +7411,95 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     borderColor: "transparent",
     borderRadius: 0,
+  },
+  profileActionStack: {
+    gap: 12,
+    alignItems: "center",
+  },
+  profilePrimaryActions: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  profilePrimaryAction: {
+    minHeight: 44,
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 11,
+    backgroundColor: "rgba(198,166,100,0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(244,239,230,0.20)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+  profilePrimaryActionText: {
+    color: "#000",
+    fontFamily: FONT_OBLIVION,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  profileSecondaryAction: {
+    minHeight: 44,
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    backgroundColor: "rgba(255,255,255,0.055)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+  profileSecondaryActionActive: {
+    borderColor: "rgba(198,166,100,0.36)",
+    backgroundColor: "rgba(198,166,100,0.10)",
+  },
+  profileSecondaryActionText: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  profileSafetyActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  profileSafetyAction: {
+    minHeight: 36,
+    borderRadius: 999,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  profileSafetyActionBlocked: {
+    borderColor: "rgba(255,107,107,0.32)",
+    backgroundColor: "rgba(255,107,107,0.08)",
+  },
+  profileSafetyActionText: {
+    color: COLORS.textSecondary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
   },
   utilityTopBar: {
     backgroundColor: "transparent",
@@ -6615,6 +7959,770 @@ heroIdentityEpicDesktop: {
     fontSize: 14,
     fontWeight: '800',
     textTransform: 'uppercase',
+  },
+
+  profileSubmissionList: {
+    gap: 12,
+  },
+  profileSubmissionTile: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileSubmissionTileOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(0,0,0,0.58)',
+  },
+  profileSubmissionTileTitle: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  profileSubmissionTileMeta: {
+    marginTop: 2,
+    color: COLORS.primary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  profileSubmissionRow: {
+    minHeight: 92,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: '#090909',
+    padding: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  profileSubmissionRowPressed: {
+    backgroundColor: '#101010',
+    borderColor: 'rgba(198,166,100,0.28)',
+  },
+  profileSubmissionThumb: {
+    width: 132,
+    aspectRatio: 16 / 9,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  profileSubmissionThumbFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#080808',
+  },
+  profileSubmissionQualityBadge: {
+    position: 'absolute',
+    left: 6,
+    bottom: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
+  profileSubmissionQualityText: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  profileSubmissionCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 5,
+  },
+  profileSubmissionTitle: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: '900',
+  },
+  profileSubmissionMeta: {
+    color: COLORS.textSecondary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+  },
+  hiddenSubmissionList: {
+    marginTop: 8,
+    gap: 10,
+  },
+  hiddenSubmissionRow: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: '#090909',
+    padding: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  hiddenSubmissionThumb: {
+    width: 64,
+    aspectRatio: 16 / 9,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#050505',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hiddenSubmissionCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  hiddenSubmissionTitle: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  hiddenSubmissionMeta: {
+    marginTop: 2,
+    color: COLORS.textSecondary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+  },
+  hiddenSubmissionAction: {
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(198,166,100,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.35)',
+  },
+  hiddenSubmissionActionText: {
+    color: COLORS.primary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+  },
+
+  profileWatchOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.88)",
+    alignItems: "center",
+  },
+  profileWatchCard: {
+    width: "100%",
+    overflow: "hidden",
+    backgroundColor: "#000",
+    borderColor: "rgba(255,255,255,0.08)",
+    shadowColor: "#000",
+    shadowOpacity: 0.32,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 12,
+  },
+  profileWatchCardMobile: {
+    flex: 1,
+    maxHeight: "100%",
+    borderRadius: 0,
+    borderWidth: 0,
+  },
+  profileWatchScroll: {
+    width: "100%",
+  },
+  profileWatchContent: {
+    paddingBottom: 16,
+  },
+  profileWatchTopBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    marginBottom: 8,
+    zIndex: 30,
+    elevation: 30,
+  },
+  profileWatchCloseCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+  },
+  profileWatchPlayerWrap: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: Platform.OS === "web" ? 14 : 0,
+    overflow: "hidden",
+    backgroundColor: "#000",
+    borderWidth: Platform.OS === "web" ? 1 : 0,
+    borderColor: Platform.OS === "web" ? "rgba(255,255,255,0.08)" : "transparent",
+    marginBottom: 12,
+  },
+  profileWatchPlayerFallback: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+  },
+  profileWatchMetaBlock: {
+    paddingBottom: 4,
+    marginBottom: 10,
+  },
+  profileWatchTitle: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "900",
+    fontSize: 18,
+    lineHeight: 22,
+  },
+  profileWatchCreatorRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  profileWatchCreatorTap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    maxWidth: "100%",
+    minWidth: 0,
+  },
+  profileWatchCreatorAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: "rgba(198,166,100,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(198,166,100,0.26)",
+  },
+  profileWatchCreatorAvatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  profileWatchCreatorAvatarText: {
+    color: COLORS.primary,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "900",
+    fontSize: 13,
+  },
+  profileWatchCreatorName: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "900",
+    fontSize: 13,
+    lineHeight: 16,
+  },
+  profileWatchCreatorMeta: {
+    marginTop: 2,
+    color: "rgba(216,210,200,0.62)",
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "700",
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  profileWatchCreditsInlineWrap: {
+    flex: 1,
+    minWidth: Platform.OS === "web" ? 220 : 150,
+    maxWidth: "100%",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 7,
+  },
+  profileWatchCreditPerson: {
+    maxWidth: Platform.OS === "web" ? 220 : 178,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingRight: 4,
+  },
+  profileWatchCreditAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#050505",
+  },
+  profileWatchCreditAvatarFallback: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(198,166,100,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(198,166,100,0.22)",
+  },
+  profileWatchCreditAvatarInitial: {
+    color: COLORS.primary,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "900",
+    fontSize: 11,
+  },
+  profileWatchCreditTextWrap: {
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  profileWatchCreditName: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "900",
+    fontSize: 11,
+  },
+  profileWatchCreditRole: {
+    marginTop: 1,
+    color: COLORS.primary,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "800",
+    fontSize: 10,
+  },
+  profileWatchActionsRow: {
+    marginTop: 12,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+  },
+  profileWatchActionChip: {
+    width: 76,
+    height: 54,
+    borderRadius: 14,
+    paddingHorizontal: 6,
+    paddingVertical: 7,
+    backgroundColor: "rgba(255,255,255,0.075)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileWatchDangerChip: {
+    backgroundColor: "rgba(255,70,70,0.075)",
+    borderColor: "rgba(255,90,90,0.22)",
+  },
+  profileWatchActionText: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "900",
+    fontSize: 10,
+    letterSpacing: 0.2,
+    marginTop: 3,
+  },
+  profileWatchActionMeta: {
+    color: "rgba(216,210,200,0.54)",
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "800",
+    fontSize: 9,
+    marginTop: 1,
+  },
+  profileWatchDangerText: {
+    color: COLORS.danger,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "900",
+    fontSize: 10,
+    letterSpacing: 0.2,
+    marginTop: 3,
+  },
+  profileWatchCommentsPreview: {
+    borderRadius: 14,
+    backgroundColor: "#0B0B0B",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    marginBottom: 10,
+  },
+  profileWatchCommentsPreviewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  profileWatchCommentsPreviewTitle: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "900",
+    fontSize: 13,
+  },
+  profileWatchCommentsPreviewCount: {
+    color: "rgba(216,210,200,0.56)",
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "800",
+    fontSize: 12,
+    flex: 1,
+  },
+  profileWatchCommentsPreviewRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+    marginTop: 10,
+  },
+  profileWatchCommentsPreviewAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#000",
+  },
+  profileWatchCommentsPreviewAvatarFallback: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(198,166,100,0.16)",
+  },
+  profileWatchCommentsPreviewInitial: {
+    color: COLORS.primary,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "900",
+    fontSize: 11,
+  },
+  profileWatchCommentsPreviewBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  profileWatchCommentsPreviewName: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "900",
+    fontSize: 11,
+  },
+  profileWatchCommentsPreviewText: {
+    marginTop: 2,
+    color: "rgba(216,210,200,0.70)",
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "600",
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  profileWatchCommentsPreviewInput: {
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    marginTop: 10,
+  },
+  profileWatchCommentsPreviewInputText: {
+    color: "rgba(216,210,200,0.42)",
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  profileWatchSuggestionsSection: {
+    paddingTop: 14,
+    paddingBottom: 4,
+  },
+  profileWatchSectionTitle: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "900",
+    fontSize: 14,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginBottom: 8,
+  },
+  profileWatchSuggestionsList: {
+    gap: 8,
+  },
+  profileWatchSuggestionCard: {
+    flexDirection: "row",
+    gap: 10,
+    borderRadius: 12,
+    backgroundColor: "transparent",
+    paddingVertical: 5,
+  },
+  profileWatchSuggestionThumb: {
+    width: 128,
+    aspectRatio: 16 / 9,
+    borderRadius: 9,
+    backgroundColor: "#080808",
+  },
+  profileWatchSuggestionFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  profileWatchSuggestionBody: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: "center",
+  },
+  profileWatchSuggestionTitle: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "900",
+    fontSize: 13,
+    lineHeight: 16,
+  },
+  profileWatchSuggestionMeta: {
+    marginTop: 6,
+    color: "rgba(216,210,200,0.55)",
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "700",
+    fontSize: 11,
+  },
+
+  submissionModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+  },
+  submissionModalTitle: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "900",
+    fontSize: 18,
+    lineHeight: 22,
+  },
+  submissionModalMeta: {
+    marginTop: 3,
+    color: COLORS.textSecondary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+    letterSpacing: 0.7,
+    textTransform: "uppercase",
+  },
+  submissionModalCloseIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  submissionModalActions: {
+    gap: 10,
+    marginTop: 12,
+  },
+  profileCommentsPanel: {
+    marginTop: 14,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#080808",
+    overflow: "hidden",
+  },
+  profileCommentsHeader: {
+    minHeight: 58,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.07)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  profileCommentsHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  profileCommentsCollapseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  profileCommentsTitle: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 14,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+    textTransform: "uppercase",
+  },
+  profileCommentsSubtitle: {
+    marginTop: 2,
+    color: COLORS.textSecondary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+  },
+  profileCommentsLoading: {
+    minHeight: 86,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileCommentsEmpty: {
+    minHeight: 96,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+  },
+  profileCommentsEmptyTitle: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  profileCommentsEmptyText: {
+    marginTop: 4,
+    color: COLORS.textSecondary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 12,
+  },
+  profileCommentsList: {
+    maxHeight: 260,
+  },
+  profileCommentsListContent: {
+    padding: 12,
+    gap: 10,
+    paddingBottom: 14,
+  },
+  profileCommentCard: {
+    flexDirection: "row",
+    gap: 10,
+    borderRadius: 14,
+    backgroundColor: "#0D0D0D",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    padding: 10,
+  },
+  profileCommentAvatarTap: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+  },
+  profileCommentAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#111",
+  },
+  profileCommentAvatarFallback: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  profileCommentAvatarText: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  profileCommentBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  profileCommentTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  profileCommentNameTap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  profileCommentName: {
+    flex: 1,
+    minWidth: 0,
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  profileCommentText: {
+    marginTop: 4,
+    color: COLORS.textSecondary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  profileCommentReport: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.035)",
+  },
+  profileCommentReportText: {
+    color: COLORS.textSecondary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0.7,
+    textTransform: "uppercase",
+  },
+  profileCommentComposer: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.07)",
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 9,
+  },
+  profileCommentInput: {
+    flex: 1,
+    minHeight: 46,
+    maxHeight: 110,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#0F0F0F",
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 13,
+    lineHeight: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  profileCommentPostBtn: {
+    minHeight: 46,
+    minWidth: 72,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 14,
+  },
+  profileCommentPostText: {
+    color: "#000",
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
   },
 
   modalOverlay: {

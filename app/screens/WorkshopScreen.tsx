@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Animated,
-  ImageBackground,
+  Easing,
   Modal,
   Platform,
   Pressable,
@@ -15,13 +15,15 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { giveXp, supabase, type UserTier } from '../lib/supabase';
 import { useGamification } from '../context/GamificationContext';
 import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 import { UpgradeModal } from '../../components/UpgradeModal';
 import { useAppRefresh } from '../context/AppRefreshContext';
+import { getCurrentUserTierOrFree } from '../lib/membership';
 
 /* -------------------------------- palette -------------------------------- */
 const BG = '#050505';
@@ -53,6 +55,8 @@ const SYSTEM_SANS = Platform.select({
   web: undefined,
   default: undefined,
 });
+
+const WORKSHOP_LAST_PATH_KEY = 'overlooked.workshop.lastPath';
 
 /* -------------------------------- types -------------------------------- */
 type WorkshopPathKey =
@@ -140,6 +144,7 @@ type Mission = {
 type UserProfile = {
   id: string;
   tier: UserTier;
+  full_name?: string | null;
 };
 
 /* -------------------------------- paths -------------------------------- */
@@ -209,31 +214,6 @@ const PATHS: PathMeta[] = [
   },
 
 ];
-const PATH_IMAGES: Record<WorkshopPathKey, { uri: string }> = {
-  acting: {
-  uri: 'https://images.unsplash.com/photo-1513106580091-1d82408b8cd6?auto=format&fit=crop&w=1200&q=80',
-},
-  selftape: {
-  uri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=1200&q=80',
-},
-editing: {
-  uri: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1200&q=80',
-},
-  cinematography: {
-    uri: 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&w=1200&q=80',
-  },
-  directing: {
-    uri: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80',
-  },
-  sound: {
-    uri: 'https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&w=1200&q=80',
-  },
-    
-  filmmaker: {
-    uri: 'https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&w=1200&q=80',
-  },
-};
-
 /* ---------------------------- lesson banks ---------------------------- */
 const makeSeed = (
   title: string,
@@ -7765,6 +7745,7 @@ function LessonRowCard({
   return (
     <Animated.View
       style={{
+        flex: 1,
         transform: [{ scale }, { translateY: hoverLift }, { translateX }],
       }}
     >
@@ -7780,29 +7761,6 @@ function LessonRowCard({
           locked && styles.lessonRowCardLocked,
         ]}
       >
-        <View
-          style={[
-            styles.lessonRowIconWrap,
-            completed && styles.lessonRowIconWrapCompleted,
-            current && styles.lessonRowIconWrapCurrent,
-            locked && styles.lessonRowIconWrapLocked,
-          ]}
-        >
-          <Ionicons
-            name={
-              completed
-                ? 'checkmark'
-                : lesson.isBoss
-                  ? 'trophy-outline'
-                  : lesson.requiresSurgery
-                    ? 'medkit-outline'
-                    : kindIcon(lesson.kind)
-            }
-            size={18}
-            color={locked ? MUTED_2 : completed || current ? BG : GOLD}
-          />
-        </View>
-
         <View style={styles.lessonRowTextWrap}>
           <View style={styles.lessonRowTopLine}>
             <Text style={[styles.lessonRowStep, locked && styles.lockedText]}>
@@ -7841,31 +7799,9 @@ function LessonRowCard({
           </Text>
 
           <View style={styles.lessonRowMeta}>
-            
-
             <View style={styles.lessonRowMetaPill}>
-              <Ionicons name="flash-outline" size={11} color={GOLD} />
+              <Ionicons name="flash-outline" size={11} color={CINEMA.brass} />
               <Text style={styles.lessonRowMetaText}>{lesson.xp} XP</Text>
-            </View>
-
-            <View
-              style={[
-                styles.lessonRowStatusPill,
-                completed && styles.lessonRowStatusPillCompleted,
-                current && styles.lessonRowStatusPillCurrent,
-                locked && styles.lessonRowStatusPillLocked,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.lessonRowStatusText,
-                  completed && styles.lessonRowStatusTextCompleted,
-                  current && styles.lessonRowStatusTextCurrent,
-                  locked && styles.lessonRowStatusTextLocked,
-                ]}
-              >
-                {completed ? 'Completed' : current ? 'Current' : locked ? 'Locked' : 'Open'}
-              </Text>
             </View>
           </View>
         </View>
@@ -7873,7 +7809,7 @@ function LessonRowCard({
         <Ionicons
           name="chevron-forward"
           size={18}
-          color={locked ? MUTED_2 : GOLD}
+          color={locked ? CINEMA.textDim : CINEMA.brass}
           style={styles.lessonRowChevron}
         />
       </Pressable>
@@ -7886,8 +7822,10 @@ const WorkshopScreen: React.FC = () => {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isDesktop = width >= 960;
+  const isWebDesktop = Platform.OS === 'web' && width >= 960;
   const navigation = useNavigation<any>();
-  const { triggerAppRefresh } = useAppRefresh();
+  const { refreshKey, triggerAppRefresh } = useAppRefresh();
+  const isFocused = useIsFocused();
 
   const {
     userId,
@@ -7934,8 +7872,10 @@ const WorkshopScreen: React.FC = () => {
   const { streak, refreshStreak } = useMonthlyStreak();
 
   const hasLoadedOnceRef = useRef(false);
+  const lastHandledRefreshKeyRef = useRef(0);
 
   const [selectedPath, setSelectedPath] = useState<WorkshopPathKey>('acting');
+  const [lastPathLoaded, setLastPathLoaded] = useState(false);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const [surgeryLesson, setSurgeryLesson] = useState<Lesson | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -7966,6 +7906,48 @@ filmmaker: [],
   const [workshopLoading, setWorkshopLoading] = useState(true);
 const [refreshing, setRefreshing] = useState(false);
 const [surgeryFeedbackState, setSurgeryFeedbackState] = useState<Record<number, boolean>>({});
+const [expandedChapters, setExpandedChapters] = useState<Record<string, boolean>>({});
+const wheelProgressAnim = useRef(new Animated.Value(0)).current;
+const wheelEntranceAnim = useRef(new Animated.Value(1)).current;
+const [animatedCompletionPercent, setAnimatedCompletionPercent] = useState(0);
+
+useEffect(() => {
+  const listenerId = wheelProgressAnim.addListener(({ value }) => {
+    setAnimatedCompletionPercent(Math.max(0, Math.min(100, Math.round(value))));
+  });
+
+  return () => {
+    wheelProgressAnim.removeListener(listenerId);
+  };
+}, [wheelProgressAnim]);
+
+  useEffect(() => {
+    let alive = true;
+
+    const loadLastPath = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(WORKSHOP_LAST_PATH_KEY);
+        if (!alive) return;
+        if (saved && PATHS.some((path) => path.key === saved)) {
+          setSelectedPath(saved as WorkshopPathKey);
+        }
+      } catch {}
+      finally {
+        if (alive) setLastPathLoaded(true);
+      }
+    };
+
+    loadLastPath();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!lastPathLoaded) return;
+    void AsyncStorage.setItem(WORKSHOP_LAST_PATH_KEY, selectedPath);
+  }, [lastPathLoaded, selectedPath]);
 
   const hasProAccess = userProfile?.tier === 'pro';
 
@@ -8011,9 +7993,11 @@ filmmaker: [],
     try {
       const { data: profileData, error: profileError } = await supabase
         .from('users')
-        .select('id, tier')
+        .select('id, tier, full_name')
         .eq('id', userId)
         .single();
+
+      const effectiveTier = await getCurrentUserTierOrFree({ force: true });
 
       if (profileError) {
         console.log('Workshop profile load error:', profileError);
@@ -8021,7 +8005,8 @@ filmmaker: [],
       } else if (profileData) {
         setUserProfile({
           id: profileData.id,
-          tier: profileData.tier as UserTier,
+          tier: effectiveTier,
+          full_name: profileData.full_name,
         });
       }
 
@@ -8088,6 +8073,28 @@ filmmaker: [],
     }, [refreshGamification, refreshStreak, loadWorkshopProgress])
   );
 
+  useEffect(() => {
+    if (!isFocused || refreshKey <= 0 || lastHandledRefreshKeyRef.current === refreshKey) return;
+
+    lastHandledRefreshKeyRef.current = refreshKey;
+
+    const run = async () => {
+      try {
+        await refreshGamification?.();
+      } catch {}
+
+      try {
+        await refreshStreak?.();
+      } catch {}
+
+      try {
+        await loadWorkshopProgress();
+      } catch {}
+    };
+
+    void run();
+  }, [isFocused, refreshGamification, refreshKey, refreshStreak, loadWorkshopProgress]);
+
   const onRefresh = useCallback(async () => {
   if (refreshing) return;
 
@@ -8148,10 +8155,55 @@ filmmaker: [],
       ? Math.max(0, nextLevelMinXp - globalXp)
       : null;
 
-  const completionPercent = Math.round((completedSteps.length / lessons.length) * 100);
+	  const completionPercent = Math.round((completedSteps.length / lessons.length) * 100);
+	  const firstName = (userProfile?.full_name || 'Filmmaker').trim().split(/\s+/)[0] || 'Filmmaker';
+	  const currentChapterIndex = Math.max(0, Math.floor((currentStep - 1) / 10));
   const bossesCleared = completedSteps.filter((n) => n % 8 === 0).length;
   const surgeryClears = surgeryClearedSteps.length;
   const chapterMeta = PATH_STAGE_META[selectedPath];
+  const wheelDisplayPercent = isFocused ? animatedCompletionPercent : completionPercent;
+  const wheelScale = wheelEntranceAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.975, 1],
+  });
+  const wheelOpacity = wheelEntranceAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.86, 1],
+  });
+
+  useEffect(() => {
+    if (!isFocused) {
+      wheelProgressAnim.stopAnimation();
+      setAnimatedCompletionPercent(completionPercent);
+      wheelProgressAnim.setValue(completionPercent);
+      return;
+    }
+
+    wheelProgressAnim.stopAnimation();
+    wheelEntranceAnim.stopAnimation();
+
+    setAnimatedCompletionPercent(0);
+    wheelProgressAnim.setValue(0);
+    wheelEntranceAnim.setValue(0);
+
+    Animated.parallel([
+      Animated.timing(wheelProgressAnim, {
+        toValue: completionPercent,
+        duration: 900,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      Animated.spring(wheelEntranceAnim, {
+        toValue: 1,
+        damping: 18,
+        stiffness: 130,
+        mass: 0.8,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setAnimatedCompletionPercent(completionPercent);
+    });
+  }, [completionPercent, isFocused, selectedPath, wheelEntranceAnim, wheelProgressAnim]);
 
   const chapters = useMemo(() => {
     return chapterMeta.map((meta, chapterIndex) => {
@@ -8299,6 +8351,14 @@ filmmaker: [],
   const lessonNeedsSurgery =
     !!selectedLesson?.requiresSurgery && !surgerySet.has(selectedLesson.step);
 
+  const toggleChapter = (chapterIndex: number) => {
+    const key = `${selectedPath}-${chapterIndex}`;
+    setExpandedChapters((prev) => ({
+      ...prev,
+      [key]: !(prev[key] ?? chapterIndex === currentChapterIndex),
+    }));
+  };
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -8319,146 +8379,114 @@ filmmaker: [],
 >
         <View style={[styles.pageWrap, { paddingTop: insets.top + 40 }]}>
           <View style={[styles.mainLayout, !isDesktop && styles.mainLayoutMobile]}>
-            {isDesktop ? (
-              <View style={styles.sidebar}>
-                {PATHS.map((path) => (
-                  <SidebarPathItem
-                    key={path.key}
-                    path={path}
-                    active={selectedPath === path.key}
-                    progress={(progressByPath[path.key] || []).length}
-                    onPress={() => setSelectedPath(path.key)}
-                  />
-                ))}
-              </View>
-            ) : null}
+          <View style={[styles.centerPanel, isDesktop && styles.centerPanelDesktop, isWebDesktop && styles.centerPanelWebDesktop]}>
+  <View style={[styles.bootcampCard, isWebDesktop && styles.bootcampCardWebDesktop]}>
+    <View style={styles.referenceHeroTop}>
+      <Text style={styles.referenceGreeting}>Hello, {firstName}</Text>
+      <Text style={styles.referenceDateLine}>{activePath.label}</Text>
+    </View>
 
-          <View style={styles.centerPanel}>
-  <View style={styles.bootcampCard}>
-    <View
-  style={[
-    styles.bootcampHeader,
-    isDesktop && {
-      width: '100%',
-      alignSelf: 'center',
-      transform: [{ translateX: -119 }],
-      marginBottom: 26,
-    },
-  ]}
->
- 
-</View>
+    <View style={styles.bigProgressWrap}>
+      <Animated.View
+        style={[
+          styles.bigProgressOrbit,
+          {
+            opacity: wheelOpacity,
+            transform: [{ scale: wheelScale }],
+          },
+        ]}
+      >
+        {Array.from({ length: 56 }).map((_, index) => {
+          const filled = index / 56 <= wheelDisplayPercent / 100;
+          return (
+            <View
+              key={`progress-tick-${index}`}
+              style={[
+                styles.bigProgressTick,
+                filled && styles.bigProgressTickActive,
+                {
+                  transform: [
+                    { rotate: `${index * (360 / 56)}deg` },
+                    { translateY: -86 },
+                  ],
+                },
+              ]}
+            />
+          );
+        })}
+        <View style={styles.bigProgressInner}>
+          <Text style={styles.bigProgressNumber}>{wheelDisplayPercent}%</Text>
+        </View>
+      </Animated.View>
+    </View>
 
-    {!isDesktop && (
-      <View style={styles.pathPillsWrap}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.pathPillsRow}
-          style={styles.pathPillsScroll}
-        >
-          {PATHS.map((path) => {
-            const active = selectedPath === path.key;
+	    <ScrollView
+	      horizontal
+	      showsHorizontalScrollIndicator={false}
+	      contentContainerStyle={[styles.subjectTilesRow, isWebDesktop && styles.subjectTilesRowWebDesktop]}
+	      style={styles.subjectTilesScroll}
+    >
+      {PATHS.map((path, index) => {
+        const active = selectedPath === path.key;
+        const progress = (progressByPath[path.key] || []).length;
 
-            return (
-              <Pressable
-                key={path.key}
-                onPress={() => setSelectedPath(path.key)}
-                style={[
-                  styles.pathPillCinematic,
-                  active && styles.pathPillCinematicActive,
-                ]}
+        return (
+          <Pressable
+            key={path.key}
+            onPress={() => setSelectedPath(path.key)}
+            style={[
+              styles.subjectTile,
+              index % 3 === 1 && styles.subjectTileAlt,
+              index % 3 === 2 && styles.subjectTileCool,
+              active && styles.subjectTileActive,
+              isWebDesktop && styles.subjectTileWebDesktop,
+            ]}
+          >
+            <View style={[styles.subjectTileIcon, active && styles.subjectTileIconActive]}>
+              <Ionicons name={path.icon} size={14} color={active ? BG : CINEMA.brass} />
+            </View>
+
+            <View style={styles.subjectTileTextWrap}>
+              <Text
+                style={[styles.subjectTileTitle, active && styles.subjectTileTitleActive]}
+                numberOfLines={1}
               >
-                <Ionicons
-                  name={path.icon}
-                  size={12}
-                  color={active ? GOLD : '#D8D2C8'}
-                  style={styles.pathPillCinematicIcon}
-                />
+                {path.shortLabel}
+              </Text>
 
-                <Text
-                  style={[
-                    styles.pathPillCinematicText,
-                    active && styles.pathPillCinematicTextActive,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {path.shortLabel}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+              <Text style={[styles.subjectTileMeta, active && styles.subjectTileMetaActive]}>
+                {progress}/40
+              </Text>
+            </View>
+          </Pressable>
+	        );
+	      })}
+	    </ScrollView>
 
-        <View pointerEvents="none" style={styles.pathPillsFadeRight} />
+		    <View style={styles.scheduleHeaderRow}>
+		      <Text style={styles.scheduleTitle}>Today's Exercise</Text>
+		    </View>
+
+		    <TouchableOpacity
+	      activeOpacity={0.9}
+	      onPress={() => handleOpenLesson(currentLesson)}
+      style={styles.currentLessonStrip}
+    >
+      <View style={styles.currentLessonIcon}>
+        <Ionicons name={activePath.icon} size={17} color={BG} />
       </View>
-    )}
+
+      <View style={styles.currentLessonCopy}>
+        <Text style={styles.currentLessonEyebrow}>{activePath.shortLabel} • Step {currentLesson.step}</Text>
+        <Text style={styles.currentLessonTitle} numberOfLines={1}>{currentLesson.title}</Text>
+        <Text style={styles.currentLessonText} numberOfLines={1}>{currentLesson.description}</Text>
+      </View>
+
+      <View style={styles.currentLessonAction}>
+        <Ionicons name="play-outline" size={14} color="#FFFFFF" />
+      </View>
+    </TouchableOpacity>
   </View>
-
-  <View style={styles.featuredCard}>
-  <ImageBackground
-    source={PATH_IMAGES[selectedPath]}
-    style={styles.featuredCategoryImageBg}
-    imageStyle={styles.featuredCategoryImageBgInner}
-    resizeMode="cover"
-  >
-    <View style={styles.featuredImageOverlay} />
-  </ImageBackground>
-
-  <View style={styles.featuredGlow} />
-
-  <View style={styles.featuredTopRow}>
-    <View style={styles.featuredIconWrap}>
-      <Ionicons name={activePath.icon} size={22} color={GOLD} />
-    </View>
-
-    <View style={styles.featuredTitleWrap}>
-      <Text style={styles.featuredEyebrow}>{activePath.label}</Text>
-      <Text style={styles.featuredTitle} numberOfLines={2}>
-  Step {currentLesson.step} — {currentLesson.title}
-</Text>
-
-<Text style={styles.featuredSubtitle} numberOfLines={2}>
-  {currentLesson.description}
-</Text>
-    </View>
-  </View>
-
-  <View style={styles.featuredStatsRow}>
-    <View style={styles.featuredStatCard}>
-      <Text style={styles.featuredStatNumber}>{globalXp}</Text>
-      <Text style={styles.featuredStatLabel}>Total XP</Text>
-    </View>
-
-    <View style={styles.featuredStatCard}>
-      <Text style={styles.featuredStatNumber}>{completedSteps.length}/40</Text>
-      <Text style={styles.featuredStatLabel}>Complete</Text>
-    </View>
-
-    <View style={styles.featuredStatCard}>
-      <Text style={styles.featuredStatNumber}>{bossesCleared}</Text>
-      <Text style={styles.featuredStatLabel}>Bosses</Text>
-    </View>
-  </View>
-
-  <View style={styles.featuredProgressTrack}>
-    <View
-      style={[
-        styles.featuredProgressFill,
-        { width: `${completionPercent}%` },
-      ]}
-    />
-  </View>
-
-  <TouchableOpacity
-    activeOpacity={0.9}
-    onPress={() => handleOpenLesson(currentLesson)}
-    style={styles.featuredButton}
-  >
-    <Ionicons name="play-outline" size={17} color={BG} />
-    <Text style={styles.featuredButtonText}>Open Current Lesson</Text>
-  </TouchableOpacity>
-</View>
 
   {currentMission ? (
     <View style={styles.missionBanner}>
@@ -8483,77 +8511,122 @@ filmmaker: [],
     </View>
   ) : (
     <View style={styles.lessonSectionsWrap}>
-      {chapters.map((chapter) => (
-        <View
-          key={chapter.chapterIndex}
-          style={[
-            styles.chapterListCard,
-            chapter.completed && styles.chapterListCardCompleted,
-            !chapter.unlocked && styles.chapterListCardLocked,
-          ]}
-        >
-          <View style={styles.chapterListHeader}>
-            <View style={styles.chapterListHeaderText}>
-              <Text style={styles.chapterListEyebrow}>
-                {chapter.completed
-                  ? 'Completed'
-                  : chapter.unlocked
-                    ? 'In Progress'
-                    : 'Locked'}
-              </Text>
+      {chapters.map((chapter) => {
+        const expandedKey = `${selectedPath}-${chapter.chapterIndex}`;
+        const expanded = expandedChapters[expandedKey] ?? chapter.chapterIndex === currentChapterIndex;
 
-              <Text style={styles.chapterListTitle}>{chapter.title}</Text>
+        return (
+          <View
+            key={chapter.chapterIndex}
+            style={[
+              styles.chapterListCard,
+              expanded && styles.chapterListCardExpanded,
+              chapter.completed && styles.chapterListCardCompleted,
+              !chapter.unlocked && styles.chapterListCardLocked,
+            ]}
+          >
+            <Pressable
+              onPress={() => toggleChapter(chapter.chapterIndex)}
+              style={styles.chapterToggle}
+            >
+              <View style={styles.chapterListHeader}>
+                <View style={styles.chapterListHeaderText}>
+                  <Text style={styles.chapterListEyebrow}>
+                    {chapter.completed
+                      ? 'Completed'
+                      : chapter.unlocked
+                        ? 'In Progress'
+                        : 'Locked'}
+                  </Text>
 
-              <Text style={styles.chapterListSubtitle}>
-                {chapter.subtitle}
-              </Text>
-            </View>
+                  <Text style={styles.chapterListTitle}>{chapter.title}</Text>
 
-            <View style={styles.chapterListCountPill}>
-              <Text style={styles.chapterListCountText}>
-                {chapter.progress}/10
-              </Text>
-            </View>
-          </View>
+                  <Text style={styles.chapterListSubtitle} numberOfLines={expanded ? 2 : 1}>
+                    {chapter.subtitle}
+                  </Text>
+                </View>
 
-          <View style={styles.chapterListProgressTrack}>
-            <View
-              style={[
-                styles.chapterListProgressFill,
-                { width: `${(chapter.progress / 10) * 100}%` },
-              ]}
-            />
-          </View>
+                <View style={styles.chapterRightStack}>
+                  <View style={styles.chapterListCountPill}>
+                    <Text style={styles.chapterListCountText}>
+                      {chapter.progress}/10
+                    </Text>
+                  </View>
 
-          {!chapter.unlocked ? (
-            <View style={styles.chapterLockedBox}>
-              <Ionicons
-                name="lock-closed-outline"
-                size={16}
-                color={MUTED_2}
-              />
-              <Text style={styles.chapterLockedText}>
-                Complete the previous chapter to unlock this one.
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.lessonRowsWrap}>
-              {chapter.lessons.map((lesson) => {
-                const state = nodeState(lesson.step, completedSteps);
-
-                return (
-                  <LessonRowCard
-                    key={lesson.id}
-                    lesson={lesson}
-                    state={state}
-                    onPress={() => handleOpenLesson(lesson)}
+                  <Ionicons
+                    name={expanded ? 'chevron-up' : 'chevron-down'}
+                    size={18}
+                    color={CINEMA.brass}
                   />
-                );
-              })}
-            </View>
-          )}
-        </View>
-      ))}
+                </View>
+              </View>
+
+              <View style={styles.chapterListProgressTrack}>
+                <View
+                  style={[
+                    styles.chapterListProgressFill,
+                    { width: `${(chapter.progress / 10) * 100}%` },
+                  ]}
+                />
+              </View>
+            </Pressable>
+
+            {expanded ? (
+              !chapter.unlocked ? (
+                <View style={styles.chapterLockedBox}>
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={16}
+                    color={MUTED_2}
+                  />
+                  <Text style={styles.chapterLockedText}>
+                    Complete the previous chapter to unlock this one.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.lessonPathWrap}>
+                  <View pointerEvents="none" style={styles.lessonPathRail} />
+                  {chapter.lessons.map((lesson, lessonIndex) => {
+                    const state = nodeState(lesson.step, completedSteps);
+                    const lessonCompleted = state === 'completed';
+                    const lessonCurrent = state === 'current';
+                    const lessonLocked = state === 'locked';
+
+                    return (
+                      <View key={lesson.id} style={styles.lessonPathItem}>
+                        <View
+                          style={[
+                            styles.lessonPathNode,
+                            lessonCompleted && styles.lessonPathNodeCompleted,
+                            lessonCurrent && styles.lessonPathNodeCurrent,
+                            lessonLocked && styles.lessonPathNodeLocked,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.lessonPathNodeText,
+                              lessonCurrent && styles.lessonPathNodeTextCurrent,
+                              lessonLocked && styles.lessonPathNodeTextLocked,
+                            ]}
+                          >
+                            {lessonIndex + 1}
+                          </Text>
+                        </View>
+
+                        <LessonRowCard
+                          lesson={lesson}
+                          state={state}
+                          onPress={() => handleOpenLesson(lesson)}
+                        />
+                      </View>
+                    );
+                  })}
+                </View>
+              )
+            ) : null}
+          </View>
+        );
+      })}
     </View>
   )}
 </View>
@@ -8764,7 +8837,7 @@ filmmaker: [],
                         ? 'Unlock with Pro'
                         : lessonNeedsSurgery
                           ? 'Unlock'
-                          : 'Upload Submission'}
+                          : 'Upload'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -8790,29 +8863,29 @@ export default WorkshopScreen;
 
 /* -------------------------------- styles -------------------------------- */
 const CINEMA = {
-  bg: '#050506',
-  panel: '#0B0C0F',
-  panel2: '#111318',
-  card: '#0D0F13',
-  cardSoft: '#14171D',
+  bg: '#050505',
+  panel: '#0D0D0F',
+  panel2: '#111114',
+  card: '#111114',
+  cardSoft: '#16161A',
 
-  stroke: 'rgba(255,255,255,0.06)',
-  strokeSoft: 'rgba(255,255,255,0.035)',
+  stroke: 'rgba(255,255,255,0.10)',
+  strokeSoft: 'rgba(255,255,255,0.06)',
 
-  text: '#F5F1E8',
-  textSoft: '#BEB5A8',
-  textDim: '#8F8578',
+  text: '#F4EFE6',
+  textSoft: '#D8D2C8',
+  textDim: '#9F927F',
 
-  brass: '#D3B06B',
-  brassSoft: 'rgba(211,176,107,0.12)',
-  brassBorder: 'rgba(211,176,107,0.28)',
-  glow: 'rgba(211,176,107,0.07)',
+  brass: '#C6A664',
+  brassSoft: 'rgba(198,166,100,0.12)',
+  brassBorder: 'rgba(198,166,100,0.28)',
+  glow: 'rgba(198,166,100,0.07)',
 
   greenSoft: '#123225',
   greenBorder: 'rgba(104,186,132,0.18)',
 
-  currentSoft: '#1A1612',
-  currentBorder: 'rgba(211,176,107,0.24)',
+  currentSoft: '#16161A',
+  currentBorder: 'rgba(198,166,100,0.24)',
 
   navySoft: '#111722',
   navyBorder: 'rgba(98,127,184,0.20)',
@@ -8842,7 +8915,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: '100%',
     alignSelf: 'stretch',
-    paddingHorizontal: 0,
+    paddingHorizontal: 16,
     paddingTop: -4,
     backgroundColor: CINEMA.bg,
   },
@@ -8850,8 +8923,9 @@ const styles = StyleSheet.create({
   mainLayout: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    justifyContent: 'center',
     gap: 18,
-    marginTop: -10,
+    marginTop: -6,
   },
 
   mainLayoutMobile: {
@@ -8942,23 +9016,554 @@ const styles = StyleSheet.create({
   centerPanel: {
     flex: 1,
     minWidth: 0,
-    gap: 16,
+    gap: 14,
     width: '100%',
     alignSelf: 'stretch',
   },
 
-  bootcampCard: {
-    backgroundColor: 'transparent',
-    borderRadius: 0,
-    paddingHorizontal: 0,
-    paddingTop: 0,
-    paddingBottom: 10,
-    marginTop: -26,
-    marginBottom: 10,
+  centerPanelDesktop: {
+    maxWidth: 760,
+    alignSelf: 'center',
+  },
+
+  centerPanelWebDesktop: {
+    maxWidth: 1180,
+  },
+
+  classTopBar: {
     width: '100%',
-    borderWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+  },
+
+  classKicker: {
+    color: CINEMA.brass,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 3,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+
+  classTitle: {
+    color: CINEMA.text,
+    fontSize: 30,
+    lineHeight: 34,
+    fontWeight: '900',
+    letterSpacing: -0.55,
+  },
+
+  referenceHeroTop: {
+    width: '100%',
+    paddingHorizontal: 2,
+    marginBottom: 18,
+  },
+
+  referenceGreeting: {
+    color: CINEMA.text,
+    fontSize: 34,
+    lineHeight: 39,
+    fontWeight: '900',
+    letterSpacing: -0.7,
+  },
+
+  referenceDateLine: {
+    color: CINEMA.textDim,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 6,
+    fontWeight: '700',
+  },
+
+  bigProgressWrap: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+
+  bigProgressOrbit: {
+    width: 210,
+    height: 210,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: '#090A0C',
+    shadowColor: CINEMA.brass,
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+  },
+
+  bigProgressTick: {
+    position: 'absolute',
+    left: 104,
+    top: 97,
+    width: 2,
+    height: 16,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+
+  bigProgressTickActive: {
+    backgroundColor: CINEMA.brass,
+  },
+
+  bigProgressInner: {
+    width: 132,
+    height: 132,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: CINEMA.bg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+
+  bigProgressNumber: {
+    color: CINEMA.text,
+    fontSize: 46,
+    lineHeight: 52,
+    fontWeight: '900',
+    letterSpacing: -1.4,
+  },
+
+  classIntroRow: {
+    width: '100%',
+    minHeight: 182,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 18,
+    backgroundColor: '#0F1014',
+    borderRadius: 30,
+    paddingHorizontal: 20,
+    paddingVertical: 22,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.085)',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 4,
+  },
+
+  classIntroCopy: {
+    flex: 1,
+    minWidth: 0,
+    zIndex: 2,
+  },
+
+  classGreeting: {
+    color: CINEMA.text,
+    fontSize: 32,
+    fontWeight: '900',
+    lineHeight: 35,
+    letterSpacing: -0.65,
+  },
+
+  classHeadline: {
+    color: CINEMA.text,
+    fontSize: 32,
+    fontWeight: '900',
+    lineHeight: 35,
+    letterSpacing: -0.65,
+  },
+
+  classBody: {
+    color: CINEMA.textSoft,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 12,
+    maxWidth: 270,
+  },
+
+  classMascotCard: {
+    width: 82,
+    height: 82,
+    borderRadius: 30,
+    backgroundColor: CINEMA.brassSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: CINEMA.brassBorder,
+    transform: [{ rotate: '-5deg' }],
+  },
+
+  classProgressCard: {
+    width: 118,
+    height: 118,
+    borderRadius: 999,
+    backgroundColor: 'rgba(198,166,100,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(198,166,100,0.34)',
+    shadowColor: CINEMA.brass,
+    shadowOpacity: 0.16,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 8 },
+    zIndex: 2,
+  },
+
+  classProgressNumber: {
+    color: CINEMA.brass,
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: -0.65,
+  },
+
+  classProgressLabel: {
+    color: CINEMA.textSoft,
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginTop: 2,
+  },
+
+  classProgressTrack: {
+    width: 58,
+    height: 4,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginTop: 10,
+  },
+
+  classProgressFill: {
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: CINEMA.brass,
+  },
+
+  subjectHeaderRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    paddingHorizontal: 2,
+  },
+
+  subjectTitle: {
+    color: CINEMA.text,
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: -0.1,
+  },
+
+  subjectMeta: {
+    color: CINEMA.brass,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  subjectTilesScroll: {
+    width: '100%',
+  },
+
+  subjectTilesRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 2,
+    paddingRight: 14,
+    paddingBottom: 2,
+  },
+
+  subjectTilesRowWebDesktop: {
+    gap: 14,
+    paddingRight: 24,
+  },
+
+  subjectTile: {
+    width: 118,
+    minHeight: 48,
+    borderRadius: 999,
+    backgroundColor: CINEMA.panel2,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+  },
+
+  subjectTileWebDesktop: {
+    width: 156,
+    minHeight: 56,
+    paddingHorizontal: 16,
+  },
+
+  subjectTileAlt: {
+    backgroundColor: '#101014',
+  },
+
+  subjectTileCool: {
+    backgroundColor: '#10131A',
+  },
+
+  subjectTileActive: {
+    backgroundColor: 'rgba(198,166,100,0.14)',
+    borderColor: CINEMA.brassBorder,
+  },
+
+  subjectTileIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 999,
+    backgroundColor: CINEMA.brassSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+  },
+
+  subjectTileIconActive: {
+    backgroundColor: CINEMA.brass,
+    borderColor: CINEMA.brass,
+  },
+
+  subjectTileTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  subjectProgressCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 999,
+    backgroundColor: CINEMA.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+    marginBottom: 10,
+  },
+
+  subjectProgressCircleActive: {
+    backgroundColor: CINEMA.brassSoft,
+    borderColor: CINEMA.brassBorder,
+  },
+
+  subjectProgressText: {
+    color: CINEMA.brass,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+
+  subjectProgressTextActive: {
+    color: CINEMA.text,
+  },
+
+  subjectTileTitle: {
+    color: CINEMA.text,
+    fontSize: 11,
+    fontWeight: '900',
+    textAlign: 'left',
+    maxWidth: '100%',
+  },
+
+  subjectTileTitleActive: {
+    color: CINEMA.brass,
+  },
+
+  subjectMiniProgressTrack: {
+    width: '100%',
+    height: 4,
+    borderRadius: 999,
+    overflow: 'hidden',
+    marginTop: 8,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+  },
+
+  subjectMiniProgressFill: {
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: CINEMA.brass,
+    opacity: 0.7,
+  },
+
+  subjectMiniProgressFillActive: {
+    backgroundColor: CINEMA.brass,
+    opacity: 1,
+  },
+
+  subjectTileMeta: {
+    color: CINEMA.textDim,
+    fontSize: 9,
+    fontWeight: '800',
+    marginTop: 3,
+  },
+
+  subjectTileMetaActive: {
+    color: CINEMA.textSoft,
+  },
+
+  currentLessonStrip: {
+    width: '100%',
+    marginTop: 0,
+    minHeight: 72,
+    borderRadius: 24,
+    backgroundColor: '#121315',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    padding: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+
+  currentLessonIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 15,
+    backgroundColor: CINEMA.brassSoft,
+    borderWidth: 1,
+    borderColor: CINEMA.brassBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  currentLessonCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  currentLessonEyebrow: {
+    color: CINEMA.brass,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+
+  currentLessonTitle: {
+    color: CINEMA.text,
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: -0.15,
+  },
+
+  currentLessonText: {
+    color: CINEMA.textSoft,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 3,
+  },
+
+  currentLessonAction: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: CINEMA.brass,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  classStatsRow: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 9,
+    marginTop: 13,
+  },
+
+  classStatPill: {
+    flex: 1,
+    minHeight: 58,
+    borderRadius: 20,
+    backgroundColor: CINEMA.panel2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.075)',
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+  },
+
+  classStatNumber: {
+    color: CINEMA.text,
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: -0.1,
+  },
+
+  classStatLabel: {
+    color: CINEMA.textDim,
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+
+  scheduleHeaderRow: {
+    width: '100%',
+    marginTop: 18,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  scheduleTitle: {
+    color: CINEMA.text,
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: '900',
+    letterSpacing: -0.35,
+  },
+
+  scheduleFilterButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+  },
+
+  bootcampCard: {
+    backgroundColor: CINEMA.panel,
+    borderRadius: 34,
+    paddingHorizontal: 18,
+    paddingTop: 22,
+    paddingBottom: 18,
+    marginTop: -10,
+    marginBottom: 0,
+    width: '100%',
+    maxWidth: 720,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     alignSelf: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.10,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 5,
+  },
+
+  bootcampCardWebDesktop: {
+    maxWidth: 1120,
+    minHeight: 640,
+    paddingHorizontal: 34,
+    paddingTop: 34,
+    paddingBottom: 30,
   },
 
   bootcampHeader: {
@@ -9148,21 +9753,21 @@ const styles = StyleSheet.create({
   },
 
   featuredCard: {
-  height: 330,
-  backgroundColor: '#0B0D11',
-  borderRadius: 34,
-  padding: 22,
-  marginBottom: 12,
-  marginTop: 0,
-  shadowColor: '#000',
-  shadowOpacity: 0.4,
-  shadowRadius: 28,
-  shadowOffset: { width: 0, height: 16 },
-  elevation: 9,
-  overflow: 'hidden',
-  position: 'relative',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.035)',
+    minHeight: 274,
+    backgroundColor: CINEMA.panel,
+    borderRadius: 30,
+    padding: 20,
+    marginBottom: 2,
+    marginTop: 0,
+    shadowColor: '#000',
+    shadowOpacity: 0.32,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 6,
+    overflow: 'hidden',
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
 },
 
   featuredGlow: {
@@ -9172,7 +9777,7 @@ const styles = StyleSheet.create({
   width: 190,
   height: 190,
   borderRadius: 999,
-  backgroundColor: 'rgba(211,176,107,0.06)',
+  backgroundColor: CINEMA.glow,
   zIndex: 1,
 },
   
@@ -9188,7 +9793,7 @@ const styles = StyleSheet.create({
   width: 48,
   height: 48,
   borderRadius: 16,
-  backgroundColor: 'rgba(0,0,0,0.22)',
+  backgroundColor: 'rgba(0,0,0,0.24)',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.10)',
   alignItems: 'center',
@@ -9293,19 +9898,19 @@ featuredImageOverlay: {
 
   featuredStatsRow: {
   flexDirection: 'row',
-  gap: 10,
+  gap: 8,
   marginTop: 0,
   zIndex: 2,
 },
 
 
-  featuredStatCard: {
+featuredStatCard: {
   flex: 1,
   backgroundColor: 'rgba(0,0,0,0.28)',
   borderRadius: 18,
-  paddingHorizontal: 12,
-  paddingVertical: 12,
-  minHeight: 70,
+  paddingHorizontal: 10,
+  paddingVertical: 10,
+  minHeight: 62,
   justifyContent: 'center',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.08)',
@@ -9326,9 +9931,9 @@ featuredStatNumber: {
 },
 
   featuredProgressTrack: {
-  height: 8,
-  marginTop: 18,
-  backgroundColor: 'rgba(255,255,255,0.055)',
+  height: 7,
+  marginTop: 14,
+  backgroundColor: 'rgba(255,255,255,0.06)',
   borderRadius: 999,
   overflow: 'hidden',
   zIndex: 2,
@@ -9341,16 +9946,16 @@ featuredStatNumber: {
   },
 
   featuredButton: {
-  minHeight: 50,
-  marginTop: 16,
-  borderRadius: 20,
-  backgroundColor: '#D2B06C',
+  minHeight: 48,
+  marginTop: 14,
+  borderRadius: 18,
+  backgroundColor: CINEMA.brass,
   alignItems: 'center',
   justifyContent: 'center',
   flexDirection: 'row',
   gap: 8,
   shadowColor: '#000',
-  shadowOpacity: 0.24,
+  shadowOpacity: 0.12,
   shadowRadius: 16,
   shadowOffset: { width: 0, height: 7 },
   elevation: 5,
@@ -9358,7 +9963,7 @@ featuredStatNumber: {
 },
 
   featuredButtonText: {
-  color: '#0A0A0B',
+  color: BG,
   fontSize: 13,
   fontWeight: '800',
   letterSpacing: 0.25,
@@ -9367,23 +9972,23 @@ featuredStatNumber: {
   missionBanner: {
     flexDirection: 'row',
     gap: 12,
-    backgroundColor: '#090B0E',
-    borderRadius: 26,
+    backgroundColor: '#101114',
+    borderRadius: 24,
     padding: 16,
-    marginBottom: 4,
+    marginBottom: 0,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.075)',
   },
 
   missionBannerIcon: {
     width: 44,
     height: 44,
     borderRadius: 15,
-    backgroundColor: '#14171C',
+    backgroundColor: CINEMA.navySoft,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: CINEMA.stroke,
   },
 
   missionBannerTextWrap: {
@@ -9429,7 +10034,7 @@ featuredStatNumber: {
   loadingCard: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: CINEMA.panel,
+    backgroundColor: CINEMA.card,
     borderRadius: 24,
     paddingVertical: 34,
     borderWidth: 1,
@@ -9443,28 +10048,37 @@ featuredStatNumber: {
   },
 
   lessonSectionsWrap: {
-    gap: 16,
+    gap: 12,
   },
 
   chapterListCard: {
-    backgroundColor: '#0A0C10',
-    borderRadius: 30,
-    padding: 20,
+    backgroundColor: '#0F1012',
+    borderRadius: 28,
+    padding: 14,
     shadowColor: '#000',
-    shadowOpacity: 0.24,
+    shadowOpacity: 0.14,
     shadowRadius: 20,
-    shadowOffset: { width: 0, height: 11 },
-    elevation: 6,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.075)',
+  },
+
+  chapterListCardExpanded: {
+    backgroundColor: '#111216',
+    borderColor: 'rgba(198,166,100,0.24)',
   },
 
   chapterListCardCompleted: {
-    backgroundColor: '#10271D',
+    backgroundColor: '#0D1913',
   },
 
   chapterListCardLocked: {
     opacity: 0.72,
+  },
+
+  chapterToggle: {
+    width: '100%',
   },
 
   chapterListHeader: {
@@ -9480,38 +10094,43 @@ featuredStatNumber: {
 
   chapterListEyebrow: {
     color: CINEMA.brass,
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: '700',
-    letterSpacing: 2.2,
+    letterSpacing: 2.4,
     textTransform: 'uppercase',
-    marginBottom: 7,
+    marginBottom: 5,
   },
 
   chapterListTitle: {
     color: CINEMA.text,
     fontSize: 19,
-    fontWeight: '800',
-    lineHeight: 24,
-    letterSpacing: -0.3,
+    fontWeight: '900',
+    lineHeight: 23,
+    letterSpacing: -0.45,
   },
 
   chapterListSubtitle: {
     color: CINEMA.textSoft,
-    fontSize: 13,
-    lineHeight: 20,
-    marginTop: 7,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
     letterSpacing: 0.08,
   },
 
+  chapterRightStack: {
+    alignItems: 'center',
+    gap: 8,
+  },
+
   chapterListCountPill: {
-    backgroundColor: '#13161C',
+    backgroundColor: CINEMA.brassSoft,
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    minWidth: 64,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    minWidth: 54,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: CINEMA.brassBorder,
   },
 
   chapterListCountText: {
@@ -9521,16 +10140,16 @@ featuredStatNumber: {
   },
 
   chapterListProgressTrack: {
-    height: 8,
-    marginTop: 16,
-    marginBottom: 18,
+    height: 7,
+    marginTop: 14,
+    marginBottom: 2,
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: 999,
     overflow: 'hidden',
   },
 
   chapterListProgressFill: {
-    height: 8,
+    height: 7,
     backgroundColor: CINEMA.brass,
     borderRadius: 999,
   },
@@ -9541,11 +10160,11 @@ featuredStatNumber: {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    backgroundColor: '#11141A',
+    backgroundColor: CINEMA.cardSoft,
     borderRadius: 18,
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: CINEMA.stroke,
   },
 
   chapterLockedText: {
@@ -9556,28 +10175,95 @@ featuredStatNumber: {
   },
 
   lessonRowsWrap: {
+    gap: 8,
+    paddingTop: 10,
+  },
+
+  lessonPathWrap: {
+    position: 'relative',
     gap: 10,
+    paddingTop: 12,
+    paddingLeft: 6,
+  },
+
+  lessonPathRail: {
+    position: 'absolute',
+    top: 22,
+    bottom: 20,
+    left: 19,
+    width: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(198,166,100,0.18)',
+  },
+
+  lessonPathItem: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 9,
+  },
+
+  lessonPathNode: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    marginTop: 13,
+    backgroundColor: CINEMA.panel,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.24)',
+    zIndex: 2,
+  },
+
+  lessonPathNodeCompleted: {
+    backgroundColor: '#18392A',
+    borderColor: CINEMA.greenBorder,
+  },
+
+  lessonPathNodeCurrent: {
+    backgroundColor: CINEMA.brass,
+    borderColor: CINEMA.brass,
+  },
+
+  lessonPathNodeLocked: {
+    backgroundColor: '#101318',
+    borderColor: CINEMA.stroke,
+  },
+
+  lessonPathNodeText: {
+    color: CINEMA.brass,
+    fontSize: 10,
+    fontWeight: '900',
+  },
+
+  lessonPathNodeTextCurrent: {
+    color: '#FFFFFF',
+  },
+
+  lessonPathNodeTextLocked: {
+    color: CINEMA.textDim,
   },
 
   lessonRowCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#111318',
-    borderRadius: 24,
-    padding: 15,
+    gap: 10,
+    backgroundColor: '#141518',
+    borderRadius: 22,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.07)',
   },
 
   lessonRowCardCompleted: {
-    backgroundColor: '#123225',
-    borderColor: 'rgba(104,186,132,0.18)',
+    backgroundColor: 'rgba(71,214,111,0.075)',
+    borderColor: CINEMA.greenBorder,
   },
 
   lessonRowCardCurrent: {
-    backgroundColor: '#1A1612',
-    borderColor: 'rgba(211,176,107,0.24)',
+    backgroundColor: 'rgba(198,166,100,0.11)',
+    borderColor: 'rgba(198,166,100,0.26)',
   },
 
   lessonRowCardLocked: {
@@ -9585,24 +10271,24 @@ featuredStatNumber: {
   },
 
   lessonRowIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: '#171A20',
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: 'rgba(198,166,100,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.045)',
+    borderColor: CINEMA.stroke,
   },
 
   lessonRowIconWrapCompleted: {
     backgroundColor: '#18392A',
-    borderColor: 'rgba(104,186,132,0.18)',
+    borderColor: CINEMA.greenBorder,
   },
 
   lessonRowIconWrapCurrent: {
-    backgroundColor: 'rgba(211,176,107,0.11)',
-    borderColor: 'rgba(211,176,107,0.28)',
+    backgroundColor: CINEMA.brass,
+    borderColor: CINEMA.brass,
   },
 
   lessonRowIconWrapLocked: {
@@ -9621,7 +10307,7 @@ featuredStatNumber: {
 
   lessonRowStep: {
     color: CINEMA.textDim,
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: '700',
     letterSpacing: 0.45,
   },
@@ -9635,15 +10321,15 @@ featuredStatNumber: {
   lessonRowKindPill: {
     backgroundColor: CINEMA.brassSoft,
     borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
     borderWidth: 1,
     borderColor: CINEMA.brassBorder,
   },
 
   lessonRowKindText: {
     color: CINEMA.brass,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
     letterSpacing: 0.35,
   },
@@ -9652,62 +10338,62 @@ featuredStatNumber: {
     width: 22,
     height: 22,
     borderRadius: 999,
-    backgroundColor: '#171A20',
+    backgroundColor: CINEMA.navySoft,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
+    borderColor: CINEMA.stroke,
   },
 
   lessonRowTitle: {
     color: CINEMA.text,
     fontSize: 15,
-    fontWeight: '800',
-    lineHeight: 20,
-    marginTop: 6,
-    letterSpacing: -0.18,
+    fontWeight: '900',
+    lineHeight: 19,
+    marginTop: 4,
+    letterSpacing: -0.28,
   },
 
   lessonRowSubtitle: {
     color: CINEMA.textSoft,
     fontSize: 12,
-    lineHeight: 18,
-    marginTop: 4,
+    lineHeight: 16,
+    marginTop: 3,
     letterSpacing: 0.05,
   },
 
   lessonRowMeta: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 10,
+    gap: 7,
+    marginTop: 6,
   },
 
   lessonRowMetaPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: '#171A20',
+    backgroundColor: CINEMA.panel2,
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
+    borderColor: CINEMA.stroke,
   },
 
   lessonRowMetaText: {
-    color: CINEMA.text,
-    fontSize: 10,
+    color: CINEMA.textSoft,
+    fontSize: 9,
     fontWeight: '600',
   },
 
   lessonRowStatusPill: {
-    backgroundColor: '#171A20',
+    backgroundColor: CINEMA.panel2,
     borderRadius: 999,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
+    borderColor: CINEMA.stroke,
   },
 
   lessonRowStatusPillCompleted: {
@@ -9716,8 +10402,8 @@ featuredStatNumber: {
   },
 
   lessonRowStatusPillCurrent: {
-    backgroundColor: 'rgba(211,176,107,0.10)',
-    borderColor: 'rgba(211,176,107,0.24)',
+    backgroundColor: CINEMA.brassSoft,
+    borderColor: CINEMA.brassBorder,
   },
 
   lessonRowStatusPillLocked: {
@@ -9725,7 +10411,7 @@ featuredStatNumber: {
   },
 
   lessonRowStatusText: {
-    color: CINEMA.text,
+    color: CINEMA.textSoft,
     fontSize: 10,
     fontWeight: '700',
   },
@@ -9801,11 +10487,11 @@ featuredStatNumber: {
     width: 46,
     height: 46,
     borderRadius: 15,
-    backgroundColor: 'rgba(211,176,107,0.10)',
+    backgroundColor: 'rgba(198,166,100,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(211,176,107,0.24)',
+    borderColor: 'rgba(198,166,100,0.24)',
   },
 
   surveyModalIconCircle: {
@@ -9906,8 +10592,8 @@ featuredStatNumber: {
   },
 
   pathPillCinematicActive: {
-    backgroundColor: 'rgba(211,176,107,0.10)',
-    borderColor: 'rgba(211,176,107,0.34)',
+    backgroundColor: 'rgba(198,166,100,0.10)',
+    borderColor: 'rgba(198,166,100,0.34)',
     shadowColor: '#000',
     shadowOpacity: 0.18,
     shadowRadius: 12,
@@ -10100,7 +10786,7 @@ featuredStatNumber: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#D2B06C',
+    backgroundColor: '#C6A664',
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -10321,8 +11007,9 @@ featuredStatNumber: {
 
   modalActions: {
     flexDirection: 'row',
-    gap: 12,
-    padding: 20,
+    gap: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
     borderTopWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
     backgroundColor: '#0C0E12',
@@ -10330,12 +11017,12 @@ featuredStatNumber: {
 
   modalButton: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 46,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
-    borderRadius: 16,
+    borderRadius: 18,
     paddingHorizontal: 12,
   },
 
@@ -10353,14 +11040,23 @@ featuredStatNumber: {
   },
 
   modalGoldButton: {
-    backgroundColor: '#D2B06C',
+    flex: 1.12,
+    backgroundColor: '#C6A664',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
 
   modalGoldText: {
     color: '#090909',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
-    letterSpacing: 0.2,
+    letterSpacing: 0.45,
+    textTransform: 'uppercase',
   },
 
   modalDisabledButton: {

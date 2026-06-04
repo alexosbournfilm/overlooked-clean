@@ -17,12 +17,12 @@ import { useNavigation, CommonActions } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 import { navigationRef } from "../navigation/navigationRef";
 
-const BG = "#000";
-const CARD = "#0B0B0B";
-const TEXT = "#F5F3EF";
-const SUB = "#A9A7A3";
+const BG = "#050505";
+const CARD = "#111114";
+const TEXT = "#F4EFE6";
+const SUB = "#A59D90";
 const GOLD = "#C6A664";
-const BORDER = "#262626";
+const BORDER = "rgba(255,255,255,0.10)";
 
 type ResetTokens = {
   code?: string;

@@ -27,18 +27,18 @@ const IS_WEB = Platform.OS === 'web';
 /* ────────────────────────────────────────────────────────────
    Cinematic dark palette aligned with the rest of Overlooked
    ──────────────────────────────────────────────────────────── */
-const DARK_BG = '#000000';
-const SURFACE = '#080808';
-const SURFACE_2 = '#0D0D0D';
-const SURFACE_3 = '#121212';
-const INPUT_BG = '#0B0B0B';
-const TEXT_PRIMARY = '#F3EEE4';
-const TEXT_SECONDARY = '#A9A295';
-const TEXT_TERTIARY = '#776F64';
-const BORDER = '#181818';
-const BORDER_SOFT = '#141414';
+const DARK_BG = '#050505';
+const SURFACE = '#0D0D0F';
+const SURFACE_2 = '#111114';
+const SURFACE_3 = '#16161A';
+const INPUT_BG = '#16161A';
+const TEXT_PRIMARY = '#F4EFE6';
+const TEXT_SECONDARY = '#A59D90';
+const TEXT_TERTIARY = '#726C61';
+const BORDER = 'rgba(255,255,255,0.10)';
+const BORDER_SOFT = 'rgba(255,255,255,0.06)';
 const GOLD = '#C6A664';
-const GOLD_DARK = '#9C7B39';
+const GOLD_DARK = '#8F7A4D';
 
 const SYSTEM_SANS = Platform.select({
   ios: 'System',

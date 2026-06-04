@@ -41,20 +41,37 @@ import {
   subscribeChatBadgeRefresh,
 } from '../lib/chatBadgeEvents';
 import { useAppRefresh } from '../context/AppRefreshContext';
+import { reportContent, ReportReason } from '../utils/reportContent';
+import { blockUser as blockUserAndNotify } from '../utils/blockUser';
+import { validateSafeText } from '../utils/moderation';
+import ReportContentModal from '../../components/ReportContentModal';
 /* ────────────────────────────────────────────────────────────
    CINEMATIC NOIR — black/white with gold accent
    ──────────────────────────────────────────────────────────── */
 const GOLD = '#C6A664';
 const T = {
-  bg: '#000000',
-  card: '#0A0A0A',
-  card2: '#0E0E0E',
-  text: '#FFFFFF',
-  sub: '#DADADA',
-  mute: '#9A9A9A',
-  border: '#ffffff14',
+  bg: '#050505',
+  card: '#111114',
+  card2: '#16161A',
+  text: '#F4EFE6',
+  sub: '#D8D2C8',
+  mute: '#8F8578',
+  border: 'rgba(255,255,255,0.10)',
   accent: GOLD,
   olive: GOLD,
+};
+
+const logChatsIssue = (label: string, error?: unknown) => {
+  if (typeof __DEV__ === 'undefined' || !__DEV__) return;
+
+  const message =
+    error instanceof Error
+      ? error.message
+      : error && typeof error === 'object' && 'message' in error
+        ? String((error as { message?: unknown }).message)
+        : error;
+
+  console.log(label, message);
 };
 
 const FONT_CINEMATIC =
@@ -211,6 +228,10 @@ const unreadRefreshTimeout = useRef<any>(null);
   const [optionsModalVisible, setOptionsModalVisible] = useState(false);
 const [selectedChat, setSelectedChat] = useState<any | null>(null);
 const [newChatMenuVisible, setNewChatMenuVisible] = useState(false);
+const [reportTargetChat, setReportTargetChat] = useState<any | null>(null);
+const [reportReason, setReportReason] = useState<ReportReason>('Harassment or bullying');
+const [reportDetails, setReportDetails] = useState('');
+const [reportSubmitting, setReportSubmitting] = useState(false);
 
   // create group modal
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
@@ -268,7 +289,7 @@ const [newChatMenuVisible, setNewChatMenuVisible] = useState(false);
 
   supabase.auth.getSession().then(({ data, error }) => {
     if (error) {
-      console.error('getSession error:', error.message);
+      logChatsIssue('getSession unavailable', error);
       return;
     }
     if (isMounted) {
@@ -426,18 +447,18 @@ const [newChatMenuVisible, setNewChatMenuVisible] = useState(false);
   const fetchBlockedUsers = useCallback(async (uid: string) => {
   try {
     const { data, error } = await supabase
-      .from('blocked_users')
+      .from('user_blocks')
       .select('blocked_id')
       .eq('blocker_id', uid);
 
     if (error) {
-      console.error('Error fetching blocked users:', error.message);
+      logChatsIssue('fetchBlockedUsers unavailable', error);
       return;
     }
 
     setBlockedUserIds(new Set((data || []).map((row: any) => row.blocked_id)));
   } catch (e) {
-    console.error('fetchBlockedUsers error:', e);
+    logChatsIssue('fetchBlockedUsers unavailable', e);
   }
 }, []);
 
@@ -459,7 +480,7 @@ const loadUnreadConversationIds = useCallback(async (userIdParam?: string | null
       .contains('participant_ids', [uid]);
 
     if (convoError) {
-      console.error('Unread conversations fetch error:', convoError.message);
+      logChatsIssue('Unread conversations fetch unavailable', convoError);
       return;
     }
 
@@ -477,7 +498,7 @@ const loadUnreadConversationIds = useCallback(async (userIdParam?: string | null
       .in('conversation_id', conversationIds);
 
     if (readsError) {
-      console.error('Unread reads fetch error:', readsError.message);
+      logChatsIssue('Unread reads fetch unavailable', readsError);
       return;
     }
 
@@ -493,7 +514,7 @@ const loadUnreadConversationIds = useCallback(async (userIdParam?: string | null
       .neq('sender_id', uid);
 
     if (msgError) {
-      console.error('Unread messages fetch error:', msgError.message);
+      logChatsIssue('Unread messages fetch unavailable', msgError);
       return;
     }
 
@@ -510,7 +531,7 @@ const loadUnreadConversationIds = useCallback(async (userIdParam?: string | null
 
     setUnreadConversationIds(unreadIds);
   } catch (e: any) {
-    console.error('loadUnreadConversationIds error:', e?.message || e);
+    logChatsIssue('loadUnreadConversationIds unavailable', e);
   } finally {
     unreadRequestInFlight.current = false;
   }
@@ -572,10 +593,7 @@ const queueUnreadRefresh = useCallback(() => {
             });
 
         if (error) {
-          console.error(
-            'Error fetching conversations:',
-            error.message
-          );
+          logChatsIssue('fetchUserChats unavailable', error);
           if (mountedRef.current) setChats([]);
           return;
         }
@@ -1022,10 +1040,7 @@ const onRefresh = useCallback(async () => {
         const { data, error } =
           await query;
         if (error) {
-          console.error(
-            'User search error:',
-            error.message
-          );
+          logChatsIssue('searchUsers unavailable', error);
           if (mountedRef.current)
             setUsers([]);
           return;
@@ -1057,7 +1072,7 @@ const onRefresh = useCallback(async () => {
         .contains('participant_ids', [meId]);
 
       if (convoError) {
-        console.error('Contact search conversation error:', convoError.message);
+        logChatsIssue('contactSearch conversations unavailable', convoError);
         if (mountedRef.current) setUsers([]);
         return;
       }
@@ -1090,7 +1105,7 @@ const onRefresh = useCallback(async () => {
       const { data, error } = await query;
 
       if (error) {
-        console.error('Contact search user error:', error.message);
+        logChatsIssue('contactSearch users unavailable', error);
         if (mountedRef.current) setUsers([]);
         return;
       }
@@ -1291,7 +1306,7 @@ const onRefresh = useCallback(async () => {
 
       setGroupUsers((data || []) as SimpleUser[]);
     } catch (e: any) {
-      console.error(e);
+      logChatsIssue('fetchGroupUsers unavailable', e);
     } finally {
       setLoadingGroupUsers(false);
     }
@@ -1349,7 +1364,7 @@ const onRefresh = useCallback(async () => {
         try {
           avatarUrl = await uploadGroupAvatar(groupAvatarLocalUri);
         } catch (e: any) {
-          console.error('Group avatar upload failed:', e);
+          logChatsIssue('Group avatar upload unavailable', e);
           avatarUrl = null;
           showAlert(
             'Group photo failed',
@@ -1390,7 +1405,7 @@ const onRefresh = useCallback(async () => {
       // refresh list quickly
       fetchUserChats({ showSpinner: false });
     } catch (e: any) {
-      console.error(e);
+      logChatsIssue('createGroupChat unavailable', e);
       showAlert('Could not create group', String(e?.message ?? e));
     } finally {
       setCreatingGroup(false);
@@ -1445,7 +1460,7 @@ const onRefresh = useCallback(async () => {
         { conversation: convo }
       );
     } catch (e: any) {
-      console.error(e);
+      logChatsIssue('joinCityChat unavailable', e);
       showAlert(
         'Couldn’t join city chat',
         String(e?.message ?? e)
@@ -1562,7 +1577,7 @@ const onRefresh = useCallback(async () => {
           { conversation: chat }
         );
       } catch (e: any) {
-        console.error(e);
+        logChatsIssue('joinGroupChat unavailable', e);
         showAlert(
           'Couldn’t join group chat',
           String(e?.message ?? e)
@@ -1589,7 +1604,7 @@ const onRefresh = useCallback(async () => {
     showAlert('Left group', 'You are no longer part of this group chat.');
     emitChatBadgeRefresh();
   } catch (e: any) {
-    console.error('leaveGroupChat error:', e?.message || e);
+    logChatsIssue('leaveGroupChat unavailable', e);
     showAlert('Could not leave group', String(e?.message ?? e));
   } finally {
     setDeletingId(null);
@@ -1669,7 +1684,7 @@ const onRefresh = useCallback(async () => {
           );
       } catch {}
     } catch (e: any) {
-      console.error(e);
+      logChatsIssue('removeChatForMe unavailable', e);
       showAlert(
         'Couldn’t remove chat',
         String(e?.message ?? e)
@@ -1682,15 +1697,31 @@ const blockUser = async (targetUserId: string) => {
   if (!meId) return;
 
   try {
-    const { error } = await supabase
-      .from('blocked_users')
-      .insert({
-        blocker_id: meId,
-        blocked_id: targetUserId,
-      });
+    const confirmed =
+      Platform.OS === 'web'
+        ? window.confirm(
+            'Block this user?\n\nThey won’t be able to interact with you, and their content will be removed from your feed.'
+          )
+        : await new Promise<boolean>((resolve) => {
+            Alert.alert(
+              'Block this user?',
+              'They won’t be able to interact with you, and their content will be removed from your feed.',
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Block', style: 'destructive', onPress: () => resolve(true) },
+              ]
+            );
+          });
 
-    if (error) {
-      showAlert('Could not block user', error.message);
+    if (!confirmed) return;
+
+    const ok = await blockUserAndNotify({
+      blockedUserId: targetUserId,
+      reason: 'Blocked from Chats',
+      showAlert: true,
+    });
+
+    if (!ok) {
       return;
     }
 
@@ -1700,7 +1731,9 @@ const blockUser = async (targetUserId: string) => {
       return next;
     });
 
-    showAlert('User blocked', 'You have blocked this user.');
+    setChats((prev) =>
+      prev.filter((chat) => !chat?.participant_ids?.includes?.(targetUserId) && chat?.peerUser?.id !== targetUserId)
+    );
   } catch (e: any) {
     showAlert('Could not block user', String(e?.message ?? e));
   }
@@ -1711,7 +1744,7 @@ const unblockUser = async (targetUserId: string) => {
 
   try {
     const { error } = await supabase
-      .from('blocked_users')
+      .from('user_blocks')
       .delete()
       .eq('blocker_id', meId)
       .eq('blocked_id', targetUserId);
@@ -1776,6 +1809,10 @@ const openChatOptions = (chat: any) => {
 
   Alert.alert(displayName, 'Choose an action', [
     {
+      text: 'Report Chat',
+      onPress: () => openChatReport(chat),
+    },
+    {
       text: isBlocked ? 'Unblock' : 'Block',
       onPress: () =>
         isBlocked
@@ -1819,6 +1856,54 @@ const handleWebDelete = async () => {
   const chatToDelete = selectedChat;
   closeOptionsModal();
   await removeChatForMe(chatToDelete);
+};
+
+const openChatReport = (chat: any) => {
+  if (!chat) return;
+  if (!meId) {
+    promptSignIn('Create an account or sign in to report chats.');
+    return;
+  }
+
+  setReportTargetChat(chat);
+  setReportReason('Harassment or bullying');
+  setReportDetails('');
+};
+
+const reportSelectedChat = () => {
+  if (!selectedChat) return;
+  const chat = selectedChat;
+  closeOptionsModal();
+  openChatReport(chat);
+};
+
+const submitChatReport = async () => {
+  if (!reportTargetChat) return;
+
+  const detailsError = validateSafeText(reportDetails);
+  if (detailsError) {
+    showAlert('Content Not Allowed', detailsError);
+    return;
+  }
+
+  const reportedUserId = reportTargetChat?.is_group ? null : reportTargetChat?.peerUser?.id || null;
+  setReportSubmitting(true);
+  try {
+    const ok = await reportContent({
+    reportedUserId,
+    contentType: 'chat',
+    contentId: reportTargetChat.id,
+    reason: reportReason,
+    details: reportDetails.trim() || null,
+  });
+
+    if (ok) {
+      setReportTargetChat(null);
+      setReportDetails('');
+    }
+  } finally {
+    setReportSubmitting(false);
+  }
 };
   /* -------- row renderer: chats (with level rings) -------- */
 
@@ -1930,7 +2015,7 @@ const isDirectBlocked =
       emitChatBadgeRefresh();
     }
   } catch (e: any) {
-    console.error('Failed to mark read from ChatsScreen:', e?.message || e);
+    logChatsIssue('markReadFromChats unavailable', e);
   }
 
   navigation.navigate('ChatRoom', {
@@ -2080,6 +2165,9 @@ const isDirectBlocked =
   };
 
   const filteredChats = chats.filter((chat) => {
+  if (chat?.participant_ids?.some?.((id: string) => blockedUserIds.has(id))) return false;
+  if (chat?.peerUser?.id && blockedUserIds.has(chat.peerUser.id)) return false;
+
   const normalizedTitle = chat.is_group
     ? chat.is_city_group
       ? chat.cityInfo?.name || chat.label || ''
@@ -2441,6 +2529,14 @@ updateCellsBatchingPeriod={16}
       <>
         <TouchableOpacity
           style={styles.optionsModalButton}
+          onPress={reportSelectedChat}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.optionsModalButtonText}>Report Chat</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.optionsModalButton}
           onPress={handleWebBlockToggle}
           activeOpacity={0.85}
         >
@@ -2471,6 +2567,19 @@ updateCellsBatchingPeriod={16}
     </TouchableOpacity>
   </View>
 </Modal>
+
+<ReportContentModal
+  visible={!!reportTargetChat}
+  selectedReason={reportReason}
+  details={reportDetails}
+  submitting={reportSubmitting}
+  onReasonChange={setReportReason}
+  onDetailsChange={setReportDetails}
+  onClose={() => {
+    if (!reportSubmitting) setReportTargetChat(null);
+  }}
+  onSubmit={submitChatReport}
+/>
 
 <Modal
   visible={newChatMenuVisible}

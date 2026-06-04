@@ -1,32 +1,32 @@
 export const COLORS = {
   // Brand Identity
-  primary: '#F8A998', // Coral peach (used for buttons, headers, cards)
-  gradientStart: '#FFF5F2', // Light ivory-pink top of gradient
-  gradientEnd: '#F8A998',   // Coral-peach bottom of gradient
+  primary: '#C6A664',
+  gradientStart: '#050505',
+  gradientEnd: '#050505',
 
   // Backgrounds & Surfaces
-  background: '#FFFFFF', // Changed to pure white
-  card: '#FFFFFF',       // Clean white card background
-  mutedCard: '#FFECE5',  // Optional softer background variant
+  background: '#050505',
+  card: '#0D0D0F',
+  mutedCard: '#111114',
 
   // Text
-  textPrimary: '#1E1E1E', // Dark charcoal for headers
-  textSecondary: '#5A5A5A', // Muted secondary text
-  textOnPrimary: '#FFFFFF', // For buttons on coral
+  textPrimary: '#F4EFE6',
+  textSecondary: '#A59D90',
+  textOnPrimary: '#050505',
 
   // Shadows
-  shadow: 'rgba(0, 0, 0, 0.1)',
+  shadow: 'rgba(0, 0, 0, 0.32)',
 
   // Accents
-  accent: '#C4745C', // Slightly darker coral, optional for hovers or icons
-  outline: '#D9D7CE',
+  accent: '#C6A664',
+  outline: '#202126',
 
   // Navigation
-  navActive: '#F8A998',
-  navInactive: '#AFAFAF',
+  navActive: '#C6A664',
+  navInactive: '#726C61',
 
   // Misc
-  border: '#EAEAEA',
+  border: '#202126',
   loader: '#C6A664'
 };
 

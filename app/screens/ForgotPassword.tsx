@@ -17,11 +17,11 @@ import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 
 const BG = "#0D0D0D";
-const CARD = "#121212";
-const TEXT = "#EFEFEF";
-const SUB = "#A8A8A8";
+const CARD = "#111114";
+const TEXT = "#F4EFE6";
+const SUB = "#A59D90";
 const GOLD = "#C6A664";
-const BORDER = "#2A2A2A";
+const BORDER = "rgba(255,255,255,0.10)";
 
 export default function ForgotPassword() {
   const navigation = useNavigation<any>();

@@ -39,12 +39,17 @@ import {
   Audio,
 } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { Submission } from '../types';
 import { supabase, giveXp, XP_VALUES } from '../lib/supabase';
 import { useGamification } from '../context/GamificationContext';
 import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '../context/AuthProvider';
 import { useAppRefresh } from '../context/AppRefreshContext';
+import { reportContent, ReportReason } from '../utils/reportContent';
+import { blockUser } from '../utils/blockUser';
+import { validateMultipleSafeTexts, validateSafeText } from '../utils/moderation';
+import ReportContentModal from '../../components/ReportContentModal';
 
 
 const SYSTEM_SANS = Platform.select({
@@ -59,18 +64,18 @@ const SYSTEM_SANS = Platform.select({
    ------------------------------------------------------------------ */
 const GOLD = '#C6A664';
 const T = {
-  bg: '#000000',
-  bg2: '#000000',
-  panel: '#000000',
-  card: '#000000',
-  card2: '#000000',
-  outline: '#1A1A1A',
-  text: '#FFFFFF',
-  sub: '#DADADA',
-  mute: '#9A9A9A',
+  bg: '#050505',
+  bg2: '#0D0D0F',
+  panel: '#0D0D0F',
+  card: '#111114',
+  card2: '#16161A',
+  outline: 'rgba(255,255,255,0.10)',
+  text: '#F4EFE6',
+  sub: '#D8D2C8',
+  mute: '#8F8578',
   accent: GOLD,
-  heroBurgundy1: '#000000',
-  heroBurgundy2: '#000000',
+  heroBurgundy1: '#111114',
+  heroBurgundy2: '#050505',
 };
 
 const FONT_CINEMATIC =
@@ -84,7 +89,7 @@ const FONT_OBLIVION =
     default: 'Avenir Next',
   }) || 'Avenir Next';
 
-type SortKey = 'newest' | 'oldest' | 'mostvoted' | 'leastvoted';
+type SortKey = 'foryou' | 'newest' | 'oldest' | 'mostvoted' | 'leastvoted';
 type Category = 'film' | 'all';
 
 const FILM_CATEGORIES = [
@@ -155,8 +160,8 @@ const VOTE_XP =
 
 type RawSubmission = Omit<Submission, 'users'> & {
   users?:
-    | { id: string; full_name: string }
-    | { id: string; full_name: string }[]
+    | { id: string; full_name: string; avatar_url?: string | null }
+    | { id: string; full_name: string; avatar_url?: string | null }[]
     | null;
   description?: string | null;
   word?: string | null;
@@ -168,16 +173,36 @@ type RawSubmission = Omit<Submission, 'users'> & {
   mime_type?: string | null;
   duration_seconds?: number | null;
   category?: Category | null;
+    is_removed?: boolean | null;
+  removed_reason?: string | null;
+  film_category?: string | null;
   mux_upload_id?: string | null;
 mux_asset_id?: string | null;
-mux_playback_id?: string | null;
-mux_status?: string | null;
+  mux_playback_id?: string | null;
+  mux_status?: string | null;
   share_slug?: string | null;
+  collaborator_credits?: any[] | null;
   videos?: {
     original_path?: string | null;
     thumbnail_path?: string | null;
     video_variants?: { path: string; label?: string | null }[] | null;
   } | null;
+};
+
+type SubmissionCollaborator = {
+  id: string;
+  submission_id: string;
+  user_id: string;
+  role?: string | null;
+  sort_order?: number | null;
+  users?: { id: string; full_name?: string | null; avatar_url?: string | null } | null;
+};
+
+type CollaboratorSearchUser = {
+  id: string;
+  full_name?: string | null;
+  avatar_url?: string | null;
+  level?: number | null;
 };
 
 /* ---------------- Film Grain ---------------- */
@@ -513,6 +538,7 @@ function HostedVideoInline({
   showProgress = true,
   captureSurfacePress = true,
   surfacePressMode = 'hold',
+  fixedAspect,
 }: {
   playerId: string;
   storagePath?: string | null;
@@ -526,6 +552,7 @@ function HostedVideoInline({
   showProgress?: boolean;
   captureSurfacePress?: boolean;
   surfacePressMode?: 'hold' | 'toggle';
+  fixedAspect?: number;
 }){
   
   const ref = useRef<Video>(null);
@@ -876,7 +903,7 @@ const onSurfaceTogglePress = async () => {
     <View
       style={{
         width,
-        aspectRatio: aspect as any,
+        aspectRatio: (fixedAspect ?? aspect) as any,
         borderRadius: RADIUS_XL,
         overflow: 'hidden',
         backgroundColor: '#000',
@@ -1193,6 +1220,7 @@ function normalizeRow(
       ? {
           id: user.id,
           full_name: user.full_name,
+          avatar_url: user.avatar_url ?? null,
         }
       : undefined,
     description: desc,
@@ -1202,6 +1230,158 @@ function normalizeRow(
     mime_type: row.mime_type ?? null,
     category: (row.category as Category | null) ?? null,
   };
+}
+
+async function attachSubmissionCollaborators<T extends { id: string }>(
+  items: T[]
+): Promise<(T & { collaborators?: SubmissionCollaborator[] })[]> {
+  const ids = Array.from(new Set(items.map((item) => item.id).filter(Boolean)));
+  if (ids.length === 0) return items;
+
+  const normalizeSnapshotCredits = (
+    raw: any,
+    fallbackSubmissionId: string
+  ): SubmissionCollaborator[] => {
+    const list = Array.isArray(raw) ? raw : [];
+
+    return list
+      .map((row, index) => {
+        const user = row?.users || row?.user || null;
+        const userId = row?.user_id || user?.id || null;
+        const role = String(row?.role || '').trim();
+
+        if (!userId || !role) return null;
+
+        return {
+          id: row?.id || `${fallbackSubmissionId}-${userId}-${role}-${index}`,
+          submission_id: row?.submission_id || fallbackSubmissionId,
+          user_id: userId,
+          role,
+          sort_order: typeof row?.sort_order === 'number' ? row.sort_order : index,
+          users: user
+            ? {
+                id: user.id || userId,
+                full_name: user.full_name ?? null,
+                avatar_url: user.avatar_url ?? null,
+              }
+            : null,
+        } as SubmissionCollaborator;
+      })
+      .filter(Boolean) as SubmissionCollaborator[];
+  };
+
+  const bySubmission = new Map<string, SubmissionCollaborator[]>();
+  const snapshotBySubmission = new Map<string, SubmissionCollaborator[]>();
+
+  try {
+    const { data, error } = await supabase
+      .from('submission_collaborators')
+      .select('id, submission_id, user_id, role, sort_order')
+      .in('submission_id', ids)
+      .order('sort_order', { ascending: true });
+
+    if (error) throw error;
+
+    const userIds = Array.from(
+      new Set(((data || []) as any[]).map((row) => row.user_id).filter(Boolean))
+    );
+    const usersById = new Map<string, { id: string; full_name?: string | null; avatar_url?: string | null }>();
+
+    if (userIds.length > 0) {
+      const { data: userRows, error: userError } = await supabase
+        .from('users')
+        .select('id, full_name, avatar_url')
+        .in('id', userIds);
+
+      if (userError) {
+        console.log('Submission collaborator users unavailable:', userError.message);
+      } else {
+        ((userRows || []) as any[]).forEach((user) => {
+          if (user?.id) {
+            usersById.set(user.id, {
+              id: user.id,
+              full_name: user.full_name ?? null,
+              avatar_url: user.avatar_url ?? null,
+            });
+          }
+        });
+      }
+    }
+
+    ((data || []) as any[]).forEach((row) => {
+      const submissionId = row.submission_id;
+      if (!submissionId) return;
+
+      const current = bySubmission.get(submissionId) || [];
+      current.push({
+        id: row.id,
+        submission_id: submissionId,
+        user_id: row.user_id,
+        role: row.role ?? null,
+        sort_order: row.sort_order ?? null,
+        users: usersById.get(row.user_id) ?? null,
+      });
+      bySubmission.set(submissionId, current);
+    });
+  } catch (e: any) {
+    console.log('Submission collaborators unavailable:', e?.message || e);
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('submissions')
+      .select('id, collaborator_credits')
+      .in('id', ids);
+
+    if (error) throw error;
+
+    ((data || []) as any[]).forEach((row) => {
+      const credits = normalizeSnapshotCredits(row?.collaborator_credits, row.id);
+      if (credits.length > 0) {
+        snapshotBySubmission.set(row.id, credits);
+      }
+    });
+  } catch (e: any) {
+    console.log('Submission collaborator snapshots unavailable:', e?.message || e);
+  }
+
+  items.forEach((item: any) => {
+    if (snapshotBySubmission.has(item.id)) return;
+
+    const credits = normalizeSnapshotCredits(item?.collaborator_credits, item.id);
+    if (credits.length > 0) {
+      snapshotBySubmission.set(item.id, credits);
+    }
+  });
+
+  return items.map((item) => {
+    const tableCredits = bySubmission.get(item.id) || [];
+    const snapshotCredits = snapshotBySubmission.get(item.id) || [];
+
+    const snapshotLookup = new Map(
+      snapshotCredits.map((credit) => [`${credit.user_id}:${credit.role || ''}`, credit])
+    );
+
+    const mergedTableCredits = tableCredits.map((credit) => {
+      if (credit.users) return credit;
+      return {
+        ...credit,
+        users: snapshotLookup.get(`${credit.user_id}:${credit.role || ''}`)?.users ?? null,
+      };
+    });
+
+    const tableKeys = new Set(
+      tableCredits.map((credit) => `${credit.user_id}:${credit.role || ''}`)
+    );
+    const snapshotOnly = snapshotCredits.filter(
+      (credit) => !tableKeys.has(`${credit.user_id}:${credit.role || ''}`)
+    );
+
+    return {
+      ...item,
+      collaborators: [...mergedTableCredits, ...snapshotOnly],
+    };
+  });
 }
 
 function normalizeIsoRange(start: string, end: string) {
@@ -1313,6 +1493,66 @@ async function ensureSubmissionShareSlug(submission: {
   return slug;
 }
 
+function getSubmissionTimeMs(item: { submitted_at?: string | null }) {
+  const ms = item.submitted_at ? new Date(item.submitted_at).getTime() : 0;
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function buildForYouMix<T extends { user_id?: string | null; submitted_at?: string | null }>(
+  items: T[],
+  supportedIds: Set<string>
+) {
+  const newest = items
+    .map((item, index) => ({ item, index }))
+    .sort(
+      (a, b) =>
+        getSubmissionTimeMs(b.item) - getSubmissionTimeMs(a.item) ||
+        a.index - b.index
+    );
+
+  if (supportedIds.size === 0) {
+    return newest.map(({ item }) => item);
+  }
+
+  const supported = newest.filter(({ item }) => !!item.user_id && supportedIds.has(item.user_id));
+  const discovery = newest.filter(({ item }) => !item.user_id || !supportedIds.has(item.user_id));
+
+  if (supported.length === 0 || discovery.length === 0) {
+    return newest.map(({ item }) => item);
+  }
+
+  const result: T[] = [];
+  const pattern: Array<'supported' | 'discovery'> = ['supported', 'discovery', 'supported'];
+  let supportedIndex = 0;
+  let discoveryIndex = 0;
+  let patternIndex = 0;
+
+  const take = (kind: 'supported' | 'discovery') => {
+    if (kind === 'supported') {
+      const picked = supported[supportedIndex]?.item ?? null;
+      if (picked) supportedIndex += 1;
+      return picked;
+    }
+
+    const picked = discovery[discoveryIndex]?.item ?? null;
+    if (picked) discoveryIndex += 1;
+    return picked;
+  };
+
+  while (result.length < newest.length) {
+    const preferred = pattern[patternIndex % pattern.length];
+    const fallback = preferred === 'supported' ? 'discovery' : 'supported';
+    const picked = take(preferred) || take(fallback);
+
+    if (!picked) break;
+
+    result.push(picked);
+    patternIndex += 1;
+  }
+
+  return result;
+}
+
 /* ---------------- Memoized Header Controls ---------------- */
 type HeaderControlsProps = {
   category: Category;
@@ -1360,8 +1600,9 @@ const HeaderControls = React.memo(
     const [focused, setFocused] = useState(false);
 
     const filters: { key: SortKey; label: string; sub?: string }[] = [
-      { key: 'mostvoted', label: 'Top', sub: 'Most voted' },
+      { key: 'foryou', label: 'For You', sub: 'Supported + new' },
       { key: 'newest', label: 'New', sub: 'Latest uploads' },
+      { key: 'mostvoted', label: 'Top', sub: 'Most voted' },
       { key: 'leastvoted', label: 'Rising', sub: 'Least voted' },
       { key: 'oldest', label: 'Old', sub: 'Earliest' },
     ];
@@ -1617,7 +1858,7 @@ justifyContent: 'center',
 const FeaturedScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { userId } = useAuth();
+  const { userId, ready: authReady } = useAuth();
  const { refreshKey, triggerAppRefresh } = useAppRefresh();
 const isGuest = !userId;
 const openShareSlug = route.params?.openShareSlug ?? null;
@@ -1630,6 +1871,7 @@ const isPhoneLikeWeb = Platform.OS === 'web' && winW <= 820;
 
 const isMobile = Platform.OS !== 'web' || isPhoneLikeWeb;
 const isWideWeb = Platform.OS === 'web' && !isPhoneLikeWeb && winW >= 980;
+const useDesktopWatch = isWideWeb;
 
 const useTwoColumnMobile = isMobile;
 const gridColumns = isWideWeb || useTwoColumnMobile ? 2 : 1;
@@ -1667,7 +1909,7 @@ const [refreshing, setRefreshing] = useState(false);
 
   const [searchText, setSearchText] = useState('');
   const [searchQ, setSearchQ] = useState('');
-  const [sort, setSort] = useState<SortKey>('newest');
+  const [sort, setSort] = useState<SortKey>('foryou');
 
   const [isSearching, setIsSearching] = useState(false);
   const searchDebounceRef = useRef<any>(null);
@@ -1721,6 +1963,17 @@ const [refreshing, setRefreshing] = useState(false);
   const [commentPosting, setCommentPosting] = useState(false);
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [replyingTo, setReplyingTo] = useState<CommentRow | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+const [reportTarget, setReportTarget] = useState<{
+  contentType: 'submission' | 'profile' | 'comment';
+  contentId?: string | null;
+  reportedUserId?: string | null;
+  title?: string | null;
+} | null>(null);
+const [reportReason, setReportReason] = useState<ReportReason>('Harassment or bullying');
+const [reportDetails, setReportDetails] = useState('');
+const [reportSubmitting, setReportSubmitting] = useState(false);
+const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
 
   const rootComments = useMemo(
   () => comments.filter((c) => !c.parent_comment_id),
@@ -1749,6 +2002,282 @@ const repliesByParent = useMemo(() => {
       })
     | null
   >(null);
+  const [previewCommentsExpanded, setPreviewCommentsExpanded] = useState(false);
+  const [previewMediaReady, setPreviewMediaReady] = useState(false);
+  const [collaboratorEditorOpen, setCollaboratorEditorOpen] = useState(false);
+  const [collaboratorQuery, setCollaboratorQuery] = useState('');
+  const [collaboratorRole, setCollaboratorRole] = useState('');
+  const [collaboratorResults, setCollaboratorResults] = useState<CollaboratorSearchUser[]>([]);
+  const [collaboratorSearching, setCollaboratorSearching] = useState(false);
+  const [collaboratorSaving, setCollaboratorSaving] = useState(false);
+  const previewMotion = useRef(new Animated.Value(0)).current;
+  const previewMediaTimerRef = useRef<any>(null);
+  const previewClosingRef = useRef(false);
+  const previewOpenRef = useRef(false);
+  const previewAnimateInRef = useRef(false);
+  const previewWorkSeqRef = useRef(0);
+  const watchScrollRef = useRef<ScrollView | null>(null);
+
+  useEffect(() => {
+    if (!previewOpen || !previewItem) return;
+
+    previewMotion.stopAnimation();
+    if (!previewAnimateInRef.current) {
+      previewMotion.setValue(1);
+      return;
+    }
+
+    previewAnimateInRef.current = false;
+    previewMotion.setValue(0);
+
+    Animated.timing(previewMotion, {
+      toValue: 1,
+      duration: Platform.OS === 'web' ? 240 : 320,
+      easing: Easing.bezier(0.22, 1, 0.36, 1),
+      useNativeDriver: true,
+    }).start();
+  }, [previewItem, previewMotion, previewOpen]);
+
+  useEffect(() => {
+    previewOpenRef.current = previewOpen;
+  }, [previewOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (previewMediaTimerRef.current) {
+        clearTimeout(previewMediaTimerRef.current);
+      }
+    };
+  }, []);
+
+  const previewSuggestions = useMemo(() => {
+    if (!previewItem) return [];
+
+    const currentUserIdForPreview = (previewItem as any).user_id;
+    const currentGenre =
+      (previewItem as any).film_category || (previewItem as any).category || category;
+
+    const scored = submissions
+      .filter((item) => item.id !== previewItem.id)
+      .map((item) => {
+        const sameCreator =
+          !!currentUserIdForPreview && (item as any).user_id === currentUserIdForPreview;
+        const sameGenre =
+          !!currentGenre &&
+          (((item as any).film_category || (item as any).category || category) === currentGenre);
+
+        return {
+          item,
+          score: (sameCreator ? 2 : 0) + (sameGenre ? 1 : 0),
+        };
+      })
+      .sort((a, b) => b.score - a.score || (b.item.votes ?? 0) - (a.item.votes ?? 0));
+
+    const matches = scored.filter(({ score }) => score > 0);
+    const fallback = scored.filter(({ score }) => score === 0);
+
+    return [...matches, ...fallback].slice(0, 8).map(({ item }) => item);
+  }, [category, previewItem, submissions]);
+
+  const updateCollaboratorsForSubmission = (
+    submissionId: string,
+    collaborators: SubmissionCollaborator[]
+  ) => {
+    setPreviewItem((prev) =>
+      prev?.id === submissionId ? ({ ...prev, collaborators } as any) : prev
+    );
+    setSubmissions((prev) =>
+      prev.map((item) =>
+        item.id === submissionId ? ({ ...item, collaborators } as any) : item
+      )
+    );
+    setWinner((prev) =>
+      prev?.id === submissionId ? ({ ...prev, collaborators } as any) : prev
+    );
+  };
+
+  useEffect(() => {
+    if (!collaboratorEditorOpen) return;
+
+    const q = collaboratorQuery.trim();
+
+    if (q.length < 2) {
+      setCollaboratorResults([]);
+      setCollaboratorSearching(false);
+      return;
+    }
+
+    let cancelled = false;
+    setCollaboratorSearching(true);
+
+    const timer = setTimeout(async () => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, full_name, avatar_url, level')
+        .ilike('full_name', `%${q}%`)
+        .order('full_name', { ascending: true })
+        .limit(10);
+
+      if (cancelled) return;
+
+      if (error) {
+        console.log('Collaborator search error:', error.message);
+        setCollaboratorResults([]);
+      } else {
+        const currentCredits = ((previewItem as any)?.collaborators || []) as SubmissionCollaborator[];
+        const existingIds = new Set([
+          (previewItem as any)?.user_id,
+          ...currentCredits.map((item) => item.user_id),
+        ].filter(Boolean));
+
+        setCollaboratorResults(
+          ((data || []) as CollaboratorSearchUser[]).filter((item) => !existingIds.has(item.id))
+        );
+      }
+
+      setCollaboratorSearching(false);
+    }, 240);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [collaboratorEditorOpen, collaboratorQuery, previewItem]);
+
+  const addPreviewCollaborator = (user: CollaboratorSearchUser) => {
+    if (!previewItem) return;
+
+    const role = collaboratorRole.trim();
+
+    if (!role) {
+      Alert.alert('Add their role', 'Write a role first, like DP, Actor, Editor, or Producer.');
+      return;
+    }
+
+    const currentCredits = ((previewItem as any).collaborators || []) as SubmissionCollaborator[];
+
+    if (currentCredits.some((item) => item.user_id === user.id)) {
+      setCollaboratorQuery('');
+      setCollaboratorRole('');
+      setCollaboratorResults([]);
+      return;
+    }
+
+    const nextCredits: SubmissionCollaborator[] = [
+      ...currentCredits,
+      {
+        id: `local-${previewItem.id}-${user.id}-${Date.now()}`,
+        submission_id: previewItem.id,
+        user_id: user.id,
+        role,
+        sort_order: currentCredits.length,
+        users: {
+          id: user.id,
+          full_name: user.full_name ?? null,
+          avatar_url: user.avatar_url ?? null,
+        },
+      },
+    ];
+
+    updateCollaboratorsForSubmission(previewItem.id, nextCredits);
+    setCollaboratorQuery('');
+    setCollaboratorRole('');
+    setCollaboratorResults([]);
+  };
+
+  const removePreviewCollaborator = (userIdToRemove: string) => {
+    if (!previewItem) return;
+
+    const nextCredits = (((previewItem as any).collaborators || []) as SubmissionCollaborator[])
+      .filter((item) => item.user_id !== userIdToRemove)
+      .map((item, index) => ({ ...item, sort_order: index }));
+
+    updateCollaboratorsForSubmission(previewItem.id, nextCredits);
+  };
+
+  const savePreviewCollaborators = async () => {
+    if (!previewItem || !currentUserId || (previewItem as any).user_id !== currentUserId) return;
+    if (collaboratorSaving) return;
+
+    const submissionId = previewItem.id;
+    const credits = (((previewItem as any).collaborators || []) as SubmissionCollaborator[])
+      .map((item, index) => ({
+        submission_id: submissionId,
+        user_id: item.user_id,
+        role: String(item.role || '').trim(),
+        sort_order: index,
+        users: item.users
+          ? {
+              id: item.users.id,
+              full_name: item.users.full_name ?? null,
+              avatar_url: item.users.avatar_url ?? null,
+            }
+          : null,
+      }))
+      .filter((item) => item.user_id && item.role);
+
+    const rows = credits.map(({ users, ...row }) => row);
+
+    setCollaboratorSaving(true);
+
+    try {
+      let tableSaved = false;
+      let snapshotSaved = false;
+
+      const { error: deleteError } = await supabase
+        .from('submission_collaborators')
+        .delete()
+        .eq('submission_id', submissionId);
+
+      if (deleteError) {
+        console.log('Collaborator clear failed:', deleteError.message);
+      } else if (rows.length === 0) {
+        tableSaved = true;
+      }
+
+      if (rows.length > 0) {
+        const { error: insertError } = await supabase
+          .from('submission_collaborators')
+          .insert(rows);
+
+        if (insertError) {
+          console.log('Collaborator save failed:', insertError.message);
+        } else {
+          tableSaved = true;
+        }
+      }
+
+      const { error: snapshotError } = await supabase
+        .from('submissions')
+        .update({ collaborator_credits: credits })
+        .eq('id', submissionId)
+        .eq('user_id', currentUserId);
+
+      if (snapshotError) {
+        console.log('Collaborator snapshot save failed:', snapshotError.message);
+      } else {
+        snapshotSaved = true;
+      }
+
+      if (!tableSaved && !snapshotSaved) {
+        throw new Error('No collaborator store accepted the update.');
+      }
+
+      const [enriched] = await attachSubmissionCollaborators([
+        { ...(previewItem as any), collaborators: credits, collaborator_credits: credits },
+      ]);
+      const nextCredits = ((enriched as any)?.collaborators || credits) as SubmissionCollaborator[];
+
+      updateCollaboratorsForSubmission(submissionId, nextCredits);
+      setCollaboratorEditorOpen(false);
+    } catch (e: any) {
+      console.warn('savePreviewCollaborators error:', e?.message || e);
+      Alert.alert('Collaborators failed', 'Those credits could not be saved. Please try again.');
+    } finally {
+      setCollaboratorSaving(false);
+    }
+  };
+
   const [storyModeOpen, setStoryModeOpen] = useState(false);
 const [storyModeItem, setStoryModeItem] = useState<
   | (Submission & {
@@ -1778,6 +2307,9 @@ const [storyModeItem, setStoryModeItem] = useState<
   const deepLinkHandledRef = useRef<string | null>(null);
 const hasInitializedChallengesRef = useRef(false);
 const hoverIntentRef = useRef<Record<string, any>>({});
+const fetchSeqRef = useRef(0);
+const inFlightFetchKeyRef = useRef<string | null>(null);
+const lastAppliedFetchKeyRef = useRef<string | null>(null);
   const { userId: gamUserId, refresh: refreshGamification } = useGamification();
 
   // Track monthly votes used for cap enforcement (kept, even though feed is all-time)
@@ -1862,18 +2394,20 @@ const categoryHeaderTopOffset =
     ? 50
     : 25;
 
-  // Fetch content when filters change
+  // Fetch content when auth + filters are ready. This avoids a guest fetch
+  // followed by a signed-in fetch during post-login navigation.
   useEffect(() => {
-  (async () => {
-    await initChallengesIfNeeded();
+    if (!authReady) return;
 
-    const { data: auth } = await supabase.auth.getUser();
-    const uid = auth?.user?.id ?? null;
-    setCurrentUserId(uid);
-    await fetchContent(uid, category, searchQ);
-  })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [sort, searchQ, filmCategory]);
+    (async () => {
+      await initChallengesIfNeeded();
+
+      const uid = userId ?? null;
+      setCurrentUserId(uid);
+      await fetchContent(uid, category, searchQ, { silent: true });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authReady, userId, sort, searchQ, filmCategory]);
 
 useEffect(() => {
   if (initialLoading) return;
@@ -1882,22 +2416,21 @@ useEffect(() => {
     try {
       await initChallengesIfNeeded();
 
-      const { data: auth } = await supabase.auth.getUser();
-      const uid = auth?.user?.id ?? null;
+      const uid = userId ?? null;
 
       setCurrentUserId(uid);
-      await fetchContent(uid, category, searchQ);
+      await fetchContent(uid, category, searchQ, { force: true, silent: true });
     } catch (e: any) {
       console.warn('Featured refreshKey refresh error:', e?.message || e);
     }
   })();
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [refreshKey]);
+}, [refreshKey, userId]);
 
 
   const baseCols =
-  'id, user_id, title, votes, submitted_at, is_winner, share_slug, users ( id, full_name ), video_id, storage_path, video_path, thumbnail_url, media_kind, mime_type, duration_seconds, category, mux_upload_id, mux_asset_id, mux_playback_id, mux_status';
+  'id, user_id, title, votes, submitted_at, is_winner, share_slug, is_removed, removed_reason, film_category, collaborator_credits, users ( id, full_name, avatar_url ), video_id, storage_path, video_path, thumbnail_url, media_kind, mime_type, duration_seconds, category, mux_upload_id, mux_asset_id, mux_playback_id, mux_status';
 
   const fetchWinnerSafe = async (id: string, desired: Category) => {
     const sel = `
@@ -1905,7 +2438,12 @@ useEffect(() => {
       videos:video_id ( original_path, thumbnail_path, video_variants ( path, label ) ),
       description
     `;
-    let res = await supabase.from('submissions').select(sel).eq('id', id).single();
+    let res = await supabase
+  .from('submissions')
+  .select(sel)
+  .eq('id', id)
+  .eq('is_removed', false)
+  .single();
 
     if (res.error) {
       const sel2 = `
@@ -1913,7 +2451,12 @@ useEffect(() => {
         videos:video_id ( original_path, thumbnail_path, video_variants ( path, label ) ),
         word
       `;
-      res = await supabase.from('submissions').select(sel2).eq('id', id).single();
+      res = await supabase
+  .from('submissions')
+  .select(sel2)
+  .eq('id', id)
+  .eq('is_removed', false)
+  .single();
     }
 
     if (res.error) return res;
@@ -1936,7 +2479,8 @@ useEffect(() => {
   orderKey: SortKey,
   searchTextQ: string,
   cat: Category,
-  filmCat: FilmCategory
+  filmCat: FilmCategory,
+  blockedIds: Set<string>
 ) => {
     const sel = `
       ${baseCols},
@@ -1945,6 +2489,7 @@ useEffect(() => {
     `;
 
     const addSort = (q: any) => {
+      if (orderKey === 'foryou') return q.order('submitted_at', { ascending: false });
       if (orderKey === 'newest') return q.order('submitted_at', { ascending: false });
       if (orderKey === 'oldest') return q.order('submitted_at', { ascending: true });
       if (orderKey === 'mostvoted') return q.order('votes', { ascending: false });
@@ -1958,6 +2503,10 @@ useEffect(() => {
 
 // Always restrict to film type
 query = query.eq('category', 'film');
+query = query.eq('is_removed', false);
+if (blockedIds.size > 0) {
+  query = query.not('user_id', 'in', `(${Array.from(blockedIds).join(',')})`);
+}
 
 // ✅ Apply Film Category filter (genre)
 if (filmCat && filmCat !== 'All') {
@@ -1986,6 +2535,10 @@ if (res.error) {
 
   // Always restrict to film type
   q2 = q2.eq('category', 'film');
+  q2 = q2.eq('is_removed', false);
+  if (blockedIds.size > 0) {
+  q2 = q2.not('user_id', 'in', `(${Array.from(blockedIds).join(',')})`);
+}
 
   if (filmCat && filmCat !== 'All') {
   const dbVal = (FILM_CATEGORY_DB_MAP[filmCat] ?? filmCat).trim();
@@ -2037,12 +2590,35 @@ const initChallengesIfNeeded = async () => {
   } catch {}
 };
 
-const fetchContent = async (uid: string | null, cat: Category, searchTextQ: string) => {
+const fetchContent = async (
+  uid: string | null,
+  cat: Category,
+  searchTextQ: string,
+  opts?: { force?: boolean; silent?: boolean }
+) => {
+  const fetchKey = [
+    uid || 'guest',
+    cat,
+    sort,
+    filmCategory,
+    searchTextQ.trim(),
+  ].join('|');
+
+  if (!opts?.force && inFlightFetchKeyRef.current === fetchKey) {
+    return;
+  }
+
+  if (!opts?.force && lastAppliedFetchKeyRef.current === fetchKey && submissions.length > 0) {
+    return;
+  }
+
+  const seq = ++fetchSeqRef.current;
+  inFlightFetchKeyRef.current = fetchKey;
   const firstLoad = submissions.length === 0 && !winner;
 
   if (firstLoad) {
     setInitialLoading(true);
-  } else {
+  } else if (!opts?.silent) {
     setRefreshing(true);
   }
 
@@ -2055,11 +2631,25 @@ const fetchContent = async (uid: string | null, cat: Category, searchTextQ: stri
 
     currentRangeRef.current = range ?? null;
 
+    // ✅ Fetch blocked users ONCE near the top, before winner/feed queries use it.
+    const blockedIds = await fetchBlockedUsers(uid);
+    const supportedIds =
+      sort === 'foryou' ? await fetchSupportedUserIds(uid) : new Set<string>();
+
     let winnerData: any = null;
 
     if (challenges.previous?.winner_submission_id) {
-      const { data: w } = await fetchWinnerSafe(challenges.previous.winner_submission_id, cat);
+      const { data: w } = await fetchWinnerSafe(
+        challenges.previous.winner_submission_id,
+        cat
+      );
+
       winnerData = w ? normalizeRow(w as RawSubmission) : null;
+
+      // ✅ Hide winner if the current user has blocked that creator.
+      if (winnerData && blockedIds.has((winnerData as any).user_id)) {
+        winnerData = null;
+      }
 
       if (winnerData && winnerData.category !== cat) {
         winnerData = null;
@@ -2077,34 +2667,58 @@ const fetchContent = async (uid: string | null, cat: Category, searchTextQ: stri
       }
     }
 
-    const resp = await fetchSubsSafe(sort, searchTextQ, cat, filmCategory);
+    // ✅ Use the same blockedIds for the submissions query.
+    const resp = await fetchSubsSafe(
+      sort,
+      searchTextQ,
+      cat,
+      filmCategory,
+      blockedIds
+    );
+
     const subs = (resp?.data || []) as RawSubmission[];
     const normalized = subs.map(normalizeRow);
 
-    const playableOnly = normalized.filter((s: any) => {
+    const playableOnlyBase = normalized.filter((s: any) => {
       const muxReady = isMuxReady(s.mux_status);
       const hasMux = !!s.mux_playback_id;
       const hasDirectFile = !!s.storage_path;
+
       return (hasMux && muxReady) || (!hasMux && hasDirectFile) || hasDirectFile;
     });
 
+    const playableOnly =
+      sort === 'foryou'
+        ? (buildForYouMix(playableOnlyBase as any[], supportedIds) as typeof playableOnlyBase)
+        : playableOnlyBase;
+
+    const playableWithCollaborators = await attachSubmissionCollaborators(playableOnly as any);
+
+    if (winnerData) {
+      const [winnerWithCollaborators] = await attachSubmissionCollaborators([winnerData as any]);
+      winnerData = winnerWithCollaborators;
+    }
+
+    if (seq !== fetchSeqRef.current) return;
+
     setWinner(winnerData);
-    setSubmissions(playableOnly);
+    setSubmissions(playableWithCollaborators as any);
+    lastAppliedFetchKeyRef.current = fetchKey;
 
     setTimeout(() => {
       setTimeout(() => {
-  fetchCommentCounts(playableOnly.slice(0, 8).map((s) => s.id));
+  fetchCommentCounts(playableWithCollaborators.slice(0, 8).map((s) => s.id));
 }, 300);
     }, 0);
 
-    playableOnly.slice(0, 6).forEach((s) => {
+    playableWithCollaborators.slice(0, 6).forEach((s) => {
       const muxReady = isMuxReady((s as any).mux_status);
       const muxUri = muxReady ? getMuxPlaybackUrl((s as any).mux_playback_id) : null;
 
       if (muxUri) {
         warmPlayableUrl(muxUri);
-      } else if (s.storage_path) {
-        signStoragePath(s.storage_path, 3600).catch(() => {});
+      } else if ((s as any).storage_path) {
+        signStoragePath((s as any).storage_path, 3600).catch(() => {});
       }
     });
 
@@ -2117,6 +2731,7 @@ const fetchContent = async (uid: string | null, cat: Category, searchTextQ: stri
         .in('submission_id', ids);
 
       const votedSet = new Set<string>((myVotes || []).map((r) => r.submission_id as string));
+      if (seq !== fetchSeqRef.current) return;
       setVotedIds(votedSet);
     } else {
       setVotedIds(new Set());
@@ -2124,6 +2739,7 @@ const fetchContent = async (uid: string | null, cat: Category, searchTextQ: stri
 
     if (uid && range) {
       const used = await countUserVotesInRange(uid, range);
+      if (seq !== fetchSeqRef.current) return;
       setMonthlyVotesUsed(used);
     } else {
       setMonthlyVotesUsed(0);
@@ -2131,15 +2747,25 @@ const fetchContent = async (uid: string | null, cat: Category, searchTextQ: stri
 
     const firstPlayable = winnerData?.storage_path
       ? `winner-${winnerData.id}`
-      : normalized.find((r) => !!r.storage_path && r.media_kind !== 'file_audio')?.id ?? null;
+      : playableOnly.find((r) => !!r.storage_path && r.media_kind !== 'file_audio')?.id ?? null;
+
+    if (seq !== fetchSeqRef.current) return;
 
     setActiveId(firstPlayable as string | null);
     layoutMap.current.clear();
   } catch (e: any) {
     console.warn('fetchContent error:', e?.message || e);
   } finally {
-    setInitialLoading(false);
-    setRefreshing(false);
+    if (inFlightFetchKeyRef.current === fetchKey) {
+      inFlightFetchKeyRef.current = null;
+    }
+
+    if (seq === fetchSeqRef.current) {
+      setInitialLoading(false);
+      if (!opts?.silent) {
+        setRefreshing(false);
+      }
+    }
   }
 };
 
@@ -2158,13 +2784,224 @@ const onRefresh = useCallback(async () => {
 
     setCurrentUserId(uid);
 
-    await fetchContent(uid, category, searchQ);
+    await fetchContent(uid, category, searchQ, { force: true });
   } catch (e: any) {
     console.warn('Featured refresh error:', e?.message || e);
   } finally {
     setRefreshing(false);
   }
 }, [refreshing, triggerAppRefresh, category, searchQ, sort, filmCategory]);
+
+const fetchBlockedUsers = async (uid: string | null) => {
+  if (!uid) {
+    setBlockedUserIds(new Set());
+    return new Set<string>();
+  }
+
+  const { data, error } = await supabase
+    .from('user_blocks')
+    .select('blocked_id')
+    .eq('blocker_id', uid);
+
+  if (error) {
+    console.warn('fetchBlockedUsers error:', error.message);
+    return new Set<string>();
+  }
+
+  const ids = new Set<string>((data || []).map((row: any) => row.blocked_id));
+  setBlockedUserIds(ids);
+  return ids;
+};
+
+const fetchSupportedUserIds = async (uid: string | null) => {
+  if (!uid) return new Set<string>();
+
+  const { data, error } = await supabase
+    .from('user_supports')
+    .select('supported_id')
+    .eq('supporter_id', uid);
+
+  if (error) {
+    console.warn('fetchSupportedUserIds error:', error.message);
+    return new Set<string>();
+  }
+
+  return new Set<string>((data || []).map((row: any) => row.supported_id).filter(Boolean));
+};
+
+const removeBlockedContentLocally = (blockedId: string) => {
+  setSubmissions((prev) => prev.filter((row: any) => row.user_id !== blockedId));
+
+  if (winner && (winner as any).user_id === blockedId) {
+    setWinner(null);
+  }
+
+  if (previewItem && (previewItem as any).user_id === blockedId) {
+    if (previewMediaTimerRef.current) {
+      clearTimeout(previewMediaTimerRef.current);
+      previewMediaTimerRef.current = null;
+    }
+    setPreviewMediaReady(false);
+    setPreviewOpen(false);
+    setPreviewItem(null);
+    setActiveId(null);
+  }
+
+  if (commentsFor && (commentsFor as any).user_id === blockedId) {
+    closeComments();
+  }
+
+  setComments((prev) => prev.filter((comment: any) => comment.user_id !== blockedId));
+};
+
+const openReportModal = ({
+  contentType,
+  contentId,
+  reportedUserId,
+  title,
+}: {
+  contentType: 'submission' | 'profile' | 'comment';
+  contentId?: string | null;
+  reportedUserId?: string | null;
+  title?: string | null;
+}) => {
+  if (isGuest) {
+    promptSignIn('Create an account or sign in to report content.');
+    return;
+  }
+
+  const shouldCloseVideoOverlay =
+    contentType === 'submission' && (previewOpen || storyModeOpen);
+
+  setReportTarget({
+    contentType,
+    contentId: contentId || null,
+    reportedUserId: reportedUserId || null,
+    title: title || null,
+  });
+  setReportReason('Harassment or bullying');
+  setReportDetails('');
+
+  if (shouldCloseVideoOverlay) {
+    if (previewMediaTimerRef.current) {
+      clearTimeout(previewMediaTimerRef.current);
+      previewMediaTimerRef.current = null;
+    }
+    setPreviewMediaReady(false);
+    setPreviewOpen(false);
+    setPreviewItem(null);
+    setStoryModeOpen(false);
+    setStoryModeItem(null);
+    setActiveId(null);
+
+    pauseAllExcept(PAUSE_NONE_ID).catch(() => {});
+
+    setTimeout(() => {
+      setReportOpen(true);
+    }, Platform.OS === 'web' ? 160 : 90);
+    return;
+  }
+
+  setReportOpen(true);
+};
+
+const closeReportModal = () => {
+  if (reportSubmitting) return;
+  setReportOpen(false);
+  setReportTarget(null);
+  setReportReason('Harassment or bullying');
+  setReportDetails('');
+};
+
+const submitReport = async () => {
+  if (!reportTarget) return;
+
+  const detailsError = validateSafeText(reportDetails);
+  if (detailsError) {
+    Alert.alert('Content Not Allowed', detailsError);
+    return;
+  }
+
+  setReportSubmitting(true);
+
+  try {
+    const ok = await reportContent({
+      reportedUserId: reportTarget.reportedUserId || null,
+      contentType: reportTarget.contentType,
+      contentId: reportTarget.contentId || null,
+      reason: reportReason,
+      details: reportDetails.trim() || null,
+      showAlert: true,
+    });
+
+    if (ok) {
+      closeReportModal();
+    }
+  } finally {
+    setReportSubmitting(false);
+  }
+};
+
+const confirmBlockUser = ({
+  blockedUserId,
+  blockedUserName,
+}: {
+  blockedUserId?: string | null;
+  blockedUserName?: string | null;
+}) => {
+  if (isGuest) {
+    promptSignIn('Create an account or sign in to block users.');
+    return;
+  }
+
+  if (!blockedUserId) {
+    Alert.alert('Unable to Block', 'This user could not be found.');
+    return;
+  }
+
+  if (currentUserId && blockedUserId === currentUserId) {
+    Alert.alert('Not Allowed', 'You cannot block yourself.');
+    return;
+  }
+
+  const doBlock = async () => {
+    const ok = await blockUser({
+      blockedUserId,
+      reason: 'Blocked from Featured feed',
+      showAlert: true,
+    });
+
+    if (ok) {
+      setBlockedUserIds((prev) => {
+        const next = new Set(prev);
+        next.add(blockedUserId);
+        return next;
+      });
+
+      removeBlockedContentLocally(blockedUserId);
+      await fetchContent(currentUserId, category, searchQ, { force: true, silent: true });
+    }
+  };
+
+  if (Platform.OS === 'web') {
+    const ok =
+      typeof window !== 'undefined' &&
+      window.confirm(
+        `Block ${blockedUserName || 'this user'}? Their films and comments will be removed from your feed immediately.`
+      );
+
+    if (ok) doBlock();
+  } else {
+    Alert.alert(
+      'Block User?',
+      `Block ${blockedUserName || 'this user'}? Their films and comments will be removed from your feed immediately.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Block', style: 'destructive', onPress: doBlock },
+      ]
+    );
+  }
+};
 
 const promptSignIn = (message: string) => {
   Alert.alert(
@@ -2186,12 +3023,49 @@ const promptSignIn = (message: string) => {
 
 const goToProfile = (user?: { id: string; full_name: string }) => {
   if (!user) return;
-  navigation.navigate('Profile', {
-    user: {
-      id: user.id,
-      full_name: user.full_name,
+
+  const hadOpenOverlay =
+    commentsOpen || previewOpen || reportOpen || storyModeOpen;
+
+  if (commentsOpen) {
+    closeComments();
+  }
+
+  if (previewOpen) {
+    if (previewMediaTimerRef.current) {
+      clearTimeout(previewMediaTimerRef.current);
+      previewMediaTimerRef.current = null;
+    }
+    setPreviewMediaReady(false);
+    setPreviewOpen(false);
+    setPreviewItem(null);
+    setActiveId(null);
+  }
+
+  if (reportOpen) {
+    setReportOpen(false);
+    setReportTarget(null);
+    setReportDetails('');
+  }
+
+  if (storyModeOpen) {
+    setStoryModeOpen(false);
+    setStoryModeItem(null);
+  }
+
+  pauseAllExcept(PAUSE_NONE_ID).catch(() => {});
+
+  setTimeout(
+    () => {
+      navigation.navigate('Profile', {
+        user: {
+          id: user.id,
+          full_name: user.full_name,
+        },
+      });
     },
-  });
+    hadOpenOverlay ? 190 : 0
+  );
 };
 const openStoryModeSafely = (
   s: Submission & {
@@ -2203,10 +3077,21 @@ const openStoryModeSafely = (
     share_slug?: string | null;
   }
 ) => {
+  setCommentsOpen(false);
+  setPreviewCommentsExpanded(false);
+  setCommentText('');
+  setReplyingTo(null);
+
   if (Platform.OS === 'ios' && previewOpen) {
+    if (previewMediaTimerRef.current) {
+      clearTimeout(previewMediaTimerRef.current);
+      previewMediaTimerRef.current = null;
+    }
+    setPreviewMediaReady(false);
     setPreviewOpen(false);
     setPreviewItem(null);
     setActiveId(null);
+    pauseAllExcept(PAUSE_NONE_ID).catch(() => {});
 
     setTimeout(() => {
       setStoryModeItem(s);
@@ -2233,8 +3118,24 @@ const openStoryMode = (
 };
 
 const closeStoryMode = () => {
+  if (previewMediaTimerRef.current) {
+    clearTimeout(previewMediaTimerRef.current);
+    previewMediaTimerRef.current = null;
+  }
+  setPreviewMediaReady(false);
   setStoryModeOpen(false);
   setStoryModeItem(null);
+  setPreviewOpen(false);
+  setPreviewItem(null);
+  setCommentsOpen(false);
+  setCommentsFor(null);
+  setComments([]);
+  setCommentText('');
+  setReplyingTo(null);
+  setActiveId(null);
+  InteractionManager.runAfterInteractions(() => {
+    pauseAllExcept(PAUSE_NONE_ID).catch(() => {});
+  });
 };
 const shareSubmissionLink = async (
   s: Submission & {
@@ -2317,20 +3218,115 @@ const shareSubmissionLink = async (
 
   // ✅ open/close preview modal for compact cards
   const openPreview = (s: any) => {
+  const wasOpen = previewOpenRef.current;
+  const workSeq = ++previewWorkSeqRef.current;
+
+  if (previewMediaTimerRef.current) {
+    clearTimeout(previewMediaTimerRef.current);
+    previewMediaTimerRef.current = null;
+  }
+
+  previewClosingRef.current = false;
+  previewAnimateInRef.current = !wasOpen;
+  previewMotion.stopAnimation();
+  previewMotion.setValue(wasOpen ? 1 : 0);
+  setPreviewMediaReady(false);
+
+  if (wasOpen) {
+    const scrollToPlayer = () => {
+      try {
+        watchScrollRef.current?.scrollTo({ y: 0, animated: true });
+      } catch {}
+    };
+
+    scrollToPlayer();
+    setTimeout(scrollToPlayer, Platform.OS === 'web' ? 40 : 70);
+  }
+
   if (s?.storage_path) {
     signStoragePath(s.storage_path, 3600).catch(() => {});
   }
 
   setPreviewItem(s);
   setPreviewOpen(true);
-  setActiveId(`preview-${s.id}`);
+  previewOpenRef.current = true;
+  setActiveId(PAUSE_NONE_ID);
+  setPreviewCommentsExpanded(false);
+  setCommentsFor(s);
+  setCommentText('');
+  setReplyingTo(null);
+  setCommentsOpen(false);
+  setCollaboratorEditorOpen(false);
+  setCollaboratorQuery('');
+  setCollaboratorRole('');
+  setCollaboratorResults([]);
+
+  InteractionManager.runAfterInteractions(() => {
+    if (workSeq !== previewWorkSeqRef.current) return;
+
+    void fetchComments(s.id);
+    void attachSubmissionCollaborators([s]).then(([enriched]) => {
+      if (workSeq !== previewWorkSeqRef.current) return;
+
+      setPreviewItem((prev) =>
+        prev?.id === s.id
+          ? ({
+              ...prev,
+              collaborators: (enriched as any)?.collaborators || (prev as any).collaborators || [],
+            } as any)
+          : prev
+      );
+    });
+  });
+
+  previewMediaTimerRef.current = setTimeout(() => {
+    if (previewClosingRef.current) return;
+    setPreviewMediaReady(true);
+    setActiveId(`preview-${s.id}`);
+  }, Platform.OS === 'web' ? 140 : 190);
 };
 
-  const closePreview = async () => {
-    setPreviewOpen(false);
-    setPreviewItem(null);
+  const closePreview = () => {
+    if (previewClosingRef.current) return;
+    previewClosingRef.current = true;
+    const closeSeq = ++previewWorkSeqRef.current;
+
+    if (previewMediaTimerRef.current) {
+      clearTimeout(previewMediaTimerRef.current);
+      previewMediaTimerRef.current = null;
+    }
+
+    setPreviewMediaReady(false);
     setActiveId(null);
-    await pauseAllExcept(PAUSE_NONE_ID);
+    setCommentsOpen(false);
+
+    Animated.timing(previewMotion, {
+      toValue: 0,
+      duration: Platform.OS === 'web' ? 150 : 190,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (!finished) return;
+      if (closeSeq !== previewWorkSeqRef.current) return;
+
+      setPreviewOpen(false);
+      previewOpenRef.current = false;
+      setPreviewItem(null);
+      setCommentsFor(null);
+      setComments([]);
+      setCommentText('');
+      setReplyingTo(null);
+      setPreviewCommentsExpanded(false);
+      setCollaboratorEditorOpen(false);
+      setCollaboratorQuery('');
+      setCollaboratorRole('');
+      setCollaboratorResults([]);
+      previewClosingRef.current = false;
+    });
+
+    InteractionManager.runAfterInteractions(() => {
+      pauseAllExcept(PAUSE_NONE_ID).catch(() => {});
+    });
   };
 
   const openComments = async (s: Submission) => {
@@ -2343,6 +3339,11 @@ const shareSubmissionLink = async (
 
   const closeComments = () => {
   setCommentsOpen(false);
+  if (previewOpen && previewItem) {
+    setCommentsFor(previewItem);
+    setReplyingTo(null);
+    return;
+  }
   setCommentsFor(null);
   setComments([]);
   setCommentText('');
@@ -2438,6 +3439,15 @@ if (error) {
 
     const text = commentText.trim();
     if (!text) return;
+
+    const moderation = validateMultipleSafeTexts([
+  { label: 'Comment', value: text },
+]);
+
+if (!moderation.safe) {
+  Alert.alert('Content Not Allowed', moderation.message || 'Please edit your comment.');
+  return;
+}
 
     if (commentPosting) return;
     setCommentPosting(true);
@@ -3115,6 +4125,36 @@ const renderMobileYouTubeCard = useCallback(
   <Text style={styles.mobilePillGhostText}>Share</Text>
 </TouchableOpacity>
 
+<TouchableOpacity
+  activeOpacity={0.9}
+  onPress={() =>
+    openReportModal({
+      contentType: 'submission',
+      contentId: s.id,
+      reportedUserId: (s as any).user_id,
+      title: s.title,
+    })
+  }
+  style={styles.mobilePillGhost}
+>
+  <Text style={styles.mobilePillGhostText}>Report</Text>
+</TouchableOpacity>
+
+{currentUserId && (s as any).user_id !== currentUserId ? (
+  <TouchableOpacity
+    activeOpacity={0.9}
+    onPress={() =>
+      confirmBlockUser({
+        blockedUserId: (s as any).user_id,
+        blockedUserName: s.users?.full_name,
+      })
+    }
+    style={styles.mobilePillDanger}
+  >
+    <Text style={styles.mobilePillDangerText}>Block</Text>
+  </TouchableOpacity>
+) : null}
+
             {mine ? (
               <TouchableOpacity
                 style={[
@@ -3250,7 +4290,35 @@ const renderCard = useCallback(
 >
   <Text style={styles.feedActionGhostText}>Share</Text>
 </TouchableOpacity>
+<TouchableOpacity
+  onPress={() =>
+    openReportModal({
+      contentType: 'submission',
+      contentId: s.id,
+      reportedUserId: (s as any).user_id,
+      title: s.title,
+    })
+  }
+  activeOpacity={0.9}
+  style={styles.feedActionBtnGhost}
+>
+  <Text style={styles.feedActionGhostText}>Report</Text>
+</TouchableOpacity>
 
+{currentUserId && (s as any).user_id !== currentUserId ? (
+  <TouchableOpacity
+    onPress={() =>
+      confirmBlockUser({
+        blockedUserId: (s as any).user_id,
+        blockedUserName: s.users?.full_name,
+      })
+    }
+    activeOpacity={0.9}
+    style={styles.feedActionBtnDanger}
+  >
+    <Text style={styles.feedActionDangerText}>Block</Text>
+  </TouchableOpacity>
+) : null}
                       {currentUserId && (s as any).user_id === currentUserId ? (
                         <TouchableOpacity
                           style={[
@@ -3365,6 +4433,215 @@ const renderSubmissionItem = ({ item }: any) => {
   if (isWideWeb || isMobile) return renderCompactGridCard(item);
   return renderCard(item.id, item, activeId === item.id, false);
 };
+
+const renderCommentsPanel = (panelStyle?: any) => (
+  <View style={[styles.commentsModalCard, panelStyle]}>
+    <View style={styles.commentsHeader}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.commentsTitle}>Comments</Text>
+        {commentsFor?.title ? (
+          <Text style={styles.commentsSubtitle} numberOfLines={1}>
+            {commentsFor.title}
+          </Text>
+        ) : null}
+      </View>
+
+      <TouchableOpacity
+        onPress={closeComments}
+        activeOpacity={0.9}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        style={styles.commentsCloseBtn}
+      >
+        <Text style={styles.commentsClose}>Close</Text>
+      </TouchableOpacity>
+    </View>
+
+    <View style={styles.commentsBody}>
+      {commentsLoading && rootComments.length === 0 ? (
+        <ActivityIndicator color={T.accent} style={{ padding: 20 }} />
+      ) : rootComments.length === 0 ? (
+        <View style={styles.commentsEmptyState}>
+          <Text style={styles.commentsEmptyTitle}>No comments yet</Text>
+          <Text style={styles.commentsEmptyText}>Be the first to say something thoughtful.</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={rootComments}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.commentsListContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="always"
+          renderItem={({ item }) => {
+            const u = item.users;
+            const replies = repliesByParent[item.id] || [];
+
+            return (
+              <View style={styles.commentThread}>
+                <View style={styles.commentCard}>
+                  <TouchableOpacity
+                    onPress={() => u && goToProfile({ id: u.id, full_name: u.full_name })}
+                    activeOpacity={0.9}
+                    style={styles.commentAvatarTap}
+                  >
+                    <Image
+                      source={{ uri: u?.avatar_url || 'https://picsum.photos/80/80' }}
+                      style={styles.commentAvatar}
+                    />
+                  </TouchableOpacity>
+
+                  <View style={{ flex: 1 }}>
+                    <TouchableOpacity
+                      onPress={() => u && goToProfile({ id: u.id, full_name: u.full_name })}
+                      activeOpacity={0.9}
+                    >
+                      <Text style={styles.commentName}>{u?.full_name || 'Unknown'}</Text>
+                    </TouchableOpacity>
+
+                    <Text style={styles.commentText}>{item.comment}</Text>
+
+                    <View style={styles.commentActionsRow}>
+                      <TouchableOpacity
+                        activeOpacity={0.9}
+                        onPress={() => {
+                          if (isGuest) {
+                            navigation.navigate('Auth', { screen: 'SignIn' });
+                            return;
+                          }
+                          setReplyingTo(item);
+                        }}
+                        style={styles.replyBtn}
+                      >
+                        <Text style={styles.replyBtnText}>
+                          {isGuest ? 'Sign In to Reply' : 'Reply'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        activeOpacity={0.9}
+                        onPress={() =>
+                          openReportModal({
+                            contentType: 'comment',
+                            contentId: item.id,
+                            reportedUserId: item.user_id,
+                            title: item.comment,
+                          })
+                        }
+                        style={styles.replyBtn}
+                      >
+                        <Text style={styles.replyBtnText}>Report</Text>
+                      </TouchableOpacity>
+
+                      {currentUserId && item.user_id !== currentUserId ? (
+                        <TouchableOpacity
+                          activeOpacity={0.9}
+                          onPress={() =>
+                            confirmBlockUser({
+                              blockedUserId: item.user_id,
+                              blockedUserName: item.users?.full_name,
+                            })
+                          }
+                          style={styles.replyDangerBtn}
+                        >
+                          <Text style={styles.replyDangerBtnText}>Block</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  </View>
+                </View>
+
+                {replies.length > 0 ? (
+                  <View style={styles.repliesWrap}>
+                    {replies.map((reply) => {
+                      const ru = reply.users;
+                      return (
+                        <View key={reply.id} style={styles.replyCard}>
+                          <TouchableOpacity
+                            onPress={() =>
+                              ru && goToProfile({ id: ru.id, full_name: ru.full_name })
+                            }
+                            activeOpacity={0.9}
+                            style={styles.replyAvatarTap}
+                          >
+                            <Image
+                              source={{ uri: ru?.avatar_url || 'https://picsum.photos/80/80' }}
+                              style={styles.replyAvatar}
+                            />
+                          </TouchableOpacity>
+
+                          <View style={{ flex: 1 }}>
+                            <TouchableOpacity
+                              onPress={() =>
+                                ru && goToProfile({ id: ru.id, full_name: ru.full_name })
+                              }
+                              activeOpacity={0.9}
+                            >
+                              <Text style={styles.replyName}>{ru?.full_name || 'Unknown'}</Text>
+                            </TouchableOpacity>
+
+                            <Text style={styles.replyText}>{reply.comment}</Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : null}
+              </View>
+            );
+          }}
+        />
+      )}
+    </View>
+
+    <View style={styles.commentComposerWrap}>
+      {replyingTo ? (
+        <View style={styles.replyingBanner}>
+          <Text style={styles.replyingBannerText} numberOfLines={1}>
+            Replying to {replyingTo.users?.full_name || 'comment'}
+          </Text>
+          <TouchableOpacity onPress={() => setReplyingTo(null)} activeOpacity={0.9}>
+            <Text style={styles.replyingBannerCancel}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      <View style={styles.commentComposer}>
+        <TextInput
+          value={commentText}
+          onChangeText={(txt) => {
+            if (isGuest) {
+              promptSignIn('Create an account or sign in to comment on films.');
+              return;
+            }
+            setCommentText(txt);
+          }}
+          placeholder={isGuest ? 'Sign in to comment...' : replyingTo ? 'Write a reply...' : 'Add a comment...'}
+          placeholderTextColor="#777"
+          style={styles.commentInput}
+          multiline
+        />
+        <TouchableOpacity
+          onPress={() => {
+            if (isGuest) {
+              navigation.navigate('Auth', { screen: 'SignIn' });
+              return;
+            }
+            postComment();
+          }}
+          disabled={commentPosting || (!isGuest && !commentText.trim())}
+          activeOpacity={0.9}
+          style={[
+            styles.commentSendBtn,
+            (commentPosting || (!isGuest && !commentText.trim())) && { opacity: 0.5 },
+          ]}
+        >
+          <Text style={styles.commentSendText}>
+            {isGuest ? 'Sign In' : commentPosting ? '...' : 'Post'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </View>
+);
 
 const keyForList = isWideWeb
   ? `grid-${searchQ}-${sort}-${filmCategory}`
@@ -3638,338 +4915,733 @@ maxToRenderPerBatch={2}
   </Modal>
 )}
 
-    {/* ✅ Preview modal (wide web): full player + actions */}
+    {/* ✅ Watch modal: player, creator/actions, inline comments, suggestions */}
 {previewOpen && previewItem && (
   <Modal
     visible
     transparent
-    animationType="fade"
+    animationType="none"
     presentationStyle="overFullScreen"
+    hardwareAccelerated
+    statusBarTranslucent
     onRequestClose={closePreview}
   >
-    <View style={styles.previewOverlay}>
+    <Animated.View style={[styles.previewOverlay, { opacity: previewMotion }]}>
       <Pressable style={StyleSheet.absoluteFillObject} onPress={closePreview} />
 
-      <View style={styles.previewCard}>
-        <View style={styles.previewHeader}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.previewTitle} numberOfLines={2}>
+      <Animated.View
+        style={[
+          styles.previewCard,
+          Platform.OS === 'web'
+            ? {
+                maxWidth: useDesktopWatch ? Math.min(winW - 80, 1560) : 820,
+                maxHeight: useDesktopWatch ? Math.min(winH - 56, 920) : Math.min(winH - 56, 780),
+              }
+            : { height: winH, maxHeight: winH, borderRadius: 0 },
+          {
+            transform: [
+              {
+                translateY: previewMotion.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [Platform.OS === 'web' ? 18 : winH, 0],
+                }),
+              },
+              {
+                scale: previewMotion.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [Platform.OS === 'web' ? 0.985 : 1, 1],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <ScrollView
+          ref={watchScrollRef}
+          style={styles.watchScroll}
+          contentContainerStyle={[styles.watchContent, useDesktopWatch && styles.watchContentDesktop]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="always"
+        >
+          <View style={styles.watchTopBar}>
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity
+              onPress={closePreview}
+              activeOpacity={0.9}
+              hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+              style={styles.watchCloseCircle}
+            >
+              <Text style={styles.watchCloseIcon}>×</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={useDesktopWatch ? styles.watchDesktopColumns : undefined}>
+            <View style={useDesktopWatch ? styles.watchMainColumn : undefined}>
+          <View style={styles.watchPlayerWrap}>
+            {(() => {
+              const previewMuxReady = isMuxReady((previewItem as any).mux_status);
+              const previewMuxUri = previewMuxReady
+                ? getMuxPlaybackUrl((previewItem as any).mux_playback_id)
+                : null;
+
+              return previewItem.storage_path || previewMuxUri ? (
+                <HostedVideoInline
+                  playerId={`preview-${previewItem.id}`}
+                  storagePath={previewMuxUri ? null : previewItem.storage_path ?? null}
+                  directUri={previewMuxUri}
+                  width={
+                    useDesktopWatch
+                      ? Math.min(Math.max(winW - 520, 720), 1160)
+                      : Platform.OS === 'web'
+                      ? Math.min(winW - 72, 792)
+                      : Math.min(winW, 860)
+                  }
+                  maxHeight={
+                    useDesktopWatch ? Math.min(winH * 0.68, 660) : Math.min(winH * 0.34, 340)
+                  }
+                  autoPlay={previewMediaReady && activeId === `preview-${previewItem.id}`}
+                  posterUri={previewItem.thumbnail_url ?? null}
+                  dimVignette={false}
+                  showControls={true}
+                  captureSurfacePress={true}
+                  surfacePressMode="toggle"
+                  fixedAspect={16 / 9}
+                />
+              ) : (
+                <View style={styles.watchPlayerFallback} />
+              );
+            })()}
+          </View>
+
+          <View style={styles.watchMetaBlock}>
+            <Text style={styles.watchTitle} numberOfLines={2}>
               {previewItem.title}
             </Text>
 
-            {previewItem.users?.full_name ? (
+            <View style={styles.watchCreatorRow}>
               <TouchableOpacity
-                onPress={() => goToProfile(previewItem.users)}
+                onPress={() => previewItem.users && goToProfile(previewItem.users)}
                 activeOpacity={0.85}
+                style={styles.watchCreatorTap}
               >
-                <Text style={styles.previewByline}>{previewItem.users.full_name}</Text>
+                <View style={styles.watchCreatorAvatar}>
+                  {previewItem.users?.avatar_url ? (
+                    <Image
+                      source={{ uri: previewItem.users.avatar_url }}
+                      style={styles.watchCreatorAvatarImage}
+                    />
+                  ) : (
+                    <Text style={styles.watchCreatorAvatarText}>
+                      {(previewItem.users?.full_name || 'O').slice(0, 1).toUpperCase()}
+                    </Text>
+                  )}
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.watchCreatorName} numberOfLines={1}>
+                    {previewItem.users?.full_name || 'Unknown creator'}
+                  </Text>
+                  <Text style={styles.watchCreatorMeta} numberOfLines={1}>
+                    {((previewItem as any).film_category || previewItem.category || 'Film').toString()}
+                  </Text>
+                </View>
               </TouchableOpacity>
+
+              {((previewItem as any).collaborators || []).length > 0 ? (
+                <View style={styles.watchCreditsInlineWrap}>
+                  {((previewItem as any).collaborators as SubmissionCollaborator[]).map((item) => {
+                    const collaboratorName =
+                      item.users?.full_name ||
+                      (item.user_id ? "Collaborator" : "Credit");
+                    const canOpenProfile = !!item.users?.id;
+
+                    return (
+                      <TouchableOpacity
+                        key={`${item.user_id}-${item.role || "role"}`}
+                        activeOpacity={0.82}
+                        onPress={() =>
+                          item.users &&
+                          goToProfile({
+                            id: item.users.id,
+                            full_name: item.users.full_name || "Collaborator",
+                          })
+                        }
+                        disabled={!canOpenProfile}
+                        style={styles.watchCreditPerson}
+                      >
+                        {item.users?.avatar_url ? (
+                          <Image
+                            source={{ uri: item.users.avatar_url }}
+                            style={styles.watchCreditAvatar}
+                          />
+                        ) : (
+                          <View style={styles.watchCreditAvatarFallback}>
+                            <Text style={styles.watchCreditAvatarInitial}>
+                              {collaboratorName.slice(0, 1).toUpperCase()}
+                            </Text>
+                          </View>
+                        )}
+
+                        <View style={styles.watchCreditTextWrap}>
+                          <Text style={styles.watchCreditName} numberOfLines={1}>
+                            {collaboratorName}
+                          </Text>
+                          <Text style={styles.watchCreditRole} numberOfLines={1}>
+                            {item.role || "Collaborator"}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.watchActionsRow}>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => {
+                  if (isGuest) {
+                    navigation.navigate('Auth', { screen: 'SignIn' });
+                    return;
+                  }
+                  toggleVote(previewItem);
+                }}
+                disabled={
+                  !!voteBusy[previewItem.id] ||
+                  (!!currentUserId && (previewItem as any).user_id === currentUserId)
+                }
+                style={[
+                  styles.watchActionChip,
+                  votedIds.has(previewItem.id) && styles.watchActionChipActive,
+                  (voteBusy[previewItem.id] ||
+                    (!!currentUserId && (previewItem as any).user_id === currentUserId)) && {
+                    opacity: 0.55,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={votedIds.has(previewItem.id) ? 'heart' : 'heart-outline'}
+                  size={18}
+                  color={votedIds.has(previewItem.id) ? GOLD : '#F4F1EA'}
+                />
+                <Text style={styles.watchActionText}>
+                  {isGuest ? 'Sign In' : votedIds.has(previewItem.id) ? 'Voted' : 'Vote'}
+                </Text>
+                <Text style={styles.watchActionMeta}>
+                  {voteBusy[previewItem.id] ? '...' : previewItem.votes ?? 0}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => {
+                  setCommentsFor(previewItem);
+                  setCommentsOpen(true);
+                  void fetchComments(previewItem.id);
+                }}
+                style={styles.watchActionChip}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color="#F4F1EA" />
+                <Text style={styles.watchActionText}>Comment</Text>
+                <Text style={styles.watchActionMeta}>
+                  {commentCounts[previewItem.id] ?? rootComments.length}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => shareSubmissionLink(previewItem as any)}
+                style={styles.watchActionChip}
+              >
+                <Ionicons name="arrow-redo-outline" size={18} color="#F4F1EA" />
+                <Text style={styles.watchActionText}>Share</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() =>
+                  openReportModal({
+                    contentType: 'submission',
+                    contentId: previewItem.id,
+                    reportedUserId: (previewItem as any).user_id,
+                    title: previewItem.title,
+                  })
+                }
+                style={styles.watchActionChip}
+              >
+                <Ionicons name="flag-outline" size={18} color="#F4F1EA" />
+                <Text style={styles.watchActionText}>Report</Text>
+              </TouchableOpacity>
+
+              {currentUserId && (previewItem as any).user_id !== currentUserId ? (
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() =>
+                    confirmBlockUser({
+                      blockedUserId: (previewItem as any).user_id,
+                      blockedUserName: previewItem.users?.full_name,
+                  })
+                  }
+                  style={[styles.watchActionChip, styles.watchActionDangerChip]}
+                >
+                  <Ionicons name="ban-outline" size={18} color="#FF8A8A" />
+                  <Text style={styles.watchActionDangerText}>Block</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              {currentUserId && (previewItem as any).user_id === currentUserId ? (
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => setCollaboratorEditorOpen((open) => !open)}
+                  style={[
+                    styles.watchActionChip,
+                    collaboratorEditorOpen && styles.watchActionChipActive,
+                  ]}
+                >
+                  <Ionicons name="people-outline" size={18} color="#F4F1EA" />
+                  <Text style={styles.watchActionText}>Credits</Text>
+                  <Text style={styles.watchActionMeta}>
+                    {((previewItem as any).collaborators || []).length}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {currentUserId &&
+            (previewItem as any).user_id === currentUserId &&
+            collaboratorEditorOpen ? (
+              <View style={styles.watchCollaboratorEditor}>
+                <View style={styles.watchCollaboratorEditorHeader}>
+                  <Text style={styles.watchCollaboratorEditorTitle}>Collaborators</Text>
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={savePreviewCollaborators}
+                    disabled={collaboratorSaving}
+                    style={[
+                      styles.watchCollaboratorSaveBtn,
+                      collaboratorSaving && { opacity: 0.55 },
+                    ]}
+                  >
+                    <Text style={styles.watchCollaboratorSaveText}>
+                      {collaboratorSaving ? 'Saving...' : 'Save'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.watchCollaboratorFormRow}>
+                  <TextInput
+                    value={collaboratorQuery}
+                    onChangeText={setCollaboratorQuery}
+                    placeholder="Search user"
+                    placeholderTextColor="rgba(244,241,234,0.42)"
+                    style={[styles.watchCollaboratorInput, { flex: 1.25 }]}
+                    autoCorrect={false}
+                  />
+                  <TextInput
+                    value={collaboratorRole}
+                    onChangeText={setCollaboratorRole}
+                    placeholder="Role"
+                    placeholderTextColor="rgba(244,241,234,0.42)"
+                    style={[styles.watchCollaboratorInput, { flex: 0.85 }]}
+                    autoCorrect={false}
+                  />
+                </View>
+
+                {collaboratorSearching ? (
+                  <View style={styles.watchCollaboratorSearchState}>
+                    <ActivityIndicator size="small" color={GOLD} />
+                    <Text style={styles.watchCollaboratorSearchText}>Searching...</Text>
+                  </View>
+                ) : null}
+
+                {collaboratorResults.length > 0 ? (
+                  <View style={styles.watchCollaboratorResults}>
+                    {collaboratorResults.map((item) => (
+                      <TouchableOpacity
+                        key={item.id}
+                        activeOpacity={0.86}
+                        onPress={() => addPreviewCollaborator(item)}
+                        style={styles.watchCollaboratorResultRow}
+                      >
+                        {item.avatar_url ? (
+                          <Image
+                            source={{ uri: item.avatar_url }}
+                            style={styles.watchCollaboratorResultAvatar}
+                          />
+                        ) : (
+                          <View style={styles.watchCollaboratorResultAvatarFallback}>
+                            <Text style={styles.watchCollaboratorInitial}>
+                              {(item.full_name || 'C').slice(0, 1).toUpperCase()}
+                            </Text>
+                          </View>
+                        )}
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.watchCollaboratorResultName} numberOfLines={1}>
+                            {item.full_name || 'Unnamed creative'}
+                          </Text>
+                          <Text style={styles.watchCollaboratorResultMeta} numberOfLines={1}>
+                            Add as {collaboratorRole.trim() || 'collaborator'}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : null}
+
+                {((previewItem as any).collaborators || []).length > 0 ? (
+                  <View style={styles.watchCollaboratorEditorChips}>
+                    {(((previewItem as any).collaborators || []) as SubmissionCollaborator[]).map(
+                      (item) => (
+                        <View
+                          key={`edit-${item.user_id}-${item.role || 'role'}`}
+                          style={styles.watchCollaboratorEditorChip}
+                        >
+                          <Text style={styles.watchCollaboratorEditorChipText} numberOfLines={1}>
+                            {item.users?.full_name || 'Collaborator'} · {item.role || 'Role'}
+                          </Text>
+                          <TouchableOpacity
+                            activeOpacity={0.8}
+                            onPress={() => removePreviewCollaborator(item.user_id)}
+                            style={styles.watchCollaboratorRemoveBtn}
+                          >
+                            <Ionicons name="close" size={14} color="#F4F1EA" />
+                          </TouchableOpacity>
+                        </View>
+                      )
+                    )}
+                  </View>
+                ) : null}
+              </View>
             ) : null}
           </View>
 
           <TouchableOpacity
-            onPress={closePreview}
             activeOpacity={0.9}
-            style={styles.previewCloseBtn}
+            onPress={() => {
+              setCommentsFor(previewItem);
+              setCommentsOpen(true);
+              void fetchComments(previewItem.id);
+            }}
+            style={styles.watchCommentsPreview}
           >
-            <Text style={styles.previewCloseText}>Close</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14 }}>
-          {(() => {
-            const previewMuxReady = isMuxReady((previewItem as any).mux_status);
-            const previewMuxUri = previewMuxReady
-              ? getMuxPlaybackUrl((previewItem as any).mux_playback_id)
-              : null;
-
-            return previewItem.storage_path || previewMuxUri ? (
-              <HostedVideoInline
-                playerId={`preview-${previewItem.id}`}
-                storagePath={previewMuxUri ? null : previewItem.storage_path ?? null}
-                directUri={previewMuxUri}
-                width={Math.min(winW - 40, 760)}
-                maxHeight={Math.min(winH * 0.34, 300)}
-                autoPlay={activeId === `preview-${previewItem.id}`}
-                posterUri={previewItem.thumbnail_url ?? null}
-                dimVignette={false}
-                showControls={true}
-                captureSurfacePress={true}
-                surfacePressMode="toggle"
+            <View style={styles.watchCommentsPreviewHeader}>
+              <Text style={styles.watchCommentsPreviewTitle}>Comments</Text>
+              <Text style={styles.watchCommentsPreviewCount}>
+                {commentCounts[previewItem.id] ?? rootComments.length}
+              </Text>
+              {commentsLoading ? <ActivityIndicator color={T.accent} size="small" /> : null}
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color="rgba(237,235,230,0.70)"
               />
-            ) : (
-              <View style={{ height: 220, borderRadius: 14, backgroundColor: '#000' }} />
-            );
-          })()}
+            </View>
 
-          <View style={styles.previewActions}>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => {
-                if (isGuest) {
-                  navigation.navigate('Auth', { screen: 'SignIn' });
-                  return;
-                }
-                toggleVote(previewItem);
-              }}
-              disabled={
-                !!voteBusy[previewItem.id] ||
-                (!!currentUserId && (previewItem as any).user_id === currentUserId)
-              }
-              style={[
-                styles.previewActionPill,
-                (voteBusy[previewItem.id] ||
-                  (!!currentUserId && (previewItem as any).user_id === currentUserId)) && {
-                  opacity: 0.55,
-                },
-              ]}
-            >
-              <Text style={styles.previewActionText}>
-                {isGuest
-                  ? `Sign In to Vote (${previewItem.votes ?? 0})`
-                  : `${votedIds.has(previewItem.id) ? 'Voted' : 'Vote'} (${previewItem.votes ?? 0})`}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => {
-                shareSubmissionLink(previewItem as any);
-              }}
-              style={styles.previewActionPillGhost}
-            >
-              <Text style={styles.previewActionTextGhost}>Share</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => openComments(previewItem)}
-              style={styles.previewActionPillGhost}
-            >
-              <Text style={styles.previewActionTextGhost}>
-                Comments ({commentCounts[previewItem.id] ?? 0})
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {commentsOpen && (
-          <View style={styles.previewCommentsLayer}>
-            <Pressable
-              style={StyleSheet.absoluteFillObject}
-              onPress={closeComments}
-            />
-
-            <View style={styles.previewCommentsCard}>
-              <View style={styles.commentsHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.commentsTitle}>Comments</Text>
-                  {commentsFor?.title ? (
-                    <Text style={styles.commentsSubtitle} numberOfLines={1}>
-                      {commentsFor.title}
-                    </Text>
-                  ) : null}
-                </View>
-
-                <TouchableOpacity
-                  onPress={closeComments}
-                  activeOpacity={0.9}
-                  style={styles.commentsCloseBtn}
-                >
-                  <Text style={styles.commentsClose}>Close</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.commentsBody}>
-                {commentsLoading ? (
-                  <ActivityIndicator color={T.accent} style={{ padding: 20 }} />
-                ) : rootComments.length === 0 ? (
-                  <View style={styles.commentsEmptyState}>
-                    <Text style={styles.commentsEmptyTitle}>No comments yet</Text>
-                    <Text style={styles.commentsEmptyText}>
-                      Be the first to say something thoughtful.
-                    </Text>
-                  </View>
+            {rootComments[0] ? (
+              <View style={styles.watchCommentsPreviewRow}>
+                {rootComments[0].users?.avatar_url ? (
+                  <Image
+                    source={{ uri: rootComments[0].users.avatar_url }}
+                    style={styles.watchCommentsPreviewAvatar}
+                  />
                 ) : (
-                  <FlatList
-                    data={rootComments}
-                    keyExtractor={(item) => item.id}
-                    contentContainerStyle={styles.commentsListContent}
-                    showsVerticalScrollIndicator={false}
-                    keyboardShouldPersistTaps="always"
-                    renderItem={({ item }) => {
-                      const u = item.users;
-                      const replies = repliesByParent[item.id] || [];
-
-                      return (
-                        <View style={styles.commentThread}>
-                          <View style={styles.commentCard}>
-                            <TouchableOpacity
-                              onPress={() =>
-                                u && goToProfile({ id: u.id, full_name: u.full_name })
-                              }
-                              activeOpacity={0.9}
-                              style={styles.commentAvatarTap}
-                            >
-                              <Image
-                                source={{ uri: u?.avatar_url || 'https://picsum.photos/80/80' }}
-                                style={styles.commentAvatar}
-                              />
-                            </TouchableOpacity>
-
-                            <View style={{ flex: 1 }}>
-                              <TouchableOpacity
-                                onPress={() =>
-                                  u && goToProfile({ id: u.id, full_name: u.full_name })
-                                }
-                                activeOpacity={0.9}
-                              >
-                                <Text style={styles.commentName}>
-                                  {u?.full_name || 'Unknown'}
-                                </Text>
-                              </TouchableOpacity>
-
-                              <Text style={styles.commentText}>{item.comment}</Text>
-
-                              <View style={styles.commentActionsRow}>
-                                <TouchableOpacity
-                                  activeOpacity={0.9}
-                                  onPress={() => {
-                                    if (isGuest) {
-                                      navigation.navigate('Auth', { screen: 'SignIn' });
-                                      return;
-                                    }
-                                    setReplyingTo(item);
-                                  }}
-                                  style={styles.replyBtn}
-                                >
-                                  <Text style={styles.replyBtnText}>
-                                    {isGuest ? 'Sign In to Reply' : 'Reply'}
-                                  </Text>
-                                </TouchableOpacity>
-                              </View>
-                            </View>
-                          </View>
-
-                          {replies.length > 0 && (
-                            <View style={styles.repliesWrap}>
-                              {replies.map((reply) => {
-                                const ru = reply.users;
-                                return (
-                                  <View key={reply.id} style={styles.replyCard}>
-                                    <TouchableOpacity
-                                      onPress={() =>
-                                        ru &&
-                                        goToProfile({
-                                          id: ru.id,
-                                          full_name: ru.full_name,
-                                        })
-                                      }
-                                      activeOpacity={0.9}
-                                      style={styles.replyAvatarTap}
-                                    >
-                                      <Image
-                                        source={{
-                                          uri: ru?.avatar_url || 'https://picsum.photos/80/80',
-                                        }}
-                                        style={styles.replyAvatar}
-                                      />
-                                    </TouchableOpacity>
-
-                                    <View style={{ flex: 1 }}>
-                                      <TouchableOpacity
-                                        onPress={() =>
-                                          ru &&
-                                          goToProfile({
-                                            id: ru.id,
-                                            full_name: ru.full_name,
-                                          })
-                                        }
-                                        activeOpacity={0.9}
-                                      >
-                                        <Text style={styles.replyName}>
-                                          {ru?.full_name || 'Unknown'}
-                                        </Text>
-                                      </TouchableOpacity>
-
-                                      <Text style={styles.replyText}>{reply.comment}</Text>
-                                    </View>
-                                  </View>
-                                );
-                              })}
-                            </View>
-                          )}
-                        </View>
-                      );
-                    }}
-                  />
-                )}
-              </View>
-
-              <View style={styles.commentComposerWrap}>
-                {replyingTo ? (
-                  <View style={styles.replyingBanner}>
-                    <Text style={styles.replyingBannerText} numberOfLines={1}>
-                      Replying to {replyingTo.users?.full_name || 'comment'}
+                  <View style={styles.watchCommentsPreviewAvatarFallback}>
+                    <Text style={styles.watchCommentsPreviewInitial}>
+                      {(rootComments[0].users?.full_name || 'U').slice(0, 1).toUpperCase()}
                     </Text>
-                    <TouchableOpacity
-                      onPress={() => setReplyingTo(null)}
-                      activeOpacity={0.9}
-                    >
-                      <Text style={styles.replyingBannerCancel}>Cancel</Text>
-                    </TouchableOpacity>
                   </View>
-                ) : null}
-
-                <View style={styles.commentComposer}>
-                  <TextInput
-                    value={commentText}
-                    onChangeText={(txt) => {
-                      if (isGuest) {
-                        promptSignIn('Create an account or sign in to comment on films.');
-                        return;
-                      }
-                      setCommentText(txt);
-                    }}
-                    placeholder={
-                      isGuest
-                        ? 'Sign in to comment…'
-                        : replyingTo
-                        ? 'Write a reply…'
-                        : 'Add a comment…'
-                    }
-                    placeholderTextColor="#777"
-                    style={styles.commentInput}
-                    multiline
-                  />
-                  <TouchableOpacity
-                    onPress={() => {
-                      if (isGuest) {
-                        navigation.navigate('Auth', { screen: 'SignIn' });
-                        return;
-                      }
-                      postComment();
-                    }}
-                    disabled={commentPosting || (!isGuest && !commentText.trim())}
-                    activeOpacity={0.9}
-                    style={[
-                      styles.commentSendBtn,
-                      (commentPosting || (!isGuest && !commentText.trim())) && {
-                        opacity: 0.5,
-                      },
-                    ]}
-                  >
-                    <Text style={styles.commentSendText}>
-                      {isGuest ? 'Sign In' : commentPosting ? '…' : 'Post'}
-                    </Text>
-                  </TouchableOpacity>
+                )}
+                <View style={styles.watchCommentsPreviewBody}>
+                  <Text style={styles.watchCommentsPreviewName} numberOfLines={1}>
+                    {rootComments[0].users?.full_name || 'Unknown'}
+                  </Text>
+                  <Text style={styles.watchCommentsPreviewText} numberOfLines={2}>
+                    {rootComments[0].comment}
+                  </Text>
                 </View>
               </View>
+            ) : (
+              <View style={styles.watchCommentsPreviewInput}>
+                <Text style={styles.watchCommentsPreviewInputText}>Add a comment...</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+            </View>
+
+            <View style={useDesktopWatch ? styles.watchSideColumn : undefined}>
+          <View style={[styles.watchSuggestionsSection, useDesktopWatch && styles.watchSuggestionsSectionDesktop]}>
+            <View style={styles.watchSectionCompactHeader}>
+              <Text style={styles.watchSectionTitle}>Up next</Text>
+            </View>
+
+            <View style={styles.watchSuggestionsList}>
+              {previewSuggestions.map((item) => {
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    activeOpacity={0.9}
+                    onPress={() => openPreview(item as any)}
+                    style={[styles.watchSuggestionCard, useDesktopWatch && styles.watchSuggestionCardDesktop]}
+                  >
+                    <Image
+                      source={{ uri: (item as any).thumbnail_url || 'https://picsum.photos/480/270' }}
+                      style={[styles.watchSuggestionThumb, useDesktopWatch && styles.watchSuggestionThumbDesktop]}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.watchSuggestionBody}>
+                      <Text style={styles.watchSuggestionTitle} numberOfLines={2}>
+                        {item.title}
+                      </Text>
+                      <Text style={styles.watchSuggestionMeta} numberOfLines={1}>
+                        {item.users?.full_name || 'Unknown'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
-        )}
-      </View>
-    </View>
+            </View>
+          </View>
+
+          {previewCommentsExpanded ? (
+          <View style={styles.watchCommentsSection}>
+            <View style={styles.watchSectionHeader}>
+              <View>
+                <Text style={styles.watchSectionTitle}>Comments</Text>
+                <Text style={styles.watchSectionSub}>
+                  Shared with this film across Overlooked.
+                </Text>
+              </View>
+              {commentsLoading ? <ActivityIndicator color={T.accent} size="small" /> : null}
+            </View>
+
+            <View style={styles.watchComposerWrap}>
+              {replyingTo ? (
+                <View style={styles.replyingBanner}>
+                  <Text style={styles.replyingBannerText} numberOfLines={1}>
+                    Replying to {replyingTo.users?.full_name || 'comment'}
+                  </Text>
+                  <TouchableOpacity onPress={() => setReplyingTo(null)} activeOpacity={0.9}>
+                    <Text style={styles.replyingBannerCancel}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
+              <View style={styles.commentComposer}>
+                <TextInput
+                  value={commentText}
+                  onChangeText={(txt) => {
+                    if (isGuest) {
+                      promptSignIn('Create an account or sign in to comment on films.');
+                      return;
+                    }
+                    setCommentText(txt);
+                  }}
+                  placeholder={
+                    isGuest
+                      ? 'Sign in to comment…'
+                      : replyingTo
+                      ? 'Write a reply…'
+                      : 'Add a comment…'
+                  }
+                  placeholderTextColor="#777"
+                  style={styles.commentInput}
+                  multiline
+                />
+                <TouchableOpacity
+                  onPress={() => {
+                    if (isGuest) {
+                      navigation.navigate('Auth', { screen: 'SignIn' });
+                      return;
+                    }
+                    postComment();
+                  }}
+                  disabled={commentPosting || (!isGuest && !commentText.trim())}
+                  activeOpacity={0.9}
+                  style={[
+                    styles.commentSendBtn,
+                    (commentPosting || (!isGuest && !commentText.trim())) && {
+                      opacity: 0.5,
+                    },
+                  ]}
+                >
+                  <Text style={styles.commentSendText}>
+                    {isGuest ? 'Sign In' : commentPosting ? '…' : 'Post'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {commentsLoading && rootComments.length === 0 ? (
+              <ActivityIndicator color={T.accent} style={{ padding: 20 }} />
+            ) : rootComments.length === 0 ? (
+              <View style={styles.commentsEmptyState}>
+                <Text style={styles.commentsEmptyTitle}>No comments yet</Text>
+                <Text style={styles.commentsEmptyText}>
+                  Be the first to say something thoughtful.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.watchCommentsList}>
+                {rootComments.map((item) => {
+                  const u = item.users;
+                  const replies = repliesByParent[item.id] || [];
+
+                  return (
+                    <View key={item.id} style={styles.commentThread}>
+                      <View style={styles.commentCard}>
+                        <TouchableOpacity
+                          onPress={() => u && goToProfile({ id: u.id, full_name: u.full_name })}
+                          activeOpacity={0.9}
+                          style={styles.commentAvatarTap}
+                        >
+                          <Image
+                            source={{ uri: u?.avatar_url || 'https://picsum.photos/80/80' }}
+                            style={styles.commentAvatar}
+                          />
+                        </TouchableOpacity>
+
+                        <View style={{ flex: 1 }}>
+                          <TouchableOpacity
+                            onPress={() => u && goToProfile({ id: u.id, full_name: u.full_name })}
+                            activeOpacity={0.9}
+                          >
+                            <Text style={styles.commentName}>{u?.full_name || 'Unknown'}</Text>
+                          </TouchableOpacity>
+
+                          <Text style={styles.commentText}>{item.comment}</Text>
+
+                          <View style={styles.commentActionsRow}>
+                            <TouchableOpacity
+                              activeOpacity={0.9}
+                              onPress={() => {
+                                if (isGuest) {
+                                  navigation.navigate('Auth', { screen: 'SignIn' });
+                                  return;
+                                }
+                                setReplyingTo(item);
+                              }}
+                              style={styles.replyBtn}
+                            >
+                              <Text style={styles.replyBtnText}>
+                                {isGuest ? 'Sign In to Reply' : 'Reply'}
+                              </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              activeOpacity={0.9}
+                              onPress={() =>
+                                openReportModal({
+                                  contentType: 'comment',
+                                  contentId: item.id,
+                                  reportedUserId: item.user_id,
+                                  title: item.comment,
+                                })
+                              }
+                              style={styles.replyBtn}
+                            >
+                              <Text style={styles.replyBtnText}>Report</Text>
+                            </TouchableOpacity>
+
+                            {currentUserId && item.user_id !== currentUserId ? (
+                              <TouchableOpacity
+                                activeOpacity={0.9}
+                                onPress={() =>
+                                  confirmBlockUser({
+                                    blockedUserId: item.user_id,
+                                    blockedUserName: item.users?.full_name,
+                                  })
+                                }
+                                style={styles.replyDangerBtn}
+                              >
+                                <Text style={styles.replyDangerBtnText}>Block</Text>
+                              </TouchableOpacity>
+                            ) : null}
+                          </View>
+                        </View>
+                      </View>
+
+                      {replies.length > 0 ? (
+                        <View style={styles.repliesWrap}>
+                          {replies.map((reply) => {
+                            const ru = reply.users;
+                            return (
+                              <View key={reply.id} style={styles.replyCard}>
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    ru && goToProfile({ id: ru.id, full_name: ru.full_name })
+                                  }
+                                  activeOpacity={0.9}
+                                  style={styles.replyAvatarTap}
+                                >
+                                  <Image
+                                    source={{ uri: ru?.avatar_url || 'https://picsum.photos/80/80' }}
+                                    style={styles.replyAvatar}
+                                  />
+                                </TouchableOpacity>
+
+                                <View style={{ flex: 1 }}>
+                                  <TouchableOpacity
+                                    onPress={() =>
+                                      ru && goToProfile({ id: ru.id, full_name: ru.full_name })
+                                    }
+                                    activeOpacity={0.9}
+                                  >
+                                    <Text style={styles.replyName}>{ru?.full_name || 'Unknown'}</Text>
+                                  </TouchableOpacity>
+
+                                  <Text style={styles.replyText}>{reply.comment}</Text>
+                                </View>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+          ) : null}
+        </ScrollView>
+      </Animated.View>
+
+      {commentsOpen ? (
+        <View
+          style={[
+            styles.commentsOverlay,
+            {
+              backgroundColor: 'rgba(0,0,0,0.64)',
+              justifyContent: 'flex-end',
+              paddingHorizontal: isMobile ? 0 : 22,
+              paddingTop: isMobile ? 80 : 32,
+              paddingBottom: 0,
+            },
+          ]}
+        >
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={closeComments} />
+          {renderCommentsPanel(
+            isMobile
+              ? {
+                  width: winW,
+                  maxWidth: winW,
+                  height: Math.min(winH * 0.72, 620),
+                  borderBottomLeftRadius: 0,
+                  borderBottomRightRadius: 0,
+                }
+              : {
+                  width: '100%',
+                  maxWidth: 820,
+                  height: Math.min(winH * 0.72, 620),
+                  borderBottomLeftRadius: 0,
+                  borderBottomRightRadius: 0,
+                }
+          )}
+        </View>
+      ) : null}
+    </Animated.View>
   </Modal>
 )}
     {/* ---------------- Comments Modal (kept) ---------------- */}
@@ -4172,6 +5844,16 @@ maxToRenderPerBatch={2}
     </View>
   </Modal>
 )}
+<ReportContentModal
+  visible={reportOpen && !!reportTarget}
+  selectedReason={reportReason}
+  details={reportDetails}
+  submitting={reportSubmitting}
+  onReasonChange={setReportReason}
+  onDetailsChange={setReportDetails}
+  onClose={closeReportModal}
+  onSubmit={submitReport}
+/>
   </View>
 );
 };
@@ -4506,8 +6188,241 @@ mobileChip: {
   width: '94%', // add this
 },
 
+mobilePillDanger: {
+  height: 32,
+  paddingHorizontal: 12,
+  borderRadius: 999,
+  backgroundColor: 'rgba(255,70,70,0.10)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,90,90,0.26)',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginRight: 7,
+  marginBottom: 7,
+},
 
-  
+mobilePillDangerText: {
+  color: '#FF8A8A',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 11,
+},
+
+feedActionBtnDanger: {
+  paddingVertical: 11,
+  paddingHorizontal: 15,
+  borderRadius: 14,
+  backgroundColor: 'rgba(255,70,70,0.08)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,90,90,0.24)',
+  marginRight: 10,
+  marginBottom: 10,
+},
+
+feedActionDangerText: {
+  color: '#FF8A8A',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 11,
+  letterSpacing: 0.9,
+  textTransform: 'uppercase',
+},
+
+previewActionPillDanger: {
+  paddingVertical: 10,
+  paddingHorizontal: 14,
+  borderRadius: 999,
+  backgroundColor: 'rgba(255,70,70,0.08)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,90,90,0.24)',
+  marginRight: 8,
+  marginBottom: 8,
+},
+
+previewActionTextDanger: {
+  color: '#FF8A8A',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 11,
+  letterSpacing: 0.7,
+  textTransform: 'uppercase',
+},
+
+replyDangerBtn: {
+  minHeight: 24,
+  paddingVertical: 0,
+  paddingHorizontal: 8,
+  borderRadius: 999,
+  backgroundColor: 'transparent',
+  borderWidth: 0,
+  marginRight: 8,
+  marginTop: 0,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+replyDangerBtnText: {
+  color: '#FF8A8A',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 10,
+  letterSpacing: 0.5,
+  textTransform: 'uppercase',
+},
+
+reportOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0,0,0,0.82)',
+  justifyContent: 'center',
+  alignItems: 'center',
+  padding: 18,
+},
+
+reportCard: {
+  width: '100%',
+  maxWidth: 520,
+  maxHeight: '88%',
+  borderRadius: 22,
+  backgroundColor: '#080808',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.08)',
+  padding: 16,
+},
+
+reportHeader: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  marginBottom: 16,
+},
+
+reportTitle: {
+  color: '#F8F6F1',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 18,
+  letterSpacing: 0.5,
+  textTransform: 'uppercase',
+},
+
+reportSubtitle: {
+  marginTop: 5,
+  color: 'rgba(237,235,230,0.62)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  fontSize: 12,
+  lineHeight: 17,
+},
+
+reportCloseBtn: {
+  height: 34,
+  paddingHorizontal: 12,
+  borderRadius: 999,
+  backgroundColor: 'rgba(255,255,255,0.06)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.08)',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginLeft: 12,
+},
+
+reportCloseText: {
+  color: 'rgba(237,235,230,0.72)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 11,
+  textTransform: 'uppercase',
+},
+
+reportLabel: {
+  color: GOLD,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 11,
+  letterSpacing: 1,
+  textTransform: 'uppercase',
+  marginBottom: 8,
+  marginTop: 8,
+},
+
+reportReasonItem: {
+  minHeight: 42,
+  borderRadius: 14,
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.07)',
+  backgroundColor: '#050505',
+  paddingHorizontal: 12,
+  paddingVertical: 10,
+  marginBottom: 8,
+  flexDirection: 'row',
+  alignItems: 'center',
+},
+
+reportReasonItemActive: {
+  borderColor: 'rgba(212,180,95,0.38)',
+  backgroundColor: 'rgba(212,180,95,0.08)',
+},
+
+reportReasonText: {
+  flex: 1,
+  color: 'rgba(237,235,230,0.78)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '800',
+  fontSize: 12,
+},
+
+reportReasonDot: {
+  width: 8,
+  height: 8,
+  borderRadius: 999,
+  backgroundColor: 'rgba(255,255,255,0.24)',
+  opacity: 0.5,
+  marginLeft: 10,
+},
+
+reportInput: {
+  minHeight: 92,
+  borderRadius: 16,
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.08)',
+  backgroundColor: '#050505',
+  paddingHorizontal: 12,
+  paddingVertical: 10,
+  color: '#F8F6F1',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  fontSize: 13,
+  textAlignVertical: 'top',
+  outlineStyle: 'none',
+} as any,
+
+reportSubmitBtn: {
+  height: 46,
+  borderRadius: 999,
+  backgroundColor: GOLD,
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginTop: 14,
+},
+
+reportSubmitText: {
+  color: '#000000',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 12,
+  letterSpacing: 0.8,
+  textTransform: 'uppercase',
+},
+
+reportFooterText: {
+  marginTop: 10,
+  color: 'rgba(237,235,230,0.45)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  fontSize: 11,
+  lineHeight: 16,
+  textAlign: 'center',
+},
+
 mobileMediaWrap: {
   width: '100%',
   borderRadius: 0,
@@ -4748,7 +6663,6 @@ previewCommentsCard: {
   },
 
   mineMini: {
-    marginTop: 8,
     color: 'rgba(237,235,230,0.32)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
@@ -5109,9 +7023,11 @@ gridMine: {
   previewOverlay: {
   flex: 1,
   backgroundColor: 'rgba(0,0,0,0.88)',
-  justifyContent: 'center',
+  justifyContent: Platform.OS === 'web' ? 'center' : 'flex-start',
   alignItems: 'center',
-  padding: 20,
+  paddingHorizontal: Platform.OS === 'web' ? 22 : 0,
+  paddingTop: Platform.OS === 'web' ? 34 : 0,
+  paddingBottom: Platform.OS === 'web' ? 24 : 0,
 },
 
   previewCard: {
@@ -5127,6 +7043,751 @@ gridMine: {
   shadowRadius: 18,
   shadowOffset: { width: 0, height: 10 },
   elevation: 12,
+},
+
+watchScroll: {
+  width: '100%',
+},
+
+watchContent: {
+  paddingHorizontal: Platform.OS === 'web' ? 14 : 10,
+  paddingTop: Platform.OS === 'web' ? 8 : 54,
+  paddingBottom: 14,
+},
+
+watchContentDesktop: {
+  paddingHorizontal: 18,
+  paddingTop: 10,
+  paddingBottom: 18,
+},
+
+watchDesktopColumns: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  gap: 22,
+},
+
+watchMainColumn: {
+  flex: 1,
+  minWidth: 0,
+  maxWidth: 1160,
+},
+
+watchSideColumn: {
+  width: 360,
+  flexShrink: 0,
+  paddingTop: 0,
+},
+
+watchTopBar: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'flex-end',
+  marginBottom: 8,
+  zIndex: 30,
+  elevation: 30,
+},
+
+watchEyebrow: {
+  color: 'rgba(237,235,230,0.50)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '800',
+  fontSize: 10,
+  letterSpacing: 0.9,
+  textTransform: 'uppercase',
+},
+
+watchTopTitle: {
+  marginTop: 2,
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 18,
+  lineHeight: 22,
+},
+
+watchCloseCircle: {
+  width: 44,
+  height: 44,
+  borderRadius: 22,
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: 'rgba(255,255,255,0.10)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.14)',
+  zIndex: 31,
+  elevation: 31,
+},
+
+watchCloseIcon: {
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '800',
+  fontSize: 29,
+  lineHeight: 32,
+},
+
+watchPlayerWrap: {
+  borderRadius: Platform.OS === 'web' ? 14 : 0,
+  overflow: 'hidden',
+  backgroundColor: '#000',
+  borderWidth: Platform.OS === 'web' ? 1 : 0,
+  borderColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.08)' : 'transparent',
+  marginBottom: 12,
+  marginHorizontal: Platform.OS === 'web' ? 0 : -10,
+},
+
+watchPlayerFallback: {
+  height: 220,
+  borderRadius: 14,
+  backgroundColor: '#000',
+},
+
+watchMetaBlock: {
+  backgroundColor: 'transparent',
+  borderWidth: 0,
+  paddingHorizontal: 0,
+  paddingTop: 0,
+  paddingBottom: 4,
+  marginBottom: 10,
+},
+
+watchTitle: {
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 18,
+  lineHeight: 22,
+},
+
+watchCreatorRow: {
+  marginTop: 10,
+  flexDirection: 'row',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: 8,
+},
+
+watchCreatorTap: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 10,
+  flexShrink: 0,
+  maxWidth: Platform.OS === 'web' ? 230 : 128,
+  minWidth: 0,
+},
+
+watchCreatorAvatar: {
+  width: 34,
+  height: 34,
+  borderRadius: 17,
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: 'rgba(198,166,100,0.16)',
+  borderWidth: 1,
+  borderColor: 'rgba(198,166,100,0.28)',
+  overflow: 'hidden',
+},
+
+watchCreatorAvatarImage: {
+  width: '100%',
+  height: '100%',
+},
+
+watchCreatorAvatarText: {
+  color: GOLD,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 15,
+},
+
+watchCreatorName: {
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 12,
+},
+
+watchCreatorMeta: {
+  marginTop: 2,
+  color: 'rgba(237,235,230,0.55)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  fontSize: 11,
+},
+
+watchCreditsInlineWrap: {
+  flex: 1,
+  minWidth: Platform.OS === 'web' ? 220 : 150,
+  maxWidth: '100%',
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 7,
+},
+
+watchCreditPerson: {
+  maxWidth: Platform.OS === 'web' ? 220 : 178,
+  minWidth: 0,
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+  paddingRight: 4,
+},
+
+watchCreditAvatar: {
+  width: 30,
+  height: 30,
+  borderRadius: 15,
+  backgroundColor: '#050505',
+},
+
+watchCreditAvatarFallback: {
+  width: 30,
+  height: 30,
+  borderRadius: 15,
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: 'rgba(198,166,100,0.14)',
+  borderWidth: 1,
+  borderColor: 'rgba(198,166,100,0.22)',
+},
+
+watchCreditAvatarInitial: {
+  color: GOLD,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 11,
+},
+
+watchCreditTextWrap: {
+  minWidth: 0,
+  flexShrink: 1,
+},
+
+watchCreditName: {
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 11,
+},
+
+watchCreditRole: {
+  marginTop: 1,
+  color: GOLD,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '800',
+  fontSize: 10,
+},
+
+watchCollaboratorsInlineScroll: {
+  flex: 1,
+  minWidth: 0,
+},
+
+watchCollaboratorsInlineList: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+  paddingRight: 4,
+},
+
+watchCollaboratorInlinePill: {
+  maxWidth: 190,
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: 'rgba(198,166,100,0.24)',
+  backgroundColor: 'rgba(198,166,100,0.09)',
+  paddingVertical: 6,
+  paddingLeft: 7,
+  paddingRight: 11,
+},
+
+watchCollaboratorInlineAvatar: {
+  width: 26,
+  height: 26,
+  borderRadius: 13,
+  backgroundColor: '#050505',
+},
+
+watchCollaboratorInlineAvatarFallback: {
+  width: 26,
+  height: 26,
+  borderRadius: 13,
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: 'rgba(198,166,100,0.16)',
+},
+
+watchCollaboratorInitial: {
+  color: GOLD,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 11,
+},
+
+watchCollaboratorTextWrap: {
+  maxWidth: 150,
+  minWidth: 0,
+},
+
+watchCollaboratorName: {
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 11,
+},
+
+watchCollaboratorRole: {
+  marginTop: 1,
+  color: GOLD,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '800',
+  fontSize: 10,
+},
+
+watchCollaboratorEditor: {
+  marginTop: 12,
+  borderRadius: 18,
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.10)',
+  backgroundColor: 'rgba(255,255,255,0.045)',
+  padding: 12,
+  gap: 10,
+},
+
+watchCollaboratorEditorHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 12,
+},
+
+watchCollaboratorEditorTitle: {
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 13,
+  letterSpacing: 0.7,
+  textTransform: 'uppercase',
+},
+
+watchCollaboratorSaveBtn: {
+  minHeight: 34,
+  borderRadius: 999,
+  paddingHorizontal: 14,
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: GOLD,
+},
+
+watchCollaboratorSaveText: {
+  color: '#050505',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 11,
+},
+
+watchCollaboratorFormRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+},
+
+watchCollaboratorInput: {
+  minHeight: 42,
+  borderRadius: 14,
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.10)',
+  backgroundColor: 'rgba(0,0,0,0.36)',
+  paddingHorizontal: 12,
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '800',
+  fontSize: 13,
+},
+
+watchCollaboratorSearchState: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+},
+
+watchCollaboratorSearchText: {
+  color: 'rgba(244,241,234,0.58)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  fontSize: 12,
+},
+
+watchCollaboratorResults: {
+  borderRadius: 16,
+  overflow: 'hidden',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.08)',
+},
+
+watchCollaboratorResultRow: {
+  minHeight: 52,
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 10,
+  paddingHorizontal: 10,
+  borderBottomWidth: StyleSheet.hairlineWidth,
+  borderBottomColor: 'rgba(255,255,255,0.08)',
+  backgroundColor: 'rgba(0,0,0,0.24)',
+},
+
+watchCollaboratorResultAvatar: {
+  width: 32,
+  height: 32,
+  borderRadius: 16,
+  backgroundColor: '#050505',
+},
+
+watchCollaboratorResultAvatarFallback: {
+  width: 32,
+  height: 32,
+  borderRadius: 16,
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: 'rgba(198,166,100,0.16)',
+},
+
+watchCollaboratorResultName: {
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 13,
+},
+
+watchCollaboratorResultMeta: {
+  marginTop: 2,
+  color: 'rgba(244,241,234,0.52)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  fontSize: 11,
+},
+
+watchCollaboratorEditorChips: {
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  gap: 8,
+},
+
+watchCollaboratorEditorChip: {
+  maxWidth: '100%',
+  minHeight: 34,
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: 'rgba(198,166,100,0.22)',
+  backgroundColor: 'rgba(198,166,100,0.09)',
+  paddingLeft: 12,
+  paddingRight: 5,
+},
+
+watchCollaboratorEditorChipText: {
+  maxWidth: 230,
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '800',
+  fontSize: 12,
+},
+
+watchCollaboratorRemoveBtn: {
+  width: 26,
+  height: 26,
+  borderRadius: 13,
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: 'rgba(255,255,255,0.08)',
+},
+
+watchActionsRow: {
+  marginTop: 12,
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 6,
+},
+
+watchActionChip: {
+  width: 68,
+  height: 54,
+  borderRadius: 14,
+  paddingHorizontal: 6,
+  paddingVertical: 7,
+  backgroundColor: 'rgba(255,255,255,0.075)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.10)',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+watchActionChipActive: {
+  backgroundColor: 'rgba(198,166,100,0.15)',
+  borderColor: 'rgba(198,166,100,0.34)',
+},
+
+watchActionText: {
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 10,
+  letterSpacing: 0.2,
+  marginTop: 3,
+},
+
+watchActionMeta: {
+  color: 'rgba(237,235,230,0.50)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '800',
+  fontSize: 9,
+  marginTop: 1,
+},
+
+watchActionDangerChip: {
+  backgroundColor: 'rgba(255,70,70,0.075)',
+  borderColor: 'rgba(255,90,90,0.22)',
+},
+
+watchActionDangerText: {
+  color: '#FF8A8A',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 10,
+  letterSpacing: 0.2,
+  marginTop: 3,
+},
+
+watchCommentsPreview: {
+  borderRadius: 14,
+  backgroundColor: '#0B0B0B',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.07)',
+  paddingHorizontal: 12,
+  paddingVertical: 11,
+  marginBottom: 10,
+},
+
+watchCommentsPreviewHeader: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 7,
+},
+
+watchCommentsPreviewTitle: {
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 13,
+},
+
+watchCommentsPreviewCount: {
+  color: 'rgba(237,235,230,0.56)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '800',
+  fontSize: 12,
+  flex: 1,
+},
+
+watchCommentsPreviewRow: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  gap: 9,
+  marginTop: 10,
+},
+
+watchCommentsPreviewAvatar: {
+  width: 28,
+  height: 28,
+  borderRadius: 14,
+  backgroundColor: '#000',
+},
+
+watchCommentsPreviewAvatarFallback: {
+  width: 28,
+  height: 28,
+  borderRadius: 14,
+  alignItems: 'center',
+  justifyContent: 'center',
+  backgroundColor: 'rgba(198,166,100,0.16)',
+},
+
+watchCommentsPreviewInitial: {
+  color: GOLD,
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 11,
+},
+
+watchCommentsPreviewBody: {
+  flex: 1,
+  minWidth: 0,
+},
+
+watchCommentsPreviewName: {
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 11,
+},
+
+watchCommentsPreviewText: {
+  marginTop: 2,
+  color: 'rgba(237,235,230,0.70)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '600',
+  fontSize: 12,
+  lineHeight: 16,
+},
+
+watchCommentsPreviewInput: {
+  height: 34,
+  borderRadius: 17,
+  backgroundColor: '#111',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.07)',
+  justifyContent: 'center',
+  paddingHorizontal: 12,
+  marginTop: 10,
+},
+
+watchCommentsPreviewInputText: {
+  color: 'rgba(237,235,230,0.42)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  fontSize: 12,
+},
+
+watchCommentsSection: {
+  borderRadius: 14,
+  backgroundColor: '#090909',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.06)',
+  overflow: 'hidden',
+  marginBottom: 12,
+},
+
+watchSectionHeader: {
+  paddingHorizontal: 12,
+  paddingTop: 12,
+  paddingBottom: 10,
+  borderBottomWidth: 1,
+  borderBottomColor: 'rgba(255,255,255,0.06)',
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 12,
+},
+
+watchSectionTitle: {
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 14,
+  letterSpacing: 0.7,
+  textTransform: 'uppercase',
+},
+
+watchSectionSub: {
+  marginTop: 3,
+  color: 'rgba(237,235,230,0.56)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '600',
+  fontSize: 12,
+  lineHeight: 17,
+},
+
+watchSectionCompactHeader: {
+  marginBottom: 8,
+},
+
+watchComposerWrap: {
+  paddingHorizontal: 10,
+  paddingVertical: 10,
+  borderBottomWidth: 1,
+  borderBottomColor: 'rgba(255,255,255,0.06)',
+},
+
+watchCommentsList: {
+  paddingHorizontal: 10,
+  paddingTop: 10,
+  paddingBottom: 2,
+},
+
+watchSuggestionsSection: {
+  borderRadius: 0,
+  backgroundColor: 'transparent',
+  borderWidth: 0,
+  paddingHorizontal: 0,
+  paddingTop: 2,
+  paddingBottom: 4,
+  marginBottom: 10,
+},
+
+watchSuggestionsSectionDesktop: {
+  paddingTop: 4,
+  marginBottom: 0,
+},
+
+watchSuggestionsList: {
+  gap: 8,
+},
+
+watchSuggestionCard: {
+  flexDirection: 'row',
+  gap: 10,
+  borderRadius: 12,
+  backgroundColor: 'transparent',
+  borderWidth: 0,
+  paddingVertical: 5,
+  paddingHorizontal: 0,
+},
+
+watchSuggestionCardDesktop: {
+  gap: 9,
+  paddingVertical: 3,
+},
+
+watchSuggestionThumb: {
+  width: 128,
+  aspectRatio: 16 / 9,
+  borderRadius: 9,
+  backgroundColor: '#000',
+},
+
+watchSuggestionThumbDesktop: {
+  width: 160,
+  borderRadius: 8,
+},
+
+watchSuggestionBody: {
+  flex: 1,
+  minWidth: 0,
+  justifyContent: 'center',
+},
+
+watchSuggestionTitle: {
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 13,
+  lineHeight: 16,
+},
+
+watchSuggestionMeta: {
+  marginTop: 6,
+  color: 'rgba(237,235,230,0.55)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  fontSize: 11,
 },
 
   previewHeader: {
@@ -5474,22 +8135,22 @@ sidePanelSeamless: {
   },
 
   commentThread: {
-    marginBottom: 14,
+    marginBottom: 6,
   },
 
   commentCard: {
     flexDirection: 'row',
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: '#0B0B0B',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    paddingHorizontal: 0,
+    paddingVertical: 8,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
   },
 
   commentAvatarTap: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
@@ -5511,53 +8172,53 @@ sidePanelSeamless: {
   },
 
   commentText: {
-    marginTop: 5,
+    marginTop: 4,
     color: 'rgba(237,235,230,0.78)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '600',
     fontSize: 13,
-    lineHeight: 19,
+    lineHeight: 18,
   },
 
   commentActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 7,
   },
 
   replyBtn: {
-    height: 30,
-    paddingHorizontal: 12,
+    minHeight: 24,
+    paddingHorizontal: 8,
     borderRadius: 999,
-    backgroundColor: 'rgba(198,166,100,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(198,166,100,0.24)',
+    backgroundColor: 'transparent',
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 8,
   },
 
   replyBtnText: {
     color: GOLD,
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    fontSize: 11,
+    fontSize: 10,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
 
   repliesWrap: {
-    marginTop: 10,
-    marginLeft: 22,
+    marginTop: 0,
+    marginLeft: 42,
   },
 
   replyCard: {
     flexDirection: 'row',
-    padding: 12,
-    borderRadius: 16,
-    backgroundColor: '#101010',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
-    marginBottom: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 0,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    marginBottom: 2,
   },
 
   replyAvatarTap: {

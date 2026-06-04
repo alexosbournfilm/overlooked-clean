@@ -19,25 +19,26 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
 import { Audio, Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase, type UserTier } from '../lib/supabase';
 import { UpgradeModal } from '../../components/UpgradeModal';
 import { useAppRefresh } from '../context/AppRefreshContext';
+import { getCurrentUserTierOrFree } from '../lib/membership';
 
 /* ------------------------------- palette ------------------------------- */
-const DARK_BG = '#000000';
-const DARK_SURFACE = '#0B0B0B';
-const DARK_ELEVATED = '#121212';
-const DARK_ELEVATED_2 = '#161616';
-const DARK_ELEVATED_3 = '#1B1B1B';
-const TEXT_IVORY = '#F4F0E8';
-const TEXT_MUTED = '#A8A39A';
-const TEXT_SOFT = '#CFC8BB';
+const DARK_BG = '#050505';
+const DARK_SURFACE = '#0D0D0F';
+const DARK_ELEVATED = '#111114';
+const DARK_ELEVATED_2 = '#16161A';
+const DARK_ELEVATED_3 = '#33281F';
+const TEXT_IVORY = '#F4EFE6';
+const TEXT_MUTED = '#A59D90';
+const TEXT_SOFT = '#D8D2C8';
 const GOLD = '#C6A664';
 const GOLD_SOFT = 'rgba(198,166,100,0.16)';
-const BORDER = 'rgba(255,255,255,0.08)';
+const BORDER = 'rgba(255,255,255,0.10)';
 const BORDER_SOFT = 'rgba(198,166,100,0.18)';
 
 const IS_WEB = Platform.OS === 'web';
@@ -300,7 +301,8 @@ const ThumbMedia: React.FC<{ uri: string }> = ({ uri }) => {
 const WorkshopScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const { triggerAppRefresh } = useAppRefresh();
+  const { refreshKey, triggerAppRefresh } = useAppRefresh();
+  const isFocused = useIsFocused();
 
   const promptSignIn = (message: string) => {
     if (Platform.OS === 'web') {
@@ -362,6 +364,7 @@ const [soundProducts, setSoundProducts] = useState<WorkshopProduct[]>([]);
 
   const didLoadOnceRef = useRef(false);
   const isFetchingRef = useRef(false);
+  const lastHandledRefreshKeyRef = useRef(0);
 
   const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -422,10 +425,15 @@ const filteredItemCount = useMemo(() => {
       if (userError) console.warn('Workshop: auth error:', userError.message);
 
       if (user) {
-        const [{ data: profileData, error: profileErr }, { data: purchaseData, error: purchaseErr }] =
+        const [
+          { data: profileData, error: profileErr },
+          { data: purchaseData, error: purchaseErr },
+          effectiveTier,
+        ] =
           await Promise.all([
             supabase.from('users').select('id, tier').eq('id', user.id).single(),
             supabase.from('workshop_purchases').select('product_id').eq('user_id', user.id),
+            getCurrentUserTierOrFree({ force: true }),
           ]);
 
         if (profileErr) {
@@ -433,7 +441,7 @@ const filteredItemCount = useMemo(() => {
         } else if (profileData) {
           setUserProfile({
             id: profileData.id,
-            tier: profileData.tier as UserTier,
+            tier: effectiveTier,
           });
         }
 
@@ -975,6 +983,16 @@ setSoundProducts(nextSoundFx);
     }, [])
   );
 
+  useEffect(() => {
+    if (!isFocused || refreshKey <= 0 || lastHandledRefreshKeyRef.current === refreshKey) return;
+
+    lastHandledRefreshKeyRef.current = refreshKey;
+
+    if (didLoadOnceRef.current) {
+      void loadWorkshop({ silent: true });
+    }
+  }, [isFocused, refreshKey]);
+
   const onRefresh = useCallback(async () => {
     if (refreshing) return;
 
@@ -1350,9 +1368,6 @@ const openProductContent = async (product: WorkshopProduct) => {
   const renderFilterSection = () => {
     return (
       <View style={styles.filterSection}>
-        <Text style={styles.filterEyebrow}>Workshop Library</Text>
-        <Text style={styles.filterTitle}>Choose your tools</Text>
-
         <View style={styles.filterChipsOuter}>
           <View style={styles.filterChipsRow}>
             {renderFilterChip('all', 'All')}
@@ -1982,7 +1997,7 @@ const styles = StyleSheet.create({
     maxWidth: IS_WEB ? 420 : 320,
     alignSelf: 'center',
     marginTop: IS_WEB ? 0 : 4,
-    marginBottom: IS_WEB ? 22 : 14,
+    marginBottom: IS_WEB ? 18 : 12,
     paddingHorizontal: 0,
     paddingVertical: 0,
     alignItems: 'center',

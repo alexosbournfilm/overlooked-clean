@@ -115,7 +115,7 @@ export function useMonthlyStreak(targetUserId?: string) {
     } catch (e: any) {
       // Don’t overwrite a visible cached streak with 0 unless we truly have nothing
       if (!STREAK_CACHE[userId]) setStreak(0);
-      setErrorMsg(e?.message ?? "Failed to load streak");
+      setErrorMsg(e?.message ?? "Failed to load consistency");
     }
   }, [resolveUserId]);
 

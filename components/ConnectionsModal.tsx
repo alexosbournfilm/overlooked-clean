@@ -17,12 +17,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../app/lib/supabase";
 
 /* --------------------- UI palette --------------------- */
-const DARK_BG = "#0D0D0D";
-const DARK_ELEVATED = "#171717";
-const TEXT_IVORY = "#EDEBE6";
-const TEXT_MUTED = "#A7A6A2";
+const DARK_BG = "#050505";
+const DARK_ELEVATED = "#111114";
+const TEXT_IVORY = "#F4EFE6";
+const TEXT_MUTED = "#A59D90";
 const GOLD = "#C6A664";
-const DIVIDER = "#2A2A2A";
+const DIVIDER = "rgba(255,255,255,0.10)";
 
 /* ------------------------- fonts ----------------------- */
 const SYSTEM_SANS = Platform.select({

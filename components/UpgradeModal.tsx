@@ -18,6 +18,12 @@ import { type UserTier } from '../app/lib/supabase';
 import { invalidateMembershipCache } from '../app/lib/membership';
 import { getMySubscriptionStatus } from '../app/lib/billing';
 import { supabase } from '../app/lib/supabase';
+import {
+  PRIVACY_POLICY_URL,
+  SUBSCRIPTION_PRICE_FALLBACK,
+  SUBSCRIPTION_TITLE,
+  TERMS_OF_USE_URL,
+} from '../app/lib/legal';
 
 type UpgradeContext =
   | 'challenge'
@@ -89,13 +95,13 @@ type ResumeSubscriptionResponse = {
 
 /* -------------------------- shared palette/fonts -------------------------- */
 
-const DARK_ELEVATED = '#101010';
-const SURFACE = '#161616';
-const SURFACE_2 = '#111111';
+const DARK_ELEVATED = '#0D0D0F';
+const SURFACE = '#111114';
+const SURFACE_2 = '#16161A';
 
-const TEXT_IVORY = '#F1EFE8';
-const TEXT_MUTED = 'rgba(241,239,232,0.62)';
-const TEXT_MUTED_2 = 'rgba(241,239,232,0.42)';
+const TEXT_IVORY = '#F4EFE6';
+const TEXT_MUTED = 'rgba(255,255,255,0.66)';
+const TEXT_MUTED_2 = 'rgba(255,255,255,0.46)';
 
 const HAIRLINE = 'rgba(255,255,255,0.10)';
 const HAIRLINE_2 = 'rgba(255,255,255,0.07)';
@@ -252,6 +258,59 @@ async function openAppleSubscriptions() {
   }
 
   return false;
+}
+
+async function openGoogleSubscriptions() {
+  const urls = [
+    'https://play.google.com/store/account/subscriptions',
+    'market://details?id=com.android.vending',
+  ];
+
+  for (const url of urls) {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+        return true;
+      }
+    } catch (e) {
+      console.log('UpgradeModal openGoogleSubscriptions error', e);
+    }
+  }
+
+  return false;
+}
+
+async function openProviderManagementUrl(url?: string | null, store?: string | null) {
+  const openedExternal = await openExternalManagementUrl(url);
+  if (openedExternal) return true;
+
+  const normalizedStore = (store || '').toLowerCase();
+
+  if (
+    Platform.OS === 'ios' ||
+    normalizedStore === 'app_store' ||
+    normalizedStore === 'mac_app_store'
+  ) {
+    return openAppleSubscriptions();
+  }
+
+  if (Platform.OS === 'android' || normalizedStore === 'play_store') {
+    return openGoogleSubscriptions();
+  }
+
+  return false;
+}
+
+async function openLegalUrl(url: string) {
+  try {
+    const supported = await Linking.canOpenURL(url);
+    if (supported) {
+      await Linking.openURL(url);
+    }
+  } catch (e) {
+    console.log('UpgradeModal openLegalUrl error', e);
+  }
 }
 
 export const UpgradeModal: React.FC<Props> = ({
@@ -436,6 +495,32 @@ export const UpgradeModal: React.FC<Props> = ({
     setDowngradeConfirmVisible(true);
   };
 
+  const handleFreeTierPress = async () => {
+    setErrorText(null);
+    setSuccessText(null);
+    setSelectedTier('free');
+
+    if (isActuallyPro) {
+      openDowngradeConfirm();
+      return;
+    }
+
+    if (currentTier === 'free' && billingState) return;
+
+    try {
+      const latestBilling = await refreshBillingState();
+      const latestTier = getDerivedTierFromBilling(latestBilling);
+
+      if (latestTier === 'pro') {
+        setSelectedTier('free');
+        openDowngradeConfirm();
+      }
+    } catch (err: any) {
+      console.log('UpgradeModal free tier check error', err?.message || err);
+      setErrorText('Could not check your membership. Try again.');
+    }
+  };
+
   const doDowngradeToFree = async () => {
     try {
       setDowngrading(true);
@@ -445,19 +530,6 @@ export const UpgradeModal: React.FC<Props> = ({
       const { data: userRes, error: userErr } = await supabase.auth.getUser();
       if (userErr) throw userErr;
       if (!userRes?.user?.id) throw new Error('Not signed in');
-
-      if (Platform.OS === 'ios') {
-  const opened = await openAppleSubscriptions();
-
-  setDowngradeConfirmError(
-    opened
-      ? 'Your iOS subscription is managed by Apple. I opened Apple Subscriptions so you can cancel renewal there.'
-      : 'Your iOS subscription is managed by Apple. Open Settings → Apple Account → Subscriptions to cancel renewal.'
-  );
-
-  await refreshBillingState();
-  return;
-}
 
       const latestBilling = (await getMySubscriptionStatus()) as BillingSnapshot;
       setBillingState(latestBilling);
@@ -483,7 +555,7 @@ export const UpgradeModal: React.FC<Props> = ({
         Boolean(latestBilling.stripe_subscription_id) ||
         Boolean(latestBilling.stripe_customer_id);
 
-      if (!hasCancelableSubscription) {
+      if (!hasCancelableSubscription && Platform.OS === 'web') {
         setDowngradeConfirmError(
           'No active monthly renewal was found for this account.'
         );
@@ -504,17 +576,37 @@ export const UpgradeModal: React.FC<Props> = ({
       }
 
       if (result?.action === 'manage_external') {
-        const opened = await openExternalManagementUrl(result?.management_url ?? null);
+        const refreshedBilling = await refreshBillingState();
+        const latestEnd =
+          result?.period_end ??
+          refreshedBilling.current_period_end ??
+          refreshedBilling.accessEndsAt ??
+          refreshedBilling.premium_access_expires_at ??
+          null;
+        const latestEndLabel = latestEnd ? formatEndDate(latestEnd) : null;
+
+        if (result?.cancel_at_period_end) {
+          setDowngradeConfirmVisible(false);
+          setSuccessText(
+            latestEndLabel
+              ? `Your renewal is cancelled. You’ll keep Pro until ${latestEndLabel}, then your Pro features will end.`
+              : 'Your renewal is cancelled. You’ll keep Pro until the end of your billing period, then your Pro features will end.'
+          );
+          return;
+        }
+
+        const opened = await openProviderManagementUrl(
+          result?.management_url ?? null,
+          result?.store ?? null
+        );
 
         const externalMessage =
           result?.message ||
           (opened
-            ? 'Your subscription is managed by your mobile app store. We opened the store management page so you can cancel it there.'
-            : 'Your subscription is managed by your mobile app store. Please cancel it in Google Play or the App Store.');
+            ? 'Your subscription is managed by your mobile app store. We opened the store management page so you can cancel renewal there.'
+            : 'Your subscription is managed by your mobile app store. Please cancel renewal in Google Play or the App Store.');
 
         setDowngradeConfirmError(externalMessage);
-
-        await refreshBillingState();
         return;
       }
 
@@ -530,8 +622,8 @@ export const UpgradeModal: React.FC<Props> = ({
       setDowngradeConfirmVisible(false);
       setSuccessText(
         latestEndLabel
-          ? `Your renewal has been cancelled. You’ll keep Pro until ${latestEndLabel}.`
-          : 'Your renewal has been cancelled. You’ll keep Pro until the end of your billing period.'
+          ? `Your renewal has been cancelled. You’ll keep Pro until ${latestEndLabel}, then your Pro features will end.`
+          : 'Your renewal has been cancelled. You’ll keep Pro until the end of your billing period, then your Pro features will end.'
       );
     } catch (err: any) {
       console.log('UpgradeModal downgrade error', err?.message || err);
@@ -594,16 +686,33 @@ export const UpgradeModal: React.FC<Props> = ({
       }
 
       if (result?.action === 'manage_external') {
-        const opened = await openExternalManagementUrl(result?.management_url ?? null);
+        const refreshedBilling = await refreshBillingState();
+
+        if (!result?.cancel_at_period_end) {
+          setDowngradeConfirmVisible(false);
+          setSuccessText('Your cancellation was removed. Your Pro subscription will continue.');
+          return;
+        }
+
+        const opened = await openProviderManagementUrl(
+          result?.management_url ?? null,
+          result?.store ?? null
+        );
 
         const externalMessage =
           result?.message ||
           (opened
-            ? 'Your subscription is managed by your mobile app store. We opened the store management page so you can continue it there.'
-            : 'Your subscription is managed by your mobile app store. Please manage it in Google Play or the App Store.');
+            ? 'Your subscription is managed by your mobile app store. We opened the store management page so you can turn renewal back on there.'
+            : 'Your subscription is managed by your mobile app store. Please turn renewal back on in Google Play or the App Store.');
 
         setDowngradeConfirmError(externalMessage);
-        await refreshBillingState();
+        setPeriodEndIso(
+          result?.period_end ??
+            refreshedBilling.current_period_end ??
+            refreshedBilling.accessEndsAt ??
+            refreshedBilling.premium_access_expires_at ??
+            null
+        );
         return;
       }
 
@@ -624,8 +733,8 @@ export const UpgradeModal: React.FC<Props> = ({
   const ctaLabel =
     isActuallyPro && cancelAtPeriodEnd
       ? restoringPro
-        ? 'Keeping Pro…'
-        : 'Keep Pro'
+        ? 'Cancelling cancellation…'
+        : 'Cancel cancellation'
       : isProDisabled
       ? "You're on Pro"
       : upgrading
@@ -663,6 +772,25 @@ export const UpgradeModal: React.FC<Props> = ({
     ? 'Cancellation scheduled'
     : 'Cancel renewal';
 
+  const confirmCancelDisabled =
+    downgrading ||
+    restoringPro ||
+    isGrandfathered ||
+    cancelAtPeriodEnd ||
+    (!canCancelRenewal && Platform.OS === 'web');
+
+  const confirmCancelLabel = isGrandfathered
+    ? 'No renewal to cancel'
+    : cancelAtPeriodEnd
+    ? 'Cancellation scheduled'
+    : !canCancelRenewal && Platform.OS === 'web'
+    ? 'No active renewal found'
+    : Platform.OS === 'ios'
+    ? 'Manage in Apple'
+    : Platform.OS === 'android'
+    ? 'Manage in Google Play'
+    : confirmPrimaryButtonLabel;
+
   return (
     <>
       <Modal
@@ -673,7 +801,7 @@ export const UpgradeModal: React.FC<Props> = ({
         presentationStyle="overFullScreen"
         statusBarTranslucent
       >
-        <Pressable
+        <View
           style={[
             styles.backdrop,
             {
@@ -682,14 +810,20 @@ export const UpgradeModal: React.FC<Props> = ({
               paddingHorizontal: horizontalPad,
             },
           ]}
-          onPress={onClose}
         >
+          <Pressable
+            pointerEvents={downgradeConfirmVisible ? 'none' : 'auto'}
+            style={styles.modalDismissLayer}
+            onPress={onClose}
+          />
+
           <Pressable
             onPress={() => {}}
             style={[
               styles.card,
               { maxHeight: cardMaxHeight },
               isMobile && styles.cardMobile,
+              downgradeConfirmVisible && styles.cardBehindConfirm,
             ]}
           >
             <ScrollView
@@ -776,7 +910,7 @@ export const UpgradeModal: React.FC<Props> = ({
                       {restoringPro ? (
                         <ActivityIndicator size="small" color="#0B0B0B" />
                       ) : (
-                        <Text style={styles.inlineActionPrimaryText}>Keep Pro</Text>
+                        <Text style={styles.inlineActionPrimaryText}>Cancel cancellation</Text>
                       )}
                     </TouchableOpacity>
 
@@ -803,18 +937,7 @@ export const UpgradeModal: React.FC<Props> = ({
               <View style={styles.tiersStack}>
                 <TouchableOpacity
                   activeOpacity={0.9}
-                  onPress={() => {
-                    setErrorText(null);
-                    setSuccessText(null);
-
-                    if (isActuallyPro) {
-                      setSelectedTier('free');
-                      openDowngradeConfirm();
-                      return;
-                    }
-
-                    setSelectedTier('free');
-                  }}
+                  onPress={handleFreeTierPress}
                   style={[
                     styles.compactTier,
                     styles.freeCompact,
@@ -860,7 +983,7 @@ export const UpgradeModal: React.FC<Props> = ({
                         <Text style={styles.planCurrency}>£</Text>
                         <Text style={styles.planPriceHero}>4.99</Text>
                       </View>
-                      <Text style={styles.planSubHero}>Cancel anytime</Text>
+                      <Text style={styles.planSubHero}>Renews monthly</Text>
                     </View>
                   </View>
 
@@ -873,6 +996,29 @@ export const UpgradeModal: React.FC<Props> = ({
                     <Text style={styles.featureItem}>✓ Plan, develop, and make films</Text>
                   </View>
                 </TouchableOpacity>
+              </View>
+
+              <View style={styles.subscriptionInfoBox}>
+                <Text style={styles.subscriptionInfoTitle}>{SUBSCRIPTION_TITLE}</Text>
+                <Text style={styles.subscriptionInfoText}>
+                  Auto-renewable monthly subscription. Price: {SUBSCRIPTION_PRICE_FALLBACK} per month.
+                </Text>
+                <Text style={styles.subscriptionInfoText}>
+                  {Platform.OS === 'ios'
+                    ? 'If you subscribe on iOS, payment will be charged to your Apple ID account at confirmation of purchase. The subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel your subscription in your App Store account settings.'
+                    : Platform.OS === 'android'
+                    ? 'If you subscribe on Android, payment will be charged through Google Play at confirmation of purchase. The subscription automatically renews unless cancelled before the end of the current period. You can manage or cancel your subscription in your Google Play account settings.'
+                    : 'Payment is handled through the checkout method you choose. The subscription automatically renews unless cancelled before the end of the current period. You can manage or cancel your subscription from this membership screen or your payment provider.'}
+                </Text>
+                <View style={styles.legalLinksRow}>
+                  <TouchableOpacity onPress={() => openLegalUrl(TERMS_OF_USE_URL)}>
+                    <Text style={styles.legalLinkText}>Terms of Use</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.legalDivider}>•</Text>
+                  <TouchableOpacity onPress={() => openLegalUrl(PRIVACY_POLICY_URL)}>
+                    <Text style={styles.legalLinkText}>Privacy Policy</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <TouchableOpacity
@@ -921,175 +1067,151 @@ export const UpgradeModal: React.FC<Props> = ({
               </TouchableOpacity>
             </ScrollView>
           </Pressable>
-        </Pressable>
-      </Modal>
 
-      <Modal
-        visible={downgradeConfirmVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() =>
-          downgrading || restoringPro ? null : setDowngradeConfirmVisible(false)
-        }
-        presentationStyle="overFullScreen"
-        statusBarTranslucent
-      >
-        <Pressable
-          style={[
-            styles.backdrop,
-            {
-              paddingTop: verticalPadTop,
-              paddingBottom: verticalPadBottom,
-              paddingHorizontal: horizontalPad,
-            },
-          ]}
-          onPress={() => {
-            if (!downgrading && !restoringPro) setDowngradeConfirmVisible(false);
-          }}
-        >
-          <Pressable
-            onPress={() => {}}
-            style={[
-              styles.confirmCard,
-              { maxHeight: Math.min(height - verticalPadTop - verticalPadBottom, 620) },
-              isMobile && styles.confirmCardMobile,
-            ]}
-          >
-            <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={styles.confirmScrollContent}
-              showsVerticalScrollIndicator={false}
-              bounces={false}
+          {downgradeConfirmVisible ? (
+            <View
+              pointerEvents="box-none"
+              style={[
+                styles.confirmOverlay,
+                {
+                  paddingTop: verticalPadTop,
+                  paddingBottom: verticalPadBottom,
+                  paddingHorizontal: horizontalPad,
+                },
+              ]}
             >
-              <Text style={styles.confirmTitle}>
-                {isGrandfathered
-                  ? 'Pro access'
-                  : cancelAtPeriodEnd
-                  ? 'Cancellation scheduled'
-                  : 'Cancel renewal?'}
-              </Text>
+              <Pressable
+                style={styles.modalDismissLayer}
+                onPress={() => {
+                  if (!downgrading && !restoringPro) setDowngradeConfirmVisible(false);
+                }}
+              />
 
-              <Text style={styles.confirmSub}>{confirmIntroText}</Text>
-
-              {!isGrandfathered && cancelAtPeriodEnd ? (
-                <View style={styles.confirmStatusCard}>
-                  <Text style={styles.confirmStatusLabel}>
-                    {cancelCountdown.short || 'Scheduled'}
-                  </Text>
-                  <Text style={styles.confirmStatusBody}>
-                    {endDateLabel
-                      ? `You’ll stay on Pro until ${endDateLabel}. After that, your account returns to Free.`
-                      : 'You’ll stay on Pro until the end of your current billing period.'}
-                  </Text>
-                </View>
-              ) : null}
-
-              {!isGrandfathered ? (
-                <View style={styles.confirmList}>
-                  <Text style={styles.confirmItem}>After Pro ends, you’ll lose access to:</Text>
-                  {downgradeLossBullets.map((t, idx) => (
-                    <Text key={`${idx}-${t}`} style={styles.confirmItem}>
-                      • {t}
-                    </Text>
-                  ))}
-                </View>
-              ) : null}
-
-              {downgradeConfirmError ? (
-                <Text style={styles.errorText}>{downgradeConfirmError}</Text>
-              ) : null}
-
-              <View style={[styles.confirmButtonsRow, isMobile && styles.confirmButtonsRowMobile]}>
-                <Pressable
-                  disabled={downgrading || restoringPro}
-                  onPress={
-                    isGrandfathered
-                      ? () => setDowngradeConfirmVisible(false)
+              <Pressable
+                onPress={() => {}}
+                style={[
+                  styles.confirmCard,
+                  { maxHeight: Math.min(height - verticalPadTop - verticalPadBottom, 620) },
+                  isMobile && styles.confirmCardMobile,
+                ]}
+              >
+                <ScrollView
+                  style={styles.scroll}
+                  contentContainerStyle={styles.confirmScrollContent}
+                  showsVerticalScrollIndicator={false}
+                  bounces={false}
+                >
+                  <Text style={styles.confirmTitle}>
+                    {isGrandfathered
+                      ? 'Pro access'
                       : cancelAtPeriodEnd
-                      ? doKeepPro
-                      : () => setDowngradeConfirmVisible(false)
-                  }
-                  style={({ pressed }) => [
-                    styles.confirmBtn,
-                    styles.confirmBtnGhost,
-                    pressed && !downgrading && !restoringPro ? { opacity: 0.9 } : null,
-                    downgrading || restoringPro ? { opacity: 0.5 } : null,
-                  ]}
-                >
-                  <View style={styles.confirmDangerInner}>
-                    {restoringPro && cancelAtPeriodEnd ? (
-                      <ActivityIndicator size="small" color={TEXT_IVORY} />
-                    ) : null}
-                    <Text style={styles.confirmBtnGhostText}>
-                      {isGrandfathered ? 'Done' : 'Keep Pro'}
-                    </Text>
-                  </View>
-                </Pressable>
+                      ? 'Cancellation scheduled'
+                      : 'Cancel renewal?'}
+                  </Text>
 
-                <Pressable
-                  disabled={
-  downgrading ||
-  restoringPro ||
-  isGrandfathered ||
-  cancelAtPeriodEnd ||
-  (!canCancelRenewal && Platform.OS !== 'ios')
-}
-                  onPress={isGrandfathered || cancelAtPeriodEnd ? undefined : doDowngradeToFree}
-                  style={({ pressed }) => [
-                    styles.confirmBtn,
-                    styles.confirmBtnDanger,
-                    (isGrandfathered ||
-  cancelAtPeriodEnd ||
-  (!canCancelRenewal && Platform.OS !== 'ios')) &&
-  styles.buttonDisabled,
-                    pressed &&
-                    !downgrading &&
-                    !restoringPro &&
-                    !isGrandfathered &&
-                    (canCancelRenewal || Platform.OS === 'ios') &&
-                    !cancelAtPeriodEnd
-                      ? { opacity: 0.9 }
-                      : null,
-                    downgrading || restoringPro ? { opacity: 0.7 } : null,
-                  ]}
-                >
-                  <View style={styles.confirmDangerInner}>
-                    {downgrading && !isGrandfathered && !cancelAtPeriodEnd ? (
-                      <ActivityIndicator size="small" color="#0B0B0B" />
-                    ) : null}
-                    <Text
-                      style={[
-                        styles.confirmBtnDangerText,
-                        (isGrandfathered ||
-  cancelAtPeriodEnd ||
-  (!canCancelRenewal && Platform.OS !== 'ios')) &&
-  styles.buttonTextDisabled,
+                  <Text style={styles.confirmSub}>{confirmIntroText}</Text>
+
+                  {!isGrandfathered && cancelAtPeriodEnd ? (
+                    <View style={styles.confirmStatusCard}>
+                      <Text style={styles.confirmStatusLabel}>
+                        {cancelCountdown.short || 'Scheduled'}
+                      </Text>
+                      <Text style={styles.confirmStatusBody}>
+                        {endDateLabel
+                          ? `You’ll stay on Pro until ${endDateLabel}. After that, Pro features end and your account returns to Free.`
+                          : 'You’ll stay on Pro until the end of your current billing period. After that, Pro features end and your account returns to Free.'}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {!isGrandfathered ? (
+                    <View style={styles.confirmList}>
+                      <Text style={styles.confirmItem}>After Pro ends, you’ll lose access to:</Text>
+                      {downgradeLossBullets.map((t, idx) => (
+                        <Text key={`${idx}-${t}`} style={styles.confirmItem}>
+                          • {t}
+                        </Text>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {downgradeConfirmError ? (
+                    <Text style={styles.errorText}>{downgradeConfirmError}</Text>
+                  ) : null}
+
+                  <View style={[styles.confirmButtonsRow, isMobile && styles.confirmButtonsRowMobile]}>
+                    <Pressable
+                      disabled={downgrading || restoringPro}
+                      onPress={
+                        isGrandfathered
+                          ? () => setDowngradeConfirmVisible(false)
+                          : cancelAtPeriodEnd
+                          ? doKeepPro
+                          : () => setDowngradeConfirmVisible(false)
+                      }
+                      style={({ pressed }) => [
+                        styles.confirmBtn,
+                        styles.confirmBtnGhost,
+                        pressed && !downgrading && !restoringPro ? { opacity: 0.9 } : null,
+                        downgrading || restoringPro ? { opacity: 0.5 } : null,
                       ]}
                     >
-                      {isGrandfathered
-  ? 'No renewal to cancel'
-  : cancelAtPeriodEnd
-  ? 'Cancellation scheduled'
-  : !canCancelRenewal && Platform.OS !== 'ios'
-  ? 'No active renewal found'
-  : Platform.OS === 'ios'
-  ? 'Manage in Apple'
-  : confirmPrimaryButtonLabel}
-                    </Text>
-                  </View>
-                </Pressable>
-              </View>
+                      <View style={styles.confirmDangerInner}>
+                        {restoringPro && cancelAtPeriodEnd ? (
+                          <ActivityIndicator size="small" color={TEXT_IVORY} />
+                        ) : null}
+                        <Text style={styles.confirmBtnGhostText}>
+                          {isGrandfathered ? 'Done' : cancelAtPeriodEnd ? 'Cancel cancellation' : 'Keep Pro'}
+                        </Text>
+                      </View>
+                    </Pressable>
 
-              <Text style={styles.confirmFoot}>
-                {isGrandfathered
-                  ? 'Your Pro access remains active.'
-                  : cancelAtPeriodEnd
-                  ? 'You can undo this any time before the period ends.'
-                  : 'Tip: you can re-subscribe any time.'}
-              </Text>
-            </ScrollView>
-          </Pressable>
-        </Pressable>
+                    <Pressable
+                      disabled={confirmCancelDisabled}
+                      onPress={isGrandfathered || cancelAtPeriodEnd ? undefined : doDowngradeToFree}
+                      style={({ pressed }) => [
+                        styles.confirmBtn,
+                        styles.confirmBtnDanger,
+                        confirmCancelDisabled && styles.buttonDisabled,
+                        pressed &&
+                        !downgrading &&
+                        !restoringPro &&
+                        !isGrandfathered &&
+                        (canCancelRenewal || Platform.OS !== 'web') &&
+                        !cancelAtPeriodEnd
+                          ? { opacity: 0.9 }
+                          : null,
+                        downgrading || restoringPro ? { opacity: 0.7 } : null,
+                      ]}
+                    >
+                      <View style={styles.confirmDangerInner}>
+                        {downgrading && !isGrandfathered && !cancelAtPeriodEnd ? (
+                          <ActivityIndicator size="small" color="#0B0B0B" />
+                        ) : null}
+                        <Text
+                          style={[
+                            styles.confirmBtnDangerText,
+                            confirmCancelDisabled && styles.buttonTextDisabled,
+                          ]}
+                        >
+                          {confirmCancelLabel}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  </View>
+
+                  <Text style={styles.confirmFoot}>
+                    {isGrandfathered
+                      ? 'Your Pro access remains active.'
+                      : cancelAtPeriodEnd
+                      ? 'You can cancel the cancellation any time before the period ends.'
+                      : 'Tip: you can re-subscribe any time.'}
+                  </Text>
+                </ScrollView>
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
       </Modal>
     </>
   );
@@ -1101,6 +1223,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.90)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+
+  modalDismissLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+
+  confirmOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.54)',
+  },
+
+  cardBehindConfirm: {
+    opacity: 0.45,
   },
 
   scroll: {
@@ -1524,6 +1661,53 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     lineHeight: 18,
     color: 'rgba(237,235,230,0.45)',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  subscriptionInfoBox: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: HAIRLINE_2,
+    backgroundColor: 'rgba(255,255,255,0.035)',
+    padding: 12,
+    marginTop: 10,
+    marginBottom: 12,
+  },
+
+  subscriptionInfoTitle: {
+    fontSize: 12.5,
+    color: TEXT_IVORY,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  subscriptionInfoText: {
+    marginTop: 6,
+    fontSize: 11.5,
+    lineHeight: 16,
+    color: TEXT_MUTED,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  legalLinksRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+
+  legalLinkText: {
+    color: GOLD,
+    fontSize: 12,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  legalDivider: {
+    color: TEXT_MUTED_2,
+    fontSize: 12,
     fontFamily: SYSTEM_SANS,
   },
 

@@ -159,11 +159,11 @@ export default function CheckEmailScreen() {
 // ---------------------------------------------------------
 // STYLES (unchanged)
 // ---------------------------------------------------------
-const background = '#0D0D0D';
-const ivory = '#EDEBE6';
+const background = '#050505';
+const ivory = '#F4EFE6';
 const gold = '#C6A664';
-const cardDark = '#1A1A1A';
-const border = 'rgba(255,255,255,0.08)';
+const cardDark = '#111114';
+const border = 'rgba(255,255,255,0.10)';
 
 const styles = StyleSheet.create({
   screenWrapper: {

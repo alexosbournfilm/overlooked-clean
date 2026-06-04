@@ -32,6 +32,11 @@ enabled = true
 verify_jwt = true
 entrypoint = "./functions/delete-account/index.ts"
 
+[functions.notify-content-report]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/notify-content-report/index.ts"
+
 [functions.videos-start-upload]
 enabled = true
 verify_jwt = true

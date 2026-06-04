@@ -6,15 +6,18 @@ import {
   type InitialState,
   CommonActions,
 } from "@react-navigation/native";
-import { createStackNavigator } from "@react-navigation/stack";
-import { View, ActivityIndicator, Platform } from "react-native";
+import {
+  CardStyleInterpolators,
+  createStackNavigator,
+} from "@react-navigation/stack";
+import { View, ActivityIndicator, Platform, Easing } from "react-native";
 
 import AuthStack from "./AuthStack";
 import MainTabs from "./MainTabs";
 import { navigationRef, setNavigatorReady } from "./navigationRef";
 import { linking } from "./linking";
 import { useAuth } from "../context/AuthProvider";
-import { supabase } from "../lib/supabase";
+import { getMembershipSnapshot } from "../lib/membership";
 import COLORS from "../theme/colors";
 
 import PaywallScreen from "../screens/PaywallScreen";
@@ -375,41 +378,25 @@ export default function AppNavigator({
 
     (async () => {
       try {
-        const { data, error } = await supabase
-          .from("users")
-          .select(
-            "tier, subscription_status, grandfathered, premium_access_expires_at"
-          )
-          .eq("id", userId)
-          .single();
+        const snapshot = await getMembershipSnapshot({ force: true });
 
         if (!mounted) return;
 
-        if (error) {
+        if (!snapshot) {
+          setIsPaid(false);
+          setExpired(false);
           setMembershipChecked(true);
           return;
         }
 
-        const exp = data?.premium_access_expires_at
-          ? new Date(data.premium_access_expires_at).getTime()
-          : null;
+        const accessEndsAt =
+          snapshot.premiumAccessExpiresAt ?? snapshot.currentPeriodEnd ?? null;
+        const exp = accessEndsAt ? new Date(accessEndsAt).getTime() : null;
 
         const expiredNow = exp ? Date.now() >= exp : false;
-        const stat = (data?.subscription_status || "").toLowerCase();
-
-        const paidByTier = (data?.tier || "").toLowerCase() === "pro";
-
-        const paidByStatus =
-          !expiredNow &&
-          (stat === "active" ||
-            stat === "trialing" ||
-            stat === "past_due" ||
-            data?.grandfathered);
-
-        const paid = paidByTier || paidByStatus;
 
         setExpired(expiredNow);
-        setIsPaid(paid);
+        setIsPaid(snapshot.hasProAccess);
 
         lastCheckedUserIdRef.current = userId;
       } finally {
@@ -488,6 +475,27 @@ export default function AppNavigator({
         screenOptions={{
           headerShown: false,
           cardStyle: { backgroundColor: "#0D0D0D" },
+          gestureEnabled: true,
+          cardStyleInterpolator:
+            Platform.OS === "ios"
+              ? CardStyleInterpolators.forHorizontalIOS
+              : CardStyleInterpolators.forFadeFromBottomAndroid,
+          transitionSpec: {
+            open: {
+              animation: "timing",
+              config: {
+                duration: Platform.OS === "web" ? 190 : 300,
+                easing: Easing.out(Easing.cubic),
+              },
+            },
+            close: {
+              animation: "timing",
+              config: {
+                duration: Platform.OS === "web" ? 160 : 250,
+                easing: Easing.out(Easing.cubic),
+              },
+            },
+          },
         }}
         initialRouteName={rootInitialRouteName as any}
       >
@@ -509,10 +517,49 @@ export default function AppNavigator({
         <Stack.Screen
           name="WorkshopSubmit"
           component={WorkshopSubmitScreen}
+          options={{
+            gestureDirection: "vertical",
+            cardStyleInterpolator: CardStyleInterpolators.forModalPresentationIOS,
+            transitionSpec: {
+              open: {
+                animation: "timing",
+                config: {
+                  duration: Platform.OS === "web" ? 190 : 320,
+                  easing: Easing.out(Easing.cubic),
+                },
+              },
+              close: {
+                animation: "timing",
+                config: {
+                  duration: Platform.OS === "web" ? 150 : 240,
+                  easing: Easing.out(Easing.cubic),
+                },
+              },
+            },
+          }}
         />
 
         <Stack.Screen name="PublicProfile" component={PublicProfileScreen} />
-        <Stack.Screen name="SharedFilm" component={SharedFilmScreen} />
+        <Stack.Screen
+          name="SharedFilm"
+          component={SharedFilmScreen}
+          options={{
+            cardStyleInterpolator:
+              Platform.OS === "web"
+                ? CardStyleInterpolators.forFadeFromCenter
+                : CardStyleInterpolators.forScaleFromCenterAndroid,
+            transitionSpec: {
+              open: {
+                animation: "timing",
+                config: { duration: Platform.OS === "web" ? 170 : 240 },
+              },
+              close: {
+                animation: "timing",
+                config: { duration: Platform.OS === "web" ? 130 : 200 },
+              },
+            },
+          }}
+        />
         <Stack.Screen name="NewPassword" component={NewPassword} />
       </Stack.Navigator>
     </NavigationContainer>

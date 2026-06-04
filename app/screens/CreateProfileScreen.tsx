@@ -33,14 +33,16 @@ import { useGamification } from '../context/GamificationContext';
 import AvatarCropper from '../../components/AvatarCropper';
 
 // ---------------- THEME ----------------
-const DARK_BG = '#000000';
-const CARD = '#0A0A0A';
-const ELEVATED = '#111111';
-const TEXT_IVORY = '#F5F2EA';
-const TEXT_MUTED = '#A7A6A2';
-const BORDER = 'rgba(255,255,255,0.10)';
-const BORDER_SOFT = 'rgba(255,255,255,0.06)';
-const GOLD = '#C6A664';
+const DARK_BG = '#FFF5EC';
+const CARD = 'rgba(255,252,246,0.96)';
+const ELEVATED = '#FFFDF8';
+const TEXT_IVORY = '#241817';
+const TEXT_MUTED = '#846E66';
+const BORDER = 'rgba(125,74,63,0.16)';
+const BORDER_SOFT = 'rgba(125,74,63,0.10)';
+const GOLD = '#D8A84E';
+const CORAL = '#F45B6A';
+const CORAL_DARK = '#D94C5C';
 
 const SYSTEM_SANS = Platform.select({
   ios: 'Avenir Next',
@@ -55,7 +57,132 @@ type DropdownOption = {
   country?: string;
 };
 
-type OnboardingStage = 'role' | 'city' | 'name' | 'image' | 'review';
+type OnboardingStage = 'profile' | 'role' | 'city' | 'links' | 'reasons' | 'goals' | 'review';
+
+type OnboardingStepMeta = {
+  key: OnboardingStage;
+  label: string;
+  title: string;
+  subtitle: string;
+};
+
+const ONBOARDING_STEPS: OnboardingStepMeta[] = [
+  {
+    key: 'profile',
+    label: 'Profile',
+    title: 'Let people recognise you',
+    subtitle: 'Start with your name and a profile picture that feels like you.',
+  },
+  {
+    key: 'role',
+    label: 'Roles',
+    title: 'What do you create?',
+    subtitle: 'Choose your main creative role, then add any side roles you want people to know.',
+  },
+  {
+    key: 'city',
+    label: 'Place',
+    title: 'Where are you based?',
+    subtitle: 'Your city helps Overlooked surface local creatives, projects, and jobs.',
+  },
+  {
+    key: 'links',
+    label: 'Links',
+    title: 'Add a link if you have one',
+    subtitle: 'A portfolio or YouTube link is optional. You can always add showreels later.',
+  },
+  {
+    key: 'reasons',
+    label: 'Why',
+    title: 'Why are you joining Overlooked?',
+    subtitle: 'Pick as many as fit. This helps shape your feed and suggestions.',
+  },
+  {
+    key: 'goals',
+    label: 'Goals',
+    title: 'What are your creative goals?',
+    subtitle: 'Choose the goals you want Overlooked to quietly keep you moving toward.',
+  },
+  {
+    key: 'review',
+    label: 'Finish',
+    title: 'Ready to begin',
+    subtitle: 'Check the basics, then step into Overlooked.',
+  },
+];
+
+const JOINING_REASON_OPTIONS = [
+  'Improve my filmmaking craft',
+  'Practise acting',
+  'Build confidence on camera',
+  'Share my creative work',
+  'Meet other creatives nearby',
+  'Find actors for my films',
+  'Find filmmakers to collaborate with',
+  'Join local creative projects',
+  'Get feedback on my work',
+  'Build a portfolio',
+  'Enter monthly film challenges',
+  'Find paid creative work',
+  'Find unpaid passion projects',
+  'Grow my audience',
+  'Learn from other creatives',
+  'Stay consistent creatively',
+  'Make short films regularly',
+  'Practise writing scripts',
+  'Practise directing',
+  'Practise cinematography',
+  'Practise editing',
+  'Practise producing',
+  'Build a creative network',
+  'Be discovered for opportunities',
+  'Support other creatives',
+  'Collaborate with people in my city',
+];
+
+const CREATIVE_GOAL_OPTIONS = [
+  'Make 1 film per month',
+  'Make 2 films per month',
+  'Make 3 films per month',
+  'Submit to every monthly Overlooked challenge',
+  'Practise 1 acting monologue per week',
+  'Practise 3 monologues per week',
+  'Write 1 short script per month',
+  'Film 1 scene per week',
+  'Meet 1 new creative per month',
+  'Collaborate with a local team',
+  'Build a complete acting showreel',
+  'Build a filmmaking portfolio',
+  'Get my first paid creative job',
+  'Get more acting experience',
+  'Direct my first short film',
+  'Produce my first short film',
+  'Improve my editing skills',
+  'Improve my camera skills',
+  'Improve my screenwriting',
+  'Improve my directing',
+  'Grow my confidence',
+  'Post my work consistently',
+  'Get feedback every month',
+  'Join or create a local film group',
+  'Build a long-term creative team',
+  'Prepare for auditions',
+  'Become more disciplined creatively',
+];
+
+const DEFAULT_NOTIFICATION_PREFERENCES = {
+  direct_messages: true,
+  group_messages: true,
+  followed_submissions: true,
+  submission_comments: true,
+  submission_votes: true,
+  city_jobs: true,
+  city_creatives: true,
+  job_applications: true,
+  comment_replies: true,
+  challenge_reminders: true,
+  challenge_results: true,
+};
 
 const G = globalThis as any;
 
@@ -170,6 +297,61 @@ async function uploadImageToBucket(opts: {
   if (!data?.publicUrl) throw new Error('Could not get public URL');
 
   return data.publicUrl;
+}
+
+const OPTIONAL_PROFILE_COLUMNS = new Set([
+  'side_roles',
+  'portfolio_url',
+  'youtube_url',
+  'joining_reasons',
+  'creative_goals',
+  'notification_preferences',
+]);
+
+function extractMissingColumnName(message: string) {
+  const m1 = message.match(/could\s+not\s+find\s+the\s+'([^']+)'\s+column/i);
+  if (m1?.[1]) return m1[1];
+
+  const m2 = message.match(/column\s+"([^"]+)"/i);
+  if (m2?.[1]) return m2[1];
+
+  const m3 = message.match(/column\s+([a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)\s+does\s+not\s+exist/i);
+  if (m3?.[1]) return m3[1].split('.').pop() || null;
+
+  return null;
+}
+
+async function upsertProfileRobust(payload: Record<string, any>) {
+  let working = { ...payload };
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const result = await withTimeout(
+      supabase
+        .from('users')
+        .upsert(working, { onConflict: 'id' })
+        .select('id, full_name, main_role_id, city_id, avatar_url')
+        .maybeSingle(),
+      20000
+    );
+
+    if (!result.error) return result;
+
+    const message = String(result.error.message || '');
+    const missingColumn = extractMissingColumnName(message);
+
+    if (!missingColumn || !OPTIONAL_PROFILE_COLUMNS.has(missingColumn)) {
+      return result;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(working, missingColumn)) {
+      delete working[missingColumn];
+      continue;
+    }
+
+    return result;
+  }
+
+  throw new Error('Could not save profile after retrying optional onboarding fields.');
 }
 
 async function uriToUploadBody(uri: string): Promise<Blob | Uint8Array> {
@@ -325,9 +507,7 @@ export default function CreateProfileScreen() {
   const imageSectionOpacity = useRef(new Animated.Value(0)).current;
   const imageSectionTranslate = useRef(new Animated.Value(18)).current;
 
-  const hasStartedSequence = useRef(false);
-
-  const [stage, setStage] = useState<OnboardingStage>('role');
+  const [stage, setStage] = useState<OnboardingStage>('profile');
 
   const [fullName, setFullName] = useState('');
 
@@ -342,10 +522,15 @@ export default function CreateProfileScreen() {
 
   const [mainRole, setMainRole] = useState<number | null>(null);
   const [mainRoleLabel, setMainRoleLabel] = useState<string | null>(null);
+  const [sideRoles, setSideRoles] = useState<string[]>([]);
 
   const [cityId, setCityId] = useState<number | null>(null);
   const [cityLabel, setCityLabel] = useState<string | null>(null);
   const [selectedCountryCode, setSelectedCountryCode] = useState<string | null>(null);
+  const [portfolioUrl, setPortfolioUrl] = useState('');
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [joiningReasons, setJoiningReasons] = useState<string[]>([]);
+  const [creativeGoals, setCreativeGoals] = useState<string[]>([]);
 
   const [roleSearchModalVisible, setRoleSearchModalVisible] = useState(false);
   const [roleSearchTerm, setRoleSearchTerm] = useState('');
@@ -421,20 +606,8 @@ const [roleLoadError, setRoleLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!allowedCreateProfileRef.current) return;
-    if (hasStartedSequence.current) return;
-    hasStartedSequence.current = true;
 
-    const timer = setTimeout(() => {
-      openRoleSelector();
-    }, 900);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (!allowedCreateProfileRef.current) return;
-
-    if (stage === 'image' || stage === 'review') {
+    if (stage === 'profile' || stage === 'review') {
       imageSectionOpacity.setValue(0);
       imageSectionTranslate.setValue(18);
 
@@ -781,9 +954,8 @@ const [roleLoadError, setRoleLoadError] = useState<string | null>(null);
     setImagePreview(previewUri);
 
     /**
-     * Only move to review after preview is ready.
+     * Stay on the current onboarding step. The wizard controls the journey.
      */
-    animateStageChange('review');
   } catch (err: any) {
     console.error('Avatar crop error:', err);
 
@@ -799,7 +971,6 @@ const [roleLoadError, setRoleLoadError] = useState<string | null>(null);
       setImageUrl(null);
       setCropperOpen(false);
       setCropSource(null);
-      animateStageChange('review');
       return;
     }
 
@@ -808,6 +979,77 @@ const [roleLoadError, setRoleLoadError] = useState<string | null>(null);
     setUploadingImage(false);
   }
 };
+
+  const currentStepIndex = Math.max(
+    0,
+    ONBOARDING_STEPS.findIndex((item) => item.key === stage)
+  );
+  const currentStep = ONBOARDING_STEPS[currentStepIndex] ?? ONBOARDING_STEPS[0];
+  const isFirstStep = currentStepIndex === 0;
+  const isLastStep = currentStepIndex === ONBOARDING_STEPS.length - 1;
+
+  const sideRoleOptions = roleItems
+    .filter((item) => item.value !== mainRole)
+    .slice(0, 18)
+    .map((item) => item.label);
+
+  const toggleSelection = (
+    value: string,
+    setter: React.Dispatch<React.SetStateAction<string[]>>
+  ) => {
+    setter((prev) =>
+      prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]
+    );
+  };
+
+  const validateStage = () => {
+    if (stage === 'profile') {
+      if (!fullName.trim()) {
+        Alert.alert('Missing name', 'Please add your name so people know who they are meeting.');
+        return false;
+      }
+
+      if (!croppedImageUri && !imageUrl && !imagePreview && !image) {
+        Alert.alert('Profile image required', 'Please add a profile image before continuing.');
+        return false;
+      }
+    }
+
+    if (stage === 'role' && !mainRole) {
+      Alert.alert('Choose your role', 'Please choose your main creative role.');
+      return false;
+    }
+
+    if (stage === 'city' && !cityId) {
+      Alert.alert('Choose your city', 'Please choose your city or nearest creative base.');
+      return false;
+    }
+
+    return true;
+  };
+
+  const goToStep = (index: number) => {
+    const next = ONBOARDING_STEPS[index];
+    if (!next || next.key === stage) return;
+    animateStageChange(next.key);
+  };
+
+  const goBack = () => {
+    if (isFirstStep || saving || uploadingImage) return;
+    goToStep(currentStepIndex - 1);
+  };
+
+  const goNext = () => {
+    if (saving || uploadingImage) return;
+    if (!validateStage()) return;
+
+    if (isLastStep) {
+      void handleSubmit();
+      return;
+    }
+
+    goToStep(currentStepIndex + 1);
+  };
 
   const handleSubmit = async () => {
   console.log('✅ Confirm & Enter pressed');
@@ -920,24 +1162,23 @@ if (!userId) {
 
     setSubmitStatus('Saving your profile...');
 
-    const { data: savedProfile, error } = await withTimeout(
-      supabase
-        .from('users')
-        .upsert(
-  {
-    id: userId,
-    email: user.email ?? '',
-    full_name: fullName.trim(),
-    main_role_id: mainRole,
-    city_id: cityId,
-    avatar_url: finalAvatarUrl,
-  },
-  { onConflict: 'id' }
-)
-        .select('id, full_name, main_role_id, city_id, avatar_url')
-        .maybeSingle(),
-      20000
-    );
+    const cleanPortfolioUrl = portfolioUrl.trim();
+    const cleanYoutubeUrl = youtubeUrl.trim();
+
+    const { data: savedProfile, error } = await upsertProfileRobust({
+      id: userId,
+      email: user.email ?? '',
+      full_name: fullName.trim(),
+      main_role_id: mainRole,
+      city_id: cityId,
+      avatar_url: finalAvatarUrl,
+      side_roles: sideRoles.length ? sideRoles : null,
+      portfolio_url: cleanPortfolioUrl || null,
+      youtube_url: cleanYoutubeUrl || null,
+      joining_reasons: joiningReasons,
+      creative_goals: creativeGoals,
+      notification_preferences: DEFAULT_NOTIFICATION_PREFERENCES,
+    });
 
     if (error) throw error;
 
@@ -1040,12 +1281,6 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
         } as any)
       : null;
 
-  const roleStepVisible = ['role', 'city', 'name', 'image', 'review'].includes(stage);
-  const cityStepVisible = ['city', 'name', 'image', 'review'].includes(stage);
-  const nameStepVisible = ['name', 'image', 'review'].includes(stage);
-  const imageStepVisible = ['image', 'review'].includes(stage);
-  const reviewVisible = stage === 'review';
-
   const Wrapper = Platform.OS === 'web' ? View : KeyboardAvoidingView;
   const wrapperProps =
     Platform.OS === 'web'
@@ -1058,7 +1293,7 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
   return (
     <Wrapper {...wrapperProps}>
       <LinearGradient
-        colors={['#000000', '#080808', '#0B0B0B']}
+        colors={['#FFF6EF', '#FDE7DE', '#FFFDF8']}
         style={StyleSheet.absoluteFillObject}
       />
 
@@ -1094,126 +1329,47 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
         >
           <View style={[styles.card, !isMobile && styles.cardDesktop]}>
             <Text style={styles.eyebrow}>Join Overlooked</Text>
-            <Text style={styles.title}>Create Your Profile</Text>
-            <Text style={styles.subtitle}>
-              Make a strong first impression. Add your image, choose your role, and start building
-              your creative presence.
-            </Text>
+            <Text style={styles.title}>{currentStep.title}</Text>
+            <Text style={styles.subtitle}>{currentStep.subtitle}</Text>
 
             <View style={styles.progressWrap}>
-              <View style={styles.progressLine} />
-              <View style={styles.progressRow}>
-                <View style={styles.progressItem}>
-                  <View style={[styles.progressDot, roleStepVisible && styles.progressDotActive]} />
-                  <Text style={[styles.progressLabel, roleStepVisible && styles.progressLabelActive]}>
-                    Role
-                  </Text>
-                </View>
-
-                <View style={styles.progressItem}>
-                  <View style={[styles.progressDot, cityStepVisible && styles.progressDotActive]} />
-                  <Text style={[styles.progressLabel, cityStepVisible && styles.progressLabelActive]}>
-                    Location
-                  </Text>
-                </View>
-
-                <View style={styles.progressItem}>
-                  <View style={[styles.progressDot, nameStepVisible && styles.progressDotActive]} />
-                  <Text style={[styles.progressLabel, nameStepVisible && styles.progressLabelActive]}>
-                    Name
-                  </Text>
-                </View>
-
-                <View style={styles.progressItem}>
-                  <View style={[styles.progressDot, imageStepVisible && styles.progressDotActive]} />
-                  <Text
-                    style={[styles.progressLabel, imageStepVisible && styles.progressLabelActive]}
-                  >
-                    Photo
-                  </Text>
-                </View>
-
-                <View style={styles.progressItem}>
-                  <View style={[styles.progressDot, reviewVisible && styles.progressDotActive]} />
-                  <Text style={[styles.progressLabel, reviewVisible && styles.progressLabelActive]}>
-                    Confirm
-                  </Text>
-                </View>
+              <Text style={styles.progressCount}>
+                Step {currentStepIndex + 1} of {ONBOARDING_STEPS.length}
+              </Text>
+              <View style={styles.progressSegments}>
+                {ONBOARDING_STEPS.map((item, index) => (
+                  <View
+                    key={item.key}
+                    style={[
+                      styles.progressSegment,
+                      index <= currentStepIndex && styles.progressSegmentActive,
+                    ]}
+                  />
+                ))}
+              </View>
+              <View style={styles.progressLabelRow}>
+                <Text style={styles.progressLabelActive}>{currentStep.label}</Text>
+                <Text style={styles.progressLabel}>{ONBOARDING_STEPS[currentStepIndex + 1]?.label ?? 'Done'}</Text>
               </View>
             </View>
 
             <View style={styles.sequenceArea}>
-              {roleStepVisible && (
-                <View style={styles.fieldBlock}>
-                  <Text style={styles.fieldLabel}>Main Role</Text>
-                  <TouchableOpacity
-                    style={[styles.selectButton, stage === 'role' && styles.activeSelectButton]}
-                    onPress={openRoleSelector}
-                    activeOpacity={0.9}
-                    disabled={loading}
-                  >
-                    <Text style={styles.selectButtonText}>
-                      {mainRoleLabel ?? 'Search your main creative role'}
-                    </Text>
-                    <Ionicons name="search" size={16} color={TEXT_MUTED} />
-                  </TouchableOpacity>
-                </View>
-              )}
+              {stage === 'profile' && (
+                <>
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>Name</Text>
+                    <TextInput
+                      placeholder="Your full name"
+                      value={fullName}
+                      onChangeText={setFullName}
+                      style={[styles.input, searchInputWebFix]}
+                      placeholderTextColor={TEXT_MUTED}
+                      autoFocus
+                      editable={!loading}
+                      returnKeyType="next"
+                    />
+                  </View>
 
-              {cityStepVisible && (
-                <View style={styles.fieldBlock}>
-                  <Text style={styles.fieldLabel}>City</Text>
-                  <TouchableOpacity
-                    style={[styles.selectButton, stage === 'city' && styles.activeSelectButton]}
-                    onPress={openCitySelector}
-                    activeOpacity={0.9}
-                    disabled={loading}
-                  >
-                    <Text style={styles.selectButtonText}>
-                      {cityLabel ?? 'Search for your city'}
-                    </Text>
-                    <Ionicons name="location-outline" size={16} color={TEXT_MUTED} />
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {nameStepVisible && (
-                <View style={styles.fieldBlock}>
-                  <Text style={styles.fieldLabel}>Name</Text>
-                  <TextInput
-                    placeholder="Your full name"
-                    value={fullName}
-                    onChangeText={setFullName}
-                    style={[styles.input, searchInputWebFix]}
-                    placeholderTextColor={TEXT_MUTED}
-                    autoFocus={stage === 'name'}
-                    editable={!loading}
-                    onSubmitEditing={() => {
-                      if (fullName.trim().length >= 2 && stage === 'name') {
-                        animateStageChange('image');
-                      }
-                    }}
-                  />
-
-                  {stage === 'name' && (
-                    <TouchableOpacity
-                      onPress={() => {
-                        if (!fullName.trim()) {
-                          Alert.alert('Missing Info', 'Please enter your name.');
-                          return;
-                        }
-                        animateStageChange('image');
-                      }}
-                      style={styles.inlineContinueButton}
-                      activeOpacity={0.9}
-                    >
-                      <Text style={styles.inlineContinueButtonText}>Continue</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
-
-              {imageStepVisible && (
                 <Animated.View
                   style={[
                     styles.heroAvatarWrap,
@@ -1228,7 +1384,7 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
   activeOpacity={0.92}
   style={[
     styles.avatarButton,
-    stage === 'image' && styles.avatarButtonActive,
+    styles.avatarButtonActive,
     isMobile && styles.avatarButtonMobile,
   ]}
   disabled={loading}
@@ -1266,91 +1422,258 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
                   {!!uploadingImage && (
                     <Text style={styles.uploadingText}>Preparing your profile image...</Text>
                   )}
-
-                  {stage === 'image' && displayImage && !uploadingImage && (
-                    <TouchableOpacity
-                      onPress={() => animateStageChange('review')}
-                      style={styles.inlineContinueButton}
-                      activeOpacity={0.9}
-                    >
-                      <Text style={styles.inlineContinueButtonText}>Continue</Text>
-                    </TouchableOpacity>
-                  )}
                 </Animated.View>
+                </>
               )}
 
-              {reviewVisible && (
+              {stage === 'role' && (
+                <>
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>Main creative role</Text>
+                    <TouchableOpacity
+                      style={[styles.selectButton, styles.activeSelectButton]}
+                      onPress={openRoleSelector}
+                      activeOpacity={0.9}
+                      disabled={loading}
+                    >
+                      <Text style={styles.selectButtonText}>
+                        {mainRoleLabel ?? 'Search your main creative role'}
+                      </Text>
+                      <Ionicons name="search" size={16} color={TEXT_MUTED} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>Optional side roles</Text>
+                    <View style={styles.chipGrid}>
+                      {sideRoleOptions.map((role) => {
+                        const selected = sideRoles.includes(role);
+                        return (
+                          <TouchableOpacity
+                            key={role}
+                            onPress={() => toggleSelection(role, setSideRoles)}
+                            style={[styles.choicePill, selected && styles.choicePillSelected]}
+                            activeOpacity={0.86}
+                            disabled={loading}
+                          >
+                            <Ionicons
+                              name={selected ? 'checkmark-circle' : 'add-circle-outline'}
+                              size={16}
+                              color={selected ? CORAL : TEXT_MUTED}
+                            />
+                            <Text
+                              style={[
+                                styles.choicePillText,
+                                selected && styles.choicePillTextSelected,
+                              ]}
+                            >
+                              {role}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    {!sideRoleOptions.length ? (
+                      <Text style={styles.helperText}>Roles are loading. You can skip this for now.</Text>
+                    ) : null}
+                  </View>
+                </>
+              )}
+
+              {stage === 'city' && (
+                <>
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>City / country</Text>
+                    <TouchableOpacity
+                      style={[styles.selectButton, styles.activeSelectButton]}
+                      onPress={openCitySelector}
+                      activeOpacity={0.9}
+                      disabled={loading}
+                    >
+                      <Text style={styles.selectButtonText}>
+                        {cityLabel ?? 'Search for your city'}
+                      </Text>
+                      <Ionicons name="location-outline" size={16} color={TEXT_MUTED} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.infoBox}>
+                    <Text style={styles.infoBoxTitle}>Local discovery</Text>
+                    <Text style={styles.infoBoxText}>
+                      Your location helps Overlooked recommend nearby creatives, local projects,
+                      city jobs, and useful collaborations.
+                    </Text>
+                  </View>
+                </>
+              )}
+
+              {stage === 'links' && (
+                <>
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>Portfolio link</Text>
+                    <TextInput
+                      placeholder="https://your-portfolio.com"
+                      value={portfolioUrl}
+                      onChangeText={setPortfolioUrl}
+                      style={[styles.input, searchInputWebFix]}
+                      placeholderTextColor={TEXT_MUTED}
+                      editable={!loading}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="url"
+                    />
+                  </View>
+
+                  <View style={styles.fieldBlock}>
+                    <Text style={styles.fieldLabel}>YouTube link</Text>
+                    <TextInput
+                      placeholder="https://youtube.com/@yourchannel"
+                      value={youtubeUrl}
+                      onChangeText={setYoutubeUrl}
+                      style={[styles.input, searchInputWebFix]}
+                      placeholderTextColor={TEXT_MUTED}
+                      editable={!loading}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="url"
+                    />
+                  </View>
+                </>
+              )}
+
+              {stage === 'reasons' && (
+                <View style={styles.multiSelectWrap}>
+                  {JOINING_REASON_OPTIONS.map((reason) => {
+                    const selected = joiningReasons.includes(reason);
+                    return (
+                      <TouchableOpacity
+                        key={reason}
+                        onPress={() => toggleSelection(reason, setJoiningReasons)}
+                        style={[styles.optionCard, selected && styles.optionCardSelected]}
+                        activeOpacity={0.88}
+                        disabled={loading}
+                      >
+                        <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
+                          {selected ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
+                        </View>
+                        <Text
+                          style={[
+                            styles.optionCardText,
+                            selected && styles.optionCardTextSelected,
+                          ]}
+                        >
+                          {reason}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              {stage === 'goals' && (
+                <View style={styles.multiSelectWrap}>
+                  {CREATIVE_GOAL_OPTIONS.map((goal) => {
+                    const selected = creativeGoals.includes(goal);
+                    return (
+                      <TouchableOpacity
+                        key={goal}
+                        onPress={() => toggleSelection(goal, setCreativeGoals)}
+                        style={[styles.optionCard, selected && styles.optionCardSelected]}
+                        activeOpacity={0.88}
+                        disabled={loading}
+                      >
+                        <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
+                          {selected ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
+                        </View>
+                        <Text
+                          style={[
+                            styles.optionCardText,
+                            selected && styles.optionCardTextSelected,
+                          ]}
+                        >
+                          {goal}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              {stage === 'review' && (
                 <>
                   <View style={styles.reviewCard}>
                     <Text style={styles.reviewTitle}>Confirm your profile</Text>
 
                     {!!displayImage && (
-  <View style={styles.reviewAvatarWrap}>
-    <ProfilePreviewImage
-      uri={displayImage}
-      style={styles.reviewAvatar}
-    />
-  </View>
-)}
+                      <View style={styles.reviewAvatarWrap}>
+                        <ProfilePreviewImage uri={displayImage} style={styles.reviewAvatar} />
+                      </View>
+                    )}
 
                     <View style={styles.reviewRow}>
                       <Text style={styles.reviewLabel}>Name</Text>
-                      <Text style={styles.reviewValue}>{fullName || '—'}</Text>
+                      <Text style={styles.reviewValue}>{fullName || '-'}</Text>
                     </View>
 
                     <View style={styles.reviewRow}>
-                      <Text style={styles.reviewLabel}>Role</Text>
-                      <Text style={styles.reviewValue}>{mainRoleLabel || '—'}</Text>
+                      <Text style={styles.reviewLabel}>Main role</Text>
+                      <Text style={styles.reviewValue}>{mainRoleLabel || '-'}</Text>
+                    </View>
+
+                    <View style={styles.reviewRow}>
+                      <Text style={styles.reviewLabel}>Side roles</Text>
+                      <Text style={styles.reviewValue}>
+                        {sideRoles.length ? sideRoles.join(', ') : 'Not added'}
+                      </Text>
                     </View>
 
                     <View style={styles.reviewRow}>
                       <Text style={styles.reviewLabel}>Location</Text>
-                      <Text style={styles.reviewValue}>{cityLabel || '—'}</Text>
+                      <Text style={styles.reviewValue}>{cityLabel || '-'}</Text>
+                    </View>
+
+                    <View style={styles.reviewRow}>
+                      <Text style={styles.reviewLabel}>Setup choices</Text>
+                      <Text style={styles.reviewValue}>
+                        {joiningReasons.length} reasons · {creativeGoals.length} goals
+                      </Text>
                     </View>
                   </View>
-
-                  <View style={styles.infoBox}>
-                    <Text style={styles.infoBoxTitle}>Showreels and portfolio</Text>
-                    <Text style={styles.infoBoxText}>
-                      You can add showreels, thumbnails, and more portfolio content once your
-                      account is created from your Profile page.
-                    </Text>
-                  </View>
-
-                  <View style={styles.reviewActions}>
-  <TouchableOpacity
-    onPress={() => animateStageChange('image')}
-    style={styles.backButton}
-    activeOpacity={0.9}
-    disabled={loading}
-  >
-    <Text style={styles.backButtonText}>Back</Text>
-  </TouchableOpacity>
-
-  <TouchableOpacity
-    onPress={handleSubmit}
-    style={[
-      styles.submitButton,
-      styles.submitButtonReview,
-      loading && { opacity: 0.6 },
-    ]}
-    disabled={loading}
-    activeOpacity={0.9}
-  >
-    {loading ? (
-      <ActivityIndicator color="#000" />
-    ) : (
-      <Text style={styles.submitText}>Confirm & Enter</Text>
-    )}
-  </TouchableOpacity>
-</View>
-
-{!!submitStatus && (
-  <Text style={styles.submitStatusText}>{submitStatus}</Text>
-)}
                 </>
               )}
             </View>
+
+            <View style={styles.reviewActions}>
+              <TouchableOpacity
+                onPress={goBack}
+                style={[styles.backButton, isFirstStep && styles.backButtonDisabled]}
+                activeOpacity={0.9}
+                disabled={loading || isFirstStep}
+              >
+                <Text style={[styles.backButtonText, isFirstStep && styles.backButtonTextDisabled]}>
+                  Back
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={goNext}
+                style={[
+                  styles.submitButton,
+                  styles.submitButtonReview,
+                  loading && { opacity: 0.6 },
+                ]}
+                disabled={loading}
+                activeOpacity={0.9}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.submitText}>{isLastStep ? 'Finish' : 'Next'}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {!!submitStatus && <Text style={styles.submitStatusText}>{submitStatus}</Text>}
           </View>
         </Animated.View>
       </ScrollView>
@@ -1398,10 +1721,6 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
                         setCityLabel(item.label);
                         setSelectedCountryCode(item.country || null);
                         setCitySearchModalVisible(false);
-
-                        if (stage === 'city') {
-                          animateStageChange('name');
-                        }
                       }}
                       activeOpacity={0.8}
                     >
@@ -1483,14 +1802,6 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
             setMainRole(item.value);
             setMainRoleLabel(item.label);
             setRoleSearchModalVisible(false);
-
-            if (stage === 'role') {
-              animateStageChange('city', () => {
-                setTimeout(() => {
-                  openCitySelector();
-                }, 700);
-              });
-            }
           }}
           activeOpacity={0.8}
         >
@@ -1586,6 +1897,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER_SOFT,
     padding: 22,
+    shadowColor: CORAL,
+    shadowOpacity: 0.14,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 8,
   },
 
   cardDesktop: {
@@ -1593,7 +1909,7 @@ const styles = StyleSheet.create({
   },
 
   eyebrow: {
-    color: GOLD,
+    color: CORAL_DARK,
     textAlign: 'center',
     fontSize: 12,
     letterSpacing: 2.2,
@@ -1627,6 +1943,38 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
 
+  progressCount: {
+    color: TEXT_MUTED,
+    fontSize: 12,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+
+  progressSegments: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 10,
+  },
+
+  progressSegment: {
+    flex: 1,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(125,74,63,0.12)',
+  },
+
+  progressSegmentActive: {
+    backgroundColor: CORAL,
+  },
+
+  progressLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
   progressLine: {
     position: 'absolute',
     left: '10%',
@@ -1656,7 +2004,7 @@ const styles = StyleSheet.create({
   },
 
   progressDotActive: {
-    backgroundColor: GOLD,
+    backgroundColor: CORAL,
   },
 
   progressLabel: {
@@ -1673,7 +2021,7 @@ const styles = StyleSheet.create({
   },
 
   sequenceArea: {
-    minHeight: 340,
+    minHeight: 380,
     justifyContent: 'flex-start',
   },
 
@@ -1689,7 +2037,7 @@ const styles = StyleSheet.create({
   borderRadius: 66,
   backgroundColor: ELEVATED,
   borderWidth: 1.5,
-  borderColor: 'rgba(198,166,100,0.30)',
+  borderColor: 'rgba(244,91,106,0.30)',
   alignItems: 'center',
   justifyContent: 'center',
   overflow: 'hidden',
@@ -1700,7 +2048,7 @@ const styles = StyleSheet.create({
     width: 146,
     height: 146,
     borderRadius: 73,
-    shadowColor: GOLD,
+    shadowColor: CORAL,
     shadowOpacity: 0.16,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 6 },
@@ -1708,8 +2056,8 @@ const styles = StyleSheet.create({
   },
 
   avatarButtonActive: {
-    borderColor: GOLD,
-    shadowColor: GOLD,
+    borderColor: CORAL,
+    shadowColor: CORAL,
     shadowOpacity: 0.18,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 4 },
@@ -1737,7 +2085,7 @@ const styles = StyleSheet.create({
 
   avatarChangeBtn: {
     marginTop: 14,
-    backgroundColor: GOLD,
+    backgroundColor: CORAL,
     borderRadius: 999,
     paddingVertical: 10,
     paddingHorizontal: 16,
@@ -1754,7 +2102,7 @@ const styles = StyleSheet.create({
   },
 
   avatarChangeBtnText: {
-    color: '#000',
+    color: '#fff',
     fontSize: 12,
     fontFamily: SYSTEM_SANS,
     fontWeight: '800',
@@ -1764,7 +2112,7 @@ const styles = StyleSheet.create({
 
   requiredLabel: {
     marginTop: 12,
-    color: GOLD,
+    color: CORAL_DARK,
     fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 1.5,
@@ -1794,6 +2142,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
+  helperText: {
+    color: TEXT_MUTED,
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: SYSTEM_SANS,
+    marginTop: 8,
+  },
+
   input: {
     width: '100%',
     backgroundColor: ELEVATED,
@@ -1821,8 +2177,8 @@ const styles = StyleSheet.create({
   },
 
   activeSelectButton: {
-    borderColor: GOLD,
-    shadowColor: GOLD,
+    borderColor: CORAL,
+    shadowColor: CORAL,
     shadowOpacity: 0.12,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 2 },
@@ -1843,17 +2199,105 @@ submitStatusText: {
     paddingRight: 12,
   },
 
+  chipGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+
+  choicePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: 'rgba(255,255,255,0.58)',
+  },
+
+  choicePillSelected: {
+    borderColor: 'rgba(244,91,106,0.42)',
+    backgroundColor: 'rgba(244,91,106,0.12)',
+  },
+
+  choicePillText: {
+    color: TEXT_MUTED,
+    fontSize: 13,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '800',
+  },
+
+  choicePillTextSelected: {
+    color: TEXT_IVORY,
+  },
+
+  multiSelectWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+
+  optionCard: {
+    width: '100%',
+    minHeight: 54,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: 'rgba(255,255,255,0.62)',
+    paddingVertical: 12,
+    paddingHorizontal: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  optionCardSelected: {
+    borderColor: 'rgba(244,91,106,0.48)',
+    backgroundColor: 'rgba(244,91,106,0.12)',
+  },
+
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: 'rgba(125,74,63,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFDF8',
+  },
+
+  checkboxSelected: {
+    borderColor: CORAL,
+    backgroundColor: CORAL,
+  },
+
+  optionCardText: {
+    flex: 1,
+    color: TEXT_IVORY,
+    fontSize: 14,
+    lineHeight: 19,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '800',
+  },
+
+  optionCardTextSelected: {
+    color: CORAL_DARK,
+  },
+
   inlineContinueButton: {
     marginTop: 12,
     alignSelf: 'flex-end',
-    backgroundColor: GOLD,
+    backgroundColor: CORAL,
     borderRadius: 999,
     paddingVertical: 10,
     paddingHorizontal: 16,
   },
 
   inlineContinueButtonText: {
-    color: '#000',
+    color: '#fff',
     fontSize: 12,
     fontFamily: SYSTEM_SANS,
     fontWeight: '800',
@@ -1889,8 +2333,8 @@ submitStatusText: {
   overflow: 'hidden',
   marginBottom: 18,
   borderWidth: 1.5,
-  borderColor: GOLD,
-  backgroundColor: '#151515',
+  borderColor: CORAL,
+  backgroundColor: '#F8E7DF',
   position: 'relative',
 },
   reviewAvatar: {
@@ -1906,7 +2350,7 @@ submitStatusText: {
   },
 
   reviewLabel: {
-    color: GOLD,
+    color: CORAL_DARK,
     fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 1.2,
@@ -1934,7 +2378,7 @@ submitStatusText: {
   },
 
   infoBoxTitle: {
-    color: GOLD,
+    color: CORAL_DARK,
     fontSize: 12,
     textTransform: 'uppercase',
     letterSpacing: 1.3,
@@ -1966,6 +2410,10 @@ submitStatusText: {
     alignItems: 'center',
   },
 
+  backButtonDisabled: {
+    opacity: 0.42,
+  },
+
   backButtonText: {
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
@@ -1974,8 +2422,12 @@ submitStatusText: {
     letterSpacing: 0.4,
   },
 
+  backButtonTextDisabled: {
+    color: TEXT_MUTED,
+  },
+
   submitButton: {
-    backgroundColor: GOLD,
+    backgroundColor: CORAL,
     width: '100%',
     paddingVertical: 15,
     borderRadius: 16,
@@ -1989,7 +2441,7 @@ submitStatusText: {
   },
 
   submitText: {
-    color: DARK_BG,
+    color: '#fff',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 16,
@@ -1998,7 +2450,7 @@ submitStatusText: {
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: '#000000CC',
+    backgroundColor: 'rgba(36,24,23,0.45)',
     justifyContent: 'center',
     padding: 18,
   },
@@ -2087,7 +2539,7 @@ submitStatusText: {
 
 retryButton: {
   marginTop: 16,
-  backgroundColor: GOLD,
+  backgroundColor: CORAL,
   borderRadius: 999,
   paddingVertical: 11,
   paddingHorizontal: 18,
@@ -2096,7 +2548,7 @@ retryButton: {
 },
 
 retryButtonText: {
-  color: '#000',
+  color: '#fff',
   fontSize: 12,
   fontFamily: SYSTEM_SANS,
   fontWeight: '900',

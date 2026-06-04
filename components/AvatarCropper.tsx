@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Modal,
-  View,
-  StyleSheet,
+  ActivityIndicator,
   Image,
-  Dimensions,
+  Modal,
+  Platform,
+  StyleSheet,
   Text,
   TouchableOpacity,
-  ActivityIndicator,
-  Platform,
+  View,
+  useWindowDimensions,
 } from 'react-native';
 import {
   PanGestureHandler,
@@ -35,16 +35,17 @@ type Props = {
   level?: number | null;
 };
 
-const WINDOW = Dimensions.get('window');
 const GOLD = '#C6A664';
-const IVORY = '#F5F2EA';
-const MUTED = '#C8C1B2';
-const SOFT = '#A7A6A2';
+const IVORY = '#F4EFE6';
+const MUTED = '#D8D2C8';
+const SOFT = '#A59D90';
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 5;
 
 const COLORS = {
   background: 'rgba(0,0,0,0.94)',
-  card: '#050505',
-  border: 'rgba(255,255,255,0.10)',
+  panel: '#0D0D0F',
+  border: 'rgba(255,255,255,0.12)',
   textPrimary: IVORY,
   textSecondary: MUTED,
   hint: SOFT,
@@ -57,25 +58,6 @@ const FONT_PRIMARY =
     default: 'Avenir Next',
   }) || 'Avenir Next';
 
-const FONT_LIGHT =
-  Platform.select({
-    ios: 'Avenir Next',
-    android: 'sans-serif-light',
-    default: 'Avenir Next',
-  }) || 'Avenir Next';
-
-const PREVIEW_MAX_W = 1040;
-const H_PADDING = 22;
-
-const PREVIEW_W = Math.min(WINDOW.width - H_PADDING * 2, PREVIEW_MAX_W);
-const BANNER_H = PREVIEW_W * 0.5;
-
-const AVATAR_DIAMETER = BANNER_H * 0.25;
-const AVATAR_RADIUS = AVATAR_DIAMETER / 2;
-
-const AVATAR_LEFT = 24;
-const AVATAR_BOTTOM = 34;
-
 function isEndState(state: number) {
   return (
     state === State.END ||
@@ -87,20 +69,6 @@ function isEndState(state: number) {
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));
 
-const LEVEL_RING_STEPS = [
-  { max: 24, color: '#E0E0EA' },
-  { max: 49, color: '#C0C0C8' },
-  { max: 9999, color: '#C6A664' },
-];
-
-const getRingColorForLevel = (level?: number | null) => {
-  const lv = typeof level === 'number' && level > 0 ? level : 1;
-  const step =
-    LEVEL_RING_STEPS.find((s) => lv <= s.max) ||
-    LEVEL_RING_STEPS[LEVEL_RING_STEPS.length - 1];
-  return step.color;
-};
-
 export default function AvatarCropper({
   visible,
   imageUri,
@@ -108,124 +76,156 @@ export default function AvatarCropper({
   onCancel,
   onCropped,
   onDone,
-  fullName,
-  mainRoleName,
-  cityName,
-  level,
 }: Props) {
   const effectiveUri = imageUri || sourceUri || undefined;
+  const { width, height } = useWindowDimensions();
 
+  const cropSize = useMemo(
+    () => Math.floor(Math.min(width - 44, height * 0.48, 390)),
+    [height, width]
+  );
+  const cropRadius = cropSize / 2;
+
+  const [workingUri, setWorkingUri] = useState<string | null>(null);
   const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
-
-  const [scale, setScale] = useState(1);
-  const [translate, setTranslate] = useState({ x: 0, y: 0 });
-
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [baseScale, setBaseScale] = useState(1);
+  const [zoom, setZoom] = useState(1);
+  const [baseZoom, setBaseZoom] = useState(1);
+  const [translate, setTranslate] = useState({ x: 0, y: 0 });
   const [lastOffset, setLastOffset] = useState({ x: 0, y: 0 });
 
+  const baseFitScale = imgSize
+    ? Math.max(cropSize / imgSize.w, cropSize / imgSize.h)
+    : 1;
+  const totalScale = baseFitScale * zoom;
+
+  const getBounds = (nextZoom = zoom) => {
+    if (!imgSize) return { x: 0, y: 0 };
+
+    const nextScale = baseFitScale * nextZoom;
+    return {
+      x: Math.max(0, (imgSize.w * nextScale - cropSize) / 2),
+      y: Math.max(0, (imgSize.h * nextScale - cropSize) / 2),
+    };
+  };
+
+  const clampTranslate = (
+    point: { x: number; y: number },
+    nextZoom = zoom
+  ) => {
+    const bounds = getBounds(nextZoom);
+    return {
+      x: clamp(point.x, -bounds.x, bounds.x),
+      y: clamp(point.y, -bounds.y, bounds.y),
+    };
+  };
+
   useEffect(() => {
-    if (!effectiveUri || !visible) {
+    if (!visible || !effectiveUri) {
+      setWorkingUri(null);
       setImgSize(null);
       return;
     }
 
+    let active = true;
+
     setLoadingMeta(true);
+    setSaving(false);
+    setZoom(1);
+    setBaseZoom(1);
+    setTranslate({ x: 0, y: 0 });
+    setLastOffset({ x: 0, y: 0 });
 
-    Image.getSize(
-      effectiveUri,
-      (w, h) => {
-        setImgSize({ w, h });
-        setLoadingMeta(false);
-      },
-      async () => {
-        try {
-          const result = await ImageManipulator.manipulateAsync(
-            effectiveUri,
-            [],
-            {
-              compress: 1,
-              format: ImageManipulator.SaveFormat.JPEG,
-            }
-          );
-
-          Image.getSize(
-            result.uri,
-            (w, h) => {
-              setImgSize({ w, h });
-              setLoadingMeta(false);
-            },
-            () => {
-              setImgSize({ w: 1000, h: 1000 });
-              setLoadingMeta(false);
-            }
-          );
-        } catch {
+    const loadSize = (uri: string) => {
+      Image.getSize(
+        uri,
+        (w, h) => {
+          if (!active) return;
+          setWorkingUri(uri);
+          setImgSize({ w, h });
+          setLoadingMeta(false);
+        },
+        () => {
+          if (!active) return;
+          setWorkingUri(uri);
           setImgSize({ w: 1000, h: 1000 });
           setLoadingMeta(false);
         }
+      );
+    };
+
+    ImageManipulator.manipulateAsync(
+      effectiveUri,
+      [],
+      {
+        compress: 1,
+        format: ImageManipulator.SaveFormat.JPEG,
       }
-    );
-  }, [effectiveUri, visible]);
+    )
+      .then((result) => {
+        if (!active) return;
+        loadSize(result.uri);
+      })
+      .catch(() => {
+        if (!active) return;
+        loadSize(effectiveUri);
+      });
 
-  useEffect(() => {
-    if (!visible) return;
-
-    setBaseScale(1);
-    setLastOffset({ x: 0, y: 0 });
-    setScale(1);
-    setTranslate({ x: 0, y: 0 });
-    setSaving(false);
-  }, [visible, effectiveUri]);
-
-  const baseFitScale = imgSize
-    ? Math.max(AVATAR_DIAMETER / imgSize.w, AVATAR_DIAMETER / imgSize.h)
-    : 1;
-
-  const totalScale = baseFitScale * scale;
+    return () => {
+      active = false;
+    };
+  }, [cropSize, effectiveUri, visible]);
 
   const onPanEvent = (e: any) => {
     const { translationX, translationY } = e.nativeEvent;
-
-    setTranslate({
-      x: lastOffset.x + translationX,
-      y: lastOffset.y + translationY,
-    });
+    setTranslate(
+      clampTranslate({
+        x: lastOffset.x + translationX,
+        y: lastOffset.y + translationY,
+      })
+    );
   };
 
   const onPanStateChange = (e: any) => {
-    if (isEndState(e.nativeEvent.state)) {
-      const { translationX, translationY } = e.nativeEvent;
+    if (!isEndState(e.nativeEvent.state)) return;
 
-      const next = {
-        x: lastOffset.x + translationX,
-        y: lastOffset.y + translationY,
-      };
+    const { translationX, translationY } = e.nativeEvent;
+    const next = clampTranslate({
+      x: lastOffset.x + translationX,
+      y: lastOffset.y + translationY,
+    });
 
-      setLastOffset(next);
-      setTranslate(next);
-    }
+    setTranslate(next);
+    setLastOffset(next);
+  };
+
+  const setZoomAndClamp = (nextZoom: number) => {
+    const clampedZoom = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM);
+    const nextTranslate = clampTranslate(translate, clampedZoom);
+
+    setZoom(clampedZoom);
+    setTranslate(nextTranslate);
+    setLastOffset(nextTranslate);
   };
 
   const onPinchEvent = (e: any) => {
-    const s = baseScale * e.nativeEvent.scale;
-    setScale(clamp(s, 1, 4));
+    const nextZoom = clamp(baseZoom * e.nativeEvent.scale, MIN_ZOOM, MAX_ZOOM);
+    setZoom(nextZoom);
+    setTranslate(clampTranslate(translate, nextZoom));
   };
 
   const onPinchStateChange = (e: any) => {
-    if (isEndState(e.nativeEvent.state)) {
-      const next = clamp(baseScale * e.nativeEvent.scale, 1, 4);
-      setBaseScale(next);
-      setScale(next);
-    }
-  };
+    if (!isEndState(e.nativeEvent.state)) return;
 
-  const onSliderChange = (val: number) => {
-    const s = clamp(val, 1, 4);
-    setBaseScale(s);
-    setScale(s);
+    const nextZoom = clamp(baseZoom * e.nativeEvent.scale, MIN_ZOOM, MAX_ZOOM);
+    const nextTranslate = clampTranslate(translate, nextZoom);
+
+    setBaseZoom(nextZoom);
+    setZoom(nextZoom);
+    setTranslate(nextTranslate);
+    setLastOffset(nextTranslate);
   };
 
   const emitDone = (uri: string) => {
@@ -234,52 +234,38 @@ export default function AvatarCropper({
   };
 
   const doCrop = async () => {
-    if (!effectiveUri || !imgSize || saving) return;
+    const source = workingUri || effectiveUri;
+    if (!source || !imgSize || saving || cropSize <= 0) return;
 
     try {
       setSaving(true);
 
       const { w: imgW, h: imgH } = imgSize;
+      const imageWView = imgW * totalScale;
+      const imageHView = imgH * totalScale;
+      const imageLeft = cropRadius - imageWView / 2 + translate.x;
+      const imageTop = cropRadius - imageHView / 2 + translate.y;
 
-      const cxView = AVATAR_RADIUS;
-      const cyView = AVATAR_RADIUS;
-
-      const imgCxView = AVATAR_RADIUS + translate.x;
-      const imgCyView = AVATAR_RADIUS + translate.y;
-
-      const ixCenter = (cxView - imgCxView) / totalScale + imgW / 2;
-      const iyCenter = (cyView - imgCyView) / totalScale + imgH / 2;
-
-      const rImg = AVATAR_RADIUS / totalScale;
-
-      let originX = ixCenter - rImg;
-      let originY = iyCenter - rImg;
-      let size = rImg * 2;
-
-      if (size > imgW || size > imgH) {
-        size = Math.min(imgW, imgH);
-        originX = (imgW - size) / 2;
-        originY = (imgH - size) / 2;
-      } else {
-        originX = clamp(originX, 0, imgW - size);
-        originY = clamp(originY, 0, imgH - size);
-      }
-
-      const crop = {
-        originX: Math.round(originX),
-        originY: Math.round(originY),
-        width: Math.round(size),
-        height: Math.round(size),
-      };
+      const rawSize = cropSize / totalScale;
+      const size = Math.min(rawSize, imgW, imgH);
+      const originX = clamp(-imageLeft / totalScale, 0, imgW - size);
+      const originY = clamp(-imageTop / totalScale, 0, imgH - size);
 
       const result = await ImageManipulator.manipulateAsync(
-        effectiveUri,
+        source,
         [
-          { crop },
+          {
+            crop: {
+              originX: Math.round(originX),
+              originY: Math.round(originY),
+              width: Math.round(size),
+              height: Math.round(size),
+            },
+          },
           {
             resize: {
-              width: 512,
-              height: 512,
+              width: 768,
+              height: 768,
             },
           },
         ],
@@ -292,7 +278,7 @@ export default function AvatarCropper({
       emitDone(result.uri);
     } catch (err) {
       console.log('Avatar crop error:', err);
-      emitDone(effectiveUri);
+      if (source) emitDone(source);
     } finally {
       setSaving(false);
     }
@@ -300,175 +286,121 @@ export default function AvatarCropper({
 
   if (!visible) return null;
 
-  const displayRole =
-    (mainRoleName || '').toString().trim().toUpperCase() || 'DIRECTOR';
-  const displayName = (fullName || '').toString().trim() || 'Your Name';
-  const displayCity =
-    (cityName || '').toString().trim().toUpperCase() || 'YOUR CITY';
-  const displayLevel = typeof level === 'number' && level > 0 ? level : 8;
-  const ringColor = getRingColorForLevel(level);
+  const imageReady = !!workingUri && !!imgSize && !loadingMeta;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+    <Modal visible transparent animationType="fade" onRequestClose={onCancel}>
       <View style={styles.overlay}>
-        <View style={styles.card}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={onCancel}
+            disabled={saving}
+            activeOpacity={0.85}
+            style={styles.headerButton}
+          >
+            <Text style={styles.headerButtonText}>Cancel</Text>
+          </TouchableOpacity>
+
           <Text style={styles.title}>Adjust profile picture</Text>
 
-          <View style={[styles.previewWrap, { width: PREVIEW_W, height: BANNER_H }]}>
-            {effectiveUri ? (
-              <Image source={{ uri: effectiveUri }} style={styles.bannerImage} resizeMode="cover" />
+          <TouchableOpacity
+            onPress={doCrop}
+            disabled={saving || !imageReady}
+            activeOpacity={0.85}
+            style={[
+              styles.headerButton,
+              styles.saveButton,
+              (saving || !imageReady) && { opacity: 0.55 },
+            ]}
+          >
+            {saving ? (
+              <ActivityIndicator color="#000" size="small" />
             ) : (
-              <View style={[styles.bannerImage, { backgroundColor: '#141414' }]} />
+              <Text style={styles.saveButtonText}>Save</Text>
             )}
-
-            <View style={styles.bannerDarken} />
-            <View style={styles.bannerVignetteTop} />
-            <View style={styles.bannerVignetteBottom} />
-
-            <View style={styles.topBrandRow}>
-              <Text style={styles.brandText}>OVERLOOKED</Text>
-            </View>
-
-            <View style={styles.centerTextWrap}>
-              <Text style={styles.roleText} numberOfLines={1} adjustsFontSizeToFit>
-                {displayRole}
-              </Text>
-              <Text style={styles.metaText} numberOfLines={1} adjustsFontSizeToFit>
-                {displayName.toUpperCase()} {' • '} {displayCity}
-              </Text>
-            </View>
-
-            <View style={styles.bottomInfoStrip}>
-              <Text style={styles.bottomInfoLabel}>Filmmaking streak</Text>
-              <Text style={styles.bottomInfoValue}>Year 1</Text>
-            </View>
-
-            <View
-              style={[
-                styles.avatarOuterGlow,
-                {
-                  width: AVATAR_DIAMETER + 14,
-                  height: AVATAR_DIAMETER + 14,
-                  left: AVATAR_LEFT - 7,
-                  top: BANNER_H - AVATAR_BOTTOM - AVATAR_DIAMETER - 7,
-                },
-              ]}
-            />
-
-            <View
-              style={[
-                styles.avatarRingWrapper,
-                {
-                  width: AVATAR_DIAMETER + 10,
-                  height: AVATAR_DIAMETER + 10,
-                  left: AVATAR_LEFT - 5,
-                  top: BANNER_H - AVATAR_BOTTOM - AVATAR_DIAMETER - 5,
-                  borderColor: ringColor,
-                },
-              ]}
-            >
-              <View style={[styles.avatarRing, { borderColor: ringColor }]} />
-
-              <PinchGestureHandler
-                onGestureEvent={onPinchEvent}
-                onHandlerStateChange={onPinchStateChange}
-              >
-                <View style={styles.gestureFill}>
-                  <PanGestureHandler
-                    onGestureEvent={onPanEvent}
-                    onHandlerStateChange={onPanStateChange}
-                  >
-                    <View
-                      style={[
-                        styles.avatarCircle,
-                        {
-                          width: AVATAR_DIAMETER,
-                          height: AVATAR_DIAMETER,
-                          borderRadius: AVATAR_RADIUS,
-                        },
-                      ]}
-                    >
-                      {loadingMeta || !imgSize || !effectiveUri ? (
-                        <View style={styles.avatarLoading}>
-                          <ActivityIndicator color={GOLD} />
-                        </View>
-                      ) : (
-                        <Image
-                          source={{ uri: effectiveUri }}
-                          style={{
-                            position: 'absolute',
-                            width: imgSize.w * totalScale,
-                            height: imgSize.h * totalScale,
-                            left: AVATAR_RADIUS - (imgSize.w * totalScale) / 2 + translate.x,
-                            top: AVATAR_RADIUS - (imgSize.h * totalScale) / 2 + translate.y,
-                          }}
-                          resizeMode="cover"
-                        />
-                      )}
-                    </View>
-                  </PanGestureHandler>
-                </View>
-              </PinchGestureHandler>
-            </View>
-
-            <View
-              style={[
-                styles.levelPill,
-                {
-                  left: AVATAR_LEFT + 8,
-                  top: BANNER_H - AVATAR_BOTTOM + 10,
-                  backgroundColor: ringColor,
-                },
-              ]}
-            >
-              <Text style={styles.levelPillText}>LV {displayLevel}</Text>
-            </View>
-          </View>
-
-          <View style={styles.zoomRow}>
-            <Text style={styles.zoomLabel}>Zoom</Text>
-            <Slider
-              style={styles.slider}
-              minimumValue={1}
-              maximumValue={4}
-              value={scale}
-              onValueChange={onSliderChange}
-              minimumTrackTintColor={GOLD}
-              maximumTrackTintColor="#3F3F3F"
-              thumbTintColor={GOLD}
-            />
-          </View>
-
-          <Text style={styles.hint}>
-            Drag inside the circle to position your avatar · Pinch to zoom · Or use the slider
-          </Text>
-
-          <View style={styles.actions}>
-            <TouchableOpacity
-              onPress={onCancel}
-              disabled={saving}
-              style={[styles.btn, styles.btnGhost]}
-            >
-              <Text style={styles.btnGhostText}>Cancel</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={doCrop}
-              disabled={saving || loadingMeta || !effectiveUri}
-              style={[
-                styles.btn,
-                styles.btnPrimary,
-                (saving || loadingMeta || !effectiveUri) && { opacity: 0.6 },
-              ]}
-            >
-              {saving ? (
-                <ActivityIndicator color="#000" />
-              ) : (
-                <Text style={styles.btnPrimaryText}>Save</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         </View>
+
+        <Text style={styles.subtitle}>
+          Drag and pinch until the circle matches the profile photo you want.
+        </Text>
+
+        <View style={styles.stage}>
+          <PinchGestureHandler
+            onGestureEvent={onPinchEvent}
+            onHandlerStateChange={onPinchStateChange}
+          >
+            <View collapsable={false}>
+              <PanGestureHandler
+                onGestureEvent={onPanEvent}
+                onHandlerStateChange={onPanStateChange}
+              >
+                <View
+                  collapsable={false}
+                  style={[
+                    styles.cropViewport,
+                    {
+                      width: cropSize,
+                      height: cropSize,
+                      borderRadius: cropRadius,
+                    },
+                  ]}
+                >
+                  {imageReady ? (
+                    <Image
+                      source={{ uri: workingUri }}
+                      style={{
+                        position: 'absolute',
+                        width: imgSize.w * totalScale,
+                        height: imgSize.h * totalScale,
+                        left: cropRadius - (imgSize.w * totalScale) / 2 + translate.x,
+                        top: cropRadius - (imgSize.h * totalScale) / 2 + translate.y,
+                      }}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.loadingState}>
+                      <ActivityIndicator color={GOLD} />
+                    </View>
+                  )}
+                </View>
+              </PanGestureHandler>
+            </View>
+          </PinchGestureHandler>
+
+          <View
+            pointerEvents="none"
+            style={[
+              styles.cropRing,
+              {
+                width: cropSize,
+                height: cropSize,
+                borderRadius: cropRadius,
+              },
+            ]}
+          />
+        </View>
+
+        <View style={styles.zoomPanel}>
+          <View style={styles.zoomLabelRow}>
+            <Text style={styles.zoomLabel}>Zoom</Text>
+            <Text style={styles.zoomValue}>{zoom.toFixed(1)}x</Text>
+          </View>
+          <Slider
+            style={styles.slider}
+            minimumValue={MIN_ZOOM}
+            maximumValue={MAX_ZOOM}
+            value={zoom}
+            onValueChange={setZoomAndClamp}
+            minimumTrackTintColor={GOLD}
+            maximumTrackTintColor="rgba(255,255,255,0.20)"
+            thumbTintColor={GOLD}
+          />
+        </View>
+
+        <Text style={styles.hint}>
+          The saved avatar is exactly the image inside the circle.
+        </Text>
       </View>
     </Modal>
   );
@@ -480,263 +412,145 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: H_PADDING,
+    paddingHorizontal: 22,
+    paddingVertical: Platform.OS === 'ios' ? 58 : 34,
   },
 
-  card: {
+  header: {
     width: '100%',
-    maxWidth: PREVIEW_MAX_W,
-    backgroundColor: COLORS.card,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: 18,
-    paddingHorizontal: 18,
+    maxWidth: 540,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+
+  headerButton: {
+    minWidth: 76,
+    height: 40,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+
+  headerButtonText: {
+    color: COLORS.textSecondary,
+    fontFamily: FONT_PRIMARY,
+    fontWeight: '800',
+    fontSize: 12,
+  },
+
+  saveButton: {
+    backgroundColor: GOLD,
+    borderColor: GOLD,
+  },
+
+  saveButtonText: {
+    color: '#000',
+    fontFamily: FONT_PRIMARY,
+    fontWeight: '900',
+    fontSize: 12,
   },
 
   title: {
+    flex: 1,
     color: COLORS.textPrimary,
-    fontSize: 18,
-    fontWeight: '900',
-    marginBottom: 14,
-    fontFamily: FONT_PRIMARY,
-    letterSpacing: 0.3,
-  },
-
-  previewWrap: {
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-    overflow: 'hidden',
-    backgroundColor: '#000',
-    position: 'relative',
-  },
-
-  bannerImage: {
-    ...StyleSheet.absoluteFillObject,
-  },
-
-  bannerDarken: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.38)',
-  },
-
-  bannerVignetteTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: '28%',
-    backgroundColor: 'rgba(0,0,0,0.42)',
-  },
-
-  bannerVignetteBottom: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '38%',
-    backgroundColor: 'rgba(0,0,0,0.48)',
-  },
-
-  topBrandRow: {
-    position: 'absolute',
-    top: 18,
-    left: 18,
-    right: 18,
-    alignItems: 'flex-start',
-  },
-
-  brandText: {
-    color: IVORY,
-    fontSize: 16,
-    letterSpacing: 2.6,
+    fontSize: 15,
     fontWeight: '900',
     fontFamily: FONT_PRIMARY,
+    textAlign: 'center',
+    paddingHorizontal: 10,
   },
 
-  centerTextWrap: {
-    position: 'absolute',
-    top: '23%',
-    left: 22,
-    right: 22,
-    alignItems: 'center',
-  },
-
-  roleText: {
-    color: COLORS.textPrimary,
-    fontSize: 30,
-    letterSpacing: 4,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    fontFamily: FONT_LIGHT,
-  },
-
-  metaText: {
-    marginTop: 8,
-    color: GOLD,
-    fontSize: 12,
-    letterSpacing: 1.7,
-    fontFamily: FONT_PRIMARY,
-    fontWeight: '700',
-  },
-
-  bottomInfoStrip: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 24,
-    paddingBottom: 14,
-    paddingTop: 26,
-    alignItems: 'center',
-  },
-
-  bottomInfoLabel: {
-    color: MUTED,
-    fontSize: 11,
+  subtitle: {
+    maxWidth: 420,
+    color: COLORS.textSecondary,
     fontFamily: FONT_PRIMARY,
     fontWeight: '600',
-    marginBottom: 4,
-  },
-
-  bottomInfoValue: {
-    color: IVORY,
     fontSize: 12,
-    letterSpacing: 1,
-    fontFamily: FONT_PRIMARY,
-    fontWeight: '700',
+    lineHeight: 17,
+    textAlign: 'center',
+    marginBottom: 20,
   },
 
-  avatarOuterGlow: {
-    position: 'absolute',
-    borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.34)',
-  },
-
-  avatarRingWrapper: {
-    position: 'absolute',
-    borderRadius: 999,
-    justifyContent: 'center',
+  stage: {
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    borderWidth: 1,
+    justifyContent: 'center',
   },
 
-  avatarRing: {
+  cropViewport: {
+    overflow: 'hidden',
+    backgroundColor: '#050505',
+  },
+
+  cropRing: {
     position: 'absolute',
-    top: 5,
-    left: 5,
-    right: 5,
-    bottom: 5,
-    borderRadius: 999,
     borderWidth: 2,
+    borderColor: GOLD,
+    shadowColor: GOLD,
+    shadowOpacity: 0.24,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
   },
 
-  gestureFill: {
+  loadingState: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#050505',
+  },
+
+  zoomPanel: {
     width: '100%',
-    height: '100%',
-    borderRadius: 999,
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
+    maxWidth: 430,
+    borderRadius: 18,
+    backgroundColor: COLORS.panel,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+    marginTop: 24,
   },
 
-  avatarCircle: {
-    overflow: 'hidden',
-    backgroundColor: '#000',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  avatarLoading: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  levelPill: {
-    position: 'absolute',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 999,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
-  },
-
-  levelPillText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#000',
-    letterSpacing: 1,
-    fontFamily: FONT_PRIMARY,
-  },
-
-  zoomRow: {
+  zoomLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    width: '100%',
-    marginTop: 16,
+    justifyContent: 'space-between',
+    marginBottom: 4,
   },
 
   zoomLabel: {
     color: COLORS.textPrimary,
-    fontSize: 13,
-    fontWeight: '700',
-    marginRight: 10,
     fontFamily: FONT_PRIMARY,
+    fontWeight: '900',
+    fontSize: 12,
+  },
+
+  zoomValue: {
+    color: COLORS.hint,
+    fontFamily: FONT_PRIMARY,
+    fontWeight: '800',
+    fontSize: 11,
   },
 
   slider: {
-    flex: 1,
-    height: 32,
+    width: '100%',
+    height: 36,
   },
 
   hint: {
-    marginTop: 4,
+    maxWidth: 420,
     color: COLORS.hint,
+    fontFamily: FONT_PRIMARY,
+    fontWeight: '600',
     fontSize: 11,
-    textAlign: 'center',
-    fontFamily: FONT_PRIMARY,
     lineHeight: 16,
-  },
-
-  actions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 16,
-  },
-
-  btn: {
-    paddingVertical: 10,
-    paddingHorizontal: 26,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-
-  btnGhost: {
-    borderColor: 'rgba(255,255,255,0.24)',
-    backgroundColor: 'transparent',
-  },
-
-  btnGhostText: {
-    color: COLORS.textPrimary,
-    fontWeight: '800',
-    fontFamily: FONT_PRIMARY,
-  },
-
-  btnPrimary: {
-    borderColor: GOLD,
-    backgroundColor: GOLD,
-  },
-
-  btnPrimaryText: {
-    color: '#000',
-    fontWeight: '900',
-    fontFamily: FONT_PRIMARY,
+    textAlign: 'center',
+    marginTop: 14,
   },
 });

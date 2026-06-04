@@ -23,6 +23,7 @@ import { Upload } from "tus-js-client";
 import { LinearGradient } from "expo-linear-gradient";
 import * as FileSystem from "expo-file-system/legacy";
 import * as VideoThumbnails from "expo-video-thumbnails";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Buffer } from "buffer";
 import { useGamification } from "../context/GamificationContext";
 import { useMonthlyStreak } from "../lib/useMonthlyStreak";
@@ -31,6 +32,8 @@ import dayjs from "dayjs";
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
 import { useAppRefresh } from "../context/AppRefreshContext";
+import { getCurrentUserTierOrFree } from "../lib/membership";
+import { Ionicons } from "@expo/vector-icons";
 
 /* ------------------------------- palette ------------------------------- */
 
@@ -62,6 +65,30 @@ type MonthlyChallenge = {
   month_start: string;
   month_end: string;
   theme_word?: string | null;
+};
+
+type CollaboratorUser = {
+  id: string;
+  full_name?: string | null;
+  avatar_url?: string | null;
+  level?: number | null;
+};
+
+type CollaboratorDraft = {
+  user: CollaboratorUser;
+  role: string;
+};
+
+type CollaboratorCreditSnapshot = {
+  submission_id?: string;
+  user_id: string;
+  role: string;
+  sort_order: number;
+  users: {
+    id: string;
+    full_name?: string | null;
+    avatar_url?: string | null;
+  };
 };
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024; // 5GB
@@ -145,6 +172,69 @@ function formatDur(sec?: number | null) {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+async function saveSubmissionCollaborators(
+  submissionId: string,
+  collaborators: CollaboratorDraft[]
+) {
+  const snapshots = buildCollaboratorCreditSnapshots(collaborators, submissionId);
+
+  const cleanRows = snapshots.map(({ users, ...row }) => row);
+
+  if (cleanRows.length === 0) return [];
+
+  let tableSaved = false;
+  let snapshotSaved = false;
+
+  const { error } = await supabase.from("submission_collaborators").insert(cleanRows);
+
+  if (error) {
+    console.log("Submission collaborators table save unavailable:", error.message);
+  } else {
+    tableSaved = true;
+  }
+
+  const { error: snapshotError } = await supabase
+    .from("submissions")
+    .update({ collaborator_credits: snapshots })
+    .eq("id", submissionId);
+
+  if (snapshotError) {
+    console.log("Submission collaborator snapshot save unavailable:", snapshotError.message);
+  } else {
+    snapshotSaved = true;
+  }
+
+  if (!tableSaved && !snapshotSaved) {
+    throw new Error(
+      "Collaborator credits could not be saved. Please apply the latest Supabase migration, then upload again."
+    );
+  }
+
+  return snapshots;
+}
+
+function buildCollaboratorCreditSnapshots(
+  collaborators: CollaboratorDraft[],
+  submissionId?: string
+) {
+  return collaborators
+    .map((draft, index) => {
+      const role = draft.role.trim();
+      return {
+        ...(submissionId ? { submission_id: submissionId } : {}),
+        user_id: draft.user.id,
+        role,
+        sort_order: index,
+        users: {
+          id: draft.user.id,
+          full_name: draft.user.full_name ?? null,
+          avatar_url: draft.user.avatar_url ?? null,
+        },
+      };
+    })
+    .filter((row) => row.user_id && row.role);
 }
 async function withTimeout<T>(
   promise: Promise<T>,
@@ -917,6 +1007,7 @@ async function uploadFileToMuxDirectUrl(opts: {
 export default function WorkshopSubmitScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<WorkshopSubmitRouteParams, "WorkshopSubmit">>();
+  const insets = useSafeAreaInsets();
   const { triggerAppRefresh } = useAppRefresh();
   const { width } = useWindowDimensions();
   const isMobileWeb = Platform.OS === "web" && width < 768;
@@ -949,6 +1040,11 @@ export default function WorkshopSubmitScreen() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagModalVisible, setTagModalVisible] = useState(false);
   const [tagQuery, setTagQuery] = useState("");
+  const [collaboratorQuery, setCollaboratorQuery] = useState("");
+  const [collaboratorRole, setCollaboratorRole] = useState("");
+  const [collaboratorResults, setCollaboratorResults] = useState<CollaboratorUser[]>([]);
+  const [collaboratorSearching, setCollaboratorSearching] = useState(false);
+  const [collaborators, setCollaborators] = useState<CollaboratorDraft[]>([]);
 
   const [localUri, setLocalUri] = useState<string | null>(null);
   const [webFile, setWebFile] = useState<File | Blob | null>(null);
@@ -995,6 +1091,66 @@ const [uploadLimitLoading, setUploadLimitLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewNonce, setPreviewNonce] = useState(0);
 
+  useEffect(() => {
+    const q = collaboratorQuery.trim();
+
+    if (q.length < 2) {
+      setCollaboratorResults([]);
+      setCollaboratorSearching(false);
+      return;
+    }
+
+    let cancelled = false;
+    setCollaboratorSearching(true);
+
+    const timer = setTimeout(async () => {
+      const { data, error } = await supabase
+        .from("users")
+        .select("id, full_name, avatar_url, level")
+        .ilike("full_name", `%${q}%`)
+        .order("full_name", { ascending: true })
+        .limit(10);
+
+      if (cancelled) return;
+
+      if (error) {
+        console.log("Collaborator search error:", error.message);
+        setCollaboratorResults([]);
+      } else {
+        const existingIds = new Set(collaborators.map((item) => item.user.id));
+        setCollaboratorResults(((data || []) as CollaboratorUser[]).filter((item) => !existingIds.has(item.id)));
+      }
+
+      setCollaboratorSearching(false);
+    }, 260);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [collaboratorQuery, collaborators]);
+
+  const addCollaborator = (user: CollaboratorUser) => {
+    const role = collaboratorRole.trim();
+
+    if (!role) {
+      notify("Add their role", "Write a role first, like DP, Actor, Editor, or Producer.", setStatus);
+      return;
+    }
+
+    setCollaborators((prev) => {
+      if (prev.some((item) => item.user.id === user.id)) return prev;
+      return [...prev, { user, role }];
+    });
+    setCollaboratorQuery("");
+    setCollaboratorRole("");
+    setCollaboratorResults([]);
+  };
+
+  const removeCollaborator = (userIdToRemove: string) => {
+    setCollaborators((prev) => prev.filter((item) => item.user.id !== userIdToRemove));
+  };
+
   const refreshUploadLimit = async () => {
   try {
     setUploadLimitLoading(true);
@@ -1013,18 +1169,11 @@ const [uploadLimitLoading, setUploadLimitLoading] = useState(false);
       return;
     }
 
-    const profileResult: any = await withTimeout<any>(
-      supabase
-        .from("users")
-        .select("tier")
-        .eq("id", session.user.id)
-        .single() as any,
+    const tierNorm = await withTimeout(
+      getCurrentUserTierOrFree({ force: true }),
       6000,
       "Membership check"
     );
-
-    const profile = profileResult?.data;
-    const tierNorm = String(profile?.tier ?? "").toLowerCase().trim();
 
     setUserTier(tierNorm || null);
 
@@ -1055,10 +1204,10 @@ const [uploadLimitLoading, setUploadLimitLoading] = useState(false);
         } = await supabase.auth.getUser();
 
         if (user) {
-          const { data: profile } = await supabase.from("users").select("tier").eq("id", user.id).single();
+          const tierNorm = await getCurrentUserTierOrFree({ force: true });
 
           if (alive) {
-            setUserTier((profile?.tier ?? "").toLowerCase().trim() || null);
+            setUserTier(tierNorm || null);
           }
         } else {
           if (alive) setUserTier(null);
@@ -1413,18 +1562,7 @@ if (!user) {
   return;
 }
 
-const { data: profile, error: pErr } = await supabase
-  .from("users")
-  .select("tier")
-  .eq("id", user.id)
-  .single();
-
-if (pErr) {
-  notify("Please try again", "We couldn’t verify your Pro status right now.", setStatus);
-  return;
-}
-
-const tierNorm = String(profile?.tier ?? "").toLowerCase().trim();
+const tierNorm = await getCurrentUserTierOrFree({ force: true });
 setUserTier(tierNorm || null);
 
 const canUpload = await canUserSubmitLifetimeFilm(user.id, tierNorm);
@@ -1571,8 +1709,8 @@ return;
       return notify("Agreement required", "You must agree to the rules before submitting.", setStatus);
     }
 
-    if (!title.trim() || !description.trim()) {
-      return notify("Please complete all fields.", undefined, setStatus);
+    if (!title.trim()) {
+      return notify("Add a title", "Give your film a title before uploading.", setStatus);
     }
 
     if (!localUri && !webFile) {
@@ -1608,11 +1746,7 @@ return;
       if (userErr) throw userErr;
       if (!user) throw new Error("Not signed in");
 
-      const { data: profile, error: profileErr } = await supabase.from("users").select("tier").eq("id", user.id).single();
-
-      if (profileErr) throw profileErr;
-
-      const tierNorm = String(profile?.tier ?? "").toLowerCase().trim();
+      const tierNorm = await getCurrentUserTierOrFree({ force: true });
       setUserTier(tierNorm || null);
 
       const canUpload = await canUserSubmitLifetimeFilm(user.id, tierNorm);
@@ -1685,12 +1819,13 @@ const muxUpload = await createMuxDirectUpload({
 setStatus("Creating submission…");
 
 const media_kind = mediaKindFromMime(contentType);
+const initialCollaboratorCredits = buildCollaboratorCreditSnapshots(collaborators);
 
 const submissionInsert = await insertSubmissionRobust(
   {
     user_id: user.id,
     title: title.trim(),
-    description: description.trim(),
+    description: description.trim() || null,
     submitted_at: new Date().toISOString(),
     word: null,
     monthly_challenge_id: challengeToUse.id,
@@ -1706,6 +1841,7 @@ const submissionInsert = await insertSubmissionRobust(
     mux_asset_id: null,
     mux_playback_id: null,
     mux_status: "waiting",
+    collaborator_credits: initialCollaboratorCredits.length > 0 ? initialCollaboratorCredits : null,
     source: isWorkshopMode ? "workshop" : "monthly_upload",
     workshop_path: isWorkshopMode ? pathKey ?? null : null,
     workshop_step: isWorkshopMode ? step ?? null : null,
@@ -1718,6 +1854,8 @@ const createdSubmission = submissionInsert?.data?.[0];
 if (!createdSubmission?.id) {
   throw new Error("Submission created, but no submission ID was returned.");
 }
+
+await saveSubmissionCollaborators(createdSubmission.id, collaborators);
 
 setStatus(
   Platform.OS === "web"
@@ -1899,10 +2037,10 @@ const successMessage = isWorkshopMode
     : "Upload your film to appear on Featured and enter this month’s challenge.";
 
   const leftTitle = isWorkshopMode ? "Lesson" : "How it works";
-  const rightTitle = isWorkshopMode ? "Upload your workshop film" : "Upload your film";
+  const rightTitle = "Upload film";
   const rightSubtitle = isWorkshopMode
-    ? "This counts as both a workshop submission and a monthly challenge upload."
-    : "Simple, clear, and ready to submit.";
+    ? "Complete the workshop step and enter this month’s challenge."
+    : "Choose a title, category, file, and thumbnail.";
 
   const submitButtonText = isWorkshopMode
     ? alreadyCompleted
@@ -1932,19 +2070,24 @@ return (
       <ScrollView
   style={[styles.scrollView, isMobileWeb && styles.scrollViewMobileWeb]}
   contentContainerStyle={[styles.scroll, isMobileWeb && styles.scrollMobileWeb]}
+  contentInsetAdjustmentBehavior="never"
   showsVerticalScrollIndicator={true}
   keyboardShouldPersistTaps="handled"
   bounces={Platform.OS !== "web"}
   scrollEnabled
   nestedScrollEnabled
 >
-        <View
-          style={[
-            styles.pageWrap,
-            isWide && styles.pageWrapWide,
-            isPhone && styles.pageWrapPhone,
-          ]}
-        >
+          <View
+            style={[
+              styles.pageWrap,
+              isWide && styles.pageWrapWide,
+              isPhone && styles.pageWrapPhone,
+              {
+                paddingTop: Math.max(12, insets.top + 10),
+                paddingBottom: Math.max(64, insets.bottom + 42),
+              },
+            ]}
+          >
           <View style={styles.topNavRow}>
             <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.goBack()} style={styles.backBtn}>
               <Text style={styles.backBtnText}>← Back</Text>
@@ -1966,7 +2109,7 @@ return (
               <View style={styles.infoToggleLeft}>
                 <Text style={styles.infoToggleKicker}>Before you upload</Text>
                 <Text style={styles.infoToggleTitle}>
-                  {showInfoPanel ? "Hide steps & rules" : "View steps & rules"}
+                  {showInfoPanel ? "Hide checklist" : "Checklist & rules"}
                 </Text>
               </View>
               <Text style={styles.infoToggleChevron}>{showInfoPanel ? "−" : "+"}</Text>
@@ -1984,7 +2127,7 @@ return (
               <View style={[styles.infoColumn, isWide && styles.infoColumnWide]}>
                 <View style={[styles.card, styles.infoCard, isPhone && styles.cardPhone]}>
                   <Text style={styles.infoSectionLabel}>How it works</Text>
-                  <Text style={styles.infoSectionTitle}>Upload your film</Text>
+                  <Text style={styles.infoSectionTitle}>Quick checklist</Text>
                   <Text style={styles.infoSectionBody}>
                     Add a title, choose a category, upload your film and thumbnail, then submit it to Featured and this month’s challenge.
                   </Text>
@@ -1993,7 +2136,7 @@ return (
 
                   <Text style={styles.infoMiniTitle}>Steps</Text>
                   <View style={styles.infoList}>
-                    <Text style={styles.infoBullet}>• Add a title + one sentence</Text>
+                    <Text style={styles.infoBullet}>• Add a title</Text>
                     <Text style={styles.infoBullet}>• Choose 1 category</Text>
                     <Text style={styles.infoBullet}>• Upload your film + thumbnail</Text>
                     <Text style={styles.infoBullet}>• Agree to the rules</Text>
@@ -2050,18 +2193,6 @@ return (
                   </View>
 
                   <View style={styles.fieldGroup}>
-                    <Text style={styles.label}>One sentence</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="One sentence about your film"
-                      placeholderTextColor={T.mute}
-                      value={description}
-                      onChangeText={(t) => setDescription(t.slice(0, 100))}
-                      maxLength={100}
-                    />
-                  </View>
-
-                  <View style={styles.fieldGroup}>
                     <Text style={styles.label}>Category</Text>
 
                     <Pressable
@@ -2098,8 +2229,17 @@ return (
 
                   <View style={styles.uploadBox}>
                     <TouchableOpacity style={styles.primaryBtn} onPress={pickFile} activeOpacity={0.92}>
-                      <Text style={styles.primaryBtnText}>{localUri ? "Pick a different file" : "Pick a file"}</Text>
-                      <Text style={styles.primaryBtnSub}>1 free upload • Pro for unlimited • Max file size: 5GB</Text>
+                      <View style={styles.primaryBtnMainRow}>
+                        <Ionicons
+                          name={localUri ? "swap-horizontal-outline" : "cloud-upload-outline"}
+                          size={18}
+                          color="#0A0A0B"
+                        />
+                        <Text style={styles.primaryBtnText}>
+                          {localUri ? "Change file" : "Choose film file"}
+                        </Text>
+                      </View>
+                      <Text style={styles.primaryBtnSub}>First upload free · max 5GB</Text>
                     </TouchableOpacity>
 
                     {localUri ? (
@@ -2210,6 +2350,104 @@ return (
                       </Pressable>
                     </View>
                   ) : null}
+
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.label}>Collaborators</Text>
+                    <Text style={styles.helperText}>
+                      Optional: add people who worked on this film and credit their role.
+                    </Text>
+
+                    <View style={[styles.collaboratorInputsRow, isPhone && styles.collaboratorInputsRowPhone]}>
+                      <TextInput
+                        style={[styles.input, styles.collaboratorSearchInput]}
+                        placeholder="Search users..."
+                        placeholderTextColor={T.mute}
+                        value={collaboratorQuery}
+                        onChangeText={setCollaboratorQuery}
+                      />
+                      <TextInput
+                        style={[styles.input, styles.collaboratorRoleInput]}
+                        placeholder="Role, e.g. DP"
+                        placeholderTextColor={T.mute}
+                        value={collaboratorRole}
+                        onChangeText={setCollaboratorRole}
+                      />
+                    </View>
+
+                    {collaboratorSearching ? (
+                      <View style={styles.collaboratorSearchState}>
+                        <ActivityIndicator color={CINEMA.brass} size="small" />
+                        <Text style={styles.collaboratorSearchStateText}>Searching...</Text>
+                      </View>
+                    ) : null}
+
+                    {collaboratorResults.length > 0 ? (
+                      <View style={styles.collaboratorResults}>
+                        {collaboratorResults.map((item) => (
+                          <TouchableOpacity
+                            key={item.id}
+                            activeOpacity={0.9}
+                            onPress={() => addCollaborator(item)}
+                            style={styles.collaboratorResultRow}
+                          >
+                            {item.avatar_url ? (
+                              <Image source={{ uri: item.avatar_url }} style={styles.collaboratorAvatar} />
+                            ) : (
+                              <View style={styles.collaboratorAvatarFallback}>
+                                <Text style={styles.collaboratorAvatarInitial}>
+                                  {(item.full_name || "U").slice(0, 1).toUpperCase()}
+                                </Text>
+                              </View>
+                            )}
+                            <View style={styles.collaboratorResultText}>
+                              <Text style={styles.collaboratorName} numberOfLines={1}>
+                                {item.full_name || "Unknown creator"}
+                              </Text>
+                              <Text style={styles.collaboratorHint} numberOfLines={1}>
+                                Tap to add as {collaboratorRole.trim() || "collaborator"}
+                              </Text>
+                            </View>
+                            <Ionicons name="add-circle-outline" size={20} color={CINEMA.brass} />
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ) : null}
+
+                    {collaborators.length > 0 ? (
+                      <View style={styles.collaboratorChips}>
+                        {collaborators.map((item) => (
+                          <View key={item.user.id} style={styles.collaboratorChip}>
+                            {item.user.avatar_url ? (
+                              <Image source={{ uri: item.user.avatar_url }} style={styles.collaboratorChipAvatar} />
+                            ) : (
+                              <View style={styles.collaboratorChipAvatarFallback}>
+                                <Text style={styles.collaboratorChipInitial}>
+                                  {(item.user.full_name || "U").slice(0, 1).toUpperCase()}
+                                </Text>
+                              </View>
+                            )}
+                            <View style={styles.collaboratorChipTextWrap}>
+                              <Text style={styles.collaboratorChipName} numberOfLines={1}>
+                                {item.user.full_name || "Unknown"}
+                              </Text>
+                              <Text style={styles.collaboratorChipRole} numberOfLines={1}>
+                                {item.role}
+                              </Text>
+                            </View>
+                            <Pressable
+                              onPress={() => removeCollaborator(item.user.id)}
+                              style={({ pressed }) => [
+                                styles.collaboratorRemoveBtn,
+                                pressed && { opacity: 0.75 },
+                              ]}
+                            >
+                              <Ionicons name="close" size={14} color={CINEMA.textSoft} />
+                            </Pressable>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
                   
 
                   {!!status && (
@@ -2629,23 +2867,23 @@ async function copyFilmLink(opts: { shareSlug: string }) {
 
 /* -------------------------------- styles -------------------------------- */
 const CINEMA = {
-  bg: "#050506",
-  panel: "#0B0C0F",
-  panel2: "#111318",
-  card: "#0D0F13",
-  cardSoft: "#14171D",
+  bg: "#050505",
+  panel: "#0D0D0F",
+  panel2: "#111114",
+  card: "#111114",
+  cardSoft: "#16161A",
 
-  stroke: "rgba(255,255,255,0.06)",
-  strokeSoft: "rgba(255,255,255,0.035)",
+  stroke: "rgba(255,255,255,0.10)",
+  strokeSoft: "rgba(255,255,255,0.06)",
 
-  text: "#F5F1E8",
-  textSoft: "#BEB5A8",
-  textDim: "#8F8578",
+  text: "#F4EFE6",
+  textSoft: "#D8D2C8",
+  textDim: "#9F927F",
 
-  brass: "#D3B06B",
-  brassSoft: "rgba(211,176,107,0.12)",
-  brassBorder: "rgba(211,176,107,0.28)",
-  glow: "rgba(211,176,107,0.07)",
+  brass: "#C6A664",
+  brassSoft: "rgba(198,166,100,0.12)",
+  brassBorder: "rgba(198,166,100,0.28)",
+  glow: "rgba(198,166,100,0.07)",
 
   redSoft: "rgba(140,58,58,0.16)",
   redBorder: "rgba(196,98,98,0.22)",
@@ -2730,8 +2968,8 @@ const styles = StyleSheet.create({
   scroll: {
     flexGrow: 1,
     paddingHorizontal: 0,
-    paddingTop: 6,
-    paddingBottom: 42,
+    paddingTop: 0,
+    paddingBottom: 0,
     backgroundColor: CINEMA.bg,
   },
 
@@ -2749,7 +2987,6 @@ const styles = StyleSheet.create({
     maxWidth: 1320,
     alignSelf: "center",
     paddingHorizontal: 20,
-    paddingTop: 12,
     backgroundColor: CINEMA.bg,
   },
 
@@ -2758,20 +2995,19 @@ const styles = StyleSheet.create({
   },
 
   pageWrapPhone: {
-    paddingHorizontal: 14,
-    paddingTop: 14,
+    paddingHorizontal: 16,
   },
 
   topNavRow: {
-    marginBottom: 14,
-    marginTop: Platform.OS === "ios" ? 10 : 6,
+    marginBottom: 12,
+    marginTop: 0,
     flexDirection: "row",
     alignItems: "center",
   },
 
   backBtn: {
-    minHeight: 44,
-    paddingHorizontal: 16,
+    minHeight: 38,
+    paddingHorizontal: 14,
     borderRadius: 999,
     backgroundColor: CINEMA.panel,
     borderWidth: 1,
@@ -2793,28 +3029,28 @@ const styles = StyleSheet.create({
   },
 
   heroHeader: {
-    marginBottom: 18,
+    marginBottom: 14,
     paddingHorizontal: 2,
   },
 
   heroTitle: {
     color: CINEMA.text,
-    fontSize: 48,
-    lineHeight: 50,
+    fontSize: 42,
+    lineHeight: 44,
     fontWeight: "900",
     letterSpacing: -1.2,
   },
 
   heroTitlePhone: {
-    fontSize: 28,
-    lineHeight: 31,
+    fontSize: 27,
+    lineHeight: 30,
     letterSpacing: -0.6,
   },
 
   heroSubtitle: {
     color: CINEMA.brass,
-    fontSize: 19,
-    lineHeight: 25,
+    fontSize: 17,
+    lineHeight: 23,
     fontWeight: "800",
     marginTop: 10,
     maxWidth: 760,
@@ -2822,9 +3058,9 @@ const styles = StyleSheet.create({
   },
 
   heroSubtitlePhone: {
-    fontSize: 15,
-    lineHeight: 21,
-    marginTop: 8,
+    fontSize: 14,
+    lineHeight: 19,
+    marginTop: 6,
   },
 
   layoutShell: {
@@ -2859,12 +3095,12 @@ const styles = StyleSheet.create({
 
   infoToggleCard: {
     backgroundColor: CINEMA.panel,
-    borderRadius: 26,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: CINEMA.stroke,
-    paddingHorizontal: 18,
-    paddingVertical: 18,
-    marginBottom: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -2882,7 +3118,7 @@ const styles = StyleSheet.create({
 
   infoToggleKicker: {
     color: CINEMA.brass,
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: "800",
     textTransform: "uppercase",
     letterSpacing: 1.2,
@@ -2890,7 +3126,7 @@ const styles = StyleSheet.create({
 
   infoToggleTitle: {
     color: CINEMA.text,
-    fontSize: 19,
+    fontSize: 17,
     fontWeight: "900",
     marginTop: 4,
     letterSpacing: -0.2,
@@ -2898,7 +3134,7 @@ const styles = StyleSheet.create({
 
   infoToggleChevron: {
     color: CINEMA.text,
-    fontSize: 30,
+    fontSize: 26,
     fontWeight: "400",
   },
 
@@ -2906,7 +3142,7 @@ const styles = StyleSheet.create({
     backgroundColor: CINEMA.panel,
     borderWidth: 1,
     borderColor: CINEMA.stroke,
-    borderRadius: 30,
+    borderRadius: 24,
     shadowColor: "#000",
     shadowOpacity: 0.26,
     shadowRadius: 22,
@@ -2915,11 +3151,11 @@ const styles = StyleSheet.create({
   },
 
   cardPhone: {
-    borderRadius: 26,
+    borderRadius: 22,
   },
 
   infoCard: {
-    padding: 22,
+    padding: 18,
   },
 
   formCard: {
@@ -2980,62 +3216,62 @@ const styles = StyleSheet.create({
   },
 
   formHeaderClean: {
-    paddingHorizontal: 26,
-    paddingTop: 24,
-    paddingBottom: 14,
+    paddingHorizontal: 22,
+    paddingTop: 20,
+    paddingBottom: 10,
     backgroundColor: "transparent",
   },
 
   formTitleLarge: {
     color: CINEMA.text,
-    fontSize: 30,
-    lineHeight: 34,
+    fontSize: 27,
+    lineHeight: 30,
     fontWeight: "900",
     letterSpacing: -0.8,
   },
 
   formSubtitleClean: {
     color: CINEMA.textDim,
-    fontSize: 15,
+    fontSize: 14,
     marginTop: 5,
-    lineHeight: 22,
+    lineHeight: 20,
     letterSpacing: 0.04,
   },
 
   formBodyLite: {
-    gap: 18,
-    paddingHorizontal: 26,
-    paddingTop: 4,
-    paddingBottom: 16,
+    gap: 14,
+    paddingHorizontal: 22,
+    paddingTop: 2,
+    paddingBottom: 14,
   },
 
   formBodyLitePhone: {
-    gap: 16,
-    paddingHorizontal: 18,
+    gap: 13,
+    paddingHorizontal: 16,
   },
 
   fieldGroup: {
-    gap: 8,
+    gap: 7,
   },
 
   label: {
     color: CINEMA.text,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "800",
     marginBottom: 2,
     letterSpacing: -0.1,
   },
 
   input: {
-    minHeight: 60,
+    minHeight: 52,
     borderWidth: 1,
     borderColor: CINEMA.stroke,
     backgroundColor: "#07080B",
     color: CINEMA.text,
-    borderRadius: 22,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    fontSize: 16,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 15,
     ...(Platform.OS === "web"
       ? ({
           outlineStyle: "none",
@@ -3045,13 +3281,13 @@ const styles = StyleSheet.create({
   },
 
   selectBtn: {
-    minHeight: 76,
+    minHeight: 62,
     borderWidth: 1,
     borderColor: CINEMA.stroke,
     backgroundColor: "#07080B",
-    borderRadius: 22,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     justifyContent: "center",
   },
 
@@ -3065,7 +3301,7 @@ const styles = StyleSheet.create({
   selectBtnHint: {
     color: CINEMA.textDim,
     fontSize: 13,
-    marginTop: 5,
+    marginTop: 3,
     letterSpacing: 0.03,
   },
 
@@ -3111,21 +3347,180 @@ const styles = StyleSheet.create({
     color: CINEMA.textDim,
     fontSize: 13,
     lineHeight: 19,
-    marginTop: 8,
+    marginTop: 6,
     letterSpacing: 0.04,
+  },
+
+  collaboratorInputsRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+
+  collaboratorInputsRowPhone: {
+    flexDirection: "column",
+  },
+
+  collaboratorSearchInput: {
+    flex: 1.4,
+  },
+
+  collaboratorRoleInput: {
+    flex: 1,
+  },
+
+  collaboratorSearchState: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 3,
+  },
+
+  collaboratorSearchStateText: {
+    color: CINEMA.textDim,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  collaboratorResults: {
+    gap: 8,
+    marginTop: 2,
+  },
+
+  collaboratorResultRow: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: CINEMA.stroke,
+    backgroundColor: CINEMA.panel2,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+
+  collaboratorAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#050506",
+  },
+
+  collaboratorAvatarFallback: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: CINEMA.brassSoft,
+    borderWidth: 1,
+    borderColor: CINEMA.brassBorder,
+  },
+
+  collaboratorAvatarInitial: {
+    color: CINEMA.brass,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  collaboratorResultText: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  collaboratorName: {
+    color: CINEMA.text,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  collaboratorHint: {
+    color: CINEMA.textDim,
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+
+  collaboratorChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 2,
+  },
+
+  collaboratorChip: {
+    maxWidth: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: CINEMA.brassBorder,
+    backgroundColor: CINEMA.brassSoft,
+    paddingVertical: 7,
+    paddingLeft: 8,
+    paddingRight: 7,
+  },
+
+  collaboratorChipAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#050506",
+  },
+
+  collaboratorChipAvatarFallback: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(198,166,100,0.20)",
+  },
+
+  collaboratorChipInitial: {
+    color: CINEMA.brass,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  collaboratorChipTextWrap: {
+    maxWidth: 150,
+  },
+
+  collaboratorChipName: {
+    color: CINEMA.text,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+
+  collaboratorChipRole: {
+    color: CINEMA.brass,
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 1,
+  },
+
+  collaboratorRemoveBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.26)",
   },
 
   uploadBox: {
     marginTop: 2,
-    gap: 12,
+    gap: 10,
   },
 
   primaryBtn: {
-    minHeight: 80,
+    minHeight: 62,
     backgroundColor: CINEMA.brass,
-    borderRadius: 24,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
@@ -3135,18 +3530,25 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
 
+  primaryBtnMainRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+
   primaryBtnText: {
     color: "#0A0A0B",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "900",
     letterSpacing: -0.2,
   },
 
   primaryBtnSub: {
     color: "#2B2317",
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "800",
-    marginTop: 5,
+    marginTop: 4,
     letterSpacing: 0.1,
   },
 
@@ -3161,12 +3563,12 @@ const styles = StyleSheet.create({
 
   secondaryBtn: {
     flex: 1,
-    minHeight: 58,
-    borderRadius: 22,
+    minHeight: 48,
+    borderRadius: 17,
     borderWidth: 1,
     borderColor: CINEMA.stroke,
     backgroundColor: CINEMA.panel2,
-    paddingVertical: 14,
+    paddingVertical: 11,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -3180,12 +3582,12 @@ const styles = StyleSheet.create({
 
   secondaryBtnDanger: {
     flex: 1,
-    minHeight: 58,
-    borderRadius: 22,
+    minHeight: 48,
+    borderRadius: 17,
     borderWidth: 1,
     borderColor: CINEMA.redBorder,
     backgroundColor: CINEMA.redSoft,
-    paddingVertical: 14,
+    paddingVertical: 11,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -3198,7 +3600,7 @@ const styles = StyleSheet.create({
   },
 
   mediaSection: {
-    gap: 10,
+    gap: 8,
     marginTop: 2,
   },
 
@@ -3250,7 +3652,7 @@ const styles = StyleSheet.create({
   },
 
   previewWrap: {
-    borderRadius: 26,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: CINEMA.strokeSoft,
     backgroundColor: "#07090C",
@@ -3364,9 +3766,9 @@ const styles = StyleSheet.create({
   formFooter: {
     borderTopWidth: 1,
     borderTopColor: CINEMA.strokeSoft,
-    paddingHorizontal: 26,
-    paddingTop: 18,
-    paddingBottom: 24,
+    paddingHorizontal: 22,
+    paddingTop: 16,
+    paddingBottom: 20,
     marginTop: 4,
   },
 
@@ -3426,10 +3828,10 @@ const styles = StyleSheet.create({
   },
 
   submitBtn: {
-    marginTop: 18,
-    minHeight: 72,
+    marginTop: 14,
+    minHeight: 58,
     backgroundColor: CINEMA.brass,
-    borderRadius: 24,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
@@ -3442,12 +3844,12 @@ const styles = StyleSheet.create({
   submitText: {
     color: "#0A0A0B",
     fontWeight: "900",
-    fontSize: 18,
+    fontSize: 16,
     letterSpacing: -0.2,
   },
 
   formFootnoteWrap: {
-    marginTop: 12,
+    marginTop: 10,
     alignItems: "center",
   },
 

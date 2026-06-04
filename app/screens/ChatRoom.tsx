@@ -28,15 +28,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { emitChatBadgeRefresh } from '../lib/chatBadgeEvents';
 import { sendPushNotification } from '../lib/sendPush';
 import { useAppRefresh } from '../context/AppRefreshContext';
+import { reportContent, ReportReason } from '../utils/reportContent';
+import { blockUser } from '../utils/blockUser';
+import { validateSafeText } from '../utils/moderation';
+import ReportContentModal from '../../components/ReportContentModal';
 /* ------------------------------- Noir palette ------------------------------- */
-const DARK_BG = '#000000';
-const ELEVATED = '#000000';
-const ELEVATED_2 = '#000000';
-const BORDER = '#111111';
-const TEXT = '#EDEBE6';
-const SUBTLE = '#8F8F8F';
+const DARK_BG = '#050505';
+const ELEVATED = '#0D0D0F';
+const ELEVATED_2 = '#111114';
+const BORDER = 'rgba(255,255,255,0.10)';
+const TEXT = '#F4EFE6';
+const SUBTLE = '#8F8578';
 const GOLD = '#C6A664';
-const BUBBLE_IN = '#111111';   // or '#0D0D0D'
+const BUBBLE_IN = '#111114';
 const BUBBLE_OUT = GOLD;
 
 /* ------------------------------- sizing ------------------------------------ */
@@ -67,6 +71,7 @@ type Message = {
   sent_at: string;
   delivered?: boolean;
   message_type?: 'text' | 'system' | 'media';
+  is_removed?: boolean | null;
   sender?: { id: string; full_name: string } | null;
 };
 
@@ -174,6 +179,11 @@ export default function ChatRoom() {
     useState(false);
     const [isBlockedByPeer, setIsBlockedByPeer] = useState(false);
 const [haveIBlockedPeer, setHaveIBlockedPeer] = useState(false);
+const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
+const [reportTargetMessage, setReportTargetMessage] = useState<Message | null>(null);
+const [reportReason, setReportReason] = useState<ReportReason>('Harassment or bullying');
+const [reportDetails, setReportDetails] = useState('');
+const [reportSubmitting, setReportSubmitting] = useState(false);
 
   const [loadState, setLoadState] =
     useState<LoadState>(() =>
@@ -527,7 +537,7 @@ useFocusEffect(
   const checkBlockStatus = async (myId: string, otherId: string) => {
   try {
     const { data, error } = await supabase
-      .from('blocked_users')
+      .from('user_blocks')
       .select('blocker_id, blocked_id')
       .or(
         `and(blocker_id.eq.${otherId},blocked_id.eq.${myId}),and(blocker_id.eq.${myId},blocked_id.eq.${otherId})`
@@ -554,6 +564,22 @@ useFocusEffect(
     console.error('checkBlockStatus error:', e);
   }
 };
+
+  const fetchBlockedUsers = async (uid: string) => {
+    const { data, error } = await supabase
+      .from('user_blocks')
+      .select('blocked_id')
+      .eq('blocker_id', uid);
+
+    if (error) {
+      console.error('fetchBlockedUsers error:', error.message);
+      return new Set<string>();
+    }
+
+    const ids = new Set<string>((data || []).map((row: any) => row.blocked_id).filter(Boolean));
+    setBlockedUserIds(ids);
+    return ids;
+  };
 
   useEffect(() => {
     const showEvent =
@@ -880,7 +906,7 @@ useFocusEffect(
       await supabase
         .from('messages')
         .select(
-          'id, conversation_id, sender_id, content, message_type, sent_at, delivered, sender:users!messages_sender_id_fkey(id, full_name)'
+          'id, conversation_id, sender_id, content, message_type, sent_at, delivered, is_removed, sender:users!messages_sender_id_fkey(id, full_name)'
         )
         .eq(
           'conversation_id',
@@ -891,6 +917,7 @@ useFocusEffect(
         });
 
     if (!error && data) {
+      const blockedIds = await fetchBlockedUsers(userData.user.id);
       const normalized: Message[] =
   (data as any[]).map(
     (row: any) => ({
@@ -902,7 +929,7 @@ useFocusEffect(
           null
         : row.sender ?? null,
     })
-  );
+  ).filter((row: Message) => !row.is_removed && !blockedIds.has(row.sender_id));
 
 setMessages(normalized);
 
@@ -1138,6 +1165,11 @@ for (const m of normalized)
   )
     return;
     const text = input.trim();
+    const moderationError = validateSafeText(text);
+    if (moderationError) {
+      Alert.alert('Content Not Allowed', moderationError);
+      return;
+    }
     setInput('');
     const { error } =
       await supabase
@@ -1178,6 +1210,79 @@ await supabase.from('conversation_reads').upsert(
 await fetchUserAndMessages();
 scrollToBottom(true);
 emitChatBadgeRefresh();
+  };
+
+  const reportMessage = (item: Message) => {
+    if (!userId) return;
+    setReportTargetMessage(item);
+    setReportReason('Harassment or bullying');
+    setReportDetails('');
+  };
+
+  const submitMessageReport = async () => {
+    if (!reportTargetMessage) return;
+
+    const detailsError = validateSafeText(reportDetails);
+    if (detailsError) {
+      Alert.alert('Content Not Allowed', detailsError);
+      return;
+    }
+
+    setReportSubmitting(true);
+    try {
+      const ok = await reportContent({
+        reportedUserId: reportTargetMessage.sender_id,
+        contentType: 'message',
+        contentId: reportTargetMessage.id,
+        reason: reportReason,
+        details: reportDetails.trim() || null,
+      });
+
+      if (ok) {
+        setReportTargetMessage(null);
+        setReportDetails('');
+      }
+    } finally {
+      setReportSubmitting(false);
+    }
+  };
+
+  const blockMessageSender = async (item: Message) => {
+    if (!userId || item.sender_id === userId) return;
+
+    const confirmed =
+      Platform.OS === 'web'
+        ? window.confirm(
+            'Block this user?\n\nThey won’t be able to interact with you, and their content will be removed from your feed.'
+          )
+        : await new Promise<boolean>((resolve) => {
+            Alert.alert(
+              'Block this user?',
+              'They won’t be able to interact with you, and their content will be removed from your feed.',
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Block', style: 'destructive', onPress: () => resolve(true) },
+              ]
+            );
+          });
+
+    if (!confirmed) return;
+
+    const ok = await blockUser({
+      blockedUserId: item.sender_id,
+      reason: 'Blocked from Chat message',
+      showAlert: true,
+    });
+
+    if (!ok) return;
+
+    setBlockedUserIds((prev) => {
+      const next = new Set(prev);
+      next.add(item.sender_id);
+      return next;
+    });
+    setMessages((prev) => prev.filter((m) => m.sender_id !== item.sender_id));
+    if (conversation?.is_group === false) setHaveIBlockedPeer(true);
   };
 
   const uploadImageAndGetUrl = async (
@@ -1449,6 +1554,8 @@ emitChatBadgeRefresh();
         item.content
       );
 
+    if (blockedUserIds.has(item.sender_id)) return null;
+
     const isOwn =
       item.sender_id ===
       userId;
@@ -1583,6 +1690,16 @@ emitChatBadgeRefresh();
               )}
           </View>
         )}
+        {!isOwn ? (
+          <View style={styles.messageSafetyRow}>
+            <TouchableOpacity onPress={() => reportMessage(item)} style={styles.messageSafetyBtn}>
+              <Text style={styles.messageSafetyText}>Report</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => blockMessageSender(item)} style={styles.messageSafetyBtn}>
+              <Text style={[styles.messageSafetyText, { color: '#FF8A8A' }]}>Block</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </View>
     );
   };
@@ -1910,6 +2027,18 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
           )}
         </View>
       </Modal>
+      <ReportContentModal
+        visible={!!reportTargetMessage}
+        selectedReason={reportReason}
+        details={reportDetails}
+        submitting={reportSubmitting}
+        onReasonChange={setReportReason}
+        onDetailsChange={setReportDetails}
+        onClose={() => {
+          if (!reportSubmitting) setReportTargetMessage(null);
+        }}
+        onSubmit={submitMessageReport}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -1981,6 +2110,22 @@ const styles = StyleSheet.create({
     color: SUBTLE,
     marginLeft: 8,
     marginBottom: 2,
+  },
+  messageSafetyRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+    marginLeft: 8,
+  },
+  messageSafetyBtn: {
+    paddingVertical: 2,
+    paddingHorizontal: 2,
+  },
+  messageSafetyText: {
+    color: SUBTLE,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
   },
 
   // Bubbles
