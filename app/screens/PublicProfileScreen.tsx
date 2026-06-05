@@ -2,15 +2,10 @@ import React, { useEffect, useState } from "react";
 import { View, ActivityIndicator, Text, Platform } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
-
-const COLORS = {
-  background: "#050505",
-  primary: "#C6A664",
-  textPrimary: "#F4EFE6",
-  textSecondary: "#D8D2C8",
-};
+import { useAppTheme } from "../context/ThemeContext";
 
 export default function PublicProfileScreen() {
+  const { colors } = useAppTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
 
@@ -95,12 +90,12 @@ export default function PublicProfileScreen() {
       <View
         style={{
           flex: 1,
-          backgroundColor: COLORS.background,
+          backgroundColor: colors.background,
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <ActivityIndicator size="large" color={colors.loader} />
       </View>
     );
   }
@@ -109,7 +104,7 @@ export default function PublicProfileScreen() {
     <View
       style={{
         flex: 1,
-        backgroundColor: COLORS.background,
+        backgroundColor: colors.background,
         alignItems: "center",
         justifyContent: "center",
         paddingHorizontal: 24,
@@ -117,7 +112,7 @@ export default function PublicProfileScreen() {
     >
       <Text
         style={{
-          color: COLORS.textPrimary,
+          color: colors.textPrimary,
           fontSize: 18,
           textAlign: "center",
           marginBottom: 10,
@@ -128,7 +123,7 @@ export default function PublicProfileScreen() {
 
       <Text
         style={{
-          color: COLORS.textSecondary,
+          color: colors.textSecondary,
           fontSize: 13,
           textAlign: "center",
         }}

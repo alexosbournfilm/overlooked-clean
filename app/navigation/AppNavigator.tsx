@@ -1,5 +1,5 @@
 // app/navigation/AppNavigator.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   NavigationContainer,
   DefaultTheme,
@@ -17,8 +17,8 @@ import MainTabs from "./MainTabs";
 import { navigationRef, setNavigatorReady } from "./navigationRef";
 import { linking } from "./linking";
 import { useAuth } from "../context/AuthProvider";
+import { useAppTheme } from "../context/ThemeContext";
 import { getMembershipSnapshot } from "../lib/membership";
-import COLORS from "../theme/colors";
 
 import PaywallScreen from "../screens/PaywallScreen";
 import PaySuccessScreen from "../screens/PaySuccessScreen";
@@ -29,19 +29,6 @@ import SharedFilmScreen from "../screens/SharedFilmScreen";
 import CreateProfileScreen from "../screens/CreateProfileScreen";
 
 const Stack = createStackNavigator();
-
-const NAV_THEME = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    background: "#0D0D0D",
-    card: "#0D0D0D",
-    text: "#EDEBE6",
-    border: "transparent",
-    primary: "#EDEBE6",
-    notification: DefaultTheme.colors.notification,
-  },
-};
 
 function getAllowCreateProfileFlow() {
   const G = globalThis as any;
@@ -110,6 +97,7 @@ export default function AppNavigator({
 }: {
   initialAuthRouteName: "SignIn" | "CreateProfile";
 }) {
+  const { colors } = useAppTheme();
   const {
     ready,
     userId,
@@ -117,6 +105,21 @@ export default function AppNavigator({
     profileChecked,
     shouldRouteToCreateProfile,
   } = useAuth();
+  const navTheme = useMemo(
+    () => ({
+      ...DefaultTheme,
+      colors: {
+        ...DefaultTheme.colors,
+        background: colors.background,
+        card: colors.background,
+        text: colors.textPrimary,
+        border: "transparent",
+        primary: colors.textPrimary,
+        notification: DefaultTheme.colors.notification,
+      },
+    }),
+    [colors]
+  );
 
   const [initialState, setInitialState] = useState<InitialState | undefined>();
   const [navReady, setNavReady] = useState(false);
@@ -414,12 +417,12 @@ export default function AppNavigator({
       <View
         style={{
           flex: 1,
-          backgroundColor: "#0D0D0D",
+          backgroundColor: colors.background,
           justifyContent: "center",
           alignItems: "center",
         }}
       >
-        <ActivityIndicator color={COLORS.loader} />
+        <ActivityIndicator color={colors.loader} />
       </View>
     );
   }
@@ -469,12 +472,12 @@ export default function AppNavigator({
         }, 500);
       }}
       onStateChange={handleStateChange}
-      theme={NAV_THEME}
+      theme={navTheme}
     >
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
-          cardStyle: { backgroundColor: "#0D0D0D" },
+          cardStyle: { backgroundColor: colors.background },
           gestureEnabled: true,
           cardStyleInterpolator:
             Platform.OS === "ios"

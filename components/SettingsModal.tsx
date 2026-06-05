@@ -17,9 +17,11 @@ import {
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettingsModal } from '../app/context/SettingsModalContext';
+import { useAppTheme } from '../app/context/ThemeContext';
 import { supabase, FUNCTIONS_URL } from '../app/lib/supabase';
 import { UpgradeModal } from './UpgradeModal';
 import { unblockUser } from '../app/utils/unblockUser';
+import { resetToSignIn as resetRootToSignIn } from '../app/navigation/navigationRef';
 
 /* ------------------------------- palette -------------------------------- */
 const DARK_BG = '#050505';
@@ -109,6 +111,23 @@ async function confirm(opts: {
   });
 }
 
+function clearAuthRoutingFlags() {
+  const G = globalThis as any;
+  G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+  G.__OVERLOOKED_RECOVERY__ = false;
+  G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+  G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+  G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+  G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+  G.__OVERLOOKED_PROFILE_JUST_COMPLETED__ = false;
+
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.sessionStorage.removeItem('overlooked.allowCreateProfile');
+    window.sessionStorage.removeItem('overlooked.manualSignIn');
+    window.sessionStorage.removeItem('overlooked.createProfileAllowed');
+  }
+}
+
 const withTimeout = <T,>(p: Promise<T>, ms = 15000) =>
   new Promise<T>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('Request timed out')), ms);
@@ -187,6 +206,7 @@ function SectionButton(props: {
   disabled?: boolean;
 }) {
   const { title, subtitle, onPress, danger, loading, disabled } = props;
+  const { colors } = useAppTheme();
 
   return (
     <Pressable
@@ -194,6 +214,10 @@ function SectionButton(props: {
       disabled={loading || disabled}
       style={({ pressed }) => [
         styles.sectionButton,
+        {
+          backgroundColor: colors.backgroundAlt,
+          borderColor: colors.border,
+        },
         pressed && !disabled && { opacity: 0.7 },
         disabled && { opacity: 0.5 },
       ]}
@@ -201,16 +225,18 @@ function SectionButton(props: {
       <Text
         style={[
           styles.sectionTitle,
-          danger && { color: TEXT_MUTED },
+          { color: danger ? colors.textMuted : colors.textPrimary },
         ]}
       >
         {title}
       </Text>
 
-      {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
+      {subtitle ? (
+        <Text style={[styles.sectionSubtitle, { color: colors.textMuted }]}>{subtitle}</Text>
+      ) : null}
 
       {loading ? (
-        <ActivityIndicator color={GOLD} style={{ marginTop: 10 }} />
+        <ActivityIndicator color={colors.loader} style={{ marginTop: 10 }} />
       ) : null}
     </Pressable>
   );
@@ -219,6 +245,7 @@ function SectionButton(props: {
 /* ----------------------------- MAIN MODAL ------------------------------ */
 export default function SettingsModal() {
   const { isOpen, close } = useSettingsModal();
+  const { colors, isLight, toggleThemeMode } = useAppTheme();
   const navigation = useNavigation<any>();
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -623,6 +650,10 @@ export default function SettingsModal() {
     });
 
     try {
+      resetRootToSignIn();
+    } catch {}
+
+    try {
       navigation.dispatch(action);
     } catch {
       navigation.reset({ index: 0, routes: [{ name: 'Auth' }] });
@@ -655,12 +686,16 @@ export default function SettingsModal() {
 
     try {
       setSigningOut(true);
+      clearAuthRoutingFlags();
+      close();
 
       const { error } = await supabase.auth.signOut();
       if (error) {
         Alert.alert('Error', error.message);
         return;
       }
+
+      clearAuthRoutingFlags();
 
       if (Platform.OS === 'web') {
         try {
@@ -672,8 +707,8 @@ export default function SettingsModal() {
         return;
       }
 
-      close();
       resetToAuthSignIn();
+      setTimeout(resetToAuthSignIn, 160);
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to sign out.');
     } finally {
@@ -725,7 +760,9 @@ export default function SettingsModal() {
         return;
       }
 
+      clearAuthRoutingFlags();
       await supabase.auth.signOut().catch(() => {});
+      clearAuthRoutingFlags();
 
       if (Platform.OS === 'web') {
         try {
@@ -739,6 +776,7 @@ export default function SettingsModal() {
 
       close();
       resetToAuthSignIn();
+      setTimeout(resetToAuthSignIn, 160);
     } catch (e: any) {
       setDebug(`delete-account exception: ${e?.message}`);
       Alert.alert('Error', e?.message);
@@ -760,6 +798,7 @@ export default function SettingsModal() {
             styles.backdrop,
             {
               opacity: sheetProgress,
+              backgroundColor: isLight ? 'rgba(20,17,13,0.22)' : 'rgba(0,0,0,0.85)',
             },
           ]}
         >
@@ -767,6 +806,11 @@ export default function SettingsModal() {
           <Animated.View
             style={[
               styles.sheet,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                shadowColor: colors.shadow,
+              },
               {
                 transform: [
                   {
@@ -786,15 +830,57 @@ export default function SettingsModal() {
             ]}
           >
             <View style={styles.handleWrap}>
-              <View style={styles.handle} />
+              <View style={[styles.handle, { backgroundColor: colors.borderStrong }]} />
             </View>
 
-            <Text style={styles.title}>Settings</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Settings</Text>
 
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.scrollContent}
             >
+
+            <Pressable
+              onPress={() => {
+                void toggleThemeMode();
+              }}
+              style={({ pressed }) => [
+                styles.themeToggleRow,
+                {
+                  backgroundColor: colors.backgroundAlt,
+                  borderColor: colors.border,
+                },
+                pressed && { opacity: 0.82 },
+              ]}
+            >
+              <View style={styles.themeToggleCopy}>
+                <Text style={[styles.themeToggleTitle, { color: colors.textPrimary }]}>
+                  Light Mode
+                </Text>
+                <Text style={[styles.themeToggleSubtitle, { color: colors.textMuted }]}>
+                  {isLight ? 'Light app palette is on.' : 'Switch to a light app palette.'}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.themeSwitchTrack,
+                  {
+                    backgroundColor: isLight ? colors.primary : colors.cardAlt,
+                    borderColor: isLight ? colors.primary : colors.borderStrong,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.themeSwitchThumb,
+                    {
+                      alignSelf: isLight ? 'flex-end' : 'flex-start',
+                      backgroundColor: isLight ? colors.card : colors.textSecondary,
+                    },
+                  ]}
+                />
+              </View>
+            </Pressable>
 
             <SectionButton
               title="Manage membership"
@@ -822,14 +908,24 @@ export default function SettingsModal() {
               disabled={deleting}
             />
 
-            <View style={styles.blockedSection}>
+            <View
+              style={[
+                styles.blockedSection,
+                {
+                  backgroundColor: colors.backgroundAlt,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
               <Pressable
                 onPress={() => setBlockedExpanded((prev) => !prev)}
                 style={({ pressed }) => [styles.collapsibleHeader, pressed && { opacity: 0.78 }]}
               >
                 <View style={styles.collapsibleCopy}>
-                  <Text style={styles.blockedTitle}>Blocked Users</Text>
-                  <Text style={styles.blockedSubtitle} numberOfLines={2}>
+                  <Text style={[styles.blockedTitle, { color: colors.textPrimary }]}>
+                    Blocked Users
+                  </Text>
+                  <Text style={[styles.blockedSubtitle, { color: colors.textMuted }]} numberOfLines={2}>
                     Manage people you have hidden from your feeds.
                   </Text>
                 </View>
@@ -843,6 +939,10 @@ export default function SettingsModal() {
                     disabled={blockedLoading || !currentUserId}
                     style={({ pressed }) => [
                       styles.reloadIconButton,
+                      {
+                        backgroundColor: isLight ? '#F6ECD8' : 'rgba(198,166,100,0.08)',
+                        borderColor: isLight ? colors.borderStrong : 'rgba(198,166,100,0.28)',
+                      },
                       pressed && { opacity: 0.7 },
                       (!currentUserId || blockedLoading) && { opacity: 0.55 },
                     ]}
@@ -854,11 +954,19 @@ export default function SettingsModal() {
                     )}
                   </Pressable>
 
-                  <View style={styles.chevronButton}>
+                  <View
+                    style={[
+                      styles.chevronButton,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
                     <Ionicons
                       name={blockedExpanded ? 'chevron-up' : 'chevron-down'}
                       size={16}
-                      color={TEXT_MUTED}
+                      color={colors.textMuted}
                     />
                   </View>
                 </View>
@@ -866,32 +974,53 @@ export default function SettingsModal() {
 
               {blockedExpanded ? (
                 !currentUserId ? (
-                  <Text style={styles.blockedEmpty}>Sign in to manage blocked users.</Text>
+                  <Text style={[styles.blockedEmpty, { color: colors.textMuted }]}>
+                    Sign in to manage blocked users.
+                  </Text>
                 ) : blockedLoading && blockedUsers.length === 0 ? (
                   <View style={styles.blockedLoadingRow}>
-                    <ActivityIndicator color={GOLD} />
+                    <ActivityIndicator color={colors.loader} />
                   </View>
                 ) : blockedUsers.length === 0 ? (
-                  <Text style={styles.blockedEmpty}>You haven’t blocked anyone.</Text>
+                  <Text style={[styles.blockedEmpty, { color: colors.textMuted }]}>
+                    You haven’t blocked anyone.
+                  </Text>
                 ) : (
                   <View style={styles.blockedList}>
                     {blockedUsers.map((user) => (
-                      <View key={user.id} style={styles.blockedUserRow}>
+                      <View
+                        key={user.id}
+                        style={[
+                          styles.blockedUserRow,
+                          {
+                            backgroundColor: colors.card,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
                         {user.avatar_url ? (
                           <Image source={{ uri: user.avatar_url }} style={styles.blockedAvatar} />
                         ) : (
-                          <View style={styles.blockedAvatarFallback}>
-                            <Text style={styles.blockedAvatarText}>
+                          <View
+                            style={[
+                              styles.blockedAvatarFallback,
+                              {
+                                backgroundColor: colors.backgroundAlt,
+                                borderColor: colors.border,
+                              },
+                            ]}
+                          >
+                            <Text style={[styles.blockedAvatarText, { color: colors.textPrimary }]}>
                               {(user.full_name || 'U').slice(0, 1).toUpperCase()}
                             </Text>
                           </View>
                         )}
 
                         <View style={styles.blockedUserInfo}>
-                          <Text style={styles.blockedName} numberOfLines={1}>
+                          <Text style={[styles.blockedName, { color: colors.textPrimary }]} numberOfLines={1}>
                             {user.full_name || 'Blocked user'}
                           </Text>
-                          <Text style={styles.blockedMeta} numberOfLines={1}>
+                          <Text style={[styles.blockedMeta, { color: colors.textMuted }]} numberOfLines={1}>
                             {user.role_name ? `${user.role_name} • Blocked` : 'Blocked'}
                           </Text>
                         </View>
@@ -906,9 +1035,9 @@ export default function SettingsModal() {
                           ]}
                         >
                           {unblockingId === user.id ? (
-                            <ActivityIndicator color="#000" size="small" />
+                            <ActivityIndicator color={colors.textOnPrimary} size="small" />
                           ) : (
-                            <Text style={styles.unblockText}>Unblock</Text>
+                            <Text style={[styles.unblockText, { color: colors.textOnPrimary }]}>Unblock</Text>
                           )}
                         </Pressable>
                       </View>
@@ -919,14 +1048,24 @@ export default function SettingsModal() {
             </View>
 
             {isModerator ? (
-              <View style={styles.moderationSection}>
+              <View
+                style={[
+                  styles.moderationSection,
+                  {
+                    backgroundColor: colors.backgroundAlt,
+                    borderColor: colors.borderStrong,
+                  },
+                ]}
+              >
                 <Pressable
                   onPress={() => setModerationExpanded((prev) => !prev)}
                   style={({ pressed }) => [styles.collapsibleHeader, pressed && { opacity: 0.78 }]}
                 >
                   <View style={styles.collapsibleCopy}>
-                    <Text style={styles.blockedTitle}>Moderation Inbox</Text>
-                    <Text style={styles.blockedSubtitle} numberOfLines={2}>
+                    <Text style={[styles.blockedTitle, { color: colors.textPrimary }]}>
+                      Moderation Inbox
+                    </Text>
+                    <Text style={[styles.blockedSubtitle, { color: colors.textMuted }]} numberOfLines={2}>
                       Review reports sent by users within 24 hours.
                     </Text>
                   </View>
@@ -941,6 +1080,10 @@ export default function SettingsModal() {
                       disabled={moderationLoading}
                       style={({ pressed }) => [
                         styles.reloadIconButton,
+                        {
+                          backgroundColor: isLight ? '#F6ECD8' : 'rgba(198,166,100,0.08)',
+                          borderColor: isLight ? colors.borderStrong : 'rgba(198,166,100,0.28)',
+                        },
                         pressed && { opacity: 0.7 },
                         moderationLoading && { opacity: 0.55 },
                       ]}
@@ -952,11 +1095,19 @@ export default function SettingsModal() {
                       )}
                     </Pressable>
 
-                    <View style={styles.chevronButton}>
+                    <View
+                      style={[
+                        styles.chevronButton,
+                        {
+                          backgroundColor: colors.card,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
                       <Ionicons
                         name={moderationExpanded ? 'chevron-up' : 'chevron-down'}
                         size={16}
-                        color={TEXT_MUTED}
+                        color={colors.textMuted}
                       />
                     </View>
                   </View>
@@ -965,10 +1116,10 @@ export default function SettingsModal() {
                 {moderationExpanded ? (
                   moderationLoading && moderationReports.length === 0 ? (
                     <View style={styles.blockedLoadingRow}>
-                      <ActivityIndicator color={GOLD} />
+                      <ActivityIndicator color={colors.loader} />
                     </View>
                   ) : moderationReports.length === 0 ? (
-                    <Text style={styles.blockedEmpty}>No open reports.</Text>
+                    <Text style={[styles.blockedEmpty, { color: colors.textMuted }]}>No open reports.</Text>
                   ) : (
                     <View style={styles.moderationList}>
                       {moderationReports.map((report) => {
@@ -979,13 +1130,22 @@ export default function SettingsModal() {
                       const busy = moderationActionId === report.id;
 
                       return (
-                        <View key={report.id} style={styles.reportCard}>
+                        <View
+                          key={report.id}
+                          style={[
+                            styles.reportCard,
+                            {
+                              backgroundColor: colors.card,
+                              borderColor: colors.border,
+                            },
+                          ]}
+                        >
                           <View style={styles.reportTopRow}>
                             <View style={styles.reportTitleWrap}>
-                              <Text style={styles.reportReason} numberOfLines={2}>
+                              <Text style={[styles.reportReason, { color: colors.textPrimary }]} numberOfLines={2}>
                                 {report.reason || 'Reported content'}
                               </Text>
-                              <Text style={styles.reportMeta} numberOfLines={1}>
+                              <Text style={[styles.reportMeta, { color: colors.accent }]} numberOfLines={1}>
                                 {[
                                   report.content_type || 'content',
                                   report.created_at
@@ -997,18 +1157,29 @@ export default function SettingsModal() {
                               </Text>
                             </View>
 
-                            {busy ? <ActivityIndicator color={GOLD} size="small" /> : null}
+                            {busy ? <ActivityIndicator color={colors.loader} size="small" /> : null}
                           </View>
 
-                          <Text style={styles.reportPeople} numberOfLines={2}>
+                          <Text style={[styles.reportPeople, { color: colors.textMuted }]} numberOfLines={2}>
                             Reporter: {reporter?.full_name || report.reporter_id || 'Unknown'}
                           </Text>
-                          <Text style={styles.reportPeople} numberOfLines={2}>
+                          <Text style={[styles.reportPeople, { color: colors.textMuted }]} numberOfLines={2}>
                             Reported: {reported?.full_name || report.reported_user_id || 'Unknown'}
                           </Text>
 
                           {report.details ? (
-                            <Text style={styles.reportDetails}>{report.details}</Text>
+                            <Text
+                              style={[
+                                styles.reportDetails,
+                                {
+                                  backgroundColor: colors.backgroundAlt,
+                                  borderColor: colors.border,
+                                  color: colors.textPrimary,
+                                },
+                              ]}
+                            >
+                              {report.details}
+                            </Text>
                           ) : null}
 
                           <View style={styles.reportActions}>
@@ -1077,10 +1248,14 @@ export default function SettingsModal() {
               onPress={close}
               style={({ pressed }) => [
                 styles.closeButton,
+                {
+                  backgroundColor: isLight ? '#14110D' : colors.elevated,
+                  borderColor: isLight ? '#14110D' : colors.border,
+                },
                 pressed && { opacity: 0.7 },
               ]}
             >
-              <Text style={styles.closeText}>Close</Text>
+              <Text style={[styles.closeText, { color: isLight ? '#FFFFFF' : colors.textPrimary }]}>Close</Text>
             </Pressable>
           </Animated.View>
         </Animated.View>
@@ -1161,6 +1336,45 @@ const styles = StyleSheet.create({
     color: TEXT_MUTED,
     lineHeight: 17,
     fontFamily: SYSTEM_SANS,
+  },
+  themeToggleRow: {
+    minHeight: 72,
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderWidth: 1,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  themeToggleCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  themeToggleTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
+  },
+  themeToggleSubtitle: {
+    marginTop: 5,
+    fontSize: 13,
+    lineHeight: 17,
+    fontFamily: SYSTEM_SANS,
+  },
+  themeSwitchTrack: {
+    width: 48,
+    height: 28,
+    borderRadius: 999,
+    borderWidth: 1,
+    padding: 3,
+    justifyContent: 'center',
+  },
+  themeSwitchThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
   },
   blockedSection: {
     backgroundColor: DARK_BG,

@@ -41,6 +41,7 @@ import { reportContent, ReportReason } from '../utils/reportContent';
 import { blockUser } from '../utils/blockUser';
 import { validateMultipleSafeTexts, validateSafeText } from '../utils/moderation';
 import ReportContentModal from '../../components/ReportContentModal';
+import { useAppTheme } from '../context/ThemeContext';
 
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
@@ -230,6 +231,7 @@ const CustomToggle: React.FC<{
   disabled?: boolean;
   size?: 'md' | 'sm';
 }> = ({ value, onChange, disabled, size = 'md' }) => {
+  const { colors, isLight } = useAppTheme();
   const width = size === 'sm' ? 44 : 52;
   const height = size === 'sm' ? 24 : 28;
   const padding = 2;
@@ -248,8 +250,20 @@ const CustomToggle: React.FC<{
   }, [value]);
 
   const translateX = anim.interpolate({ inputRange: [0, 1], outputRange: [0, travel] });
-  const bg = anim.interpolate({ inputRange: [0, 1], outputRange: ['#171717', '#1E1E1E'] });
-  const border = anim.interpolate({ inputRange: [0, 1], outputRange: ['#232323', '#2B2B2B'] });
+  const bg = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [
+      isLight ? colors.backgroundAlt : '#171717',
+      isLight ? 'rgba(198,166,100,0.28)' : '#1E1E1E',
+    ],
+  });
+  const border = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [
+      isLight ? colors.border : '#232323',
+      isLight ? colors.borderStrong : '#2B2B2B',
+    ],
+  });
 
   return (
     <TouchableOpacity
@@ -277,9 +291,9 @@ const CustomToggle: React.FC<{
             height: knobSize,
             borderRadius: 4,
             transform: [{ translateX }],
-            backgroundColor: '#0F0F0F',
+            backgroundColor: value ? colors.primary : colors.card,
             borderWidth: 1,
-            borderColor: COLORS.border,
+            borderColor: value ? colors.borderStrong : colors.border,
           }}
         />
       </Animated.View>
@@ -314,29 +328,63 @@ const IconText: React.FC<{
   text: string;
   weight?: '400' | '600';
   accent?: boolean;
-}> = ({ name, text, weight = '400', accent = false }) => (
-  <View style={styles.iconText}>
-  <Ionicons
-    name={name}
-    size={15}
-    color={accent ? GOLD : T.sub}
-    style={{ marginRight: 6 }}
-  />
-  <Text style={[styles.jobMeta, { fontWeight: weight, color: accent ? GOLD : T.sub }]}>
-    {text}
-  </Text>
-</View>
-);
+}> = ({ name, text, weight = '400', accent = false }) => {
+  const { colors } = useAppTheme();
+  const color = accent ? colors.primary : colors.textSecondary;
+
+  return (
+    <View style={styles.iconText}>
+      <Ionicons name={name} size={15} color={color} style={{ marginRight: 6 }} />
+      <Text style={[styles.jobMeta, { fontWeight: weight, color }]}>{text}</Text>
+    </View>
+  );
+};
 
 /* -------------------------------------------
    Screen
 -------------------------------------------- */
 export default function JobsScreen() {
+  const { colors, isLight } = useAppTheme();
   const navigation = useNavigation();
   const { show, ToastView } = useToast();
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
   const { triggerAppRefresh } = useAppRefresh();
+  const GOLD = colors.primary;
+  const GOLD_SOFT = isLight ? 'rgba(158,119,40,0.12)' : 'rgba(198,166,100,0.16)';
+  const GOLD_LINE = isLight ? 'rgba(158,119,40,0.26)' : 'rgba(198,166,100,0.28)';
+  const T = useMemo(
+    () => ({
+      bg: colors.background,
+      surface: colors.card,
+      surface2: colors.mutedCard,
+      surface3: colors.cardAlt,
+      text: colors.textPrimary,
+      sub: colors.textSecondary,
+      mute: colors.textMuted,
+      accent: colors.primary,
+      line: colors.border,
+      lineSoft: colors.border,
+      glow: isLight ? 'rgba(158,119,40,0.08)' : 'rgba(198,166,100,0.08)',
+    }),
+    [colors, isLight]
+  );
+  const READABLE_INK = isLight ? '#050505' : T.text;
+  const READABLE_MUTED = isLight ? '#4B4740' : T.mute;
+  const COLORS = useMemo(
+    () => ({
+      ...THEME_COLORS,
+      background: colors.background,
+      card: colors.card,
+      textPrimary: colors.textPrimary,
+      textSecondary: colors.textSecondary,
+      primary: colors.primary,
+      textOnPrimary: colors.textOnPrimary,
+      border: colors.border,
+      borderSoft: colors.border,
+    }),
+    [colors]
+  );
 
   const promptSignIn = (message: string) => {
   if (Platform.OS === 'web') {
@@ -474,6 +522,16 @@ const latestCityTermRef = useRef<string>('');
 const cityFilterReqIdRef = useRef<number>(0);
 const latestCityFilterTermRef = useRef<string>('');
 
+  const openJobCityOverlay = useCallback(() => {
+    Keyboard.dismiss();
+    setCityItems([]);
+    setCitySearchTerm('');
+    setJobCityOverlayVisible(true);
+    requestAnimationFrame(() => {
+      citySearchInputRef.current?.focus();
+    });
+  }, []);
+
   // Tier / upgrade modal
   const [userTier, setUserTier] = useState<UserTier>('free');
   const [upgradeVisible, setUpgradeVisible] = useState(false);
@@ -544,12 +602,12 @@ const latestCityFilterTermRef = useRef<string>('');
           <Ionicons name="settings-outline" size={22} color={T.text} />
         </TouchableOpacity>
       ),
-      headerStyle: { backgroundColor: '#000000' },
+      headerStyle: { backgroundColor: T.bg },
 headerShadowVisible: false,
 headerTintColor: T.text,
-contentStyle: { backgroundColor: '#000000' },
+contentStyle: { backgroundColor: T.bg },
     });
-  }, [navigation, show]);
+  }, [navigation, show, T]);
 
   /* ---------- Initial loads ---------- */
   useEffect(() => {
@@ -1425,17 +1483,17 @@ if (!me) {
   const renderRoleItem = useCallback(
     ({ item }: { item: RoleOption }) => (
       <TouchableOpacity
-        style={styles.listPickerItem}
+        style={[styles.listPickerItem, { borderBottomColor: T.line }]}
         onPress={() => {
           setFormData((prev) => ({ ...prev, role_id: item.value }));
           setJobRoleOverlayVisible(false);
         }}
         activeOpacity={0.85}
       >
-        <Text style={styles.listPickerText}>{item.label}</Text>
+        <Text style={[styles.listPickerText, { color: READABLE_INK }]}>{item.label}</Text>
       </TouchableOpacity>
     ),
-    []
+    [READABLE_INK, T.line]
   );
 
   
@@ -1457,27 +1515,36 @@ if (!me) {
         activeOpacity={0.9}
         style={styles.jobRow}
       >
-        <View style={styles.jobCard}>
+        <View
+          style={[
+            styles.jobCard,
+            {
+              backgroundColor: T.surface,
+              borderColor: T.line,
+              shadowColor: colors.shadow,
+            },
+          ]}
+        >
           <View style={styles.jobCardTopRow}>
             <View style={styles.jobCardHeaderLeft}>
-              <Text style={styles.jobTitle}>
+              <Text style={[styles.jobTitle, { color: T.text }]}>
                 {decode(job.creative_roles?.name || 'Job')}
               </Text>
 
-              <View style={styles.typeBadge}>
-                <Text style={styles.typeBadgeText}>
+              <View style={[styles.typeBadge, { backgroundColor: GOLD_SOFT, borderColor: GOLD_LINE }]}>
+                <Text style={[styles.typeBadgeText, { color: GOLD }]}>
                   {job.type === 'Paid' ? 'PAID ROLE' : 'FREE / COLLAB'}
                 </Text>
               </View>
             </View>
 
-            <View style={styles.rateBadge}>
-              <Text style={styles.rateBadgeText}>{rateText}</Text>
+            <View style={[styles.rateBadge, { backgroundColor: T.surface2, borderColor: T.line }]}>
+              <Text style={[styles.rateBadgeText, { color: T.text }]}>{rateText}</Text>
             </View>
           </View>
 
           {job.description ? (
-            <Text numberOfLines={3} style={styles.jobDescription}>
+            <Text numberOfLines={3} style={[styles.jobDescription, { color: T.sub }]}>
               {decode(job.description)}
             </Text>
           ) : null}
@@ -1493,7 +1560,7 @@ if (!me) {
                 <IconText name="globe-outline" text="Remote" accent />
               )}
 
-              <View style={styles.dot} />
+              <View style={[styles.dot, { backgroundColor: T.line }]} />
 
               <View style={styles.iconText}>
                 <Ionicons
@@ -1509,7 +1576,7 @@ if (!me) {
                   }}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.posterName}>
+                  <Text style={[styles.posterName, { color: GOLD }]}>
                     {job.users?.full_name || 'View Profile'}
                   </Text>
                 </TouchableOpacity>
@@ -1520,7 +1587,7 @@ if (!me) {
               <IconText name="time-outline" text={postedAgo || '—'} />
               {job.time ? (
                 <>
-                  <View style={styles.dot} />
+                  <View style={[styles.dot, { backgroundColor: T.line }]} />
                   <IconText name="calendar-outline" text={job.time} />
                 </>
               ) : null}
@@ -1530,7 +1597,7 @@ if (!me) {
       </TouchableOpacity>
     );
   },
-  []
+  [GOLD, GOLD_LINE, GOLD_SOFT, T, colors.shadow, goToProfile]
 );
   const renderMyJob = useCallback(
   ({ item }: { item: MyJob }) => {
@@ -1544,25 +1611,34 @@ if (!me) {
 
     return (
       <View style={styles.jobRow}>
-        <View style={styles.jobCard}>
+        <View
+          style={[
+            styles.jobCard,
+            {
+              backgroundColor: T.surface,
+              borderColor: T.line,
+              shadowColor: colors.shadow,
+            },
+          ]}
+        >
           <View style={styles.jobCardTopRow}>
             <View style={styles.jobCardHeaderLeft}>
-              <Text style={styles.jobTitle}>
+              <Text style={[styles.jobTitle, { color: T.text }]}>
                 {decode(job.creative_roles?.name || 'Job')}
               </Text>
 
-              <View style={styles.typeBadge}>
-                <Text style={styles.typeBadgeText}>MY LISTING</Text>
+              <View style={[styles.typeBadge, { backgroundColor: GOLD_SOFT, borderColor: GOLD_LINE }]}>
+                <Text style={[styles.typeBadgeText, { color: GOLD }]}>MY LISTING</Text>
               </View>
             </View>
 
-            <View style={styles.rateBadge}>
-              <Text style={styles.rateBadgeText}>{rateText}</Text>
+            <View style={[styles.rateBadge, { backgroundColor: T.surface2, borderColor: T.line }]}>
+              <Text style={[styles.rateBadgeText, { color: T.text }]}>{rateText}</Text>
             </View>
           </View>
 
           {job.description ? (
-            <Text numberOfLines={3} style={styles.jobDescription}>
+            <Text numberOfLines={3} style={[styles.jobDescription, { color: T.sub }]}>
               {decode(job.description)}
             </Text>
           ) : null}
@@ -1578,11 +1654,11 @@ if (!me) {
                 <IconText name="globe-outline" text="Remote" accent />
               )}
 
-              <View style={styles.dot} />
+              <View style={[styles.dot, { backgroundColor: T.line }]} />
               <IconText name="time-outline" text={postedAgo || '—'} />
               {job.time ? (
                 <>
-                  <View style={styles.dot} />
+                  <View style={[styles.dot, { backgroundColor: T.line }]} />
                   <IconText name="calendar-outline" text={job.time} />
                 </>
               ) : null}
@@ -1597,12 +1673,12 @@ if (!me) {
               style={{ marginRight: 6 }}
             />
             {hasApplicants ? (
-              <Text style={styles.applicantSummaryText}>
+              <Text style={[styles.applicantSummaryText, { color: T.sub }]}>
                 {job.applicants.length} applicant
                 {job.applicants.length !== 1 ? 's' : ''}
               </Text>
             ) : (
-              <Text style={styles.applicantSummaryText}>
+              <Text style={[styles.applicantSummaryText, { color: T.sub }]}>
                 No applicants yet.
               </Text>
             )}
@@ -1613,7 +1689,13 @@ if (!me) {
               {job.applicants.slice(0, 4).map((a) => (
                 <TouchableOpacity
                   key={a.id}
-                  style={styles.applicantPill}
+                  style={[
+                    styles.applicantPill,
+                    {
+                      backgroundColor: GOLD_SOFT,
+                      borderColor: GOLD_LINE,
+                    },
+                  ]}
                   activeOpacity={0.9}
                   onPress={() => {
                     // @ts-ignore
@@ -1628,13 +1710,13 @@ if (!me) {
                     color={GOLD}
                     style={{ marginRight: 4 }}
                   />
-                  <Text style={styles.applicantPillText}>
+                  <Text style={[styles.applicantPillText, { color: GOLD }]}>
                     {a.full_name || 'View profile'}
                   </Text>
                 </TouchableOpacity>
               ))}
               {job.applicants.length > 4 && (
-                <Text style={styles.applicantMoreText}>
+                <Text style={[styles.applicantMoreText, { color: T.mute }]}>
                   +{job.applicants.length - 4} more
                 </Text>
               )}
@@ -1643,17 +1725,17 @@ if (!me) {
 
           <View style={styles.myJobActionsRow}>
             <TouchableOpacity
-              style={styles.closeJobButton}
+              style={[styles.closeJobButton, { backgroundColor: GOLD, shadowColor: colors.shadow }]}
               onPress={() => handleCloseJob(job.id)}
               activeOpacity={0.92}
             >
               <Ionicons
                 name="lock-closed-outline"
                 size={14}
-                color="#000"
+                color={colors.textOnPrimary}
                 style={{ marginRight: 6 }}
               />
-              <Text style={styles.closeJobButtonText}>
+              <Text style={[styles.closeJobButtonText, { color: colors.textOnPrimary }]}>
                 Close Job
               </Text>
             </TouchableOpacity>
@@ -1662,7 +1744,7 @@ if (!me) {
       </View>
     );
   },
-  [navigation, handleCloseJob]
+  [GOLD, GOLD_LINE, GOLD_SOFT, T, colors.shadow, colors.textOnPrimary, handleCloseJob, navigation]
 );
 
   const anyFilterActive = useMemo(
@@ -1695,14 +1777,22 @@ if (!me) {
             return (
               <TouchableOpacity
                 key={tab}
-                style={[styles.categoryTap, active && styles.categoryTapActive]}
+                style={[
+                  styles.categoryTap,
+                  {
+                    backgroundColor: active ? (isLight ? '#FFFFFF' : T.surface2) : T.surface2,
+                    borderColor: active ? GOLD_LINE : T.line,
+                    shadowColor: colors.shadow,
+                  },
+                  active && styles.categoryTapActive,
+                ]}
                 onPress={() => setActiveTab(tab)}
                 activeOpacity={0.92}
               >
                 <Text
                   style={[
                     styles.categoryText,
-                    active && styles.categoryTextActive,
+                    { color: active ? GOLD : T.sub },
                   ]}
                 >
                   {label}
@@ -1718,7 +1808,13 @@ if (!me) {
         <View style={styles.filtersInline}>
           <TouchableOpacity
             onPress={() => setCityFilterModalVisible(true)}
-            style={[styles.filterPill, !!filterCity && styles.filterPillActive]}
+            style={[
+              styles.filterPill,
+              {
+                backgroundColor: filterCity ? GOLD_SOFT : T.surface2,
+                borderColor: filterCity ? GOLD_LINE : T.line,
+              },
+            ]}
             activeOpacity={0.9}
           >
             <Ionicons
@@ -1729,7 +1825,7 @@ if (!me) {
             <Text
               style={[
                 styles.filterPillText,
-                !!filterCity && styles.filterPillTextActive,
+                { color: filterCity ? GOLD : T.sub },
               ]}
             >
               {filterCity?.label || 'City'}
@@ -1738,7 +1834,13 @@ if (!me) {
 
           <TouchableOpacity
             onPress={() => setRoleFilterModalVisible(true)}
-            style={[styles.filterPill, !!filterRole && styles.filterPillActive]}
+            style={[
+              styles.filterPill,
+              {
+                backgroundColor: filterRole ? GOLD_SOFT : T.surface2,
+                borderColor: filterRole ? GOLD_LINE : T.line,
+              },
+            ]}
             activeOpacity={0.9}
           >
             <Ionicons
@@ -1749,15 +1851,24 @@ if (!me) {
             <Text
               style={[
                 styles.filterPillText,
-                !!filterRole && styles.filterPillTextActive,
+                { color: filterRole ? GOLD : T.sub },
               ]}
             >
               {filterRole?.label || 'Role'}
             </Text>
           </TouchableOpacity>
 
-          <View style={[styles.filterPill, styles.remoteFilterPill]}>
-            <Text style={styles.filterToggleLabel}>Remote</Text>
+          <View
+            style={[
+              styles.filterPill,
+              styles.remoteFilterPill,
+              {
+                backgroundColor: T.surface2,
+                borderColor: T.line,
+              },
+            ]}
+          >
+            <Text style={[styles.filterToggleLabel, { color: T.sub }]}>Remote</Text>
             <CustomToggle
               value={includeRemote}
               onChange={(v) => setIncludeRemote(v)}
@@ -1768,7 +1879,7 @@ if (!me) {
           {anyFilterActive ? (
             <TouchableOpacity
               onPress={clearFilters}
-              style={styles.clearPill}
+              style={[styles.clearPill, { backgroundColor: T.surface2, borderColor: T.line }]}
               activeOpacity={0.9}
             >
               <Ionicons
@@ -1776,7 +1887,7 @@ if (!me) {
                 size={15}
                 color={T.sub}
               />
-              <Text style={styles.clearPillText}>Clear</Text>
+              <Text style={[styles.clearPillText, { color: T.sub }]}>Clear</Text>
             </TouchableOpacity>
           ) : null}
         </View>
@@ -1801,8 +1912,8 @@ if (!me) {
   const listData = activeTab === 'my' ? myJobs : jobs;
 
   return (
-  <SafeAreaView style={styles.safeArea} edges={['top']}>
-    <View style={[styles.container, { paddingTop: insets.top > 0 ? 6 : 12 }]}>
+  <SafeAreaView style={[styles.safeArea, { backgroundColor: T.bg }]} edges={['top']}>
+    <View style={[styles.container, { backgroundColor: T.bg, paddingTop: insets.top > 0 ? 6 : 12 }]}>
       <ToastView />
 
       <Animated.FlatList
@@ -1817,20 +1928,20 @@ if (!me) {
         ListEmptyComponent={
   <View style={styles.emptyWrap}>
     {activeTab === 'my' ? (
-      <View style={styles.emptyCard}>
+      <View style={[styles.emptyCard, { backgroundColor: T.surface, borderColor: T.line }]}>
         <Ionicons name="briefcase-outline" size={28} color={GOLD} />
-        <Text style={styles.emptyTitle}>No jobs posted yet</Text>
-        <Text style={styles.emptyText}>
+        <Text style={[styles.emptyTitle, { color: T.text }]}>No jobs posted yet</Text>
+        <Text style={[styles.emptyText, { color: T.sub }]}>
           You haven&apos;t posted any jobs yet. Use &quot;Post a Job&quot; below to share an opportunity.
         </Text>
       </View>
     ) : isLoadingInit ? (
       <ActivityIndicator size="large" color={GOLD} />
     ) : (
-      <View style={styles.emptyCard}>
+      <View style={[styles.emptyCard, { backgroundColor: T.surface, borderColor: T.line }]}>
         <Ionicons name="sparkles-outline" size={28} color={GOLD} />
-        <Text style={styles.emptyTitle}>Nothing here yet</Text>
-        <Text style={styles.emptyText}>
+        <Text style={[styles.emptyTitle, { color: T.text }]}>Nothing here yet</Text>
+        <Text style={[styles.emptyText, { color: T.sub }]}>
           No jobs match these filters right now.
         </Text>
       </View>
@@ -1862,6 +1973,9 @@ onRefresh={() => {
   style={[
     styles.postButton,
     {
+      backgroundColor: GOLD,
+      borderColor: GOLD_LINE,
+      shadowColor: colors.shadow,
       bottom: Platform.OS === 'web' ? 28 : Math.max(tabBarHeight + 14, 84),
     },
   ]}
@@ -1883,9 +1997,9 @@ onRefresh={() => {
     <Ionicons
       name="add"
       size={18}
-      color="#0B0B0B"
+      color={colors.textOnPrimary}
     />
-    <Text style={styles.postButtonText}>
+    <Text style={[styles.postButtonText, { color: colors.textOnPrimary }]}>
       Post a Job
     </Text>
   </View>
@@ -1907,9 +2021,9 @@ onRefresh={() => {
               : undefined
           }
         >
-          <View style={styles.modalContainer}>
-            <View style={styles.modalChromeLine} />
-            <Text style={styles.modalTitle}>
+          <View style={[styles.modalContainer, { backgroundColor: T.bg }]}>
+            <View style={[styles.modalChromeLine, { backgroundColor: GOLD }]} />
+            <Text style={[styles.modalTitle, { color: T.text }]}>
               Post a New Job
             </Text>
 
@@ -1928,7 +2042,13 @@ onRefresh={() => {
                 return (
                   <TouchableOpacity
                     key={t}
-                    style={styles.categoryTap}
+                    style={[
+                      styles.categoryTap,
+                      {
+                        backgroundColor: active ? T.surface : T.surface2,
+                        borderColor: active ? GOLD_LINE : T.line,
+                      },
+                    ]}
                     onPress={() =>
                       setFormData({
                         ...formData,
@@ -1940,7 +2060,7 @@ onRefresh={() => {
                     <Text
                       style={[
                         styles.categoryText,
-                        active && styles.categoryTextActive,
+                        { color: active ? GOLD : T.sub },
                       ]}
                     >
                       {t.toUpperCase()}
@@ -1960,9 +2080,9 @@ onRefresh={() => {
               keyboardShouldPersistTaps="always"
               showsVerticalScrollIndicator={false}
             >
-              <Text style={styles.label}>Role</Text>
+              <Text style={[styles.label, { color: T.text }]}>Role</Text>
               <TouchableOpacity
-                style={styles.input}
+                style={[styles.input, { backgroundColor: T.surface, borderColor: T.line }]}
                 onPress={() => {
                   Keyboard.dismiss();
                   setRoleItems([]);
@@ -1976,7 +2096,7 @@ onRefresh={() => {
                   <Ionicons name="briefcase-outline" size={16} color={T.sub} />
                   <Text
                     style={{
-                      color: formData.role_id ? T.text : T.mute,
+                      color: formData.role_id ? READABLE_INK : READABLE_MUTED,
                       marginLeft: 8,
                     }}
                   >
@@ -1988,9 +2108,13 @@ onRefresh={() => {
                 </View>
               </TouchableOpacity>
 
-              <Text style={styles.label}>Description</Text>
+              <Text style={[styles.label, { color: T.text }]}>Description</Text>
               <TextInput
-                style={[styles.input, { minHeight: 84 }, WEB_NO_OUTLINE]}
+                style={[
+                  styles.input,
+                  { minHeight: 84, backgroundColor: T.surface, borderColor: T.line, color: T.text },
+                  WEB_NO_OUTLINE,
+                ]}
                 placeholder="Short, clear description"
                 placeholderTextColor={T.mute}
                 value={formData.description}
@@ -2000,22 +2124,18 @@ onRefresh={() => {
                 multiline
               />
 
-              <Text style={styles.label}>City</Text>
+              <Text style={[styles.label, { color: T.text }]}>City</Text>
               <TouchableOpacity
-                style={styles.input}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  setCityItems([]);
-                  setCitySearchTerm('');
-                  setJobCityOverlayVisible(true);
-                }}
+                style={[styles.input, { backgroundColor: T.surface, borderColor: T.line }]}
+                onPressIn={openJobCityOverlay}
+                onPress={openJobCityOverlay}
                 activeOpacity={0.92}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Ionicons name="location-outline" size={16} color={T.sub} />
                   <Text
                     style={{
-                      color: formData.city ? T.text : T.mute,
+                      color: formData.city ? READABLE_INK : READABLE_MUTED,
                       marginLeft: 8,
                     }}
                   >
@@ -2024,8 +2144,8 @@ onRefresh={() => {
                 </View>
               </TouchableOpacity>
 
-              <View style={styles.remoteRow}>
-                <Text style={styles.remoteLabel}>Remote</Text>
+              <View style={[styles.remoteRow, { backgroundColor: T.surface, borderColor: T.line }]}>
+                <Text style={[styles.remoteLabel, { color: T.text }]}>Remote</Text>
                 <CustomToggle
                   value={formData.remote}
                   onChange={(val) =>
@@ -2034,16 +2154,16 @@ onRefresh={() => {
                 />
               </View>
               {!formData.city && formData.remote ? (
-                <Text style={styles.remoteHint}>
+                <Text style={[styles.remoteHint, { color: T.mute }]}>
                   City is optional for remote roles.
                 </Text>
               ) : null}
 
               {formData.type === 'Paid' && (
                 <>
-                  <Text style={styles.label}>Currency</Text>
+                  <Text style={[styles.label, { color: T.text }]}>Currency</Text>
                   <TouchableOpacity
-                    style={styles.input}
+                    style={[styles.input, { backgroundColor: T.surface, borderColor: T.line }]}
                     onPress={() => setCurrencyOverlayVisible(true)}
                     activeOpacity={0.92}
                   >
@@ -2069,9 +2189,9 @@ onRefresh={() => {
                     </View>
                   </TouchableOpacity>
 
-                  <Text style={styles.label}>Pay Type</Text>
+                  <Text style={[styles.label, { color: T.text }]}>Pay Type</Text>
                   <TouchableOpacity
-                    style={styles.input}
+                    style={[styles.input, { backgroundColor: T.surface, borderColor: T.line }]}
                     onPress={() => setRateOverlayVisible(true)}
                     activeOpacity={0.92}
                   >
@@ -2097,9 +2217,13 @@ onRefresh={() => {
                     </View>
                   </TouchableOpacity>
 
-                  <Text style={styles.label}>Amount</Text>
+                  <Text style={[styles.label, { color: T.text }]}>Amount</Text>
                   <TextInput
-                    style={[styles.input, WEB_NO_OUTLINE]}
+                    style={[
+                      styles.input,
+                      { backgroundColor: T.surface, borderColor: T.line, color: T.text },
+                      WEB_NO_OUTLINE,
+                    ]}
                     placeholder="Amount"
                     placeholderTextColor={T.mute}
                     keyboardType="numeric"
@@ -2111,9 +2235,13 @@ onRefresh={() => {
                 </>
               )}
 
-              <Text style={styles.label}>Time</Text>
+              <Text style={[styles.label, { color: T.text }]}>Time</Text>
               <TextInput
-                style={[styles.input, WEB_NO_OUTLINE]}
+                style={[
+                  styles.input,
+                  { backgroundColor: T.surface, borderColor: T.line, color: T.text },
+                  WEB_NO_OUTLINE,
+                ]}
                 placeholder="e.g. 3-day shoot"
                 placeholderTextColor={T.mute}
                 value={formData.time}
@@ -2135,18 +2263,18 @@ onRefresh={() => {
 >
   <View
     style={[
-      styles.inlineSheet,
-      { marginTop: insets.top + 28 },
+                    styles.inlineSheet,
+      { marginTop: insets.top + 28, backgroundColor: T.surface, borderColor: T.line },
     ]}
   >
-                  <View style={styles.modalChromeLine} />
-                  <Text style={styles.modalTitle}>Search Role</Text>
+                  <View style={[styles.modalChromeLine, { backgroundColor: GOLD }]} />
+                  <Text style={[styles.modalTitle, { color: T.text }]}>Search Role</Text>
                   <TextInput
                     placeholder="Start typing…"
-                    placeholderTextColor={T.mute}
+                    placeholderTextColor={READABLE_MUTED}
                     value={roleSearchTerm}
                     onChangeText={(t) => setRoleSearchTerm(t)}
-                    style={[styles.searchInput, WEB_NO_OUTLINE]}
+                    style={[styles.searchInput, { backgroundColor: T.surface, borderColor: T.line, color: READABLE_INK }, WEB_NO_OUTLINE]}
                     autoFocus
                   />
                   <FlatList
@@ -2161,10 +2289,10 @@ onRefresh={() => {
                   />
                   <TouchableOpacity
                     onPress={() => setJobRoleOverlayVisible(false)}
-                    style={styles.closeModalButton}
+                    style={[styles.closeModalButton, { backgroundColor: T.surface2, borderColor: T.line }]}
                     activeOpacity={0.92}
                   >
-                    <Text style={styles.closeModalText}>Cancel</Text>
+                    <Text style={[styles.closeModalText, { color: T.sub }]}>Cancel</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -2181,17 +2309,17 @@ onRefresh={() => {
   <View
     style={[
       styles.inlineSheet,
-      { marginTop: insets.top + 28 },
+      { marginTop: insets.top + 28, backgroundColor: T.surface, borderColor: T.line },
     ]}
   >
-                  <View style={styles.modalChromeLine} />
-                  <Text style={styles.modalTitle}>Select Currency</Text>
+                  <View style={[styles.modalChromeLine, { backgroundColor: GOLD }]} />
+                  <Text style={[styles.modalTitle, { color: T.text }]}>Select Currency</Text>
                   <FlatList
                     data={currencyItems}
                     keyExtractor={(v) => v}
                     renderItem={({ item }) => (
                       <TouchableOpacity
-                        style={styles.listPickerItem}
+                        style={[styles.listPickerItem, { borderBottomColor: T.line }]}
                         onPress={() => {
                           setFormData((p) => ({
                             ...p,
@@ -2201,16 +2329,16 @@ onRefresh={() => {
                         }}
                         activeOpacity={0.9}
                       >
-                        <Text style={styles.listPickerText}>{item}</Text>
+                        <Text style={[styles.listPickerText, { color: T.text }]}>{item}</Text>
                       </TouchableOpacity>
                     )}
                   />
                   <TouchableOpacity
                     onPress={() => setCurrencyOverlayVisible(false)}
-                    style={styles.closeModalButton}
+                    style={[styles.closeModalButton, { backgroundColor: T.surface2, borderColor: T.line }]}
                     activeOpacity={0.92}
                   >
-                    <Text style={styles.closeModalText}>Cancel</Text>
+                    <Text style={[styles.closeModalText, { color: T.sub }]}>Cancel</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -2227,17 +2355,17 @@ onRefresh={() => {
   <View
     style={[
       styles.inlineSheet,
-      { marginTop: insets.top + 28 },
+      { marginTop: insets.top + 28, backgroundColor: T.surface, borderColor: T.line },
     ]}
   >
-                  <View style={styles.modalChromeLine} />
-                  <Text style={styles.modalTitle}>Select Pay Type</Text>
+                  <View style={[styles.modalChromeLine, { backgroundColor: GOLD }]} />
+                  <Text style={[styles.modalTitle, { color: T.text }]}>Select Pay Type</Text>
                   <FlatList
                     data={rateItems}
                     keyExtractor={(v) => v}
                     renderItem={({ item }) => (
                       <TouchableOpacity
-                        style={styles.listPickerItem}
+                        style={[styles.listPickerItem, { borderBottomColor: T.line }]}
                         onPress={() => {
                           setFormData((p) => ({
                             ...p,
@@ -2247,37 +2375,37 @@ onRefresh={() => {
                         }}
                         activeOpacity={0.9}
                       >
-                        <Text style={styles.listPickerText}>{item}</Text>
+                        <Text style={[styles.listPickerText, { color: T.text }]}>{item}</Text>
                       </TouchableOpacity>
                     )}
                   />
                   <TouchableOpacity
                     onPress={() => setRateOverlayVisible(false)}
-                    style={styles.closeModalButton}
+                    style={[styles.closeModalButton, { backgroundColor: T.surface2, borderColor: T.line }]}
                     activeOpacity={0.92}
                   >
-                    <Text style={styles.closeModalText}>Cancel</Text>
+                    <Text style={[styles.closeModalText, { color: T.sub }]}>Cancel</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             )}
 
             {/* Sticky footer */}
-            <View style={styles.modalFooter}>
+            <View style={[styles.modalFooter, { backgroundColor: T.bg, borderTopColor: T.line }]}>
               <TouchableOpacity
-                style={[styles.footerBtn, styles.footerGhost]}
+                style={[styles.footerBtn, styles.footerGhost, { backgroundColor: T.surface2, borderColor: T.line }]}
                 onPress={() => setJobFormVisible(false)}
                 activeOpacity={0.9}
               >
-                <Text style={styles.footerGhostText}>Cancel</Text>
+                <Text style={[styles.footerGhostText, { color: T.sub }]}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.footerBtn, styles.footerPrimary]}
+                style={[styles.footerBtn, styles.footerPrimary, { backgroundColor: GOLD, borderColor: GOLD_LINE }]}
                 onPress={handlePostJob}
                 activeOpacity={0.9}
               >
-                <Text style={styles.footerPrimaryText}>Submit Job</Text>
+                <Text style={[styles.footerPrimaryText, { color: colors.textOnPrimary }]}>Submit Job</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2290,14 +2418,14 @@ onRefresh={() => {
         animationType={Platform.OS === 'web' ? 'none' : 'slide'}
         onRequestClose={() => setJobCityOverlayVisible(false)}
       >
-        <SafeAreaView style={styles.cityModalSafeArea} edges={['top']}>
-          <View style={styles.cityModalShell}>
+        <SafeAreaView style={[styles.cityModalSafeArea, { backgroundColor: T.bg }]} edges={['top']}>
+          <View style={[styles.cityModalShell, { backgroundColor: T.bg }]}>
             <View style={styles.cityModalHeader}>
-              <Text style={styles.cityModalTitle}>Choose a city</Text>
+              <Text style={[styles.cityModalTitle, { color: T.text }]}>Choose a city</Text>
 
               <TouchableOpacity
                 onPress={() => setJobCityOverlayVisible(false)}
-                style={styles.cityModalCloseIcon}
+                style={[styles.cityModalCloseIcon, { backgroundColor: T.surface, borderColor: T.line }]}
                 activeOpacity={0.85}
               >
                 <Ionicons name="close" size={18} color={T.text} />
@@ -2307,13 +2435,17 @@ onRefresh={() => {
             <TextInput
               ref={citySearchInputRef}
               placeholder="Start typing a city..."
-              placeholderTextColor={T.mute}
+              placeholderTextColor={READABLE_MUTED}
               value={citySearchTerm}
               onChangeText={(text) => {
                 setCitySearchTerm(text);
                 void fetchCities(text);
               }}
-              style={[styles.citySearchInput, WEB_NO_OUTLINE]}
+              style={[
+                styles.citySearchInput,
+                { backgroundColor: T.surface, borderColor: T.line, color: READABLE_INK },
+                WEB_NO_OUTLINE,
+              ]}
               autoFocus
             />
 
@@ -2335,7 +2467,10 @@ onRefresh={() => {
                     <TouchableOpacity
                       style={[
                         styles.cityPickerItem,
-                        selected && styles.cityPickerItemSelected,
+                        {
+                          backgroundColor: selected ? GOLD_SOFT : T.surface,
+                          borderColor: selected ? GOLD_LINE : T.line,
+                        },
                       ]}
                       onPress={() => {
                         setFormData((prev) => ({ ...prev, city: item }));
@@ -2357,6 +2492,7 @@ onRefresh={() => {
                           style={[
                             styles.cityPickerText,
                             selected && styles.cityPickerTextSelected,
+                            { color: READABLE_INK },
                           ]}
                         >
                           {item.label}
@@ -2383,10 +2519,10 @@ onRefresh={() => {
 
             <TouchableOpacity
               onPress={() => setJobCityOverlayVisible(false)}
-              style={styles.cityModalCancelButton}
+              style={[styles.cityModalCancelButton, { backgroundColor: T.surface, borderColor: T.line }]}
               activeOpacity={0.92}
             >
-              <Text style={styles.cityModalCancelText}>Cancel</Text>
+              <Text style={[styles.cityModalCancelText, { color: READABLE_INK }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -2399,14 +2535,14 @@ onRefresh={() => {
         animationType={Platform.OS === 'web' ? 'none' : 'slide'}
         onRequestClose={() => setCityFilterModalVisible(false)}
       >
-        <SafeAreaView style={styles.cityModalSafeArea} edges={['top']}>
-          <View style={styles.cityModalShell}>
+        <SafeAreaView style={[styles.cityModalSafeArea, { backgroundColor: T.bg }]} edges={['top']}>
+          <View style={[styles.cityModalShell, { backgroundColor: T.bg }]}>
             <View style={styles.cityModalHeader}>
-              <Text style={styles.cityModalTitle}>Choose a city</Text>
+              <Text style={[styles.cityModalTitle, { color: T.text }]}>Choose a city</Text>
 
               <TouchableOpacity
                 onPress={() => setCityFilterModalVisible(false)}
-                style={styles.cityModalCloseIcon}
+                style={[styles.cityModalCloseIcon, { backgroundColor: T.surface, borderColor: T.line }]}
                 activeOpacity={0.85}
               >
                 <Ionicons name="close" size={18} color={T.text} />
@@ -2415,13 +2551,17 @@ onRefresh={() => {
 
             <TextInput
               placeholder="Start typing a city..."
-              placeholderTextColor={T.mute}
+              placeholderTextColor={READABLE_MUTED}
               value={cityFilterSearchTerm}
               onChangeText={(text) => {
                 setCityFilterSearchTerm(text);
                 void fetchFilterCities(text);
               }}
-              style={[styles.citySearchInput, WEB_NO_OUTLINE]}
+              style={[
+                styles.citySearchInput,
+                { backgroundColor: T.surface, borderColor: T.line, color: READABLE_INK },
+                WEB_NO_OUTLINE,
+              ]}
               autoFocus
             />
 
@@ -2443,7 +2583,10 @@ onRefresh={() => {
                     <TouchableOpacity
                       style={[
                         styles.cityPickerItem,
-                        selected && styles.cityPickerItemSelected,
+                        {
+                          backgroundColor: selected ? GOLD_SOFT : T.surface,
+                          borderColor: selected ? GOLD_LINE : T.line,
+                        },
                       ]}
                       onPress={() => {
                         setFilterCity(item);
@@ -2456,15 +2599,17 @@ onRefresh={() => {
                           style={[
                             styles.radioOuter,
                             selected && styles.radioOuterSelected,
+                            { borderColor: selected ? GOLD : T.sub },
                           ]}
                         >
-                          {selected ? <View style={styles.radioInner} /> : null}
+                          {selected ? <View style={[styles.radioInner, { backgroundColor: GOLD }]} /> : null}
                         </View>
 
                         <Text
                           style={[
                             styles.cityPickerText,
-                            selected && styles.cityPickerTextSelected,
+                            { color: READABLE_INK },
+                            selected && { color: READABLE_INK, fontWeight: '900' },
                           ]}
                         >
                           {item.label}
@@ -2472,8 +2617,8 @@ onRefresh={() => {
                       </View>
 
                       {index === 0 && parseCityQuery(cityFilterSearchTerm).cityQuery.length >= 3 ? (
-                        <View style={styles.bestMatchBadge}>
-                          <Text style={styles.bestMatchText}>Best match</Text>
+                        <View style={[styles.bestMatchBadge, { backgroundColor: GOLD_SOFT, borderColor: GOLD_LINE }]}>
+                          <Text style={[styles.bestMatchText, { color: GOLD }]}>Best match</Text>
                         </View>
                       ) : null}
                     </TouchableOpacity>
@@ -2482,7 +2627,7 @@ onRefresh={() => {
                 ListEmptyComponent={
                   cityFilterSearchTerm.trim().length >= 2 ? (
                     <View style={styles.emptySearchState}>
-                      <Text style={styles.emptyText}>No matching cities found.</Text>
+                      <Text style={[styles.emptyText, { color: T.sub }]}>No matching cities found.</Text>
                     </View>
                   ) : null
                 }
@@ -2491,10 +2636,10 @@ onRefresh={() => {
 
             <TouchableOpacity
               onPress={() => setCityFilterModalVisible(false)}
-              style={styles.cityModalCancelButton}
+              style={[styles.cityModalCancelButton, { backgroundColor: T.surface, borderColor: T.line }]}
               activeOpacity={0.92}
             >
-              <Text style={styles.cityModalCancelText}>Cancel</Text>
+              <Text style={[styles.cityModalCancelText, { color: T.text }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -2505,13 +2650,17 @@ onRefresh={() => {
         animationType={Platform.OS === 'web' ? 'none' : 'slide'}
         onRequestClose={() => setRoleFilterModalVisible(false)}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalChromeLine} />
-          <Text style={styles.modalTitle}>Filter by Role</Text>
+        <View style={[styles.modalContainer, { backgroundColor: T.bg }]}>
+          <View style={[styles.modalChromeLine, { backgroundColor: GOLD }]} />
+          <Text style={[styles.modalTitle, { color: T.text }]}>Filter by Role</Text>
           <TextInput
-            style={[styles.searchInput, WEB_NO_OUTLINE]}
+            style={[
+              styles.searchInput,
+              { backgroundColor: T.surface, borderColor: T.line, color: READABLE_INK },
+              WEB_NO_OUTLINE,
+            ]}
             placeholder="Start typing a role…"
-            placeholderTextColor={T.mute}
+            placeholderTextColor={READABLE_MUTED}
             value={roleFilterSearchTerm}
             autoFocus
             onChangeText={(t) => {
@@ -2524,14 +2673,14 @@ onRefresh={() => {
             keyExtractor={(i) => String(i.value)}
             renderItem={({ item }) => (
               <TouchableOpacity
-                style={styles.listPickerItem}
+                style={[styles.listPickerItem, { borderBottomColor: T.line }]}
                 onPress={() => {
                   setFilterRole(item);
                   setRoleFilterModalVisible(false);
                 }}
                 activeOpacity={0.9}
               >
-                <Text style={styles.listPickerText}>{item.label}</Text>
+                <Text style={[styles.listPickerText, { color: READABLE_INK }]}>{item.label}</Text>
               </TouchableOpacity>
             )}
             removeClippedSubviews={false}
@@ -2540,10 +2689,10 @@ onRefresh={() => {
           />
           <TouchableOpacity
             onPress={() => setRoleFilterModalVisible(false)}
-            style={styles.closeModalButton}
+            style={[styles.closeModalButton, { backgroundColor: T.surface, borderColor: T.line }]}
             activeOpacity={0.92}
           >
-            <Text style={styles.closeModalText}>Close</Text>
+            <Text style={[styles.closeModalText, { color: T.text }]}>Close</Text>
           </TouchableOpacity>
         </View>
       </Modal>

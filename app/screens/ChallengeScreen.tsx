@@ -26,6 +26,7 @@ import { supabase, type UserTier } from '../lib/supabase';
 import { UpgradeModal } from '../../components/UpgradeModal';
 import { useAppRefresh } from '../context/AppRefreshContext';
 import { getCurrentUserTierOrFree } from '../lib/membership';
+import { useAppTheme } from '../context/ThemeContext';
 
 /* ------------------------------- palette ------------------------------- */
 const DARK_BG = '#050505';
@@ -251,21 +252,39 @@ const IconThumb: React.FC<{ icon: keyof typeof Ionicons.glyphMap; label?: string
   icon,
   label,
 }) => {
+  const { colors, isLight } = useAppTheme();
+
   return (
     <LinearGradient
-      colors={['#151515', '#080808']}
+      colors={isLight ? [colors.card, colors.backgroundAlt] : ['#151515', '#080808']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={styles.iconThumb}
+      style={[styles.iconThumb, { borderColor: colors.border }]}
     >
-      <View style={styles.iconThumbGlow} />
+      <View
+        style={[
+          styles.iconThumbGlow,
+          { backgroundColor: isLight ? 'rgba(198,166,100,0.16)' : 'rgba(198,166,100,0.10)' },
+        ]}
+      />
 
       <View style={styles.iconThumbCenter}>
-        <View style={styles.iconThumbInner}>
-          <Ionicons name={icon} size={24} color={GOLD} style={styles.iconThumbIcon} />
+        <View
+          style={[
+            styles.iconThumbInner,
+            {
+              backgroundColor: isLight ? colors.cardAlt : '#0F0F0F',
+              borderColor: isLight ? colors.border : 'rgba(198,166,100,0.18)',
+            },
+          ]}
+        >
+          <Ionicons name={icon} size={24} color={colors.primary} style={styles.iconThumbIcon} />
         </View>
 
-        <Text style={styles.iconThumbLabel} numberOfLines={1}>
+        <Text
+          style={[styles.iconThumbLabel, { color: isLight ? colors.textSecondary : TEXT_SOFT }]}
+          numberOfLines={1}
+        >
           {label || 'AUDIO'}
         </Text>
       </View>
@@ -277,32 +296,52 @@ const IconThumb: React.FC<{ icon: keyof typeof Ionicons.glyphMap; label?: string
 const ThumbMedia: React.FC<{ uri: string }> = ({ uri }) => {
   if (IS_WEB) {
     return (
-      <img
-        src={uri}
-        style={
-          {
-            width: 88,
-            height: 88,
-            borderRadius: 16,
-            objectFit: 'cover',
-            display: 'block',
-          } as any
-        }
-        draggable={false}
-        alt=""
-      />
+      <View style={styles.thumbFrame}>
+        <img
+          src={uri}
+          style={
+            {
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              display: 'block',
+              transform: 'scale(1.08)',
+              transformOrigin: 'center center',
+            } as any
+          }
+          draggable={false}
+          alt=""
+        />
+      </View>
     );
   }
 
-  return <Image source={{ uri }} style={styles.thumb} resizeMode="cover" />;
+  return (
+    <View style={styles.thumbFrame}>
+      <Image source={{ uri }} style={styles.thumb} resizeMode="cover" />
+    </View>
+  );
 };
 
 /* ------------------------------- screen -------------------------------- */
 const WorkshopScreen: React.FC = () => {
+  const { colors, isLight } = useAppTheme();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { refreshKey, triggerAppRefresh } = useAppRefresh();
   const isFocused = useIsFocused();
+  const DARK_BG = colors.background;
+  const DARK_SURFACE = colors.card;
+  const DARK_ELEVATED = colors.mutedCard;
+  const DARK_ELEVATED_2 = colors.cardAlt;
+  const DARK_ELEVATED_3 = isLight ? '#F4EBD8' : '#33281F';
+  const TEXT_IVORY = colors.textPrimary;
+  const TEXT_MUTED = colors.textMuted;
+  const TEXT_SOFT = colors.textSecondary;
+  const GOLD = colors.primary;
+  const GOLD_SOFT = isLight ? 'rgba(158,119,40,0.12)' : 'rgba(198,166,100,0.16)';
+  const BORDER = colors.border;
+  const BORDER_SOFT = isLight ? 'rgba(158,119,40,0.18)' : 'rgba(198,166,100,0.18)';
 
   const promptSignIn = (message: string) => {
     if (Platform.OS === 'web') {
@@ -1087,11 +1126,11 @@ const openProductContent = async (product: WorkshopProduct) => {
     if (isGuest) {
       return (
         <TouchableOpacity
-          style={styles.ctaButton}
+          style={[styles.ctaButton, { backgroundColor: GOLD, shadowColor: colors.shadow }]}
           onPress={() => promptSignIn('Create an account or sign in to access Workshop products.')}
           activeOpacity={0.9}
         >
-          <Text style={styles.ctaText} numberOfLines={1}>
+          <Text style={[styles.ctaText, { color: colors.textOnPrimary }]} numberOfLines={1}>
             Sign In
           </Text>
         </TouchableOpacity>
@@ -1101,11 +1140,18 @@ const openProductContent = async (product: WorkshopProduct) => {
     if (access) {
       return (
         <TouchableOpacity
-          style={[styles.ctaButton, styles.ctaButtonOutline]}
+          style={[
+            styles.ctaButton,
+            styles.ctaButtonOutline,
+            {
+              borderColor: GOLD,
+              backgroundColor: isLight ? '#FFFFFF' : 'transparent',
+            },
+          ]}
           onPress={() => openProductContent(product)}
           activeOpacity={0.9}
         >
-          <Text style={[styles.ctaText, styles.ctaTextOutline]} numberOfLines={1}>
+          <Text style={[styles.ctaText, styles.ctaTextOutline, { color: GOLD }]} numberOfLines={1}>
             Download / Access
           </Text>
         </TouchableOpacity>
@@ -1114,11 +1160,11 @@ const openProductContent = async (product: WorkshopProduct) => {
 
     return (
       <TouchableOpacity
-        style={styles.ctaButton}
+        style={[styles.ctaButton, { backgroundColor: GOLD, shadowColor: colors.shadow }]}
         onPress={() => setUpgradeVisible(true)}
         activeOpacity={0.9}
       >
-        <Text style={styles.ctaText} numberOfLines={1}>
+        <Text style={[styles.ctaText, { color: colors.textOnPrimary }]} numberOfLines={1}>
           Unlock with Pro
         </Text>
       </TouchableOpacity>
@@ -1354,11 +1400,18 @@ const openProductContent = async (product: WorkshopProduct) => {
     return (
       <TouchableOpacity
         key={value}
-        style={[styles.filterChip, selected ? styles.filterChipActive : null]}
+        style={[
+          styles.filterChip,
+          {
+            backgroundColor: selected ? GOLD : 'transparent',
+            borderColor: selected ? GOLD : 'transparent',
+            shadowColor: colors.shadow,
+          },
+        ]}
         activeOpacity={0.86}
         onPress={() => setActiveFilter(value)}
       >
-        <Text style={[styles.filterChipText, selected ? styles.filterChipTextActive : null]}>
+        <Text style={[styles.filterChipText, { color: selected ? colors.textOnPrimary : TEXT_SOFT }]}>
           {label}
         </Text>
       </TouchableOpacity>
@@ -1368,7 +1421,15 @@ const openProductContent = async (product: WorkshopProduct) => {
   const renderFilterSection = () => {
     return (
       <View style={styles.filterSection}>
-        <View style={styles.filterChipsOuter}>
+        <View
+          style={[
+            styles.filterChipsOuter,
+            {
+              backgroundColor: isLight ? '#FFFFFF' : 'rgba(255,255,255,0.035)',
+              borderColor: BORDER,
+            },
+          ]}
+        >
           <View style={styles.filterChipsRow}>
             {renderFilterChip('all', 'All')}
 {renderFilterChip('luts', 'LUTs')}
@@ -1389,11 +1450,19 @@ const openProductContent = async (product: WorkshopProduct) => {
       <View style={styles.sectionHeaderRow}>
         <View style={styles.sectionHeaderLeft}>
           <Ionicons name={icon} size={15} color={GOLD} />
-          <Text style={styles.sectionHeaderTitle}>{title}</Text>
+          <Text style={[styles.sectionHeaderTitle, { color: TEXT_IVORY }]}>{title}</Text>
         </View>
 
-        <View style={styles.sectionHeaderPill}>
-          <Text style={styles.sectionHeaderPillText}>{pill}</Text>
+        <View
+          style={[
+            styles.sectionHeaderPill,
+            {
+              backgroundColor: isLight ? '#FFFFFF' : 'rgba(255,255,255,0.035)',
+              borderColor: BORDER,
+            },
+          ]}
+        >
+          <Text style={[styles.sectionHeaderPillText, { color: TEXT_IVORY }]}>{pill}</Text>
         </View>
       </View>
     );
@@ -1428,11 +1497,15 @@ const isAudioProduct = isMusic || isSound;
             : null)}
         >
           <LinearGradient
-            colors={['#171717', '#0E0E0E']}
+            colors={isLight ? ['#FFFFFF', '#F7F0E2'] : ['#171717', '#0E0E0E']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[
               styles.card,
+              {
+                borderColor: BORDER,
+                shadowColor: colors.shadow,
+              },
               IS_WEB && columns === 2
                 ? {
                     height: WORKSHOP_WEB_CARD_HEIGHT,
@@ -1440,8 +1513,13 @@ const isAudioProduct = isMusic || isSound;
                 : null,
             ]}
           >
-            <View style={styles.cardGlow} />
-            <View style={styles.cardTopLine} />
+            <View
+              style={[
+                styles.cardGlow,
+                { backgroundColor: isLight ? 'rgba(201,164,92,0.13)' : 'rgba(198,166,100,0.065)' },
+              ]}
+            />
+            <View style={[styles.cardTopLine, { backgroundColor: BORDER }]} />
 
             <View style={styles.cardInner}>
              {!isAudioProduct && (
@@ -1459,36 +1537,52 @@ const isAudioProduct = isMusic || isSound;
               <View style={styles.cardBody}>
                 <View style={styles.cardMainContent}>
                   <View style={styles.cardTopMetaRow}>
-                    <View style={styles.cardTypePill}>
+                    <View
+                      style={[
+                        styles.cardTypePill,
+                        {
+                          backgroundColor: GOLD_SOFT,
+                          borderColor: BORDER_SOFT,
+                        },
+                      ]}
+                    >
                       <Ionicons
                         name={isAudioProduct ? 'musical-notes-outline' : 'color-filter-outline'}
                         size={12}
                         color={GOLD}
                       />
 
-                      <Text style={styles.cardTypePillText}>
+                      <Text style={[styles.cardTypePillText, { color: TEXT_IVORY }]}>
                         {isMusic ? 'Music track' : isSound ? 'Sound pack' : 'Workshop pack'}
                       </Text>
                     </View>
 
-                    <View style={styles.badgeProOnly}>
+                    <View
+                      style={[
+                        styles.badgeProOnly,
+                        {
+                          backgroundColor: isLight ? '#FFFFFF' : 'rgba(255,255,255,0.035)',
+                          borderColor: BORDER,
+                        },
+                      ]}
+                    >
                       <Ionicons name="sparkles-outline" size={12} color={GOLD} />
-                      <Text style={styles.badgeProOnlyText}>Pro only</Text>
+                      <Text style={[styles.badgeProOnlyText, { color: TEXT_IVORY }]}>Pro only</Text>
                     </View>
                   </View>
 
-                  <Text style={styles.cardTitle} numberOfLines={2}>
+                  <Text style={[styles.cardTitle, { color: TEXT_IVORY }]} numberOfLines={2}>
                     {product.name}
                   </Text>
 
                   {product.description ? (
-                    <Text style={styles.cardDescription} numberOfLines={IS_WEB ? 2 : 3}>
+                    <Text style={[styles.cardDescription, { color: TEXT_MUTED }]} numberOfLines={IS_WEB ? 2 : 3}>
                       {product.description}
                     </Text>
                   ) : null}
 
                   <View style={styles.metaRow}>
-                    <Text style={styles.metaHint}>
+                    <Text style={[styles.metaHint, { color: TEXT_SOFT }]}>
                       {access ? 'Tap to preview' : 'Preview available • unlock with Pro'}
                     </Text>
                   </View>
@@ -1497,9 +1591,17 @@ const isAudioProduct = isMusic || isSound;
                 <View style={styles.cardBottomRow}>
                   <View style={styles.cardActionLeft}>{renderCTA(product)}</View>
 
-                  <View style={styles.previewChip}>
+                  <View
+                    style={[
+                      styles.previewChip,
+                      {
+                        backgroundColor: isLight ? '#FFFFFF' : 'rgba(255,255,255,0.035)',
+                        borderColor: BORDER,
+                      },
+                    ]}
+                  >
                     <Ionicons name="play-circle-outline" size={15} color={TEXT_IVORY} />
-                    <Text style={styles.previewChipText}>Preview</Text>
+                    <Text style={[styles.previewChipText, { color: TEXT_IVORY }]}>Preview</Text>
                   </View>
                 </View>
               </View>
@@ -1514,9 +1616,9 @@ const isAudioProduct = isMusic || isSound;
   const showBlockingLoader = loading && !didLoadOnceRef.current;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: DARK_BG }]} edges={['top']}>
       <LinearGradient
-        colors={['#040404', '#000000', '#050505']}
+        colors={[DARK_BG, colors.backgroundAlt, DARK_BG]}
         start={{ x: 0, y: 0 }}
         end={{ x: 0.8, y: 1 }}
         style={styles.container}
@@ -1548,16 +1650,16 @@ const isAudioProduct = isMusic || isSound;
               {!hasAnything && (
                 <View style={styles.emptyState}>
                   <LinearGradient
-                    colors={['#161616', '#0E0E0E']}
+                    colors={isLight ? ['#FFFFFF', '#F7F0E2'] : ['#161616', '#0E0E0E']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
-                    style={styles.emptyStateIconWrap}
+                    style={[styles.emptyStateIconWrap, { borderColor: BORDER }]}
                   >
                     <Ionicons name="cube-outline" size={28} color={TEXT_MUTED} />
                   </LinearGradient>
 
-                  <Text style={styles.emptyTitle}>Nothing in the crate yet</Text>
-                  <Text style={styles.emptyText}>Your first Workshop pack will drop here soon.</Text>
+                  <Text style={[styles.emptyTitle, { color: TEXT_IVORY }]}>Nothing in the crate yet</Text>
+                  <Text style={[styles.emptyText, { color: TEXT_MUTED }]}>Your first Workshop pack will drop here soon.</Text>
                 </View>
               )}
 
@@ -1594,16 +1696,16 @@ const isAudioProduct = isMusic || isSound;
               {hasAnything && filteredItemCount === 0 && (
                 <View style={styles.emptyState}>
                   <LinearGradient
-                    colors={['#161616', '#0E0E0E']}
+                    colors={isLight ? ['#FFFFFF', '#F7F0E2'] : ['#161616', '#0E0E0E']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
-                    style={styles.emptyStateIconWrap}
+                    style={[styles.emptyStateIconWrap, { borderColor: BORDER }]}
                   >
                     <Ionicons name="search-outline" size={28} color={TEXT_MUTED} />
                   </LinearGradient>
 
-                  <Text style={styles.emptyTitle}>No tools found</Text>
-                  <Text style={styles.emptyText}>Try another Workshop category.</Text>
+                  <Text style={[styles.emptyTitle, { color: TEXT_IVORY }]}>No tools found</Text>
+                  <Text style={[styles.emptyText, { color: TEXT_MUTED }]}>Try another Workshop category.</Text>
                 </View>
               )}
 
@@ -1612,22 +1714,30 @@ const isAudioProduct = isMusic || isSound;
           )}
 
           <Modal visible={previewVisible} transparent animationType="fade" onRequestClose={closePreview}>
-            <Pressable style={styles.modalBackdrop} onPress={closePreview} />
+            <Pressable
+              style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}
+              onPress={closePreview}
+            />
 
             <View style={styles.modalCardWrap}>
               <LinearGradient
-                colors={['#181818', '#0D0D0D']}
+                colors={isLight ? [colors.card, colors.backgroundAlt] : ['#181818', '#0D0D0D']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={[
                   styles.modalCard,
-                  { width: MODAL_MAX_W, maxHeight: Math.min(680, SCREEN_H - 90) },
+                  {
+                    width: MODAL_MAX_W,
+                    maxHeight: Math.min(680, SCREEN_H - 90),
+                    borderColor: colors.border,
+                    shadowColor: colors.shadow,
+                  },
                 ]}
               >
                 <View style={styles.modalHeader}>
                   <View style={styles.modalHeaderLeft}>
                     <Ionicons name="cube-outline" size={18} color={GOLD} />
-                    <Text style={styles.modalTitle} numberOfLines={1}>
+                    <Text style={[styles.modalTitle, { color: colors.textPrimary }]} numberOfLines={1}>
                       {selectedProduct?.name || 'Preview'}
                     </Text>
                   </View>
@@ -1635,23 +1745,32 @@ const isAudioProduct = isMusic || isSound;
                   <TouchableOpacity
                     onPress={closePreview}
                     activeOpacity={0.8}
-                    style={styles.modalClose}
+                    style={[styles.modalClose, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}
                   >
-                    <Ionicons name="close" size={18} color={TEXT_IVORY} />
+                    <Ionicons name="close" size={18} color={colors.textPrimary} />
                   </TouchableOpacity>
                 </View>
 
-                <View style={[styles.previewArea, { aspectRatio: previewAspect }]}>
+                <View
+                  style={[
+                    styles.previewArea,
+                    {
+                      aspectRatio: previewAspect,
+                      backgroundColor: isLight ? colors.backgroundAlt : '#000',
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
                   {selectedProduct ? (
                     (() => {
                       const asset = selectedProduct.preview_url || selectedProduct.image_url || null;
 
                       if (!asset) {
                         return (
-                          <View style={styles.previewPlaceholder}>
+                          <View style={[styles.previewPlaceholder, { backgroundColor: isLight ? colors.backgroundAlt : '#000' }]}>
                             <Ionicons name="image-outline" size={24} color={GOLD} />
-                            <Text style={styles.previewPlaceholderTitle}>Preview coming soon</Text>
-                            <Text style={styles.previewPlaceholderText}>
+                            <Text style={[styles.previewPlaceholderTitle, { color: colors.textPrimary }]}>Preview coming soon</Text>
+                            <Text style={[styles.previewPlaceholderText, { color: colors.textSecondary }]}>
                               Upload a preview and set preview_url on the product.
                             </Text>
                           </View>
@@ -1660,13 +1779,21 @@ const isAudioProduct = isMusic || isSound;
 
                       if (isAudio(asset)) {
                         return (
-                          <View style={styles.audioWrap}>
+                          <View style={[styles.audioWrap, { backgroundColor: isLight ? colors.backgroundAlt : '#000' }]}>
                             <View style={styles.audioTop}>
-                              <View style={styles.audioIconPill}>
-                                <Ionicons name="musical-notes-outline" size={18} color={GOLD} />
+                              <View
+                                style={[
+                                  styles.audioIconPill,
+                                  {
+                                    backgroundColor: isLight ? colors.card : '#0F0F0F',
+                                    borderColor: colors.border,
+                                  },
+                                ]}
+                              >
+                                <Ionicons name="musical-notes-outline" size={18} color={colors.primary} />
                               </View>
 
-                              <Text style={styles.audioTitle} numberOfLines={2}>
+                              <Text style={[styles.audioTitle, { color: colors.textPrimary }]} numberOfLines={2}>
                                 Audio preview
                               </Text>
                             </View>
@@ -1700,15 +1827,18 @@ const isAudioProduct = isMusic || isSound;
                               <TouchableOpacity
                                 onPress={togglePlay}
                                 activeOpacity={0.85}
-                                style={styles.videoControlButton}
+                                style={[
+                                  styles.videoControlButton,
+                                  { backgroundColor: isLight ? colors.card : 'rgba(0,0,0,0.55)', borderColor: colors.border },
+                                ]}
                               >
                                 <Ionicons
                                   name={isPlaying ? 'pause' : 'play'}
                                   size={18}
-                                  color={TEXT_IVORY}
+                                  color={colors.textPrimary}
                                 />
 
-                                <Text style={styles.videoControlText}>
+                                <Text style={[styles.videoControlText, { color: colors.textPrimary }]}>
                                   {isPlaying ? 'Pause' : 'Play'}
                                 </Text>
                               </TouchableOpacity>
@@ -1716,15 +1846,18 @@ const isAudioProduct = isMusic || isSound;
                               <TouchableOpacity
                                 onPress={toggleMute}
                                 activeOpacity={0.85}
-                                style={styles.videoControlButton}
+                                style={[
+                                  styles.videoControlButton,
+                                  { backgroundColor: isLight ? colors.card : 'rgba(0,0,0,0.55)', borderColor: colors.border },
+                                ]}
                               >
                                 <Ionicons
                                   name={isMuted ? 'volume-mute' : 'volume-high'}
                                   size={18}
-                                  color={TEXT_IVORY}
+                                  color={colors.textPrimary}
                                 />
 
-                                <Text style={styles.videoControlText}>
+                                <Text style={[styles.videoControlText, { color: colors.textPrimary }]}>
                                   {isMuted ? 'Muted' : 'Sound'}
                                 </Text>
                               </TouchableOpacity>
@@ -1735,7 +1868,7 @@ const isAudioProduct = isMusic || isSound;
 
                       if (previewIsLikelyVideo(asset)) {
                         return (
-                          <View style={styles.videoWrap}>
+                          <View style={[styles.videoWrap, { backgroundColor: isLight ? colors.backgroundAlt : '#000' }]}>
                             {IS_WEB ? (
                               <video
                                 ref={(el) => {
@@ -1748,7 +1881,7 @@ const isAudioProduct = isMusic || isSound;
                                     height: '100%',
                                     objectFit: 'contain',
                                     objectPosition: 'center center',
-                                    background: '#000',
+                                    background: isLight ? colors.backgroundAlt : '#000',
                                     display: 'block',
                                   } as any
                                 }
@@ -1780,7 +1913,7 @@ const isAudioProduct = isMusic || isSound;
                                   videoRef.current = r;
                                 }}
                                 source={{ uri: asset }}
-                                style={[styles.video, WEB_VIDEO_FIT]}
+                                style={[styles.video, WEB_VIDEO_FIT, { backgroundColor: isLight ? colors.backgroundAlt : '#000' }]}
                                 resizeMode={ResizeMode.CONTAIN}
                                 isLooping
                                 shouldPlay={false}
@@ -1810,15 +1943,18 @@ const isAudioProduct = isMusic || isSound;
                               <TouchableOpacity
                                 onPress={togglePlay}
                                 activeOpacity={0.85}
-                                style={styles.videoControlButton}
+                                style={[
+                                  styles.videoControlButton,
+                                  { backgroundColor: isLight ? colors.card : 'rgba(0,0,0,0.55)', borderColor: colors.border },
+                                ]}
                               >
                                 <Ionicons
                                   name={isPlaying ? 'pause' : 'play'}
                                   size={18}
-                                  color={TEXT_IVORY}
+                                  color={colors.textPrimary}
                                 />
 
-                                <Text style={styles.videoControlText}>
+                                <Text style={[styles.videoControlText, { color: colors.textPrimary }]}>
                                   {isPlaying ? 'Pause' : 'Play'}
                                 </Text>
                               </TouchableOpacity>
@@ -1826,15 +1962,18 @@ const isAudioProduct = isMusic || isSound;
                               <TouchableOpacity
                                 onPress={toggleMute}
                                 activeOpacity={0.85}
-                                style={styles.videoControlButton}
+                                style={[
+                                  styles.videoControlButton,
+                                  { backgroundColor: isLight ? colors.card : 'rgba(0,0,0,0.55)', borderColor: colors.border },
+                                ]}
                               >
                                 <Ionicons
                                   name={isMuted ? 'volume-mute' : 'volume-high'}
                                   size={18}
-                                  color={TEXT_IVORY}
+                                  color={colors.textPrimary}
                                 />
 
-                                <Text style={styles.videoControlText}>
+                                <Text style={[styles.videoControlText, { color: colors.textPrimary }]}>
                                   {isMuted ? 'Muted' : 'Sound'}
                                 </Text>
                               </TouchableOpacity>
@@ -1849,24 +1988,26 @@ const isAudioProduct = isMusic || isSound;
                 </View>
 
                 {!!selectedProduct?.description && (
-                  <Text style={styles.modalDescription}>{selectedProduct.description}</Text>
+                  <Text style={[styles.modalDescription, { color: colors.textSecondary }]}>
+                    {selectedProduct.description}
+                  </Text>
                 )}
 
                 {selectedProduct && (
                   <View style={styles.modalMetaRow}>
-                    <View style={styles.modalMetaPill}>
+                    <View style={[styles.modalMetaPill, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
                       <Ionicons name="sparkles-outline" size={14} color={GOLD} />
-                      <Text style={styles.modalMetaText}>Pro only</Text>
+                      <Text style={[styles.modalMetaText, { color: colors.textPrimary }]}>Pro only</Text>
                     </View>
 
-                    <View style={styles.modalMetaPill}>
+                    <View style={[styles.modalMetaPill, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}>
                       <Ionicons
                         name={hasAccess(selectedProduct) ? 'lock-open-outline' : 'lock-closed-outline'}
                         size={14}
                         color={GOLD}
                       />
 
-                      <Text style={styles.modalMetaText}>
+                      <Text style={[styles.modalMetaText, { color: colors.textPrimary }]}>
                         {hasAccess(selectedProduct) ? 'Unlocked' : 'Locked'}
                       </Text>
                     </View>
@@ -1876,11 +2017,11 @@ const isAudioProduct = isMusic || isSound;
                 {selectedProduct && (
                   <View style={styles.modalActions}>
                     <TouchableOpacity
-                      style={[styles.modalButton, styles.modalButtonGhost]}
+                      style={[styles.modalButton, styles.modalButtonGhost, { backgroundColor: colors.backgroundAlt, borderColor: colors.border }]}
                       onPress={closePreview}
                       activeOpacity={0.9}
                     >
-                      <Text style={styles.modalButtonGhostText}>Close</Text>
+                      <Text style={[styles.modalButtonGhostText, { color: colors.textPrimary }]}>Close</Text>
                     </TouchableOpacity>
 
                     {isGuest ? (
@@ -2242,10 +2383,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
-  thumb: {
+  thumbFrame: {
     width: 88,
     height: 88,
     borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+  },
+  thumb: {
+    width: '100%',
+    height: '100%',
+    transform: [{ scale: 1.08 }],
   },
 
   iconThumb: {

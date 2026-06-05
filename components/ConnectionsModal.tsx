@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../app/lib/supabase";
+import { useAppTheme } from "../app/context/ThemeContext";
 
 /* --------------------- UI palette --------------------- */
 const DARK_BG = "#050505";
@@ -49,6 +50,7 @@ export const ConnectionsModal: React.FC<ConnectionsModalProps> = ({
   initialTab = "supporters",
   onSelectUser,
 }) => {
+  const { colors } = useAppTheme();
   const [activeTab, setActiveTab] =
   useState<"supporters" | "supporting">(initialTab);
 
@@ -146,25 +148,25 @@ useEffect(() => {
     return (
       <TouchableOpacity
         key={person.id}
-        style={styles.row}
+        style={[styles.row, { borderColor: colors.border }]}
         onPress={() => onSelectUser && onSelectUser(person.id)}
         activeOpacity={0.8}
       >
         {/* avatar */}
-        <View style={styles.avatarWrap}>
+        <View style={[styles.avatarWrap, { backgroundColor: colors.mutedCard }]}>
           {person.avatar_url ? (
             <Image source={{ uri: person.avatar_url }} style={styles.avatar} />
           ) : (
-            <View style={styles.avatarFallback}>
-              <Text style={styles.avatarFallbackText}>{initials}</Text>
+            <View style={[styles.avatarFallback, { backgroundColor: colors.primary }]}>
+              <Text style={[styles.avatarFallbackText, { color: colors.textOnPrimary }]}>{initials}</Text>
             </View>
           )}
         </View>
 
         {/* name + relation */}
         <View style={{ flex: 1 }}>
-          <Text style={styles.name}>{person.full_name}</Text>
-          <Text style={styles.meta}>{relationText}</Text>
+          <Text style={[styles.name, { color: colors.textPrimary }]}>{person.full_name}</Text>
+          <Text style={[styles.meta, { color: colors.textMuted }]}>{relationText}</Text>
         </View>
       </TouchableOpacity>
     );
@@ -187,13 +189,13 @@ useEffect(() => {
   ------------------------------------------------------ */
   return (
     <Modal visible={visible} animationType="fade" transparent>
-      <View style={styles.overlay}>
-        <View style={styles.card}>
+      <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>Support</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Support</Text>
             <Pressable onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={18} color={TEXT_MUTED} />
+              <Ionicons name="close" size={18} color={colors.textMuted} />
             </Pressable>
           </View>
 
@@ -207,14 +209,18 @@ useEffect(() => {
                 key={key}
                 style={[
                   styles.tab,
+                  { backgroundColor: colors.mutedCard },
                   activeTab === key && styles.tabActive,
+                  activeTab === key && { backgroundColor: colors.primary },
                 ]}
                 onPress={() => setActiveTab(key as any)}
               >
                 <Text
                   style={[
                     styles.tabText,
+                    { color: colors.textMuted },
                     activeTab === key && styles.tabTextActive,
+                    activeTab === key && { color: colors.textOnPrimary },
                   ]}
                 >
                   {label}
@@ -227,11 +233,11 @@ useEffect(() => {
 <View style={styles.listWrap}>
   {loading ? (
     <View style={styles.loadingWrap}>
-      <ActivityIndicator color={GOLD} />
+      <ActivityIndicator color={colors.loader} />
     </View>
   ) : entries.length === 0 ? (
     <View style={styles.emptyWrap}>
-      <Text style={styles.emptyText}>{emptyMsg}</Text>
+      <Text style={[styles.emptyText, { color: colors.textMuted }]}>{emptyMsg}</Text>
     </View>
   ) : (
     <FlatList

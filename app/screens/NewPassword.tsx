@@ -16,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, CommonActions } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 import { navigationRef } from "../navigation/navigationRef";
+import { useAppTheme } from "../context/ThemeContext";
 
 const BG = "#050505";
 const CARD = "#111114";
@@ -39,6 +40,7 @@ type ResetTokens = {
 
 export default function NewPassword() {
   const navigation = useNavigation<any>();
+  const { colors } = useAppTheme();
 
   const latestNativeUrlRef = useRef<string | null>(null);
   const hasTriedSessionRef = useRef(false);
@@ -641,7 +643,7 @@ export default function NewPassword() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: BG }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={styles.container}>
         <TouchableOpacity
           onPress={() => void goToSignIn()}
@@ -649,30 +651,30 @@ export default function NewPassword() {
           disabled={signingOut}
         >
           {signingOut ? (
-            <ActivityIndicator color={SUB} />
+            <ActivityIndicator color={colors.textMuted} />
           ) : (
-            <Ionicons name="chevron-back" size={18} color={SUB} />
+            <Ionicons name="chevron-back" size={18} color={colors.textMuted} />
           )}
-          <Text style={styles.backText}>Back to Sign In</Text>
+          <Text style={[styles.backText, { color: colors.textMuted }]}>Back to Sign In</Text>
         </TouchableOpacity>
 
-        <View style={styles.card}>
-          <Text style={styles.title}>Set a New Password</Text>
-          <Text style={styles.subtitle}>Enter your new password below.</Text>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Set a New Password</Text>
+          <Text style={[styles.subtitle, { color: colors.textMuted }]}>Enter your new password below.</Text>
 
-          <Text style={styles.passwordHint}>
+          <Text style={[styles.passwordHint, { color: colors.textMuted }]}>
             Password must be at least 6 characters. Numbers, symbols, and uppercase letters are optional.
           </Text>
 
-          <View style={styles.inputRow}>
-            <Ionicons name="lock-closed" size={16} color={SUB} />
+          <View style={[styles.inputRow, { backgroundColor: colors.input, borderColor: colors.border }]}>
+            <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
             <TextInput
               secureTextEntry={!showPassword}
               placeholder="New password"
-              placeholderTextColor={SUB}
+              placeholderTextColor={colors.textMuted}
               value={password}
               onChangeText={setPassword}
-              style={styles.input}
+              style={[styles.input, { color: colors.textPrimary }]}
               editable={!loading && !signingOut}
               autoCapitalize="none"
               autoCorrect={false}
@@ -685,20 +687,20 @@ export default function NewPassword() {
               <Ionicons
                 name={showPassword ? "eye-off" : "eye"}
                 size={18}
-                color={SUB}
+                color={colors.textMuted}
               />
             </TouchableOpacity>
           </View>
 
-          <View style={styles.inputRow}>
-            <Ionicons name="shield-checkmark" size={16} color={SUB} />
+          <View style={[styles.inputRow, { backgroundColor: colors.input, borderColor: colors.border }]}>
+            <Ionicons name="shield-checkmark" size={16} color={colors.textMuted} />
             <TextInput
               secureTextEntry={!showConfirmPassword}
               placeholder="Confirm password"
-              placeholderTextColor={SUB}
+              placeholderTextColor={colors.textMuted}
               value={confirm}
               onChangeText={setConfirm}
-              style={styles.input}
+              style={[styles.input, { color: colors.textPrimary }]}
               editable={!loading && !signingOut}
               autoCapitalize="none"
               autoCorrect={false}
@@ -711,7 +713,7 @@ export default function NewPassword() {
               <Ionicons
                 name={showConfirmPassword ? "eye-off" : "eye"}
                 size={18}
-                color={SUB}
+                color={colors.textMuted}
               />
             </TouchableOpacity>
           </View>
@@ -728,13 +730,13 @@ export default function NewPassword() {
             ]}
           >
             {loading ? (
-              <ActivityIndicator color={BG} />
+              <ActivityIndicator color={colors.textOnPrimary} />
             ) : (
               <Text style={styles.buttonText}>UPDATE PASSWORD</Text>
             )}
           </TouchableOpacity>
 
-          {!!status && <Text style={styles.status}>{status}</Text>}
+          {!!status && <Text style={[styles.status, { color: colors.textMuted }]}>{status}</Text>}
 
           {!sessionReady && !status && (
             <Text style={styles.error}>

@@ -17,6 +17,7 @@ import {
 } from 'react-native-gesture-handler';
 import * as ImageManipulator from 'expo-image-manipulator';
 import Slider from '@react-native-community/slider';
+import { useAppTheme } from '../app/context/ThemeContext';
 
 type Props = {
   visible: boolean;
@@ -77,6 +78,7 @@ export default function AvatarCropper({
   onCropped,
   onDone,
 }: Props) {
+  const { colors } = useAppTheme();
   const effectiveUri = imageUri || sourceUri || undefined;
   const { width, height } = useWindowDimensions();
 
@@ -290,18 +292,18 @@ export default function AvatarCropper({
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onCancel}>
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>
         <View style={styles.header}>
           <TouchableOpacity
             onPress={onCancel}
             disabled={saving}
             activeOpacity={0.85}
-            style={styles.headerButton}
+            style={[styles.headerButton, { backgroundColor: colors.mutedCard, borderColor: colors.border }]}
           >
-            <Text style={styles.headerButtonText}>Cancel</Text>
+            <Text style={[styles.headerButtonText, { color: colors.textSecondary }]}>Cancel</Text>
           </TouchableOpacity>
 
-          <Text style={styles.title}>Adjust profile picture</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Adjust profile picture</Text>
 
           <TouchableOpacity
             onPress={doCrop}
@@ -310,18 +312,19 @@ export default function AvatarCropper({
             style={[
               styles.headerButton,
               styles.saveButton,
+              { backgroundColor: colors.primary, borderColor: colors.primary },
               (saving || !imageReady) && { opacity: 0.55 },
             ]}
           >
             {saving ? (
-              <ActivityIndicator color="#000" size="small" />
+              <ActivityIndicator color={colors.textOnPrimary} size="small" />
             ) : (
-              <Text style={styles.saveButtonText}>Save</Text>
+              <Text style={[styles.saveButtonText, { color: colors.textOnPrimary }]}>Save</Text>
             )}
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.subtitle}>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
           Drag and pinch until the circle matches the profile photo you want.
         </Text>
 
@@ -360,7 +363,7 @@ export default function AvatarCropper({
                     />
                   ) : (
                     <View style={styles.loadingState}>
-                      <ActivityIndicator color={GOLD} />
+                      <ActivityIndicator color={colors.primary} />
                     </View>
                   )}
                 </View>
@@ -381,10 +384,10 @@ export default function AvatarCropper({
           />
         </View>
 
-        <View style={styles.zoomPanel}>
+        <View style={[styles.zoomPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.zoomLabelRow}>
-            <Text style={styles.zoomLabel}>Zoom</Text>
-            <Text style={styles.zoomValue}>{zoom.toFixed(1)}x</Text>
+            <Text style={[styles.zoomLabel, { color: colors.textSecondary }]}>Zoom</Text>
+            <Text style={[styles.zoomValue, { color: colors.primary }]}>{zoom.toFixed(1)}x</Text>
           </View>
           <Slider
             style={styles.slider}
@@ -392,13 +395,13 @@ export default function AvatarCropper({
             maximumValue={MAX_ZOOM}
             value={zoom}
             onValueChange={setZoomAndClamp}
-            minimumTrackTintColor={GOLD}
-            maximumTrackTintColor="rgba(255,255,255,0.20)"
-            thumbTintColor={GOLD}
+            minimumTrackTintColor={colors.primary}
+            maximumTrackTintColor={colors.borderStrong}
+            thumbTintColor={colors.primary}
           />
         </View>
 
-        <Text style={styles.hint}>
+        <Text style={[styles.hint, { color: colors.textMuted }]}>
           The saved avatar is exactly the image inside the circle.
         </Text>
       </View>

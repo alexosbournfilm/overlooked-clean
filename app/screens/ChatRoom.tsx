@@ -32,6 +32,7 @@ import { reportContent, ReportReason } from '../utils/reportContent';
 import { blockUser } from '../utils/blockUser';
 import { validateSafeText } from '../utils/moderation';
 import ReportContentModal from '../../components/ReportContentModal';
+import { useAppTheme } from '../context/ThemeContext';
 /* ------------------------------- Noir palette ------------------------------- */
 const DARK_BG = '#050505';
 const ELEVATED = '#0D0D0F';
@@ -132,9 +133,19 @@ async function markConversationActive(conversationId: string) {
 type LoadState = 'idle' | 'checking' | 'ready' | 'missing';
 
 export default function ChatRoom() {
+  const { colors } = useAppTheme();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { triggerAppRefresh } = useAppRefresh();
+  const DARK_BG = colors.background;
+  const ELEVATED = colors.card;
+  const ELEVATED_2 = colors.mutedCard;
+  const BORDER = colors.border;
+  const TEXT = colors.textPrimary;
+  const SUBTLE = colors.textMuted;
+  const GOLD = colors.primary;
+  const BUBBLE_IN = colors.cardAlt;
+  const BUBBLE_OUT = colors.primary;
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -719,12 +730,12 @@ useFocusEffect(
         peerUser?.avatar_url || null;
            navigation.setOptions({
   headerStyle: {
-    backgroundColor: '#000000',
+    backgroundColor: DARK_BG,
   },
   headerShadowVisible: false,
   headerTintColor: TEXT,
   contentStyle: {
-    backgroundColor: '#000000',
+    backgroundColor: DARK_BG,
   },
   headerLeft,
   headerTitleAlign: 'center',
@@ -737,11 +748,11 @@ useFocusEffect(
       {avatarUri ? (
         <Image source={{ uri: avatarUri }} style={styles.headerAvatar} />
       ) : (
-        <View style={[styles.headerAvatar, styles.headerAvatarFallback]}>
+        <View style={[styles.headerAvatar, styles.headerAvatarFallback, { backgroundColor: ELEVATED_2 }]}>
           <Ionicons name="person-outline" size={16} color={SUBTLE} />
         </View>
       )}
-      <Text style={styles.headerTitleText} numberOfLines={1}>
+      <Text style={[styles.headerTitleText, { color: TEXT }]} numberOfLines={1}>
         {name}
       </Text>
     </TouchableOpacity>
@@ -796,9 +807,7 @@ useFocusEffect(
             }}
           >
             <Text
-              style={
-                styles.headerTitleText
-              }
+              style={[styles.headerTitleText, { color: TEXT }]}
               numberOfLines={1}
             >
               {conversation.is_city_group
@@ -807,11 +816,7 @@ useFocusEffect(
                 : conversation.label ||
                   'Group Chat'}
             </Text>
-            <Text
-              style={
-                styles.memberCountText
-              }
-            >
+            <Text style={[styles.memberCountText, { color: SUBTLE }]}>
               {'  •  '}
               {memberCount}
             </Text>
@@ -837,12 +842,12 @@ useFocusEffect(
 
       navigation.setOptions({
   headerStyle: {
-    backgroundColor: '#000000',
+    backgroundColor: DARK_BG,
   },
   headerShadowVisible: false,
   headerTintColor: TEXT,
   contentStyle: {
-    backgroundColor: '#000000',
+    backgroundColor: DARK_BG,
   },
   headerLeft,
   headerRight,
@@ -1633,8 +1638,8 @@ emitChatBadgeRefresh();
             style={[
               styles.imageBubble,
               isOwn
-                ? styles.imageOutgoing
-                : styles.imageIncoming,
+                ? [styles.imageOutgoing, { backgroundColor: BUBBLE_OUT, borderColor: GOLD }]
+                : [styles.imageIncoming, { backgroundColor: ELEVATED, borderColor: BORDER }],
             ]}
           >
             <Image
@@ -1662,17 +1667,14 @@ emitChatBadgeRefresh();
             style={[
               styles.messageBubble,
               isOwn
-                ? styles.outgoing
-                : styles.incoming,
+                ? [styles.outgoing, { backgroundColor: BUBBLE_OUT, borderColor: GOLD }]
+                : [styles.incoming, { backgroundColor: ELEVATED, borderColor: BORDER }],
             ]}
           >
             <Text
               style={[
                 styles.messageText,
-                isOwn && {
-                  color:
-                    '#000',
-                },
+                { color: isOwn ? colors.textOnPrimary : TEXT },
                 webTextFix as any,
               ]}
             >
@@ -1690,16 +1692,6 @@ emitChatBadgeRefresh();
               )}
           </View>
         )}
-        {!isOwn ? (
-          <View style={styles.messageSafetyRow}>
-            <TouchableOpacity onPress={() => reportMessage(item)} style={styles.messageSafetyBtn}>
-              <Text style={styles.messageSafetyText}>Report</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => blockMessageSender(item)} style={styles.messageSafetyBtn}>
-              <Text style={[styles.messageSafetyText, { color: '#FF8A8A' }]}>Block</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
       </View>
     );
   };
@@ -1709,12 +1701,12 @@ emitChatBadgeRefresh();
 const isScreenReady = loadState === 'ready' && !!conversation?.id;
   return (
         <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: DARK_BG }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       {!isScreenReady ? (
-  <View style={styles.loaderWrap}>
+  <View style={[styles.loaderWrap, { backgroundColor: DARK_BG }]}>
     <ActivityIndicator color={TEXT} />
   </View>
 ) : (
@@ -1742,12 +1734,13 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
 />
 
     {typingUser && (
-      <Text style={styles.typingText}>Someone is typing…</Text>
+      <Text style={[styles.typingText, { color: SUBTLE }]}>Someone is typing…</Text>
     )}
 
        <View
       style={[
         styles.inputBar,
+        { backgroundColor: DARK_BG, borderTopColor: BORDER },
         Platform.OS === 'android' && keyboardHeight > 0
           ? { marginBottom: keyboardHeight }
           : null,
@@ -1776,7 +1769,7 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
       : 'Type a message…'
   }
   placeholderTextColor={SUBTLE}
-  style={styles.input}
+  style={[styles.input, { backgroundColor: ELEVATED, borderColor: BORDER, color: TEXT }]}
   multiline={Platform.OS === 'web'}
   onKeyPress={handleWebKeyPress}
   editable={!messagingDisabled}

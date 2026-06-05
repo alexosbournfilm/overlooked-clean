@@ -1,11 +1,13 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { COLORS } from '../theme/colors';
+import { useAppTheme } from '../context/ThemeContext';
 
 export default function SettingsScreen() {
+  const { colors } = useAppTheme();
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.text}>Settings Page</Text>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Text style={[styles.text, { color: colors.textPrimary }]}>Settings Page</Text>
     </View>
   );
 }
@@ -13,12 +15,10 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
     justifyContent: 'center',
     alignItems: 'center',
   },
   text: {
-    color: COLORS.textPrimary,
     fontSize: 20,
   },
 });

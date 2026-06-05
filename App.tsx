@@ -16,6 +16,7 @@ import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { AuthProvider } from "./app/context/AuthProvider";
 import { AppRefreshProvider } from "./app/context/AppRefreshContext";
 import { GamificationProvider } from "./app/context/GamificationContext";
+import { AppThemeProvider, useAppTheme } from "./app/context/ThemeContext";
 import { navigate } from "./app/navigation/navigationRef";
 import { registerAndSavePushToken } from "./app/lib/registerAndSavePushToken";
 
@@ -232,6 +233,47 @@ async function forceSignInForIncompleteProfile(reason: string) {
   (globalThis as any).__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
 
   clearCreateProfileAllowedStorage();
+}
+
+function LoadingShell() {
+  const { colors, isLight } = useAppTheme();
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <StatusBar style={isLight ? "dark" : "light"} />
+    </View>
+  );
+}
+
+function ReadyShell({
+  initialAuthRouteName,
+}: {
+  initialAuthRouteName: "SignIn" | "CreateProfile";
+}) {
+  const { colors, isLight } = useAppTheme();
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <AppErrorBoundary>
+        <PaperProvider>
+          <SafeAreaProvider>
+            <GestureHandlerRootView
+              style={{ flex: 1, backgroundColor: colors.background }}
+            >
+              <StatusBar style={isLight ? "dark" : "light"} />
+              <AuthProvider>
+                <AppRefreshProvider>
+                  <GamificationProvider>
+                    <AppNavigator initialAuthRouteName={initialAuthRouteName} />
+                  </GamificationProvider>
+                </AppRefreshProvider>
+              </AuthProvider>
+            </GestureHandlerRootView>
+          </SafeAreaProvider>
+        </PaperProvider>
+      </AppErrorBoundary>
+    </View>
+  );
 }
 
 async function handleWebSignupHashImmediately() {
@@ -737,32 +779,15 @@ if (handledEarlySignupHash) {
 
   if (!appIsReady || !fontsLoaded) {
     return (
-      <View style={{ flex: 1, backgroundColor: "#0D0D0D" }}>
-        <StatusBar style="light" />
-      </View>
+      <AppThemeProvider>
+        <LoadingShell />
+      </AppThemeProvider>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#0D0D0D" }}>
-      <AppErrorBoundary>
-        <PaperProvider>
-          <SafeAreaProvider>
-            <GestureHandlerRootView
-              style={{ flex: 1, backgroundColor: "#0D0D0D" }}
-            >
-              <StatusBar style="light" />
-              <AuthProvider>
-                <AppRefreshProvider>
-                  <GamificationProvider>
-                    <AppNavigator initialAuthRouteName={initialAuthRouteName} />
-                  </GamificationProvider>
-                </AppRefreshProvider>
-              </AuthProvider>
-            </GestureHandlerRootView>
-          </SafeAreaProvider>
-        </PaperProvider>
-      </AppErrorBoundary>
-    </View>
+    <AppThemeProvider>
+      <ReadyShell initialAuthRouteName={initialAuthRouteName} />
+    </AppThemeProvider>
   );
 }

@@ -5,6 +5,7 @@ import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/
 
 import ChatsScreen from '../screens/ChatsScreen';
 import ChatRoomScreen from '../screens/ChatRoom';
+import { useAppTheme } from '../context/ThemeContext';
 
 export type ChatsStackParamList = {
   ChatsHome: undefined;
@@ -17,9 +18,6 @@ export type ChatsStackParamList = {
 
 const Stack = createStackNavigator<ChatsStackParamList>();
 
-const DARK_BG = '#050505';
-const TEXT_IVORY = '#F4EFE6';
-
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
   android: 'Roboto',
@@ -28,19 +26,21 @@ const SYSTEM_SANS = Platform.select({
 });
 
 export default function ChatsStack() {
+  const { colors } = useAppTheme();
+
   return (
     <Stack.Navigator
       screenOptions={{
-        headerStyle: { backgroundColor: DARK_BG, shadowColor: 'transparent', elevation: 0 },
-        headerTintColor: TEXT_IVORY,
+        headerStyle: { backgroundColor: colors.background, shadowColor: 'transparent', elevation: 0 },
+        headerTintColor: colors.textPrimary,
         headerTitleStyle: {
-          color: TEXT_IVORY,
+          color: colors.textPrimary,
           fontFamily: SYSTEM_SANS,
           fontSize: 14,
           fontWeight: '900',
         },
         headerTitleAlign: 'center',
-        cardStyle: { backgroundColor: DARK_BG },
+        cardStyle: { backgroundColor: colors.background },
         gestureEnabled: true,
         ...(Platform.OS === 'ios'
           ? {

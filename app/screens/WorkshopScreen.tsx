@@ -24,6 +24,7 @@ import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 import { UpgradeModal } from '../../components/UpgradeModal';
 import { useAppRefresh } from '../context/AppRefreshContext';
 import { getCurrentUserTierOrFree } from '../lib/membership';
+import { useAppTheme } from '../context/ThemeContext';
 
 /* -------------------------------- palette -------------------------------- */
 const BG = '#050505';
@@ -214,6 +215,91 @@ const PATHS: PathMeta[] = [
   },
 
 ];
+
+const PATH_ART_ICONS: Record<WorkshopPathKey, keyof typeof Ionicons.glyphMap> = {
+  filmmaker: 'sparkles-outline',
+  acting: 'person-outline',
+  selftape: 'phone-portrait-outline',
+  editing: 'cut-outline',
+  cinematography: 'camera-outline',
+  directing: 'videocam-outline',
+  sound: 'mic-outline',
+};
+
+const PATH_ART_SECONDARY_ICONS: Partial<Record<WorkshopPathKey, keyof typeof Ionicons.glyphMap>> = {
+  filmmaker: 'film-outline',
+  selftape: 'videocam-outline',
+  editing: 'film-outline',
+  cinematography: 'aperture-outline',
+  directing: 'film-outline',
+  sound: 'radio-outline',
+};
+
+type PathProgressArtworkProps = {
+  pathKey: WorkshopPathKey;
+  primaryIcon: keyof typeof Ionicons.glyphMap;
+  secondaryIcon?: keyof typeof Ionicons.glyphMap;
+  ink: string;
+  isDesktop: boolean;
+};
+
+const PathProgressArtwork: React.FC<PathProgressArtworkProps> = ({
+  pathKey,
+  primaryIcon,
+  secondaryIcon,
+  ink,
+  isDesktop,
+}) => {
+  if (pathKey === 'acting') {
+    const fill = { backgroundColor: ink };
+
+    return (
+      <View
+        pointerEvents="none"
+        style={[styles.pathArtworkLayer, !isDesktop && styles.pathArtworkLayerMobile]}
+      >
+        <View style={[styles.actorArtwork, !isDesktop && styles.actorArtworkMobile]}>
+          <View style={[styles.actorArtHead, fill]} />
+          <View style={[styles.actorArtHair, fill]} />
+          <View style={[styles.actorArtNeck, fill]} />
+          <View style={[styles.actorArtTorso, fill]} />
+          <View style={[styles.actorArtNearUpperArm, fill]} />
+          <View style={[styles.actorArtNearForearm, fill]} />
+          <View style={[styles.actorArtNearHand, fill]} />
+          <View style={[styles.actorArtFarUpperArm, fill]} />
+          <View style={[styles.actorArtFarForearm, fill]} />
+          <View style={[styles.actorArtFarHand, fill]} />
+          <View style={[styles.actorArtKnee, fill]} />
+          <View style={[styles.actorArtSeatLeg, fill]} />
+          <View style={[styles.actorArtLowerLeg, fill]} />
+          <View style={[styles.actorArtFoot, fill]} />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View
+      pointerEvents="none"
+      style={[styles.pathArtworkLayer, !isDesktop && styles.pathArtworkLayerMobile]}
+    >
+      {secondaryIcon ? (
+        <Ionicons
+          name={secondaryIcon}
+          size={isDesktop ? 158 : 132}
+          color={ink}
+          style={styles.pathArtworkSecondaryIcon}
+        />
+      ) : null}
+      <Ionicons
+        name={primaryIcon}
+        size={isDesktop ? 232 : 196}
+        color={ink}
+        style={styles.pathArtworkPrimaryIcon}
+      />
+    </View>
+  );
+};
 /* ---------------------------- lesson banks ---------------------------- */
 const makeSeed = (
   title: string,
@@ -7614,6 +7700,7 @@ function SidebarPathItem({
   progress: number;
   onPress: () => void;
 }) {
+  const { colors, isLight } = useAppTheme();
   const scale = useRef(new Animated.Value(1)).current;
   const glow = useRef(new Animated.Value(active ? 1 : 0)).current;
   const lift = useRef(new Animated.Value(0)).current;
@@ -7641,12 +7728,12 @@ function SidebarPathItem({
 
   const borderColor = glow.interpolate({
     inputRange: [0, 1],
-    outputRange: [BORDER, GOLD],
+    outputRange: [colors.border, colors.primary],
   });
 
   const backgroundColor = glow.interpolate({
     inputRange: [0, 1],
-    outputRange: [PANEL, '#13110D'],
+    outputRange: [colors.card, isLight ? '#F7F0E2' : '#13110D'],
   });
 
   return (
@@ -7666,21 +7753,21 @@ function SidebarPathItem({
         onHoverOut={() => Platform.OS === 'web' && animateTo(false)}
         style={styles.sidebarItem}
       >
-        <View style={[styles.sidebarIcon, active && styles.sidebarIconActive]}>
-          <Ionicons name={path.icon} size={18} color={active ? BG : GOLD} />
+        <View style={[styles.sidebarIcon, { backgroundColor: colors.mutedCard, borderColor: colors.border }, active && styles.sidebarIconActive, active && { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+          <Ionicons name={path.icon} size={18} color={active ? colors.textOnPrimary : colors.primary} />
         </View>
 
         <View style={styles.sidebarTextWrap}>
-          <Text style={[styles.sidebarTitle, active && styles.sidebarTitleActive]}>
+          <Text style={[styles.sidebarTitle, { color: colors.textPrimary }, active && styles.sidebarTitleActive, active && { color: colors.primary }]}>
             {path.shortLabel}
           </Text>
-          <Text style={styles.sidebarSubtitle} numberOfLines={1}>
+          <Text style={[styles.sidebarSubtitle, { color: colors.textMuted }]} numberOfLines={1}>
             {path.subtitle}
           </Text>
         </View>
 
-        <View style={styles.sidebarProgressPill}>
-          <Text style={styles.sidebarProgressText}>{progress}</Text>
+        <View style={[styles.sidebarProgressPill, { backgroundColor: isLight ? 'rgba(158,119,40,0.10)' : 'rgba(198,166,100,0.12)', borderColor: isLight ? 'rgba(158,119,40,0.28)' : 'rgba(198,166,100,0.28)' }]}>
+          <Text style={[styles.sidebarProgressText, { color: colors.primary }]}>{progress}</Text>
         </View>
       </Pressable>
     </Animated.View>
@@ -7696,6 +7783,7 @@ function LessonRowCard({
   state: NodeState;
   onPress: () => void;
 }) {
+  const { colors, isLight } = useAppTheme();
   const locked = state === 'locked';
   const completed = state === 'completed';
   const current = state === 'current';
@@ -7756,20 +7844,33 @@ function LessonRowCard({
         onHoverOut={() => animateHover(false)}
         style={[
           styles.lessonRowCard,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            shadowColor: colors.shadow,
+          },
           completed && styles.lessonRowCardCompleted,
+          completed && {
+            backgroundColor: isLight ? '#F3FAF5' : '#0D1913',
+            borderColor: isLight ? 'rgba(35,122,61,0.22)' : 'rgba(104,186,132,0.18)',
+          },
           current && styles.lessonRowCardCurrent,
+          current && {
+            backgroundColor: isLight ? '#F6ECD8' : 'rgba(198,166,100,0.11)',
+            borderColor: colors.primary,
+          },
           locked && styles.lessonRowCardLocked,
         ]}
       >
         <View style={styles.lessonRowTextWrap}>
           <View style={styles.lessonRowTopLine}>
-            <Text style={[styles.lessonRowStep, locked && styles.lockedText]}>
+            <Text style={[styles.lessonRowStep, { color: colors.primary }, locked && styles.lockedText, locked && { color: colors.textMuted }]}>
               Step {lesson.step}
             </Text>
 
             <View style={styles.lessonRowBadgeWrap}>
-              <View style={styles.lessonRowKindPill}>
-                <Text style={styles.lessonRowKindText}>{kindLabel(lesson.kind)}</Text>
+              <View style={[styles.lessonRowKindPill, { backgroundColor: isLight ? 'rgba(158,119,40,0.10)' : 'rgba(198,166,100,0.12)', borderColor: isLight ? 'rgba(158,119,40,0.24)' : 'rgba(198,166,100,0.24)' }]}>
+                <Text style={[styles.lessonRowKindText, { color: colors.primary }]}>{kindLabel(lesson.kind)}</Text>
               </View>
 
               {lesson.missionType ? (
@@ -7785,23 +7886,23 @@ function LessonRowCard({
           </View>
 
           <Text
-            style={[styles.lessonRowTitle, locked && styles.lockedText]}
+            style={[styles.lessonRowTitle, { color: colors.textPrimary }, locked && styles.lockedText, locked && { color: colors.textMuted }]}
             numberOfLines={2}
           >
             {lesson.title}
           </Text>
 
           <Text
-            style={[styles.lessonRowSubtitle, locked && styles.lockedText]}
+            style={[styles.lessonRowSubtitle, { color: colors.textMuted }, locked && styles.lockedText]}
             numberOfLines={2}
           >
             {lesson.subtitle || lesson.description}
           </Text>
 
           <View style={styles.lessonRowMeta}>
-            <View style={styles.lessonRowMetaPill}>
-              <Ionicons name="flash-outline" size={11} color={CINEMA.brass} />
-              <Text style={styles.lessonRowMetaText}>{lesson.xp} XP</Text>
+            <View style={[styles.lessonRowMetaPill, { backgroundColor: colors.mutedCard, borderColor: colors.border }]}>
+              <Ionicons name="flash-outline" size={11} color={colors.primary} />
+              <Text style={[styles.lessonRowMetaText, { color: colors.textMuted }]}>{lesson.xp} XP</Text>
             </View>
           </View>
         </View>
@@ -7809,7 +7910,7 @@ function LessonRowCard({
         <Ionicons
           name="chevron-forward"
           size={18}
-          color={locked ? CINEMA.textDim : CINEMA.brass}
+          color={locked ? colors.textMuted : colors.primary}
           style={styles.lessonRowChevron}
         />
       </Pressable>
@@ -7819,6 +7920,7 @@ function LessonRowCard({
 
 /* -------------------------------- screen -------------------------------- */
 const WorkshopScreen: React.FC = () => {
+  const { colors, isLight } = useAppTheme();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isDesktop = width >= 960;
@@ -8359,10 +8461,32 @@ filmmaker: [],
     }));
   };
 
+  const BG = colors.background;
+  const PANEL = colors.card;
+  const PANEL_2 = colors.mutedCard;
+  const PANEL_3 = colors.cardAlt;
+  const BORDER = colors.border;
+  const BORDER_SOFT = colors.border;
+  const GOLD = colors.primary;
+  const GOLD_SOFT = isLight ? 'rgba(158,119,40,0.10)' : 'rgba(198,166,100,0.10)';
+  const GOLD_SOFT_2 = isLight ? 'rgba(158,119,40,0.16)' : 'rgba(198,166,100,0.16)';
+  const GOLD_BORDER = isLight ? 'rgba(158,119,40,0.28)' : 'rgba(198,166,100,0.30)';
+  const IVORY = colors.textPrimary;
+  const MUTED = colors.textMuted;
+  const MUTED_2 = colors.navInactive;
+  const LINE = colors.borderStrong;
+  const surfaceStyle = { backgroundColor: PANEL, borderColor: BORDER };
+  const softSurfaceStyle = { backgroundColor: PANEL_2, borderColor: BORDER_SOFT };
+  const mutedTextStyle = { color: MUTED };
+  const primaryTextStyle = { color: IVORY };
+  const activePathArtIcon = PATH_ART_ICONS[activePath.key] || activePath.icon;
+  const activePathSecondaryIcon = PATH_ART_SECONDARY_ICONS[activePath.key];
+  const pathArtInk = isLight ? '#050505' : '#F7F2EA';
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: BG }]}>
       <ScrollView
-  style={styles.scroll}
+  style={[styles.scroll, { backgroundColor: BG }]}
   contentContainerStyle={styles.scrollContent}
   showsVerticalScrollIndicator={false}
   refreshControl={
@@ -8372,24 +8496,45 @@ filmmaker: [],
         onRefresh={onRefresh}
         tintColor={GOLD}
         colors={[GOLD]}
-        progressBackgroundColor={BG}
+        progressBackgroundColor={PANEL}
       />
     ) : undefined
   }
 >
-        <View style={[styles.pageWrap, { paddingTop: insets.top + 40 }]}>
+        <View style={[styles.pageWrap, { paddingTop: insets.top + 40, backgroundColor: BG }]}>
           <View style={[styles.mainLayout, !isDesktop && styles.mainLayoutMobile]}>
           <View style={[styles.centerPanel, isDesktop && styles.centerPanelDesktop, isWebDesktop && styles.centerPanelWebDesktop]}>
-  <View style={[styles.bootcampCard, isWebDesktop && styles.bootcampCardWebDesktop]}>
+  <View style={[styles.bootcampCard, surfaceStyle, { shadowColor: colors.shadow }, isWebDesktop && styles.bootcampCardWebDesktop]}>
     <View style={styles.referenceHeroTop}>
-      <Text style={styles.referenceGreeting}>Hello, {firstName}</Text>
-      <Text style={styles.referenceDateLine}>{activePath.label}</Text>
+      <Text style={[styles.referenceGreeting, primaryTextStyle]}>Hello, {firstName}</Text>
+      <Text style={[styles.referenceDateLine, mutedTextStyle]}>{activePath.label}</Text>
     </View>
 
     <View style={styles.bigProgressWrap}>
+      <View style={[styles.bigProgressStage, !isDesktop && styles.bigProgressStageMobile]}>
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.pathArtworkAnimatedLayer,
+            {
+              opacity: wheelOpacity,
+              transform: [{ scale: wheelScale }],
+            },
+          ]}
+        >
+          <PathProgressArtwork
+            pathKey={activePath.key}
+            primaryIcon={activePathArtIcon}
+            secondaryIcon={activePathSecondaryIcon}
+            ink={pathArtInk}
+            isDesktop={isDesktop}
+          />
+        </Animated.View>
+
       <Animated.View
         style={[
           styles.bigProgressOrbit,
+          { backgroundColor: PANEL_2, borderColor: BORDER, shadowColor: GOLD },
           {
             opacity: wheelOpacity,
             transform: [{ scale: wheelScale }],
@@ -8404,6 +8549,7 @@ filmmaker: [],
               style={[
                 styles.bigProgressTick,
                 filled && styles.bigProgressTickActive,
+                { backgroundColor: filled ? GOLD : LINE },
                 {
                   transform: [
                     { rotate: `${index * (360 / 56)}deg` },
@@ -8414,10 +8560,11 @@ filmmaker: [],
             />
           );
         })}
-        <View style={styles.bigProgressInner}>
-          <Text style={styles.bigProgressNumber}>{wheelDisplayPercent}%</Text>
+        <View style={[styles.bigProgressInner, { backgroundColor: BG, borderColor: BORDER }]}>
+          <Text style={[styles.bigProgressNumber, primaryTextStyle]}>{wheelDisplayPercent}%</Text>
         </View>
       </Animated.View>
+      </View>
     </View>
 
 	    <ScrollView
@@ -8438,23 +8585,25 @@ filmmaker: [],
               styles.subjectTile,
               index % 3 === 1 && styles.subjectTileAlt,
               index % 3 === 2 && styles.subjectTileCool,
+              softSurfaceStyle,
               active && styles.subjectTileActive,
+              active && { backgroundColor: GOLD_SOFT_2, borderColor: GOLD_BORDER },
               isWebDesktop && styles.subjectTileWebDesktop,
             ]}
           >
-            <View style={[styles.subjectTileIcon, active && styles.subjectTileIconActive]}>
-              <Ionicons name={path.icon} size={14} color={active ? BG : CINEMA.brass} />
+            <View style={[styles.subjectTileIcon, { backgroundColor: PANEL_3, borderColor: BORDER }, active && styles.subjectTileIconActive, active && { backgroundColor: GOLD, borderColor: GOLD }]}>
+              <Ionicons name={path.icon} size={14} color={active ? colors.textOnPrimary : GOLD} />
             </View>
 
             <View style={styles.subjectTileTextWrap}>
               <Text
-                style={[styles.subjectTileTitle, active && styles.subjectTileTitleActive]}
+                style={[styles.subjectTileTitle, primaryTextStyle, active && styles.subjectTileTitleActive, active && { color: GOLD }]}
                 numberOfLines={1}
               >
                 {path.shortLabel}
               </Text>
 
-              <Text style={[styles.subjectTileMeta, active && styles.subjectTileMetaActive]}>
+              <Text style={[styles.subjectTileMeta, mutedTextStyle, active && styles.subjectTileMetaActive, active && { color: GOLD }]}>
                 {progress}/40
               </Text>
             </View>
@@ -8464,39 +8613,39 @@ filmmaker: [],
 	    </ScrollView>
 
 		    <View style={styles.scheduleHeaderRow}>
-		      <Text style={styles.scheduleTitle}>Today's Exercise</Text>
+		      <Text style={[styles.scheduleTitle, primaryTextStyle]}>Today's Exercise</Text>
 		    </View>
 
 		    <TouchableOpacity
 	      activeOpacity={0.9}
 	      onPress={() => handleOpenLesson(currentLesson)}
-      style={styles.currentLessonStrip}
+      style={[styles.currentLessonStrip, softSurfaceStyle]}
     >
-      <View style={styles.currentLessonIcon}>
-        <Ionicons name={activePath.icon} size={17} color={BG} />
+      <View style={[styles.currentLessonIcon, { backgroundColor: GOLD }]}>
+        <Ionicons name={activePath.icon} size={17} color={colors.textOnPrimary} />
       </View>
 
       <View style={styles.currentLessonCopy}>
-        <Text style={styles.currentLessonEyebrow}>{activePath.shortLabel} • Step {currentLesson.step}</Text>
-        <Text style={styles.currentLessonTitle} numberOfLines={1}>{currentLesson.title}</Text>
-        <Text style={styles.currentLessonText} numberOfLines={1}>{currentLesson.description}</Text>
+        <Text style={[styles.currentLessonEyebrow, { color: GOLD }]}>{activePath.shortLabel} • Step {currentLesson.step}</Text>
+        <Text style={[styles.currentLessonTitle, primaryTextStyle]} numberOfLines={1}>{currentLesson.title}</Text>
+        <Text style={[styles.currentLessonText, mutedTextStyle]} numberOfLines={1}>{currentLesson.description}</Text>
       </View>
 
-      <View style={styles.currentLessonAction}>
-        <Ionicons name="play-outline" size={14} color="#FFFFFF" />
+      <View style={[styles.currentLessonAction, { backgroundColor: GOLD }]}>
+        <Ionicons name="play-outline" size={14} color={colors.textOnPrimary} />
       </View>
     </TouchableOpacity>
   </View>
 
   {currentMission ? (
-    <View style={styles.missionBanner}>
+    <View style={[styles.missionBanner, softSurfaceStyle]}>
       <View style={styles.missionBannerIcon}>
         <Ionicons name={currentMission.icon} size={16} color={BLUE} />
       </View>
 
       <View style={styles.missionBannerTextWrap}>
-        <Text style={styles.missionBannerTitle}>{currentMission.title}</Text>
-        <Text style={styles.missionBannerText}>
+        <Text style={[styles.missionBannerTitle, primaryTextStyle]}>{currentMission.title}</Text>
+        <Text style={[styles.missionBannerText, mutedTextStyle]}>
           {currentMission.description}
         </Text>
       </View>
@@ -8504,8 +8653,8 @@ filmmaker: [],
   ) : null}
 
   {workshopLoading ? (
-    <View style={styles.loadingCard}>
-      <Text style={styles.loadingCardText}>
+    <View style={[styles.loadingCard, surfaceStyle]}>
+      <Text style={[styles.loadingCardText, mutedTextStyle]}>
         Loading workshop progress…
       </Text>
     </View>
@@ -8523,6 +8672,10 @@ filmmaker: [],
               expanded && styles.chapterListCardExpanded,
               chapter.completed && styles.chapterListCardCompleted,
               !chapter.unlocked && styles.chapterListCardLocked,
+              surfaceStyle,
+              expanded && { borderColor: GOLD_BORDER },
+              chapter.completed && { backgroundColor: isLight ? '#F3FAF5' : '#0D1913' },
+              !chapter.unlocked && { opacity: 0.74 },
             ]}
           >
             <Pressable
@@ -8531,7 +8684,7 @@ filmmaker: [],
             >
               <View style={styles.chapterListHeader}>
                 <View style={styles.chapterListHeaderText}>
-                  <Text style={styles.chapterListEyebrow}>
+                  <Text style={[styles.chapterListEyebrow, { color: GOLD }]}>
                     {chapter.completed
                       ? 'Completed'
                       : chapter.unlocked
@@ -8539,16 +8692,16 @@ filmmaker: [],
                         : 'Locked'}
                   </Text>
 
-                  <Text style={styles.chapterListTitle}>{chapter.title}</Text>
+                  <Text style={[styles.chapterListTitle, primaryTextStyle]}>{chapter.title}</Text>
 
-                  <Text style={styles.chapterListSubtitle} numberOfLines={expanded ? 2 : 1}>
+                  <Text style={[styles.chapterListSubtitle, mutedTextStyle]} numberOfLines={expanded ? 2 : 1}>
                     {chapter.subtitle}
                   </Text>
                 </View>
 
                 <View style={styles.chapterRightStack}>
-                  <View style={styles.chapterListCountPill}>
-                    <Text style={styles.chapterListCountText}>
+                  <View style={[styles.chapterListCountPill, { backgroundColor: GOLD_SOFT, borderColor: GOLD_BORDER }]}>
+                    <Text style={[styles.chapterListCountText, { color: GOLD }]}>
                       {chapter.progress}/10
                     </Text>
                   </View>
@@ -8556,15 +8709,16 @@ filmmaker: [],
                   <Ionicons
                     name={expanded ? 'chevron-up' : 'chevron-down'}
                     size={18}
-                    color={CINEMA.brass}
+                    color={GOLD}
                   />
                 </View>
               </View>
 
-              <View style={styles.chapterListProgressTrack}>
+              <View style={[styles.chapterListProgressTrack, { backgroundColor: LINE }]}>
                 <View
                   style={[
                     styles.chapterListProgressFill,
+                    { backgroundColor: GOLD },
                     { width: `${(chapter.progress / 10) * 100}%` },
                   ]}
                 />
@@ -8573,19 +8727,19 @@ filmmaker: [],
 
             {expanded ? (
               !chapter.unlocked ? (
-                <View style={styles.chapterLockedBox}>
+                <View style={[styles.chapterLockedBox, softSurfaceStyle]}>
                   <Ionicons
                     name="lock-closed-outline"
                     size={16}
                     color={MUTED_2}
                   />
-                  <Text style={styles.chapterLockedText}>
+                  <Text style={[styles.chapterLockedText, mutedTextStyle]}>
                     Complete the previous chapter to unlock this one.
                   </Text>
                 </View>
               ) : (
                 <View style={styles.lessonPathWrap}>
-                  <View pointerEvents="none" style={styles.lessonPathRail} />
+                  <View pointerEvents="none" style={[styles.lessonPathRail, { backgroundColor: LINE }]} />
                   {chapter.lessons.map((lesson, lessonIndex) => {
                     const state = nodeState(lesson.step, completedSteps);
                     const lessonCompleted = state === 'completed';
@@ -8597,16 +8751,22 @@ filmmaker: [],
                         <View
                           style={[
                             styles.lessonPathNode,
+                            { backgroundColor: PANEL_2, borderColor: BORDER },
                             lessonCompleted && styles.lessonPathNodeCompleted,
+                            lessonCompleted && { backgroundColor: GOLD, borderColor: GOLD },
                             lessonCurrent && styles.lessonPathNodeCurrent,
+                            lessonCurrent && { borderColor: GOLD },
                             lessonLocked && styles.lessonPathNodeLocked,
                           ]}
                         >
                           <Text
                             style={[
                               styles.lessonPathNodeText,
+                              { color: IVORY },
                               lessonCurrent && styles.lessonPathNodeTextCurrent,
+                              lessonCurrent && { color: GOLD },
                               lessonLocked && styles.lessonPathNodeTextLocked,
+                              lessonLocked && { color: MUTED_2 },
                             ]}
                           >
                             {lessonIndex + 1}
@@ -8641,16 +8801,16 @@ filmmaker: [],
         onRequestClose={() => setSelectedLesson(null)}
       >
         <Pressable
-          style={styles.modalBackdrop}
+          style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}
           onPress={() => setSelectedLesson(null)}
         />
 
         <View style={styles.modalCenter}>
           {selectedLesson ? (
-            <View style={styles.modalCard}>
-              <View style={styles.modalHeader}>
+            <View style={[styles.modalCard, surfaceStyle, { shadowColor: colors.shadow }]}>
+              <View style={[styles.modalHeader, { borderBottomColor: BORDER }]}>
                 <View style={styles.modalHeaderLeft}>
-                  <View style={styles.modalIconCircle}>
+                  <View style={[styles.modalIconCircle, { backgroundColor: GOLD_SOFT, borderColor: GOLD_BORDER }]}>
                     <Ionicons
                       name={
                         selectedLesson.requiresSurgery &&
@@ -8666,30 +8826,33 @@ filmmaker: [],
                   </View>
 
                   <View style={styles.modalTitleWrap}>
-                    <Text style={styles.modalEyebrow}>
+                    <Text style={[styles.modalEyebrow, { color: GOLD }]}>
                       {activePath.label} • Step {selectedLesson.step}
                     </Text>
-                    <Text style={styles.modalTitle}>{selectedLesson.title}</Text>
-                    <Text style={styles.modalMini}>
+                    <Text style={[styles.modalTitle, primaryTextStyle]}>{selectedLesson.title}</Text>
+                    <Text style={[styles.modalMini, mutedTextStyle]}>
                       {kindLabel(selectedLesson.kind)}
                       {selectedLesson.missionType
                         ? ` • ${missionLabel(selectedLesson.missionType)}`
                         : ''}
                     </Text>
 
-                    <View style={styles.proOnlyPill}>
+                    <View style={[styles.proOnlyPill, { backgroundColor: GOLD_SOFT, borderColor: GOLD_BORDER }]}>
                       <Ionicons name="sparkles-outline" size={12} color={GOLD} />
-                      <Text style={styles.proOnlyPillText}>Workshop Pro only</Text>
+                      <Text style={[styles.proOnlyPillText, { color: GOLD }]}>Workshop Pro only</Text>
                     </View>
                   </View>
                 </View>
 
                 <TouchableOpacity
-                  style={styles.modalClose}
+                  style={[
+                    styles.modalClose,
+                    { backgroundColor: colors.backgroundAlt, borderColor: colors.border },
+                  ]}
                   onPress={() => setSelectedLesson(null)}
                   activeOpacity={0.9}
                 >
-                  <Ionicons name="close" size={18} color={IVORY} />
+                  <Ionicons name="close" size={18} color={colors.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -8698,56 +8861,56 @@ filmmaker: [],
                 contentContainerStyle={styles.modalScrollContent}
                 showsVerticalScrollIndicator={false}
               >
-                <Text style={styles.modalDescription}>
+                <Text style={[styles.modalDescription, { color: colors.textSecondary }]}>
                   {selectedLesson.description}
                 </Text>
 
                 <View style={styles.modalMetaRow}>
-                  <View style={styles.modalMetaPill}>
+                  <View style={[styles.modalMetaPill, { backgroundColor: GOLD_SOFT, borderColor: GOLD_BORDER }]}>
                     <Ionicons name="flash-outline" size={12} color={GOLD} />
-                    <Text style={styles.modalMetaText}>{selectedLesson.xp} XP</Text>
+                    <Text style={[styles.modalMetaText, { color: GOLD }]}>{selectedLesson.xp} XP</Text>
                   </View>
                 </View>
 
-                <View style={styles.detailCard}>
-                  <Text style={styles.detailLabel}>Challenge</Text>
-                  <Text style={styles.detailText}>{selectedLesson.challenge}</Text>
+                <View style={[styles.detailCard, softSurfaceStyle]}>
+                  <Text style={[styles.detailLabel, { color: GOLD }]}>Challenge</Text>
+                  <Text style={[styles.detailText, { color: colors.textSecondary }]}>{selectedLesson.challenge}</Text>
                 </View>
 
-                <View style={styles.detailCard}>
-                  <Text style={styles.detailLabel}>Objective</Text>
-                  <Text style={styles.detailText}>{selectedLesson.objective}</Text>
+                <View style={[styles.detailCard, softSurfaceStyle]}>
+                  <Text style={[styles.detailLabel, { color: GOLD }]}>Objective</Text>
+                  <Text style={[styles.detailText, { color: colors.textSecondary }]}>{selectedLesson.objective}</Text>
                 </View>
 
-                <View style={styles.detailCard}>
-                  <Text style={styles.detailLabel}>Deliverable</Text>
-                  <Text style={styles.detailText}>
+                <View style={[styles.detailCard, softSurfaceStyle]}>
+                  <Text style={[styles.detailLabel, { color: GOLD }]}>Deliverable</Text>
+                  <Text style={[styles.detailText, { color: colors.textSecondary }]}>
                     {selectedLesson.deliverable}
                   </Text>
                 </View>
 
                 {selectedLesson.learning ? (
-                  <View style={styles.detailCard}>
-                    <Text style={styles.detailLabel}>Learning</Text>
-                    <Text style={styles.detailText}>{selectedLesson.learning}</Text>
+                  <View style={[styles.detailCard, softSurfaceStyle]}>
+                    <Text style={[styles.detailLabel, { color: GOLD }]}>Learning</Text>
+                    <Text style={[styles.detailText, { color: colors.textSecondary }]}>{selectedLesson.learning}</Text>
                   </View>
                 ) : null}
 
                 {selectedLesson.bonusNote ? (
-                  <View style={[styles.detailCard, styles.detailCardSoft]}>
-                    <Text style={styles.detailLabel}>Bonus Note</Text>
-                    <Text style={styles.detailText}>
+                  <View style={[styles.detailCard, styles.detailCardSoft, softSurfaceStyle]}>
+                    <Text style={[styles.detailLabel, { color: GOLD }]}>Bonus Note</Text>
+                    <Text style={[styles.detailText, { color: colors.textSecondary }]}>
                       {selectedLesson.bonusNote}
                     </Text>
                   </View>
                 ) : null}
 
                 {selectedLesson.missionType ? (
-                  <View style={[styles.detailCard, styles.detailCardBlue]}>
-                    <Text style={styles.detailLabel}>
+                  <View style={[styles.detailCard, styles.detailCardBlue, softSurfaceStyle]}>
+                    <Text style={[styles.detailLabel, { color: GOLD }]}>
                       {missionLabel(selectedLesson.missionType)}
                     </Text>
-                    <Text style={styles.detailText}>
+                    <Text style={[styles.detailText, { color: colors.textSecondary }]}>
                       This lesson is part of a collaboration push. Every now and
                       then, users should be nudged to meet someone in their city
                       group chat, collaborate remotely, or team up with someone from
@@ -8756,29 +8919,38 @@ filmmaker: [],
                   </View>
                 ) : null}
 
-                <View style={styles.rulesCard}>
-                  <Text style={styles.rulesTitle}>Rules</Text>
+                <View style={[styles.rulesCard, softSurfaceStyle]}>
+                  <Text style={[styles.rulesTitle, primaryTextStyle]}>Rules</Text>
 
                   {selectedLesson.constraints.map((rule, i) => (
                     <View key={`${selectedLesson.id}-${i}`} style={styles.ruleRow}>
                       <Ionicons name="diamond-outline" size={12} color={GOLD} />
-                      <Text style={styles.ruleText}>{rule}</Text>
+                      <Text style={[styles.ruleText, { color: colors.textSecondary }]}>{rule}</Text>
                     </View>
                   ))}
                 </View>
               </ScrollView>
 
-              <View style={styles.modalActions}>
+              <View
+                style={[
+                  styles.modalActions,
+                  { backgroundColor: colors.card, borderTopColor: colors.border },
+                ]}
+              >
                 <TouchableOpacity
-                  style={[styles.modalButton, styles.modalGhostButton]}
+                  style={[
+                    styles.modalButton,
+                    styles.modalGhostButton,
+                    { backgroundColor: colors.backgroundAlt, borderColor: colors.border },
+                  ]}
                   onPress={() => setSelectedLesson(null)}
                   activeOpacity={0.9}
                 >
-                  <Text style={styles.modalGhostText}>Close</Text>
+                  <Text style={[styles.modalGhostText, primaryTextStyle]}>Close</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.modalButton, styles.modalGoldButton]}
+                  style={[styles.modalButton, styles.modalGoldButton, { backgroundColor: GOLD }]}
                   onPress={() => {
                     if (!selectedLesson) return;
 
@@ -8828,9 +9000,9 @@ filmmaker: [],
                             : 'cloud-upload-outline'
                     }
                     size={15}
-                    color={BG}
+                    color={colors.textOnPrimary}
                   />
-                  <Text style={styles.modalGoldText}>
+                  <Text style={[styles.modalGoldText, { color: colors.textOnPrimary }]}>
                     {completedSet.has(selectedLesson.step)
                       ? 'Completed'
                       : !hasProAccess
@@ -9085,6 +9257,213 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
 
+  bigProgressStage: {
+    width: '100%',
+    height: 348,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    marginTop: -6,
+    marginBottom: 2,
+  },
+
+  bigProgressStageMobile: {
+    height: 342,
+    marginTop: -8,
+    marginBottom: 0,
+  },
+
+  pathArtworkAnimatedLayer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 0,
+  },
+
+  pathArtworkLayer: {
+    position: 'absolute',
+    top: 0,
+    width: 340,
+    height: 342,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 0,
+  },
+
+  pathArtworkLayerMobile: {
+    width: 294,
+    height: 334,
+  },
+
+  pathArtworkPrimaryIcon: {
+    opacity: 0.96,
+    transform: [{ rotate: '-4deg' }],
+  },
+
+  pathArtworkSecondaryIcon: {
+    position: 'absolute',
+    right: 26,
+    top: 28,
+    opacity: 0.22,
+    transform: [{ rotate: '12deg' }],
+  },
+
+  actorArtwork: {
+    width: 326,
+    height: 342,
+    position: 'relative',
+    transform: [{ translateY: 12 }],
+  },
+
+  actorArtworkMobile: {
+    width: 326,
+    height: 342,
+    transform: [{ scale: 0.88 }, { translateY: 8 }],
+  },
+
+  actorArtHead: {
+    position: 'absolute',
+    top: 18,
+    left: 166,
+    width: 54,
+    height: 62,
+    borderRadius: 999,
+    transform: [{ rotate: '-12deg' }],
+  },
+
+  actorArtHair: {
+    position: 'absolute',
+    top: 10,
+    left: 154,
+    width: 72,
+    height: 46,
+    borderTopLeftRadius: 42,
+    borderTopRightRadius: 42,
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 28,
+    transform: [{ rotate: '-15deg' }],
+  },
+
+  actorArtNeck: {
+    position: 'absolute',
+    top: 70,
+    left: 171,
+    width: 30,
+    height: 34,
+    borderRadius: 18,
+    transform: [{ rotate: '-10deg' }],
+  },
+
+  actorArtTorso: {
+    position: 'absolute',
+    top: 88,
+    left: 144,
+    width: 88,
+    height: 166,
+    borderRadius: 48,
+    transform: [{ rotate: '-18deg' }],
+  },
+
+  actorArtNearUpperArm: {
+    position: 'absolute',
+    top: 134,
+    left: 74,
+    width: 104,
+    height: 25,
+    borderRadius: 999,
+    transform: [{ rotate: '-30deg' }],
+  },
+
+  actorArtNearForearm: {
+    position: 'absolute',
+    top: 107,
+    left: 36,
+    width: 84,
+    height: 20,
+    borderRadius: 999,
+    transform: [{ rotate: '-8deg' }],
+  },
+
+  actorArtNearHand: {
+    position: 'absolute',
+    top: 94,
+    left: 16,
+    width: 42,
+    height: 25,
+    borderRadius: 999,
+    transform: [{ rotate: '-18deg' }],
+  },
+
+  actorArtFarUpperArm: {
+    position: 'absolute',
+    top: 101,
+    left: 100,
+    width: 88,
+    height: 24,
+    borderRadius: 999,
+    transform: [{ rotate: '35deg' }],
+  },
+
+  actorArtFarForearm: {
+    position: 'absolute',
+    top: 76,
+    left: 68,
+    width: 76,
+    height: 19,
+    borderRadius: 999,
+    transform: [{ rotate: '-40deg' }],
+  },
+
+  actorArtFarHand: {
+    position: 'absolute',
+    top: 58,
+    left: 54,
+    width: 37,
+    height: 23,
+    borderRadius: 999,
+    transform: [{ rotate: '-16deg' }],
+  },
+
+  actorArtKnee: {
+    position: 'absolute',
+    bottom: 62,
+    left: 86,
+    width: 76,
+    height: 92,
+    borderRadius: 44,
+    transform: [{ rotate: '10deg' }],
+  },
+
+  actorArtSeatLeg: {
+    position: 'absolute',
+    bottom: 34,
+    left: 88,
+    width: 196,
+    height: 48,
+    borderRadius: 999,
+    transform: [{ rotate: '-4deg' }],
+  },
+
+  actorArtLowerLeg: {
+    position: 'absolute',
+    bottom: 18,
+    left: 212,
+    width: 94,
+    height: 34,
+    borderRadius: 999,
+    transform: [{ rotate: '-5deg' }],
+  },
+
+  actorArtFoot: {
+    position: 'absolute',
+    bottom: 28,
+    left: 294,
+    width: 42,
+    height: 29,
+    borderRadius: 999,
+    transform: [{ rotate: '-18deg' }],
+  },
+
   bigProgressOrbit: {
     width: 210,
     height: 210,
@@ -9099,6 +9478,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 10 },
+    zIndex: 2,
   },
 
   bigProgressTick: {

@@ -3,9 +3,10 @@ import React, { useCallback } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import { navigationRef } from '../navigation/navigationRef'; // ✅ use the global ref you already have
-import COLORS from '../theme/colors';
+import { useAppTheme } from '../context/ThemeContext';
 
 export default function PaySuccessScreen() {
+  const { colors } = useAppTheme();
   const nav = useNavigation<any>();
 
   const goToCreateProfile = useCallback(() => {
@@ -59,9 +60,9 @@ export default function PaySuccessScreen() {
   }, [nav]);
 
   return (
-    <View style={styles.container}>
-      <TouchableOpacity onPress={goToCreateProfile} style={styles.cta} activeOpacity={0.9}>
-        <Text style={styles.ctaText}>Continue to Create Profile</Text>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <TouchableOpacity onPress={goToCreateProfile} style={[styles.cta, { backgroundColor: colors.primary }]} activeOpacity={0.9}>
+        <Text style={[styles.ctaText, { color: colors.textOnPrimary }]}>Continue to Create Profile</Text>
       </TouchableOpacity>
     </View>
   );
@@ -70,20 +71,17 @@ export default function PaySuccessScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
   },
   cta: {
-    backgroundColor: COLORS.primary,
     paddingVertical: 14,
     paddingHorizontal: 20,
     borderRadius: 12,
     alignItems: 'center',
   },
   ctaText: {
-    color: COLORS.textOnPrimary,
     fontWeight: '700',
     fontSize: 16,
   },

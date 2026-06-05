@@ -10,11 +10,12 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
-import COLORS from '../theme/colors';
+import { useAppTheme } from '../context/ThemeContext';
 
 export default function CheckEmailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const { colors } = useAppTheme();
   const email = route.params?.email;
 
   const [timer, setTimer] = useState(60);
@@ -113,23 +114,23 @@ export default function CheckEmailScreen() {
   };
 
   return (
-    <View style={styles.screenWrapper}>
-      <View style={styles.container}>
-        <Text style={styles.title}>VERIFY YOUR EMAIL</Text>
+    <View style={[styles.screenWrapper, { backgroundColor: colors.background }]}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Text style={[styles.title, { color: colors.textPrimary }]}>VERIFY YOUR EMAIL</Text>
 
-        <View style={styles.card}>
-          <Text style={styles.message}>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.message, { color: colors.textPrimary }]}>
             We’ve sent a verification link{email ? ' to:' : '.'}
           </Text>
 
           {email && <Text style={styles.email}>{email}</Text>}
 
-          <Text style={styles.message}>
+          <Text style={[styles.message, { color: colors.textPrimary }]}>
             Please check your inbox to continue.
           </Text>
 
           {!canResend ? (
-            <Text style={styles.timer}>You can resend in {timer}s</Text>
+            <Text style={[styles.timer, { color: colors.textSecondary }]}>You can resend in {timer}s</Text>
           ) : (
             <TouchableOpacity
               style={styles.resendButton}
@@ -137,7 +138,7 @@ export default function CheckEmailScreen() {
               disabled={loading}
             >
               {loading ? (
-                <ActivityIndicator color="#000" />
+                <ActivityIndicator color={colors.textOnPrimary} />
               ) : (
                 <Text style={styles.resendText}>Resend Email</Text>
               )}
@@ -149,7 +150,7 @@ export default function CheckEmailScreen() {
           style={styles.backButton}
           onPress={() => navigation.navigate('SignIn')}
         >
-          <Text style={styles.backText}>← Back to Sign In</Text>
+          <Text style={[styles.backText, { color: colors.textSecondary }]}>← Back to Sign In</Text>
         </TouchableOpacity>
       </View>
     </View>

@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { REPORT_REASONS, ReportReason } from '../app/utils/reportContent';
+import { useAppTheme } from '../app/context/ThemeContext';
 
 const GOLD = '#C6A664';
 const TEXT = '#F4EFE6';
@@ -52,6 +53,10 @@ export default function ReportContentModal({
   onSubmit,
   onClose,
 }: Props) {
+  const { colors, isLight } = useAppTheme();
+  const goldSoft = isLight ? 'rgba(158,119,40,0.10)' : 'rgba(198,166,100,0.11)';
+  const goldBorder = isLight ? 'rgba(158,119,40,0.24)' : 'rgba(198,166,100,0.22)';
+
   return (
     <Modal
       visible={visible}
@@ -60,22 +65,22 @@ export default function ReportContentModal({
       presentationStyle="overFullScreen"
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>
         <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
 
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+        <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: colors.shadow }]}>
+          <View style={[styles.handle, { backgroundColor: colors.borderStrong }]} />
 
           <View style={styles.header}>
-            <View style={styles.iconBadge}>
-              <Ionicons name="flag-outline" size={17} color={GOLD} />
+            <View style={[styles.iconBadge, { backgroundColor: goldSoft, borderColor: goldBorder }]}>
+              <Ionicons name="flag-outline" size={17} color={colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.title}>{title}</Text>
-              <Text style={styles.subtitle}>{subtitle}</Text>
+              <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{subtitle}</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.85}>
-              <Ionicons name="close" size={18} color={MUTED} />
+            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: colors.mutedCard }]} activeOpacity={0.85}>
+              <Ionicons name="close" size={18} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -83,7 +88,7 @@ export default function ReportContentModal({
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollBody}
           >
-            <Text style={styles.label}>Reason</Text>
+            <Text style={[styles.label, { color: colors.primary }]}>Reason</Text>
             <View style={styles.reasonWrap}>
               {REPORT_REASONS.map((reason) => {
                 const active = selectedReason === reason;
@@ -92,9 +97,14 @@ export default function ReportContentModal({
                     key={reason}
                     activeOpacity={0.86}
                     onPress={() => onReasonChange(reason)}
-                    style={[styles.reasonChip, active && styles.reasonChipActive]}
+                    style={[
+                      styles.reasonChip,
+                      { backgroundColor: colors.mutedCard, borderColor: colors.border },
+                      active && styles.reasonChipActive,
+                      active && { backgroundColor: goldSoft, borderColor: goldBorder },
+                    ]}
                   >
-                    <Text style={[styles.reasonText, active && styles.reasonTextActive]}>
+                    <Text style={[styles.reasonText, { color: colors.textSecondary }, active && styles.reasonTextActive, active && { color: colors.primary }]}>
                       {reason}
                     </Text>
                   </TouchableOpacity>
@@ -102,16 +112,16 @@ export default function ReportContentModal({
               })}
             </View>
 
-            <Text style={styles.label}>Details</Text>
-            <View style={styles.messageBubble}>
+            <Text style={[styles.label, { color: colors.primary }]}>Details</Text>
+            <View style={[styles.messageBubble, { backgroundColor: colors.input, borderColor: colors.border }]}>
               <TextInput
                 value={details}
                 onChangeText={onDetailsChange}
                 placeholder="Write a short note for the review team..."
-                placeholderTextColor="rgba(248,246,241,0.36)"
+                placeholderTextColor={colors.textMuted}
                 multiline
                 maxLength={500}
-                style={styles.input}
+                style={[styles.input, { color: colors.textPrimary }]}
               />
             </View>
           </ScrollView>
@@ -120,12 +130,12 @@ export default function ReportContentModal({
             activeOpacity={0.9}
             onPress={onSubmit}
             disabled={submitting}
-            style={[styles.submitBtn, submitting && { opacity: 0.65 }]}
+            style={[styles.submitBtn, { backgroundColor: colors.primary }, submitting && { opacity: 0.65 }]}
           >
             {submitting ? (
-              <ActivityIndicator color="#000" />
+              <ActivityIndicator color={colors.textOnPrimary} />
             ) : (
-              <Text style={styles.submitText}>Send Report</Text>
+              <Text style={[styles.submitText, { color: colors.textOnPrimary }]}>Send Report</Text>
             )}
           </TouchableOpacity>
         </View>

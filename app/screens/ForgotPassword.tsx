@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
+import { useAppTheme } from "../context/ThemeContext";
 
 const BG = "#0D0D0D";
 const CARD = "#111114";
@@ -25,6 +26,7 @@ const BORDER = "rgba(255,255,255,0.10)";
 
 export default function ForgotPassword() {
   const navigation = useNavigation<any>();
+  const { colors } = useAppTheme();
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
@@ -69,31 +71,31 @@ const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: BG }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View style={styles.container}>
           <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={20} color={SUB} />
-            <Text style={styles.backText}>Back</Text>
+            <Ionicons name="chevron-back" size={20} color={colors.textMuted} />
+            <Text style={[styles.backText, { color: colors.textMuted }]}>Back</Text>
           </TouchableOpacity>
 
-          <View style={styles.card}>
-            <Text style={styles.title}>Reset Your Password</Text>
-            <Text style={styles.subtitle}>Enter the email linked to your account.</Text>
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Reset Your Password</Text>
+            <Text style={[styles.subtitle, { color: colors.textMuted }]}>Enter the email linked to your account.</Text>
 
-            <View style={styles.inputRow}>
-              <Ionicons name="mail" size={16} color={SUB} />
+            <View style={[styles.inputRow, { backgroundColor: colors.input, borderColor: colors.border }]}>
+              <Ionicons name="mail" size={16} color={colors.textMuted} />
               <TextInput
                 placeholder="Email"
-                placeholderTextColor={SUB}
+                placeholderTextColor={colors.textMuted}
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
                 keyboardType="email-address"
-                style={styles.input}
+                style={[styles.input, { color: colors.textPrimary }]}
               />
             </View>
 
@@ -103,13 +105,13 @@ const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
               style={[styles.button, sending && { opacity: 0.7 }]}
             >
               {sending ? (
-                <ActivityIndicator color={BG} />
+                <ActivityIndicator color={colors.textOnPrimary} />
               ) : (
                 <Text style={styles.buttonText}>SEND RESET EMAIL</Text>
               )}
             </TouchableOpacity>
 
-            {!!message && <Text style={styles.message}>{message}</Text>}
+            {!!message && <Text style={[styles.message, { color: colors.textMuted }]}>{message}</Text>}
           </View>
         </View>
       </KeyboardAvoidingView>

@@ -3,8 +3,8 @@ import React, { useCallback, useRef } from 'react';
 import { Animated, Easing, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import COLORS from '../app/theme/colors';
 import { useSettingsModal } from '../app/context/SettingsModalContext';
+import { useAppTheme } from '../app/context/ThemeContext';
 
 type Props = {
   absolute?: boolean;
@@ -14,6 +14,7 @@ type Props = {
 
 export default function SettingsButton({ absolute = true, topOffset = 16, rightOffset = 12 }: Props) {
   const { open } = useSettingsModal();
+  const { colors, isLight } = useAppTheme();
   const insets = useSafeAreaInsets();
   const scale = useRef(new Animated.Value(1)).current;
 
@@ -39,12 +40,12 @@ export default function SettingsButton({ absolute = true, topOffset = 16, rightO
         opacity: pressed ? 0.7 : 1,
         padding: 8,
         borderRadius: 999,
-        backgroundColor: COLORS.card,   // small chip so it doesn’t fight text behind it
+        backgroundColor: colors.card,
         borderWidth: 1,
-        borderColor: COLORS.border,
+        borderColor: colors.border,
         // soft shadow for iOS / elevation for Android
-        shadowColor: '#000',
-        shadowOpacity: 0.08,
+        shadowColor: colors.shadow,
+        shadowOpacity: isLight ? 0.14 : 0.08,
         shadowRadius: 6,
         shadowOffset: { width: 0, height: 2 },
         elevation: 2,
@@ -56,7 +57,7 @@ export default function SettingsButton({ absolute = true, topOffset = 16, rightO
         <Ionicons
           name="settings-outline"
           size={22}                          // slightly smaller = less intrusive
-          color={COLORS.textPrimary}
+          color={colors.textPrimary}
         />
       </Animated.View>
     </Pressable>

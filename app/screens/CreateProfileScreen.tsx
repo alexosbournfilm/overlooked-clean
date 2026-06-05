@@ -1,5 +1,5 @@
 // app/screens/CreateProfileScreen.tsx
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -30,23 +30,24 @@ import { supabase } from '../lib/supabase';
 import { navigationRef } from '../navigation/navigationRef';
 import { useAuth } from '../context/AuthProvider';
 import { useGamification } from '../context/GamificationContext';
+import { useAppTheme } from '../context/ThemeContext';
 import AvatarCropper from '../../components/AvatarCropper';
 
 // ---------------- THEME ----------------
-const DARK_BG = '#FFF5EC';
-const CARD = 'rgba(255,252,246,0.96)';
-const ELEVATED = '#FFFDF8';
-const TEXT_IVORY = '#241817';
-const TEXT_MUTED = '#846E66';
-const BORDER = 'rgba(125,74,63,0.16)';
-const BORDER_SOFT = 'rgba(125,74,63,0.10)';
-const GOLD = '#D8A84E';
-const CORAL = '#F45B6A';
-const CORAL_DARK = '#D94C5C';
+const DARK_BG = '#050505';
+const CARD = '#0D0D0F';
+const ELEVATED = '#111114';
+const TEXT_IVORY = '#F4EFE6';
+const TEXT_MUTED = '#8F8578';
+const BORDER = 'rgba(255,255,255,0.10)';
+const BORDER_SOFT = 'rgba(255,255,255,0.07)';
+const GOLD = '#C6A664';
+const CORAL = GOLD;
+const CORAL_DARK = GOLD;
 
 const SYSTEM_SANS = Platform.select({
-  ios: 'Avenir Next',
-  android: 'sans-serif',
+  ios: 'System',
+  android: 'Roboto',
   web: undefined,
   default: undefined,
 });
@@ -57,7 +58,7 @@ type DropdownOption = {
   country?: string;
 };
 
-type OnboardingStage = 'profile' | 'role' | 'city' | 'links' | 'reasons' | 'goals' | 'review';
+type OnboardingStage = 'profile' | 'role' | 'city' | 'reasons' | 'goals' | 'review';
 
 type OnboardingStepMeta = {
   key: OnboardingStage;
@@ -84,12 +85,6 @@ const ONBOARDING_STEPS: OnboardingStepMeta[] = [
     label: 'Place',
     title: 'Where are you based?',
     subtitle: 'Your city helps Overlooked surface local creatives, projects, and jobs.',
-  },
-  {
-    key: 'links',
-    label: 'Links',
-    title: 'Add a link if you have one',
-    subtitle: 'A portfolio or YouTube link is optional. You can always add showreels later.',
   },
   {
     key: 'reasons',
@@ -490,12 +485,33 @@ const ProfilePreviewImage = ({
 
 export default function CreateProfileScreen() {
   const allowedCreateProfileRef = useRef(true);
+  const { colors, isLight } = useAppTheme();
 
   const { width } = useWindowDimensions();
   const { refreshProfile, setProfileCompleteFromSavedProfile } = useAuth();
   const { refresh: refreshGamification } = useGamification();
 
   const isMobile = width < 768;
+  const theme = useMemo(
+    () => ({
+      bg: colors.background,
+      bgAlt: colors.backgroundAlt,
+      card: colors.card,
+      elevated: colors.mutedCard,
+      input: colors.input,
+      text: colors.textPrimary,
+      sub: colors.textSecondary,
+      mute: colors.textMuted,
+      border: colors.border,
+      borderStrong: colors.borderStrong,
+      accent: colors.primary,
+      accentSoft: isLight ? 'rgba(158,119,40,0.10)' : 'rgba(198,166,100,0.12)',
+      accentBorder: isLight ? 'rgba(158,119,40,0.26)' : 'rgba(198,166,100,0.30)',
+      textOnAccent: colors.textOnPrimary,
+      shadow: colors.shadow,
+    }),
+    [colors, isLight]
+  );
 
   const roleSearchReq = useRef(0);
   const citySearchReq = useRef(0);
@@ -527,8 +543,6 @@ export default function CreateProfileScreen() {
   const [cityId, setCityId] = useState<number | null>(null);
   const [cityLabel, setCityLabel] = useState<string | null>(null);
   const [selectedCountryCode, setSelectedCountryCode] = useState<string | null>(null);
-  const [portfolioUrl, setPortfolioUrl] = useState('');
-  const [youtubeUrl, setYoutubeUrl] = useState('');
   const [joiningReasons, setJoiningReasons] = useState<string[]>([]);
   const [creativeGoals, setCreativeGoals] = useState<string[]>([]);
 
@@ -1162,9 +1176,6 @@ if (!userId) {
 
     setSubmitStatus('Saving your profile...');
 
-    const cleanPortfolioUrl = portfolioUrl.trim();
-    const cleanYoutubeUrl = youtubeUrl.trim();
-
     const { data: savedProfile, error } = await upsertProfileRobust({
       id: userId,
       email: user.email ?? '',
@@ -1173,8 +1184,8 @@ if (!userId) {
       city_id: cityId,
       avatar_url: finalAvatarUrl,
       side_roles: sideRoles.length ? sideRoles : null,
-      portfolio_url: cleanPortfolioUrl || null,
-      youtube_url: cleanYoutubeUrl || null,
+      portfolio_url: null,
+      youtube_url: null,
       joining_reasons: joiningReasons,
       creative_goals: creativeGoals,
       notification_preferences: DEFAULT_NOTIFICATION_PREFERENCES,
@@ -1277,15 +1288,15 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
           outlineWidth: 0,
           outlineStyle: 'none',
           boxShadow: 'none',
-          borderColor: BORDER,
+          borderColor: theme.border,
         } as any)
       : null;
 
   const Wrapper = Platform.OS === 'web' ? View : KeyboardAvoidingView;
   const wrapperProps =
     Platform.OS === 'web'
-      ? { style: styles.wrapper }
-      : { behavior: 'padding' as const, style: styles.wrapper };
+      ? { style: [styles.wrapper, { backgroundColor: theme.bg }] }
+      : { behavior: 'padding' as const, style: [styles.wrapper, { backgroundColor: theme.bg }] };
 
   // Do not block-render CreateProfile during auth settling.
 // AppNavigator is responsible for invalid routing.
@@ -1293,13 +1304,14 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
   return (
     <Wrapper {...wrapperProps}>
       <LinearGradient
-        colors={['#FFF6EF', '#FDE7DE', '#FFFDF8']}
+        colors={[theme.bg, theme.bgAlt, theme.bg]}
         style={StyleSheet.absoluteFillObject}
       />
 
       <ScrollView
         style={[
           styles.scrollView,
+          { backgroundColor: theme.bg },
           Platform.OS === 'web'
             ? ({
                 height: '100vh',
@@ -1310,6 +1322,7 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
         ]}
         contentContainerStyle={[
           styles.container,
+          { backgroundColor: theme.bg },
           Platform.OS === 'web' ? styles.containerWeb : styles.containerMobile,
         ]}
         keyboardShouldPersistTaps="handled"
@@ -1327,13 +1340,23 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
             },
           ]}
         >
-          <View style={[styles.card, !isMobile && styles.cardDesktop]}>
-            <Text style={styles.eyebrow}>Join Overlooked</Text>
-            <Text style={styles.title}>{currentStep.title}</Text>
-            <Text style={styles.subtitle}>{currentStep.subtitle}</Text>
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                shadowColor: theme.shadow,
+              },
+              !isMobile && styles.cardDesktop,
+            ]}
+          >
+            <Text style={[styles.eyebrow, { color: theme.accent }]}>Join Overlooked</Text>
+            <Text style={[styles.title, { color: theme.text }]}>{currentStep.title}</Text>
+            <Text style={[styles.subtitle, { color: theme.sub }]}>{currentStep.subtitle}</Text>
 
             <View style={styles.progressWrap}>
-              <Text style={styles.progressCount}>
+              <Text style={[styles.progressCount, { color: theme.mute }]}>
                 Step {currentStepIndex + 1} of {ONBOARDING_STEPS.length}
               </Text>
               <View style={styles.progressSegments}>
@@ -1342,14 +1365,16 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
                     key={item.key}
                     style={[
                       styles.progressSegment,
+                      { backgroundColor: theme.border },
                       index <= currentStepIndex && styles.progressSegmentActive,
+                      index <= currentStepIndex && { backgroundColor: theme.accent },
                     ]}
                   />
                 ))}
               </View>
               <View style={styles.progressLabelRow}>
-                <Text style={styles.progressLabelActive}>{currentStep.label}</Text>
-                <Text style={styles.progressLabel}>{ONBOARDING_STEPS[currentStepIndex + 1]?.label ?? 'Done'}</Text>
+                <Text style={[styles.progressLabelActive, { color: theme.text }]}>{currentStep.label}</Text>
+                <Text style={[styles.progressLabel, { color: theme.mute }]}>{ONBOARDING_STEPS[currentStepIndex + 1]?.label ?? 'Done'}</Text>
               </View>
             </View>
 
@@ -1357,13 +1382,21 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
               {stage === 'profile' && (
                 <>
                   <View style={styles.fieldBlock}>
-                    <Text style={styles.fieldLabel}>Name</Text>
+                    <Text style={[styles.fieldLabel, { color: theme.mute }]}>Name</Text>
                     <TextInput
                       placeholder="Your full name"
                       value={fullName}
                       onChangeText={setFullName}
-                      style={[styles.input, searchInputWebFix]}
-                      placeholderTextColor={TEXT_MUTED}
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: theme.input,
+                          borderColor: theme.border,
+                          color: theme.text,
+                        },
+                        searchInputWebFix,
+                      ]}
+                      placeholderTextColor={theme.mute}
                       autoFocus
                       editable={!loading}
                       returnKeyType="next"
@@ -1385,6 +1418,11 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
   style={[
     styles.avatarButton,
     styles.avatarButtonActive,
+    {
+      backgroundColor: theme.elevated,
+      borderColor: theme.accentBorder,
+      shadowColor: theme.accent,
+    },
     isMobile && styles.avatarButtonMobile,
   ]}
   disabled={loading}
@@ -1396,31 +1434,35 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
     />
   ) : (
     <View style={styles.avatarFallback}>
-      <Ionicons name="camera-outline" size={30} color={GOLD} />
-      <Text style={styles.avatarFallbackText}>Add Profile Image</Text>
+      <Ionicons name="camera-outline" size={30} color={theme.accent} />
+      <Text style={[styles.avatarFallbackText, { color: theme.text }]}>Add Profile Image</Text>
     </View>
   )}
 </TouchableOpacity>
 
                   <TouchableOpacity
                     onPress={pickImage}
-                    style={[styles.avatarChangeBtn, isMobile && styles.avatarChangeBtnMobile]}
+                    style={[
+                      styles.avatarChangeBtn,
+                      { backgroundColor: theme.accent },
+                      isMobile && styles.avatarChangeBtnMobile,
+                    ]}
                     activeOpacity={0.88}
                     disabled={loading}
                   >
                     {uploadingImage ? (
-                      <ActivityIndicator color="#000" size="small" />
+                      <ActivityIndicator color={theme.textOnAccent} size="small" />
                     ) : (
-                      <Text style={styles.avatarChangeBtnText}>
+                      <Text style={[styles.avatarChangeBtnText, { color: theme.textOnAccent }]}>
                         {displayImage ? 'Change Profile Image' : 'Upload Profile Image'}
                       </Text>
                     )}
                   </TouchableOpacity>
 
-                  <Text style={styles.requiredLabel}>Required</Text>
+                  <Text style={[styles.requiredLabel, { color: theme.accent }]}>Required</Text>
 
                   {!!uploadingImage && (
-                    <Text style={styles.uploadingText}>Preparing your profile image...</Text>
+                    <Text style={[styles.uploadingText, { color: theme.mute }]}>Preparing your profile image...</Text>
                   )}
                 </Animated.View>
                 </>
@@ -1429,22 +1471,30 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
               {stage === 'role' && (
                 <>
                   <View style={styles.fieldBlock}>
-                    <Text style={styles.fieldLabel}>Main creative role</Text>
+                    <Text style={[styles.fieldLabel, { color: theme.mute }]}>Main creative role</Text>
                     <TouchableOpacity
-                      style={[styles.selectButton, styles.activeSelectButton]}
+                      style={[
+                        styles.selectButton,
+                        styles.activeSelectButton,
+                        {
+                          backgroundColor: theme.input,
+                          borderColor: theme.accentBorder,
+                          shadowColor: theme.accent,
+                        },
+                      ]}
                       onPress={openRoleSelector}
                       activeOpacity={0.9}
                       disabled={loading}
                     >
-                      <Text style={styles.selectButtonText}>
+                      <Text style={[styles.selectButtonText, { color: theme.text }]}>
                         {mainRoleLabel ?? 'Search your main creative role'}
                       </Text>
-                      <Ionicons name="search" size={16} color={TEXT_MUTED} />
+                      <Ionicons name="search" size={16} color={theme.mute} />
                     </TouchableOpacity>
                   </View>
 
                   <View style={styles.fieldBlock}>
-                    <Text style={styles.fieldLabel}>Optional side roles</Text>
+                    <Text style={[styles.fieldLabel, { color: theme.mute }]}>Optional side roles</Text>
                     <View style={styles.chipGrid}>
                       {sideRoleOptions.map((role) => {
                         const selected = sideRoles.includes(role);
@@ -1452,19 +1502,31 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
                           <TouchableOpacity
                             key={role}
                             onPress={() => toggleSelection(role, setSideRoles)}
-                            style={[styles.choicePill, selected && styles.choicePillSelected]}
+                            style={[
+                              styles.choicePill,
+                              {
+                                backgroundColor: theme.elevated,
+                                borderColor: theme.border,
+                              },
+                              selected && styles.choicePillSelected,
+                              selected && {
+                                backgroundColor: theme.accentSoft,
+                                borderColor: theme.accentBorder,
+                              },
+                            ]}
                             activeOpacity={0.86}
                             disabled={loading}
                           >
                             <Ionicons
                               name={selected ? 'checkmark-circle' : 'add-circle-outline'}
                               size={16}
-                              color={selected ? CORAL : TEXT_MUTED}
+                              color={selected ? theme.accent : theme.mute}
                             />
                             <Text
                               style={[
                                 styles.choicePillText,
                                 selected && styles.choicePillTextSelected,
+                                { color: selected ? theme.text : theme.mute },
                               ]}
                             >
                               {role}
@@ -1474,7 +1536,7 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
                       })}
                     </View>
                     {!sideRoleOptions.length ? (
-                      <Text style={styles.helperText}>Roles are loading. You can skip this for now.</Text>
+                      <Text style={[styles.helperText, { color: theme.mute }]}>Roles are loading. You can skip this for now.</Text>
                     ) : null}
                   </View>
                 </>
@@ -1483,60 +1545,34 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
               {stage === 'city' && (
                 <>
                   <View style={styles.fieldBlock}>
-                    <Text style={styles.fieldLabel}>City / country</Text>
+                    <Text style={[styles.fieldLabel, { color: theme.mute }]}>City / country</Text>
                     <TouchableOpacity
-                      style={[styles.selectButton, styles.activeSelectButton]}
+                      style={[
+                        styles.selectButton,
+                        styles.activeSelectButton,
+                        {
+                          backgroundColor: theme.input,
+                          borderColor: theme.accentBorder,
+                          shadowColor: theme.accent,
+                        },
+                      ]}
                       onPress={openCitySelector}
                       activeOpacity={0.9}
                       disabled={loading}
                     >
-                      <Text style={styles.selectButtonText}>
+                      <Text style={[styles.selectButtonText, { color: theme.text }]}>
                         {cityLabel ?? 'Search for your city'}
                       </Text>
-                      <Ionicons name="location-outline" size={16} color={TEXT_MUTED} />
+                      <Ionicons name="location-outline" size={16} color={theme.mute} />
                     </TouchableOpacity>
                   </View>
 
-                  <View style={styles.infoBox}>
-                    <Text style={styles.infoBoxTitle}>Local discovery</Text>
-                    <Text style={styles.infoBoxText}>
+                  <View style={[styles.infoBox, { backgroundColor: theme.elevated, borderColor: theme.border }]}>
+                    <Text style={[styles.infoBoxTitle, { color: theme.accent }]}>Local discovery</Text>
+                    <Text style={[styles.infoBoxText, { color: theme.sub }]}>
                       Your location helps Overlooked recommend nearby creatives, local projects,
                       city jobs, and useful collaborations.
                     </Text>
-                  </View>
-                </>
-              )}
-
-              {stage === 'links' && (
-                <>
-                  <View style={styles.fieldBlock}>
-                    <Text style={styles.fieldLabel}>Portfolio link</Text>
-                    <TextInput
-                      placeholder="https://your-portfolio.com"
-                      value={portfolioUrl}
-                      onChangeText={setPortfolioUrl}
-                      style={[styles.input, searchInputWebFix]}
-                      placeholderTextColor={TEXT_MUTED}
-                      editable={!loading}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      keyboardType="url"
-                    />
-                  </View>
-
-                  <View style={styles.fieldBlock}>
-                    <Text style={styles.fieldLabel}>YouTube link</Text>
-                    <TextInput
-                      placeholder="https://youtube.com/@yourchannel"
-                      value={youtubeUrl}
-                      onChangeText={setYoutubeUrl}
-                      style={[styles.input, searchInputWebFix]}
-                      placeholderTextColor={TEXT_MUTED}
-                      editable={!loading}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      keyboardType="url"
-                    />
                   </View>
                 </>
               )}
@@ -1549,17 +1585,42 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
                       <TouchableOpacity
                         key={reason}
                         onPress={() => toggleSelection(reason, setJoiningReasons)}
-                        style={[styles.optionCard, selected && styles.optionCardSelected]}
+                        style={[
+                          styles.optionCard,
+                          {
+                            backgroundColor: theme.elevated,
+                            borderColor: theme.border,
+                          },
+                          selected && styles.optionCardSelected,
+                          selected && {
+                            backgroundColor: theme.accentSoft,
+                            borderColor: theme.accentBorder,
+                          },
+                        ]}
                         activeOpacity={0.88}
                         disabled={loading}
                       >
-                        <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
-                          {selected ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
+                        <View
+                          style={[
+                            styles.checkbox,
+                            {
+                              backgroundColor: theme.input,
+                              borderColor: theme.borderStrong,
+                            },
+                            selected && styles.checkboxSelected,
+                            selected && {
+                              backgroundColor: theme.accent,
+                              borderColor: theme.accent,
+                            },
+                          ]}
+                        >
+                          {selected ? <Ionicons name="checkmark" size={14} color={theme.textOnAccent} /> : null}
                         </View>
                         <Text
                           style={[
                             styles.optionCardText,
                             selected && styles.optionCardTextSelected,
+                            { color: selected ? theme.accent : theme.text },
                           ]}
                         >
                           {reason}
@@ -1578,17 +1639,42 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
                       <TouchableOpacity
                         key={goal}
                         onPress={() => toggleSelection(goal, setCreativeGoals)}
-                        style={[styles.optionCard, selected && styles.optionCardSelected]}
+                        style={[
+                          styles.optionCard,
+                          {
+                            backgroundColor: theme.elevated,
+                            borderColor: theme.border,
+                          },
+                          selected && styles.optionCardSelected,
+                          selected && {
+                            backgroundColor: theme.accentSoft,
+                            borderColor: theme.accentBorder,
+                          },
+                        ]}
                         activeOpacity={0.88}
                         disabled={loading}
                       >
-                        <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
-                          {selected ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
+                        <View
+                          style={[
+                            styles.checkbox,
+                            {
+                              backgroundColor: theme.input,
+                              borderColor: theme.borderStrong,
+                            },
+                            selected && styles.checkboxSelected,
+                            selected && {
+                              backgroundColor: theme.accent,
+                              borderColor: theme.accent,
+                            },
+                          ]}
+                        >
+                          {selected ? <Ionicons name="checkmark" size={14} color={theme.textOnAccent} /> : null}
                         </View>
                         <Text
                           style={[
                             styles.optionCardText,
                             selected && styles.optionCardTextSelected,
+                            { color: selected ? theme.accent : theme.text },
                           ]}
                         >
                           {goal}
@@ -1601,40 +1687,40 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
 
               {stage === 'review' && (
                 <>
-                  <View style={styles.reviewCard}>
-                    <Text style={styles.reviewTitle}>Confirm your profile</Text>
+                  <View style={[styles.reviewCard, { backgroundColor: theme.elevated, borderColor: theme.border }]}>
+                    <Text style={[styles.reviewTitle, { color: theme.text }]}>Confirm your profile</Text>
 
                     {!!displayImage && (
-                      <View style={styles.reviewAvatarWrap}>
+                      <View style={[styles.reviewAvatarWrap, { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}>
                         <ProfilePreviewImage uri={displayImage} style={styles.reviewAvatar} />
                       </View>
                     )}
 
-                    <View style={styles.reviewRow}>
-                      <Text style={styles.reviewLabel}>Name</Text>
-                      <Text style={styles.reviewValue}>{fullName || '-'}</Text>
+                    <View style={[styles.reviewRow, { borderBottomColor: theme.border }]}>
+                      <Text style={[styles.reviewLabel, { color: theme.accent }]}>Name</Text>
+                      <Text style={[styles.reviewValue, { color: theme.text }]}>{fullName || '-'}</Text>
                     </View>
 
-                    <View style={styles.reviewRow}>
-                      <Text style={styles.reviewLabel}>Main role</Text>
-                      <Text style={styles.reviewValue}>{mainRoleLabel || '-'}</Text>
+                    <View style={[styles.reviewRow, { borderBottomColor: theme.border }]}>
+                      <Text style={[styles.reviewLabel, { color: theme.accent }]}>Main role</Text>
+                      <Text style={[styles.reviewValue, { color: theme.text }]}>{mainRoleLabel || '-'}</Text>
                     </View>
 
-                    <View style={styles.reviewRow}>
-                      <Text style={styles.reviewLabel}>Side roles</Text>
-                      <Text style={styles.reviewValue}>
+                    <View style={[styles.reviewRow, { borderBottomColor: theme.border }]}>
+                      <Text style={[styles.reviewLabel, { color: theme.accent }]}>Side roles</Text>
+                      <Text style={[styles.reviewValue, { color: theme.text }]}>
                         {sideRoles.length ? sideRoles.join(', ') : 'Not added'}
                       </Text>
                     </View>
 
-                    <View style={styles.reviewRow}>
-                      <Text style={styles.reviewLabel}>Location</Text>
-                      <Text style={styles.reviewValue}>{cityLabel || '-'}</Text>
+                    <View style={[styles.reviewRow, { borderBottomColor: theme.border }]}>
+                      <Text style={[styles.reviewLabel, { color: theme.accent }]}>Location</Text>
+                      <Text style={[styles.reviewValue, { color: theme.text }]}>{cityLabel || '-'}</Text>
                     </View>
 
-                    <View style={styles.reviewRow}>
-                      <Text style={styles.reviewLabel}>Setup choices</Text>
-                      <Text style={styles.reviewValue}>
+                    <View style={[styles.reviewRow, { borderBottomColor: theme.border }]}>
+                      <Text style={[styles.reviewLabel, { color: theme.accent }]}>Setup choices</Text>
+                      <Text style={[styles.reviewValue, { color: theme.text }]}>
                         {joiningReasons.length} reasons · {creativeGoals.length} goals
                       </Text>
                     </View>
@@ -1646,11 +1732,24 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
             <View style={styles.reviewActions}>
               <TouchableOpacity
                 onPress={goBack}
-                style={[styles.backButton, isFirstStep && styles.backButtonDisabled]}
+                style={[
+                  styles.backButton,
+                  {
+                    backgroundColor: theme.elevated,
+                    borderColor: theme.border,
+                  },
+                  isFirstStep && styles.backButtonDisabled,
+                ]}
                 activeOpacity={0.9}
                 disabled={loading || isFirstStep}
               >
-                <Text style={[styles.backButtonText, isFirstStep && styles.backButtonTextDisabled]}>
+                <Text
+                  style={[
+                    styles.backButtonText,
+                    { color: isFirstStep ? theme.mute : theme.text },
+                    isFirstStep && styles.backButtonTextDisabled,
+                  ]}
+                >
                   Back
                 </Text>
               </TouchableOpacity>
@@ -1660,20 +1759,21 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
                 style={[
                   styles.submitButton,
                   styles.submitButtonReview,
+                  { backgroundColor: theme.accent },
                   loading && { opacity: 0.6 },
                 ]}
                 disabled={loading}
                 activeOpacity={0.9}
               >
                 {loading ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color={theme.textOnAccent} />
                 ) : (
-                  <Text style={styles.submitText}>{isLastStep ? 'Finish' : 'Next'}</Text>
+                  <Text style={[styles.submitText, { color: theme.textOnAccent }]}>{isLastStep ? 'Finish' : 'Next'}</Text>
                 )}
               </TouchableOpacity>
             </View>
 
-            {!!submitStatus && <Text style={styles.submitStatusText}>{submitStatus}</Text>}
+            {!!submitStatus && <Text style={[styles.submitStatusText, { color: theme.mute }]}>{submitStatus}</Text>}
           </View>
         </Animated.View>
       </ScrollView>
@@ -1684,19 +1784,27 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
         animationType="fade"
         onRequestClose={() => setCitySearchModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCardFixed}>
-            <Text style={styles.modalTitle}>Select City</Text>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
+          <View style={[styles.modalCardFixed, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Select City</Text>
 
             <TextInput
               placeholder="Start typing your city..."
-              placeholderTextColor={TEXT_MUTED}
+              placeholderTextColor={theme.mute}
               value={citySearchTerm}
               onChangeText={(text) => {
                 setCitySearchTerm(text);
                 fetchCities(text);
               }}
-              style={[styles.searchInput, searchInputWebFix]}
+              style={[
+                styles.searchInput,
+                {
+                  backgroundColor: theme.input,
+                  borderColor: theme.border,
+                  color: theme.text,
+                },
+                searchInputWebFix,
+              ]}
               autoFocus
               autoCorrect={false}
               autoCapitalize="none"
@@ -1705,7 +1813,7 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
             <View style={styles.modalResultsArea}>
               {isSearchingCities ? (
                 <View style={styles.modalLoadingWrap}>
-                  <ActivityIndicator color={GOLD} />
+                  <ActivityIndicator color={theme.accent} />
                 </View>
               ) : (
                 <FlatList
@@ -1715,7 +1823,7 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
                   keyboardShouldPersistTaps="handled"
                   renderItem={({ item }) => (
                     <TouchableOpacity
-                      style={styles.listItem}
+                      style={[styles.listItem, { borderColor: theme.border }]}
                       onPress={() => {
                         setCityId(item.value);
                         setCityLabel(item.label);
@@ -1724,11 +1832,11 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
                       }}
                       activeOpacity={0.8}
                     >
-                      <Text style={styles.listItemText}>{item.label}</Text>
+                      <Text style={[styles.listItemText, { color: theme.text }]}>{item.label}</Text>
                     </TouchableOpacity>
                   )}
                   ListEmptyComponent={
-                    <Text style={styles.emptyText}>
+                    <Text style={[styles.emptyText, { color: theme.mute }]}>
                       No cities found yet. Try a broader search like “Rome” or “Lon”.
                     </Text>
                   }
@@ -1738,10 +1846,10 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
 
             <TouchableOpacity
               onPress={() => setCitySearchModalVisible(false)}
-              style={styles.closeModalButton}
+              style={[styles.closeModalButton, { backgroundColor: theme.elevated, borderColor: theme.border }]}
               activeOpacity={0.8}
             >
-              <Text style={styles.closeModalText}>Close</Text>
+              <Text style={[styles.closeModalText, { color: theme.text }]}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1753,19 +1861,27 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
         animationType="fade"
         onRequestClose={() => setRoleSearchModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCardFixed}>
-            <Text style={styles.modalTitle}>Select Main Role</Text>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
+          <View style={[styles.modalCardFixed, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Select Main Role</Text>
 
             <TextInput
               placeholder="Start typing a role..."
-              placeholderTextColor={TEXT_MUTED}
+              placeholderTextColor={theme.mute}
               value={roleSearchTerm}
               onChangeText={(text) => {
                 setRoleSearchTerm(text);
                 fetchSearchRoles(text);
               }}
-              style={[styles.searchInput, searchInputWebFix]}
+              style={[
+                styles.searchInput,
+                {
+                  backgroundColor: theme.input,
+                  borderColor: theme.border,
+                  color: theme.text,
+                },
+                searchInputWebFix,
+              ]}
               autoFocus
               autoCorrect={false}
               autoCapitalize="none"
@@ -1774,19 +1890,19 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
             <View style={styles.modalResultsArea}>
   {isLoadingRoles || (isSearchingRoles && roleSearchItems.length === 0) ? (
     <View style={styles.modalLoadingWrap}>
-      <ActivityIndicator color={GOLD} size="large" />
-      <Text style={styles.loadingText}>Loading roles...</Text>
+      <ActivityIndicator color={theme.accent} size="large" />
+      <Text style={[styles.loadingText, { color: theme.mute }]}>Loading roles...</Text>
     </View>
   ) : roleLoadError ? (
     <View style={styles.modalLoadingWrap}>
-      <Text style={styles.emptyText}>{roleLoadError}</Text>
+      <Text style={[styles.emptyText, { color: theme.mute }]}>{roleLoadError}</Text>
 
       <TouchableOpacity
         onPress={fetchCreativeRoles}
-        style={styles.retryButton}
+        style={[styles.retryButton, { backgroundColor: theme.accent }]}
         activeOpacity={0.85}
       >
-        <Text style={styles.retryButtonText}>Try Again</Text>
+        <Text style={[styles.retryButtonText, { color: theme.textOnAccent }]}>Try Again</Text>
       </TouchableOpacity>
     </View>
   ) : (
@@ -1797,7 +1913,7 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
       keyboardShouldPersistTaps="handled"
       renderItem={({ item }) => (
         <TouchableOpacity
-          style={styles.listItem}
+          style={[styles.listItem, { borderColor: theme.border }]}
           onPress={() => {
             setMainRole(item.value);
             setMainRoleLabel(item.label);
@@ -1805,11 +1921,11 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
           }}
           activeOpacity={0.8}
         >
-          <Text style={styles.listItemText}>{item.label}</Text>
+          <Text style={[styles.listItemText, { color: theme.text }]}>{item.label}</Text>
         </TouchableOpacity>
       )}
       ListEmptyComponent={
-        <Text style={styles.emptyText}>
+        <Text style={[styles.emptyText, { color: theme.mute }]}>
           {roleSearchTerm.trim().length > 0
             ? 'No matching roles found. Try a broader search like “actor”, “editor”, or “director”.'
             : 'Roles are loading. If nothing appears, tap Try Again.'}
@@ -1821,10 +1937,10 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
 
             <TouchableOpacity
               onPress={() => setRoleSearchModalVisible(false)}
-              style={styles.closeModalButton}
+              style={[styles.closeModalButton, { backgroundColor: theme.elevated, borderColor: theme.border }]}
               activeOpacity={0.8}
             >
-              <Text style={styles.closeModalText}>Close</Text>
+              <Text style={[styles.closeModalText, { color: theme.text }]}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>

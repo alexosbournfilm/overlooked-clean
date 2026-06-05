@@ -18,6 +18,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import YoutubePlayer from "react-native-youtube-iframe";
 import { supabase } from "../lib/supabase";
 import type { RootStackParamList } from "../navigation/navigationRef";
+import { useAppTheme } from "../context/ThemeContext";
 
 const GOLD = "#C6A664";
 const BG = "#050505";
@@ -269,9 +270,19 @@ function normalizeFilmRow(row: any): FilmRow {
 }
 
 export default function SharedFilmScreen() {
+  const { colors, isLight } = useAppTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<SharedFilmRoute>();
   const { width } = useWindowDimensions();
+  const GOLD = colors.primary;
+  const BG = colors.background;
+  const PANEL = colors.card;
+  const PANEL_ALT = colors.mutedCard;
+  const LINE = colors.border;
+  const TEXT = colors.textPrimary;
+  const SUB = colors.textSecondary;
+  const MUTE = colors.textMuted;
+  const goldSoft = isLight ? 'rgba(158,119,40,0.10)' : 'rgba(198,166,100,0.12)';
 
   const routeShareSlug =
     route.params?.shareSlug ||
@@ -579,9 +590,9 @@ export default function SharedFilmScreen() {
   const shouldShowFileVideo = !!playableVideoUrl;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: BG }]}>
       <LinearGradient
-        colors={[BG, BG, "#040404"]}
+        colors={[BG, BG, colors.backgroundAlt]}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
         style={StyleSheet.absoluteFillObject}
@@ -595,42 +606,42 @@ export default function SharedFilmScreen() {
           <TouchableOpacity
             onPress={backAction}
             activeOpacity={0.9}
-            style={styles.backBtn}
+            style={[styles.backBtn, { backgroundColor: PANEL_ALT, borderColor: LINE }]}
           >
-            <Text style={styles.backText}>← Back</Text>
+            <Text style={[styles.backText, { color: TEXT }]}>← Back</Text>
           </TouchableOpacity>
 
           {loading ? (
-            <View style={styles.centerState}>
+            <View style={[styles.centerState, { backgroundColor: PANEL, borderColor: LINE }]}>
               <ActivityIndicator size="large" color={GOLD} />
-              <Text style={styles.stateText}>Loading film…</Text>
+              <Text style={[styles.stateText, { color: SUB }]}>Loading film…</Text>
             </View>
           ) : errorText ? (
-            <View style={styles.centerState}>
-              <Text style={styles.errorTitle}>Unavailable</Text>
-              <Text style={styles.errorText}>{errorText}</Text>
+            <View style={[styles.centerState, { backgroundColor: PANEL, borderColor: LINE }]}>
+              <Text style={[styles.errorTitle, { color: TEXT }]}>Unavailable</Text>
+              <Text style={[styles.errorText, { color: SUB }]}>{errorText}</Text>
 
               <View style={styles.errorActions}>
                 <TouchableOpacity
                   onPress={goToSignUp}
                   activeOpacity={0.9}
-                  style={styles.primaryBtn}
+                  style={[styles.primaryBtn, { backgroundColor: GOLD }]}
                 >
-                  <Text style={styles.primaryBtnText}>Join Overlooked</Text>
+                  <Text style={[styles.primaryBtnText, { color: colors.textOnPrimary }]}>Join Overlooked</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={goToSignIn}
                   activeOpacity={0.9}
-                  style={styles.secondaryBtn}
+                  style={[styles.secondaryBtn, { backgroundColor: PANEL_ALT, borderColor: LINE }]}
                 >
-                  <Text style={styles.secondaryBtnText}>Sign In</Text>
+                  <Text style={[styles.secondaryBtnText, { color: TEXT }]}>Sign In</Text>
                 </TouchableOpacity>
               </View>
             </View>
           ) : film ? (
             <>
-              <View style={styles.card}>
+              <View style={[styles.card, { backgroundColor: PANEL, borderColor: LINE }]}>
                 <View style={[styles.mediaWrap, { height: mediaHeight }]}>
                   {shouldShowYoutube && youtubeId ? (
                     <YoutubePlayer
@@ -692,46 +703,46 @@ export default function SharedFilmScreen() {
                 </View>
 
                 <View style={styles.metaBlock}>
-                  <Text style={styles.kicker}>Shared on Overlooked</Text>
+                  <Text style={[styles.kicker, { color: GOLD }]}>Shared on Overlooked</Text>
 
-                  <Text style={styles.title}>{film.title || "Untitled Film"}</Text>
+                  <Text style={[styles.title, { color: TEXT }]}>{film.title || "Untitled Film"}</Text>
 
                   {film.users?.full_name ? (
                     <TouchableOpacity onPress={goToCreator} activeOpacity={0.9}>
-                      <Text style={styles.byline}>by {film.users.full_name}</Text>
+                      <Text style={[styles.byline, { color: SUB }]}>by {film.users.full_name}</Text>
                     </TouchableOpacity>
                   ) : null}
 
                   <View style={styles.metaRow}>
                     {film.film_category || film.category ? (
-                      <View style={styles.metaPill}>
-                        <Text style={styles.metaPillText}>
+                      <View style={[styles.metaPill, { backgroundColor: goldSoft, borderColor: isLight ? 'rgba(158,119,40,0.22)' : 'rgba(198,166,100,0.26)' }]}>
+                        <Text style={[styles.metaPillText, { color: GOLD }]}>
                           {film.film_category || film.category}
                         </Text>
                       </View>
                     ) : null}
 
                     {film.submitted_at ? (
-                      <View style={styles.metaPillGhost}>
-                        <Text style={styles.metaPillGhostText}>
+                      <View style={[styles.metaPillGhost, { backgroundColor: PANEL_ALT, borderColor: LINE }]}>
+                        <Text style={[styles.metaPillGhostText, { color: MUTE }]}>
                           {formatDate(film.submitted_at)}
                         </Text>
                       </View>
                     ) : null}
 
-                    <View style={styles.metaPillGhost}>
-                      <Text style={styles.metaPillGhostText}>
+                    <View style={[styles.metaPillGhost, { backgroundColor: PANEL_ALT, borderColor: LINE }]}>
+                      <Text style={[styles.metaPillGhostText, { color: MUTE }]}>
                         Votes {film.votes ?? 0}
                       </Text>
                     </View>
                   </View>
 
                   {!!film.word ? (
-                    <Text style={styles.wordText}>Word: {film.word}</Text>
+                    <Text style={[styles.wordText, { color: GOLD }]}>Word: {film.word}</Text>
                   ) : null}
 
                   {!!film.description ? (
-                    <Text style={styles.description}>{film.description}</Text>
+                    <Text style={[styles.description, { color: SUB }]}>{film.description}</Text>
                   ) : null}
 
                   {film.users?.full_name ? (
@@ -739,9 +750,9 @@ export default function SharedFilmScreen() {
                       <TouchableOpacity
                         onPress={goToCreator}
                         activeOpacity={0.9}
-                        style={styles.secondaryBtn}
+                        style={[styles.secondaryBtn, { backgroundColor: PANEL_ALT, borderColor: LINE }]}
                       >
-                        <Text style={styles.secondaryBtnText}>View Creator</Text>
+                        <Text style={[styles.secondaryBtnText, { color: TEXT }]}>View Creator</Text>
                       </TouchableOpacity>
                     </View>
                   ) : null}
@@ -749,9 +760,9 @@ export default function SharedFilmScreen() {
               </View>
 
               {!isSignedIn && (
-                <View style={styles.ctaCard}>
-                  <Text style={styles.ctaTitle}>Want to share your own film?</Text>
-                  <Text style={styles.ctaBody}>
+                <View style={[styles.ctaCard, { backgroundColor: PANEL, borderColor: LINE }]}>
+                  <Text style={[styles.ctaTitle, { color: TEXT }]}>Want to share your own film?</Text>
+                  <Text style={[styles.ctaBody, { color: SUB }]}>
                     Join Overlooked to upload films, build your profile, and connect with other creatives.
                   </Text>
 
@@ -759,17 +770,17 @@ export default function SharedFilmScreen() {
                     <TouchableOpacity
                       onPress={goToSignUp}
                       activeOpacity={0.9}
-                      style={styles.primaryBtn}
+                      style={[styles.primaryBtn, { backgroundColor: GOLD }]}
                     >
-                      <Text style={styles.primaryBtnText}>Join Overlooked</Text>
+                      <Text style={[styles.primaryBtnText, { color: colors.textOnPrimary }]}>Join Overlooked</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       onPress={goToSignIn}
                       activeOpacity={0.9}
-                      style={styles.secondaryBtn}
+                      style={[styles.secondaryBtn, { backgroundColor: PANEL_ALT, borderColor: LINE }]}
                     >
-                      <Text style={styles.secondaryBtnText}>Sign In</Text>
+                      <Text style={[styles.secondaryBtnText, { color: TEXT }]}>Sign In</Text>
                     </TouchableOpacity>
                   </View>
                 </View>

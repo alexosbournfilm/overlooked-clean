@@ -34,6 +34,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useAppRefresh } from "../context/AppRefreshContext";
 import { getCurrentUserTierOrFree } from "../lib/membership";
 import { Ionicons } from "@expo/vector-icons";
+import { useAppTheme } from "../context/ThemeContext";
 
 /* ------------------------------- palette ------------------------------- */
 
@@ -1005,6 +1006,7 @@ async function uploadFileToMuxDirectUrl(opts: {
   }
 }
 export default function WorkshopSubmitScreen() {
+  const { colors, isLight } = useAppTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<WorkshopSubmitRouteParams, "WorkshopSubmit">>();
   const insets = useSafeAreaInsets();
@@ -1016,6 +1018,25 @@ export default function WorkshopSubmitScreen() {
   const isPhone = width < 520;
   const isTablet = width >= 768 && width < 1100;
   const [showInfoPanel, setShowInfoPanel] = useState(false);
+  const T = useMemo(
+    () => ({
+      bg: colors.background,
+      card: colors.card,
+      text: colors.textPrimary,
+      sub: colors.textSecondary,
+      mute: colors.textMuted,
+      olive: colors.primary,
+      line: colors.border,
+      surface: colors.mutedCard,
+      surfaceSoft: colors.backgroundAlt,
+      input: colors.input,
+      shadow: colors.shadow,
+      cardAlt: colors.cardAlt,
+      accent: colors.accent,
+      textOnPrimary: colors.textOnPrimary,
+    }),
+    [colors]
+  );
 
   const mode: SubmitMode = route.params?.mode ?? "workshop";
   const isWorkshopMode = mode === "workshop";
@@ -2058,7 +2079,7 @@ const successMessage = isWorkshopMode
 
   const rulesTitle = isWorkshopMode ? "Workshop Rules & Terms" : "Upload Rules & Terms";
 return (
-  <View style={styles.container}>
+  <View style={[styles.container, { backgroundColor: T.bg }]}>
     <LinearGradient
       colors={[T.bg, T.bg]}
       start={{ x: 0, y: 0 }}
@@ -2066,10 +2087,10 @@ return (
       style={StyleSheet.absoluteFill}
     />
 
-    <View style={[styles.webScrollShell, isMobileWeb && styles.webScrollShellMobileWeb]}>
+    <View style={[styles.webScrollShell, { backgroundColor: T.bg }, isMobileWeb && styles.webScrollShellMobileWeb]}>
       <ScrollView
-  style={[styles.scrollView, isMobileWeb && styles.scrollViewMobileWeb]}
-  contentContainerStyle={[styles.scroll, isMobileWeb && styles.scrollMobileWeb]}
+  style={[styles.scrollView, { backgroundColor: T.bg }, isMobileWeb && styles.scrollViewMobileWeb]}
+  contentContainerStyle={[styles.scroll, { backgroundColor: T.bg }, isMobileWeb && styles.scrollMobileWeb]}
   contentInsetAdjustmentBehavior="never"
   showsVerticalScrollIndicator={true}
   keyboardShouldPersistTaps="handled"
@@ -2085,18 +2106,32 @@ return (
               {
                 paddingTop: Math.max(12, insets.top + 10),
                 paddingBottom: Math.max(64, insets.bottom + 42),
+                backgroundColor: T.bg,
               },
             ]}
           >
           <View style={styles.topNavRow}>
-            <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.goBack()} style={styles.backBtn}>
-              <Text style={styles.backBtnText}>← Back</Text>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => navigation.goBack()}
+              style={[
+                styles.backBtn,
+                {
+                  backgroundColor: T.card,
+                  borderColor: T.line,
+                  shadowColor: T.shadow,
+                },
+              ]}
+            >
+              <Text style={[styles.backBtnText, { color: T.text }]}>← Back</Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.heroHeader}>
-            <Text style={[styles.heroTitle, isPhone && styles.heroTitlePhone]}>{headerTitle}</Text>
-            <Text style={[styles.heroSubtitle, isPhone && styles.heroSubtitlePhone]}>
+            <Text style={[styles.heroTitle, { color: T.text }, isPhone && styles.heroTitlePhone]}>
+              {headerTitle}
+            </Text>
+            <Text style={[styles.heroSubtitle, { color: T.accent }, isPhone && styles.heroSubtitlePhone]}>
               {headerSub}
             </Text>
           </View>
@@ -2104,15 +2139,25 @@ return (
           {!isWide ? (
             <Pressable
               onPress={() => setShowInfoPanel((v) => !v)}
-              style={({ pressed }) => [styles.infoToggleCard, pressed && { opacity: 0.94 }]}
+              style={({ pressed }) => [
+                styles.infoToggleCard,
+                {
+                  backgroundColor: T.card,
+                  borderColor: T.line,
+                  shadowColor: T.shadow,
+                },
+                pressed && { opacity: 0.94 },
+              ]}
             >
               <View style={styles.infoToggleLeft}>
-                <Text style={styles.infoToggleKicker}>Before you upload</Text>
-                <Text style={styles.infoToggleTitle}>
+                <Text style={[styles.infoToggleKicker, { color: T.accent }]}>Before you upload</Text>
+                <Text style={[styles.infoToggleTitle, { color: T.text }]}>
                   {showInfoPanel ? "Hide checklist" : "Checklist & rules"}
                 </Text>
               </View>
-              <Text style={styles.infoToggleChevron}>{showInfoPanel ? "−" : "+"}</Text>
+              <Text style={[styles.infoToggleChevron, { color: T.text }]}>
+                {showInfoPanel ? "−" : "+"}
+              </Text>
             </Pressable>
           ) : null}
 
@@ -2125,66 +2170,95 @@ return (
           >
             {(isWide || showInfoPanel) && (
               <View style={[styles.infoColumn, isWide && styles.infoColumnWide]}>
-                <View style={[styles.card, styles.infoCard, isPhone && styles.cardPhone]}>
-                  <Text style={styles.infoSectionLabel}>How it works</Text>
-                  <Text style={styles.infoSectionTitle}>Quick checklist</Text>
-                  <Text style={styles.infoSectionBody}>
+                <View
+                  style={[
+                    styles.card,
+                    styles.infoCard,
+                    {
+                      backgroundColor: T.card,
+                      borderColor: T.line,
+                      shadowColor: T.shadow,
+                    },
+                    isPhone && styles.cardPhone,
+                  ]}
+                >
+                  <Text style={[styles.infoSectionLabel, { color: T.accent }]}>How it works</Text>
+                  <Text style={[styles.infoSectionTitle, { color: T.text }]}>Quick checklist</Text>
+                  <Text style={[styles.infoSectionBody, { color: T.sub }]}>
                     Add a title, choose a category, upload your film and thumbnail, then submit it to Featured and this month’s challenge.
                   </Text>
 
-                  <View style={styles.softDivider} />
+                  <View style={[styles.softDivider, { backgroundColor: T.line }]} />
 
-                  <Text style={styles.infoMiniTitle}>Steps</Text>
+                  <Text style={[styles.infoMiniTitle, { color: T.accent }]}>Steps</Text>
                   <View style={styles.infoList}>
-                    <Text style={styles.infoBullet}>• Add a title</Text>
-                    <Text style={styles.infoBullet}>• Choose 1 category</Text>
-                    <Text style={styles.infoBullet}>• Upload your film + thumbnail</Text>
-                    <Text style={styles.infoBullet}>• Agree to the rules</Text>
-                    <Text style={styles.infoBullet}>• Submit your upload</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>• Add a title</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>• Choose 1 category</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>• Upload your film + thumbnail</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>• Agree to the rules</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>• Submit your upload</Text>
                   </View>
 
-                  <View style={styles.softDivider} />
+                  <View style={[styles.softDivider, { backgroundColor: T.line }]} />
 
-                  <Text style={styles.infoMiniTitle}>What happens after upload</Text>
+                  <Text style={[styles.infoMiniTitle, { color: T.accent }]}>What happens after upload</Text>
 <View style={styles.infoList}>
-  <Text style={styles.infoBullet}>• Your film is uploaded and entered into this month’s challenge</Text>
-  <Text style={styles.infoBullet}>• Your lesson is completed straight away after upload</Text>
-  <Text style={styles.infoBullet}>• Featured can take a little time to process your film before it appears</Text>
-  <Text style={styles.infoBullet}>• Once processing finishes, it will show on Featured and play normally</Text>
-  <Text style={styles.infoBullet}>• Other users can then watch and vote on it</Text>
+  <Text style={[styles.infoBullet, { color: T.sub }]}>• Your film is uploaded and entered into this month’s challenge</Text>
+  <Text style={[styles.infoBullet, { color: T.sub }]}>• Your lesson is completed straight away after upload</Text>
+  <Text style={[styles.infoBullet, { color: T.sub }]}>• Featured can take a little time to process your film before it appears</Text>
+  <Text style={[styles.infoBullet, { color: T.sub }]}>• Once processing finishes, it will show on Featured and play normally</Text>
+  <Text style={[styles.infoBullet, { color: T.sub }]}>• Other users can then watch and vote on it</Text>
   {isWorkshopMode ? (
-    <Text style={styles.infoBullet}>• This lesson is marked complete automatically</Text>
+    <Text style={[styles.infoBullet, { color: T.sub }]}>• This lesson is marked complete automatically</Text>
   ) : null}
 </View>
 
-                  <View style={styles.softDivider} />
+                  <View style={[styles.softDivider, { backgroundColor: T.line }]} />
 
-                  <Text style={styles.infoMiniTitle}>Rules</Text>
+                  <Text style={[styles.infoMiniTitle, { color: T.accent }]}>Rules</Text>
                   <View style={styles.infoList}>
-                    <Text style={styles.infoBullet}>• File size must be 5GB or under</Text>
-                    <Text style={styles.infoBullet}>• Your first film upload is free</Text>
-<Text style={styles.infoBullet}>• Pro is required for additional uploads</Text>
-                    <Text style={styles.infoBullet}>• Your film must be original</Text>
-                    <Text style={styles.infoBullet}>• No stolen, hateful, or harmful content</Text>
-                    <Text style={styles.infoBullet}>• Thumbnail is required</Text>
-                    <Text style={styles.infoBullet}>• You must choose 1 category</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>• File size must be 5GB or under</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>• Your first film upload is free</Text>
+<Text style={[styles.infoBullet, { color: T.sub }]}>• Pro is required for additional uploads</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>• Your film must be original</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>• No stolen, hateful, or harmful content</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>• Thumbnail is required</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>• You must choose 1 category</Text>
                   </View>
                 </View>
               </View>
             )}
 
             <View style={[styles.formColumn, isWide && styles.formColumnWide]}>
-              <View style={[styles.card, styles.formCard, isPhone && styles.cardPhone]}>
+              <View
+                style={[
+                  styles.card,
+                  styles.formCard,
+                  {
+                    backgroundColor: T.card,
+                    borderColor: T.line,
+                    shadowColor: T.shadow,
+                  },
+                  isPhone && styles.cardPhone,
+                ]}
+              >
                 <View style={styles.formHeaderClean}>
-                  <Text style={styles.formTitleLarge}>{rightTitle}</Text>
-                  <Text style={styles.formSubtitleClean}>{rightSubtitle}</Text>
+                  <Text style={[styles.formTitleLarge, { color: T.text }]}>{rightTitle}</Text>
+                  <Text style={[styles.formSubtitleClean, { color: T.mute }]}>{rightSubtitle}</Text>
                 </View>
 
                 <View style={[styles.formBodyLite, isPhone && styles.formBodyLitePhone]}>
                   <View style={styles.fieldGroup}>
-                    <Text style={styles.label}>Title</Text>
+                    <Text style={[styles.label, { color: T.text }]}>Title</Text>
                     <TextInput
-                      style={styles.input}
+                      style={[
+                        styles.input,
+                        {
+                          backgroundColor: T.input,
+                          borderColor: T.line,
+                          color: T.text,
+                        },
+                      ]}
                       placeholder="e.g. Static Hour"
                       placeholderTextColor={T.mute}
                       value={title}
@@ -2193,69 +2267,115 @@ return (
                   </View>
 
                   <View style={styles.fieldGroup}>
-                    <Text style={styles.label}>Category</Text>
+                    <Text style={[styles.label, { color: T.text }]}>Category</Text>
 
                     <Pressable
                       onPress={() => {
                         setTagQuery("");
                         setTagModalVisible(true);
                       }}
-                      style={({ pressed }) => [styles.selectBtn, pressed && { opacity: 0.92 }]}
+                      style={({ pressed }) => [
+                        styles.selectBtn,
+                        {
+                          backgroundColor: T.input,
+                          borderColor: T.line,
+                        },
+                        pressed && { opacity: 0.92 },
+                      ]}
                     >
-                      <Text style={styles.selectBtnText}>
+                      <Text style={[styles.selectBtnText, { color: T.text }]}>
                         {selectedTags[0] ? selectedTags[0] : "Choose a category"}
                       </Text>
-                      <Text style={styles.selectBtnHint}>
+                      <Text style={[styles.selectBtnHint, { color: T.mute }]}>
                         {selectedTags[0] ? "Tap to change" : "Tap to select"}
                       </Text>
                     </Pressable>
 
                     {selectedTags[0] ? (
                       <View style={styles.selectedRow}>
-                        <View style={styles.selectedChip}>
-                          <Text style={styles.selectedChipText}>{selectedTags[0]}</Text>
+                        <View
+                          style={[
+                            styles.selectedChip,
+                            {
+                              backgroundColor: isLight ? '#F6ECD8' : CINEMA.brassSoft,
+                              borderColor: isLight ? colors.borderStrong : CINEMA.brassBorder,
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.selectedChipText, { color: T.accent }]}>
+                            {selectedTags[0]}
+                          </Text>
                         </View>
                         <Pressable
                           onPress={() => setSelectedTags([])}
-                          style={({ pressed }) => [styles.clearChipBtn, pressed && { opacity: 0.9 }]}
+                          style={({ pressed }) => [
+                            styles.clearChipBtn,
+                            {
+                              backgroundColor: T.surfaceSoft,
+                              borderColor: T.line,
+                            },
+                            pressed && { opacity: 0.9 },
+                          ]}
                         >
-                          <Text style={styles.clearChipText}>Clear</Text>
+                          <Text style={[styles.clearChipText, { color: T.sub }]}>Clear</Text>
                         </Pressable>
                       </View>
                     ) : (
-                      <Text style={styles.helperText}>Pick 1 category so Featured can sort your film.</Text>
+                      <Text style={[styles.helperText, { color: T.mute }]}>
+                        Pick 1 category so Featured can sort your film.
+                      </Text>
                     )}
                   </View>
 
                   <View style={styles.uploadBox}>
-                    <TouchableOpacity style={styles.primaryBtn} onPress={pickFile} activeOpacity={0.92}>
+                    <TouchableOpacity
+                      style={[styles.primaryBtn, { backgroundColor: T.olive, shadowColor: T.shadow }]}
+                      onPress={pickFile}
+                      activeOpacity={0.92}
+                    >
                       <View style={styles.primaryBtnMainRow}>
                         <Ionicons
                           name={localUri ? "swap-horizontal-outline" : "cloud-upload-outline"}
                           size={18}
-                          color="#0A0A0B"
+                          color={T.textOnPrimary}
                         />
-                        <Text style={styles.primaryBtnText}>
+                        <Text style={[styles.primaryBtnText, { color: T.textOnPrimary }]}>
                           {localUri ? "Change file" : "Choose film file"}
                         </Text>
                       </View>
-                      <Text style={styles.primaryBtnSub}>First upload free · max 5GB</Text>
+                      <Text style={[styles.primaryBtnSub, { color: T.textOnPrimary, opacity: 0.72 }]}>
+                        First upload free · max 5GB
+                      </Text>
                     </TouchableOpacity>
 
                     {localUri ? (
                       <View style={[styles.fileActionsRow, isPhone && styles.fileActionsRowPhone]}>
                         <Pressable
                           onPress={pickFile}
-                          style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.9 }]}
+                          style={({ pressed }) => [
+                            styles.secondaryBtn,
+                            {
+                              backgroundColor: T.surfaceSoft,
+                              borderColor: T.line,
+                            },
+                            pressed && { opacity: 0.9 },
+                          ]}
                         >
-                          <Text style={styles.secondaryBtnText}>Change file</Text>
+                          <Text style={[styles.secondaryBtnText, { color: T.text }]}>Change file</Text>
                         </Pressable>
 
                         <Pressable
                           onPress={resetSelectedFile}
-                          style={({ pressed }) => [styles.secondaryBtnDanger, pressed && { opacity: 0.9 }]}
+                          style={({ pressed }) => [
+                            styles.secondaryBtnDanger,
+                            {
+                              backgroundColor: isLight ? '#F8E9E6' : CINEMA.redSoft,
+                              borderColor: isLight ? '#E4B6AF' : CINEMA.redBorder,
+                            },
+                            pressed && { opacity: 0.9 },
+                          ]}
                         >
-                          <Text style={styles.secondaryBtnDangerText}>Remove</Text>
+                          <Text style={[styles.secondaryBtnDangerText, { color: colors.danger }]}>Remove</Text>
                         </Pressable>
                       </View>
                     ) : null}
@@ -2264,14 +2384,29 @@ return (
                   {localUri ? (
                     <View style={styles.mediaSection}>
                       <View style={styles.mediaSectionHeader}>
-                        <Text style={styles.mediaSectionTitle}>Thumbnail</Text>
+                        <Text style={[styles.mediaSectionTitle, { color: T.text }]}>Thumbnail</Text>
                         {!customThumbUri ? (
-                          <Text style={styles.thumbReqBadge}>Missing</Text>
+                          <Text
+                            style={[
+                              styles.thumbReqBadge,
+                              {
+                                backgroundColor: isLight ? '#F8E9E6' : 'rgba(110,35,35,0.18)',
+                                borderColor: isLight ? '#E4B6AF' : 'rgba(255,120,120,0.28)',
+                                color: colors.danger,
+                              },
+                            ]}
+                          >
+                            Missing
+                          </Text>
                         ) : (
                           <Text
                             style={[
                               styles.thumbReqBadge,
-                              { borderColor: "rgba(60,200,120,0.35)", color: "#BFF3D4" },
+                              {
+                                backgroundColor: isLight ? '#E8F2EA' : 'rgba(60,200,120,0.13)',
+                                borderColor: isLight ? '#BBD7C3' : 'rgba(60,200,120,0.35)',
+                                color: colors.success,
+                              },
                             ]}
                           >
                             Added
@@ -2285,10 +2420,15 @@ return (
                           style={({ pressed }) => [
                             styles.secondaryBtn,
                             pressed && { opacity: 0.9 },
-                            { flex: 1, alignItems: "center" },
+                            {
+                              flex: 1,
+                              alignItems: "center",
+                              backgroundColor: T.surfaceSoft,
+                              borderColor: T.line,
+                            },
                           ]}
                         >
-                          <Text style={styles.secondaryBtnText}>
+                          <Text style={[styles.secondaryBtnText, { color: T.text }]}>
                             {customThumbUri ? "Change thumbnail" : "Add thumbnail"}
                           </Text>
                         </Pressable>
@@ -2299,35 +2439,58 @@ return (
                             style={({ pressed }) => [
                               styles.secondaryBtnDanger,
                               pressed && { opacity: 0.9 },
-                              { flex: 1, alignItems: "center" },
+                              {
+                                flex: 1,
+                                alignItems: "center",
+                                backgroundColor: isLight ? '#F8E9E6' : CINEMA.redSoft,
+                                borderColor: isLight ? '#E4B6AF' : CINEMA.redBorder,
+                              },
                             ]}
                           >
-                            <Text style={styles.secondaryBtnDangerText}>Remove</Text>
+                            <Text style={[styles.secondaryBtnDangerText, { color: colors.danger }]}>Remove</Text>
                           </Pressable>
                         ) : null}
                       </View>
 
                       {!customThumbUri ? (
-                        <Text style={styles.helperText}>You must add a thumbnail before submitting.</Text>
+                        <Text style={[styles.helperText, { color: T.mute }]}>
+                          You must add a thumbnail before submitting.
+                        </Text>
                       ) : (
-                        <Text style={styles.helperText}>This is the image that will show on Featured.</Text>
+                        <Text style={[styles.helperText, { color: T.mute }]}>
+                          This is the image that will show on Featured.
+                        </Text>
                       )}
                     </View>
                   ) : null}
 
                   {localUri ? (
                     <View style={styles.mediaSection}>
-                      <Text style={styles.mediaSectionTitle}>Preview</Text>
+                      <Text style={[styles.mediaSectionTitle, { color: T.text }]}>Preview</Text>
 
                       <Pressable
                         onPress={openPreview}
-                        style={({ pressed }) => [styles.previewWrap, pressed && { opacity: 0.92 }]}
+                        style={({ pressed }) => [
+                          styles.previewWrap,
+                          {
+                            backgroundColor: T.surfaceSoft,
+                            borderColor: T.line,
+                          },
+                          pressed && { opacity: 0.92 },
+                        ]}
                       >
-                        <View style={[styles.previewStage, { aspectRatio: thumbAspect || 16 / 9 }]}>
+                        <View
+                          style={[
+                            styles.previewStage,
+                            { aspectRatio: thumbAspect || 16 / 9, backgroundColor: T.surfaceSoft },
+                          ]}
+                        >
                           {thumbLoading ? (
                             <View style={styles.thumbLoading}>
                               <ActivityIndicator size="small" color={T.olive} />
-                              <Text style={styles.thumbLoadingText}>Generating preview…</Text>
+                              <Text style={[styles.thumbLoadingText, { color: T.mute }]}>
+                                Generating preview…
+                              </Text>
                             </View>
                           ) : previewThumbToShow ? (
                             <Image
@@ -2337,7 +2500,7 @@ return (
                             />
                           ) : (
                             <View style={styles.thumbFallback}>
-                              <Text style={styles.thumbFallbackText}>Watch preview</Text>
+                              <Text style={[styles.thumbFallbackText, { color: T.mute }]}>Watch preview</Text>
                             </View>
                           )}
                         </View>
@@ -2352,21 +2515,37 @@ return (
                   ) : null}
 
                   <View style={styles.fieldGroup}>
-                    <Text style={styles.label}>Collaborators</Text>
-                    <Text style={styles.helperText}>
+                    <Text style={[styles.label, { color: T.text }]}>Collaborators</Text>
+                    <Text style={[styles.helperText, { color: T.mute }]}>
                       Optional: add people who worked on this film and credit their role.
                     </Text>
 
                     <View style={[styles.collaboratorInputsRow, isPhone && styles.collaboratorInputsRowPhone]}>
                       <TextInput
-                        style={[styles.input, styles.collaboratorSearchInput]}
+                        style={[
+                          styles.input,
+                          styles.collaboratorSearchInput,
+                          {
+                            backgroundColor: T.input,
+                            borderColor: T.line,
+                            color: T.text,
+                          },
+                        ]}
                         placeholder="Search users..."
                         placeholderTextColor={T.mute}
                         value={collaboratorQuery}
                         onChangeText={setCollaboratorQuery}
                       />
                       <TextInput
-                        style={[styles.input, styles.collaboratorRoleInput]}
+                        style={[
+                          styles.input,
+                          styles.collaboratorRoleInput,
+                          {
+                            backgroundColor: T.input,
+                            borderColor: T.line,
+                            color: T.text,
+                          },
+                        ]}
                         placeholder="Role, e.g. DP"
                         placeholderTextColor={T.mute}
                         value={collaboratorRole}
@@ -2376,8 +2555,10 @@ return (
 
                     {collaboratorSearching ? (
                       <View style={styles.collaboratorSearchState}>
-                        <ActivityIndicator color={CINEMA.brass} size="small" />
-                        <Text style={styles.collaboratorSearchStateText}>Searching...</Text>
+                        <ActivityIndicator color={T.olive} size="small" />
+                        <Text style={[styles.collaboratorSearchStateText, { color: T.mute }]}>
+                          Searching...
+                        </Text>
                       </View>
                     ) : null}
 
@@ -2388,26 +2569,40 @@ return (
                             key={item.id}
                             activeOpacity={0.9}
                             onPress={() => addCollaborator(item)}
-                            style={styles.collaboratorResultRow}
+                            style={[
+                              styles.collaboratorResultRow,
+                              {
+                                backgroundColor: T.surfaceSoft,
+                                borderColor: T.line,
+                              },
+                            ]}
                           >
                             {item.avatar_url ? (
                               <Image source={{ uri: item.avatar_url }} style={styles.collaboratorAvatar} />
                             ) : (
-                              <View style={styles.collaboratorAvatarFallback}>
-                                <Text style={styles.collaboratorAvatarInitial}>
+                              <View
+                                style={[
+                                  styles.collaboratorAvatarFallback,
+                                  {
+                                    backgroundColor: isLight ? '#F6ECD8' : CINEMA.brassSoft,
+                                    borderColor: isLight ? colors.borderStrong : CINEMA.brassBorder,
+                                  },
+                                ]}
+                              >
+                                <Text style={[styles.collaboratorAvatarInitial, { color: T.accent }]}>
                                   {(item.full_name || "U").slice(0, 1).toUpperCase()}
                                 </Text>
                               </View>
                             )}
                             <View style={styles.collaboratorResultText}>
-                              <Text style={styles.collaboratorName} numberOfLines={1}>
+                              <Text style={[styles.collaboratorName, { color: T.text }]} numberOfLines={1}>
                                 {item.full_name || "Unknown creator"}
                               </Text>
-                              <Text style={styles.collaboratorHint} numberOfLines={1}>
+                              <Text style={[styles.collaboratorHint, { color: T.mute }]} numberOfLines={1}>
                                 Tap to add as {collaboratorRole.trim() || "collaborator"}
                               </Text>
                             </View>
-                            <Ionicons name="add-circle-outline" size={20} color={CINEMA.brass} />
+                            <Ionicons name="add-circle-outline" size={20} color={T.accent} />
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -2416,21 +2611,35 @@ return (
                     {collaborators.length > 0 ? (
                       <View style={styles.collaboratorChips}>
                         {collaborators.map((item) => (
-                          <View key={item.user.id} style={styles.collaboratorChip}>
+                          <View
+                            key={item.user.id}
+                            style={[
+                              styles.collaboratorChip,
+                              {
+                                backgroundColor: isLight ? '#F6ECD8' : CINEMA.brassSoft,
+                                borderColor: isLight ? colors.borderStrong : CINEMA.brassBorder,
+                              },
+                            ]}
+                          >
                             {item.user.avatar_url ? (
                               <Image source={{ uri: item.user.avatar_url }} style={styles.collaboratorChipAvatar} />
                             ) : (
-                              <View style={styles.collaboratorChipAvatarFallback}>
-                                <Text style={styles.collaboratorChipInitial}>
+                              <View
+                                style={[
+                                  styles.collaboratorChipAvatarFallback,
+                                  { backgroundColor: isLight ? '#EAD6A8' : 'rgba(198,166,100,0.20)' },
+                                ]}
+                              >
+                                <Text style={[styles.collaboratorChipInitial, { color: T.accent }]}>
                                   {(item.user.full_name || "U").slice(0, 1).toUpperCase()}
                                 </Text>
                               </View>
                             )}
                             <View style={styles.collaboratorChipTextWrap}>
-                              <Text style={styles.collaboratorChipName} numberOfLines={1}>
+                              <Text style={[styles.collaboratorChipName, { color: T.text }]} numberOfLines={1}>
                                 {item.user.full_name || "Unknown"}
                               </Text>
-                              <Text style={styles.collaboratorChipRole} numberOfLines={1}>
+                              <Text style={[styles.collaboratorChipRole, { color: T.accent }]} numberOfLines={1}>
                                 {item.role}
                               </Text>
                             </View>
@@ -2438,10 +2647,13 @@ return (
                               onPress={() => removeCollaborator(item.user.id)}
                               style={({ pressed }) => [
                                 styles.collaboratorRemoveBtn,
+                                {
+                                  backgroundColor: isLight ? 'rgba(20,17,13,0.08)' : 'rgba(0,0,0,0.26)',
+                                },
                                 pressed && { opacity: 0.75 },
                               ]}
                             >
-                              <Ionicons name="close" size={14} color={CINEMA.textSoft} />
+                              <Ionicons name="close" size={14} color={T.sub} />
                             </Pressable>
                           </View>
                         ))}
@@ -2455,36 +2667,45 @@ return (
                       {status.toLowerCase().includes("upload") || status.toLowerCase().includes("checking") ? (
                         <ActivityIndicator size="small" color={T.olive} />
                       ) : null}
-                      <Text style={styles.statusText}>{status}</Text>
+                      <Text style={[styles.statusText, { color: T.sub }]}>{status}</Text>
                     </View>
                   )}
 
                   {loading ? (
                     <View style={styles.progressWrap}>
-                      <View style={styles.progressBar}>
-                        <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
+                      <View style={[styles.progressBar, { backgroundColor: T.surfaceSoft }]}>
+                        <View style={[styles.progressFill, { width: `${progressPct}%`, backgroundColor: T.olive }]} />
                       </View>
                       <View style={styles.progressLabels}>
-                        <Text style={styles.progressText}>{progressPct}%</Text>
+                        <Text style={[styles.progressText, { color: T.text }]}>{progressPct}%</Text>
                       </View>
                     </View>
                   ) : null}
                 </View>
 
-                <View style={styles.formFooter}>
+                <View style={[styles.formFooter, { borderTopColor: T.line }]}>
                   <View style={styles.agreeBlock}>
                     <Pressable
                       onPress={() => setAgreed(!agreed)}
                       style={({ pressed }) => [styles.agreeRow, pressed && { opacity: 0.9 }]}
                     >
-                      <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
-                        {agreed ? <Text style={styles.checkGlyph}>✓</Text> : null}
+                      <View
+                        style={[
+                          styles.checkbox,
+                          {
+                            backgroundColor: T.input,
+                            borderColor: T.line,
+                          },
+                          agreed && { backgroundColor: T.olive, borderColor: T.olive },
+                        ]}
+                      >
+                        {agreed ? <Text style={[styles.checkGlyph, { color: T.textOnPrimary }]}>✓</Text> : null}
                       </View>
 
-                      <Text style={styles.agreeText}>
+                      <Text style={[styles.agreeText, { color: T.sub }]}>
                         I agree to{" "}
                         <Text
-                          style={styles.termsLink}
+                          style={[styles.termsLink, { color: T.accent }]}
                           onPress={() => setRulesVisible(true)}
                           suppressHighlighting
                         >
@@ -2494,13 +2715,17 @@ return (
                     </Pressable>
 
                     <Pressable onPress={() => setRulesVisible(true)} style={styles.termsHintRow}>
-                      <Text style={styles.termsHintText}>View rules</Text>
+                      <Text style={[styles.termsHintText, { color: T.mute }]}>View rules</Text>
                     </Pressable>
                   </View>
 
                   <TouchableOpacity
   style={[
     styles.submitBtn,
+    {
+      backgroundColor: T.olive,
+      shadowColor: T.shadow,
+    },
     (loading || (isWorkshopMode && alreadyCompleted)) && {
       opacity: 0.6,
     },
@@ -2509,12 +2734,12 @@ return (
   disabled={loading || (isWorkshopMode && alreadyCompleted)}
   activeOpacity={0.92}
 >
-  <Text style={styles.submitText}>{submitButtonText}</Text>
+  <Text style={[styles.submitText, { color: T.textOnPrimary }]}>{submitButtonText}</Text>
 </TouchableOpacity>
 
                   <View style={styles.formFootnoteWrap}>
-  <Text style={styles.formFootnote}>{footnoteText}</Text>
-  <Text style={styles.processingNote}>
+  <Text style={[styles.formFootnote, { color: T.mute }]}>{footnoteText}</Text>
+  <Text style={[styles.processingNote, { color: T.accent }]}>
     After upload finishes, your film may take a little time to process before it appears on Featured.
   </Text>
 </View>
@@ -2532,13 +2757,36 @@ return (
       transparent
       onRequestClose={() => setTagModalVisible(false)}
     >
-      <View style={styles.modalOverlay}>
+      <View
+        style={[
+          styles.modalOverlay,
+          { backgroundColor: isLight ? 'rgba(20,17,13,0.28)' : 'rgba(4,4,6,0.86)' },
+        ]}
+      >
         <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setTagModalVisible(false)} />
-        <View style={styles.categoryModal}>
+        <View
+          style={[
+            styles.categoryModal,
+            {
+              backgroundColor: T.card,
+              borderColor: T.line,
+              shadowColor: T.shadow,
+            },
+          ]}
+        >
           <View style={styles.categoryModalHeader}>
-            <Text style={styles.modalTitle}>Choose a category</Text>
-            <Pressable onPress={() => setTagModalVisible(false)} style={styles.modalIconClose}>
-              <Text style={styles.modalIconCloseText}>✕</Text>
+            <Text style={[styles.modalTitle, { color: T.text }]}>Choose a category</Text>
+            <Pressable
+              onPress={() => setTagModalVisible(false)}
+              style={[
+                styles.modalIconClose,
+                {
+                  backgroundColor: T.surfaceSoft,
+                  borderColor: T.line,
+                },
+              ]}
+            >
+              <Text style={[styles.modalIconCloseText, { color: T.text }]}>✕</Text>
             </Pressable>
           </View>
 
@@ -2547,7 +2795,14 @@ return (
             onChangeText={setTagQuery}
             placeholder="Search categories…"
             placeholderTextColor={T.mute}
-            style={styles.modalSearch}
+            style={[
+              styles.modalSearch,
+              {
+                backgroundColor: T.input,
+                borderColor: T.line,
+                color: T.text,
+              },
+            ]}
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -2565,12 +2820,23 @@ return (
                     }}
                     style={({ pressed }) => [
                       styles.tagRow,
-                      active && styles.tagRowActive,
+                      {
+                        backgroundColor: active
+                          ? isLight
+                            ? '#F6ECD8'
+                            : CINEMA.brassSoft
+                          : T.surfaceSoft,
+                        borderColor: active
+                          ? isLight
+                            ? colors.borderStrong
+                            : CINEMA.brassBorder
+                          : T.line,
+                      },
                       pressed && { opacity: 0.9 },
                     ]}
                   >
-                    <Text style={[styles.tagRowText, active && styles.tagRowTextActive]}>{tag}</Text>
-                    {active ? <Text style={styles.tagRowCheck}>✓</Text> : null}
+                    <Text style={[styles.tagRowText, { color: active ? T.accent : T.text }]}>{tag}</Text>
+                    {active ? <Text style={[styles.tagRowCheck, { color: T.accent }]}>✓</Text> : null}
                   </Pressable>
                 );
               })}
@@ -2580,15 +2846,26 @@ return (
           <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
             <Pressable
               onPress={() => setSelectedTags([])}
-              style={({ pressed }) => [styles.modalAltBtn, pressed && { opacity: 0.9 }]}
+              style={({ pressed }) => [
+                styles.modalAltBtn,
+                {
+                  backgroundColor: T.surfaceSoft,
+                  borderColor: T.line,
+                },
+                pressed && { opacity: 0.9 },
+              ]}
             >
-              <Text style={styles.modalAltText}>Clear</Text>
+              <Text style={[styles.modalAltText, { color: T.text }]}>Clear</Text>
             </Pressable>
             <Pressable
               onPress={() => setTagModalVisible(false)}
-              style={({ pressed }) => [styles.modalPrimaryBtn, pressed && { opacity: 0.9 }]}
+              style={({ pressed }) => [
+                styles.modalPrimaryBtn,
+                { backgroundColor: T.olive },
+                pressed && { opacity: 0.9 },
+              ]}
             >
-              <Text style={styles.modalPrimaryText}>Done</Text>
+              <Text style={[styles.modalPrimaryText, { color: T.textOnPrimary }]}>Done</Text>
             </Pressable>
           </View>
         </View>
@@ -2596,49 +2873,71 @@ return (
     </Modal>
 
     <Modal visible={rulesVisible} animationType="fade" transparent onRequestClose={() => setRulesVisible(false)}>
-      <View style={styles.modalOverlay}>
+      <View
+        style={[
+          styles.modalOverlay,
+          { backgroundColor: isLight ? 'rgba(20,17,13,0.28)' : 'rgba(4,4,6,0.86)' },
+        ]}
+      >
         <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setRulesVisible(false)} />
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>{rulesTitle}</Text>
+        <View
+          style={[
+            styles.modalContent,
+            {
+              backgroundColor: T.card,
+              borderColor: T.line,
+              shadowColor: T.shadow,
+            },
+          ]}
+        >
+          <Text style={[styles.modalTitle, { color: T.text }]}>{rulesTitle}</Text>
 
           <ScrollView style={{ marginBottom: 16 }}>
-            <Text style={styles.modalText}>• File size: max 5GB.</Text>
-            <Text style={styles.modalText}>• Your first film upload is free.</Text>
-<Text style={styles.modalText}>• Pro is required for additional uploads.</Text>
-            <Text style={styles.modalText}>• Keep it original. No stolen footage or unlicensed material.</Text>
-            <Text style={styles.modalText}>
+            <Text style={[styles.modalText, { color: T.sub }]}>• File size: max 5GB.</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>• Your first film upload is free.</Text>
+<Text style={[styles.modalText, { color: T.sub }]}>• Pro is required for additional uploads.</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>• Keep it original. No stolen footage or unlicensed material.</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>
               • Keep it appropriate. No hate, harassment, or explicit harmful content.
             </Text>
-            <Text style={styles.modalText}>• Thumbnail is required.</Text>
-            <Text style={styles.modalText}>• You must choose a category.</Text>
-            <Text style={styles.modalText}>• This upload will become a Featured submission.</Text>
-            <Text style={styles.modalText}>• This upload will be entered into the current monthly challenge.</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>• Thumbnail is required.</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>• You must choose a category.</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>• This upload will become a Featured submission.</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>• This upload will be entered into the current monthly challenge.</Text>
             {isWorkshopMode ? (
-              <Text style={styles.modalText}>• In workshop mode, this also marks your lesson complete.</Text>
+              <Text style={[styles.modalText, { color: T.sub }]}>• In workshop mode, this also marks your lesson complete.</Text>
             ) : null}
           </ScrollView>
 
-          <Pressable style={styles.modalCloseBtn} onPress={() => setRulesVisible(false)}>
-            <Text style={styles.modalCloseText}>Close</Text>
+          <Pressable
+            style={[styles.modalCloseBtn, { backgroundColor: T.olive }]}
+            onPress={() => setRulesVisible(false)}
+          >
+            <Text style={[styles.modalCloseText, { color: T.textOnPrimary }]}>Close</Text>
           </Pressable>
         </View>
       </View>
     </Modal>
 
     <Modal visible={previewVisible} animationType="fade" transparent onRequestClose={closePreview}>
-      <View style={styles.modalOverlay}>
+      <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
         <Pressable style={StyleSheet.absoluteFillObject} onPress={closePreview} />
 
         <View
           style={[
             styles.previewModal,
             isDesktopPreview ? styles.previewModalDesktop : styles.previewModalMobile,
+            { backgroundColor: T.card, borderColor: T.line, shadowColor: T.shadow },
           ]}
         >
           <View style={styles.previewTopRow}>
-            <Text style={styles.previewTitle}>Preview</Text>
-            <TouchableOpacity onPress={closePreview} activeOpacity={0.9} style={styles.previewHeaderCloseBtn}>
-              <Text style={styles.previewHeaderCloseText}>✕</Text>
+            <Text style={[styles.previewTitle, { color: T.text }]}>Preview</Text>
+            <TouchableOpacity
+              onPress={closePreview}
+              activeOpacity={0.9}
+              style={[styles.previewHeaderCloseBtn, { backgroundColor: T.surfaceSoft, borderColor: T.line }]}
+            >
+              <Text style={[styles.previewHeaderCloseText, { color: T.text }]}>✕</Text>
             </TouchableOpacity>
           </View>
 
@@ -2646,9 +2945,13 @@ return (
             style={[
               styles.previewVideoWrap,
               isDesktopPreview ? styles.previewVideoWrapDesktop : styles.previewVideoWrapMobile,
+              {
+                backgroundColor: isLight ? T.surfaceSoft : "#0A0A0A",
+                borderColor: T.line,
+              },
             ]}
           >
-            <View style={styles.previewVideoStage}>
+            <View style={[styles.previewVideoStage, { backgroundColor: isLight ? T.surfaceSoft : "#0B0B0B" }]}>
               {localUri ? (
                 Platform.OS === "web" ? (
                   // @ts-ignore
@@ -2680,7 +2983,7 @@ return (
                       width: "100%",
                       height: "100%",
                       objectFit: "contain",
-                      background: "#0B0B0B",
+                      background: isLight ? T.surfaceSoft : "#0B0B0B",
                       display: "block",
                       borderRadius: 16,
                     }}
@@ -2690,7 +2993,7 @@ return (
                     key={`native-preview-${previewNonce}-${localUri}`}
                     ref={previewPlayerRef}
                     source={{ uri: localUri }}
-                    style={styles.previewVideo}
+                    style={[styles.previewVideo, { backgroundColor: isLight ? T.surfaceSoft : "#0B0B0B" }]}
                     resizeMode={ResizeMode.CONTAIN}
                     useNativeControls
                     shouldPlay
@@ -2724,21 +3027,35 @@ return (
               ) : null}
 
               {previewLoading ? (
-                <View style={styles.previewLoadingOverlay} pointerEvents="none">
+                <View
+                  style={[
+                    styles.previewLoadingOverlay,
+                    { backgroundColor: isLight ? "rgba(248,243,234,0.72)" : "rgba(0,0,0,0.45)" },
+                  ]}
+                  pointerEvents="none"
+                >
                   <ActivityIndicator size="large" color={T.olive} />
-                  <Text style={styles.previewLoadingText}>Loading preview…</Text>
+                  <Text style={[styles.previewLoadingText, { color: T.text }]}>Loading preview…</Text>
                 </View>
               ) : null}
 
               {previewError ? (
-                <View style={styles.previewErrorOverlay}>
-                  <Text style={styles.previewErrorText}>{previewError}</Text>
+                <View
+                  style={[
+                    styles.previewErrorOverlay,
+                    { backgroundColor: isLight ? "rgba(248,243,234,0.9)" : "rgba(0,0,0,0.62)" },
+                  ]}
+                >
+                  <Text style={[styles.previewErrorText, { color: T.text }]}>{previewError}</Text>
                   <View style={styles.previewErrorActions}>
-                    <Pressable style={styles.previewRetryBtn} onPress={retryPreview}>
-                      <Text style={styles.previewRetryText}>Retry</Text>
+                    <Pressable style={[styles.previewRetryBtn, { backgroundColor: T.olive }]} onPress={retryPreview}>
+                      <Text style={[styles.previewRetryText, { color: T.textOnPrimary }]}>Retry</Text>
                     </Pressable>
-                    <Pressable style={styles.previewAltBtn} onPress={closePreview}>
-                      <Text style={styles.previewAltText}>Close</Text>
+                    <Pressable
+                      style={[styles.previewAltBtn, { backgroundColor: T.surfaceSoft, borderColor: T.line }]}
+                      onPress={closePreview}
+                    >
+                      <Text style={[styles.previewAltText, { color: T.text }]}>Close</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -2747,16 +3064,16 @@ return (
           </View>
 
           <View style={styles.previewMetaRow}>
-            <Text style={styles.previewMeta}>
-              Duration: <Text style={styles.previewMetaStrong}>{formatDur(durationSec)}</Text>
+            <Text style={[styles.previewMeta, { color: T.sub }]}>
+              Duration: <Text style={[styles.previewMetaStrong, { color: T.text }]}>{formatDur(durationSec)}</Text>
             </Text>
-            <Text style={styles.previewMeta}>
-              Size: <Text style={styles.previewMetaStrong}>{formatBytes(fileSizeBytes)}</Text>
+            <Text style={[styles.previewMeta, { color: T.sub }]}>
+              Size: <Text style={[styles.previewMetaStrong, { color: T.text }]}>{formatBytes(fileSizeBytes)}</Text>
             </Text>
           </View>
 
-          <Pressable style={styles.modalCloseBtn} onPress={closePreview}>
-            <Text style={styles.modalCloseText}>Close Preview</Text>
+          <Pressable style={[styles.modalCloseBtn, { backgroundColor: T.olive }]} onPress={closePreview}>
+            <Text style={[styles.modalCloseText, { color: T.textOnPrimary }]}>Close Preview</Text>
           </Pressable>
         </View>
       </View>

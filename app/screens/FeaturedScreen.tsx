@@ -46,6 +46,7 @@ import { useGamification } from '../context/GamificationContext';
 import * as Clipboard from 'expo-clipboard';
 import { useAuth } from '../context/AuthProvider';
 import { useAppRefresh } from '../context/AppRefreshContext';
+import { useAppTheme } from '../context/ThemeContext';
 import { reportContent, ReportReason } from '../utils/reportContent';
 import { blockUser } from '../utils/blockUser';
 import { validateMultipleSafeTexts, validateSafeText } from '../utils/moderation';
@@ -539,6 +540,8 @@ function HostedVideoInline({
   captureSurfacePress = true,
   surfacePressMode = 'hold',
   fixedAspect,
+  fitToVideoFrame = false,
+  squareCorners = false,
 }: {
   playerId: string;
   storagePath?: string | null;
@@ -553,8 +556,11 @@ function HostedVideoInline({
   captureSurfacePress?: boolean;
   surfacePressMode?: 'hold' | 'toggle';
   fixedAspect?: number;
+  fitToVideoFrame?: boolean;
+  squareCorners?: boolean;
 }){
   
+  const { colors, isLight } = useAppTheme();
   const ref = useRef<Video>(null);
   const htmlRef = useRef<any>(null);
   const [src, setSrc] = useState<string | null>(null);
@@ -565,6 +571,8 @@ const [aspect, setAspect] = useState<number>(16 / 9);
 
   const [muted, setMuted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playerChromeVisible, setPlayerChromeVisible] = useState(false);
+  const playerChromeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -727,7 +735,34 @@ const [aspect, setAspect] = useState<number>(16 / 9);
     return () => window.clearInterval(id);
   }, []);
 
+  const revealPlayerChrome = useCallback(() => {
+    if (Platform.OS === 'web') return;
+    setPlayerChromeVisible(true);
+    if (playerChromeTimerRef.current) clearTimeout(playerChromeTimerRef.current);
+    playerChromeTimerRef.current = setTimeout(() => setPlayerChromeVisible(false), 2200);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (playerChromeTimerRef.current) clearTimeout(playerChromeTimerRef.current);
+    },
+    []
+  );
+
+  const controlsVisible = playerChromeVisible;
+  const playerHoverProps =
+    Platform.OS === 'web'
+      ? {
+          onMouseEnter: () => setPlayerChromeVisible(true),
+          onMouseLeave: () => {
+            setPlayerChromeVisible(false);
+            setSeeking(false);
+          },
+        }
+      : {};
+
   const onSurfacePressIn = async () => {
+  revealPlayerChrome();
   await play(false);
 };
 
@@ -736,6 +771,7 @@ const onSurfacePressOut = async () => {
 };
 
 const onSurfaceTogglePress = async () => {
+  revealPlayerChrome();
   if (isPlaying) await pause();
   else await play(false);
 };
@@ -899,12 +935,21 @@ const onSurfaceTogglePress = async () => {
     };
   }, [seeking, duration]);
 
+  const playerRadius = squareCorners ? 0 : RADIUS_XL;
+  const playerAspect = fixedAspect ?? aspect;
+  const rawPlayerHeight = width / playerAspect;
+  const shouldClampPlayerHeight = fitToVideoFrame && maxHeight > 0 && rawPlayerHeight > maxHeight;
+  const playerWidth = shouldClampPlayerHeight ? maxHeight * playerAspect : width;
+  const playerHeight = shouldClampPlayerHeight ? maxHeight : rawPlayerHeight;
+
   return (
     <View
+      {...(playerHoverProps as any)}
       style={{
-        width,
-        aspectRatio: (fixedAspect ?? aspect) as any,
-        borderRadius: RADIUS_XL,
+        width: fitToVideoFrame ? playerWidth : width,
+        height: fitToVideoFrame ? playerHeight : undefined,
+        aspectRatio: fitToVideoFrame ? undefined : (playerAspect as any),
+        borderRadius: playerRadius,
         overflow: 'hidden',
         backgroundColor: '#000',
         alignSelf: 'center',
@@ -983,7 +1028,7 @@ onPause={() => setIsPlaying(false)}
             useNativeControls={false}
             usePoster
             posterSource={posterUri ? { uri: posterUri } : undefined}
-            posterStyle={[StyleSheet.absoluteFillObject, { borderRadius: RADIUS_XL }]}
+            posterStyle={[StyleSheet.absoluteFillObject, { borderRadius: playerRadius }]}
             onLoad={handleLoad}
             onReadyForDisplay={handleReadyForDisplay}
             onFullscreenUpdate={handleFsUpdate}
@@ -1026,7 +1071,7 @@ onPause={() => setIsPlaying(false)}
   />
 ) : null}
 
-      {showProgress ? (
+      {showProgress && controlsVisible ? (
   <View
     ref={progressRef}
     style={[styles.progressHit, { zIndex: 15 }]}
@@ -1052,7 +1097,7 @@ onPause={() => setIsPlaying(false)}
   </View>
 ) : null}
 
-      {showControls && (
+      {showControls && controlsVisible && (
   <TouchableOpacity
     onPress={enterFullscreen}
     activeOpacity={0.9}
@@ -1062,7 +1107,7 @@ onPause={() => setIsPlaying(false)}
   </TouchableOpacity>
 )}
 
-{showControls && (
+{showControls && controlsVisible && (
   <TouchableOpacity
     onPress={toggleMute}
     style={[styles.soundBtn, { zIndex: 20 }]}
@@ -1598,6 +1643,16 @@ const HeaderControls = React.memo(
     showCategory = true,
   }: HeaderControlsProps) => {
     const [focused, setFocused] = useState(false);
+    const { colors, isLight } = useAppTheme();
+    const controlBg = isLight ? 'transparent' : '#000000';
+    const searchBg = isLight ? colors.card : '#000000';
+    const controlAltBg = isLight ? 'transparent' : '#0B0B0B';
+    const activeBg = isLight ? colors.cardAlt : '#111111';
+    const controlBorder = isLight ? 'transparent' : 'transparent';
+    const textColor = isLight ? colors.textPrimary : '#EDEBE6';
+    const labelColor = isLight ? colors.textPrimary : '#F1EEE7';
+    const subColor = isLight ? colors.textSecondary : 'rgba(237,235,230,0.50)';
+    const placeholderColor = isLight ? colors.textMuted : 'rgba(237,235,230,0.45)';
 
     const filters: { key: SortKey; label: string; sub?: string }[] = [
       { key: 'foryou', label: 'For You', sub: 'Supported + new' },
@@ -1612,9 +1667,9 @@ const HeaderControls = React.memo(
 
     // sizing
     const R = compact ? 8 : 14;
-const padH = compact ? 8 : 14;
-const padV = compact ? 2 : 10;
-const inputSize = compact ? 10 : 14;
+const padH = compact ? 12 : 16;
+const padV = compact ? 4 : 8;
+const inputSize = compact ? 12 : 14;
 
 const hintFont = compact ? 8 : 12;
 const hintTrack = compact ? 0.15 : 0.6;
@@ -1635,11 +1690,13 @@ const hintTrack = compact ? 0.15 : 0.6;
       {
         width: '100%',
         borderRadius: 999,
-        borderColor: 'transparent',
-        paddingHorizontal: isSidebar ? padH : 12,
-        paddingVertical: isSidebar ? padV : 6,
-        minHeight: isSidebar ? undefined : '100%',
-height: isSidebar ? undefined : '100%',
+        backgroundColor: searchBg,
+        borderWidth: isLight ? StyleSheet.hairlineWidth : 0,
+        borderColor: isLight ? colors.border : controlBorder,
+        paddingHorizontal: isSidebar ? padH : compact ? 14 : 16,
+        paddingVertical: isSidebar ? padV : 0,
+        minHeight: isSidebar ? undefined : compact ? 38 : 44,
+height: isSidebar ? undefined : compact ? 38 : 44,
 marginBottom: 0,
 justifyContent: 'center',
       },
@@ -1647,17 +1704,17 @@ justifyContent: 'center',
   >
     <TextInput
   placeholder="Search film…"
-  placeholderTextColor="rgba(237,235,230,0.45)"
+  placeholderTextColor={placeholderColor}
   value={searchText}
   onChangeText={(txt) => setSearchText(txt)}
   onFocus={() => setFocused(true)}
   onBlur={() => setFocused(false)}
-  selectionColor={GOLD}
-  cursorColor={GOLD}
+  selectionColor={colors.primary}
+  cursorColor={colors.primary}
   style={{
     flex: 1,
-    color: '#EDEBE6',
-    fontSize: isSidebar ? inputSize : compact ? 10 : 12,
+    color: textColor,
+    fontSize: isSidebar ? inputSize : compact ? 12 : 13,
     fontFamily: SYSTEM_SANS,
     fontWeight: Platform.OS === 'android' ? '700' : '800',
     letterSpacing: 0.2,
@@ -1677,11 +1734,11 @@ justifyContent: 'center',
     justifyContent: isSidebar ? 'flex-start' : 'center',
   }}
 >
-  <ActivityIndicator size="small" color={GOLD} />
+  <ActivityIndicator size="small" color={colors.primary} />
   <Text
     style={{
       marginLeft: 10,
-      color: 'rgba(237,235,230,0.72)',
+      color: isLight ? colors.textSecondary : 'rgba(237,235,230,0.72)',
       fontSize: hintFont,
       fontFamily: SYSTEM_SANS,
       fontWeight: '800',
@@ -1700,6 +1757,11 @@ justifyContent: 'center',
       styles.sidePanel,
       compact && !isSidebar && { padding: 2 },
       !isSidebar && { alignItems: 'center' },
+      {
+        backgroundColor: controlBg,
+        borderWidth: isLight ? 1 : 0,
+        borderColor: controlBorder,
+      },
     ]}
   >
 
@@ -1714,20 +1776,24 @@ justifyContent: 'center',
               onPress={() => setSort(f.key)}
               style={[
                 styles.sideSortItem,
-                active && styles.sideSortItemActive,
+                {
+                  backgroundColor: active ? activeBg : isLight ? 'transparent' : controlBg,
+                  borderColor: active ? colors.primary : isLight ? 'transparent' : 'rgba(255,255,255,0.03)',
+                },
               ]}
             >
               <View style={{ flex: 1 }}>
-                <Text style={[styles.sideSortLabel, active && { color: GOLD }]}>
+                <Text style={[styles.sideSortLabel, { color: active ? colors.primary : labelColor }]}>
                   {f.label}
                 </Text>
-                {!!f.sub ? <Text style={styles.sideSortSub}>{f.sub}</Text> : null}
+                {!!f.sub ? <Text style={[styles.sideSortSub, { color: subColor }]}>{f.sub}</Text> : null}
               </View>
 
               <View
                 style={[
                   styles.sideSortDot,
-                  active && { backgroundColor: GOLD, opacity: 1 },
+                  { backgroundColor: active ? colors.primary : isLight ? colors.borderStrong : 'rgba(237,235,230,0.24)' },
+                  active && { opacity: 1 },
                 ]}
               />
             </TouchableOpacity>
@@ -1750,10 +1816,13 @@ justifyContent: 'center',
               style={[
                 styles.centerChip,
                 styles.mobileChip,
-                active && { borderColor: GOLD, backgroundColor: '#111' },
+                {
+                  backgroundColor: active ? activeBg : controlAltBg,
+                  borderColor: active ? colors.primary : isLight ? 'transparent' : 'rgba(255,255,255,0.06)',
+                },
               ]}
             >
-              <Text style={[styles.centerChipText, active && { color: GOLD }]}>
+              <Text style={[styles.centerChipText, { color: active ? colors.primary : subColor }]}>
                 {f.label}
               </Text>
             </TouchableOpacity>
@@ -1771,6 +1840,9 @@ justifyContent: 'center',
     { marginTop: compact ? 6 : 14 },
     compact && !isSidebar && { padding: 0 },
     !isSidebar && { alignItems: 'center' },
+    {
+      backgroundColor: isSidebar ? controlBg : 'transparent',
+    },
   ]}
 > 
 
@@ -1797,11 +1869,14 @@ justifyContent: 'center',
               onPress={() => setFilmCategory(c)}
               style={[
                 styles.sideSortItem,
-                active && styles.sideSortItemActive,
+                {
+                  backgroundColor: active ? activeBg : isLight ? 'transparent' : controlBg,
+                  borderColor: active ? colors.primary : isLight ? 'transparent' : 'rgba(255,255,255,0.03)',
+                },
               ]}
             >
               <View style={{ flex: 1 }}>
-                <Text style={[styles.sideSortLabel, active && { color: GOLD }]}>
+                <Text style={[styles.sideSortLabel, { color: active ? colors.primary : labelColor }]}>
                   {c}
                 </Text>
               </View>
@@ -1809,7 +1884,8 @@ justifyContent: 'center',
               <View
                 style={[
                   styles.sideSortDot,
-                  active && { backgroundColor: GOLD, opacity: 1 },
+                  { backgroundColor: active ? colors.primary : isLight ? colors.borderStrong : 'rgba(237,235,230,0.24)' },
+                  active && { opacity: 1 },
                 ]}
               />
             </TouchableOpacity>
@@ -1832,10 +1908,13 @@ justifyContent: 'center',
               style={[
                 styles.centerChip,
                 styles.mobileChip,
-                active && { borderColor: GOLD, backgroundColor: '#111' },
+                {
+                  backgroundColor: active ? activeBg : controlAltBg,
+                  borderColor: active ? colors.primary : isLight ? 'transparent' : 'rgba(255,255,255,0.06)',
+                },
               ]}
             >
-              <Text style={[styles.centerChipText, active && { color: GOLD }]}>
+              <Text style={[styles.centerChipText, { color: active ? colors.primary : subColor }]}>
                 {c}
               </Text>
             </TouchableOpacity>
@@ -1859,10 +1938,37 @@ const FeaturedScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { userId, ready: authReady } = useAuth();
+  const { colors, isLight } = useAppTheme();
+  const GOLD = colors.primary;
+  const T = useMemo(
+    () => ({
+      bg: colors.background,
+      bg2: colors.backgroundAlt,
+      panel: colors.card,
+      card: colors.card,
+      card2: colors.cardAlt,
+      outline: colors.border,
+      text: colors.textPrimary,
+      sub: colors.textSecondary,
+      mute: colors.textMuted,
+      accent: colors.primary,
+      heroBurgundy1: colors.background,
+      heroBurgundy2: colors.backgroundAlt,
+    }),
+    [colors]
+  );
+  const featuredBackground = isLight ? colors.background : '#000000';
+  const featuredBackgroundAlt = isLight ? colors.backgroundAlt : '#050505';
+  const featuredSurface = isLight ? colors.card : '#080808';
+  const featuredSoftSurface = isLight ? colors.backgroundAlt : '#0B0B0B';
+  const featuredBorder = isLight ? colors.border : 'rgba(255,255,255,0.08)';
+  const featuredText = isLight ? colors.textPrimary : '#F4F1EA';
+  const featuredSubText = isLight ? colors.textSecondary : 'rgba(237,235,230,0.62)';
  const { refreshKey, triggerAppRefresh } = useAppRefresh();
 const isGuest = !userId;
 const openShareSlug = route.params?.openShareSlug ?? null;
 const openSubmissionId = route.params?.openSubmissionId ?? null;
+const openSearchNonce = route.params?.openSearchNonce ?? null;
   const { width: winW, height: winH } = useWindowDimensions();
   const isNarrow = winW < 480;
 
@@ -1872,6 +1978,12 @@ const isPhoneLikeWeb = Platform.OS === 'web' && winW <= 820;
 const isMobile = Platform.OS !== 'web' || isPhoneLikeWeb;
 const isWideWeb = Platform.OS === 'web' && !isPhoneLikeWeb && winW >= 980;
 const useDesktopWatch = isWideWeb;
+const watchDesktopPadX = 18;
+const watchDesktopRailW = 360;
+const watchDesktopGap = 22;
+const featuredWatchMainW = useDesktopWatch
+  ? Math.max(360, winW - watchDesktopPadX * 2 - watchDesktopGap - watchDesktopRailW)
+  : Math.min(Platform.OS === 'web' ? winW - 72 : winW, Platform.OS === 'web' ? 792 : 860);
 
 const useTwoColumnMobile = isMobile;
 const gridColumns = isWideWeb || useTwoColumnMobile ? 2 : 1;
@@ -3337,6 +3449,24 @@ const shareSubmissionLink = async (
   await fetchComments(s.id);
 };
 
+  const openPreviewComments = async () => {
+    if (!previewItem) return;
+
+    setCommentsFor(previewItem);
+    setCommentText('');
+    setComments([]);
+    setReplyingTo(null);
+
+    if (useDesktopWatch) {
+      setCommentsOpen(false);
+      setPreviewCommentsExpanded(true);
+    } else {
+      setCommentsOpen(true);
+    }
+
+    await fetchComments(previewItem.id);
+  };
+
   const closeComments = () => {
   setCommentsOpen(false);
   if (previewOpen && previewItem) {
@@ -3600,50 +3730,90 @@ useEffect(() => {
   })();
 }, [activeId, winner]);
 useEffect(() => {
+  let cancelled = false;
+
   if (initialLoading) return;
   if (!submissions.length && !winner) return;
 
-  const deepLinkKey = openSubmissionId || openShareSlug || null;
+  const deepLinkKey = openSubmissionId
+    ? `${openSubmissionId}:${openSearchNonce ?? ''}`
+    : openShareSlug || null;
   if (!deepLinkKey) return;
 
   if (deepLinkHandledRef.current === deepLinkKey) return;
 
-  let target:
-    | (Submission & {
-        description?: string | null;
-        storage_path?: string | null;
-        thumbnail_url?: string | null;
-        media_kind?: RawSubmission['media_kind'];
-        category?: Category | null;
-      })
-    | null = null;
+  const openDeepLinkedFilm = async () => {
+    let target:
+      | (Submission & {
+          description?: string | null;
+          storage_path?: string | null;
+          thumbnail_url?: string | null;
+          media_kind?: RawSubmission['media_kind'];
+          category?: Category | null;
+        })
+      | null = null;
 
-  if (openSubmissionId) {
-    if (winner?.id === openSubmissionId) {
-      target = winner as any;
-    } else {
-      target = submissions.find((s) => s.id === openSubmissionId) || null;
+    if (openSubmissionId) {
+      if (winner?.id === openSubmissionId) {
+        target = winner as any;
+      } else {
+        target = submissions.find((s) => s.id === openSubmissionId) || null;
+      }
+    } else if (openShareSlug) {
+      if ((winner as any)?.share_slug === openShareSlug) {
+        target = winner as any;
+      } else {
+        target =
+          submissions.find((s: any) => (s as any).share_slug === openShareSlug) || null;
+      }
     }
-  } else if (openShareSlug) {
-    if ((winner as any)?.share_slug === openShareSlug) {
-      target = winner as any;
-    } else {
-      target =
-        submissions.find((s: any) => (s as any).share_slug === openShareSlug) || null;
-    }
-  }
 
-  if (target) {
+    if (!target && (openSubmissionId || openShareSlug)) {
+      try {
+        const sel = `
+          ${baseCols},
+          videos:video_id ( original_path, thumbnail_path, video_variants ( path, label ) ),
+          description
+        `;
+        let query: any = supabase
+          .from('submissions')
+          .select(sel)
+          .eq('category', 'film')
+          .eq('is_removed', false);
+
+        query = openSubmissionId
+          ? query.eq('id', openSubmissionId)
+          : query.eq('share_slug', openShareSlug);
+
+        const { data, error } = await query.maybeSingle();
+        if (!cancelled && !error && data) {
+          const normalized = normalizeRow(data as RawSubmission);
+          const [withCollaborators] = await attachSubmissionCollaborators([normalized as any]);
+          if (!cancelled) target = withCollaborators as any;
+        }
+      } catch (e: any) {
+        console.warn('Featured deep link direct fetch error:', e?.message || e);
+      }
+    }
+
+    if (cancelled || !target) return;
+
     deepLinkHandledRef.current = deepLinkKey;
-
     openPreview(target as any);
 
     navigation.setParams?.({
       openSubmissionId: undefined,
       openShareSlug: undefined,
+      openSearchNonce: undefined,
     });
-  }
-}, [initialLoading, submissions, winner, openSubmissionId, openShareSlug, navigation]);
+  };
+
+  void openDeepLinkedFilm();
+
+  return () => {
+    cancelled = true;
+  };
+}, [initialLoading, submissions, winner, openSubmissionId, openShareSlug, openSearchNonce, navigation]);
 
   const onItemLayout = (id: string, playable: boolean) => (e: LayoutChangeEvent) => {
   const { y, height } = e.nativeEvent.layout;
@@ -3744,6 +3914,14 @@ if (!playableUri) {
       style={[
         styles.videoOuter,
         isWinnerRow && styles.videoOuterHeroFlat,
+        isWinnerRow && {
+          backgroundColor: 'transparent',
+          borderColor: 'transparent',
+          shadowOpacity: 0,
+          shadowRadius: 0,
+          shadowOffset: { width: 0, height: 0 },
+          elevation: 0,
+        },
         {
           width: frameW,
           maxWidth: mediaW,
@@ -3790,6 +3968,14 @@ if (!playableUri) {
       style={[
   styles.videoOuter,
   isWinnerRow && styles.videoOuterHeroFlat,
+  isWinnerRow && {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+  },
   {
     width: frameW,
     maxWidth: mediaW,
@@ -3966,7 +4152,14 @@ const hasPlayableVideo = !!(muxUri || s.storage_path);
       }, 120);
     }
   }}
-  style={[styles.gridCard, { width: gridCardW }]}
+  style={[
+    styles.gridCard,
+    { width: gridCardW },
+    isLight && {
+      backgroundColor: 'transparent',
+      borderColor: 'transparent',
+    },
+  ]}
   {...(Platform.OS === 'web'
     ? {
         onHoverIn: () => {
@@ -4045,7 +4238,7 @@ onHoverOut: () => {
       </Pressable>
     );
   },
-  [gridCardW, activeId]
+  [gridCardW, activeId, isLight]
 );
 const renderMobileYouTubeCard = useCallback(
   (
@@ -4206,6 +4399,13 @@ const renderCard = useCallback(
     isWinnerRow: boolean = false
   ) => {
     const isPlayableVideo = !!s.storage_path && s.media_kind !== 'file_audio';
+    const winnerFrame = isWinnerRow
+      ? fitContain(
+          mediaW,
+          isMobile ? Math.max(220, winH * 0.28) : availableHForMedia,
+          16 / 9
+        )
+      : null;
 
     return (
       <View
@@ -4214,22 +4414,52 @@ const renderCard = useCallback(
         style={[styles.cardWrapper, isWinnerRow && styles.cardWrapperHero]}
       >
         <LinearGradient
-          colors={isWinnerRow ? [T.heroBurgundy1, T.heroBurgundy2] : ['#0D0D0D', '#050505']}
+          colors={isWinnerRow ? [featuredBackground, featuredBackground] : ['#0D0D0D', '#050505']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.cardBorder, { alignSelf: 'center' }]}
+          style={[
+            styles.cardBorder,
+            { alignSelf: 'center' },
+            isWinnerRow && {
+              backgroundColor: 'transparent',
+              padding: 0,
+              borderRadius: RADIUS_XL + 2,
+            },
+            isWinnerRow && winnerFrame && {
+              width: winnerFrame.w,
+              maxWidth: cardW,
+            },
+          ]}
         >
-          <View style={[styles.card, isWinnerRow && styles.cardHero, isWinnerRow && styles.cardHeroFlat]}>
+          <View
+            style={[
+              styles.card,
+              isWinnerRow && styles.cardHero,
+              isWinnerRow && styles.cardHeroFlat,
+              isWinnerRow && {
+                backgroundColor: 'transparent',
+                borderColor: 'transparent',
+                paddingTop: 0,
+                paddingBottom: 0,
+              },
+              isWinnerRow && winnerFrame && {
+                width: winnerFrame.w,
+                maxWidth: cardW,
+              },
+            ]}
+          >
             {isWinnerRow ? (
               <>
                 <View
                   style={[
                     styles.heroRow,
                     {
-                      width: cardW,
-                      maxWidth: cardW,
-                      maxHeight: availableHForMedia,
+                      width: winnerFrame?.w ?? cardW,
+                      maxWidth: winnerFrame?.w ?? cardW,
+                      height: winnerFrame?.h,
+                      maxHeight: winnerFrame?.h ?? availableHForMedia,
                       alignSelf: 'center',
+                      backgroundColor: 'transparent',
                     },
                   ]}
                 >
@@ -4372,6 +4602,9 @@ const renderCard = useCallback(
     activeId,
     isNarrow,
     mediaW,
+    featuredBackground,
+    isMobile,
+    winH,
   ]
 );
 
@@ -4398,7 +4631,18 @@ const sidebarElement = useMemo(() => {
   const maxH = winH - (TOP_BAR_OFFSET + BOTTOM_TAB_H + 24);
 
   return (
-    <View style={[styles.sidebar, { width: 320, maxHeight: maxH, overflow: 'hidden' as any }]}>
+    <View
+      style={[
+        styles.sidebar,
+        {
+          width: 320,
+          maxHeight: maxH,
+          overflow: 'hidden' as any,
+          backgroundColor: isLight ? 'transparent' : '#000000',
+          borderColor: isLight ? 'transparent' : 'rgba(255,255,255,0.06)',
+        },
+      ]}
+    >
       <ScrollView
         showsVerticalScrollIndicator
         contentContainerStyle={{ paddingBottom: 18 }}
@@ -4423,37 +4667,67 @@ const sidebarElement = useMemo(() => {
           setSearchText={setSearchText}
           isSearching={isSearching}
           layout="sidebar"
+          showSearch={false}
         />
       </ScrollView>
     </View>
   );
-}, [isWideWeb, category, sort, searchText, isSearching, filmCategory, winH]);
+}, [isWideWeb, category, sort, searchText, isSearching, filmCategory, winH, isLight]);
 
 const renderSubmissionItem = ({ item }: any) => {
   if (isWideWeb || isMobile) return renderCompactGridCard(item);
   return renderCard(item.id, item, activeId === item.id, false);
 };
 
-const renderCommentsPanel = (panelStyle?: any) => (
-  <View style={[styles.commentsModalCard, panelStyle]}>
-    <View style={styles.commentsHeader}>
+const renderCommentsPanel = (
+  panelStyle?: any,
+  options?: { embedded?: boolean; showClose?: boolean }
+) => {
+  const showClose = options?.showClose ?? true;
+
+  return (
+  <View
+    style={[
+      styles.commentsModalCard,
+      options?.embedded && styles.commentsEmbeddedCard,
+      {
+        backgroundColor: featuredSurface,
+        borderColor: featuredBorder,
+      },
+      panelStyle,
+    ]}
+  >
+    <View
+      style={[
+        styles.commentsHeader,
+        { borderBottomColor: isLight ? colors.border : 'rgba(255,255,255,0.05)' },
+      ]}
+    >
       <View style={{ flex: 1 }}>
-        <Text style={styles.commentsTitle}>Comments</Text>
+        <Text style={[styles.commentsTitle, { color: featuredText }]}>Comments</Text>
         {commentsFor?.title ? (
-          <Text style={styles.commentsSubtitle} numberOfLines={1}>
+          <Text style={[styles.commentsSubtitle, { color: featuredSubText }]} numberOfLines={1}>
             {commentsFor.title}
           </Text>
         ) : null}
       </View>
 
-      <TouchableOpacity
-        onPress={closeComments}
-        activeOpacity={0.9}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        style={styles.commentsCloseBtn}
-      >
-        <Text style={styles.commentsClose}>Close</Text>
-      </TouchableOpacity>
+      {showClose ? (
+        <TouchableOpacity
+          onPress={closeComments}
+          activeOpacity={0.9}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={[
+            styles.commentsCloseBtn,
+            {
+              backgroundColor: isLight ? colors.backgroundAlt : '#0D0D0D',
+              borderColor: featuredBorder,
+            },
+          ]}
+        >
+          <Text style={[styles.commentsClose, { color: colors.primary }]}>Close</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
 
     <View style={styles.commentsBody}>
@@ -4461,15 +4735,15 @@ const renderCommentsPanel = (panelStyle?: any) => (
         <ActivityIndicator color={T.accent} style={{ padding: 20 }} />
       ) : rootComments.length === 0 ? (
         <View style={styles.commentsEmptyState}>
-          <Text style={styles.commentsEmptyTitle}>No comments yet</Text>
-          <Text style={styles.commentsEmptyText}>Be the first to say something thoughtful.</Text>
+          <Text style={[styles.commentsEmptyTitle, { color: featuredText }]}>No comments yet</Text>
+          <Text style={[styles.commentsEmptyText, { color: featuredSubText }]}>Be the first to say something thoughtful.</Text>
         </View>
       ) : (
         <FlatList
           data={rootComments}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.commentsListContent}
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator={!!options?.embedded}
           keyboardShouldPersistTaps="always"
           renderItem={({ item }) => {
             const u = item.users;
@@ -4481,7 +4755,13 @@ const renderCommentsPanel = (panelStyle?: any) => (
                   <TouchableOpacity
                     onPress={() => u && goToProfile({ id: u.id, full_name: u.full_name })}
                     activeOpacity={0.9}
-                    style={styles.commentAvatarTap}
+                    style={[
+                      styles.commentAvatarTap,
+                      {
+                        backgroundColor: isLight ? colors.backgroundAlt : '#000',
+                        borderColor: featuredBorder,
+                      },
+                    ]}
                   >
                     <Image
                       source={{ uri: u?.avatar_url || 'https://picsum.photos/80/80' }}
@@ -4494,10 +4774,10 @@ const renderCommentsPanel = (panelStyle?: any) => (
                       onPress={() => u && goToProfile({ id: u.id, full_name: u.full_name })}
                       activeOpacity={0.9}
                     >
-                      <Text style={styles.commentName}>{u?.full_name || 'Unknown'}</Text>
+                      <Text style={[styles.commentName, { color: featuredText }]}>{u?.full_name || 'Unknown'}</Text>
                     </TouchableOpacity>
 
-                    <Text style={styles.commentText}>{item.comment}</Text>
+                    <Text style={[styles.commentText, { color: featuredSubText }]}>{item.comment}</Text>
 
                     <View style={styles.commentActionsRow}>
                       <TouchableOpacity
@@ -4560,7 +4840,13 @@ const renderCommentsPanel = (panelStyle?: any) => (
                               ru && goToProfile({ id: ru.id, full_name: ru.full_name })
                             }
                             activeOpacity={0.9}
-                            style={styles.replyAvatarTap}
+                            style={[
+                              styles.replyAvatarTap,
+                              {
+                                backgroundColor: isLight ? colors.backgroundAlt : '#000',
+                                borderColor: featuredBorder,
+                              },
+                            ]}
                           >
                             <Image
                               source={{ uri: ru?.avatar_url || 'https://picsum.photos/80/80' }}
@@ -4575,10 +4861,10 @@ const renderCommentsPanel = (panelStyle?: any) => (
                               }
                               activeOpacity={0.9}
                             >
-                              <Text style={styles.replyName}>{ru?.full_name || 'Unknown'}</Text>
+                              <Text style={[styles.replyName, { color: featuredText }]}>{ru?.full_name || 'Unknown'}</Text>
                             </TouchableOpacity>
 
-                            <Text style={styles.replyText}>{reply.comment}</Text>
+                            <Text style={[styles.replyText, { color: featuredSubText }]}>{reply.comment}</Text>
                           </View>
                         </View>
                       );
@@ -4592,10 +4878,18 @@ const renderCommentsPanel = (panelStyle?: any) => (
       )}
     </View>
 
-    <View style={styles.commentComposerWrap}>
+    <View
+      style={[
+        styles.commentComposerWrap,
+        {
+          backgroundColor: isLight ? colors.card : '#090909',
+          borderTopColor: isLight ? colors.border : 'rgba(255,255,255,0.05)',
+        },
+      ]}
+    >
       {replyingTo ? (
         <View style={styles.replyingBanner}>
-          <Text style={styles.replyingBannerText} numberOfLines={1}>
+          <Text style={[styles.replyingBannerText, { color: featuredText }]} numberOfLines={1}>
             Replying to {replyingTo.users?.full_name || 'comment'}
           </Text>
           <TouchableOpacity onPress={() => setReplyingTo(null)} activeOpacity={0.9}>
@@ -4615,8 +4909,15 @@ const renderCommentsPanel = (panelStyle?: any) => (
             setCommentText(txt);
           }}
           placeholder={isGuest ? 'Sign in to comment...' : replyingTo ? 'Write a reply...' : 'Add a comment...'}
-          placeholderTextColor="#777"
-          style={styles.commentInput}
+          placeholderTextColor={isLight ? colors.textMuted : '#777'}
+          style={[
+            styles.commentInput,
+            {
+              backgroundColor: isLight ? colors.input : '#0B0B0B',
+              borderColor: featuredBorder,
+              color: featuredText,
+            },
+          ]}
           multiline
         />
         <TouchableOpacity
@@ -4631,10 +4932,14 @@ const renderCommentsPanel = (panelStyle?: any) => (
           activeOpacity={0.9}
           style={[
             styles.commentSendBtn,
+            {
+              backgroundColor: colors.primary,
+              borderColor: colors.primary,
+            },
             (commentPosting || (!isGuest && !commentText.trim())) && { opacity: 0.5 },
           ]}
         >
-          <Text style={styles.commentSendText}>
+          <Text style={[styles.commentSendText, { color: colors.textOnPrimary }]}>
             {isGuest ? 'Sign In' : commentPosting ? '...' : 'Post'}
           </Text>
         </TouchableOpacity>
@@ -4642,27 +4947,38 @@ const renderCommentsPanel = (panelStyle?: any) => (
     </View>
   </View>
 );
+};
 
 const keyForList = isWideWeb
   ? `grid-${searchQ}-${sort}-${filmCategory}`
   : `feed-${searchQ}-${sort}-${filmCategory}`;
 
 return (
-  <View style={styles.container}>
+  <View style={[styles.container, { backgroundColor: featuredBackground }]}>
     <LinearGradient
-      colors={[T.heroBurgundy1, T.heroBurgundy2, T.bg]}
+      colors={
+        isLight
+          ? [featuredBackground, featuredBackgroundAlt, featuredBackground]
+          : ['#050505', '#000000', '#000000']
+      }
       start={{ x: 0, y: 0 }}
       end={{ x: 0, y: 0.75 }}
       style={StyleSheet.absoluteFillObject}
     />
-    <Grain opacity={0.05} />
+    {!isLight ? <Grain opacity={0.05} /> : null}
 
     {initialLoading && submissions.length === 0 ? (
   <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-    <ActivityIndicator color={GOLD} />
+    <ActivityIndicator color={colors.loader} />
   </View>
 ) : (
-      <View style={{ flex: 1, paddingHorizontal: Platform.OS === 'web' ? 18 : 0 }}>
+      <View
+        style={{
+          flex: 1,
+          paddingHorizontal: Platform.OS === 'web' ? 18 : 0,
+          backgroundColor: featuredBackground,
+        }}
+      >
         {isWideWeb ? (
           <View style={[styles.wideLayout, { maxWidth: 1400, alignSelf: 'center' }]}>
             {sidebarElement}
@@ -4681,8 +4997,10 @@ return (
     {
       paddingTop: CONTENT_TOP_PAD,
       paddingBottom: BOTTOM_TAB_H + 18,
+      backgroundColor: featuredBackground,
     },
   ]}
+  style={{ backgroundColor: featuredBackground }}
   showsVerticalScrollIndicator={false}
   keyboardShouldPersistTaps="always"
   onScroll={onScrollImmediate}
@@ -4746,61 +5064,33 @@ overScrollMode="always"
     {/* WINNER */}
     {headerElement}
 
-    {/* SEARCH + SORT ONLY — below winner */}
+    {/* SORT ONLY — search now lives in the global top bar */}
     <View
       style={[
         styles.subHeaderWrap,
         {
-          width: isMobile ? winW - 24 : 360,
-          marginTop: -25,
+          width: isMobile ? Math.min(winW - 24, 280) : 240,
+          marginTop: -12,
           alignSelf: 'center',
         },
       ]}
     >
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          width: '100%',
-          gap: 6,
-        }}
-      >
-        <View style={{ flex: 1, height: 52 }}>
-          <HeaderControls
-            compact={true}
-            category={category}
-            filmCategory={filmCategory}
-            setFilmCategory={setFilmCategory}
-            sort={sort}
-            setSort={setSort}
-            searchText={searchText}
-            setSearchText={setSearchText}
-            isSearching={isSearching}
-            layout="center"
-            showCategory={false}
-            showSearch={true}
-            showSort={false}
-          />
-        </View>
-
-        <View style={{ flex: 1, height: 52 }}>
-          <HeaderControls
-            compact={true}
-            category={category}
-            filmCategory={filmCategory}
-            setFilmCategory={setFilmCategory}
-            sort={sort}
-            setSort={setSort}
-            searchText={searchText}
-            setSearchText={setSearchText}
-            isSearching={isSearching}
-            layout="center"
-            showCategory={false}
-            showSearch={false}
-            showSort={true}
-          />
-        </View>
+      <View style={{ height: 40, justifyContent: 'center' }}>
+        <HeaderControls
+          compact={true}
+          category={category}
+          filmCategory={filmCategory}
+          setFilmCategory={setFilmCategory}
+          sort={sort}
+          setSort={setSort}
+          searchText={searchText}
+          setSearchText={setSearchText}
+          isSearching={isSearching}
+          layout="center"
+          showCategory={false}
+          showSearch={false}
+          showSort={true}
+        />
       </View>
     </View>
 
@@ -4822,8 +5112,10 @@ overScrollMode="always"
   {
     paddingTop: CONTENT_TOP_PAD + 10,
     paddingBottom: BOTTOM_TAB_H + 8,
+    backgroundColor: featuredBackground,
   },
 ]}
+  style={{ backgroundColor: featuredBackground }}
   showsVerticalScrollIndicator={false}
   keyboardShouldPersistTaps="always"
   keyboardDismissMode="none"
@@ -4919,14 +5211,27 @@ maxToRenderPerBatch={2}
 {previewOpen && previewItem && (
   <Modal
     visible
-    transparent
+    transparent={false}
     animationType="none"
-    presentationStyle="overFullScreen"
+    presentationStyle={Platform.OS === 'web' ? 'overFullScreen' : 'fullScreen'}
     hardwareAccelerated
-    statusBarTranslucent
+    statusBarTranslucent={Platform.OS === 'android'}
     onRequestClose={closePreview}
   >
-    <Animated.View style={[styles.previewOverlay, { opacity: previewMotion }]}>
+    <Animated.View
+      style={[
+        styles.previewOverlay,
+        {
+          opacity: 1,
+          backgroundColor: featuredBackground,
+          justifyContent: 'flex-start',
+          alignItems: 'stretch',
+          paddingHorizontal: 0,
+          paddingTop: 0,
+          paddingBottom: 0,
+        },
+      ]}
+    >
       <Pressable style={StyleSheet.absoluteFillObject} onPress={closePreview} />
 
       <Animated.View
@@ -4934,22 +5239,28 @@ maxToRenderPerBatch={2}
           styles.previewCard,
           Platform.OS === 'web'
             ? {
-                maxWidth: useDesktopWatch ? Math.min(winW - 80, 1560) : 820,
-                maxHeight: useDesktopWatch ? Math.min(winH - 56, 920) : Math.min(winH - 56, 780),
+                width: winW,
+                maxWidth: winW,
+                height: winH,
+                maxHeight: winH,
+                borderRadius: 0,
               }
             : { height: winH, maxHeight: winH, borderRadius: 0 },
           {
+            backgroundColor: featuredBackground,
+            borderColor: isLight ? 'transparent' : 'transparent',
+            shadowOpacity: Platform.OS === 'web' ? 0 : isLight ? 0.08 : 0.3,
             transform: [
               {
                 translateY: previewMotion.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [Platform.OS === 'web' ? 18 : winH, 0],
+                  outputRange: [Platform.OS === 'web' ? 0 : winH, 0],
                 }),
               },
               {
                 scale: previewMotion.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [Platform.OS === 'web' ? 0.985 : 1, 1],
+                  outputRange: [1, 1],
                 }),
               },
             ],
@@ -4958,8 +5269,12 @@ maxToRenderPerBatch={2}
       >
         <ScrollView
           ref={watchScrollRef}
-          style={styles.watchScroll}
-          contentContainerStyle={[styles.watchContent, useDesktopWatch && styles.watchContentDesktop]}
+          style={[styles.watchScroll, { backgroundColor: featuredBackground }]}
+          contentContainerStyle={[
+            styles.watchContent,
+            useDesktopWatch && styles.watchContentDesktop,
+            { backgroundColor: featuredBackground },
+          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="always"
         >
@@ -4969,15 +5284,35 @@ maxToRenderPerBatch={2}
               onPress={closePreview}
               activeOpacity={0.9}
               hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
-              style={styles.watchCloseCircle}
+              style={[
+                styles.watchCloseCircle,
+                {
+                  backgroundColor: isLight ? colors.card : 'rgba(255,255,255,0.10)',
+                  borderColor: featuredBorder,
+                },
+              ]}
             >
-              <Text style={styles.watchCloseIcon}>×</Text>
+              <Text style={[styles.watchCloseIcon, { color: featuredText }]}>×</Text>
             </TouchableOpacity>
           </View>
 
           <View style={useDesktopWatch ? styles.watchDesktopColumns : undefined}>
-            <View style={useDesktopWatch ? styles.watchMainColumn : undefined}>
-          <View style={styles.watchPlayerWrap}>
+            <View
+              style={
+                useDesktopWatch
+                  ? [styles.watchMainColumn, { width: featuredWatchMainW }]
+                  : undefined
+              }
+            >
+          <View
+            style={[
+              styles.watchPlayerWrap,
+              {
+                backgroundColor: '#000',
+                borderColor: isLight ? 'transparent' : 'rgba(255,255,255,0.08)',
+              },
+            ]}
+          >
             {(() => {
               const previewMuxReady = isMuxReady((previewItem as any).mux_status);
               const previewMuxUri = previewMuxReady
@@ -4989,13 +5324,7 @@ maxToRenderPerBatch={2}
                   playerId={`preview-${previewItem.id}`}
                   storagePath={previewMuxUri ? null : previewItem.storage_path ?? null}
                   directUri={previewMuxUri}
-                  width={
-                    useDesktopWatch
-                      ? Math.min(Math.max(winW - 520, 720), 1160)
-                      : Platform.OS === 'web'
-                      ? Math.min(winW - 72, 792)
-                      : Math.min(winW, 860)
-                  }
+                  width={featuredWatchMainW}
                   maxHeight={
                     useDesktopWatch ? Math.min(winH * 0.68, 660) : Math.min(winH * 0.34, 340)
                   }
@@ -5005,16 +5334,21 @@ maxToRenderPerBatch={2}
                   showControls={true}
                   captureSurfacePress={true}
                   surfacePressMode="toggle"
-                  fixedAspect={16 / 9}
+                  squareCorners
                 />
               ) : (
-                <View style={styles.watchPlayerFallback} />
+                <View
+                  style={[
+                    styles.watchPlayerFallback,
+                    { backgroundColor: featuredSoftSurface },
+                  ]}
+                />
               );
             })()}
           </View>
 
-          <View style={styles.watchMetaBlock}>
-            <Text style={styles.watchTitle} numberOfLines={2}>
+          <View style={[styles.watchMetaBlock, { backgroundColor: featuredBackground }]}>
+            <Text style={[styles.watchTitle, { color: featuredText }]} numberOfLines={2}>
               {previewItem.title}
             </Text>
 
@@ -5024,23 +5358,31 @@ maxToRenderPerBatch={2}
                 activeOpacity={0.85}
                 style={styles.watchCreatorTap}
               >
-                <View style={styles.watchCreatorAvatar}>
+                <View
+                  style={[
+                    styles.watchCreatorAvatar,
+                    {
+                      backgroundColor: isLight ? colors.cardAlt : 'rgba(198,166,100,0.16)',
+                      borderColor: isLight ? colors.borderStrong : 'rgba(198,166,100,0.28)',
+                    },
+                  ]}
+                >
                   {previewItem.users?.avatar_url ? (
                     <Image
                       source={{ uri: previewItem.users.avatar_url }}
                       style={styles.watchCreatorAvatarImage}
                     />
                   ) : (
-                    <Text style={styles.watchCreatorAvatarText}>
+                    <Text style={[styles.watchCreatorAvatarText, { color: colors.primary }]}>
                       {(previewItem.users?.full_name || 'O').slice(0, 1).toUpperCase()}
                     </Text>
                   )}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.watchCreatorName} numberOfLines={1}>
+                  <Text style={[styles.watchCreatorName, { color: featuredText }]} numberOfLines={1}>
                     {previewItem.users?.full_name || 'Unknown creator'}
                   </Text>
-                  <Text style={styles.watchCreatorMeta} numberOfLines={1}>
+                  <Text style={[styles.watchCreatorMeta, { color: featuredSubText }]} numberOfLines={1}>
                     {((previewItem as any).film_category || previewItem.category || 'Film').toString()}
                   </Text>
                 </View>
@@ -5074,18 +5416,26 @@ maxToRenderPerBatch={2}
                             style={styles.watchCreditAvatar}
                           />
                         ) : (
-                          <View style={styles.watchCreditAvatarFallback}>
-                            <Text style={styles.watchCreditAvatarInitial}>
+                          <View
+                            style={[
+                              styles.watchCreditAvatarFallback,
+                              {
+                                backgroundColor: isLight ? colors.cardAlt : 'rgba(198,166,100,0.14)',
+                                borderColor: isLight ? colors.borderStrong : 'rgba(198,166,100,0.22)',
+                              },
+                            ]}
+                          >
+                            <Text style={[styles.watchCreditAvatarInitial, { color: colors.primary }]}>
                               {collaboratorName.slice(0, 1).toUpperCase()}
                             </Text>
                           </View>
                         )}
 
                         <View style={styles.watchCreditTextWrap}>
-                          <Text style={styles.watchCreditName} numberOfLines={1}>
+                          <Text style={[styles.watchCreditName, { color: featuredText }]} numberOfLines={1}>
                             {collaboratorName}
                           </Text>
-                          <Text style={styles.watchCreditRole} numberOfLines={1}>
+                          <Text style={[styles.watchCreditRole, { color: colors.primary }]} numberOfLines={1}>
                             {item.role || "Collaborator"}
                           </Text>
                         </View>
@@ -5112,7 +5462,16 @@ maxToRenderPerBatch={2}
                 }
                 style={[
                   styles.watchActionChip,
+                  {
+                    backgroundColor: isLight ? colors.card : 'rgba(255,255,255,0.075)',
+                    borderColor: featuredBorder,
+                  },
                   votedIds.has(previewItem.id) && styles.watchActionChipActive,
+                  votedIds.has(previewItem.id) &&
+                    isLight && {
+                      backgroundColor: colors.cardAlt,
+                      borderColor: colors.primary,
+                    },
                   (voteBusy[previewItem.id] ||
                     (!!currentUserId && (previewItem as any).user_id === currentUserId)) && {
                     opacity: 0.55,
@@ -5122,12 +5481,12 @@ maxToRenderPerBatch={2}
                 <Ionicons
                   name={votedIds.has(previewItem.id) ? 'heart' : 'heart-outline'}
                   size={18}
-                  color={votedIds.has(previewItem.id) ? GOLD : '#F4F1EA'}
+                  color={votedIds.has(previewItem.id) ? colors.primary : featuredText}
                 />
-                <Text style={styles.watchActionText}>
+                <Text style={[styles.watchActionText, { color: featuredText }]}>
                   {isGuest ? 'Sign In' : votedIds.has(previewItem.id) ? 'Voted' : 'Vote'}
                 </Text>
-                <Text style={styles.watchActionMeta}>
+                <Text style={[styles.watchActionMeta, { color: featuredSubText }]}>
                   {voteBusy[previewItem.id] ? '...' : previewItem.votes ?? 0}
                 </Text>
               </TouchableOpacity>
@@ -5135,15 +5494,19 @@ maxToRenderPerBatch={2}
               <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={() => {
-                  setCommentsFor(previewItem);
-                  setCommentsOpen(true);
-                  void fetchComments(previewItem.id);
+                  void openPreviewComments();
                 }}
-                style={styles.watchActionChip}
+                style={[
+                  styles.watchActionChip,
+                  {
+                    backgroundColor: isLight ? colors.card : 'rgba(255,255,255,0.075)',
+                    borderColor: featuredBorder,
+                  },
+                ]}
               >
-                <Ionicons name="chatbubble-ellipses-outline" size={18} color="#F4F1EA" />
-                <Text style={styles.watchActionText}>Comment</Text>
-                <Text style={styles.watchActionMeta}>
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color={featuredText} />
+                <Text style={[styles.watchActionText, { color: featuredText }]}>Comment</Text>
+                <Text style={[styles.watchActionMeta, { color: featuredSubText }]}>
                   {commentCounts[previewItem.id] ?? rootComments.length}
                 </Text>
               </TouchableOpacity>
@@ -5151,10 +5514,16 @@ maxToRenderPerBatch={2}
               <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={() => shareSubmissionLink(previewItem as any)}
-                style={styles.watchActionChip}
+                style={[
+                  styles.watchActionChip,
+                  {
+                    backgroundColor: isLight ? colors.card : 'rgba(255,255,255,0.075)',
+                    borderColor: featuredBorder,
+                  },
+                ]}
               >
-                <Ionicons name="arrow-redo-outline" size={18} color="#F4F1EA" />
-                <Text style={styles.watchActionText}>Share</Text>
+                <Ionicons name="arrow-redo-outline" size={18} color={featuredText} />
+                <Text style={[styles.watchActionText, { color: featuredText }]}>Share</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -5167,10 +5536,16 @@ maxToRenderPerBatch={2}
                     title: previewItem.title,
                   })
                 }
-                style={styles.watchActionChip}
+                style={[
+                  styles.watchActionChip,
+                  {
+                    backgroundColor: isLight ? colors.card : 'rgba(255,255,255,0.075)',
+                    borderColor: featuredBorder,
+                  },
+                ]}
               >
-                <Ionicons name="flag-outline" size={18} color="#F4F1EA" />
-                <Text style={styles.watchActionText}>Report</Text>
+                <Ionicons name="flag-outline" size={18} color={featuredText} />
+                <Text style={[styles.watchActionText, { color: featuredText }]}>Report</Text>
               </TouchableOpacity>
 
               {currentUserId && (previewItem as any).user_id !== currentUserId ? (
@@ -5182,10 +5557,17 @@ maxToRenderPerBatch={2}
                       blockedUserName: previewItem.users?.full_name,
                   })
                   }
-                  style={[styles.watchActionChip, styles.watchActionDangerChip]}
+                  style={[
+                    styles.watchActionChip,
+                    styles.watchActionDangerChip,
+                    {
+                      backgroundColor: isLight ? '#F8E1DC' : 'rgba(255,70,70,0.075)',
+                      borderColor: isLight ? '#E5B3A8' : 'rgba(255,90,90,0.22)',
+                    },
+                  ]}
                 >
-                  <Ionicons name="ban-outline" size={18} color="#FF8A8A" />
-                  <Text style={styles.watchActionDangerText}>Block</Text>
+                  <Ionicons name="ban-outline" size={18} color={colors.danger} />
+                  <Text style={[styles.watchActionDangerText, { color: colors.danger }]}>Block</Text>
                 </TouchableOpacity>
               ) : null}
 
@@ -5195,12 +5577,21 @@ maxToRenderPerBatch={2}
                   onPress={() => setCollaboratorEditorOpen((open) => !open)}
                   style={[
                     styles.watchActionChip,
+                    {
+                      backgroundColor: isLight ? colors.card : 'rgba(255,255,255,0.075)',
+                      borderColor: featuredBorder,
+                    },
                     collaboratorEditorOpen && styles.watchActionChipActive,
+                    collaboratorEditorOpen &&
+                      isLight && {
+                        backgroundColor: colors.cardAlt,
+                        borderColor: colors.primary,
+                      },
                   ]}
                 >
-                  <Ionicons name="people-outline" size={18} color="#F4F1EA" />
-                  <Text style={styles.watchActionText}>Credits</Text>
-                  <Text style={styles.watchActionMeta}>
+                  <Ionicons name="people-outline" size={18} color={featuredText} />
+                  <Text style={[styles.watchActionText, { color: featuredText }]}>Credits</Text>
+                  <Text style={[styles.watchActionMeta, { color: featuredSubText }]}>
                     {((previewItem as any).collaborators || []).length}
                   </Text>
                 </TouchableOpacity>
@@ -5210,9 +5601,17 @@ maxToRenderPerBatch={2}
             {currentUserId &&
             (previewItem as any).user_id === currentUserId &&
             collaboratorEditorOpen ? (
-              <View style={styles.watchCollaboratorEditor}>
+              <View
+                style={[
+                  styles.watchCollaboratorEditor,
+                  {
+                    backgroundColor: isLight ? colors.card : 'rgba(255,255,255,0.045)',
+                    borderColor: featuredBorder,
+                  },
+                ]}
+              >
                 <View style={styles.watchCollaboratorEditorHeader}>
-                  <Text style={styles.watchCollaboratorEditorTitle}>Collaborators</Text>
+                  <Text style={[styles.watchCollaboratorEditorTitle, { color: featuredText }]}>Collaborators</Text>
                   <TouchableOpacity
                     activeOpacity={0.85}
                     onPress={savePreviewCollaborators}
@@ -5233,16 +5632,32 @@ maxToRenderPerBatch={2}
                     value={collaboratorQuery}
                     onChangeText={setCollaboratorQuery}
                     placeholder="Search user"
-                    placeholderTextColor="rgba(244,241,234,0.42)"
-                    style={[styles.watchCollaboratorInput, { flex: 1.25 }]}
+                    placeholderTextColor={isLight ? colors.textMuted : 'rgba(244,241,234,0.42)'}
+                    style={[
+                      styles.watchCollaboratorInput,
+                      {
+                        flex: 1.25,
+                        backgroundColor: isLight ? colors.input : 'rgba(0,0,0,0.36)',
+                        borderColor: featuredBorder,
+                        color: featuredText,
+                      },
+                    ]}
                     autoCorrect={false}
                   />
                   <TextInput
                     value={collaboratorRole}
                     onChangeText={setCollaboratorRole}
                     placeholder="Role"
-                    placeholderTextColor="rgba(244,241,234,0.42)"
-                    style={[styles.watchCollaboratorInput, { flex: 0.85 }]}
+                    placeholderTextColor={isLight ? colors.textMuted : 'rgba(244,241,234,0.42)'}
+                    style={[
+                      styles.watchCollaboratorInput,
+                      {
+                        flex: 0.85,
+                        backgroundColor: isLight ? colors.input : 'rgba(0,0,0,0.36)',
+                        borderColor: featuredBorder,
+                        color: featuredText,
+                      },
+                    ]}
                     autoCorrect={false}
                   />
                 </View>
@@ -5250,7 +5665,7 @@ maxToRenderPerBatch={2}
                 {collaboratorSearching ? (
                   <View style={styles.watchCollaboratorSearchState}>
                     <ActivityIndicator size="small" color={GOLD} />
-                    <Text style={styles.watchCollaboratorSearchText}>Searching...</Text>
+                    <Text style={[styles.watchCollaboratorSearchText, { color: featuredSubText }]}>Searching...</Text>
                   </View>
                 ) : null}
 
@@ -5261,7 +5676,13 @@ maxToRenderPerBatch={2}
                         key={item.id}
                         activeOpacity={0.86}
                         onPress={() => addPreviewCollaborator(item)}
-                        style={styles.watchCollaboratorResultRow}
+                        style={[
+                          styles.watchCollaboratorResultRow,
+                          {
+                            backgroundColor: isLight ? colors.card : 'rgba(0,0,0,0.24)',
+                            borderBottomColor: featuredBorder,
+                          },
+                        ]}
                       >
                         {item.avatar_url ? (
                           <Image
@@ -5276,10 +5697,10 @@ maxToRenderPerBatch={2}
                           </View>
                         )}
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={styles.watchCollaboratorResultName} numberOfLines={1}>
+                          <Text style={[styles.watchCollaboratorResultName, { color: featuredText }]} numberOfLines={1}>
                             {item.full_name || 'Unnamed creative'}
                           </Text>
-                          <Text style={styles.watchCollaboratorResultMeta} numberOfLines={1}>
+                          <Text style={[styles.watchCollaboratorResultMeta, { color: featuredSubText }]} numberOfLines={1}>
                             Add as {collaboratorRole.trim() || 'collaborator'}
                           </Text>
                         </View>
@@ -5304,7 +5725,7 @@ maxToRenderPerBatch={2}
                             onPress={() => removePreviewCollaborator(item.user_id)}
                             style={styles.watchCollaboratorRemoveBtn}
                           >
-                            <Ionicons name="close" size={14} color="#F4F1EA" />
+                            <Ionicons name="close" size={14} color={featuredText} />
                           </TouchableOpacity>
                         </View>
                       )
@@ -5315,25 +5736,43 @@ maxToRenderPerBatch={2}
             ) : null}
           </View>
 
+          {useDesktopWatch && previewCommentsExpanded ? (
+            renderCommentsPanel(
+              {
+                width: "100%",
+                maxWidth: "100%",
+                height: Math.max(340, Math.min(winH * 0.42, 520)),
+                borderRadius: 14,
+                marginBottom: 12,
+                backgroundColor: featuredSurface,
+                borderColor: featuredBorder,
+              },
+              { embedded: true, showClose: false }
+            )
+          ) : (
           <TouchableOpacity
             activeOpacity={0.9}
             onPress={() => {
-              setCommentsFor(previewItem);
-              setCommentsOpen(true);
-              void fetchComments(previewItem.id);
+              void openPreviewComments();
             }}
-            style={styles.watchCommentsPreview}
+            style={[
+              styles.watchCommentsPreview,
+              {
+                backgroundColor: isLight ? colors.card : '#0B0B0B',
+                borderColor: featuredBorder,
+              },
+            ]}
           >
             <View style={styles.watchCommentsPreviewHeader}>
-              <Text style={styles.watchCommentsPreviewTitle}>Comments</Text>
-              <Text style={styles.watchCommentsPreviewCount}>
+              <Text style={[styles.watchCommentsPreviewTitle, { color: featuredText }]}>Comments</Text>
+              <Text style={[styles.watchCommentsPreviewCount, { color: featuredSubText }]}>
                 {commentCounts[previewItem.id] ?? rootComments.length}
               </Text>
               {commentsLoading ? <ActivityIndicator color={T.accent} size="small" /> : null}
               <Ionicons
                 name="chevron-forward"
                 size={16}
-                color="rgba(237,235,230,0.70)"
+                color={featuredSubText}
               />
             </View>
 
@@ -5352,36 +5791,74 @@ maxToRenderPerBatch={2}
                   </View>
                 )}
                 <View style={styles.watchCommentsPreviewBody}>
-                  <Text style={styles.watchCommentsPreviewName} numberOfLines={1}>
+                  <Text style={[styles.watchCommentsPreviewName, { color: featuredText }]} numberOfLines={1}>
                     {rootComments[0].users?.full_name || 'Unknown'}
                   </Text>
-                  <Text style={styles.watchCommentsPreviewText} numberOfLines={2}>
+                  <Text style={[styles.watchCommentsPreviewText, { color: featuredSubText }]} numberOfLines={2}>
                     {rootComments[0].comment}
                   </Text>
                 </View>
               </View>
             ) : (
-              <View style={styles.watchCommentsPreviewInput}>
-                <Text style={styles.watchCommentsPreviewInputText}>Add a comment...</Text>
+              <View
+                style={[
+                  styles.watchCommentsPreviewInput,
+                  {
+                    backgroundColor: isLight ? colors.input : 'rgba(0,0,0,0.24)',
+                    borderColor: featuredBorder,
+                  },
+                ]}
+              >
+                <Text style={[styles.watchCommentsPreviewInputText, { color: colors.textMuted }]}>Add a comment...</Text>
               </View>
             )}
           </TouchableOpacity>
+          )}
             </View>
 
             <View style={useDesktopWatch ? styles.watchSideColumn : undefined}>
-          <View style={[styles.watchSuggestionsSection, useDesktopWatch && styles.watchSuggestionsSectionDesktop]}>
+          <View
+            style={[
+              styles.watchSuggestionsSection,
+              useDesktopWatch && styles.watchSuggestionsSectionDesktop,
+              { backgroundColor: featuredBackground },
+            ]}
+          >
             <View style={styles.watchSectionCompactHeader}>
-              <Text style={styles.watchSectionTitle}>Up next</Text>
+              <Text style={[styles.watchSectionTitle, { color: featuredText }]}>Up next</Text>
             </View>
 
-            <View style={styles.watchSuggestionsList}>
+            <ScrollView
+              style={
+                useDesktopWatch
+                  ? [
+                      styles.watchSuggestionsScroll,
+                      { maxHeight: Math.max(360, Math.min(winH - 150, 760)) },
+                    ]
+                  : undefined
+              }
+              contentContainerStyle={styles.watchSuggestionsList}
+              nestedScrollEnabled
+              scrollEnabled={useDesktopWatch}
+              showsVerticalScrollIndicator={useDesktopWatch}
+            >
               {previewSuggestions.map((item) => {
                 return (
                   <TouchableOpacity
                     key={item.id}
                     activeOpacity={0.9}
                     onPress={() => openPreview(item as any)}
-                    style={[styles.watchSuggestionCard, useDesktopWatch && styles.watchSuggestionCardDesktop]}
+                    style={[
+                      styles.watchSuggestionCard,
+                      useDesktopWatch && styles.watchSuggestionCardDesktop,
+                      {
+                        backgroundColor: isLight ? colors.card : '#0B0B0B',
+                        borderColor: featuredBorder,
+                        borderWidth: StyleSheet.hairlineWidth,
+                        paddingHorizontal: 8,
+                        paddingVertical: 8,
+                      },
+                    ]}
                   >
                     <Image
                       source={{ uri: (item as any).thumbnail_url || 'https://picsum.photos/480/270' }}
@@ -5389,41 +5866,62 @@ maxToRenderPerBatch={2}
                       resizeMode="cover"
                     />
                     <View style={styles.watchSuggestionBody}>
-                      <Text style={styles.watchSuggestionTitle} numberOfLines={2}>
+                      <Text style={[styles.watchSuggestionTitle, { color: featuredText }]} numberOfLines={2}>
                         {item.title}
                       </Text>
-                      <Text style={styles.watchSuggestionMeta} numberOfLines={1}>
+                      <Text style={[styles.watchSuggestionMeta, { color: featuredSubText }]} numberOfLines={1}>
                         {item.users?.full_name || 'Unknown'}
                       </Text>
                     </View>
                   </TouchableOpacity>
                 );
               })}
-            </View>
+            </ScrollView>
           </View>
             </View>
           </View>
 
-          {previewCommentsExpanded ? (
-          <View style={styles.watchCommentsSection}>
-            <View style={styles.watchSectionHeader}>
+          {!useDesktopWatch && previewCommentsExpanded ? (
+          <View
+            style={[
+              styles.watchCommentsSection,
+              {
+                backgroundColor: featuredSurface,
+                borderColor: featuredBorder,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.watchSectionHeader,
+                { borderBottomColor: isLight ? colors.border : 'rgba(255,255,255,0.06)' },
+              ]}
+            >
               <View>
-                <Text style={styles.watchSectionTitle}>Comments</Text>
-                <Text style={styles.watchSectionSub}>
+                <Text style={[styles.watchSectionTitle, { color: featuredText }]}>Comments</Text>
+                <Text style={[styles.watchSectionSub, { color: featuredSubText }]}>
                   Shared with this film across Overlooked.
                 </Text>
               </View>
               {commentsLoading ? <ActivityIndicator color={T.accent} size="small" /> : null}
             </View>
 
-            <View style={styles.watchComposerWrap}>
+            <View
+              style={[
+                styles.watchComposerWrap,
+                {
+                  backgroundColor: isLight ? colors.card : '#090909',
+                  borderBottomColor: isLight ? colors.border : 'rgba(255,255,255,0.06)',
+                },
+              ]}
+            >
               {replyingTo ? (
                 <View style={styles.replyingBanner}>
-                  <Text style={styles.replyingBannerText} numberOfLines={1}>
+                  <Text style={[styles.replyingBannerText, { color: featuredText }]} numberOfLines={1}>
                     Replying to {replyingTo.users?.full_name || 'comment'}
                   </Text>
                   <TouchableOpacity onPress={() => setReplyingTo(null)} activeOpacity={0.9}>
-                    <Text style={styles.replyingBannerCancel}>Cancel</Text>
+                    <Text style={[styles.replyingBannerCancel, { color: colors.primary }]}>Cancel</Text>
                   </TouchableOpacity>
                 </View>
               ) : null}
@@ -5445,8 +5943,15 @@ maxToRenderPerBatch={2}
                       ? 'Write a reply…'
                       : 'Add a comment…'
                   }
-                  placeholderTextColor="#777"
-                  style={styles.commentInput}
+                  placeholderTextColor={colors.textMuted}
+                  style={[
+                    styles.commentInput,
+                    {
+                      backgroundColor: isLight ? colors.input : '#0B0B0B',
+                      borderColor: featuredBorder,
+                      color: featuredText,
+                    },
+                  ]}
                   multiline
                 />
                 <TouchableOpacity
@@ -5461,12 +5966,16 @@ maxToRenderPerBatch={2}
                   activeOpacity={0.9}
                   style={[
                     styles.commentSendBtn,
+                    {
+                      backgroundColor: colors.primary,
+                      borderColor: colors.primary,
+                    },
                     (commentPosting || (!isGuest && !commentText.trim())) && {
                       opacity: 0.5,
                     },
                   ]}
                 >
-                  <Text style={styles.commentSendText}>
+                  <Text style={[styles.commentSendText, { color: colors.textOnPrimary }]}>
                     {isGuest ? 'Sign In' : commentPosting ? '…' : 'Post'}
                   </Text>
                 </TouchableOpacity>
@@ -5477,8 +5986,8 @@ maxToRenderPerBatch={2}
               <ActivityIndicator color={T.accent} style={{ padding: 20 }} />
             ) : rootComments.length === 0 ? (
               <View style={styles.commentsEmptyState}>
-                <Text style={styles.commentsEmptyTitle}>No comments yet</Text>
-                <Text style={styles.commentsEmptyText}>
+                <Text style={[styles.commentsEmptyTitle, { color: featuredText }]}>No comments yet</Text>
+                <Text style={[styles.commentsEmptyText, { color: featuredSubText }]}>
                   Be the first to say something thoughtful.
                 </Text>
               </View>
@@ -5494,7 +6003,13 @@ maxToRenderPerBatch={2}
                         <TouchableOpacity
                           onPress={() => u && goToProfile({ id: u.id, full_name: u.full_name })}
                           activeOpacity={0.9}
-                          style={styles.commentAvatarTap}
+                          style={[
+                            styles.commentAvatarTap,
+                            {
+                              backgroundColor: isLight ? colors.backgroundAlt : '#000',
+                              borderColor: featuredBorder,
+                            },
+                          ]}
                         >
                           <Image
                             source={{ uri: u?.avatar_url || 'https://picsum.photos/80/80' }}
@@ -5507,10 +6022,10 @@ maxToRenderPerBatch={2}
                             onPress={() => u && goToProfile({ id: u.id, full_name: u.full_name })}
                             activeOpacity={0.9}
                           >
-                            <Text style={styles.commentName}>{u?.full_name || 'Unknown'}</Text>
+                            <Text style={[styles.commentName, { color: featuredText }]}>{u?.full_name || 'Unknown'}</Text>
                           </TouchableOpacity>
 
-                          <Text style={styles.commentText}>{item.comment}</Text>
+                          <Text style={[styles.commentText, { color: featuredSubText }]}>{item.comment}</Text>
 
                           <View style={styles.commentActionsRow}>
                             <TouchableOpacity
@@ -5573,7 +6088,13 @@ maxToRenderPerBatch={2}
                                     ru && goToProfile({ id: ru.id, full_name: ru.full_name })
                                   }
                                   activeOpacity={0.9}
-                                  style={styles.replyAvatarTap}
+                                  style={[
+                                    styles.replyAvatarTap,
+                                    {
+                                      backgroundColor: isLight ? colors.backgroundAlt : '#000',
+                                      borderColor: featuredBorder,
+                                    },
+                                  ]}
                                 >
                                   <Image
                                     source={{ uri: ru?.avatar_url || 'https://picsum.photos/80/80' }}
@@ -5588,10 +6109,10 @@ maxToRenderPerBatch={2}
                                     }
                                     activeOpacity={0.9}
                                   >
-                                    <Text style={styles.replyName}>{ru?.full_name || 'Unknown'}</Text>
+                                    <Text style={[styles.replyName, { color: featuredText }]}>{ru?.full_name || 'Unknown'}</Text>
                                   </TouchableOpacity>
 
-                                  <Text style={styles.replyText}>{reply.comment}</Text>
+                                  <Text style={[styles.replyText, { color: featuredSubText }]}>{reply.comment}</Text>
                                 </View>
                               </View>
                             );
@@ -5608,12 +6129,12 @@ maxToRenderPerBatch={2}
         </ScrollView>
       </Animated.View>
 
-      {commentsOpen ? (
+      {commentsOpen && !useDesktopWatch ? (
         <View
           style={[
             styles.commentsOverlay,
             {
-              backgroundColor: 'rgba(0,0,0,0.64)',
+              backgroundColor: isLight ? 'rgba(20,17,13,0.24)' : 'rgba(0,0,0,0.64)',
               justifyContent: 'flex-end',
               paddingHorizontal: isMobile ? 0 : 22,
               paddingTop: isMobile ? 80 : 32,
@@ -5653,12 +6174,22 @@ maxToRenderPerBatch={2}
     presentationStyle="overFullScreen"
     onRequestClose={closeComments}
   >
-    <View style={styles.commentsOverlay}>
+    <View
+      style={[
+        styles.commentsOverlay,
+        { backgroundColor: isLight ? 'rgba(20,17,13,0.24)' : 'rgba(0,0,0,0.78)' },
+      ]}
+    >
       <Pressable style={StyleSheet.absoluteFillObject} onPress={closeComments} />
 
       <View
   style={[
     styles.commentsModalCard,
+    {
+      backgroundColor: featuredSurface,
+      borderColor: featuredBorder,
+      shadowColor: colors.shadow,
+    },
     isMobile && {
   width: winW - 24,
   maxWidth: winW - 24,
@@ -5667,18 +6198,33 @@ maxToRenderPerBatch={2}
 }
   ]}
 >
-        <View style={styles.commentsHeader}>
+        <View
+          style={[
+            styles.commentsHeader,
+            { borderBottomColor: isLight ? colors.border : 'rgba(255,255,255,0.05)' },
+          ]}
+        >
           <View style={{ flex: 1 }}>
-            <Text style={styles.commentsTitle}>Comments</Text>
+            <Text style={[styles.commentsTitle, { color: featuredText }]}>Comments</Text>
             {commentsFor?.title ? (
-              <Text style={styles.commentsSubtitle} numberOfLines={1}>
+              <Text style={[styles.commentsSubtitle, { color: featuredSubText }]} numberOfLines={1}>
                 {commentsFor.title}
               </Text>
             ) : null}
           </View>
 
-          <TouchableOpacity onPress={closeComments} activeOpacity={0.9} style={styles.commentsCloseBtn}>
-            <Text style={styles.commentsClose}>Close</Text>
+          <TouchableOpacity
+            onPress={closeComments}
+            activeOpacity={0.9}
+            style={[
+              styles.commentsCloseBtn,
+              {
+                backgroundColor: isLight ? colors.backgroundAlt : '#0D0D0D',
+                borderColor: featuredBorder,
+              },
+            ]}
+          >
+            <Text style={[styles.commentsClose, { color: colors.primary }]}>Close</Text>
           </TouchableOpacity>
         </View>
 
@@ -5687,8 +6233,8 @@ maxToRenderPerBatch={2}
             <ActivityIndicator color={T.accent} style={{ padding: 20 }} />
           ) : rootComments.length === 0 ? (
             <View style={styles.commentsEmptyState}>
-              <Text style={styles.commentsEmptyTitle}>No comments yet</Text>
-              <Text style={styles.commentsEmptyText}>Be the first to say something thoughtful.</Text>
+              <Text style={[styles.commentsEmptyTitle, { color: featuredText }]}>No comments yet</Text>
+              <Text style={[styles.commentsEmptyText, { color: featuredSubText }]}>Be the first to say something thoughtful.</Text>
             </View>
           ) : (
             <FlatList
@@ -5707,7 +6253,13 @@ maxToRenderPerBatch={2}
                       <TouchableOpacity
                         onPress={() => u && goToProfile({ id: u.id, full_name: u.full_name })}
                         activeOpacity={0.9}
-                        style={styles.commentAvatarTap}
+                        style={[
+                          styles.commentAvatarTap,
+                          {
+                            backgroundColor: isLight ? colors.backgroundAlt : '#000',
+                            borderColor: featuredBorder,
+                          },
+                        ]}
                       >
                         <Image
                           source={{ uri: u?.avatar_url || 'https://picsum.photos/80/80' }}
@@ -5720,10 +6272,10 @@ maxToRenderPerBatch={2}
                           onPress={() => u && goToProfile({ id: u.id, full_name: u.full_name })}
                           activeOpacity={0.9}
                         >
-                          <Text style={styles.commentName}>{u?.full_name || 'Unknown'}</Text>
+                          <Text style={[styles.commentName, { color: featuredText }]}>{u?.full_name || 'Unknown'}</Text>
                         </TouchableOpacity>
 
-                        <Text style={styles.commentText}>{item.comment}</Text>
+                        <Text style={[styles.commentText, { color: featuredSubText }]}>{item.comment}</Text>
 
                         <View style={styles.commentActionsRow}>
                           <TouchableOpacity
@@ -5754,7 +6306,13 @@ maxToRenderPerBatch={2}
                                   ru && goToProfile({ id: ru.id, full_name: ru.full_name })
                                 }
                                 activeOpacity={0.9}
-                                style={styles.replyAvatarTap}
+                                style={[
+                                  styles.replyAvatarTap,
+                                  {
+                                    backgroundColor: isLight ? colors.backgroundAlt : '#000',
+                                    borderColor: featuredBorder,
+                                  },
+                                ]}
                               >
                                 <Image
                                   source={{ uri: ru?.avatar_url || 'https://picsum.photos/80/80' }}
@@ -5769,10 +6327,10 @@ maxToRenderPerBatch={2}
                                   }
                                   activeOpacity={0.9}
                                 >
-                                  <Text style={styles.replyName}>{ru?.full_name || 'Unknown'}</Text>
+                                  <Text style={[styles.replyName, { color: featuredText }]}>{ru?.full_name || 'Unknown'}</Text>
                                 </TouchableOpacity>
 
-                                <Text style={styles.replyText}>{reply.comment}</Text>
+                                <Text style={[styles.replyText, { color: featuredSubText }]}>{reply.comment}</Text>
                               </View>
                             </View>
                           );
@@ -5786,14 +6344,22 @@ maxToRenderPerBatch={2}
           )}
         </View>
 
-        <View style={styles.commentComposerWrap}>
+        <View
+          style={[
+            styles.commentComposerWrap,
+            {
+              backgroundColor: isLight ? colors.card : '#090909',
+              borderTopColor: isLight ? colors.border : 'rgba(255,255,255,0.05)',
+            },
+          ]}
+        >
           {replyingTo ? (
             <View style={styles.replyingBanner}>
-              <Text style={styles.replyingBannerText} numberOfLines={1}>
+              <Text style={[styles.replyingBannerText, { color: featuredText }]} numberOfLines={1}>
                 Replying to {replyingTo.users?.full_name || 'comment'}
               </Text>
               <TouchableOpacity onPress={() => setReplyingTo(null)} activeOpacity={0.9}>
-                <Text style={styles.replyingBannerCancel}>Cancel</Text>
+                <Text style={[styles.replyingBannerCancel, { color: colors.primary }]}>Cancel</Text>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -5815,8 +6381,15 @@ maxToRenderPerBatch={2}
       ? 'Write a reply…'
       : 'Add a comment…'
   }
-              placeholderTextColor="#777"
-              style={styles.commentInput}
+              placeholderTextColor={colors.textMuted}
+              style={[
+                styles.commentInput,
+                {
+                  backgroundColor: isLight ? colors.input : '#0B0B0B',
+                  borderColor: featuredBorder,
+                  color: featuredText,
+                },
+              ]}
               multiline
             />
             <TouchableOpacity
@@ -5831,10 +6404,14 @@ maxToRenderPerBatch={2}
   activeOpacity={0.9}
   style={[
     styles.commentSendBtn,
+    {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
     (commentPosting || (!isGuest && !commentText.trim())) && { opacity: 0.5 },
   ]}
 >
-  <Text style={styles.commentSendText}>
+  <Text style={[styles.commentSendText, { color: colors.textOnPrimary }]}>
     {isGuest ? 'Sign In' : commentPosting ? '…' : 'Post'}
   </Text>
 </TouchableOpacity>
@@ -7068,9 +7645,8 @@ watchDesktopColumns: {
 },
 
 watchMainColumn: {
-  flex: 1,
+  flexShrink: 0,
   minWidth: 0,
-  maxWidth: 1160,
 },
 
 watchSideColumn: {
@@ -7128,18 +7704,18 @@ watchCloseIcon: {
 },
 
 watchPlayerWrap: {
-  borderRadius: Platform.OS === 'web' ? 14 : 0,
+  borderRadius: 0,
   overflow: 'hidden',
   backgroundColor: '#000',
-  borderWidth: Platform.OS === 'web' ? 1 : 0,
-  borderColor: Platform.OS === 'web' ? 'rgba(255,255,255,0.08)' : 'transparent',
+  borderWidth: 0,
+  borderColor: 'transparent',
   marginBottom: 12,
   marginHorizontal: Platform.OS === 'web' ? 0 : -10,
 },
 
 watchPlayerFallback: {
   height: 220,
-  borderRadius: 14,
+  borderRadius: 0,
   backgroundColor: '#000',
 },
 
@@ -7741,6 +8317,10 @@ watchSuggestionsList: {
   gap: 8,
 },
 
+watchSuggestionsScroll: {
+  paddingRight: 6,
+},
+
 watchSuggestionCard: {
   flexDirection: 'row',
   gap: 10,
@@ -8049,6 +8629,14 @@ sidePanelSeamless: {
   shadowRadius: 18,
   shadowOffset: { width: 0, height: 10 },
   elevation: 14,
+},
+
+  commentsEmbeddedCard: {
+  maxWidth: '100%',
+  shadowOpacity: 0,
+  shadowRadius: 0,
+  shadowOffset: { width: 0, height: 0 },
+  elevation: 0,
 },
 
   commentsHeader: {

@@ -24,6 +24,7 @@ import {
   SUBSCRIPTION_TITLE,
   TERMS_OF_USE_URL,
 } from '../app/lib/legal';
+import { useAppTheme } from '../app/context/ThemeContext';
 
 type UpgradeContext =
   | 'challenge'
@@ -108,16 +109,14 @@ const HAIRLINE_2 = 'rgba(255,255,255,0.07)';
 
 const GOLD = '#C6A664';
 const GOLD_SOFT = 'rgba(198,166,100,0.16)';
-const GREEN = '#2ED47A';
-const GREEN_DARK = '#102C1B';
 
 const WARNING_BG = 'rgba(198,166,100,0.12)';
 const WARNING_BORDER = 'rgba(198,166,100,0.22)';
 const SUCCESS_BG = 'rgba(46,212,122,0.12)';
 const SUCCESS_BORDER = 'rgba(46,212,122,0.22)';
 
-const OFFER_TILE_BG = 'rgba(46,212,122,0.12)';
-const OFFER_TILE_BORDER = 'rgba(46,212,122,0.22)';
+const OFFER_TILE_BG = 'rgba(198,166,100,0.14)';
+const OFFER_TILE_BORDER = 'rgba(198,166,100,0.28)';
 
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
@@ -319,6 +318,7 @@ export const UpgradeModal: React.FC<Props> = ({
   context,
   onSelectPro,
 }) => {
+  const { colors, isLight } = useAppTheme();
   const nav = useNavigation<any>();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -791,6 +791,16 @@ export const UpgradeModal: React.FC<Props> = ({
     ? 'Manage in Google Play'
     : confirmPrimaryButtonLabel;
 
+  const modalSurface = colors.card;
+  const modalSoftSurface = colors.backgroundAlt;
+  const modalMutedSurface = isLight ? colors.mutedCard : SURFACE;
+  const proSurface = isLight ? '#F6ECD8' : SURFACE_2;
+  const proBadgeSurface = isLight ? '#E7D6B4' : '#211C13';
+  const proAccentText = colors.accent;
+  const membershipText = colors.textPrimary;
+  const membershipSubText = colors.textSecondary;
+  const membershipMutedText = colors.textMuted;
+
   return (
     <>
       <Modal
@@ -804,6 +814,7 @@ export const UpgradeModal: React.FC<Props> = ({
         <View
           style={[
             styles.backdrop,
+            { backgroundColor: colors.overlay },
             {
               paddingTop: verticalPadTop,
               paddingBottom: verticalPadBottom,
@@ -822,6 +833,11 @@ export const UpgradeModal: React.FC<Props> = ({
             style={[
               styles.card,
               { maxHeight: cardMaxHeight },
+              {
+                backgroundColor: modalSurface,
+                borderColor: colors.border,
+                shadowColor: colors.shadow,
+              },
               isMobile && styles.cardMobile,
               downgradeConfirmVisible && styles.cardBehindConfirm,
             ]}
@@ -834,24 +850,24 @@ export const UpgradeModal: React.FC<Props> = ({
             >
               <View style={styles.topBar}>
                 <View style={styles.logoCluster}>
-                  <Text style={styles.brandText}>OVERLOOKED</Text>
-                  <Text style={styles.kicker}>UPGRADE</Text>
+                  <Text style={[styles.brandText, { color: membershipMutedText }]}>OVERLOOKED</Text>
+                  <Text style={[styles.kicker, { color: colors.primary }]}>UPGRADE</Text>
                 </View>
 
                 <TouchableOpacity
                   activeOpacity={0.8}
                   onPress={onClose}
-                  style={styles.closeButton}
+                  style={[styles.closeButton, { backgroundColor: modalSoftSurface, borderColor: colors.border }]}
                   disabled={upgrading || downgrading || restoringPro}
                 >
-                  <Text style={styles.closeText}>×</Text>
+                  <Text style={[styles.closeText, { color: membershipSubText }]}>×</Text>
                 </TouchableOpacity>
               </View>
 
               <View style={styles.heroBlock}>
-                <Text style={styles.title}>{title}</Text>
+                <Text style={[styles.title, { color: membershipText }]}>{title}</Text>
                 <Text
-                  style={styles.subtitle}
+                  style={[styles.subtitle, { color: membershipSubText }]}
                   numberOfLines={isMobile ? 3 : 2}
                 >
                   {subtitle}
@@ -859,38 +875,38 @@ export const UpgradeModal: React.FC<Props> = ({
 
                 <View style={styles.metaRow}>
                   {currentTier ? (
-                    <View style={styles.metaPill}>
-                      <Text style={styles.metaLabel}>Current</Text>
-                      <Text style={styles.metaValue}>{currentTierLabel}</Text>
+                    <View style={[styles.metaPill, { backgroundColor: modalSoftSurface, borderColor: colors.border }]}>
+                      <Text style={[styles.metaLabel, { color: membershipMutedText }]}>Current</Text>
+                      <Text style={[styles.metaValue, { color: membershipText }]}>{currentTierLabel}</Text>
                     </View>
                   ) : null}
 
                   {!offerCountdown.expired ? (
-                    <View style={[styles.metaPill, styles.offerPill]}>
-                      <Text style={styles.metaLabel}>Offer</Text>
-                      <Text style={styles.metaValue}>{offerCountdown.short}</Text>
+                    <View style={[styles.metaPill, styles.offerPill, { backgroundColor: isLight ? '#F4E7CB' : GOLD_SOFT, borderColor: colors.borderStrong }]}>
+                      <Text style={[styles.metaLabel, { color: colors.primary }]}>Offer</Text>
+                      <Text style={[styles.metaValue, { color: membershipText }]}>{offerCountdown.short}</Text>
                     </View>
                   ) : null}
 
                   {isActuallyPro && cancelAtPeriodEnd && endDateLabel ? (
-                    <View style={styles.metaPill}>
-                      <Text style={styles.metaLabel}>Cancels</Text>
-                      <Text style={styles.metaValue}>{endDateLabel}</Text>
+                    <View style={[styles.metaPill, { backgroundColor: modalSoftSurface, borderColor: colors.border }]}>
+                      <Text style={[styles.metaLabel, { color: membershipMutedText }]}>Cancels</Text>
+                      <Text style={[styles.metaValue, { color: membershipText }]}>{endDateLabel}</Text>
                     </View>
                   ) : null}
                 </View>
               </View>
 
               {isActuallyPro && cancelAtPeriodEnd ? (
-                <View style={styles.countdownBanner}>
+                <View style={[styles.countdownBanner, { backgroundColor: isLight ? '#F7EDDC' : WARNING_BG, borderColor: colors.borderStrong }]}>
                   <View style={styles.countdownBannerTopRow}>
-                    <Text style={styles.countdownPill}>CANCELLATION SCHEDULED</Text>
+                    <Text style={[styles.countdownPill, { color: colors.primary }]}>CANCELLATION SCHEDULED</Text>
                     {cancelCountdown.short ? (
-                      <Text style={styles.countdownDays}>{cancelCountdown.short}</Text>
+                      <Text style={[styles.countdownDays, { color: membershipText }]}>{cancelCountdown.short}</Text>
                     ) : null}
                   </View>
 
-                  <Text style={styles.countdownTitle}>
+                  <Text style={[styles.countdownTitle, { color: membershipText }]}>
                     {endDateLabel
                       ? `Pro ends on ${endDateLabel}`
                       : 'Pro returns to Free at the end of your billing period'}
@@ -917,22 +933,22 @@ export const UpgradeModal: React.FC<Props> = ({
                     <TouchableOpacity
                       activeOpacity={0.92}
                       onPress={() => setDowngradeConfirmVisible(true)}
-                      style={[styles.inlineActionBtn, styles.inlineActionSecondary]}
+                      style={[styles.inlineActionBtn, styles.inlineActionSecondary, { backgroundColor: modalSoftSurface, borderColor: colors.border }]}
                       disabled={restoringPro}
                     >
-                      <Text style={styles.inlineActionSecondaryText}>View cancellation</Text>
+                      <Text style={[styles.inlineActionSecondaryText, { color: membershipText }]}>View cancellation</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
               ) : null}
 
               {successText ? (
-                <View style={styles.successBanner}>
-                  <Text style={styles.successBannerText}>{successText}</Text>
+                <View style={[styles.successBanner, { backgroundColor: isLight ? '#EAF7EE' : SUCCESS_BG, borderColor: isLight ? '#BBD7C4' : SUCCESS_BORDER }]}>
+                  <Text style={[styles.successBannerText, { color: membershipText }]}>{successText}</Text>
                 </View>
               ) : null}
 
-              {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
+              {errorText ? <Text style={[styles.errorText, { color: isLight ? '#9B2C2C' : '#FFB3B3' }]}>{errorText}</Text> : null}
 
               <View style={styles.tiersStack}>
                 <TouchableOpacity
@@ -941,19 +957,23 @@ export const UpgradeModal: React.FC<Props> = ({
                   style={[
                     styles.compactTier,
                     styles.freeCompact,
-                    selectedTier === 'free' && styles.tierCardSelected,
+                    { backgroundColor: modalMutedSurface, borderColor: colors.border },
+                    selectedTier === 'free' && [
+                      styles.tierCardSelected,
+                      isLight && { borderColor: colors.borderStrong },
+                    ],
                     !isActuallyPro && styles.tierCardCurrentFree,
                   ]}
                 >
                   <View style={styles.compactTierLeft}>
-                    <Text style={styles.tierSmallLabel}>FREE</Text>
-                    <Text style={styles.compactTierName}>Free</Text>
-                    <Text style={styles.compactTierSub}>Browse, connect, collaborate</Text>
+                    <Text style={[styles.tierSmallLabel, { color: colors.primary }]}>FREE</Text>
+                    <Text style={[styles.compactTierName, { color: membershipText }]}>Free</Text>
+                    <Text style={[styles.compactTierSub, { color: membershipSubText }]}>Browse, connect, collaborate</Text>
                   </View>
 
                   <View style={styles.compactTierRight}>
-                    <Text style={styles.compactPrice}>FREE</Text>
-                    <Text style={styles.compactPriceSub}>forever</Text>
+                    <Text style={[styles.compactPrice, { color: membershipText }]}>FREE</Text>
+                    <Text style={[styles.compactPriceSub, { color: membershipMutedText }]}>forever</Text>
                   </View>
                 </TouchableOpacity>
 
@@ -966,44 +986,57 @@ export const UpgradeModal: React.FC<Props> = ({
                   }}
                   style={[
                     styles.proTier,
-                    selectedTier === 'pro' && styles.tierCardSelectedPro,
-                    isActuallyPro && styles.tierCardCurrentPro,
+                    { backgroundColor: proSurface, borderColor: colors.borderStrong },
+                    selectedTier === 'pro' && [
+                      styles.tierCardSelectedPro,
+                      isLight && {
+                        backgroundColor: '#F4E7CB',
+                        borderColor: '#C9A45C',
+                      },
+                    ],
+                    isActuallyPro && [
+                      styles.tierCardCurrentPro,
+                      isLight && {
+                        shadowColor: colors.shadow,
+                        shadowOpacity: 0.16,
+                      },
+                    ],
                   ]}
                 >
                   <View style={styles.proHeader}>
                     <View style={styles.compactTierLeft}>
-                      <Text style={styles.tierSmallLabelGold}>PRO</Text>
-                      <Text style={styles.proTitle}>Create, train, and make films</Text>
-                      <Text style={styles.compactTierSub}>Full filmmaking access</Text>
+                      <Text style={[styles.tierSmallLabelGold, { color: proAccentText }]}>PRO</Text>
+                      <Text style={[styles.proTitle, { color: membershipText }]}>Create, train, and make films</Text>
+                      <Text style={[styles.compactTierSub, { color: membershipSubText }]}>Full filmmaking access</Text>
                     </View>
 
-                    <View style={styles.priceBadge}>
-                      <Text style={styles.planKickerHero}>MONTHLY</Text>
+                    <View style={[styles.priceBadge, { backgroundColor: proBadgeSurface, borderColor: colors.borderStrong }]}>
+                      <Text style={[styles.planKickerHero, { color: proAccentText }]}>MONTHLY</Text>
                       <View style={styles.planPriceRow}>
-                        <Text style={styles.planCurrency}>£</Text>
-                        <Text style={styles.planPriceHero}>4.99</Text>
+                        <Text style={[styles.planCurrency, { color: membershipText }]}>£</Text>
+                        <Text style={[styles.planPriceHero, { color: membershipText }]}>4.99</Text>
                       </View>
-                      <Text style={styles.planSubHero}>Renews monthly</Text>
+                      <Text style={[styles.planSubHero, { color: membershipSubText }]}>Renews monthly</Text>
                     </View>
                   </View>
 
                   <View style={styles.featureGrid}>
-                    <Text style={styles.featureItem}>✓ Monthly Film Challenge uploads</Text>
-                    <Text style={styles.featureItem}>✓ Paid job applications</Text>
-                    <Text style={styles.featureItem}>✓ Full Filmmaking Bootcamp</Text>
-                    <Text style={styles.featureItem}>✓ Workshop tools and film resources</Text>
-                    <Text style={styles.featureItem}>✓ Focused lessons and exercises</Text>
-                    <Text style={styles.featureItem}>✓ Plan, develop, and make films</Text>
+                    <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Monthly Film Challenge uploads</Text>
+                    <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Paid job applications</Text>
+                    <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Full Filmmaking Bootcamp</Text>
+                    <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Workshop tools and film resources</Text>
+                    <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Focused lessons and exercises</Text>
+                    <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Plan, develop, and make films</Text>
                   </View>
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.subscriptionInfoBox}>
-                <Text style={styles.subscriptionInfoTitle}>{SUBSCRIPTION_TITLE}</Text>
-                <Text style={styles.subscriptionInfoText}>
+              <View style={[styles.subscriptionInfoBox, { backgroundColor: modalSoftSurface, borderColor: colors.border }]}>
+                <Text style={[styles.subscriptionInfoTitle, { color: membershipText }]}>{SUBSCRIPTION_TITLE}</Text>
+                <Text style={[styles.subscriptionInfoText, { color: membershipSubText }]}>
                   Auto-renewable monthly subscription. Price: {SUBSCRIPTION_PRICE_FALLBACK} per month.
                 </Text>
-                <Text style={styles.subscriptionInfoText}>
+                <Text style={[styles.subscriptionInfoText, { color: membershipSubText }]}>
                   {Platform.OS === 'ios'
                     ? 'If you subscribe on iOS, payment will be charged to your Apple ID account at confirmation of purchase. The subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel your subscription in your App Store account settings.'
                     : Platform.OS === 'android'
@@ -1012,11 +1045,11 @@ export const UpgradeModal: React.FC<Props> = ({
                 </Text>
                 <View style={styles.legalLinksRow}>
                   <TouchableOpacity onPress={() => openLegalUrl(TERMS_OF_USE_URL)}>
-                    <Text style={styles.legalLinkText}>Terms of Use</Text>
+                    <Text style={[styles.legalLinkText, { color: colors.primary }]}>Terms of Use</Text>
                   </TouchableOpacity>
-                  <Text style={styles.legalDivider}>•</Text>
+                  <Text style={[styles.legalDivider, { color: membershipMutedText }]}>•</Text>
                   <TouchableOpacity onPress={() => openLegalUrl(PRIVACY_POLICY_URL)}>
-                    <Text style={styles.legalLinkText}>Privacy Policy</Text>
+                    <Text style={[styles.legalLinkText, { color: colors.primary }]}>Privacy Policy</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1073,6 +1106,7 @@ export const UpgradeModal: React.FC<Props> = ({
               pointerEvents="box-none"
               style={[
                 styles.confirmOverlay,
+                { backgroundColor: colors.overlay },
                 {
                   paddingTop: verticalPadTop,
                   paddingBottom: verticalPadBottom,
@@ -1092,6 +1126,7 @@ export const UpgradeModal: React.FC<Props> = ({
                 style={[
                   styles.confirmCard,
                   { maxHeight: Math.min(height - verticalPadTop - verticalPadBottom, 620) },
+                  { backgroundColor: modalSurface, borderColor: colors.border, shadowColor: colors.shadow },
                   isMobile && styles.confirmCardMobile,
                 ]}
               >
@@ -1101,7 +1136,7 @@ export const UpgradeModal: React.FC<Props> = ({
                   showsVerticalScrollIndicator={false}
                   bounces={false}
                 >
-                  <Text style={styles.confirmTitle}>
+                  <Text style={[styles.confirmTitle, { color: membershipText }]}>
                     {isGrandfathered
                       ? 'Pro access'
                       : cancelAtPeriodEnd
@@ -1109,14 +1144,14 @@ export const UpgradeModal: React.FC<Props> = ({
                       : 'Cancel renewal?'}
                   </Text>
 
-                  <Text style={styles.confirmSub}>{confirmIntroText}</Text>
+                  <Text style={[styles.confirmSub, { color: membershipSubText }]}>{confirmIntroText}</Text>
 
                   {!isGrandfathered && cancelAtPeriodEnd ? (
-                    <View style={styles.confirmStatusCard}>
-                      <Text style={styles.confirmStatusLabel}>
+                    <View style={[styles.confirmStatusCard, { backgroundColor: modalSoftSurface, borderColor: colors.border }]}>
+                      <Text style={[styles.confirmStatusLabel, { color: colors.primary }]}>
                         {cancelCountdown.short || 'Scheduled'}
                       </Text>
-                      <Text style={styles.confirmStatusBody}>
+                      <Text style={[styles.confirmStatusBody, { color: membershipSubText }]}>
                         {endDateLabel
                           ? `You’ll stay on Pro until ${endDateLabel}. After that, Pro features end and your account returns to Free.`
                           : 'You’ll stay on Pro until the end of your current billing period. After that, Pro features end and your account returns to Free.'}
@@ -1126,9 +1161,9 @@ export const UpgradeModal: React.FC<Props> = ({
 
                   {!isGrandfathered ? (
                     <View style={styles.confirmList}>
-                      <Text style={styles.confirmItem}>After Pro ends, you’ll lose access to:</Text>
+                      <Text style={[styles.confirmItem, { color: membershipSubText }]}>After Pro ends, you’ll lose access to:</Text>
                       {downgradeLossBullets.map((t, idx) => (
-                        <Text key={`${idx}-${t}`} style={styles.confirmItem}>
+                        <Text key={`${idx}-${t}`} style={[styles.confirmItem, { color: membershipSubText }]}>
                           • {t}
                         </Text>
                       ))}
@@ -1136,7 +1171,7 @@ export const UpgradeModal: React.FC<Props> = ({
                   ) : null}
 
                   {downgradeConfirmError ? (
-                    <Text style={styles.errorText}>{downgradeConfirmError}</Text>
+                    <Text style={[styles.errorText, { color: isLight ? '#9B2C2C' : '#FFB3B3' }]}>{downgradeConfirmError}</Text>
                   ) : null}
 
                   <View style={[styles.confirmButtonsRow, isMobile && styles.confirmButtonsRowMobile]}>
@@ -1152,6 +1187,7 @@ export const UpgradeModal: React.FC<Props> = ({
                       style={({ pressed }) => [
                         styles.confirmBtn,
                         styles.confirmBtnGhost,
+                        { backgroundColor: modalSoftSurface, borderColor: colors.border },
                         pressed && !downgrading && !restoringPro ? { opacity: 0.9 } : null,
                         downgrading || restoringPro ? { opacity: 0.5 } : null,
                       ]}
@@ -1160,7 +1196,7 @@ export const UpgradeModal: React.FC<Props> = ({
                         {restoringPro && cancelAtPeriodEnd ? (
                           <ActivityIndicator size="small" color={TEXT_IVORY} />
                         ) : null}
-                        <Text style={styles.confirmBtnGhostText}>
+                        <Text style={[styles.confirmBtnGhostText, { color: membershipText }]}>
                           {isGrandfathered ? 'Done' : cancelAtPeriodEnd ? 'Cancel cancellation' : 'Keep Pro'}
                         </Text>
                       </View>
@@ -1200,7 +1236,7 @@ export const UpgradeModal: React.FC<Props> = ({
                     </Pressable>
                   </View>
 
-                  <Text style={styles.confirmFoot}>
+                  <Text style={[styles.confirmFoot, { color: membershipMutedText }]}>
                     {isGrandfathered
                       ? 'Your Pro access remains active.'
                       : cancelAtPeriodEnd
@@ -1576,7 +1612,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 1,
     textTransform: 'uppercase',
-    color: GREEN,
+    color: GOLD,
     marginBottom: 3,
     fontFamily: SYSTEM_SANS,
   },
@@ -1639,7 +1675,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 9,
     paddingHorizontal: 9,
-    backgroundColor: GREEN_DARK,
+    backgroundColor: '#211C13',
     borderWidth: 1,
     borderColor: OFFER_TILE_BORDER,
     justifyContent: 'center',
@@ -1716,8 +1752,8 @@ const styles = StyleSheet.create({
   },
 
   tierCardSelectedPro: {
-    borderColor: 'rgba(46,212,122,0.42)',
-    backgroundColor: '#111512',
+    borderColor: 'rgba(198,166,100,0.42)',
+    backgroundColor: '#1A1710',
   },
 
   tierCardCurrentFree: {
@@ -1725,7 +1761,7 @@ const styles = StyleSheet.create({
   },
 
   tierCardCurrentPro: {
-    borderColor: 'rgba(46,212,122,0.46)',
+    borderColor: 'rgba(198,166,100,0.46)',
     shadowColor: '#000',
     shadowOpacity: 0.24,
     shadowRadius: 12,
@@ -1785,7 +1821,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 1,
     textTransform: 'uppercase',
-    color: 'rgba(46,212,122,0.95)',
+    color: GOLD,
     fontFamily: SYSTEM_SANS,
   },
 

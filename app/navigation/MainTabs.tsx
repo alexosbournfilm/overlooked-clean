@@ -15,6 +15,7 @@ import {
   Modal,
   ScrollView,
   Image,
+  TextInput,
   ActivityIndicator,
   InteractionManager,
   AppState,
@@ -34,6 +35,7 @@ import WorkshopSubmitScreen from '../screens/WorkshopSubmitScreen';
 import { useAuth } from '../context/AuthProvider';
 import { subscribeChatBadgeRefresh } from '../lib/chatBadgeEvents';
 import { useAppRefresh } from '../context/AppRefreshContext';
+import { useAppTheme } from '../context/ThemeContext';
 
 import { SettingsModalProvider } from '../context/SettingsModalContext';
 import SettingsButton from '../../components/SettingsButton';
@@ -99,8 +101,10 @@ function withTimeout<T = any>(promise: PromiseLike<T>, ms = 9000): Promise<any> 
 
 function withLuxuryScreen<P extends object>(ScreenComponent: React.ComponentType<P>) {
   const Wrapped = memo(function LuxuryScreenWrapper(props: P) {
+    const { colors } = useAppTheme();
+
     return (
-      <View style={styles.luxuryScreenFrame}>
+      <View style={[styles.luxuryScreenFrame, { backgroundColor: colors.background }]}>
         <ScreenComponent {...props} />
       </View>
     );
@@ -249,12 +253,15 @@ const HoverPress = memo(function HoverPress({
 /* --------------------------- Top Bar elements -------------------------- */
 
 function BrandWordmark({ compact }: { compact?: boolean }) {
+  const { colors } = useAppTheme();
+
   return (
     <View style={styles.brandWrap}>
       <Text
   style={[
     styles.brandTitle,
     compact && (Platform.OS === 'web' ? styles.brandTitleCompactWeb : styles.brandTitleCompact),
+    { color: colors.textPrimary },
   ]}
 >
   OVERLOOKED
@@ -262,6 +269,208 @@ function BrandWordmark({ compact }: { compact?: boolean }) {
     </View>
   );
 }
+
+type GlobalFilmSearchResult = {
+  id: string;
+  title?: string | null;
+  thumbnail_url?: string | null;
+  film_category?: string | null;
+  users?: { full_name?: string | null; avatar_url?: string | null } | null;
+};
+
+const GlobalFilmSearch = memo(function GlobalFilmSearch({
+  compact,
+  onSelectFilm,
+}: {
+  compact?: boolean;
+  onSelectFilm: (filmId: string) => void;
+}) {
+  const { colors, isLight } = useAppTheme();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<GlobalFilmSearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const requestSeqRef = useRef(0);
+  const trimmed = query.trim();
+  const showResults = focused && (trimmed.length > 0 || loading);
+
+  useEffect(() => {
+    const q = query.trim();
+    const seq = ++requestSeqRef.current;
+
+    if (!q) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('submissions')
+          .select(
+            'id,title,thumbnail_url,film_category,submitted_at,users:user_id(full_name,avatar_url)'
+          )
+          .eq('category', 'film')
+          .eq('is_removed', false)
+          .ilike('title', `%${q}%`)
+          .order('submitted_at', { ascending: false })
+          .limit(7);
+
+        if (seq !== requestSeqRef.current) return;
+
+        if (error) {
+          console.log('Global film search unavailable:', error.message);
+          setResults([]);
+        } else {
+          setResults(((data || []) as any[]).map((row) => ({
+            ...row,
+            users: Array.isArray(row.users) ? row.users[0] ?? null : row.users ?? null,
+          })));
+        }
+      } catch (e: any) {
+        if (seq !== requestSeqRef.current) return;
+        console.log('Global film search error:', e?.message || e);
+        setResults([]);
+      } finally {
+        if (seq === requestSeqRef.current) setLoading(false);
+      }
+    }, 220);
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const selectFilm = useCallback(
+    (filmId: string) => {
+      setFocused(false);
+      setQuery('');
+      setResults([]);
+      onSelectFilm(filmId);
+    },
+    [onSelectFilm]
+  );
+
+  const inputBg = isLight ? colors.card : '#0B0B0B';
+  const inputBorder = isLight ? colors.border : 'rgba(255,255,255,0.12)';
+  const dropdownBg = isLight ? colors.card : '#0D0D0F';
+  const muted = isLight ? colors.textSecondary : 'rgba(244,239,230,0.62)';
+
+  return (
+    <View
+      style={[
+        styles.globalSearchWrap,
+        compact && styles.globalSearchWrapCompact,
+        { zIndex: 100000, elevation: 100000 },
+      ]}
+    >
+      <View
+        style={[
+          styles.globalSearchBox,
+          compact && styles.globalSearchBoxCompact,
+          {
+            backgroundColor: inputBg,
+            borderColor: focused ? colors.primary : inputBorder,
+          },
+        ]}
+      >
+        <Ionicons
+          name="search-outline"
+          size={compact ? 13 : 15}
+          color={focused ? colors.primary : colors.textMuted}
+        />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          onFocus={() => setFocused(true)}
+          onSubmitEditing={() => {
+            const first = results[0];
+            if (first?.id) selectFilm(first.id);
+          }}
+          returnKeyType="search"
+          placeholder="Search film..."
+          placeholderTextColor={colors.textMuted}
+          selectionColor={colors.primary}
+          cursorColor={colors.primary}
+          style={[
+            styles.globalSearchInput,
+            compact && styles.globalSearchInputCompact,
+            { color: colors.textPrimary },
+          ]}
+        />
+        {loading ? (
+          <ActivityIndicator size="small" color={colors.primary} />
+        ) : trimmed ? (
+          <Pressable
+            onPress={() => {
+              setQuery('');
+              setResults([]);
+            }}
+            hitSlop={8}
+          >
+            <Ionicons name="close-circle" size={compact ? 14 : 16} color={colors.textMuted} />
+          </Pressable>
+        ) : null}
+      </View>
+
+      {showResults ? (
+        <View
+          style={[
+            styles.globalSearchDropdown,
+            compact && styles.globalSearchDropdownCompact,
+            {
+              backgroundColor: dropdownBg,
+              borderColor: inputBorder,
+              shadowColor: colors.shadow,
+            },
+          ]}
+        >
+          {loading && results.length === 0 ? (
+            <Text style={[styles.globalSearchEmpty, { color: muted }]}>Searching...</Text>
+          ) : results.length > 0 ? (
+            results.map((item) => (
+              <Pressable
+                key={item.id}
+                onPress={() => selectFilm(item.id)}
+                style={({ pressed }) => [
+                  styles.globalSearchResult,
+                  pressed && { backgroundColor: isLight ? colors.backgroundAlt : '#16161A' },
+                ]}
+              >
+                <View style={styles.globalSearchThumb}>
+                  {item.thumbnail_url ? (
+                    <Image
+                      source={{ uri: item.thumbnail_url }}
+                      style={StyleSheet.absoluteFillObject}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <Ionicons name="film-outline" size={18} color={colors.textMuted} />
+                  )}
+                </View>
+                <View style={styles.globalSearchResultText}>
+                  <Text
+                    style={[styles.globalSearchResultTitle, { color: colors.textPrimary }]}
+                    numberOfLines={1}
+                  >
+                    {item.title || 'Untitled film'}
+                  </Text>
+                  <Text style={[styles.globalSearchResultMeta, { color: muted }]} numberOfLines={1}>
+                    {item.users?.full_name || 'Unknown creator'}
+                    {item.film_category ? ` · ${item.film_category}` : ''}
+                  </Text>
+                </View>
+              </Pressable>
+            ))
+          ) : (
+            <Text style={[styles.globalSearchEmpty, { color: muted }]}>No films found</Text>
+          )}
+        </View>
+      ) : null}
+    </View>
+  );
+});
 
 /* ---------------------- STREAK Progress Bar --------------------- */
 
@@ -277,6 +486,7 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
   barHeight,
 }: TopBarStreakProgressProps) {
   const isWide = variant === 'wide';
+  const { colors, isLight } = useAppTheme();
 
   const { streak, loading } = useMonthlyStreak();
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -366,10 +576,19 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
           styles.streakBarOuter,
           isWide && styles.streakBarOuterWide,
           compactUI && styles.streakBarOuterCompactUI,
-          { height: resolvedHeight },
+          {
+            height: resolvedHeight,
+            backgroundColor: isLight ? colors.backgroundAlt : '#1F1F1F',
+            borderColor: isLight ? colors.border : '#333333',
+          },
         ]}
       >
-        <Animated.View style={[styles.streakBarFill, { width: widthInterpolated }]} />
+        <Animated.View
+          style={[
+            styles.streakBarFill,
+            { width: widthInterpolated, backgroundColor: colors.primary },
+          ]}
+        />
         <View pointerEvents="none" style={styles.streakGlass} />
 
         {Platform.OS === 'web' && (
@@ -398,6 +617,7 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
                   styles.streakBarLeft,
                   compactUI && { fontSize: 6.8, letterSpacing: 0.7 },
                   compactText && { fontSize: 7.5, letterSpacing: 0.8 },
+                  { color: colors.textPrimary },
                 ]}
               >
                 CONSISTENCY
@@ -409,6 +629,7 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
                 styles.streakBarRight,
                 compactUI && { fontSize: 7.5 },
                 compactText && { fontSize: 7.5 },
+                { color: colors.textMuted },
               ]}
             >
               Year {yearLabel}
@@ -428,6 +649,7 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
                 styles.streakBarCenter,
                 compactUI && { fontSize: 7.5 },
                 compactText && { fontSize: 7.5 },
+                { color: colors.textPrimary },
               ]}
               numberOfLines={1}
             >
@@ -467,6 +689,7 @@ type LeaderboardModalProps = {
 const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: LeaderboardModalProps) {
   const navigation = useNavigation<any>();
   const { width, height } = useWindowDimensions();
+  const { colors, isLight } = useAppTheme();
 
   const isPhone = width < 420;
   const maxCardWidth = isPhone ? Math.min(width - 24, 520) : 520;
@@ -650,6 +873,8 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
 
   const renderRow = (item: LeaderboardEntry) => {
     const isTop3 = item.rank <= 3;
+    const rowBackground = isTop3 ? (isLight ? '#F6ECD8' : '#141414') : colors.card;
+    const rowBorder = isTop3 ? colors.primary : colors.border;
 
     let primaryValue = 0;
     let label = '';
@@ -678,42 +903,65 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
     return (
       <Pressable
         key={`${item.user_id}-${item.rank}-${activeTab}`}
-        style={[styles.lbRow, isTop3 && styles.lbRowTop]}
+        style={[
+          styles.lbRow,
+          isTop3 && styles.lbRowTop,
+          {
+            backgroundColor: rowBackground,
+            borderColor: rowBorder,
+          },
+        ]}
         onPress={() => handlePressEntry(item)}
       >
         <View style={styles.lbRankWrap}>
-          <Text style={[styles.lbRankText, isTop3 && styles.lbRankTextTop]}>{item.rank}</Text>
-          {isTop3 && <View style={styles.lbCrownDot} />}
+          <Text
+            style={[
+              styles.lbRankText,
+              { color: isTop3 ? colors.accent : colors.textMuted },
+              isTop3 && styles.lbRankTextTop,
+            ]}
+          >
+            {item.rank}
+          </Text>
+          {isTop3 && <View style={[styles.lbCrownDot, { backgroundColor: colors.primary }]} />}
         </View>
 
-        <View style={styles.lbAvatarWrap}>
+        <View style={[styles.lbAvatarWrap, { backgroundColor: colors.backgroundAlt }]}>
           {item.avatar_url ? (
             <Image source={{ uri: item.avatar_url }} style={styles.lbAvatar} />
           ) : (
-            <View style={styles.lbAvatarFallback}>
-              <Text style={styles.lbAvatarFallbackText}>{initials}</Text>
+            <View
+              style={[
+                styles.lbAvatarFallback,
+                {
+                  backgroundColor: colors.cardAlt,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Text style={[styles.lbAvatarFallbackText, { color: colors.accent }]}>{initials}</Text>
             </View>
           )}
         </View>
 
         <View style={styles.lbInfo}>
-          <Text style={styles.lbName} numberOfLines={1}>
+          <Text style={[styles.lbName, { color: colors.textPrimary }]} numberOfLines={1}>
             {item.full_name || 'Unknown Creator'}
           </Text>
-          <Text style={styles.lbSub} numberOfLines={1}>
+          <Text style={[styles.lbSub, { color: colors.textMuted }]} numberOfLines={1}>
             Lv {item.level || 1} · {item.level_title || 'Background Pixel'}
           </Text>
 
           {activeTab === 'city' && userCityName && (
-            <Text style={styles.lbSubCity} numberOfLines={1}>
+            <Text style={[styles.lbSubCity, { color: colors.textMuted }]} numberOfLines={1}>
               {userCityName}
             </Text>
           )}
         </View>
 
         <View style={styles.lbXpWrap}>
-          <Text style={styles.lbXpValue}>{primaryValue}</Text>
-          <Text style={styles.lbXpLabel}>{label}</Text>
+          <Text style={[styles.lbXpValue, { color: colors.accent }]}>{primaryValue}</Text>
+          <Text style={[styles.lbXpLabel, { color: colors.textMuted }]}>{label}</Text>
         </View>
       </Pressable>
     );
@@ -733,6 +981,7 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
           styles.lbOverlay,
           {
             opacity: modalProgress,
+            backgroundColor: isLight ? 'rgba(20,17,13,0.24)' : 'rgba(0,0,0,0.9)',
           },
         ]}
       >
@@ -743,6 +992,9 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
               width: '100%',
               maxWidth: maxCardWidth,
               height: maxCardHeight,
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              shadowColor: colors.shadow,
               alignSelf: 'center',
               transform: [
                 {
@@ -762,52 +1014,93 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
           ]}
         >
           <View style={styles.lbHeader}>
-            <Text style={styles.lbTitle}>Leaderboard</Text>
+            <Text style={[styles.lbTitle, { color: colors.textPrimary }]}>Leaderboard</Text>
             <Pressable onPress={onClose} hitSlop={10} style={styles.lbCloseBtn}>
-              <Ionicons name="close" size={18} color={TEXT_MUTED} />
+              <Ionicons name="close" size={18} color={colors.textMuted} />
             </Pressable>
           </View>
 
           <View style={styles.lbTabs}>
             <Pressable
               onPress={() => setActiveTab('monthly')}
-              style={[styles.lbTab, activeTab === 'monthly' && styles.lbTabActive]}
+              style={[
+                styles.lbTab,
+                {
+                  backgroundColor: activeTab === 'monthly' ? colors.primary : colors.backgroundAlt,
+                  borderColor: activeTab === 'monthly' ? colors.primary : colors.border,
+                },
+              ]}
             >
-              <Text style={[styles.lbTabText, activeTab === 'monthly' && styles.lbTabTextActive]}>This Month</Text>
+              <Text
+                style={[
+                  styles.lbTabText,
+                  { color: activeTab === 'monthly' ? colors.textOnPrimary : colors.textMuted },
+                ]}
+              >
+                This Month
+              </Text>
             </Pressable>
 
             <Pressable
               onPress={() => setActiveTab('allTime')}
-              style={[styles.lbTab, activeTab === 'allTime' && styles.lbTabActive]}
+              style={[
+                styles.lbTab,
+                {
+                  backgroundColor: activeTab === 'allTime' ? colors.primary : colors.backgroundAlt,
+                  borderColor: activeTab === 'allTime' ? colors.primary : colors.border,
+                },
+              ]}
             >
-              <Text style={[styles.lbTabText, activeTab === 'allTime' && styles.lbTabTextActive]}>All Time</Text>
+              <Text
+                style={[
+                  styles.lbTabText,
+                  { color: activeTab === 'allTime' ? colors.textOnPrimary : colors.textMuted },
+                ]}
+              >
+                All Time
+              </Text>
             </Pressable>
 
             <Pressable
               onPress={() => setActiveTab('city')}
-              style={[styles.lbTab, activeTab === 'city' && styles.lbTabActive]}
+              style={[
+                styles.lbTab,
+                {
+                  backgroundColor: activeTab === 'city' ? colors.primary : colors.backgroundAlt,
+                  borderColor: activeTab === 'city' ? colors.primary : colors.border,
+                },
+              ]}
             >
-              <Text style={[styles.lbTabText, activeTab === 'city' && styles.lbTabTextActive]}>My City</Text>
+              <Text
+                style={[
+                  styles.lbTabText,
+                  { color: activeTab === 'city' ? colors.textOnPrimary : colors.textMuted },
+                ]}
+              >
+                My City
+              </Text>
             </Pressable>
           </View>
 
           <View style={styles.lbBody}>
             {loading && (
               <View style={styles.lbLoadingWrap}>
-                <ActivityIndicator size="small" color={GOLD} />
-                <Text style={styles.lbLoadingText}>Fetching who&apos;s actually doing the work...</Text>
+                <ActivityIndicator size="small" color={colors.loader} />
+                <Text style={[styles.lbLoadingText, { color: colors.textMuted }]}>
+                  Fetching who&apos;s actually doing the work...
+                </Text>
               </View>
             )}
 
             {!loading && error && (
               <View style={styles.lbEmptyWrap}>
-                <Text style={styles.lbEmptyText}>{error}</Text>
+                <Text style={[styles.lbEmptyText, { color: colors.textMuted }]}>{error}</Text>
               </View>
             )}
 
             {!loading && !error && entries.length === 0 && (
               <View style={styles.lbEmptyWrap}>
-                <Text style={styles.lbEmptyText}>
+                <Text style={[styles.lbEmptyText, { color: colors.textMuted }]}>
                   No data yet for this view. Make something. Post something. Vote on something.
                 </Text>
               </View>
@@ -1115,6 +1408,7 @@ type TopBarProps = {
   topInset: number;
   onOpenUpload: () => void;
   onOpenLeaderboard: () => void;
+  onSelectFilm: (filmId: string) => void;
 };
 
 const TopBar = memo(function TopBar({
@@ -1123,24 +1417,14 @@ const TopBar = memo(function TopBar({
   topInset,
   onOpenUpload,
   onOpenLeaderboard,
+  onSelectFilm,
 }: TopBarProps) {
   const { width } = useWindowDimensions();
+  const { colors, isLight } = useAppTheme();
   const isWide = width >= 980;
   const isPhone = width < 420;
   const compactUI = !isWide;
 
-  const controlHeight =
-  Platform.OS === 'web'
-    ? isWide
-      ? 26
-      : isPhone
-        ? 24
-        : 24
-    : isWide
-      ? 16
-      : isPhone
-        ? 14
-        : 15;
 const settingsSize =
   Platform.OS === 'web'
     ? isWide
@@ -1151,7 +1435,16 @@ const settingsSize =
       : 28;
 
   return (
-    <View style={[styles.topBarWrapper, { top: topOffset, paddingTop: topInset }]}>
+    <View
+      style={[
+        styles.topBarWrapper,
+        {
+          top: topOffset,
+          paddingTop: topInset,
+          backgroundColor: colors.background,
+        },
+      ]}
+    >
       <View
   style={[
     styles.topBarInner,
@@ -1159,6 +1452,7 @@ const settingsSize =
       minHeight: navHeight,
       paddingHorizontal: isPhone ? 8 : 14,
       paddingTop: Platform.OS === 'web' ? 4 : 0,
+      backgroundColor: colors.background,
     },
   ]}
 >
@@ -1177,35 +1471,34 @@ const settingsSize =
             </HoverPress>
           </View>
 
-          {isWide && (
-            <View style={styles.topBarCenter}>
-              <HoverPress
-                accessibilityLabel="Consistency"
-                style={{
-                  borderRadius: 999,
-                  width: '100%',
-                  maxWidth: 620,
-                  alignSelf: 'center',
-                }}
-              >
-                <TopBarStreakProgress variant="wide" compactUI={compactUI} barHeight={controlHeight} />
-              </HoverPress>
-            </View>
-          )}
+          <View style={styles.topBarSearchSlot}>
+            <GlobalFilmSearch compact={compactUI} onSelectFilm={onSelectFilm} />
+          </View>
 
           <View style={[styles.rightTools, { gap: isPhone ? 5 : 10 }]}>
             <HoverPress onPress={onOpenUpload} hitSlop={6} accessibilityLabel="Upload film">
               <View
   style={[
-  styles.topActionBtn,
-  styles.leaderboardBtn,
-  Platform.OS !== 'web' && isPhone && styles.topActionBtnPhone,
-  compactUI && styles.topActionBtnCompact,
+      styles.topActionBtn,
+      styles.leaderboardBtn,
+      Platform.OS !== 'web' && isPhone && styles.topActionBtnPhone,
+      compactUI && styles.topActionBtnCompact,
+      isLight && {
+        backgroundColor: 'rgba(201,164,92,0.16)',
+        borderColor: 'rgba(154,118,44,0.24)',
+      },
 ]}
 >
-                <Ionicons name="cloud-upload-outline" size={isPhone ? 16 : 18} color={GOLD} />
+                <Ionicons name="cloud-upload-outline" size={isPhone ? 16 : 18} color={colors.primary} />
                 {!(Platform.OS !== 'web' && isPhone) && (
-  <Text style={[styles.uploadBtnText, compactUI && styles.uploadBtnTextCompact]} numberOfLines={1}>
+  <Text
+    style={[
+      styles.uploadBtnText,
+      compactUI && styles.uploadBtnTextCompact,
+      { color: colors.primary },
+    ]}
+    numberOfLines={1}
+  >
     UPLOAD FILM
   </Text>
 )}
@@ -1219,12 +1512,20 @@ const settingsSize =
       styles.leaderboardBtn,
       Platform.OS !== 'web' && isPhone && styles.topActionBtnPhone,
       compactUI && styles.topActionBtnCompact,
+      isLight && {
+        backgroundColor: 'rgba(201,164,92,0.16)',
+        borderColor: 'rgba(154,118,44,0.24)',
+      },
     ]}
   >
-    <Ionicons name="trophy-outline" size={isPhone ? 16 : 18} color={GOLD} />
+    <Ionicons name="trophy-outline" size={isPhone ? 16 : 18} color={colors.primary} />
     {!(Platform.OS !== 'web' && isPhone) && (
       <Text
-        style={[styles.leaderboardBtnText, compactUI && styles.leaderboardBtnTextCompact]}
+        style={[
+          styles.leaderboardBtnText,
+          compactUI && styles.leaderboardBtnTextCompact,
+          { color: colors.primary },
+        ]}
         numberOfLines={1}
       >
         LEADERBOARD
@@ -1242,6 +1543,8 @@ const settingsSize =
         width: settingsSize,
         height: settingsSize,
         borderRadius: settingsSize / 2,
+        backgroundColor: isLight ? colors.card : '#151515',
+        borderColor: isLight ? colors.border : 'rgba(255,255,255,0.10)',
       },
     ]}
   >
@@ -1265,9 +1568,9 @@ const settingsSize =
       alignItems: 'center',
       justifyContent: 'center',
       alignSelf: 'center',
-      backgroundColor: '#151515',
+      backgroundColor: isLight ? colors.card : '#151515',
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.10)',
+      borderColor: isLight ? colors.border : 'rgba(255,255,255,0.10)',
       overflow: 'hidden',
       position: 'relative',
     }}
@@ -1284,7 +1587,7 @@ const settingsSize =
         justifyContent: 'center',
       }}
     >
-      <Ionicons name="settings-outline" size={isPhone ? 13 : 16} color={TEXT_IVORY} />
+      <Ionicons name="settings-outline" size={isPhone ? 13 : 16} color={colors.textPrimary} />
     </View>
 
     <View
@@ -1307,20 +1610,6 @@ const settingsSize =
         </View>
       </View>
     </View>
-    {!isWide && (
-        <View style={[styles.topBarInnerStreakRow, { paddingHorizontal: isPhone ? 10 : 14 }]}>
-          <HoverPress
-            accessibilityLabel="Consistency"
-            style={{
-              borderRadius: 999,
-              width: '100%',
-              alignSelf: 'stretch',
-            }}
-          >
-           <TopBarStreakProgress variant="wide" compactUI={compactUI} barHeight={controlHeight} />
-          </HoverPress>
-        </View>
-      )}
     </View>
   );
 });
@@ -1419,15 +1708,18 @@ const TabBarButton = memo(function TabBarButton(props: any) {
 type WebTopBarProps = {
   onOpenUpload: () => void;
   onOpenLeaderboard: () => void;
+  onSelectFilm: (filmId: string) => void;
   topInset?: number;
 };
 
 const WebTopBar = memo(function WebTopBar({
   onOpenUpload,
   onOpenLeaderboard,
+  onSelectFilm,
   topInset = 0,
 }: WebTopBarProps) {
   const { width } = useWindowDimensions();
+  const { colors, isLight } = useAppTheme();
 
   const isWide = width >= 980;
   const isPhone = width < 700;
@@ -1440,7 +1732,7 @@ const WebTopBar = memo(function WebTopBar({
   left: 0,
   right: 0,
   zIndex: 9999,
-  backgroundColor: DARK_BG,
+  backgroundColor: colors.background,
   paddingTop: topInset + 8,
 }}
     >
@@ -1463,7 +1755,7 @@ const WebTopBar = memo(function WebTopBar({
         >
           <Text
             style={{
-              color: TEXT_IVORY,
+              color: colors.textPrimary,
               fontSize: isPhone ? 11.5 : 18,
               fontWeight: '900',
               letterSpacing: isPhone ? 1.15 : 2.2,
@@ -1472,16 +1764,9 @@ const WebTopBar = memo(function WebTopBar({
             OVERLOOKED
           </Text>
 
-          {isWide && (
-            <View
-              style={{
-                flex: 1,
-                marginHorizontal: 18,
-              }}
-            >
-              <TopBarStreakProgress variant="wide" compactUI={false} barHeight={26} />
-            </View>
-          )}
+          <View style={styles.webTopBarSearchSlot}>
+            <GlobalFilmSearch compact={isPhone} onSelectFilm={onSelectFilm} />
+          </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: isPhone ? 5 : 10}}>
             <Pressable
@@ -1493,15 +1778,15 @@ const WebTopBar = memo(function WebTopBar({
                 paddingVertical: 4,
 paddingHorizontal: isPhone ? 7 : 12,
                 borderRadius: 999,
-                backgroundColor: 'rgba(198,166,100,0.10)',
+                backgroundColor: isLight ? 'rgba(201,164,92,0.16)' : 'rgba(198,166,100,0.10)',
                 borderWidth: 1,
-                borderColor: 'rgba(198,166,100,0.30)',
+                borderColor: isLight ? 'rgba(154,118,44,0.24)' : 'rgba(198,166,100,0.30)',
               }}
             >
-              <Ionicons name="cloud-upload-outline" size={isPhone ? 13 : 16}color={GOLD} />
+              <Ionicons name="cloud-upload-outline" size={isPhone ? 13 : 16}color={colors.primary} />
               <Text
                 style={{
-                  color: GOLD,
+                  color: colors.primary,
                   fontSize: isPhone ? 6.7 : 9,
                   fontWeight: '900',
                   letterSpacing: isPhone ? 0.75 : 1.05,
@@ -1521,15 +1806,15 @@ paddingHorizontal: isPhone ? 7 : 12,
 paddingHorizontal: isPhone ? 7 : 12,
 
                 borderRadius: 999,
-                backgroundColor: 'rgba(198,166,100,0.10)',
+                backgroundColor: isLight ? 'rgba(201,164,92,0.16)' : 'rgba(198,166,100,0.10)',
                 borderWidth: 1,
-                borderColor: 'rgba(198,166,100,0.30)',
+                borderColor: isLight ? 'rgba(154,118,44,0.24)' : 'rgba(198,166,100,0.30)',
               }}
             >
-              <Ionicons name="trophy-outline" size={isPhone ? 13 : 16}color={GOLD} />
+              <Ionicons name="trophy-outline" size={isPhone ? 13 : 16}color={colors.primary} />
               <Text
                 style={{
-                  color: GOLD,
+                  color: colors.primary,
                   fontSize: isPhone ? 6.7 : 9,
                   fontWeight: '900',
                   letterSpacing: isPhone ? 0.75 : 1.05,
@@ -1544,9 +1829,9 @@ paddingHorizontal: isPhone ? 7 : 12,
                 width: isPhone ? 26 : 30,
 height: isPhone ? 26 : 30,
 borderRadius: isPhone ? 13 : 15,
-                backgroundColor: '#151515',
+                backgroundColor: isLight ? colors.card : '#151515',
                 borderWidth: 1,
-                borderColor: 'rgba(255,255,255,0.10)',
+                borderColor: isLight ? colors.border : 'rgba(255,255,255,0.10)',
                 alignItems: 'center',
                 justifyContent: 'center',
                 overflow: 'hidden',
@@ -1566,11 +1851,6 @@ borderRadius: isPhone ? 13 : 15,
           </View>
         </View>
 
-        {!isWide && (
-          <View style={{ paddingTop: 5 }}>
-  <TopBarStreakProgress variant="wide" compactUI barHeight={18} />
-</View>
-        )}
       </View>
     </View>
   );
@@ -1580,6 +1860,7 @@ export default function MainTabs() {
   const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const { colors, isLight } = useAppTheme();
   const { userId } = useAuth();
   const { triggerAppRefresh } = useAppRefresh();
 
@@ -1612,6 +1893,17 @@ const unreadPollingRef = useRef<any>(null);
 const appStateRef = useRef(AppState.currentState);
 const resumeRefreshTimeoutRef = useRef<any>(null);
 const isGuest = !badgeUserId;
+
+const handleSelectGlobalFilm = useCallback(
+  (filmId: string) => {
+    activeRouteNameRef.current = 'Featured';
+    navigation.navigate('Featured', {
+      openSubmissionId: filmId,
+      openSearchNonce: Date.now(),
+    });
+  },
+  [navigation]
+);
 
 useEffect(() => {
   if (userId) {
@@ -1978,11 +2270,11 @@ const shouldHideTopBar = false;
         // @ts-ignore
         if (typeof document !== 'undefined') {
           // @ts-ignore
-          document.documentElement.style.backgroundColor = DARK_BG;
+          document.documentElement.style.backgroundColor = colors.background;
           // @ts-ignore
           document.documentElement.style.overflowX = 'hidden';
           // @ts-ignore
-          document.body.style.backgroundColor = DARK_BG;
+          document.body.style.backgroundColor = colors.background;
           // @ts-ignore
           document.body.style.overflowX = 'hidden';
           // @ts-ignore
@@ -1990,15 +2282,12 @@ const shouldHideTopBar = false;
         }
       } catch {}
     }
-  }, []);
+  }, [colors.background]);
 
   const isWide = width >= 980;
 
 const NAV_HEIGHT = isWide ? 40 : isPhone ? 44 : 42;
-const TOPBAR_EXTRA_ROW = isWide ? 0 : 26;
-
-const controlHeight = isWide ? 18 : isPhone ? 16 : 17;
-const settingsSize = isWide ? 28 : isPhone ? 28 : 26;
+const TOPBAR_EXTRA_ROW = 0;
 const topOffset = 0;
 
 const contentTopPadding =
@@ -2047,8 +2336,8 @@ const tabPanResponder = useMemo(
   const screenOptions = useCallback(
   ({ route }: any): any => ({
     headerShown: false,
-    tabBarActiveTintColor: GOLD,
-    tabBarInactiveTintColor: TEXT_MUTED,
+    tabBarActiveTintColor: colors.navActive,
+    tabBarInactiveTintColor: colors.navInactive,
     tabBarShowLabel: false,
 
     tabBarBadge:
@@ -2059,8 +2348,8 @@ const tabPanResponder = useMemo(
         : undefined,
 
     tabBarBadgeStyle: {
-      backgroundColor: GOLD,
-      color: '#000000',
+      backgroundColor: colors.primary,
+      color: colors.textOnPrimary,
       fontSize: 10,
       fontWeight: '900',
       fontFamily: SYSTEM_SANS,
@@ -2068,7 +2357,7 @@ const tabPanResponder = useMemo(
       height: 18,
       borderRadius: 9,
       borderWidth: 1,
-      borderColor: '#000000',
+      borderColor: colors.background,
     },
 
     lazy: false,
@@ -2076,17 +2365,17 @@ const tabPanResponder = useMemo(
     unmountOnBlur: false,
     freezeOnBlur: false,
     tabBarStyle: {
-      backgroundColor: 'rgba(5,5,5,0.98)',
-      borderTopWidth: 1,
-      borderTopColor: 'rgba(255,255,255,0.09)',
+      backgroundColor: colors.background,
+      borderTopWidth: 0,
+      borderTopColor: 'transparent',
       height: TABBAR_HEIGHT,
       paddingTop: isTiny ? 5 : 6,
       paddingBottom: Platform.OS === 'ios' ? (isPhone ? 10 : 12) : 8,
-      elevation: 18,
-      shadowColor: '#000',
-      shadowOpacity: 0.24,
-      shadowRadius: 18,
-      shadowOffset: { width: 0, height: -6 },
+      elevation: 0,
+      shadowColor: colors.shadow,
+      shadowOpacity: 0,
+      shadowRadius: 0,
+      shadowOffset: { width: 0, height: 0 },
     },
     tabBarItemStyle: {
       alignItems: 'center',
@@ -2157,7 +2446,7 @@ const tabPanResponder = useMemo(
       );
     },
   }),
-  [TABBAR_HEIGHT, isPhone, isTiny, chatUnreadCount, loadChatUnreadCount, markActiveTab]
+  [TABBAR_HEIGHT, isLight, isPhone, isTiny, chatUnreadCount, colors, loadChatUnreadCount, markActiveTab]
 );
 
   return (
@@ -2165,7 +2454,7 @@ const tabPanResponder = useMemo(
     <View
       style={{
         flex: 1,
-        backgroundColor: DARK_BG,
+        backgroundColor: colors.background,
         overflow: 'hidden',
         position: 'relative',
       }}
@@ -2173,12 +2462,12 @@ const tabPanResponder = useMemo(
       <SafeAreaView
         style={[
           styles.safeArea,
-          { paddingTop: contentTopPadding },
+          { paddingTop: contentTopPadding, backgroundColor: colors.background },
         ]}
         edges={['left', 'right', 'bottom']}
       >
         <View
-          style={styles.tabGestureSurface}
+          style={[styles.tabGestureSurface, { backgroundColor: colors.background }]}
           {...(Platform.OS === 'web' ? {} : tabPanResponder.panHandlers)}
         >
           <Tab.Navigator
@@ -2229,6 +2518,7 @@ const tabPanResponder = useMemo(
         <WebTopBar
           onOpenUpload={handleOpenUpload}
           onOpenLeaderboard={() => setShowLeaderboard(true)}
+          onSelectFilm={handleSelectGlobalFilm}
         />
       ) : (
         <Animated.View
@@ -2251,6 +2541,7 @@ const tabPanResponder = useMemo(
             onOpenLeaderboard={() => {
               setShowLeaderboard(true);
             }}
+            onSelectFilm={handleSelectGlobalFilm}
           />
         </Animated.View>
       )}
@@ -2343,6 +2634,128 @@ chatBadgeText: {
     flexShrink: 0,
     paddingRight: 8,
     justifyContent: 'center',
+  },
+
+  topBarSearchSlot: {
+    flex: 1,
+    minWidth: 110,
+    maxWidth: 420,
+    paddingHorizontal: 8,
+    zIndex: 100000,
+    elevation: 100000,
+  },
+
+  webTopBarSearchSlot: {
+    flex: 1,
+    minWidth: 140,
+    maxWidth: 430,
+    marginHorizontal: 12,
+    zIndex: 100000,
+    elevation: 100000,
+  },
+
+  globalSearchWrap: {
+    width: '100%',
+    position: 'relative',
+  },
+
+  globalSearchWrapCompact: {
+    minWidth: 0,
+  },
+
+  globalSearchBox: {
+    height: 34,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+
+  globalSearchBoxCompact: {
+    height: 30,
+    paddingHorizontal: 9,
+    gap: 5,
+  },
+
+  globalSearchInput: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 12,
+    fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
+    paddingVertical: 0,
+    outlineStyle: 'none' as any,
+  },
+
+  globalSearchInputCompact: {
+    fontSize: 10.5,
+  },
+
+  globalSearchDropdown: {
+    position: 'absolute',
+    top: 39,
+    left: 0,
+    right: 0,
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 100001,
+    zIndex: 100001,
+  },
+
+  globalSearchDropdownCompact: {
+    top: 35,
+    borderRadius: 12,
+  },
+
+  globalSearchResult: {
+    minHeight: 56,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+
+  globalSearchThumb: {
+    width: 54,
+    height: 34,
+    borderRadius: 7,
+    overflow: 'hidden',
+    backgroundColor: '#050505',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  globalSearchResultText: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  globalSearchResultTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  globalSearchResultMeta: {
+    marginTop: 2,
+    fontSize: 10,
+    fontWeight: '700',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  globalSearchEmpty: {
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    fontSize: 11,
+    fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
   },
 
   topBarCenter: {

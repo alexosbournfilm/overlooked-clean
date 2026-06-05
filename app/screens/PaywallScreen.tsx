@@ -34,6 +34,7 @@ import {
   SUBSCRIPTION_TITLE,
   TERMS_OF_USE_URL,
 } from '../lib/legal';
+import { useAppTheme } from '../context/ThemeContext';
 
 /* -------------------------- Stripe Price IDs -------------------------- */
 const STRIPE_PRICE_MONTHLY = 'price_1S1jLxIaba42c4jIsVBQneb0';
@@ -176,8 +177,8 @@ const TEXT_MUTED_2 = 'rgba(255,255,255,0.46)';
 const HAIRLINE = 'rgba(255,255,255,0.10)';
 const GOLD = '#C6A664';
 
-const OFFER_TILE_BG = 'rgba(46,212,122,0.12)';
-const OFFER_TILE_BORDER = 'rgba(46,212,122,0.22)';
+const OFFER_TILE_BG = 'rgba(198,166,100,0.14)';
+const OFFER_TILE_BORDER = 'rgba(198,166,100,0.28)';
 
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
@@ -187,6 +188,7 @@ const SYSTEM_SANS = Platform.select({
 });
 
 export default function PaywallScreen() {
+  const { colors } = useAppTheme();
   const nav = useNavigation<any>();
   const isFocused = useIsFocused();
   const { width, height } = useWindowDimensions();
@@ -194,6 +196,22 @@ export default function PaywallScreen() {
 
   const isMobile = width < 520;
   const isTiny = width < 360;
+  const DARK_ELEVATED = colors.card;
+  const TEXT_IVORY = colors.textPrimary;
+  const TEXT_MUTED = colors.textSecondary;
+  const TEXT_MUTED_2 = colors.textMuted;
+  const HAIRLINE = colors.border;
+  const GOLD = colors.primary;
+  const shellStyle = {
+    backgroundColor: colors.background,
+  };
+  const cardStyle = {
+    backgroundColor: DARK_ELEVATED,
+    borderColor: HAIRLINE,
+    shadowColor: colors.shadow,
+  };
+  const primaryTextStyle = { color: TEXT_IVORY };
+  const mutedTextStyle = { color: TEXT_MUTED };
 
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -749,6 +767,7 @@ export default function PaywallScreen() {
       <View
         style={[
           styles.container,
+          shellStyle,
           {
             paddingTop: topPad,
             paddingBottom: bottomPad,
@@ -760,12 +779,13 @@ export default function PaywallScreen() {
           style={[
             styles.card,
             styles.cardLoading,
+            cardStyle,
             { maxHeight: cardMaxHeight },
             isMobile && styles.cardMobile,
           ]}
         >
           <ActivityIndicator color={GOLD} />
-          <Text style={styles.loadingText}>Loading…</Text>
+          <Text style={[styles.loadingText, mutedTextStyle]}>Loading…</Text>
         </View>
       </View>
     );
@@ -778,6 +798,7 @@ export default function PaywallScreen() {
       <View
         style={[
           styles.container,
+          shellStyle,
           {
             paddingTop: topPad,
             paddingBottom: bottomPad,
@@ -788,6 +809,7 @@ export default function PaywallScreen() {
         <View
           style={[
             styles.card,
+            cardStyle,
             { maxHeight: cardMaxHeight },
             isMobile && styles.cardMobile,
           ]}
@@ -798,10 +820,10 @@ export default function PaywallScreen() {
             showsVerticalScrollIndicator={false}
             bounces={false}
           >
-            <Text style={styles.kicker}>PRO</Text>
-            <Text style={styles.title}>You already have Pro</Text>
+            <Text style={[styles.kicker, { color: GOLD }]}>PRO</Text>
+            <Text style={[styles.title, primaryTextStyle]}>You already have Pro</Text>
 
-            <Text style={styles.subtitle}>
+            <Text style={[styles.subtitle, mutedTextStyle]}>
               {cancelAtPeriodEnd && endLabel
                 ? `Your subscription is set to cancel. You’ll keep Pro until ${endLabel}.`
                 : 'You’re currently on Pro. No need to upgrade again.'}
@@ -812,7 +834,7 @@ export default function PaywallScreen() {
               style={[styles.buttonBase, styles.proButton]}
               activeOpacity={0.9}
             >
-              <Text style={styles.buttonText}>Go to app</Text>
+              <Text style={[styles.buttonText, { color: colors.textOnPrimary }]}>Go to app</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -820,7 +842,7 @@ export default function PaywallScreen() {
               onPress={handleBack}
               activeOpacity={0.85}
             >
-              <Text style={styles.backText}>Back</Text>
+              <Text style={[styles.backText, { color: GOLD }]}>Back</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -832,6 +854,7 @@ export default function PaywallScreen() {
     <View
       style={[
         styles.container,
+        shellStyle,
         {
           paddingTop: topPad,
           paddingBottom: bottomPad,
@@ -842,6 +865,7 @@ export default function PaywallScreen() {
       <View
         style={[
           styles.card,
+          cardStyle,
           { maxHeight: cardMaxHeight },
           isMobile && styles.cardMobile,
         ]}
@@ -852,9 +876,9 @@ export default function PaywallScreen() {
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          <Text style={styles.kicker}>UPGRADE</Text>
-          <Text style={styles.title}>Unlock your full filmmaking access</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.kicker, { color: GOLD }]}>UPGRADE</Text>
+          <Text style={[styles.title, primaryTextStyle]}>Unlock your full filmmaking access</Text>
+          <Text style={[styles.subtitle, mutedTextStyle]}>
             Upload your films, apply for paid jobs, and unlock the full Filmmaking Bootcamp — a premium space to train across every major film discipline through high-level lessons, practical exercises, and powerful Workshop tools built to help you actually make films.
           </Text>
 
@@ -873,23 +897,24 @@ export default function PaywallScreen() {
                   styles.planTile,
                   styles.planTileHero,
                   styles.tileSelected,
+                  { backgroundColor: colors.cardAlt, borderColor: colors.borderStrong },
                   isTiny ? styles.planTileTinyStack : null,
                 ]}
               >
-                <Text style={[styles.planKicker, styles.planKickerHero]}>
+                <Text style={[styles.planKicker, styles.planKickerHero, { color: colors.accent }]}>
                   MONTHLY
                 </Text>
 
                 <View style={styles.planPriceRow}>
-                  <Text style={styles.planCurrency}>£</Text>
-                  <Text style={styles.planPriceHero}>
+                  <Text style={[styles.planCurrency, { color: TEXT_IVORY }]}>£</Text>
+                  <Text style={[styles.planPriceHero, { color: TEXT_IVORY }]}>
                     {(Platform.OS === 'android' || Platform.OS === 'ios') && rcPriceLabel
                       ? rcPriceLabel.replace(/[^\d.,]/g, '')
                       : '4.99'}
                   </Text>
                 </View>
 
-                <Text style={styles.planSubHero}>
+                <Text style={[styles.planSubHero, { color: TEXT_MUTED }]}>
                   {Platform.OS === 'android'
                     ? 'Google Play subscription'
                     : Platform.OS === 'ios'
@@ -908,8 +933,8 @@ export default function PaywallScreen() {
           >
             {submitting ? (
               <View style={styles.buttonRow}>
-                <ActivityIndicator color="#0B0B0B" />
-                <Text style={styles.buttonText}>
+                <ActivityIndicator color={colors.textOnPrimary} />
+                <Text style={[styles.buttonText, { color: colors.textOnPrimary }]}>
                   {Platform.OS === 'android'
                     ? 'Opening Google Play…'
                     : Platform.OS === 'ios'
@@ -918,20 +943,20 @@ export default function PaywallScreen() {
                 </Text>
               </View>
             ) : (
-              <Text style={styles.buttonText}>{planLabel}</Text>
+              <Text style={[styles.buttonText, { color: colors.textOnPrimary }]}>{planLabel}</Text>
             )}
           </TouchableOpacity>
 
-          <Text style={styles.selectedText}>{selectedSubLabel}</Text>
+          <Text style={[styles.selectedText, { color: TEXT_MUTED }]}>{selectedSubLabel}</Text>
 
-          <View style={styles.subscriptionInfoBox}>
-            <Text style={styles.subscriptionInfoTitle}>{SUBSCRIPTION_TITLE}</Text>
+          <View style={[styles.subscriptionInfoBox, { backgroundColor: colors.mutedCard, borderColor: HAIRLINE }]}>
+            <Text style={[styles.subscriptionInfoTitle, primaryTextStyle]}>{SUBSCRIPTION_TITLE}</Text>
 
-            <Text style={styles.subscriptionInfoText}>
+            <Text style={[styles.subscriptionInfoText, mutedTextStyle]}>
               Auto-renewable monthly subscription. Price: {rcPriceLabel ?? SUBSCRIPTION_PRICE_FALLBACK} per month.
             </Text>
 
-            <Text style={styles.subscriptionInfoText}>
+            <Text style={[styles.subscriptionInfoText, mutedTextStyle]}>
               {Platform.OS === 'ios'
                 ? 'If you subscribe on iOS, payment will be charged to your Apple ID account at confirmation of purchase. The subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel your subscription in your App Store account settings.'
                 : Platform.OS === 'android'
@@ -941,26 +966,26 @@ export default function PaywallScreen() {
 
             <View style={styles.legalLinksRow}>
               <TouchableOpacity onPress={() => openLegalUrl(TERMS_OF_USE_URL)}>
-                <Text style={styles.legalLinkText}>Terms of Use</Text>
+                <Text style={[styles.legalLinkText, { color: GOLD }]}>Terms of Use</Text>
               </TouchableOpacity>
 
-              <Text style={styles.legalDivider}>•</Text>
+              <Text style={[styles.legalDivider, { color: TEXT_MUTED_2 }]}>•</Text>
 
               <TouchableOpacity onPress={() => openLegalUrl(PRIVACY_POLICY_URL)}>
-                <Text style={styles.legalLinkText}>Privacy Policy</Text>
+                <Text style={[styles.legalLinkText, { color: GOLD }]}>Privacy Policy</Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          <View style={styles.divider} />
+          <View style={[styles.divider, { backgroundColor: HAIRLINE }]} />
 
           <View style={styles.benefits}>
-            <Text style={styles.benefitItem}>✓ Upload films to the Monthly Film Challenge</Text>
-            <Text style={styles.benefitItem}>✓ Apply for paid jobs across Overlooked</Text>
-            <Text style={styles.benefitItem}>✓ Unlock the full Filmmaking Bootcamp</Text>
-            <Text style={styles.benefitItem}>✓ Learn every major film discipline through focused lessons and exercises</Text>
-            <Text style={styles.benefitItem}>✓ Train with practical exercises inspired by academic film and acting courses</Text>
-            <Text style={styles.benefitItem}>✓ Use all Workshop tools and resources to help you develop, plan, and make films</Text>
+            <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Upload films to the Monthly Film Challenge</Text>
+            <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Apply for paid jobs across Overlooked</Text>
+            <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Unlock the full Filmmaking Bootcamp</Text>
+            <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Learn every major film discipline through focused lessons and exercises</Text>
+            <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Train with practical exercises inspired by academic film and acting courses</Text>
+            <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Use all Workshop tools and resources to help you develop, plan, and make films</Text>
           </View>
 
           {!!message && (
@@ -973,7 +998,7 @@ export default function PaywallScreen() {
             disabled={submitting}
             activeOpacity={0.85}
           >
-            <Text style={styles.backText}>Maybe later</Text>
+            <Text style={[styles.backText, { color: GOLD }]}>Maybe later</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -1113,7 +1138,7 @@ const styles = StyleSheet.create({
   },
 
   planKickerHero: {
-    color: 'rgba(46,212,122,0.95)',
+    color: GOLD,
   },
 
   planPriceRow: {
@@ -1141,7 +1166,7 @@ const styles = StyleSheet.create({
   planSubHero: {
     marginTop: 6,
     fontSize: 11,
-    color: 'rgba(237,235,230,0.74)',
+    color: TEXT_MUTED,
     fontFamily: SYSTEM_SANS,
   },
 

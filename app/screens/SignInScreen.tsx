@@ -34,6 +34,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
+import { useAppTheme } from '../context/ThemeContext';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -208,6 +209,7 @@ export default function SignInScreen() {
   const navigation = useNavigation<any>();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const { colors, isLight } = useAppTheme();
 
   const isWide = width >= 980;
   const isPhone = width < 420;
@@ -754,39 +756,51 @@ export default function SignInScreen() {
       style={[
         styles.mobileBrand,
         isWeb && styles.webBrand,
-        { opacity: titleOpacity, transform: [{ translateY: titleTranslate }] },
+        {
+          color: colors.textPrimary,
+          opacity: titleOpacity,
+          transform: [{ translateY: titleTranslate }],
+        },
       ]}
     >
       OVERLOOKED
     </Animated.Text>
 
-    <Text style={[styles.heroPrompt, isWeb && styles.heroPromptWeb]}>
+    <Text style={[styles.heroPrompt, isWeb && styles.heroPromptWeb, { color: colors.textPrimary }]}>
   <Text style={styles.heroHighlight}>Meet</Text> other creatives.{'\n'}
   <Text style={styles.heroHighlight}>Share</Text> your work worldwide.
 </Text>
 
-    <Text style={[styles.mobileTitle, isWeb && styles.webTitle]}>Sign in</Text>
-    <Text style={[styles.mobileSubtitle, isWeb && styles.webSubtitle]}>
+    <Text style={[styles.mobileTitle, isWeb && styles.webTitle, { color: colors.textPrimary }]}>Sign in</Text>
+    <Text style={[styles.mobileSubtitle, isWeb && styles.webSubtitle, { color: colors.textSecondary }]}>
       Welcome back. Get straight into your account.
     </Text>
   </View>
 )}
 
-      {!mobileMode && <Text style={styles.subtitle}>Sign in to join this month’s journey.</Text>}
+      {!mobileMode && (
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          Sign in to join this month’s journey.
+        </Text>
+      )}
 
        <View
   style={[
     styles.inputWrap,
     isWeb && styles.inputWrapWeb,
+    {
+      backgroundColor: colors.input,
+      borderColor: focus === 'email' ? colors.primary : colors.border,
+    },
     isWeb && focus === 'email' && styles.inputWrapFocused,
   ]}
 >
-        <Ionicons name="mail" size={17} color={focus === 'email' ? T.olive : T.mute} />
+        <Ionicons name="mail" size={17} color={focus === 'email' ? colors.primary : colors.textMuted} />
         <TextInput
           ref={emailInputRef}
-          style={[styles.input, isWeb && styles.inputWeb]}
+          style={[styles.input, isWeb && styles.inputWeb, { color: colors.textPrimary }]}
           placeholder="Email"
-          placeholderTextColor={T.mute}
+          placeholderTextColor={colors.textMuted}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="email-address"
@@ -815,19 +829,23 @@ onBlur={() => {
     styles.inputWrap,
     isWeb && styles.inputWrapWeb,
     { marginTop: 14 },
+    {
+      backgroundColor: colors.input,
+      borderColor: focus === 'password' ? colors.primary : colors.border,
+    },
     isWeb && focus === 'password' && styles.inputWrapFocused,
   ]}
 >
         <Ionicons
           name="lock-closed"
           size={17}
-          color={focus === 'password' ? T.olive : T.mute}
+          color={focus === 'password' ? colors.primary : colors.textMuted}
         />
         <TextInput
           ref={passwordInputRef}
-          style={[styles.input, isWeb && styles.inputWeb]}
+          style={[styles.input, isWeb && styles.inputWeb, { color: colors.textPrimary }]}
           placeholder="Password"
-          placeholderTextColor={T.mute}
+          placeholderTextColor={colors.textMuted}
           secureTextEntry={!showPassword}
           autoCorrect={false}
           autoComplete="password"
@@ -867,7 +885,7 @@ onBlur={() => {
         }}
         style={{ marginTop: 12, alignSelf: mobileMode ? 'flex-start' : 'auto' }}
       >
-        <Text style={styles.forgotText}>Forgot password?</Text>
+        <Text style={[styles.forgotText, { color: T.sub }]}>Forgot password?</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -897,8 +915,8 @@ onBlur={() => {
         }}
         style={{ marginTop: 16 }}
       >
-        <Text style={styles.link}>
-          <Text style={{ textDecorationLine: 'underline' }}>Enter without an account</Text>
+        <Text style={[styles.link, { color: T.sub }]}>
+          <Text style={{ color: T.olive, textDecorationLine: 'underline' }}>Enter without an account</Text>
         </Text>
       </TouchableOpacity>
 
@@ -909,13 +927,13 @@ onBlur={() => {
         }}
         style={{ marginTop: 18 }}
       >
-        <Text style={styles.link}>
+        <Text style={[styles.link, { color: T.sub }]}>
           New to OverLooked?{' '}
-          <Text style={{ textDecorationLine: 'underline' }}>Create an account</Text>
+          <Text style={{ color: T.olive, textDecorationLine: 'underline' }}>Create an account</Text>
         </Text>
       </TouchableOpacity>
 
-      <Text style={styles.supportText}>
+      <Text style={[styles.supportText, { color: T.sub }]}>
         For support, message overlookedsupport@gmail.com
       </Text>
     </>
@@ -927,6 +945,11 @@ onBlur={() => {
         styles.authCard,
         mobileMode ? styles.authCardMobile : null,
         isWeb && mobileMode ? styles.authCardWeb : null,
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+          shadowColor: colors.shadow,
+        },
         {
           width: mobileMode ? (isWeb ? webCardWidth : '100%') : maxModalWidth(460),
           maxHeight: mobileMode ? undefined : modalMaxHeight,
@@ -963,11 +986,11 @@ onBlur={() => {
 
   if (useSimpleMobileLayout) {
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={{ flex: 1 }}>
-        <View style={styles.bgSolid} />
-        <View style={styles.mobileGlowTop} pointerEvents="none" />
-        <View style={styles.mobileGlowBottom} pointerEvents="none" />
+        <View style={[styles.bgSolid, { backgroundColor: colors.background }]} />
+        {!isLight ? <View style={styles.mobileGlowTop} pointerEvents="none" /> : null}
+        {!isLight ? <View style={styles.mobileGlowBottom} pointerEvents="none" /> : null}
 
         <ScrollView
           style={{ flex: 1 }}
@@ -994,7 +1017,7 @@ onBlur={() => {
     return (
     <SafeAreaView
       style={[
-        { flex: 1, backgroundColor: T.bg },
+        { flex: 1, backgroundColor: colors.background },
         Platform.OS === 'web'
           ? ({
               minHeight: '100vh',
@@ -1007,12 +1030,12 @@ onBlur={() => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <View style={styles.bgSolid} />
-        <View style={styles.webGradientBase} pointerEvents="none" />
-        <View style={styles.webGlowCenter} pointerEvents="none" />
-        <View style={styles.webGlowLeft} pointerEvents="none" />
-        <View style={styles.webGlowRight} pointerEvents="none" />
-        <View style={styles.webSoftVignette} pointerEvents="none" />
+        <View style={[styles.bgSolid, { backgroundColor: colors.background }]} />
+        {!isLight ? <View style={styles.webGradientBase} pointerEvents="none" /> : null}
+        {!isLight ? <View style={styles.webGlowCenter} pointerEvents="none" /> : null}
+        {!isLight ? <View style={styles.webGlowLeft} pointerEvents="none" /> : null}
+        {!isLight ? <View style={styles.webGlowRight} pointerEvents="none" /> : null}
+        {!isLight ? <View style={styles.webSoftVignette} pointerEvents="none" /> : null}
 
         <ScrollView
           style={[

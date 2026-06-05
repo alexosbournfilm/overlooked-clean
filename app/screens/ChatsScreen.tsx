@@ -2,6 +2,7 @@ import React, {
   useEffect,
   useState,
   useCallback,
+  useMemo,
   useRef,
 } from 'react';
 import {
@@ -45,6 +46,7 @@ import { reportContent, ReportReason } from '../utils/reportContent';
 import { blockUser as blockUserAndNotify } from '../utils/blockUser';
 import { validateSafeText } from '../utils/moderation';
 import ReportContentModal from '../../components/ReportContentModal';
+import { useAppTheme } from '../context/ThemeContext';
 /* ────────────────────────────────────────────────────────────
    CINEMATIC NOIR — black/white with gold accent
    ──────────────────────────────────────────────────────────── */
@@ -164,10 +166,26 @@ const unhideKeyFor = (userId: string) =>
   `OVERLOOKED_UNHIDE_SET:${userId}`;
 
 export default function ChatsScreen() {
+  const { colors, isLight } = useAppTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
   const { triggerAppRefresh } = useAppRefresh();
+  const GOLD = colors.primary;
+  const T = useMemo(
+    () => ({
+      bg: colors.background,
+      card: colors.card,
+      card2: colors.cardAlt,
+      text: colors.textPrimary,
+      sub: colors.textSecondary,
+      mute: colors.textMuted,
+      border: colors.border,
+      accent: colors.primary,
+      olive: colors.primary,
+    }),
+    [colors]
+  );
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -1967,10 +1985,16 @@ const isDirectBlocked =
   blockedUserIds.has(item.peerUser.id);
     return (
       <Pressable
-  android_ripple={{ color: '#1A1A1A' }}
+  android_ripple={{ color: isLight ? '#EFE2CB' : '#1A1A1A' }}
   style={({ pressed }) => [
     styles.chatCard,
+    {
+      backgroundColor: T.card,
+      borderColor: T.border,
+      shadowColor: colors.shadow,
+    },
     pressed && styles.chatCardPressed,
+    pressed && { backgroundColor: isLight ? T.card2 : '#111111' },
     isDeleting && {
       opacity: 0.6,
     },
@@ -2041,7 +2065,7 @@ const isDirectBlocked =
       style={styles.avatar as any}
     />
   ) : (
-    <View style={[styles.avatar, styles.fallbackAvatar]}>
+    <View style={[styles.avatar, styles.fallbackAvatar, { backgroundColor: T.card2, borderColor: T.border }]}>
       <Ionicons
         name="person-outline"
         size={20}
@@ -2064,6 +2088,7 @@ const isDirectBlocked =
                 style={[
                   styles.avatar,
                   styles.fallbackAvatar,
+                  { backgroundColor: T.card2, borderColor: T.border },
                 ]}
               >
                 <Ionicons
@@ -2086,6 +2111,7 @@ const isDirectBlocked =
                 style={[
                   styles.avatar,
                   styles.fallbackAvatar,
+                  { backgroundColor: T.card2, borderColor: T.border },
                 ]}
               >
                 <Ionicons
@@ -2106,6 +2132,7 @@ const isDirectBlocked =
               <Text
                 style={[
                   styles.chatName,
+                  { color: T.text },
                   isUnread && styles.chatNameUnread,
                 ]}
                 numberOfLines={1}
@@ -2117,9 +2144,7 @@ const isDirectBlocked =
             </View>
 
             <Text
-              style={
-                styles.chatMessage
-              }
+              style={[styles.chatMessage, { color: T.sub }]}
               numberOfLines={1}
             >
               {isDirectBlocked
@@ -2132,7 +2157,7 @@ const isDirectBlocked =
         </View>
 
         <View style={styles.rightMeta} pointerEvents="box-none">
-  <Text style={styles.timeText} numberOfLines={1}>
+  <Text style={[styles.timeText, { color: T.mute }]} numberOfLines={1}>
     {timeAgo}
   </Text>
 
@@ -2155,7 +2180,7 @@ const isDirectBlocked =
       <Ionicons
         name="ellipsis-horizontal"
         size={16}
-        color="#8A8A8A"
+        color={T.mute}
       />
     )}
   </Pressable>
@@ -2193,10 +2218,16 @@ const isDirectBlocked =
 
     return (
       <Pressable
-  android_ripple={{ color: '#1A1A1A' }}
+  android_ripple={{ color: isLight ? '#EFE2CB' : '#1A1A1A' }}
   style={({ pressed }) => [
     styles.userCard,
+    {
+      backgroundColor: T.card,
+      borderColor: T.border,
+      shadowColor: colors.shadow,
+    },
     pressed && styles.userCardPressed,
+    pressed && { backgroundColor: isLight ? T.card2 : '#111111' },
   ]}
   onPress={() => {
           if (isGuest) {
@@ -2216,7 +2247,7 @@ const isDirectBlocked =
     style={styles.avatar as any}
   />
 ) : (
-  <View style={[styles.avatar, styles.fallbackAvatar]}>
+  <View style={[styles.avatar, styles.fallbackAvatar, { backgroundColor: T.card2, borderColor: T.border }]}>
     <Ionicons
       name="person-outline"
       size={20}
@@ -2254,13 +2285,13 @@ const isDirectBlocked =
           setActiveTab('chats');
           setUserQuery('');
         }}
-        style={styles.backButton}
+        style={[styles.backButton, { backgroundColor: T.card, borderColor: T.border }]}
       >
         <Ionicons name="chevron-back" size={18} color={T.text} />
       </Pressable>
     ) : null}
 
-    <Text style={styles.recentChatsTitle}>
+    <Text style={[styles.recentChatsTitle, { color: T.text }]}>
       {activeTab === 'contacts'
         ? 'Search current contacts'
         : activeTab === 'users'
@@ -2269,29 +2300,42 @@ const isDirectBlocked =
     </Text>
   </View>
 
-  <Pressable
-    onPress={() => {
-      if (isGuest) {
-        promptSignIn('Create an account or sign in to start a new chat.');
-        return;
-      }
-      setNewChatMenuVisible(true);
-    }}
-    style={styles.plusButton}
-  >
-    <Ionicons name="add" size={20} color={T.text} />
-  </Pressable>
+  {activeTab !== 'chats' ? (
+    <TouchableOpacity
+      onPress={() => {
+        setActiveTab('chats');
+        setUserQuery('');
+      }}
+      style={[styles.cancelModeButton, { backgroundColor: T.card, borderColor: T.border }]}
+      activeOpacity={0.86}
+    >
+      <Text style={[styles.cancelModeText, { color: T.text }]}>Cancel</Text>
+    </TouchableOpacity>
+  ) : (
+    <Pressable
+      onPress={() => {
+        if (isGuest) {
+          promptSignIn('Create an account or sign in to start a new chat.');
+          return;
+        }
+        setNewChatMenuVisible(true);
+      }}
+      style={[styles.plusButton, { backgroundColor: T.card, borderColor: T.border }]}
+    >
+      <Ionicons name="add" size={20} color={T.text} />
+    </Pressable>
+  )}
 </View>
 
     
 
     {activeTab === 'chats' ? (
-  <View style={styles.searchInputWrap}>
+  <View style={[styles.searchInputWrap, { backgroundColor: T.card, borderColor: T.border }]}>
     <Ionicons name="search-outline" size={18} color={T.mute} />
     <TextInput
       placeholder="Search recent chats"
       placeholderTextColor={T.mute}
-      style={styles.searchInputInline}
+      style={[styles.searchInputInline, { color: T.text }]}
       value={search}
       onChangeText={setSearch}
       autoCorrect={false}
@@ -2299,7 +2343,7 @@ const isDirectBlocked =
     />
   </View>
 ) : (
-  <View style={styles.searchInputWrap}>
+  <View style={[styles.searchInputWrap, { backgroundColor: T.card, borderColor: T.border }]}>
     <Ionicons name="search-outline" size={18} color={T.mute} />
     <TextInput
       onFocus={() => {
@@ -2317,7 +2361,7 @@ const isDirectBlocked =
           : 'Search all users'
       }
       placeholderTextColor={T.mute}
-      style={styles.searchInputInline}
+      style={[styles.searchInputInline, { color: T.text }]}
       value={userQuery}
       onChangeText={(text) => {
         if (isGuest) {
@@ -2345,6 +2389,7 @@ const isDirectBlocked =
   style={[
     styles.container,
     {
+      backgroundColor: T.bg,
       paddingTop: insets.top > 0 ? 6 : 12,
       paddingBottom: Math.max(insets.bottom, 8),
     },
@@ -2357,22 +2402,21 @@ const isDirectBlocked =
         end={{ x: 0, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <Grain opacity={0.05} />
+      {!isLight ? <Grain opacity={0.05} /> : null}
 
       {loadingCityChat && (
         <View
-          style={
-            styles.loadingOverlay
-          }
+          style={[
+            styles.loadingOverlay,
+            { backgroundColor: isLight ? 'rgba(248,243,234,0.72)' : '#000000cc' },
+          ]}
         >
           <ActivityIndicator
             size="large"
             color={T.accent}
           />
           <Text
-            style={
-              styles.loadingText
-            }
+            style={[styles.loadingText, { color: T.text }]}
           >
             Loading group
             chat…
@@ -2422,9 +2466,7 @@ updateCellsBatchingPeriod={16}
             }}
             ListEmptyComponent={
               <Text
-                style={
-                  styles.emptyText
-                }
+                style={[styles.emptyText, { color: T.mute }]}
               >
                 No chats
                 found.
@@ -2469,7 +2511,7 @@ updateCellsBatchingPeriod={16}
           }}
           ListEmptyComponent={
   loadingUsers ? null : (
-    <Text style={styles.emptyText}>
+    <Text style={[styles.emptyText, { color: T.mute }]}>
       {userQuery.trim().length === 0
         ? activeTab === 'contacts'
           ? 'Start typing a name to search your chats.'
@@ -2503,11 +2545,11 @@ updateCellsBatchingPeriod={16}
   onRequestClose={closeOptionsModal}
 >
   <Pressable
-    style={styles.modalBackdrop}
+    style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}
     onPress={closeOptionsModal}
   />
-  <View style={styles.optionsModalCard}>
-    <Text style={styles.optionsModalTitle}>
+  <View style={[styles.optionsModalCard, { backgroundColor: T.card, borderColor: T.border }]}>
+    <Text style={[styles.optionsModalTitle, { color: T.text }]}>
       {selectedChat?.is_group
         ? selectedChat?.label || 'Group chat'
         : selectedChat?.peerUser?.full_name || 'Chat options'}
@@ -2515,7 +2557,11 @@ updateCellsBatchingPeriod={16}
 
     {selectedChat?.is_group ? (
       <TouchableOpacity
-        style={[styles.optionsModalButton, styles.optionsDeleteButton]}
+        style={[
+          styles.optionsModalButton,
+          styles.optionsDeleteButton,
+          { backgroundColor: isLight ? '#FFF2F2' : '#1A1010', borderColor: isLight ? '#E2B4B4' : '#3A1C1C' },
+        ]}
         onPress={async () => {
           const chatToLeave = selectedChat;
           closeOptionsModal();
@@ -2528,19 +2574,19 @@ updateCellsBatchingPeriod={16}
     ) : (
       <>
         <TouchableOpacity
-          style={styles.optionsModalButton}
+          style={[styles.optionsModalButton, { backgroundColor: T.card2, borderColor: T.border }]}
           onPress={reportSelectedChat}
           activeOpacity={0.85}
         >
-          <Text style={styles.optionsModalButtonText}>Report Chat</Text>
+          <Text style={[styles.optionsModalButtonText, { color: T.text }]}>Report Chat</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.optionsModalButton}
+          style={[styles.optionsModalButton, { backgroundColor: T.card2, borderColor: T.border }]}
           onPress={handleWebBlockToggle}
           activeOpacity={0.85}
         >
-          <Text style={styles.optionsModalButtonText}>
+          <Text style={[styles.optionsModalButtonText, { color: T.text }]}>
             {selectedChat?.peerUser?.id &&
             blockedUserIds.has(selectedChat.peerUser.id)
               ? 'Unblock'
@@ -2549,7 +2595,11 @@ updateCellsBatchingPeriod={16}
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.optionsModalButton, styles.optionsDeleteButton]}
+          style={[
+            styles.optionsModalButton,
+            styles.optionsDeleteButton,
+            { backgroundColor: isLight ? '#FFF2F2' : '#1A1010', borderColor: isLight ? '#E2B4B4' : '#3A1C1C' },
+          ]}
           onPress={handleWebDelete}
           activeOpacity={0.85}
         >
@@ -2563,7 +2613,7 @@ updateCellsBatchingPeriod={16}
       onPress={closeOptionsModal}
       activeOpacity={0.85}
     >
-      <Text style={styles.optionsModalCancelText}>Cancel</Text>
+      <Text style={[styles.optionsModalCancelText, { color: T.sub }]}>Cancel</Text>
     </TouchableOpacity>
   </View>
 </Modal>
@@ -2588,33 +2638,33 @@ updateCellsBatchingPeriod={16}
   onRequestClose={() => setNewChatMenuVisible(false)}
 >
   <Pressable
-    style={styles.modalBackdrop}
+    style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}
     onPress={() => setNewChatMenuVisible(false)}
   />
 
-  <View style={styles.optionsModalCard}>
-    <Text style={styles.optionsModalTitle}>Start chat</Text>
+  <View style={[styles.optionsModalCard, { backgroundColor: T.card, borderColor: T.border }]}>
+    <Text style={[styles.optionsModalTitle, { color: T.text }]}>Start chat</Text>
 
     <TouchableOpacity
-      style={styles.optionsModalButton}
+      style={[styles.optionsModalButton, { backgroundColor: T.card2, borderColor: T.border }]}
       onPress={() => {
         setNewChatMenuVisible(false);
         setActiveTab('users');
       }}
       activeOpacity={0.85}
     >
-      <Text style={styles.optionsModalButtonText}>New 1-to-1 chat</Text>
+      <Text style={[styles.optionsModalButtonText, { color: T.text }]}>New 1-to-1 chat</Text>
     </TouchableOpacity>
 
     <TouchableOpacity
-      style={styles.optionsModalButton}
+      style={[styles.optionsModalButton, { backgroundColor: T.card2, borderColor: T.border }]}
       onPress={() => {
         setNewChatMenuVisible(false);
         openCreateGroup();
       }}
       activeOpacity={0.85}
     >
-      <Text style={styles.optionsModalButtonText}>New group chat</Text>
+      <Text style={[styles.optionsModalButtonText, { color: T.text }]}>New group chat</Text>
     </TouchableOpacity>
 
     <TouchableOpacity
@@ -2622,7 +2672,7 @@ updateCellsBatchingPeriod={16}
       onPress={() => setNewChatMenuVisible(false)}
       activeOpacity={0.85}
     >
-      <Text style={styles.optionsModalCancelText}>Cancel</Text>
+      <Text style={[styles.optionsModalCancelText, { color: T.sub }]}>Cancel</Text>
     </TouchableOpacity>
   </View>
 </Modal>
@@ -2635,17 +2685,17 @@ updateCellsBatchingPeriod={16}
         onRequestClose={() => setCreateGroupOpen(false)}
       >
         <Pressable
-          style={styles.modalBackdrop}
+          style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}
           onPress={() => setCreateGroupOpen(false)}
         />
-        <View style={styles.modalSheet}>
-          <View style={styles.sheetHandle} />
+        <View style={[styles.modalSheet, { backgroundColor: T.card, borderColor: T.border }]}>
+          <View style={[styles.sheetHandle, { backgroundColor: isLight ? colors.borderStrong : '#2A2A2A' }]} />
 
           <View style={styles.modalHeaderRow}>
-            <Text style={styles.modalTitle}>Create Group</Text>
+            <Text style={[styles.modalTitle, { color: T.text }]}>Create Group</Text>
             <TouchableOpacity
               onPress={() => setCreateGroupOpen(false)}
-              style={styles.modalCloseBtn}
+              style={[styles.modalCloseBtn, { backgroundColor: T.card2, borderColor: T.border }]}
             >
               <Ionicons name="close" size={22} color={T.text} />
             </TouchableOpacity>
@@ -2656,55 +2706,55 @@ updateCellsBatchingPeriod={16}
             contentContainerStyle={{ paddingBottom: 18 }}
             keyboardShouldPersistTaps="handled"
           >
-            <Text style={styles.modalLabel}>Group name</Text>
+            <Text style={[styles.modalLabel, { color: T.sub }]}>Group name</Text>
             <TextInput
               value={groupName}
               onChangeText={setGroupName}
               placeholder="e.g. London Film Crew"
               placeholderTextColor={T.mute}
-              style={styles.modalInput}
+              style={[styles.modalInput, { backgroundColor: colors.input, borderColor: T.border, color: T.text }]}
               autoCapitalize="words"
             />
 
-            <Text style={styles.modalLabel}>Group photo</Text>
+            <Text style={[styles.modalLabel, { color: T.sub }]}>Group photo</Text>
             <View style={styles.avatarPickRow}>
               <TouchableOpacity
                 onPress={pickGroupAvatar}
-                style={styles.avatarPickBtn}
+                style={[styles.avatarPickBtn, { backgroundColor: colors.input, borderColor: T.border }]}
                 activeOpacity={0.85}
               >
                 <Ionicons name="image-outline" size={18} color={T.text} />
-                <Text style={styles.avatarPickBtnText}>
+                <Text style={[styles.avatarPickBtnText, { color: T.text }]}>
                   {groupAvatarLocalUri ? 'Change photo' : 'Choose photo'}
                 </Text>
               </TouchableOpacity>
 
-              <View style={styles.avatarPreviewRing}>
+              <View style={[styles.avatarPreviewRing, { backgroundColor: T.card2, borderColor: T.border }]}>
                 {groupAvatarLocalUri ? (
                   <Image
   source={{ uri: groupAvatarLocalUri }}
   style={styles.avatarPreview as any}
 />
                 ) : (
-                  <View style={[styles.avatarPreview, styles.fallbackAvatar]}>
+                  <View style={[styles.avatarPreview, styles.fallbackAvatar, { backgroundColor: T.card2 }]}>
                     <Ionicons name="people-outline" size={20} color={T.sub} />
                   </View>
                 )}
               </View>
             </View>
 
-            <Text style={styles.modalLabel}>Add members</Text>
+            <Text style={[styles.modalLabel, { color: T.sub }]}>Add members</Text>
             <TextInput
               value={groupUserQuery}
               onChangeText={setGroupUserQuery}
               placeholder="Search users…"
               placeholderTextColor={T.mute}
-              style={styles.modalInput}
+              style={[styles.modalInput, { backgroundColor: colors.input, borderColor: T.border, color: T.text }]}
               autoCorrect={false}
             />
             <View style={styles.createGroupTopRow}>
   <View style={styles.selectedCountTopWrap}>
-    <Text style={styles.selectedCountText}>
+    <Text style={[styles.selectedCountText, { color: T.sub }]}>
       Selected: {Array.from(groupMemberIds).length}
     </Text>
   </View>
@@ -2719,11 +2769,11 @@ updateCellsBatchingPeriod={16}
     ]}
   >
     {creatingGroup ? (
-      <ActivityIndicator color="#000" />
+      <ActivityIndicator color={colors.textOnPrimary} />
     ) : (
       <>
-        <Ionicons name="chatbubble-ellipses-outline" size={16} color="#000" />
-        <Text style={styles.createBtnTopText}>Create Group</Text>
+        <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.textOnPrimary} />
+        <Text style={[styles.createBtnTopText, { color: colors.textOnPrimary }]}>Create Group</Text>
       </>
     )}
   </TouchableOpacity>
@@ -2745,24 +2795,25 @@ updateCellsBatchingPeriod={16}
                   onPress={() => toggleMember(u.id)}
                   style={[
                     styles.memberPickRow,
-                    selected && { borderColor: T.olive },
+                    { backgroundColor: colors.input, borderColor: T.border },
+                    selected && { borderColor: T.olive, backgroundColor: isLight ? '#F6ECD8' : colors.cardAlt },
                   ]}
                 >
                   {u.avatar_url ? (
   <Image source={{ uri: u.avatar_url }} style={styles.avatarSmall as any} />
 ) : (
-  <View style={[styles.avatarSmall, styles.fallbackAvatar]}>
+  <View style={[styles.avatarSmall, styles.fallbackAvatar, { backgroundColor: T.card2 }]}>
     <Ionicons name="person-outline" size={16} color={T.sub} />
   </View>
 )}
 
-                  <Text style={styles.memberPickName} numberOfLines={1}>
+                  <Text style={[styles.memberPickName, { color: T.text }]} numberOfLines={1}>
                     {u.full_name}
                   </Text>
 
-                  <View style={styles.checkCircle}>
+                  <View style={[styles.checkCircle, { backgroundColor: selected ? T.olive : T.card2, borderColor: T.border }]}>
                     {selected ? (
-                      <Ionicons name="checkmark" size={16} color={T.text} />
+                      <Ionicons name="checkmark" size={16} color={colors.textOnPrimary} />
                     ) : null}
                   </View>
                 </Pressable>
@@ -2817,6 +2868,8 @@ optionsModalButton: {
   marginBottom: 10,
   alignItems: 'center',
   justifyContent: 'center',
+  borderWidth: 1,
+  borderColor: '#151515',
 },
 
 optionsModalButtonText: {
@@ -2882,6 +2935,21 @@ plusButton: {
   justifyContent: 'center',
   borderWidth: 1,
   borderColor: '#151515',
+},
+
+cancelModeButton: {
+  height: 36,
+  borderRadius: 12,
+  paddingHorizontal: 14,
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderWidth: 1,
+},
+
+cancelModeText: {
+  fontSize: 13,
+  fontWeight: '800',
+  fontFamily: SYSTEM_SANS,
 },
 
 contactsShortcut: {
@@ -3234,6 +3302,8 @@ createBtnTopText: {
     padding: 8,
     borderRadius: 12,
     backgroundColor: '#101010',
+    borderWidth: 1,
+    borderColor: '#151515',
   },
   modalLabel: {
     marginTop: 14,
@@ -3343,6 +3413,8 @@ createBtnTopText: {
     backgroundColor: '#141414',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#151515',
   },
   selectedCountRow: {
     marginTop: 12,

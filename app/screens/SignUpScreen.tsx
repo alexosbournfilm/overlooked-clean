@@ -18,6 +18,7 @@ import * as Linking from 'expo-linking';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { useAppTheme } from '../context/ThemeContext';
 
 // DARK THEME PALETTE (aligned with MainTabs)
 const DARK_BG = '#050505';
@@ -30,6 +31,7 @@ const BORDER = 'rgba(255,255,255,0.10)';
 
 export default function SignUpScreen() {
   const navigation = useNavigation<any>();
+  const { colors } = useAppTheme();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -285,13 +287,13 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     !loading;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: DARK_BG }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <View style={styles.container}>
-          <Text style={styles.title}>Create Account</Text>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Create Account</Text>
 
           {(checkingLink || emailConfirmed) && (
             <View
@@ -318,19 +320,31 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
           )}
 
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.input,
+                borderColor: colors.border,
+                color: colors.textPrimary,
+              },
+            ]}
             placeholder="Email"
-            placeholderTextColor={TEXT_MUTED}
+            placeholderTextColor={colors.textMuted}
             keyboardType="email-address"
             autoCapitalize="none"
             value={email}
             onChangeText={setEmail}
           />
-          <View style={styles.passwordWrap}>
+          <View
+            style={[
+              styles.passwordWrap,
+              { backgroundColor: colors.input, borderColor: colors.border },
+            ]}
+          >
   <TextInput
-    style={styles.passwordInput}
+    style={[styles.passwordInput, { color: colors.textPrimary }]}
     placeholder="Password"
-    placeholderTextColor={TEXT_MUTED}
+    placeholderTextColor={colors.textMuted}
     secureTextEntry={!showPassword}
     value={password}
     onChangeText={setPassword}
@@ -342,16 +356,21 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     <Ionicons
       name={showPassword ? 'eye-off' : 'eye'}
       size={20}
-      color={TEXT_MUTED}
+      color={colors.textMuted}
     />
   </TouchableOpacity>
 </View>
 
-<View style={styles.passwordWrap}>
+<View
+  style={[
+    styles.passwordWrap,
+    { backgroundColor: colors.input, borderColor: colors.border },
+  ]}
+>
   <TextInput
-    style={styles.passwordInput}
+    style={[styles.passwordInput, { color: colors.textPrimary }]}
     placeholder="Confirm Password"
-    placeholderTextColor={TEXT_MUTED}
+    placeholderTextColor={colors.textMuted}
     secureTextEntry={!showConfirmPassword}
     value={confirm}
     onChangeText={setConfirm}
@@ -363,7 +382,7 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     <Ionicons
       name={showConfirmPassword ? 'eye-off' : 'eye'}
       size={20}
-      color={TEXT_MUTED}
+      color={colors.textMuted}
     />
   </TouchableOpacity>
 </View>
@@ -372,18 +391,24 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
             style={styles.checkboxRow}
             onPress={() => setAgreed(!agreed)}
           >
-            <View style={[styles.checkbox, agreed && styles.checkboxChecked]} />
-            <Text style={styles.checkboxText}>
+            <View
+              style={[
+                styles.checkbox,
+                { backgroundColor: agreed ? colors.primary : colors.input, borderColor: agreed ? colors.primary : colors.border },
+                agreed && styles.checkboxChecked,
+              ]}
+            />
+            <Text style={[styles.checkboxText, { color: colors.textPrimary }]}>
               I agree to the{' '}
-              <Text style={styles.link} onPress={() => setShowTos(true)}>
+              <Text style={[styles.link, { color: colors.primary }]} onPress={() => setShowTos(true)}>
                 Terms of Service
               </Text>
               ,{' '}
-              <Text style={styles.link} onPress={() => setShowPrivacy(true)}>
+              <Text style={[styles.link, { color: colors.primary }]} onPress={() => setShowPrivacy(true)}>
                 Privacy Policy
               </Text>
               , and{' '}
-              <Text style={styles.link} onPress={() => setShowChildSafety(true)}>
+              <Text style={[styles.link, { color: colors.primary }]} onPress={() => setShowChildSafety(true)}>
                 Child Safety Policy
               </Text>
               .
@@ -396,16 +421,16 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
             disabled={!canSubmit}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={colors.textOnPrimary} />
             ) : (
-              <Text style={styles.buttonText}>Sign Up</Text>
+              <Text style={[styles.buttonText, { color: colors.textOnPrimary }]}>Sign Up</Text>
             )}
           </TouchableOpacity>
 
           <TouchableOpacity onPress={() => navigation.navigate('SignIn')}>
-            <Text style={styles.signInLink}>
+            <Text style={[styles.signInLink, { color: colors.textSecondary }]}>
               Already have an account?{' '}
-              <Text style={{ color: GOLD, fontWeight: '700' }}>Sign In</Text>
+              <Text style={{ color: colors.primary, fontWeight: '700' }}>Sign In</Text>
             </Text>
           </TouchableOpacity>
         </View>
@@ -417,38 +442,38 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
         animationType="fade"
         onRequestClose={() => setEmailSentVisible(false)}
       >
-        <View style={styles.emailModalOverlay}>
-          <View style={styles.emailModalCard}>
-            <Text style={styles.emailModalTitle}>Email Sent ✅</Text>
-            <Text style={styles.emailModalText}>
+        <View style={[styles.emailModalOverlay, { backgroundColor: colors.overlay }]}>
+          <View style={[styles.emailModalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.emailModalTitle, { color: colors.textPrimary }]}>Email Sent</Text>
+            <Text style={[styles.emailModalText, { color: colors.textSecondary }]}>
               We sent a confirmation link{emailSentTo ? ' to:' : '.'}
             </Text>
 
-            {!!emailSentTo && <Text style={styles.emailModalEmail}>{emailSentTo}</Text>}
+            {!!emailSentTo && <Text style={[styles.emailModalEmail, { color: colors.primary }]}>{emailSentTo}</Text>}
 
-            <Text style={styles.emailModalText}>
+            <Text style={[styles.emailModalText, { color: colors.textSecondary }]}>
               Open the email to confirm your account, then come back and sign in.
             </Text>
 
             <View style={styles.emailModalButtons}>
               <TouchableOpacity
-                style={styles.emailModalPrimary}
+                style={[styles.emailModalPrimary, { backgroundColor: colors.primary }]}
                 onPress={() => {
                   setEmailSentVisible(false);
                   navigation.navigate('SignIn');
                 }}
               >
-                <Text style={styles.emailModalPrimaryText}>Go to Sign In</Text>
+                <Text style={[styles.emailModalPrimaryText, { color: colors.textOnPrimary }]}>Go to Sign In</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.emailModalSecondary}
+                style={[styles.emailModalSecondary, { borderColor: colors.border }]}
                 onPress={() => {
                   setEmailSentVisible(false);
                   navigation.navigate('SignIn');
                 }}
               >
-                <Text style={styles.emailModalSecondaryText}>Back to Sign In</Text>
+                <Text style={[styles.emailModalSecondaryText, { color: colors.textPrimary }]}>Back to Sign In</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -462,13 +487,14 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
         transparent
         onRequestClose={() => setShowTos(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <ScrollView>
-              <Text style={styles.modalTitle}>Terms of Service (Overlooked)</Text>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Terms of Service (Overlooked)</Text>
               <Text
                 style={[
                   styles.modalText,
+                  { color: colors.textSecondary },
                   Platform.OS === 'web' ? ({ whiteSpace: 'pre-wrap' } as any) : null,
                 ]}
               >
@@ -523,8 +549,8 @@ You must not upload or share:
               </Text>
             </ScrollView>
 
-            <TouchableOpacity style={styles.closeButton} onPress={() => setShowTos(false)}>
-              <Text style={styles.closeButtonText}>Close</Text>
+            <TouchableOpacity style={[styles.closeButton, { backgroundColor: colors.primary }]} onPress={() => setShowTos(false)}>
+              <Text style={[styles.closeButtonText, { color: colors.textOnPrimary }]}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -537,13 +563,14 @@ You must not upload or share:
         transparent
         onRequestClose={() => setShowPrivacy(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <ScrollView>
-              <Text style={styles.modalTitle}>Privacy Policy (Overlooked)</Text>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Privacy Policy (Overlooked)</Text>
               <Text
                 style={[
                   styles.modalText,
+                  { color: colors.textSecondary },
                   Platform.OS === 'web' ? ({ whiteSpace: 'pre-wrap' } as any) : null,
                 ]}
               >
@@ -591,10 +618,10 @@ This Privacy Policy explains how Overlooked LTD (“Overlooked”, “we”, “
             </ScrollView>
 
             <TouchableOpacity
-              style={styles.closeButton}
+              style={[styles.closeButton, { backgroundColor: colors.primary }]}
               onPress={() => setShowPrivacy(false)}
             >
-              <Text style={styles.closeButtonText}>Close</Text>
+              <Text style={[styles.closeButtonText, { color: colors.textOnPrimary }]}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -607,13 +634,14 @@ This Privacy Policy explains how Overlooked LTD (“Overlooked”, “we”, “
         transparent
         onRequestClose={() => setShowChildSafety(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <ScrollView>
-              <Text style={styles.modalTitle}>Child Safety Policy (Overlooked)</Text>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Child Safety Policy (Overlooked)</Text>
               <Text
                 style={[
                   styles.modalText,
+                  { color: colors.textSecondary },
                   Platform.OS === 'web' ? ({ whiteSpace: 'pre-wrap' } as any) : null,
                 ]}
               >
@@ -658,10 +686,10 @@ overlookedsupport@gmail.com
             </ScrollView>
 
             <TouchableOpacity
-              style={styles.closeButton}
+              style={[styles.closeButton, { backgroundColor: colors.primary }]}
               onPress={() => setShowChildSafety(false)}
             >
-              <Text style={styles.closeButtonText}>Close</Text>
+              <Text style={[styles.closeButtonText, { color: colors.textOnPrimary }]}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
