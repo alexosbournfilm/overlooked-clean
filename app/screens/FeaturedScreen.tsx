@@ -50,6 +50,7 @@ import { useAppTheme } from '../context/ThemeContext';
 import { reportContent, ReportReason } from '../utils/reportContent';
 import { blockUser } from '../utils/blockUser';
 import { validateMultipleSafeTexts, validateSafeText } from '../utils/moderation';
+import { supportUser, unsupportUser } from '../lib/connections';
 import ReportContentModal from '../../components/ReportContentModal';
 
 
@@ -2050,6 +2051,8 @@ const [refreshing, setRefreshing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [votedIds, setVotedIds] = useState<Set<string>>(new Set());
   const [voteBusy, setVoteBusy] = useState<Record<string, boolean>>({});
+  const [supportedUserIds, setSupportedUserIds] = useState<Set<string>>(new Set());
+  const [supportBusy, setSupportBusy] = useState<Record<string, boolean>>({});
   const [deleteBusy, setDeleteBusy] = useState<Record<string, boolean>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -2745,8 +2748,8 @@ const fetchContent = async (
 
     // ✅ Fetch blocked users ONCE near the top, before winner/feed queries use it.
     const blockedIds = await fetchBlockedUsers(uid);
-    const supportedIds =
-      sort === 'foryou' ? await fetchSupportedUserIds(uid) : new Set<string>();
+    const supportedIds = uid ? await fetchSupportedUserIds(uid) : new Set<string>();
+    setSupportedUserIds(supportedIds);
 
     let winnerData: any = null;
 
@@ -3112,6 +3115,46 @@ const confirmBlockUser = ({
         { text: 'Block', style: 'destructive', onPress: doBlock },
       ]
     );
+  }
+};
+
+const toggleCreatorSupport = async ({
+  creatorId,
+}: {
+  creatorId?: string | null;
+}) => {
+  const uid = currentUserId || gamUserId || null;
+
+  if (isGuest || !uid) {
+    promptSignIn('Create an account or sign in to support users.');
+    return;
+  }
+
+  if (!creatorId || creatorId === uid || supportBusy[creatorId]) return;
+
+  const alreadySupporting = supportedUserIds.has(creatorId);
+  setSupportBusy((prev) => ({ ...prev, [creatorId]: true }));
+
+  try {
+    const { error } = alreadySupporting
+      ? await unsupportUser(creatorId)
+      : await supportUser(creatorId);
+
+    if (error) throw error;
+
+    setSupportedUserIds((prev) => {
+      const next = new Set(prev);
+      if (alreadySupporting) {
+        next.delete(creatorId);
+      } else {
+        next.add(creatorId);
+      }
+      return next;
+    });
+  } catch (e: any) {
+    Alert.alert('Support failed', e?.message || 'Please try again.');
+  } finally {
+    setSupportBusy((prev) => ({ ...prev, [creatorId]: false }));
   }
 };
 
@@ -5387,6 +5430,53 @@ maxToRenderPerBatch={2}
                   </Text>
                 </View>
               </TouchableOpacity>
+
+              {(() => {
+                const creatorId = (previewItem as any).user_id || previewItem.users?.id || null;
+                const isSelf = !!currentUserId && !!creatorId && creatorId === currentUserId;
+                const isSupported = !!creatorId && supportedUserIds.has(creatorId);
+                const busy = !!creatorId && !!supportBusy[creatorId];
+
+                if (!creatorId || isSelf) return null;
+
+                return (
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    onPress={() => {
+                      void toggleCreatorSupport({ creatorId });
+                    }}
+                    disabled={busy}
+                    style={[
+                      styles.watchSupportButton,
+                      {
+                        backgroundColor: isSupported
+                          ? isLight
+                            ? colors.cardAlt
+                            : 'rgba(198,166,100,0.14)'
+                          : isLight
+                          ? colors.card
+                          : 'rgba(255,255,255,0.075)',
+                        borderColor: isSupported ? colors.primary : featuredBorder,
+                        opacity: busy ? 0.62 : 1,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={isSupported ? 'checkmark-circle-outline' : 'star-outline'}
+                      size={15}
+                      color={isSupported ? colors.primary : featuredText}
+                    />
+                    <Text
+                      style={[
+                        styles.watchSupportText,
+                        { color: isSupported ? colors.primary : featuredText },
+                      ]}
+                    >
+                      {isSupported ? 'Supporting' : 'Support'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })()}
 
               {((previewItem as any).collaborators || []).length > 0 ? (
                 <View style={styles.watchCreditsInlineWrap}>
@@ -7751,6 +7841,25 @@ watchCreatorTap: {
   flexShrink: 0,
   maxWidth: Platform.OS === 'web' ? 230 : 128,
   minWidth: 0,
+},
+
+watchSupportButton: {
+  minHeight: 34,
+  borderRadius: 999,
+  borderWidth: 1,
+  paddingHorizontal: 12,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 5,
+},
+
+watchSupportText: {
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 10,
+  letterSpacing: 0.4,
+  textTransform: 'uppercase',
 },
 
 watchCreatorAvatar: {

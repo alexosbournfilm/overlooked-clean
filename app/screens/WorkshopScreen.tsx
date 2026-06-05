@@ -216,90 +216,6 @@ const PATHS: PathMeta[] = [
 
 ];
 
-const PATH_ART_ICONS: Record<WorkshopPathKey, keyof typeof Ionicons.glyphMap> = {
-  filmmaker: 'sparkles-outline',
-  acting: 'person-outline',
-  selftape: 'phone-portrait-outline',
-  editing: 'cut-outline',
-  cinematography: 'camera-outline',
-  directing: 'videocam-outline',
-  sound: 'mic-outline',
-};
-
-const PATH_ART_SECONDARY_ICONS: Partial<Record<WorkshopPathKey, keyof typeof Ionicons.glyphMap>> = {
-  filmmaker: 'film-outline',
-  selftape: 'videocam-outline',
-  editing: 'film-outline',
-  cinematography: 'aperture-outline',
-  directing: 'film-outline',
-  sound: 'radio-outline',
-};
-
-type PathProgressArtworkProps = {
-  pathKey: WorkshopPathKey;
-  primaryIcon: keyof typeof Ionicons.glyphMap;
-  secondaryIcon?: keyof typeof Ionicons.glyphMap;
-  ink: string;
-  isDesktop: boolean;
-};
-
-const PathProgressArtwork: React.FC<PathProgressArtworkProps> = ({
-  pathKey,
-  primaryIcon,
-  secondaryIcon,
-  ink,
-  isDesktop,
-}) => {
-  if (pathKey === 'acting') {
-    const fill = { backgroundColor: ink };
-
-    return (
-      <View
-        pointerEvents="none"
-        style={[styles.pathArtworkLayer, !isDesktop && styles.pathArtworkLayerMobile]}
-      >
-        <View style={[styles.actorArtwork, !isDesktop && styles.actorArtworkMobile]}>
-          <View style={[styles.actorArtHead, fill]} />
-          <View style={[styles.actorArtHair, fill]} />
-          <View style={[styles.actorArtNeck, fill]} />
-          <View style={[styles.actorArtTorso, fill]} />
-          <View style={[styles.actorArtNearUpperArm, fill]} />
-          <View style={[styles.actorArtNearForearm, fill]} />
-          <View style={[styles.actorArtNearHand, fill]} />
-          <View style={[styles.actorArtFarUpperArm, fill]} />
-          <View style={[styles.actorArtFarForearm, fill]} />
-          <View style={[styles.actorArtFarHand, fill]} />
-          <View style={[styles.actorArtKnee, fill]} />
-          <View style={[styles.actorArtSeatLeg, fill]} />
-          <View style={[styles.actorArtLowerLeg, fill]} />
-          <View style={[styles.actorArtFoot, fill]} />
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View
-      pointerEvents="none"
-      style={[styles.pathArtworkLayer, !isDesktop && styles.pathArtworkLayerMobile]}
-    >
-      {secondaryIcon ? (
-        <Ionicons
-          name={secondaryIcon}
-          size={isDesktop ? 158 : 132}
-          color={ink}
-          style={styles.pathArtworkSecondaryIcon}
-        />
-      ) : null}
-      <Ionicons
-        name={primaryIcon}
-        size={isDesktop ? 232 : 196}
-        color={ink}
-        style={styles.pathArtworkPrimaryIcon}
-      />
-    </View>
-  );
-};
 /* ---------------------------- lesson banks ---------------------------- */
 const makeSeed = (
   title: string,
@@ -8479,9 +8395,6 @@ filmmaker: [],
   const softSurfaceStyle = { backgroundColor: PANEL_2, borderColor: BORDER_SOFT };
   const mutedTextStyle = { color: MUTED };
   const primaryTextStyle = { color: IVORY };
-  const activePathArtIcon = PATH_ART_ICONS[activePath.key] || activePath.icon;
-  const activePathSecondaryIcon = PATH_ART_SECONDARY_ICONS[activePath.key];
-  const pathArtInk = isLight ? '#050505' : '#F7F2EA';
 
   return (
     <View style={[styles.container, { backgroundColor: BG }]}>
@@ -8511,26 +8424,6 @@ filmmaker: [],
     </View>
 
     <View style={styles.bigProgressWrap}>
-      <View style={[styles.bigProgressStage, !isDesktop && styles.bigProgressStageMobile]}>
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.pathArtworkAnimatedLayer,
-            {
-              opacity: wheelOpacity,
-              transform: [{ scale: wheelScale }],
-            },
-          ]}
-        >
-          <PathProgressArtwork
-            pathKey={activePath.key}
-            primaryIcon={activePathArtIcon}
-            secondaryIcon={activePathSecondaryIcon}
-            ink={pathArtInk}
-            isDesktop={isDesktop}
-          />
-        </Animated.View>
-
       <Animated.View
         style={[
           styles.bigProgressOrbit,
@@ -8564,7 +8457,6 @@ filmmaker: [],
           <Text style={[styles.bigProgressNumber, primaryTextStyle]}>{wheelDisplayPercent}%</Text>
         </View>
       </Animated.View>
-      </View>
     </View>
 
 	    <ScrollView
@@ -9255,213 +9147,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 12,
     marginBottom: 16,
-  },
-
-  bigProgressStage: {
-    width: '100%',
-    height: 348,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    marginTop: -6,
-    marginBottom: 2,
-  },
-
-  bigProgressStageMobile: {
-    height: 342,
-    marginTop: -8,
-    marginBottom: 0,
-  },
-
-  pathArtworkAnimatedLayer: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 0,
-  },
-
-  pathArtworkLayer: {
-    position: 'absolute',
-    top: 0,
-    width: 340,
-    height: 342,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 0,
-  },
-
-  pathArtworkLayerMobile: {
-    width: 294,
-    height: 334,
-  },
-
-  pathArtworkPrimaryIcon: {
-    opacity: 0.96,
-    transform: [{ rotate: '-4deg' }],
-  },
-
-  pathArtworkSecondaryIcon: {
-    position: 'absolute',
-    right: 26,
-    top: 28,
-    opacity: 0.22,
-    transform: [{ rotate: '12deg' }],
-  },
-
-  actorArtwork: {
-    width: 326,
-    height: 342,
-    position: 'relative',
-    transform: [{ translateY: 12 }],
-  },
-
-  actorArtworkMobile: {
-    width: 326,
-    height: 342,
-    transform: [{ scale: 0.88 }, { translateY: 8 }],
-  },
-
-  actorArtHead: {
-    position: 'absolute',
-    top: 18,
-    left: 166,
-    width: 54,
-    height: 62,
-    borderRadius: 999,
-    transform: [{ rotate: '-12deg' }],
-  },
-
-  actorArtHair: {
-    position: 'absolute',
-    top: 10,
-    left: 154,
-    width: 72,
-    height: 46,
-    borderTopLeftRadius: 42,
-    borderTopRightRadius: 42,
-    borderBottomLeftRadius: 26,
-    borderBottomRightRadius: 28,
-    transform: [{ rotate: '-15deg' }],
-  },
-
-  actorArtNeck: {
-    position: 'absolute',
-    top: 70,
-    left: 171,
-    width: 30,
-    height: 34,
-    borderRadius: 18,
-    transform: [{ rotate: '-10deg' }],
-  },
-
-  actorArtTorso: {
-    position: 'absolute',
-    top: 88,
-    left: 144,
-    width: 88,
-    height: 166,
-    borderRadius: 48,
-    transform: [{ rotate: '-18deg' }],
-  },
-
-  actorArtNearUpperArm: {
-    position: 'absolute',
-    top: 134,
-    left: 74,
-    width: 104,
-    height: 25,
-    borderRadius: 999,
-    transform: [{ rotate: '-30deg' }],
-  },
-
-  actorArtNearForearm: {
-    position: 'absolute',
-    top: 107,
-    left: 36,
-    width: 84,
-    height: 20,
-    borderRadius: 999,
-    transform: [{ rotate: '-8deg' }],
-  },
-
-  actorArtNearHand: {
-    position: 'absolute',
-    top: 94,
-    left: 16,
-    width: 42,
-    height: 25,
-    borderRadius: 999,
-    transform: [{ rotate: '-18deg' }],
-  },
-
-  actorArtFarUpperArm: {
-    position: 'absolute',
-    top: 101,
-    left: 100,
-    width: 88,
-    height: 24,
-    borderRadius: 999,
-    transform: [{ rotate: '35deg' }],
-  },
-
-  actorArtFarForearm: {
-    position: 'absolute',
-    top: 76,
-    left: 68,
-    width: 76,
-    height: 19,
-    borderRadius: 999,
-    transform: [{ rotate: '-40deg' }],
-  },
-
-  actorArtFarHand: {
-    position: 'absolute',
-    top: 58,
-    left: 54,
-    width: 37,
-    height: 23,
-    borderRadius: 999,
-    transform: [{ rotate: '-16deg' }],
-  },
-
-  actorArtKnee: {
-    position: 'absolute',
-    bottom: 62,
-    left: 86,
-    width: 76,
-    height: 92,
-    borderRadius: 44,
-    transform: [{ rotate: '10deg' }],
-  },
-
-  actorArtSeatLeg: {
-    position: 'absolute',
-    bottom: 34,
-    left: 88,
-    width: 196,
-    height: 48,
-    borderRadius: 999,
-    transform: [{ rotate: '-4deg' }],
-  },
-
-  actorArtLowerLeg: {
-    position: 'absolute',
-    bottom: 18,
-    left: 212,
-    width: 94,
-    height: 34,
-    borderRadius: 999,
-    transform: [{ rotate: '-5deg' }],
-  },
-
-  actorArtFoot: {
-    position: 'absolute',
-    bottom: 28,
-    left: 294,
-    width: 42,
-    height: 29,
-    borderRadius: 999,
-    transform: [{ rotate: '-18deg' }],
   },
 
   bigProgressOrbit: {

@@ -12,7 +12,7 @@ import {
   Linking,
   SafeAreaView,
 } from "react-native";
-import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
+import { CommonActions, RouteProp, useNavigation, useRoute } from "@react-navigation/native";
 import { Video, ResizeMode } from "expo-av";
 import { LinearGradient } from "expo-linear-gradient";
 import YoutubePlayer from "react-native-youtube-iframe";
@@ -303,6 +303,28 @@ export default function SharedFilmScreen() {
     }
   }, [routeShareSlug, pathShareSlug]);
 
+  useEffect(() => {
+    if (!shareSlug) return;
+
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: "MainTabs",
+            params: {
+              screen: "Featured",
+              params: {
+                openShareSlug: shareSlug,
+                openSearchNonce: Date.now(),
+              },
+            },
+          },
+        ],
+      })
+    );
+  }, [navigation, shareSlug]);
+
   const isWide = width >= 900;
 
   const cardWidth = useMemo(() => {
@@ -349,6 +371,11 @@ export default function SharedFilmScreen() {
   }, []);
 
   const fetchFilm = useCallback(async () => {
+    if (shareSlug) {
+      setLoading(true);
+      return;
+    }
+
     if (!shareSlug) {
       setErrorText("Missing film link.");
       setLoading(false);
@@ -588,6 +615,17 @@ export default function SharedFilmScreen() {
     !!film && (film.media_kind === "youtube" || (!!film.youtube_url && !!youtubeId));
 
   const shouldShowFileVideo = !!playableVideoUrl;
+
+  if (shareSlug) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: BG }]}>
+        <View style={styles.redirectState}>
+          <ActivityIndicator size="large" color={GOLD} />
+          <Text style={[styles.stateText, { color: SUB }]}>Opening film...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: BG }]}>
@@ -833,6 +871,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 24,
     paddingVertical: 24,
+  },
+  redirectState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
   },
   stateText: {
     marginTop: 12,

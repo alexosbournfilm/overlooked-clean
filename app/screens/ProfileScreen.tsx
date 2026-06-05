@@ -79,6 +79,39 @@ const WEB_NO_OUTLINE =
   Platform.OS === 'web'
     ? ({ outlineStyle: 'none', outlineWidth: 0 } as any)
     : null;
+
+function slugifyProfileFilmTitle(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+}
+
+function buildProfileSharedFilmUrl(shareSlug: string) {
+  return `https://overlooked.cloud/f/${shareSlug}`;
+}
+
+async function ensureProfileSubmissionShareSlug(submission: {
+  id: string;
+  title?: string | null;
+  share_slug?: string | null;
+}) {
+  if (submission.share_slug) return submission.share_slug;
+
+  const base = slugifyProfileFilmTitle(submission.title || 'film');
+  const slug = `${base || 'film'}-${String(submission.id).slice(0, 6)}`;
+
+  const { error } = await supabase
+    .from('submissions')
+    .update({ share_slug: slug })
+    .eq('id', submission.id);
+
+  if (error) throw error;
+
+  return slug;
+}
 /* ---------- layout constants ---------- */
 const PAGE_MAX = 1160;
 
@@ -928,6 +961,7 @@ interface SubmissionRow {
   video_path?: string | null;
   mime_type?: string | null;
   thumbnail_url?: string | null;   // ✅ ADD THIS
+  share_slug?: string | null;
   votes?: number | null;
     mux_upload_id?: string | null;
   mux_asset_id?: string | null;
@@ -1551,11 +1585,16 @@ const [sideRoleSearchFocused, setSideRoleSearchFocused] = useState(false);
   const [reportDetails, setReportDetails] = useState('');
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const [reportTarget, setReportTarget] = useState<{
-    type: 'profile' | 'comment';
+    type: 'profile' | 'comment' | 'submission';
     reportedUserId?: string | null;
     contentId?: string | null;
     title?: string | null;
   } | null>(null);
+  const [submissionVotedIds, setSubmissionVotedIds] = useState<Set<string>>(new Set());
+  const [submissionVoteBusy, setSubmissionVoteBusy] = useState<Record<string, boolean>>({});
+  const [watchCreatorSupportUserId, setWatchCreatorSupportUserId] = useState<string | null>(null);
+  const [watchCreatorIsSupporting, setWatchCreatorIsSupporting] = useState(false);
+  const [watchCreatorSupportBusy, setWatchCreatorSupportBusy] = useState(false);
 
   const [imageViewerIndex, setImageViewerIndex] = useState<number | null>(null);
   const [imageViewerAspect, setImageViewerAspect] = useState<number | null>(null);
@@ -3572,6 +3611,77 @@ const label = city?.name ?? '';
     }
   };
 
+  const getSubmissionCreatorId = useCallback((submission?: SubmissionRow | null) => {
+    return submission?.users?.id || submission?.user_id || null;
+  }, []);
+
+  const refreshSubmissionVoteStatus = useCallback(
+    async (submissionId: string) => {
+      if (!currentUserId) {
+        setSubmissionVotedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(submissionId);
+          return next;
+        });
+        return;
+      }
+
+      try {
+        const { count, error } = await supabase
+          .from('user_votes')
+          .select('submission_id', { count: 'exact', head: true })
+          .eq('user_id', currentUserId)
+          .eq('submission_id', submissionId);
+
+        if (error) throw error;
+
+        setSubmissionVotedIds((prev) => {
+          const next = new Set(prev);
+          if ((count ?? 0) > 0) {
+            next.add(submissionId);
+          } else {
+            next.delete(submissionId);
+          }
+          return next;
+        });
+      } catch (e: any) {
+        console.log('Submission vote status unavailable:', e?.message ?? e);
+      }
+    },
+    [currentUserId]
+  );
+
+  const refreshWatchCreatorSupportStatus = useCallback(
+    async (creatorId?: string | null) => {
+      setWatchCreatorSupportUserId(creatorId || null);
+
+      if (!creatorId || !currentUserId || creatorId === currentUserId) {
+        setWatchCreatorIsSupporting(false);
+        return;
+      }
+
+      if (creatorId === profile?.id) {
+        setWatchCreatorIsSupporting(isSupporting);
+        return;
+      }
+
+      try {
+        const { count, error } = await supabase
+          .from('user_supports')
+          .select('id', { count: 'exact', head: true })
+          .eq('supporter_id', currentUserId)
+          .eq('supported_id', creatorId);
+
+        if (error) throw error;
+        setWatchCreatorIsSupporting((count ?? 0) > 0);
+      } catch (e: any) {
+        console.log('Creator support status unavailable:', e?.message ?? e);
+        setWatchCreatorIsSupporting(false);
+      }
+    },
+    [currentUserId, isSupporting, profile?.id]
+  );
+
   const openSubmissionModal = async (submission: SubmissionRow) => {
     setActiveSubmission(submission);
     setSubmissionModalOpen(true);
@@ -3586,7 +3696,11 @@ const label = city?.name ?? '';
     InteractionManager.runAfterInteractions(scrollToPlayer);
     setTimeout(scrollToPlayer, Platform.OS === 'web' ? 40 : 70);
 
-    await fetchSubmissionComments(submission.id);
+    await Promise.all([
+      fetchSubmissionComments(submission.id),
+      refreshSubmissionVoteStatus(submission.id),
+      refreshWatchCreatorSupportStatus(getSubmissionCreatorId(submission)),
+    ]);
   };
 
   const closeSubmissionModal = async () => {
@@ -3598,6 +3712,227 @@ const label = city?.name ?? '';
     setComments([]);
     setCommentText('');
     setSubmissionCommentsExpanded(false);
+    setWatchCreatorSupportUserId(null);
+    setWatchCreatorIsSupporting(false);
+  };
+
+  useEffect(() => {
+    if (watchCreatorSupportUserId && watchCreatorSupportUserId === profile?.id) {
+      setWatchCreatorIsSupporting(isSupporting);
+    }
+  }, [isSupporting, profile?.id, watchCreatorSupportUserId]);
+
+  const toggleProfileSubmissionVote = async (submission: SubmissionRow) => {
+    if (!currentUserId) {
+      promptSignIn('Create an account or sign in to vote for films.');
+      return;
+    }
+
+    if (submission.user_id === currentUserId) return;
+    if (submissionVoteBusy[submission.id]) return;
+
+    const alreadyVoted = submissionVotedIds.has(submission.id);
+    setSubmissionVoteBusy((prev) => ({ ...prev, [submission.id]: true }));
+
+    try {
+      if (alreadyVoted) {
+        const { error } = await supabase
+          .from('user_votes')
+          .delete()
+          .eq('user_id', currentUserId)
+          .eq('submission_id', submission.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('user_votes').insert([
+          {
+            submission_id: submission.id,
+            user_id: currentUserId,
+          },
+        ]);
+        if (error) throw error;
+      }
+
+      const delta = alreadyVoted ? -1 : 1;
+
+      setSubmissionVotedIds((prev) => {
+        const next = new Set(prev);
+        if (alreadyVoted) {
+          next.delete(submission.id);
+        } else {
+          next.add(submission.id);
+        }
+        return next;
+      });
+
+      setSubmissions((prev) =>
+        prev.map((row) =>
+          row.id === submission.id
+            ? { ...row, votes: Math.max(0, (row.votes || 0) + delta) }
+            : row
+        )
+      );
+
+      setActiveSubmission((prev) =>
+        prev && prev.id === submission.id
+          ? { ...prev, votes: Math.max(0, (prev.votes || 0) + delta) }
+          : prev
+      );
+    } catch (e: any) {
+      console.warn('Profile film vote error:', e?.message || e);
+      Alert.alert('Vote failed', 'Please try again.');
+    } finally {
+      setSubmissionVoteBusy((prev) => ({ ...prev, [submission.id]: false }));
+    }
+  };
+
+  const shareProfileSubmissionLink = async (submission: SubmissionRow) => {
+    try {
+      const shareSlug = await ensureProfileSubmissionShareSlug({
+        id: submission.id,
+        title: submission.title,
+        share_slug: submission.share_slug ?? null,
+      });
+      const url = buildProfileSharedFilmUrl(shareSlug);
+
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        await Clipboard.setStringAsync(url);
+      }
+
+      setSubmissions((prev) =>
+        prev.map((row) =>
+          row.id === submission.id ? { ...row, share_slug: shareSlug } : row
+        )
+      );
+      setActiveSubmission((prev) =>
+        prev && prev.id === submission.id ? { ...prev, share_slug: shareSlug } : prev
+      );
+
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined') window.alert('Film link copied.');
+      } else {
+        Alert.alert('Link copied', 'The film link is ready to share.');
+      }
+    } catch (e: any) {
+      console.warn('Profile film share failed:', e?.message || e);
+      Alert.alert('Share failed', 'Could not create or copy the film link.');
+    }
+  };
+
+  const reportProfileSubmission = async (submission: SubmissionRow) => {
+    if (!currentUserId) {
+      promptSignIn('Create an account or sign in to report films.');
+      return;
+    }
+
+    try {
+      await pauseAllExcept(PAUSE_NONE_ID);
+    } catch {}
+
+    setReportReason('Harassment or bullying');
+    setReportDetails('');
+    setReportTarget({
+      type: 'submission',
+      reportedUserId: getSubmissionCreatorId(submission),
+      contentId: submission.id,
+      title: submission.title || 'Film',
+    });
+    setReportOpen(true);
+  };
+
+  const blockProfileSubmissionCreator = async (submission: SubmissionRow) => {
+    const blockedUserId = getSubmissionCreatorId(submission);
+
+    if (!currentUserId) {
+      promptSignIn('Create an account or sign in to block users.');
+      return;
+    }
+
+    if (!blockedUserId) {
+      Alert.alert('Unable to block', 'This creator could not be found.');
+      return;
+    }
+
+    if (blockedUserId === currentUserId) {
+      Alert.alert('Not Allowed', 'You cannot block yourself.');
+      return;
+    }
+
+    const blockedUserName =
+      submission.users?.full_name ||
+      (blockedUserId === profile?.id ? profile?.full_name : null) ||
+      'this user';
+
+    const confirmed =
+      Platform.OS === 'web'
+        ? window.confirm(
+            `Block ${blockedUserName}?\n\nTheir films and comments will be removed from your feed immediately.`
+          )
+        : await new Promise<boolean>((resolve) => {
+            Alert.alert(
+              'Block User?',
+              `Block ${blockedUserName}? Their films and comments will be removed from your feed immediately.`,
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Block', style: 'destructive', onPress: () => resolve(true) },
+              ]
+            );
+          });
+
+    if (!confirmed) return;
+
+    const ok = await blockUser({
+      blockedUserId,
+      reason: 'Blocked from Profile film viewer',
+      showAlert: true,
+    });
+
+    if (ok) {
+      if (blockedUserId === profile?.id) setHasBlockedProfile(true);
+      setSubmissions((prev) =>
+        prev.filter((row) => getSubmissionCreatorId(row) !== blockedUserId)
+      );
+      await closeSubmissionModal();
+    }
+  };
+
+  const toggleWatchCreatorSupport = async () => {
+    const creatorId = getSubmissionCreatorId(activeSubmission);
+    if (!creatorId) return;
+
+    if (!currentUserId) {
+      promptSignIn('Create an account or sign in to support users.');
+      return;
+    }
+
+    if (creatorId === currentUserId || watchCreatorSupportBusy) return;
+
+    const alreadySupporting =
+      creatorId === profile?.id ? isSupporting : watchCreatorIsSupporting;
+
+    setWatchCreatorSupportBusy(true);
+    try {
+      const { error } = alreadySupporting
+        ? await unsupportUser(creatorId)
+        : await supportUser(creatorId);
+
+      if (error) throw error;
+
+      const nextSupporting = !alreadySupporting;
+      setWatchCreatorIsSupporting(nextSupporting);
+
+      if (creatorId === profile?.id) {
+        setIsSupporting(nextSupporting);
+        setSupportersCount((n) =>
+          Math.max(0, n + (nextSupporting ? 1 : -1))
+        );
+      }
+    } catch (e: any) {
+      Alert.alert('Support failed', e?.message || 'Please try again.');
+    } finally {
+      setWatchCreatorSupportBusy(false);
+    }
   };
 
   const submitSubmissionComment = async () => {
@@ -5732,6 +6067,15 @@ const renderSubmissionsSection = () => {
           avatar_url: profile.avatar_url,
         }
       : null);
+  const activeCreatorId = activeCreator?.id || activeSubmission?.user_id || null;
+  const activeCreatorIsCurrentUser = !!activeCreatorId && activeCreatorId === currentUserId;
+  const activeCreatorSupportActive =
+    !!activeCreatorId &&
+    (activeCreatorId === profile?.id ? isSupporting : watchCreatorIsSupporting);
+  const activeSubmissionVoteActive =
+    !!activeSubmission?.id && submissionVotedIds.has(activeSubmission.id);
+  const activeSubmissionVoteBusy =
+    !!activeSubmission?.id && !!submissionVoteBusy[activeSubmission.id];
   const profileWatchName =
     activeCreator?.full_name || profile?.full_name || fullName || "Unknown creator";
   const profileWatchAvatar =
@@ -6234,6 +6578,44 @@ const renderSubmissionsSection = () => {
                         </View>
                       </TouchableOpacity>
 
+                      {activeCreatorId && !activeCreatorIsCurrentUser ? (
+                        <TouchableOpacity
+                          activeOpacity={0.9}
+                          onPress={() => {
+                            void toggleWatchCreatorSupport();
+                          }}
+                          disabled={watchCreatorSupportBusy}
+                          style={[
+                            styles.profileWatchSupportButton,
+                            {
+                              backgroundColor: activeCreatorSupportActive
+                                ? isLight
+                                  ? COLORS.cardAlt
+                                  : "rgba(198,166,100,0.14)"
+                                : profileAltSurface,
+                              borderColor: activeCreatorSupportActive
+                                ? COLORS.primary
+                                : COLORS.border,
+                              opacity: watchCreatorSupportBusy ? 0.62 : 1,
+                            },
+                          ]}
+                        >
+                          <Ionicons
+                            name={activeCreatorSupportActive ? "checkmark-circle-outline" : "star-outline"}
+                            size={15}
+                            color={activeCreatorSupportActive ? COLORS.primary : COLORS.textPrimary}
+                          />
+                          <Text
+                            style={[
+                              styles.profileWatchSupportText,
+                              { color: activeCreatorSupportActive ? COLORS.primary : COLORS.textPrimary },
+                            ]}
+                          >
+                            {activeCreatorSupportActive ? "Supporting" : "Support"}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
+
                       {activeSubmissionCollaborators.length > 0 ? (
                         <View style={styles.profileWatchCreditsInlineWrap}>
                           {activeSubmissionCollaborators.map((item) => {
@@ -6291,6 +6673,44 @@ const renderSubmissionsSection = () => {
                     </View>
 
                     <View style={styles.profileWatchActionsRow}>
+                      {activeSubmission ? (
+                        <TouchableOpacity
+                          activeOpacity={0.9}
+                          onPress={() => {
+                            void toggleProfileSubmissionVote(activeSubmission);
+                          }}
+                          disabled={activeSubmissionVoteBusy || activeSubmission.user_id === currentUserId}
+                          style={[
+                            styles.profileWatchActionChip,
+                            {
+                              backgroundColor: profileAltSurface,
+                              borderColor: COLORS.border,
+                            },
+                            activeSubmissionVoteActive && styles.profileWatchActionChipActive,
+                            activeSubmissionVoteActive &&
+                              isLight && {
+                                backgroundColor: COLORS.cardAlt,
+                                borderColor: COLORS.primary,
+                              },
+                            (activeSubmissionVoteBusy || activeSubmission.user_id === currentUserId) && {
+                              opacity: 0.55,
+                            },
+                          ]}
+                        >
+                          <Ionicons
+                            name={activeSubmissionVoteActive ? "heart" : "heart-outline"}
+                            size={18}
+                            color={activeSubmissionVoteActive ? COLORS.primary : COLORS.textPrimary}
+                          />
+                          <Text style={[styles.profileWatchActionText, { color: COLORS.textPrimary }]}>
+                            {activeSubmissionVoteActive ? "Voted" : "Vote"}
+                          </Text>
+                          <Text style={[styles.profileWatchActionMeta, { color: profileSubText }]}>
+                            {activeSubmissionVoteBusy ? "..." : activeSubmission.votes ?? 0}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
+
                       <TouchableOpacity
                         activeOpacity={0.9}
                         onPress={() => {
@@ -6310,6 +6730,64 @@ const renderSubmissionsSection = () => {
                           {comments.length}
                         </Text>
                       </TouchableOpacity>
+
+                      {activeSubmission ? (
+                        <TouchableOpacity
+                          activeOpacity={0.9}
+                          onPress={() => {
+                            void shareProfileSubmissionLink(activeSubmission);
+                          }}
+                          style={[
+                            styles.profileWatchActionChip,
+                            {
+                              backgroundColor: profileAltSurface,
+                              borderColor: COLORS.border,
+                            },
+                          ]}
+                        >
+                          <Ionicons name="arrow-redo-outline" size={18} color={COLORS.textPrimary} />
+                          <Text style={[styles.profileWatchActionText, { color: COLORS.textPrimary }]}>Share</Text>
+                        </TouchableOpacity>
+                      ) : null}
+
+                      {activeSubmission ? (
+                        <TouchableOpacity
+                          activeOpacity={0.9}
+                          onPress={() => {
+                            void reportProfileSubmission(activeSubmission);
+                          }}
+                          style={[
+                            styles.profileWatchActionChip,
+                            {
+                              backgroundColor: profileAltSurface,
+                              borderColor: COLORS.border,
+                            },
+                          ]}
+                        >
+                          <Ionicons name="flag-outline" size={18} color={COLORS.textPrimary} />
+                          <Text style={[styles.profileWatchActionText, { color: COLORS.textPrimary }]}>Report</Text>
+                        </TouchableOpacity>
+                      ) : null}
+
+                      {activeSubmission && activeCreatorId && !activeCreatorIsCurrentUser ? (
+                        <TouchableOpacity
+                          activeOpacity={0.9}
+                          onPress={() => {
+                            void blockProfileSubmissionCreator(activeSubmission);
+                          }}
+                          style={[
+                            styles.profileWatchActionChip,
+                            styles.profileWatchDangerChip,
+                            {
+                              backgroundColor: isLight ? "rgba(185,71,71,0.08)" : "rgba(255,70,70,0.075)",
+                              borderColor: isLight ? "rgba(185,71,71,0.22)" : "rgba(255,90,90,0.22)",
+                            },
+                          ]}
+                        >
+                          <Ionicons name="ban-outline" size={18} color={COLORS.danger} />
+                          <Text style={[styles.profileWatchDangerText, { color: COLORS.danger }]}>Block</Text>
+                        </TouchableOpacity>
+                      ) : null}
 
                       {isOwnProfile && activeSubmission ? (
                         <TouchableOpacity
@@ -7613,10 +8091,18 @@ return (
 />
     <ReportContentModal
       visible={reportOpen}
-      title={reportTarget?.type === 'comment' ? 'Report Comment' : 'Report Profile'}
+      title={
+        reportTarget?.type === 'comment'
+          ? 'Report Comment'
+          : reportTarget?.type === 'submission'
+          ? 'Report Film'
+          : 'Report Profile'
+      }
       subtitle={
         reportTarget?.type === 'comment'
           ? 'Tell us what happened. Comment reports are reviewed within 24 hours.'
+          : reportTarget?.type === 'submission'
+          ? 'Tell us what happened. Film reports are reviewed within 24 hours.'
           : 'Tell us what happened. Profile reports are reviewed within 24 hours.'
       }
       selectedReason={reportReason}
@@ -8817,6 +9303,23 @@ heroIdentityEpicDesktop: {
     maxWidth: "100%",
     minWidth: 0,
   },
+  profileWatchSupportButton: {
+    minHeight: 34,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+  profileWatchSupportText: {
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "900",
+    fontSize: 10,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
   profileWatchCreatorAvatar: {
     width: 34,
     height: 34,
@@ -8927,6 +9430,10 @@ heroIdentityEpicDesktop: {
     borderColor: "rgba(255,255,255,0.10)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  profileWatchActionChipActive: {
+    backgroundColor: "rgba(198,166,100,0.14)",
+    borderColor: "rgba(198,166,100,0.42)",
   },
   profileWatchDangerChip: {
     backgroundColor: "rgba(255,70,70,0.075)",
