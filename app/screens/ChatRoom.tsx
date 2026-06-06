@@ -17,6 +17,7 @@ import {
   RefreshControl,
   BackHandler,
   Keyboard,
+  Animated,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -302,6 +303,7 @@ export default function ChatRoom() {
   const [typingUser, setTypingUser] = useState<string | null>(null);
   const [sendingImage, setSendingImage] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const keyboardOffsetAnim = useRef(new Animated.Value(0)).current;
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
 
@@ -1098,6 +1100,19 @@ useFocusEffect(
     }
     setHasMoreMessages((data as any[]).length === CHAT_INITIAL_MESSAGE_LIMIT);
 
+    const normalizedAll: Message[] = (data as any[])
+      .slice()
+      .reverse()
+      .map((row: any) => ({
+        ...row,
+        sender: Array.isArray(row.sender)
+          ? row.sender[0] ?? null
+          : row.sender ?? null,
+      }))
+      .filter((row: Message) => !row.is_removed);
+
+    setMessages(normalizedAll);
+
     const [blockedIds, participantsResult] = await Promise.all([
       fetchBlockedUsers(uid),
       activeConversation?.participant_ids?.length
@@ -1108,18 +1123,13 @@ useFocusEffect(
         : Promise.resolve({ data: [] } as any),
     ]);
 
-    const normalized: Message[] = (data as any[])
-      .slice()
-      .reverse()
-      .map((row: any) => ({
-        ...row,
-        sender: Array.isArray(row.sender)
-          ? row.sender[0] ?? null
-          : row.sender ?? null,
-      }))
-      .filter((row: Message) => !row.is_removed && !blockedIds.has(row.sender_id));
+    const normalized = blockedIds.size
+      ? normalizedAll.filter((row: Message) => !blockedIds.has(row.sender_id))
+      : normalizedAll;
 
-    setMessages(normalized);
+    if (normalized.length !== normalizedAll.length) {
+      setMessages(normalized);
+    }
 
     const fromMsgs: Record<string, { id: string; full_name: string }> = {};
 
@@ -1400,6 +1410,22 @@ useFocusEffect(
         Keyboard.scheduleLayoutAnimation?.(event);
       } catch {}
       setKeyboardVisible(visible);
+      const keyboardHeight =
+        Platform.OS === 'android' && visible
+          ? Math.max(0, event?.endCoordinates?.height ?? 0)
+          : 0;
+
+      Animated.timing(keyboardOffsetAnim, {
+        toValue: keyboardHeight,
+        duration:
+          typeof event?.duration === 'number'
+            ? Math.max(140, Math.min(event.duration, 280))
+            : visible
+            ? 190
+            : 170,
+        useNativeDriver: true,
+      }).start();
+
       shouldStickToBottomRef.current = true;
       setTimeout(() => scrollToBottom(true), Platform.OS === 'ios' ? 40 : 80);
     };
@@ -1415,7 +1441,7 @@ useFocusEffect(
       showSub.remove();
       hideSub.remove();
     };
-  }, [scrollToBottom]);
+  }, [keyboardOffsetAnim, scrollToBottom]);
 
   const updateConversationLastMessage = async (
     convId: string,
@@ -1979,11 +2005,18 @@ useFocusEffect(
   const messagingDisabled =
   conversation?.is_group === false && (isBlockedByPeer || haveIBlockedPeer);
 const isScreenReady = loadState === 'ready' && !!conversation?.id;
+const ChatKeyboardContainer = Platform.OS === 'ios' ? KeyboardAvoidingView : View;
+const chatKeyboardContainerProps =
+  Platform.OS === 'ios'
+    ? {
+        behavior: 'padding' as const,
+        keyboardVerticalOffset: 0,
+      }
+    : {};
   return (
-        <KeyboardAvoidingView
+        <ChatKeyboardContainer
       style={[styles.container, { backgroundColor: DARK_BG }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
-      keyboardVerticalOffset={0}
+      {...chatKeyboardContainerProps}
     >
       {!isScreenReady ? (
   <View style={[styles.loaderWrap, { backgroundColor: DARK_BG }]}>
@@ -1996,7 +2029,11 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
   data={messages}
   renderItem={renderItem}
   keyExtractor={(item) => item.id}
-  contentContainerStyle={{ padding: 16, paddingTop: 8, paddingBottom: 12 }}
+  contentContainerStyle={{
+    padding: 16,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'android' && keyboardVisible ? 82 : 12,
+  }}
   onLayout={() => scrollToBottom(false)}
   onContentSizeChange={handleMessageContentSizeChange}
   onScroll={handleMessageScroll}
@@ -2023,21 +2060,39 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
       <Text style={[styles.typingText, { color: SUBTLE }]}>Someone is typing…</Text>
     )}
 
-    <ChatComposer
-      mutedColor={SUBTLE}
-      backgroundColor={DARK_BG}
-      borderColor={BORDER}
-      inputBackgroundColor={ELEVATED}
-      textColor={TEXT}
-      sendingImage={sendingImage}
-      disabled={messagingDisabled}
-      isBlockedByPeer={isBlockedByPeer}
-      haveIBlockedPeer={haveIBlockedPeer}
-      bottomInset={Platform.OS === 'web' || keyboardVisible ? 0 : insets.bottom}
-      onAttach={sendFile}
-      onSend={sendMessage}
-      onTyping={handleTyping}
-    />
+    <Animated.View
+      style={[
+        styles.composerLift,
+        Platform.OS === 'android'
+          ? {
+              transform: [
+                {
+                  translateY: keyboardOffsetAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -1],
+                  }),
+                },
+              ],
+            }
+          : null,
+      ]}
+    >
+      <ChatComposer
+        mutedColor={SUBTLE}
+        backgroundColor={DARK_BG}
+        borderColor={BORDER}
+        inputBackgroundColor={ELEVATED}
+        textColor={TEXT}
+        sendingImage={sendingImage}
+        disabled={messagingDisabled}
+        isBlockedByPeer={isBlockedByPeer}
+        haveIBlockedPeer={haveIBlockedPeer}
+        bottomInset={Platform.OS === 'web' || keyboardVisible ? 0 : insets.bottom}
+        onAttach={sendFile}
+        onSend={sendMessage}
+        onTyping={handleTyping}
+      />
+    </Animated.View>
   </>
 )}
 
@@ -2286,7 +2341,7 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
         }}
         onSubmit={submitMessageReport}
       />
-    </KeyboardAvoidingView>
+    </ChatKeyboardContainer>
   );
 }
 
@@ -2460,6 +2515,12 @@ const styles = StyleSheet.create({
   },
 
   // Composer
+  composerLift: {
+    width: '100%',
+    zIndex: 5,
+    elevation: 5,
+  },
+
   inputBar: {
   flexDirection: 'row',
   alignItems: 'center',

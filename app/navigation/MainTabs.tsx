@@ -431,6 +431,7 @@ const GlobalFilmSearch = memo(function GlobalFilmSearch({
           style={[
             styles.globalSearchDropdown,
             compact && styles.globalSearchDropdownCompact,
+            micro && styles.globalSearchDropdownMicro,
             {
               backgroundColor: dropdownBg,
               borderColor: inputBorder,
@@ -2785,22 +2786,29 @@ settingsTopBadgeText: {
 
   globalSearchDropdownCompact: {
     top: 35,
+    left: -72,
+    right: -72,
     borderRadius: 12,
   },
 
+  globalSearchDropdownMicro: {
+    left: -88,
+    right: -88,
+  },
+
   globalSearchResult: {
-    minHeight: 56,
-    paddingVertical: 7,
-    paddingHorizontal: 8,
+    minHeight: 64,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 9,
+    gap: 11,
   },
 
   globalSearchThumb: {
-    width: 54,
-    height: 34,
-    borderRadius: 7,
+    width: 72,
+    height: 46,
+    borderRadius: 8,
     overflow: 'hidden',
     backgroundColor: '#050505',
     alignItems: 'center',
@@ -2813,14 +2821,14 @@ settingsTopBadgeText: {
   },
 
   globalSearchResultTitle: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '900',
     fontFamily: SYSTEM_SANS,
   },
 
   globalSearchResultMeta: {
-    marginTop: 2,
-    fontSize: 10,
+    marginTop: 3,
+    fontSize: 11,
     fontWeight: '700',
     fontFamily: SYSTEM_SANS,
   },

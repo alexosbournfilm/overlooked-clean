@@ -2012,12 +2012,6 @@ const isDirectBlocked =
     return;
   }
 
-  navigation.navigate('ChatRoom', {
-    conversation: item,
-    peerUser: item.peerUser,
-    currentUserId: meId,
-  });
-
   if (meId && item?.id) {
     setUnreadConversationIds((prev) => {
       const next = new Set(prev);
@@ -2027,8 +2021,14 @@ const isDirectBlocked =
     emitChatBadgeRefresh();
   }
 
-  requestAnimationFrame(() => {
-    markConversationActive(String(item.id));
+  navigation.navigate('ChatRoom', {
+    conversation: item,
+    peerUser: item.peerUser,
+    currentUserId: meId,
+  });
+
+  setTimeout(() => {
+    void markConversationActive(String(item.id));
     if (!meId || !item?.id) return;
 
     supabase
@@ -2046,7 +2046,7 @@ const isDirectBlocked =
       .then(({ error }) => {
         if (error) logChatsIssue('markReadFromChats unavailable', error);
       });
-  });
+  }, 360);
 }}
         onLongPress={() =>
           removeChatForMe(item)

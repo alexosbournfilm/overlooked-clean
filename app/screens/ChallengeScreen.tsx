@@ -293,10 +293,10 @@ const IconThumb: React.FC<{ icon: keyof typeof Ionicons.glyphMap; label?: string
 };
 
 /* ---------------------- web thumbs --------------------- */
-const ThumbMedia: React.FC<{ uri: string }> = ({ uri }) => {
+const ThumbMedia: React.FC<{ uri: string; compact?: boolean }> = ({ uri, compact }) => {
   if (IS_WEB) {
     return (
-      <View style={styles.thumbFrame}>
+      <View style={[styles.thumbFrame, compact ? styles.thumbFrameNarrow : null]}>
         <img
           src={uri}
           style={
@@ -317,7 +317,7 @@ const ThumbMedia: React.FC<{ uri: string }> = ({ uri }) => {
   }
 
   return (
-    <View style={styles.thumbFrame}>
+    <View style={[styles.thumbFrame, compact ? styles.thumbFrameNarrow : null]}>
       <Image source={{ uri }} style={styles.thumb} resizeMode="cover" />
     </View>
   );
@@ -411,6 +411,7 @@ const [soundProducts, setSoundProducts] = useState<WorkshopProduct[]>([]);
     if (IS_WEB && SCREEN_W >= 1080) return 2;
     return 1;
   }, [SCREEN_W]);
+  const isNarrowWorkshopLayout = SCREEN_W < 430;
 
   const shouldShowLuts = activeFilter === 'all' || activeFilter === 'luts';
 const shouldShowMusic = activeFilter === 'all' || activeFilter === 'music';
@@ -1521,13 +1522,13 @@ const isAudioProduct = isMusic || isSound;
             />
             <View style={[styles.cardTopLine, { backgroundColor: BORDER }]} />
 
-            <View style={styles.cardInner}>
+            <View style={[styles.cardInner, isNarrowWorkshopLayout ? styles.cardInnerNarrow : null]}>
              {!isAudioProduct && (
-                <View style={styles.thumbWrap}>
+                <View style={[styles.thumbWrap, isNarrowWorkshopLayout ? styles.thumbWrapNarrow : null]}>
                   {product.image_url ? (
-                    <ThumbMedia uri={product.image_url} />
+                    <ThumbMedia uri={product.image_url} compact={isNarrowWorkshopLayout} />
                   ) : (
-                    <ShimmerThumb size={88} />
+                    <ShimmerThumb size={isNarrowWorkshopLayout ? 74 : 88} />
                   )}
                 </View>
               )}
@@ -1536,10 +1537,11 @@ const isAudioProduct = isMusic || isSound;
 
               <View style={styles.cardBody}>
                 <View style={styles.cardMainContent}>
-                  <View style={styles.cardTopMetaRow}>
+                  <View style={[styles.cardTopMetaRow, isNarrowWorkshopLayout ? styles.cardTopMetaRowNarrow : null]}>
                     <View
                       style={[
                         styles.cardTypePill,
+                        isNarrowWorkshopLayout ? styles.cardTypePillNarrow : null,
                         {
                           backgroundColor: GOLD_SOFT,
                           borderColor: BORDER_SOFT,
@@ -1552,7 +1554,11 @@ const isAudioProduct = isMusic || isSound;
                         color={GOLD}
                       />
 
-                      <Text style={[styles.cardTypePillText, { color: TEXT_IVORY }]}>
+                      <Text
+                        style={[styles.cardTypePillText, { color: TEXT_IVORY }]}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                      >
                         {isMusic ? 'Music track' : isSound ? 'Sound pack' : 'Workshop pack'}
                       </Text>
                     </View>
@@ -1560,6 +1566,7 @@ const isAudioProduct = isMusic || isSound;
                     <View
                       style={[
                         styles.badgeProOnly,
+                        isNarrowWorkshopLayout ? styles.badgeProOnlyNarrow : null,
                         {
                           backgroundColor: isLight ? '#FFFFFF' : 'rgba(255,255,255,0.035)',
                           borderColor: BORDER,
@@ -1567,16 +1574,32 @@ const isAudioProduct = isMusic || isSound;
                       ]}
                     >
                       <Ionicons name="sparkles-outline" size={12} color={GOLD} />
-                      <Text style={[styles.badgeProOnlyText, { color: TEXT_IVORY }]}>Pro only</Text>
+                      <Text
+                        style={[styles.badgeProOnlyText, { color: TEXT_IVORY }]}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                      >
+                        Pro only
+                      </Text>
                     </View>
                   </View>
 
-                  <Text style={[styles.cardTitle, { color: TEXT_IVORY }]} numberOfLines={2}>
+                  <Text
+                    style={[
+                      styles.cardTitle,
+                      isNarrowWorkshopLayout ? styles.cardTitleNarrow : null,
+                      { color: TEXT_IVORY },
+                    ]}
+                    numberOfLines={isNarrowWorkshopLayout ? 3 : 2}
+                  >
                     {product.name}
                   </Text>
 
                   {product.description ? (
-                    <Text style={[styles.cardDescription, { color: TEXT_MUTED }]} numberOfLines={IS_WEB ? 2 : 3}>
+                    <Text
+                      style={[styles.cardDescription, { color: TEXT_MUTED }]}
+                      numberOfLines={isNarrowWorkshopLayout ? 2 : IS_WEB ? 2 : 3}
+                    >
                       {product.description}
                     </Text>
                   ) : null}
@@ -1588,12 +1611,15 @@ const isAudioProduct = isMusic || isSound;
                   </View>
                 </View>
 
-                <View style={styles.cardBottomRow}>
-                  <View style={styles.cardActionLeft}>{renderCTA(product)}</View>
+                <View style={[styles.cardBottomRow, isNarrowWorkshopLayout ? styles.cardBottomRowNarrow : null]}>
+                  <View style={[styles.cardActionLeft, isNarrowWorkshopLayout ? styles.cardActionLeftNarrow : null]}>
+                    {renderCTA(product)}
+                  </View>
 
                   <View
                     style={[
                       styles.previewChip,
+                      isNarrowWorkshopLayout ? styles.previewChipNarrow : null,
                       {
                         backgroundColor: isLight ? '#FFFFFF' : 'rgba(255,255,255,0.035)',
                         borderColor: BORDER,
@@ -1601,7 +1627,13 @@ const isAudioProduct = isMusic || isSound;
                     ]}
                   >
                     <Ionicons name="play-circle-outline" size={15} color={TEXT_IVORY} />
-                    <Text style={[styles.previewChipText, { color: TEXT_IVORY }]}>Preview</Text>
+                    <Text
+                      style={[styles.previewChipText, { color: TEXT_IVORY }]}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
+                      Preview
+                    </Text>
                   </View>
                 </View>
               </View>
@@ -2375,6 +2407,9 @@ const styles = StyleSheet.create({
     padding: 12,
     alignItems: 'stretch',
   },
+  cardInnerNarrow: {
+    padding: 10,
+  },
 
   thumbWrap: {
     width: 88,
@@ -2383,12 +2418,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
+  thumbWrapNarrow: {
+    width: 74,
+    marginRight: 10,
+  },
   thumbFrame: {
     width: 88,
     height: 88,
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: 'transparent',
+  },
+  thumbFrameNarrow: {
+    width: 74,
+    height: 74,
+    borderRadius: 14,
   },
   thumb: {
     width: '100%',
@@ -2495,6 +2539,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     gap: 8,
   },
+  cardTopMetaRowNarrow: {
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    flexWrap: 'wrap',
+    rowGap: 6,
+  },
   cardTypePill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2507,6 +2557,11 @@ const styles = StyleSheet.create({
     borderColor: BORDER_SOFT,
     flexShrink: 1,
   },
+  cardTypePillNarrow: {
+    maxWidth: '100%',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
   cardTypePillText: {
     fontSize: 8.2,
     fontWeight: '900',
@@ -2514,6 +2569,8 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     fontFamily: SYSTEM_SANS,
+    minWidth: 0,
+    flexShrink: 1,
   },
 
   cardTitle: {
@@ -2525,6 +2582,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     fontFamily: SYSTEM_SANS,
     lineHeight: 21,
+  },
+  cardTitleNarrow: {
+    fontSize: 15,
+    lineHeight: 19,
+    letterSpacing: 0.25,
   },
 
   badgeProOnly: {
@@ -2539,6 +2601,12 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     flexShrink: 0,
   },
+  badgeProOnlyNarrow: {
+    flexShrink: 1,
+    maxWidth: '100%',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
   badgeProOnlyText: {
     fontSize: 8.2,
     fontWeight: '900',
@@ -2546,6 +2614,8 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.7,
     fontFamily: SYSTEM_SANS,
+    minWidth: 0,
+    flexShrink: 1,
   },
 
   cardDescription: {
@@ -2576,9 +2646,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
+  cardBottomRowNarrow: {
+    gap: 7,
+  },
   cardActionLeft: {
     flexShrink: 1,
     maxWidth: '66%',
+    minWidth: 0,
+  },
+  cardActionLeftNarrow: {
+    maxWidth: '58%',
   },
 
   previewChip: {
@@ -2594,6 +2671,12 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     flexShrink: 0,
   },
+  previewChipNarrow: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexShrink: 1,
+    minWidth: 0,
+  },
   previewChipText: {
     fontSize: 9,
     color: TEXT_IVORY,
@@ -2601,6 +2684,8 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.7,
     fontFamily: SYSTEM_SANS,
+    minWidth: 0,
+    flexShrink: 1,
   },
 
   ctaButton: {
@@ -2615,6 +2700,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     minHeight: 38,
     justifyContent: 'center',
+    maxWidth: '100%',
   },
   ctaButtonOutline: {
     backgroundColor: 'transparent',
@@ -2628,6 +2714,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.7,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
+    maxWidth: '100%',
   },
   ctaTextOutline: {
     color: GOLD,
