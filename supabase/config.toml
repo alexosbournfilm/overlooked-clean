@@ -37,6 +37,16 @@ enabled = true
 verify_jwt = true
 entrypoint = "./functions/notify-content-report/index.ts"
 
+[functions.send-chat-push]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/send-chat-push/index.ts"
+
+[functions.send-activity-push]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/send-activity-push/index.ts"
+
 [functions.videos-start-upload]
 enabled = true
 verify_jwt = true

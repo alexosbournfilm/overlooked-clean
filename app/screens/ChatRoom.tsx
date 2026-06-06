@@ -1,4 +1,4 @@
-import React, { useState, useLayoutEffect, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useLayoutEffect, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,6 @@ import {
   Dimensions,
   RefreshControl,
   BackHandler,
-  Keyboard,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -26,7 +25,6 @@ import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { emitChatBadgeRefresh } from '../lib/chatBadgeEvents';
-import { sendPushNotification } from '../lib/sendPush';
 import { useAppRefresh } from '../context/AppRefreshContext';
 import { reportContent, ReportReason } from '../utils/reportContent';
 import { blockUser } from '../utils/blockUser';
@@ -43,6 +41,120 @@ const SUBTLE = '#8F8578';
 const GOLD = '#C6A664';
 const BUBBLE_IN = '#111114';
 const BUBBLE_OUT = GOLD;
+
+type ChatComposerProps = {
+  mutedColor: string;
+  backgroundColor: string;
+  borderColor: string;
+  inputBackgroundColor: string;
+  textColor: string;
+  sendingImage: boolean;
+  disabled: boolean;
+  isBlockedByPeer: boolean;
+  haveIBlockedPeer: boolean;
+  onAttach: () => void;
+  onSend: (text: string) => Promise<boolean>;
+  onTyping: (text: string) => void;
+};
+
+const ChatComposer = React.memo(function ChatComposer({
+  mutedColor,
+  backgroundColor,
+  borderColor,
+  inputBackgroundColor,
+  textColor,
+  sendingImage,
+  disabled,
+  isBlockedByPeer,
+  haveIBlockedPeer,
+  onAttach,
+  onSend,
+  onTyping,
+}: ChatComposerProps) {
+  const [draft, setDraft] = useState('');
+
+  const handleChange = useCallback(
+    (text: string) => {
+      setDraft(text);
+      onTyping(text);
+    },
+    [onTyping]
+  );
+
+  const submit = useCallback(async () => {
+    const text = draft.trim();
+    if (!text || disabled) return;
+
+    const sent = await onSend(text);
+    if (sent) setDraft('');
+  }, [disabled, draft, onSend]);
+
+  const handleWebKeyPress = useCallback(
+    (e: any) => {
+      if (Platform.OS !== 'web') return;
+      const key = e?.nativeEvent?.key;
+      const shift = !!e?.nativeEvent?.shiftKey;
+      const isComposing = !!e?.nativeEvent?.isComposing;
+      if (key === 'Enter' && !shift) {
+        if (isComposing) return;
+        if (typeof e?.preventDefault === 'function') e.preventDefault();
+        void submit();
+      }
+    },
+    [submit]
+  );
+
+  return (
+    <View style={[styles.inputBar, { backgroundColor, borderTopColor: borderColor }]}>
+      <TouchableOpacity
+        onPress={onAttach}
+        style={styles.iconBtn}
+        disabled={sendingImage || disabled}
+      >
+        {sendingImage ? (
+          <ActivityIndicator color={textColor} />
+        ) : (
+          <Ionicons name="attach" size={22} color={mutedColor} />
+        )}
+      </TouchableOpacity>
+
+      <TextInput
+        value={draft}
+        onChangeText={handleChange}
+        placeholder={
+          isBlockedByPeer
+            ? "You can't message this user"
+            : haveIBlockedPeer
+            ? 'Unblock this user to message them'
+            : 'Type a message...'
+        }
+        placeholderTextColor={mutedColor}
+        style={[
+          styles.input,
+          { backgroundColor: inputBackgroundColor, borderColor, color: textColor },
+        ]}
+        multiline={Platform.OS === 'web'}
+        onKeyPress={handleWebKeyPress}
+        editable={!disabled}
+        autoCorrect
+        autoCapitalize="sentences"
+        returnKeyType="send"
+        onSubmitEditing={() => {
+          if (Platform.OS !== 'web') void submit();
+        }}
+        {...(Platform.OS === 'web' ? ({ tabIndex: 0 } as any) : {})}
+      />
+
+      <TouchableOpacity
+        onPress={() => void submit()}
+        style={[styles.sendBtn, disabled && { opacity: 0.5 }]}
+        disabled={disabled}
+      >
+        <Ionicons name="send" size={18} color="#000" />
+      </TouchableOpacity>
+    </View>
+  );
+});
 
 /* ------------------------------- sizing ------------------------------------ */
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -163,7 +275,6 @@ export default function ChatRoom() {
     routePeerUser ?? null
   );
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
   const [typingUser, setTypingUser] = useState<string | null>(null);
   const [sendingImage, setSendingImage] = useState(false);
@@ -204,8 +315,7 @@ const [reportSubmitting, setReportSubmitting] = useState(false);
       const flatListRef = useRef<FlatList>(null);
 const typingTimeoutRef =
   useRef<ReturnType<typeof setTimeout> | null>(null);
-
-const [keyboardHeight, setKeyboardHeight] = useState(0);
+const lastTypingSignalRef = useRef(0);
 
   const messageChannelRef = useRef<any>(null);
   const typingChannelRef = useRef<any>(null);
@@ -591,30 +701,6 @@ useFocusEffect(
     setBlockedUserIds(ids);
     return ids;
   };
-
-  useEffect(() => {
-    const showEvent =
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent =
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const showSub = Keyboard.addListener(showEvent, (e) => {
-      if (Platform.OS === 'android') {
-        setKeyboardHeight(e.endCoordinates?.height || 0);
-      }
-    });
-
-    const hideSub = Keyboard.addListener(hideEvent, () => {
-      if (Platform.OS === 'android') {
-        setKeyboardHeight(0);
-      }
-    });
-
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
 
   /* ------------------------------- header UI ------------------------------ */
   const goBackToChats = () => {
@@ -1140,42 +1226,34 @@ for (const m of normalized)
 
   /* -------------------------------- sending -------------------------------- */
 
-  const notifyRecipients = async (messageText: string) => {
-  if (!conversation?.participant_ids?.length || !userId) return;
+  const notifyRecipients = async (_messageText: string) => {
+    // Supabase triggers send native push notifications for inserted messages.
+  };
 
-  const recipientIds = conversation.participant_ids.filter(
-    (id) => id !== userId
-  );
-
-  for (const recipientId of recipientIds) {
-    await sendPushNotification(recipientId, messageText, userId);
-  }
-};
-
-  const sendMessage = async () => {
+  const sendMessage = async (rawText: string) => {
   if (conversation?.is_group === false && isBlockedByPeer) {
     Alert.alert('Cannot message user', "You can't message this user.");
-    return;
+    return false;
   }
 
   if (conversation?.is_group === false && haveIBlockedPeer) {
     Alert.alert('User blocked', 'Unblock this user to send messages.');
-    return;
+    return false;
   }
 
+  const text = rawText.trim();
+
   if (
-    !input.trim() ||
+    !text ||
     !userId ||
     !conversation?.id
   )
-    return;
-    const text = input.trim();
+    return false;
     const moderationError = validateSafeText(text);
     if (moderationError) {
       Alert.alert('Content Not Allowed', moderationError);
-      return;
+      return false;
     }
-    setInput('');
     const { error } =
       await supabase
         .from('messages')
@@ -1192,7 +1270,7 @@ for (const m of normalized)
         'Failed to send',
         error.message
       );
-      return;
+      return false;
     }
     await updateConversationLastMessage(
   conversation.id,
@@ -1215,6 +1293,7 @@ await supabase.from('conversation_reads').upsert(
 await fetchUserAndMessages();
 scrollToBottom(true);
 emitChatBadgeRefresh();
+return true;
   };
 
   const reportMessage = (item: Message) => {
@@ -1464,41 +1543,24 @@ emitChatBadgeRefresh();
     }
   };
 
-  const handleTyping = (text: string) => {
-  setInput(text);
+  const handleTyping = useCallback(
+    (text: string) => {
+      if (!text.trim() || !conversation?.id || !typingChannelRef.current || !userId) return;
 
-  if (!text.trim() || !conversation?.id || !typingChannelRef.current) return;
+      const now = Date.now();
+      if (now - lastTypingSignalRef.current < 900) return;
+      lastTypingSignalRef.current = now;
 
-  typingChannelRef.current.send({
-    type: 'broadcast',
-    event: 'typing',
-    payload: {
-      sender: userId,
+      typingChannelRef.current.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: {
+          sender: userId,
+        },
+      });
     },
-  });
-};
-
-  // Web: Enter send, Shift+Enter newline
-  const handleWebKeyPress = (e: any) => {
-    if (Platform.OS !== 'web') return;
-    const key =
-      e?.nativeEvent?.key;
-    const shift =
-      !!e?.nativeEvent
-        ?.shiftKey;
-    const isComposing =
-      !!e?.nativeEvent
-        ?.isComposing;
-    if (key === 'Enter' && !shift) {
-      if (isComposing) return;
-      if (
-        typeof e?.preventDefault ===
-        'function'
-      )
-        e.preventDefault();
-      sendMessage();
-    }
-  };
+    [conversation?.id, userId]
+  );
 
   /* ------------------------------- rendering ------------------------------- */
   const isImageMessage = (content: string) =>
@@ -1737,53 +1799,20 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
       <Text style={[styles.typingText, { color: SUBTLE }]}>Someone is typing…</Text>
     )}
 
-       <View
-      style={[
-        styles.inputBar,
-        { backgroundColor: DARK_BG, borderTopColor: BORDER },
-        Platform.OS === 'android' && keyboardHeight > 0
-          ? { marginBottom: keyboardHeight }
-          : null,
-      ]}
-    >
-      <TouchableOpacity
-  onPress={sendFile}
-  style={styles.iconBtn}
-  disabled={sendingImage || messagingDisabled}
->
-        {sendingImage ? (
-          <ActivityIndicator color={TEXT} />
-        ) : (
-          <Ionicons name="attach" size={22} color={SUBTLE} />
-        )}
-      </TouchableOpacity>
-
-      <TextInput
-  value={input}
-  onChangeText={handleTyping}
-  placeholder={
-    isBlockedByPeer
-      ? "You can't message this user"
-      : haveIBlockedPeer
-      ? 'Unblock this user to message them'
-      : 'Type a message…'
-  }
-  placeholderTextColor={SUBTLE}
-  style={[styles.input, { backgroundColor: ELEVATED, borderColor: BORDER, color: TEXT }]}
-  multiline={Platform.OS === 'web'}
-  onKeyPress={handleWebKeyPress}
-  editable={!messagingDisabled}
-  {...(Platform.OS === 'web' ? ({ tabIndex: 0 } as any) : {})}
-/>
-
-      <TouchableOpacity
-  onPress={sendMessage}
-  style={[styles.sendBtn, messagingDisabled && { opacity: 0.5 }]}
-  disabled={messagingDisabled}
->
-  <Ionicons name="send" size={18} color="#000" />
-</TouchableOpacity>
-    </View>
+    <ChatComposer
+      mutedColor={SUBTLE}
+      backgroundColor={DARK_BG}
+      borderColor={BORDER}
+      inputBackgroundColor={ELEVATED}
+      textColor={TEXT}
+      sendingImage={sendingImage}
+      disabled={messagingDisabled}
+      isBlockedByPeer={isBlockedByPeer}
+      haveIBlockedPeer={haveIBlockedPeer}
+      onAttach={sendFile}
+      onSend={sendMessage}
+      onTyping={handleTyping}
+    />
   </>
 )}
 

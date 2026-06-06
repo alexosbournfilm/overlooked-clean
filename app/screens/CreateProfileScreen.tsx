@@ -168,6 +168,7 @@ const CREATIVE_GOAL_OPTIONS = [
 const DEFAULT_NOTIFICATION_PREFERENCES = {
   direct_messages: true,
   group_messages: true,
+  new_supporters: true,
   followed_submissions: true,
   submission_comments: true,
   submission_votes: true,

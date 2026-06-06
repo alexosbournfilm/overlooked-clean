@@ -5254,7 +5254,7 @@ maxToRenderPerBatch={2}
 {previewOpen && previewItem && (
   <Modal
     visible
-    transparent={false}
+    transparent
     animationType="none"
     presentationStyle={Platform.OS === 'web' ? 'overFullScreen' : 'fullScreen'}
     hardwareAccelerated
@@ -5265,13 +5265,20 @@ maxToRenderPerBatch={2}
       style={[
         styles.previewOverlay,
         {
-          opacity: 1,
           backgroundColor: featuredBackground,
           justifyContent: 'flex-start',
           alignItems: 'stretch',
           paddingHorizontal: 0,
           paddingTop: 0,
           paddingBottom: 0,
+          transform: [
+            {
+              translateY: previewMotion.interpolate({
+                inputRange: [0, 1],
+                outputRange: [winH, 0],
+              }),
+            },
+          ],
         },
       ]}
     >
@@ -5293,20 +5300,6 @@ maxToRenderPerBatch={2}
             backgroundColor: featuredBackground,
             borderColor: isLight ? 'transparent' : 'transparent',
             shadowOpacity: Platform.OS === 'web' ? 0 : isLight ? 0.08 : 0.3,
-            transform: [
-              {
-                translateY: previewMotion.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [Platform.OS === 'web' ? 0 : winH, 0],
-                }),
-              },
-              {
-                scale: previewMotion.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [1, 1],
-                }),
-              },
-            ],
           },
         ]}
       >

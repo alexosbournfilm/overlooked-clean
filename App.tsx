@@ -17,7 +17,7 @@ import { AuthProvider } from "./app/context/AuthProvider";
 import { AppRefreshProvider } from "./app/context/AppRefreshContext";
 import { GamificationProvider } from "./app/context/GamificationContext";
 import { AppThemeProvider, useAppTheme } from "./app/context/ThemeContext";
-import { navigate } from "./app/navigation/navigationRef";
+import { navigate, openChat } from "./app/navigation/navigationRef";
 import { registerAndSavePushToken } from "./app/lib/registerAndSavePushToken";
 
 import {
@@ -556,10 +556,49 @@ const isSignupLikeConfirmation =
   useEffect(() => {
     if (Platform.OS === "web") return;
 
-    const handleNotificationNavigation = (data: any) => {
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const waitForRestoredSession = async () => {
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session?.user?.id) return true;
+        await sleep(220);
+      }
+      return false;
+    };
+
+    const navigateFromNotification = (screen: string, params: any) => {
+      if (screen === "ChatRoom") {
+        openChat(params || {});
+        return;
+      }
+
+      const tabScreens = new Set([
+        "Featured",
+        "Jobs",
+        "Challenge",
+        "Workshop",
+        "Location",
+        "Chats",
+        "Profile",
+      ]);
+
+      if (tabScreens.has(screen)) {
+        navigate("MainTabs" as never, { screen, params } as never);
+        return;
+      }
+
+      navigate(screen as never, params as never);
+    };
+
+    const handleNotificationNavigation = async (data: any) => {
       if (data?.screen) {
         try {
-          navigate(data.screen, data.params || {});
+          const { screen, params, ...legacyParams } = data;
+          delete legacyParams.preferenceKey;
+          await waitForRestoredSession();
+          await sleep(Platform.OS === "android" ? 320 : 80);
+          navigateFromNotification(screen, params || legacyParams || {});
         } catch (err) {
           console.log("Navigation from notification failed:", err);
         }
@@ -576,7 +615,7 @@ const isSignupLikeConfirmation =
         console.log("👆 Notification tapped:", response);
 
         const data = response.notification.request.content.data as any;
-        handleNotificationNavigation(data);
+        void handleNotificationNavigation(data);
       });
 
     (async () => {
@@ -588,7 +627,7 @@ const isSignupLikeConfirmation =
           console.log("🚀 App opened from notification:", lastResponse);
 
           const data = lastResponse.notification.request.content.data as any;
-          handleNotificationNavigation(data);
+          void handleNotificationNavigation(data);
         }
       } catch (err) {
         console.log("Failed to get last notification response:", err);

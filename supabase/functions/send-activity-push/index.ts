@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 type PreferenceKey =
+  | "new_supporters"
   | "followed_submissions"
   | "submission_comments"
   | "submission_votes"
@@ -57,6 +58,18 @@ function text(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
+function screenData(screen: string, params: Record<string, unknown> = {}) {
+  return { screen, params };
+}
+
+function featuredFilmData(submissionId: unknown, extraParams: Record<string, unknown> = {}) {
+  return screenData("Featured", {
+    ...extraParams,
+    openSubmissionId: submissionId,
+    openSearchNonce: Date.now(),
+  });
+}
+
 function resolveActivityType(body: WebhookBody) {
   const explicit = text(
     body.activity_type ?? body.notification_type ?? body.event_type,
@@ -68,6 +81,7 @@ function resolveActivityType(body: WebhookBody) {
   const type = text(body.type, "").toLowerCase();
 
   if (type === "insert" && table === "submissions") return "submission_created";
+  if (type === "insert" && table === "user_supports") return "user_support_created";
   if (type === "insert" && table === "submission_comments") {
     return body.record?.parent_comment_id
       ? "submission_comment_reply_created"
@@ -195,6 +209,22 @@ serve(async (req: Request): Promise<Response> => {
 
     const targets: ActivityTarget[] = [];
 
+    if (activityType === "user_support_created" || activityType === "new_supporter") {
+      const supporterId = record.supporter_id;
+      const supportedId = record.supported_id;
+      const supporterName = await fetchUserName(supabase, supporterId);
+
+      if (supportedId && supportedId !== supporterId) {
+        targets.push({
+          userId: supportedId,
+          preferenceKey: "new_supporters",
+          title: `${supporterName} supports you`,
+          body: "Open their profile on Overlooked",
+          data: screenData("Profile", { userId: supporterId }),
+        });
+      }
+    }
+
     if (activityType === "submission_created" || activityType === "new_submission") {
       const submission = await fetchSubmission(supabase, record);
       const authorId = submission?.user_id ?? record.user_id;
@@ -212,7 +242,7 @@ serve(async (req: Request): Promise<Response> => {
           preferenceKey: "followed_submissions",
           title: `${authorName} posted a new film`,
           body: text(submission?.title, "Watch it on Overlooked"),
-          data: { screen: "Featured", submissionId: submission?.id ?? record.id },
+          data: featuredFilmData(submission?.id ?? record.id),
         });
       }
     }
@@ -233,11 +263,9 @@ serve(async (req: Request): Promise<Response> => {
           preferenceKey: "submission_comments",
           title: `${actorName} commented on your film`,
           body: commentBody,
-          data: {
-            screen: "Featured",
-            submissionId: submission.id,
+          data: featuredFilmData(submission.id, {
             commentId: record.id,
-          },
+          }),
         });
       }
 
@@ -254,11 +282,9 @@ serve(async (req: Request): Promise<Response> => {
             preferenceKey: "comment_replies",
             title: `${actorName} replied to your comment`,
             body: commentBody,
-            data: {
-              screen: "Featured",
-              submissionId: submission?.id ?? record.submission_id,
+            data: featuredFilmData(submission?.id ?? record.submission_id, {
               commentId: record.id,
-            },
+            }),
           });
         }
       }
@@ -274,7 +300,7 @@ serve(async (req: Request): Promise<Response> => {
           preferenceKey: "submission_votes",
           title: "Your film received a vote",
           body: text(submission.title, "Someone voted for your submission"),
-          data: { screen: "Featured", submissionId: submission.id },
+          data: featuredFilmData(submission.id),
         });
       }
     }
@@ -294,7 +320,7 @@ serve(async (req: Request): Promise<Response> => {
             preferenceKey: "city_jobs",
             title: "New creative job nearby",
             body: text(job.title, "A new job was posted in your city"),
-            data: { screen: "Jobs", jobId: job.id },
+            data: screenData("Jobs", { jobId: job.id }),
           });
         }
       }
@@ -315,7 +341,7 @@ serve(async (req: Request): Promise<Response> => {
             preferenceKey: "city_creatives",
             title: "New creative in your city",
             body: `${newUserName} joined Overlooked`,
-            data: { screen: "Location", userId: record.id, cityId: record.city_id },
+            data: screenData("Location", { userId: record.id, cityId: record.city_id }),
           });
         }
       }
@@ -331,7 +357,7 @@ serve(async (req: Request): Promise<Response> => {
           preferenceKey: "job_applications",
           title: "New application received",
           body: `${applicantName} applied to ${text(job.title, "your job")}`,
-          data: { screen: "Jobs", jobId: job.id, applicationId: record.id },
+          data: screenData("Jobs", { jobId: job.id, applicationId: record.id }),
         });
       }
     }
@@ -348,7 +374,7 @@ serve(async (req: Request): Promise<Response> => {
           preferenceKey: "challenge_reminders",
           title: isEnding ? "Monthly challenge is almost over" : "New monthly challenge",
           body: text(record.title, isEnding ? "Submit before the deadline" : "A new prompt is live"),
-          data: { screen: "Challenge", challengeId: record.id },
+          data: screenData("Challenge", { challengeId: record.id }),
         });
       }
     }
@@ -365,11 +391,10 @@ serve(async (req: Request): Promise<Response> => {
           preferenceKey: "challenge_results",
           title: "You placed in the monthly challenge",
           body: text(record.title, "Open Overlooked to see your result"),
-          data: {
-            screen: "Challenge",
+          data: screenData("Challenge", {
             challengeId: record.id,
             submissionId: winnerSubmission?.id ?? record.winner_submission_id,
-          },
+          }),
         });
       }
     }

@@ -280,9 +280,11 @@ type GlobalFilmSearchResult = {
 
 const GlobalFilmSearch = memo(function GlobalFilmSearch({
   compact,
+  micro,
   onSelectFilm,
 }: {
   compact?: boolean;
+  micro?: boolean;
   onSelectFilm: (filmId: string) => void;
 }) {
   const { colors, isLight } = useAppTheme();
@@ -362,6 +364,7 @@ const GlobalFilmSearch = memo(function GlobalFilmSearch({
       style={[
         styles.globalSearchWrap,
         compact && styles.globalSearchWrapCompact,
+        micro && styles.globalSearchWrapMicro,
         { zIndex: 100000, elevation: 100000 },
       ]}
     >
@@ -369,6 +372,7 @@ const GlobalFilmSearch = memo(function GlobalFilmSearch({
         style={[
           styles.globalSearchBox,
           compact && styles.globalSearchBoxCompact,
+          micro && styles.globalSearchBoxMicro,
           {
             backgroundColor: inputBg,
             borderColor: focused ? colors.primary : inputBorder,
@@ -377,7 +381,7 @@ const GlobalFilmSearch = memo(function GlobalFilmSearch({
       >
         <Ionicons
           name="search-outline"
-          size={compact ? 13 : 15}
+          size={micro ? 12 : compact ? 13 : 15}
           color={focused ? colors.primary : colors.textMuted}
         />
         <TextInput
@@ -389,13 +393,14 @@ const GlobalFilmSearch = memo(function GlobalFilmSearch({
             if (first?.id) selectFilm(first.id);
           }}
           returnKeyType="search"
-          placeholder="Search film..."
+          placeholder={micro ? "Search" : "Search film..."}
           placeholderTextColor={colors.textMuted}
           selectionColor={colors.primary}
           cursorColor={colors.primary}
           style={[
             styles.globalSearchInput,
             compact && styles.globalSearchInputCompact,
+            micro && styles.globalSearchInputMicro,
             { color: colors.textPrimary },
           ]}
         />
@@ -1423,6 +1428,7 @@ const TopBar = memo(function TopBar({
   const { colors, isLight } = useAppTheme();
   const isWide = width >= 980;
   const isPhone = width < 420;
+  const isTinyPhone = Platform.OS !== 'web' && width < 380;
   const compactUI = !isWide;
 
 const settingsSize =
@@ -1431,7 +1437,7 @@ const settingsSize =
       ? 30
       : 30
     : isPhone
-      ? 30
+      ? isTinyPhone ? 28 : 30
       : 28;
 
   return (
@@ -1451,6 +1457,7 @@ const settingsSize =
     {
       minHeight: navHeight,
       paddingHorizontal: isPhone ? 8 : 14,
+      ...(isTinyPhone ? { paddingHorizontal: 6 } : null),
       paddingTop: Platform.OS === 'web' ? 4 : 0,
       backgroundColor: colors.background,
     },
@@ -1471,11 +1478,11 @@ const settingsSize =
             </HoverPress>
           </View>
 
-          <View style={styles.topBarSearchSlot}>
-            <GlobalFilmSearch compact={compactUI} onSelectFilm={onSelectFilm} />
+          <View style={[styles.topBarSearchSlot, isTinyPhone && styles.topBarSearchSlotTiny]}>
+            <GlobalFilmSearch compact={compactUI} micro={isTinyPhone} onSelectFilm={onSelectFilm} />
           </View>
 
-          <View style={[styles.rightTools, { gap: isPhone ? 5 : 10 }]}>
+          <View style={[styles.rightTools, { gap: isTinyPhone ? 3 : isPhone ? 5 : 10 }]}>
             <HoverPress onPress={onOpenUpload} hitSlop={6} accessibilityLabel="Upload film">
               <View
   style={[
@@ -1489,7 +1496,7 @@ const settingsSize =
       },
 ]}
 >
-                <Ionicons name="cloud-upload-outline" size={isPhone ? 16 : 18} color={colors.primary} />
+                <Ionicons name="cloud-upload-outline" size={isTinyPhone ? 15 : isPhone ? 16 : 18} color={colors.primary} />
                 {!(Platform.OS !== 'web' && isPhone) && (
   <Text
     style={[
@@ -1518,7 +1525,7 @@ const settingsSize =
       },
     ]}
   >
-    <Ionicons name="trophy-outline" size={isPhone ? 16 : 18} color={colors.primary} />
+    <Ionicons name="trophy-outline" size={isTinyPhone ? 15 : isPhone ? 16 : 18} color={colors.primary} />
     {!(Platform.OS !== 'web' && isPhone) && (
       <Text
         style={[
@@ -1587,7 +1594,7 @@ const settingsSize =
         justifyContent: 'center',
       }}
     >
-      <Ionicons name="settings-outline" size={isPhone ? 13 : 16} color={colors.textPrimary} />
+      <Ionicons name="settings-outline" size={isTinyPhone ? 12 : isPhone ? 13 : 16} color={colors.textPrimary} />
     </View>
 
     <View
@@ -2638,11 +2645,17 @@ chatBadgeText: {
 
   topBarSearchSlot: {
     flex: 1,
-    minWidth: 110,
+    minWidth: 88,
     maxWidth: 420,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     zIndex: 100000,
     elevation: 100000,
+  },
+
+  topBarSearchSlotTiny: {
+    minWidth: 78,
+    maxWidth: 104,
+    paddingHorizontal: 3,
   },
 
   webTopBarSearchSlot: {
@@ -2663,6 +2676,10 @@ chatBadgeText: {
     minWidth: 0,
   },
 
+  globalSearchWrapMicro: {
+    minWidth: 0,
+  },
+
   globalSearchBox: {
     height: 34,
     borderRadius: 999,
@@ -2679,6 +2696,12 @@ chatBadgeText: {
     gap: 5,
   },
 
+  globalSearchBoxMicro: {
+    height: 30,
+    paddingHorizontal: 7,
+    gap: 4,
+  },
+
   globalSearchInput: {
     flex: 1,
     minWidth: 0,
@@ -2691,6 +2714,10 @@ chatBadgeText: {
 
   globalSearchInputCompact: {
     fontSize: 10.5,
+  },
+
+  globalSearchInputMicro: {
+    fontSize: 10,
   },
 
   globalSearchDropdown: {
@@ -2790,8 +2817,8 @@ chatBadgeText: {
   },
 
   brandTitleCompact: {
-  fontSize: 15,
-  letterSpacing: 1.6,
+  fontSize: 13.5,
+  letterSpacing: 1.35,
 },
 
   rightTools: {
@@ -2813,10 +2840,10 @@ chatBadgeText: {
 },
 
   topActionBtnPhone: {
-  width: 36,
-  minWidth: 36,
-  height: 36,
-  minHeight: 36,
+  width: 32,
+  minWidth: 32,
+  height: 32,
+  minHeight: 32,
   paddingHorizontal: 0,
   gap: 0,
   backgroundColor: 'transparent',

@@ -162,8 +162,10 @@ serve(async (req: Request): Promise<Response> => {
       body: bodyText,
       data: {
         screen: "ChatRoom",
-        conversationId,
-        senderId,
+        params: {
+          conversationId,
+          senderId,
+        },
       },
     }));
 

@@ -9,6 +9,7 @@ alter table public.users
   add column if not exists notification_preferences jsonb not null default '{
     "direct_messages": true,
     "group_messages": true,
+    "new_supporters": true,
     "followed_submissions": true,
     "submission_comments": true,
     "submission_votes": true,
