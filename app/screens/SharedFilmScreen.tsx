@@ -19,6 +19,7 @@ import YoutubePlayer from "react-native-youtube-iframe";
 import { supabase } from "../lib/supabase";
 import type { RootStackParamList } from "../navigation/navigationRef";
 import { useAppTheme } from "../context/ThemeContext";
+import { usesNativeMobileLayoutOnWeb } from "../utils/responsive";
 
 const GOLD = "#C6A664";
 const BG = "#050505";
@@ -302,6 +303,7 @@ export default function SharedFilmScreen() {
       return String(raw).trim();
     }
   }, [routeShareSlug, pathShareSlug]);
+  const nativeMobileLayout = usesNativeMobileLayoutOnWeb(width);
 
   useEffect(() => {
     if (!shareSlug) return;
@@ -659,11 +661,11 @@ export default function SharedFilmScreen() {
               <Text style={[styles.errorTitle, { color: TEXT }]}>Unavailable</Text>
               <Text style={[styles.errorText, { color: SUB }]}>{errorText}</Text>
 
-              <View style={styles.errorActions}>
+              <View style={[styles.errorActions, nativeMobileLayout ? styles.actionsStacked : styles.actionsRow]}>
                 <TouchableOpacity
                   onPress={goToSignUp}
                   activeOpacity={0.9}
-                  style={[styles.primaryBtn, { backgroundColor: GOLD }]}
+                  style={[styles.primaryBtn, nativeMobileLayout && styles.actionBtnStacked, { backgroundColor: GOLD }]}
                 >
                   <Text style={[styles.primaryBtnText, { color: colors.textOnPrimary }]}>Join Overlooked</Text>
                 </TouchableOpacity>
@@ -671,7 +673,7 @@ export default function SharedFilmScreen() {
                 <TouchableOpacity
                   onPress={goToSignIn}
                   activeOpacity={0.9}
-                  style={[styles.secondaryBtn, { backgroundColor: PANEL_ALT, borderColor: LINE }]}
+                  style={[styles.secondaryBtn, nativeMobileLayout && styles.actionBtnStacked, { backgroundColor: PANEL_ALT, borderColor: LINE }]}
                 >
                   <Text style={[styles.secondaryBtnText, { color: TEXT }]}>Sign In</Text>
                 </TouchableOpacity>
@@ -784,11 +786,11 @@ export default function SharedFilmScreen() {
                   ) : null}
 
                   {film.users?.full_name ? (
-                    <View style={styles.actions}>
+                    <View style={[styles.actions, nativeMobileLayout ? styles.actionsStacked : styles.actionsRow]}>
                       <TouchableOpacity
                         onPress={goToCreator}
                         activeOpacity={0.9}
-                        style={[styles.secondaryBtn, { backgroundColor: PANEL_ALT, borderColor: LINE }]}
+                        style={[styles.secondaryBtn, nativeMobileLayout && styles.actionBtnStacked, { backgroundColor: PANEL_ALT, borderColor: LINE }]}
                       >
                         <Text style={[styles.secondaryBtnText, { color: TEXT }]}>View Creator</Text>
                       </TouchableOpacity>
@@ -804,11 +806,11 @@ export default function SharedFilmScreen() {
                     Join Overlooked to upload films, build your profile, and connect with other creatives.
                   </Text>
 
-                  <View style={styles.ctaActions}>
+                  <View style={[styles.ctaActions, nativeMobileLayout ? styles.actionsStacked : styles.actionsRow]}>
                     <TouchableOpacity
                       onPress={goToSignUp}
                       activeOpacity={0.9}
-                      style={[styles.primaryBtn, { backgroundColor: GOLD }]}
+                      style={[styles.primaryBtn, nativeMobileLayout && styles.actionBtnStacked, { backgroundColor: GOLD }]}
                     >
                       <Text style={[styles.primaryBtnText, { color: colors.textOnPrimary }]}>Join Overlooked</Text>
                     </TouchableOpacity>
@@ -816,7 +818,7 @@ export default function SharedFilmScreen() {
                     <TouchableOpacity
                       onPress={goToSignIn}
                       activeOpacity={0.9}
-                      style={[styles.secondaryBtn, { backgroundColor: PANEL_ALT, borderColor: LINE }]}
+                      style={[styles.secondaryBtn, nativeMobileLayout && styles.actionBtnStacked, { backgroundColor: PANEL_ALT, borderColor: LINE }]}
                     >
                       <Text style={[styles.secondaryBtnText, { color: TEXT }]}>Sign In</Text>
                     </TouchableOpacity>
@@ -899,9 +901,17 @@ const styles = StyleSheet.create({
   },
   errorActions: {
     marginTop: 18,
-    flexDirection: Platform.OS === "web" ? "row" : "column",
     alignItems: "center",
     justifyContent: "center",
+  },
+  actionsRow: {
+    flexDirection: "row",
+  },
+  actionsStacked: {
+    width: "100%",
+    alignSelf: "stretch",
+    flexDirection: "column",
+    alignItems: "stretch",
   },
   card: {
     backgroundColor: PANEL,
@@ -1027,7 +1037,6 @@ const styles = StyleSheet.create({
     lineHeight: 23,
   },
   actions: {
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-start",
     alignSelf: "flex-start",
@@ -1042,6 +1051,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: Platform.OS === "web" ? 10 : 0,
     marginBottom: Platform.OS === "web" ? 0 : 10,
+  },
+  actionBtnStacked: {
+    width: "100%",
+    marginRight: 0,
+    marginBottom: 10,
   },
   primaryBtnText: {
     color: "#111",
@@ -1093,7 +1107,6 @@ const styles = StyleSheet.create({
   },
   ctaActions: {
     marginTop: 18,
-    flexDirection: Platform.OS === "web" ? "row" : "column",
     alignItems: "center",
     justifyContent: "center",
   },

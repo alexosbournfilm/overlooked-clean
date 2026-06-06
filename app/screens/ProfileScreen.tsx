@@ -47,6 +47,8 @@ import YoutubePlayer from "react-native-youtube-iframe";
 import * as Clipboard from 'expo-clipboard';
 import { useAppRefresh } from '../context/AppRefreshContext';
 import { useAppTheme } from '../context/ThemeContext';
+import { useAppLanguage } from '../context/LanguageContext';
+import { translateTrustedText } from '../i18n/translations';
 import { reportContent, ReportReason } from '../utils/reportContent';
 import { blockUser } from '../utils/blockUser';
 import { validateMultipleSafeTexts, validateSafeText } from '../utils/moderation';
@@ -1275,6 +1277,19 @@ function clearAuthRoutingFlags() {
     window.sessionStorage.removeItem("overlooked.createProfileAllowed");
   }
 }
+
+function setSigningOutFlag(active: boolean) {
+  const G = globalThis as any;
+  G.__OVERLOOKED_SIGNING_OUT__ = active;
+
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    if (active) {
+      window.sessionStorage.setItem("overlooked.signingOut", "true");
+    } else {
+      window.sessionStorage.removeItem("overlooked.signingOut");
+    }
+  }
+}
 export default function ProfileScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
@@ -1282,6 +1297,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const { colors: themeColors, isLight } = useAppTheme();
+  const { language } = useAppLanguage();
   const GOLD = themeColors.primary;
   const COLORS = useMemo(
     () => ({
@@ -1306,6 +1322,10 @@ export default function ProfileScreen() {
   const editModalInput = isLight ? COLORS.input : COLORS.input;
   const editModalPill = isLight ? COLORS.card : "#0A0A0A";
   const editModalPillSelected = isLight ? "rgba(198,166,100,0.20)" : "rgba(198,166,100,0.18)";
+  const translateRoleLabel = useCallback(
+    (value?: string | null) => translateTrustedText(value || '', language),
+    [language]
+  );
   const editModalDangerBg = isLight ? "rgba(255,107,107,0.10)" : "rgba(255,107,107,0.12)";
   const { triggerAppRefresh } = useAppRefresh();
   const [refreshing, setRefreshing] = useState(false);
@@ -4439,16 +4459,29 @@ if (up.error) throw up.error;
   /* ---------- AUTH / CHAT ---------- */
 
   const handleLogout = async () => {
-    clearAuthRoutingFlags();
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      Alert.alert('Logout Failed', error.message);
-      return;
-    }
+    try {
+      setSigningOutFlag(true);
+      clearAuthRoutingFlags();
+      resetToSignIn();
 
-    clearAuthRoutingFlags();
-    resetToSignIn();
-    setTimeout(resetToSignIn, 160);
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        window.history.replaceState(null, "", "/signin");
+      }
+
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        setSigningOutFlag(false);
+        Alert.alert('Logout Failed', error.message);
+        return;
+      }
+
+      clearAuthRoutingFlags();
+      resetToSignIn();
+      setTimeout(resetToSignIn, 160);
+    } catch (e: any) {
+      setSigningOutFlag(false);
+      Alert.alert('Logout Failed', e?.message || 'Failed to sign out.');
+    }
   };
 
   const copyCreativeProtocolLink = async () => {
@@ -5010,7 +5043,7 @@ paddingVertical: isMobileLike ? 3 : 4,
               ]}
             >
               <Text style={{ color: COLORS.textPrimary, fontWeight: "900" }}>Side roles: </Text>
-              {sideRoles.join(", ")}
+              {sideRoles.map((role) => translateRoleLabel(role)).join(", ")}
             </Text>
           )}
         </>
@@ -5107,7 +5140,7 @@ const heroMaxW = isMobileLike ? contentMaxWidth : "100%";
   ]}
   numberOfLines={1}
 >
-  {mainRoleName.toUpperCase()}
+  {translateRoleLabel(mainRoleName).toUpperCase()}
 </Text>
 
 <Text
@@ -5236,7 +5269,7 @@ const heroMaxW = isMobileLike ? contentMaxWidth : "100%";
                 },
               ]}
             >
-              {/* Avatar + level */}
+              {/* Avatar */}
               <View style={{ alignItems: "center" }}>
                 <LinearGradient
                   colors={[ringColor, ringColor]}
@@ -5258,10 +5291,6 @@ const heroMaxW = isMobileLike ? contentMaxWidth : "100%";
                     )}
                   </View>
                 </LinearGradient>
-
-                <View style={[styles.levelPill, { backgroundColor: ringColor }]}>
-                  <Text style={styles.levelPillText}>Lv {level}</Text>
-                </View>
               </View>
 
               {/* ✅ DESKTOP ONLY: counts stay here (UPDATED: centered + tighter) */}
@@ -7266,7 +7295,7 @@ return (
                 }}
               >
                 <Text style={[styles.pickerBtnText, { color: mainRoleName ? COLORS.textPrimary : COLORS.textSecondary }]}>
-                  {mainRoleName || "Search role"}
+                  {mainRoleName ? translateRoleLabel(mainRoleName) : "Search role"}
                 </Text>
                 <Ionicons name="search" size={16} color={COLORS.textSecondary} />
               </TouchableOpacity>
@@ -7284,7 +7313,7 @@ return (
                 }}
               >
                 <Text style={[styles.pickerBtnText, { color: sideRoles.length ? COLORS.textPrimary : COLORS.textSecondary }]}>
-                  {sideRoles.length ? sideRoles.join(", ") : "Add side roles"}
+                  {sideRoles.length ? sideRoles.map((role) => translateRoleLabel(role)).join(", ") : "Add side roles"}
                 </Text>
                 <Ionicons name="add" size={16} color={COLORS.textSecondary} />
               </TouchableOpacity>
@@ -7810,7 +7839,7 @@ return (
     {/* City search modal */}
 <Modal
   visible={cityOpen}
-  animationType={Platform.OS === 'web' ? 'none' : 'slide'}
+  animationType={Platform.OS === 'web' && !isMobileLike ? 'none' : 'slide'}
   onRequestClose={() => setCityOpen(false)}
 >
   <SafeAreaView style={styles.cityModalSafeArea} edges={['top']}>
@@ -7979,7 +8008,7 @@ return (
           }}
         >
           <Text style={{ color: COLORS.textPrimary, fontFamily: FONT_OBLIVION }}>
-            {r.label}
+            {translateRoleLabel(r.label)}
           </Text>
         </TouchableOpacity>
       ))}
@@ -8046,7 +8075,7 @@ return (
                     }}
                   >
                     <Text style={{ color: COLORS.textPrimary, fontFamily: FONT_OBLIVION }}>
-                      {r.label}
+                      {translateRoleLabel(r.label)}
                     </Text>
                     {isSelected && <Ionicons name="checkmark" size={18} color={COLORS.primary} />}
                   </TouchableOpacity>
@@ -8385,22 +8414,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  levelPill: {
-    marginTop: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    alignSelf: "center",
-  },
-  levelPillText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#000",
-    letterSpacing: 0.8,
-    fontFamily: FONT_OBLIVION,
-    textTransform: "uppercase",
-  },
-
   utilityCard: {
     backgroundColor: "transparent",
     borderWidth: 0,

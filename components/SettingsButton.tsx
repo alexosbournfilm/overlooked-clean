@@ -1,10 +1,11 @@
 // components/SettingsButton.tsx
 import React, { useCallback, useRef } from 'react';
-import { Animated, Easing, Pressable, View } from 'react-native';
+import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettingsModal } from '../app/context/SettingsModalContext';
 import { useAppTheme } from '../app/context/ThemeContext';
+import { useInAppNotifications } from '../app/context/InAppNotificationsContext';
 
 type Props = {
   absolute?: boolean;
@@ -15,8 +16,10 @@ type Props = {
 export default function SettingsButton({ absolute = true, topOffset = 16, rightOffset = 12 }: Props) {
   const { open } = useSettingsModal();
   const { colors, isLight } = useAppTheme();
+  const { unreadCount } = useInAppNotifications();
   const insets = useSafeAreaInsets();
   const scale = useRef(new Animated.Value(1)).current;
+  const badgeText = unreadCount > 99 ? '99+' : String(unreadCount);
 
   const animateTo = useCallback(
     (value: number, duration: number) => {
@@ -32,7 +35,7 @@ export default function SettingsButton({ absolute = true, topOffset = 16, rightO
 
   const Button = (
     <Pressable
-      onPress={open}
+      onPress={() => open()}
       onPressIn={() => animateTo(0.92, 90)}
       onPressOut={() => animateTo(1, 150)}
       hitSlop={12}
@@ -43,6 +46,7 @@ export default function SettingsButton({ absolute = true, topOffset = 16, rightO
         backgroundColor: colors.card,
         borderWidth: 1,
         borderColor: colors.border,
+        position: 'relative',
         // soft shadow for iOS / elevation for Android
         shadowColor: colors.shadow,
         shadowOpacity: isLight ? 0.14 : 0.08,
@@ -60,6 +64,38 @@ export default function SettingsButton({ absolute = true, topOffset = 16, rightO
           color={colors.textPrimary}
         />
       </Animated.View>
+
+      {unreadCount > 0 ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: -5,
+            right: -6,
+            minWidth: 18,
+            height: 18,
+            borderRadius: 999,
+            paddingHorizontal: 5,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: colors.primary,
+            borderWidth: 1,
+            borderColor: colors.card,
+          }}
+        >
+          <Text
+            style={{
+              color: colors.textOnPrimary,
+              fontSize: 10,
+              lineHeight: 12,
+              fontWeight: '900',
+            }}
+            numberOfLines={1}
+          >
+            {badgeText}
+          </Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 

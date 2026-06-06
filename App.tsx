@@ -1,5 +1,6 @@
 // App.tsx
 import "./app/polyfills"; // must stay first
+import "./app/i18n/autoTranslate";
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { View, Linking, Platform, LogBox } from "react-native";
 import { StatusBar } from "expo-status-bar";
@@ -16,9 +17,11 @@ import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { AuthProvider } from "./app/context/AuthProvider";
 import { AppRefreshProvider } from "./app/context/AppRefreshContext";
 import { GamificationProvider } from "./app/context/GamificationContext";
+import { AppLanguageProvider } from "./app/context/LanguageContext";
 import { AppThemeProvider, useAppTheme } from "./app/context/ThemeContext";
 import { navigate, openChat } from "./app/navigation/navigationRef";
 import { registerAndSavePushToken } from "./app/lib/registerAndSavePushToken";
+import { openSettingsModal } from "./app/context/SettingsModalContext";
 
 import {
   useFonts as useCourierFonts,
@@ -58,7 +61,7 @@ Notifications.setNotificationHandler({
     shouldShowBanner: true,
     shouldShowList: true,
     shouldPlaySound: true,
-    shouldSetBadge: false,
+    shouldSetBadge: true,
   }),
 });
 
@@ -596,9 +599,40 @@ const isSignupLikeConfirmation =
         try {
           const { screen, params, ...legacyParams } = data;
           delete legacyParams.preferenceKey;
+          const notificationId =
+            typeof data.notificationId === "string" ? data.notificationId : null;
+
           await waitForRestoredSession();
           await sleep(Platform.OS === "android" ? 320 : 80);
-          navigateFromNotification(screen, params || legacyParams || {});
+
+          if (screen === "ChatRoom") {
+            if (notificationId) {
+              try {
+                const {
+                  data: { session },
+                } = await supabase.auth.getSession();
+
+                if (session?.user?.id) {
+                  await supabase
+                    .from("app_notifications")
+                    .update({ read_at: new Date().toISOString() })
+                    .eq("id", notificationId)
+                    .eq("user_id", session.user.id)
+                    .is("read_at", null);
+                }
+              } catch (err) {
+                console.log("Mark tapped notification read skipped:", err);
+              }
+            }
+
+            navigateFromNotification(screen, params || legacyParams || {});
+            return;
+          }
+
+          navigate("MainTabs" as never);
+
+          await sleep(Platform.OS === "android" ? 220 : 120);
+          openSettingsModal({ showNotifications: true });
         } catch (err) {
           console.log("Navigation from notification failed:", err);
         }
@@ -819,14 +853,18 @@ if (handledEarlySignupHash) {
   if (!appIsReady || !fontsLoaded) {
     return (
       <AppThemeProvider>
-        <LoadingShell />
+        <AppLanguageProvider>
+          <LoadingShell />
+        </AppLanguageProvider>
       </AppThemeProvider>
     );
   }
 
   return (
     <AppThemeProvider>
-      <ReadyShell initialAuthRouteName={initialAuthRouteName} />
+      <AppLanguageProvider>
+        <ReadyShell initialAuthRouteName={initialAuthRouteName} />
+      </AppLanguageProvider>
     </AppThemeProvider>
   );
 }

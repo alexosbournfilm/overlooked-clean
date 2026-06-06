@@ -140,6 +140,74 @@ async function fetchJob(supabase: any, record: Record<string, any> | undefined) 
   return data ?? record ?? null;
 }
 
+async function createInboxNotification(
+  supabase: any,
+  userId: string,
+  title: string,
+  body: string,
+  notificationType: string,
+  data: Record<string, unknown>
+) {
+  let notificationId: string | null = null;
+  let badge: number | undefined;
+
+  try {
+    if (
+      notificationType === "submission_votes" &&
+      typeof data.submissionId === "string" &&
+      typeof data.voterId === "string"
+    ) {
+      const { data: existing } = await supabase
+        .from("app_notifications")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("notification_type", notificationType)
+        .eq("data->>submissionId", data.submissionId)
+        .eq("data->>voterId", data.voterId)
+        .maybeSingle();
+
+      if (existing?.id) {
+        notificationId = existing.id;
+      }
+    }
+
+    if (!notificationId) {
+      const { data: inserted, error } = await supabase
+        .from("app_notifications")
+        .insert({
+          user_id: userId,
+          title,
+          body,
+          notification_type: notificationType,
+          data,
+        })
+        .select("id")
+        .single();
+
+      if (error) throw error;
+      notificationId = inserted?.id ?? null;
+    }
+  } catch (error) {
+    console.log(
+      "app_notifications insert skipped:",
+      error instanceof Error ? error.message : error
+    );
+  }
+
+  try {
+    const { count, error } = await supabase
+      .from("app_notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .is("read_at", null);
+
+    if (error) throw error;
+    if (typeof count === "number") badge = count;
+  } catch {}
+
+  return { notificationId, badge };
+}
+
 async function sendTargets(supabase: any, targets: ActivityTarget[]) {
   const filteredTargets = targets.filter((target) => !!target.userId);
   const recipientIds = unique(filteredTargets.map((target) => target.userId as string));
@@ -159,23 +227,42 @@ async function sendTargets(supabase: any, targets: ActivityTarget[]) {
     ((users ?? []) as UserRow[]).map((user) => [user.id, user])
   );
 
-  const messages = filteredTargets
-    .map((target) => {
+  const messages = (
+    await Promise.all(
+      filteredTargets.map(async (target) => {
       const user = usersById.get(target.userId as string);
-      if (!user || !isExpoPushToken(user.expo_push_token)) return null;
+      if (!user) return null;
       if (!allowsNotification(user, target.preferenceKey)) return null;
+
+      const pushData = {
+        ...target.data,
+        preferenceKey: target.preferenceKey,
+        notificationType: "activity",
+      };
+      const inbox = await createInboxNotification(
+        supabase,
+        user.id,
+        target.title,
+        target.body,
+        target.preferenceKey,
+        pushData
+      );
+
+      if (!isExpoPushToken(user.expo_push_token)) return null;
 
       return {
         to: user.expo_push_token,
         sound: "default",
         title: target.title,
         body: target.body,
+        ...(typeof inbox.badge === "number" ? { badge: inbox.badge } : {}),
         data: {
-          ...target.data,
-          preferenceKey: target.preferenceKey,
+          ...pushData,
+          ...(inbox.notificationId ? { notificationId: inbox.notificationId } : {}),
         },
       };
     })
+  ))
     .filter(Boolean);
 
   if (!messages.length) {
@@ -300,7 +387,10 @@ serve(async (req: Request): Promise<Response> => {
           preferenceKey: "submission_votes",
           title: "Your film received a vote",
           body: text(submission.title, "Someone voted for your submission"),
-          data: featuredFilmData(submission.id),
+          data: featuredFilmData(submission.id, {
+            submissionId: submission.id,
+            voterId,
+          }),
         });
       }
     }

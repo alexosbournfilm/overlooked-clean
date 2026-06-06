@@ -591,9 +591,11 @@ const queueUnreadRefresh = useCallback(() => {
           return;
         }
 
-                await fetchHides(uid);
-        await fetchBlockedUsers(uid);
-        await loadUnreadConversationIds(uid);
+        await Promise.all([
+          fetchHides(uid),
+          fetchBlockedUsers(uid),
+        ]);
+        void loadUnreadConversationIds(uid);
 
         const { data: conversations, error } =
           await supabase
@@ -689,10 +691,38 @@ const queueUnreadRefresh = useCallback(() => {
           });
         }
 
+        const missingLastIds = (conversations ?? [])
+          .filter((conv) => !conv.last_message_content || !conv.last_message_sent_at)
+          .map((conv) => conv.id);
+
+        const latestByConversation: Record<
+          string,
+          { content: string | null; sent_at: string | null; sender_id?: string | null }
+        > = {};
+
+        if (missingLastIds.length) {
+          const { data: latestMessages } = await supabase
+            .from('messages')
+            .select('conversation_id, content, sent_at, sender_id')
+            .in('conversation_id', missingLastIds)
+            .order('sent_at', { ascending: false })
+            .limit(Math.min(300, missingLastIds.length * 4));
+
+          (latestMessages || []).forEach((message: any) => {
+            const cid = String(message.conversation_id);
+            if (!latestByConversation[cid]) {
+              latestByConversation[cid] = {
+                content: message.content ?? null,
+                sent_at: message.sent_at ?? null,
+                sender_id: message.sender_id ?? null,
+              };
+            }
+          });
+        }
+
         const chatsWithMetadata =
-          await Promise.all(
-            (conversations ?? []).map(
-              async (conv) => {
+          (conversations ?? []).map(
+              (conv) => {
                 let lastContent =
                   conv.last_message_content as
                     | string
@@ -703,24 +733,8 @@ const queueUnreadRefresh = useCallback(() => {
                     | null;
 
                 if (!lastContent || !lastTime) {
-                  const { data: messages } =
-                    await supabase
-                      .from(
-                        'messages'
-                      )
-                      .select(
-                        'content, sent_at, sender_id'
-                      )
-                      .eq(
-                        'conversation_id',
-                        conv.id
-                      )
-                      .order('sent_at', {
-                        ascending: false,
-                      })
-                      .limit(1);
                   const lastMessage =
-                    messages?.[0];
+                    latestByConversation[String(conv.id)];
                   lastContent =
                     lastContent ||
                     lastMessage?.content ||
@@ -731,23 +745,7 @@ const queueUnreadRefresh = useCallback(() => {
                     null;
                 }
 
-                let isTyping = false;
-                if (uid) {
-                  const {
-                    data: typingData,
-                  } = await supabase
-                    .from(
-                      'typing_indicators'
-                    )
-                    .select('user_id')
-                    .eq(
-                      'conversation_id',
-                      conv.id
-                    )
-                    .neq('user_id', uid)
-                    .maybeSingle();
-                  isTyping = typingData !== null;
-                }
+                const isTyping = false;
 
                 let derivedTitle:
                   | string
@@ -826,7 +824,6 @@ const queueUnreadRefresh = useCallback(() => {
                   cityInfo,
                 };
               }
-            )
           );
 
         const map = hideMapRef.current;
@@ -1999,7 +1996,7 @@ const isDirectBlocked =
       opacity: 0.6,
     },
   ]}
-                                onPress={async () => {
+                                onPress={() => {
   if (isDeleting) return;
 
   if (isGuest) {
@@ -2015,40 +2012,40 @@ const isDirectBlocked =
     return;
   }
 
-  try {
-    if (meId && item?.id) {
-      await supabase
-        .from('conversation_reads')
-        .upsert(
-          {
-            user_id: meId,
-            conversation_id: item.id,
-            last_read_at: new Date().toISOString(),
-          },
-          {
-            onConflict: 'user_id,conversation_id',
-          }
-        );
-
-      setUnreadConversationIds((prev) => {
-        const next = new Set(prev);
-        next.delete(String(item.id));
-        return next;
-      });
-
-      emitChatBadgeRefresh();
-    }
-  } catch (e: any) {
-    logChatsIssue('markReadFromChats unavailable', e);
-  }
-
   navigation.navigate('ChatRoom', {
     conversation: item,
     peerUser: item.peerUser,
+    currentUserId: meId,
   });
+
+  if (meId && item?.id) {
+    setUnreadConversationIds((prev) => {
+      const next = new Set(prev);
+      next.delete(String(item.id));
+      return next;
+    });
+    emitChatBadgeRefresh();
+  }
 
   requestAnimationFrame(() => {
     markConversationActive(String(item.id));
+    if (!meId || !item?.id) return;
+
+    supabase
+      .from('conversation_reads')
+      .upsert(
+        {
+          user_id: meId,
+          conversation_id: item.id,
+          last_read_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'user_id,conversation_id',
+        }
+      )
+      .then(({ error }) => {
+        if (error) logChatsIssue('markReadFromChats unavailable', error);
+      });
   });
 }}
         onLongPress={() =>

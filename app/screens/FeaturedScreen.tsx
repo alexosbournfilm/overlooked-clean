@@ -3748,6 +3748,13 @@ setPreviewItem((prev) =>
 
         setMonthlyVotesUsed((n) => n + 1);
 
+        const { error: notifyError } = await supabase.rpc('notify_submission_vote', {
+          target_submission_id: s.id,
+        });
+        if (notifyError) {
+          console.warn('notify_submission_vote unavailable:', notifyError.message);
+        }
+
         try {
           await giveXp(uid, VOTE_XP, 'VOTE_SUBMISSION' as any);
           await refreshGamification();
@@ -6849,15 +6856,15 @@ mobileChip: {
 },
 
 mobilePillDanger: {
-  height: 32,
-  paddingHorizontal: 12,
+  height: 30,
+  paddingHorizontal: 10,
   borderRadius: 999,
   backgroundColor: 'rgba(255,70,70,0.10)',
   borderWidth: 1,
   borderColor: 'rgba(255,90,90,0.26)',
   alignItems: 'center',
   justifyContent: 'center',
-  marginRight: 7,
+  marginRight: 6,
   marginBottom: 7,
 },
 
@@ -6869,13 +6876,13 @@ mobilePillDangerText: {
 },
 
 feedActionBtnDanger: {
-  paddingVertical: 11,
-  paddingHorizontal: 15,
-  borderRadius: 14,
+  paddingVertical: 9,
+  paddingHorizontal: 12,
+  borderRadius: 12,
   backgroundColor: 'rgba(255,70,70,0.08)',
   borderWidth: 1,
   borderColor: 'rgba(255,90,90,0.24)',
-  marginRight: 10,
+  marginRight: 8,
   marginBottom: 10,
 },
 
@@ -8190,17 +8197,17 @@ watchCollaboratorRemoveBtn: {
 watchActionsRow: {
   marginTop: 12,
   flexDirection: 'row',
-  flexWrap: 'wrap',
+  flexWrap: 'nowrap',
   alignItems: 'center',
-  gap: 6,
+  gap: 4,
 },
 
 watchActionChip: {
-  width: 68,
-  height: 54,
-  borderRadius: 14,
-  paddingHorizontal: 6,
-  paddingVertical: 7,
+  width: 56,
+  height: 52,
+  borderRadius: 13,
+  paddingHorizontal: 4,
+  paddingVertical: 6,
   backgroundColor: 'rgba(255,255,255,0.075)',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.10)',
@@ -8217,8 +8224,8 @@ watchActionText: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
   fontWeight: '900',
-  fontSize: 10,
-  letterSpacing: 0.2,
+  fontSize: 8.5,
+  letterSpacing: 0,
   marginTop: 3,
 },
 
@@ -8226,7 +8233,7 @@ watchActionMeta: {
   color: 'rgba(237,235,230,0.50)',
   fontFamily: SYSTEM_SANS,
   fontWeight: '800',
-  fontSize: 9,
+  fontSize: 8,
   marginTop: 1,
 },
 
@@ -8239,8 +8246,8 @@ watchActionDangerText: {
   color: '#FF8A8A',
   fontFamily: SYSTEM_SANS,
   fontWeight: '900',
-  fontSize: 10,
-  letterSpacing: 0.2,
+  fontSize: 8.5,
+  letterSpacing: 0,
   marginTop: 3,
 },
 

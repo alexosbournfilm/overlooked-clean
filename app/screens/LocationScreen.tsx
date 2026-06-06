@@ -14,6 +14,7 @@ import {
   Alert,
   Image,
   RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions, useNavigation } from '@react-navigation/native';
@@ -22,6 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthProvider';
 import { useAppRefresh } from '../context/AppRefreshContext';
 import { useAppTheme } from '../context/ThemeContext';
+import { isMobileWebViewport } from '../utils/responsive';
 
 const IS_WEB = Platform.OS === 'web';
 
@@ -250,6 +252,9 @@ const IconText: React.FC<{
 export default function LocationScreen() {
   const { colors, isLight } = useAppTheme();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isWebMobile = isMobileWebViewport(width);
+  const nativeLikeModalAnimation = IS_WEB && !isWebMobile ? 'none' : 'slide';
   const { triggerAppRefresh } = useAppRefresh();
   const DARK_BG = colors.background;
   const SURFACE = colors.card;
@@ -841,7 +846,7 @@ export default function LocationScreen() {
 
         <Modal
           visible={searchModalVisible}
-          animationType={IS_WEB ? 'none' : 'slide'}
+          animationType={nativeLikeModalAnimation}
           onRequestClose={() => setSearchModalVisible(false)}
         >
           <SafeAreaView style={[styles.modalSafeArea, { backgroundColor: DARK_BG }]} edges={['top']}>
@@ -954,7 +959,7 @@ export default function LocationScreen() {
 
         <Modal
           visible={jobDetailModalOpen}
-          animationType={IS_WEB ? 'none' : 'slide'}
+          animationType={nativeLikeModalAnimation}
           transparent
           onRequestClose={() => {
             setJobDetailModalOpen(false);

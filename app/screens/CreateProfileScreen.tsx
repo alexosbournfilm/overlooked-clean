@@ -1324,7 +1324,7 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
         contentContainerStyle={[
           styles.container,
           { backgroundColor: theme.bg },
-          Platform.OS === 'web' ? styles.containerWeb : styles.containerMobile,
+          isMobile ? styles.containerMobile : styles.containerWeb,
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={true}

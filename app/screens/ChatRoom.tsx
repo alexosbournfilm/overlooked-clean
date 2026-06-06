@@ -16,9 +16,11 @@ import {
   Dimensions,
   RefreshControl,
   BackHandler,
+  Keyboard,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useGamification } from '../context/GamificationContext';
 import { useMonthlyStreak } from '../lib/useMonthlyStreak';
@@ -31,6 +33,7 @@ import { blockUser } from '../utils/blockUser';
 import { validateSafeText } from '../utils/moderation';
 import ReportContentModal from '../../components/ReportContentModal';
 import { useAppTheme } from '../context/ThemeContext';
+import { useInAppNotifications } from '../context/InAppNotificationsContext';
 /* ------------------------------- Noir palette ------------------------------- */
 const DARK_BG = '#050505';
 const ELEVATED = '#0D0D0F';
@@ -52,6 +55,7 @@ type ChatComposerProps = {
   disabled: boolean;
   isBlockedByPeer: boolean;
   haveIBlockedPeer: boolean;
+  bottomInset: number;
   onAttach: () => void;
   onSend: (text: string) => Promise<boolean>;
   onTyping: (text: string) => void;
@@ -67,6 +71,7 @@ const ChatComposer = React.memo(function ChatComposer({
   disabled,
   isBlockedByPeer,
   haveIBlockedPeer,
+  bottomInset,
   onAttach,
   onSend,
   onTyping,
@@ -105,7 +110,16 @@ const ChatComposer = React.memo(function ChatComposer({
   );
 
   return (
-    <View style={[styles.inputBar, { backgroundColor, borderTopColor: borderColor }]}>
+    <View
+      style={[
+        styles.inputBar,
+        {
+          backgroundColor,
+          borderTopColor: borderColor,
+          paddingBottom: Math.max(10, bottomInset || 0),
+        },
+      ]}
+    >
       <TouchableOpacity
         onPress={onAttach}
         style={styles.iconBtn}
@@ -134,6 +148,7 @@ const ChatComposer = React.memo(function ChatComposer({
           { backgroundColor: inputBackgroundColor, borderColor, color: textColor },
         ]}
         multiline={Platform.OS === 'web'}
+        blurOnSubmit={false}
         onKeyPress={handleWebKeyPress}
         editable={!disabled}
         autoCorrect
@@ -159,6 +174,8 @@ const ChatComposer = React.memo(function ChatComposer({
 /* ------------------------------- sizing ------------------------------------ */
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const BUBBLE_MAX_WIDTH = Math.min(460, Math.floor(SCREEN_W * 0.78));
+const CHAT_INITIAL_MESSAGE_LIMIT = 120;
+const MESSAGE_BOTTOM_THRESHOLD = 96;
 
 type Conversation = {
   id: string;
@@ -248,7 +265,9 @@ export default function ChatRoom() {
   const { colors } = useAppTheme();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const { triggerAppRefresh } = useAppRefresh();
+  const { markMessageNotificationsRead } = useInAppNotifications();
   const DARK_BG = colors.background;
   const ELEVATED = colors.card;
   const ELEVATED_2 = colors.mutedCard;
@@ -265,6 +284,8 @@ export default function ChatRoom() {
     conversation: routeConversation,
     conversationId: routeConversationId,
     peerUser: routePeerUser,
+    currentUserId: routeCurrentUserId,
+    userId: routeLegacyUserId,
   } = route.params || {};
     const routePeerUserId = routePeerUser?.id ?? null;
 
@@ -275,9 +296,14 @@ export default function ChatRoom() {
     routePeerUser ?? null
   );
   const [messages, setMessages] = useState<Message[]>([]);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(
+    routeCurrentUserId ?? routeLegacyUserId ?? null
+  );
   const [typingUser, setTypingUser] = useState<string | null>(null);
   const [sendingImage, setSendingImage] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
 
   const [imagePreviewUrl, setImagePreviewUrl] =
     useState<string | null>(null);
@@ -313,13 +339,63 @@ const [reportSubmitting, setReportSubmitting] = useState(false);
     );
 
       const flatListRef = useRef<FlatList>(null);
+const initialBottomScrollConversationRef = useRef<string | null>(null);
+const shouldStickToBottomRef = useRef(true);
 const typingTimeoutRef =
   useRef<ReturnType<typeof setTimeout> | null>(null);
 const lastTypingSignalRef = useRef(0);
+const messagesRef = useRef<Message[]>([]);
 
   const messageChannelRef = useRef<any>(null);
   const typingChannelRef = useRef<any>(null);
   const convoChannelRef = useRef<any>(null);
+  const userIdRef = useRef<string | null>(null);
+  const blockedUserIdsRef = useRef<Set<string>>(new Set());
+  const userLookupRef = useRef<Record<string, { id: string; full_name: string }>>({});
+
+  useEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
+
+  useEffect(() => {
+    if (routeCurrentUserId || routeLegacyUserId) {
+      setUserId(routeCurrentUserId ?? routeLegacyUserId);
+    }
+  }, [routeCurrentUserId, routeLegacyUserId]);
+
+  useEffect(() => {
+    blockedUserIdsRef.current = blockedUserIds;
+  }, [blockedUserIds]);
+
+  useEffect(() => {
+    userLookupRef.current = userLookup;
+  }, [userLookup]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  const appendMessage = useCallback((row: any) => {
+    if (!row?.id || row.is_removed) return;
+    if (blockedUserIdsRef.current.has(row.sender_id)) return;
+
+    const knownSender = userLookupRef.current[row.sender_id];
+    const nextMessage: Message = {
+      ...row,
+      sender: row.sender
+        ? Array.isArray(row.sender)
+          ? row.sender[0] ?? null
+          : row.sender
+        : knownSender ?? null,
+    };
+
+    setMessages((prev) => {
+      if (prev.some((message) => message.id === nextMessage.id)) return prev;
+      return [...prev, nextMessage].sort(
+        (a, b) => new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime()
+      );
+    });
+  }, []);
 
   const isWeb = Platform.OS === 'web';
   const getFlagUri = (code?: string | null) =>
@@ -507,9 +583,10 @@ const lastTypingSignalRef = useRef(0);
         return;
       }
 
+      void markMessageNotificationsRead(conversation.id);
       emitChatBadgeRefresh();
     });
-}, [loadState, conversation?.id, userId]);
+}, [loadState, conversation?.id, userId, markMessageNotificationsRead]);
 
 useFocusEffect(
   React.useCallback(() => {
@@ -533,9 +610,10 @@ useFocusEffect(
           return;
         }
 
+        void markMessageNotificationsRead(conversation.id);
         emitChatBadgeRefresh();
       });
-  }, [loadState, conversation?.id, userId])
+  }, [loadState, conversation?.id, userId, markMessageNotificationsRead])
 );
 
 useFocusEffect(
@@ -962,122 +1040,189 @@ useFocusEffect(
   useEffect(() => {
   if (loadState !== 'ready' || !conversation?.id) return;
 
-  let active = true;
-
-  const timer = setTimeout(() => {
-    if (!active) return;
-    fetchUserAndMessages();
-    setupRealtime(conversation.id);
-  }, 80);
+  initialBottomScrollConversationRef.current = null;
+  shouldStickToBottomRef.current = true;
+  setHasMoreMessages(true);
+  fetchUserAndMessages();
+  setupRealtime(conversation.id);
 
   return () => {
-    active = false;
-    clearTimeout(timer);
-
     if (messageChannelRef.current) {
       supabase.removeChannel(messageChannelRef.current);
+      messageChannelRef.current = null;
     }
     if (typingChannelRef.current) {
       supabase.removeChannel(typingChannelRef.current);
+      typingChannelRef.current = null;
     }
     if (convoChannelRef.current) {
       supabase.removeChannel(convoChannelRef.current);
+      convoChannelRef.current = null;
     }
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [loadState, conversation?.id]);
 
   const fetchUserAndMessages = async () => {
-    const { data: userData } =
-      await supabase.auth.getUser();
-    if (!userData?.user) return;
-    setUserId(userData.user.id);
+    const activeConversation = conversation;
+    const convId = activeConversation?.id;
+    if (!convId) return;
 
-    const { data, error } =
-      await supabase
+    const knownUserId =
+      userIdRef.current || routeCurrentUserId || routeLegacyUserId || null;
+    const userRequest = knownUserId
+      ? Promise.resolve({ data: { user: { id: knownUserId } } } as any)
+      : supabase.auth.getUser();
+
+    const messagesRequest = supabase
+      .from('messages')
+      .select(
+        'id, conversation_id, sender_id, content, message_type, sent_at, delivered, is_removed, sender:users!messages_sender_id_fkey(id, full_name)'
+      )
+      .eq('conversation_id', convId)
+      .order('sent_at', { ascending: false })
+      .limit(CHAT_INITIAL_MESSAGE_LIMIT);
+
+    const [{ data: userData }, { data, error }] = await Promise.all([
+      userRequest,
+      messagesRequest,
+    ]);
+
+    const uid = userData?.user?.id || knownUserId;
+    if (!uid) return;
+    setUserId(uid);
+
+    if (error || !data) {
+      if (error) console.error('Failed to fetch chat messages:', error.message);
+      return;
+    }
+    setHasMoreMessages((data as any[]).length === CHAT_INITIAL_MESSAGE_LIMIT);
+
+    const [blockedIds, participantsResult] = await Promise.all([
+      fetchBlockedUsers(uid),
+      activeConversation?.participant_ids?.length
+        ? supabase
+            .from('users')
+            .select('id, full_name')
+            .in('id', activeConversation.participant_ids)
+        : Promise.resolve({ data: [] } as any),
+    ]);
+
+    const normalized: Message[] = (data as any[])
+      .slice()
+      .reverse()
+      .map((row: any) => ({
+        ...row,
+        sender: Array.isArray(row.sender)
+          ? row.sender[0] ?? null
+          : row.sender ?? null,
+      }))
+      .filter((row: Message) => !row.is_removed && !blockedIds.has(row.sender_id));
+
+    setMessages(normalized);
+
+    const fromMsgs: Record<string, { id: string; full_name: string }> = {};
+
+    for (const m of normalized) {
+      if (m.sender?.id) {
+        fromMsgs[m.sender.id] = {
+          id: m.sender.id,
+          full_name: m.sender.full_name,
+        };
+      }
+    }
+
+    (participantsResult?.data || []).forEach((u: any) => {
+      fromMsgs[u.id] = {
+        id: u.id,
+        full_name: u.full_name,
+      };
+    });
+
+    setUserLookup(fromMsgs);
+
+    void supabase
+      .from('conversation_reads')
+      .upsert(
+        {
+          user_id: uid,
+          conversation_id: convId,
+          last_read_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'user_id,conversation_id',
+        }
+      )
+      .then(({ error: readError }) => {
+        if (readError) {
+          console.error('Failed to mark conversation read:', readError.message);
+          return;
+        }
+        void markMessageNotificationsRead(convId);
+        emitChatBadgeRefresh();
+      });
+  };
+
+  const loadOlderMessages = async () => {
+    const convId = conversation?.id;
+    const oldestMessage = messagesRef.current[0];
+    if (!convId || !oldestMessage || loadingOlderMessages || !hasMoreMessages) return;
+
+    setLoadingOlderMessages(true);
+    try {
+      const { data, error } = await supabase
         .from('messages')
         .select(
           'id, conversation_id, sender_id, content, message_type, sent_at, delivered, is_removed, sender:users!messages_sender_id_fkey(id, full_name)'
         )
-        .eq(
-          'conversation_id',
-          conversation!.id
-        )
-        .order('sent_at', {
-          ascending: true,
-        });
+        .eq('conversation_id', convId)
+        .lt('sent_at', oldestMessage.sent_at)
+        .order('sent_at', { ascending: false })
+        .limit(CHAT_INITIAL_MESSAGE_LIMIT);
 
-    if (!error && data) {
-      const blockedIds = await fetchBlockedUsers(userData.user.id);
-      const normalized: Message[] =
-  (data as any[]).map(
-    (row: any) => ({
-      ...row,
-      sender: Array.isArray(
-        row.sender
-      )
-        ? row.sender[0] ??
-          null
-        : row.sender ?? null,
-    })
-  ).filter((row: Message) => !row.is_removed && !blockedIds.has(row.sender_id));
-
-setMessages(normalized);
-
-const fromMsgs: Record<
-  string,
-  { id: string; full_name: string }
-> = {};
-
-for (const m of normalized)
-
-      
-        if (m.sender?.id)
-          fromMsgs[m.sender.id] = {
-            id: m.sender.id,
-            full_name:
-              m.sender
-                .full_name,
-          };
-
-      if (
-        conversation
-          ?.participant_ids
-          ?.length
-      ) {
-        const {
-          data: participants,
-        } = await supabase
-          .from('users')
-          .select('id, full_name')
-          .in(
-            'id',
-            conversation.participant_ids
-          );
-        (participants || []).forEach(
-          (u) =>
-            (fromMsgs[u.id] = {
-              id: u.id,
-              full_name:
-                u.full_name,
-            })
-        );
+      if (error || !data) {
+        if (error) console.error('Failed to load older messages:', error.message);
+        return;
       }
 
-            setUserLookup(fromMsgs);
+      setHasMoreMessages((data as any[]).length === CHAT_INITIAL_MESSAGE_LIMIT);
 
-      if (userData?.user?.id && conversation?.id) {
-  await supabase.from('conversation_reads').upsert(
-    {
-      user_id: userData.user.id,
-      conversation_id: conversation.id,
-      last_read_at: new Date().toISOString(),
-    },
-    {
-      onConflict: 'user_id,conversation_id',
-    }
-  );
-}
+      const normalized: Message[] = (data as any[])
+        .slice()
+        .reverse()
+        .map((row: any) => ({
+          ...row,
+          sender: Array.isArray(row.sender)
+            ? row.sender[0] ?? null
+            : row.sender ?? null,
+        }))
+        .filter(
+          (row: Message) =>
+            !row.is_removed && !blockedUserIdsRef.current.has(row.sender_id)
+        );
+
+      if (!normalized.length) return;
+
+      setMessages((prev) => {
+        const existingIds = new Set(prev.map((message) => message.id));
+        const older = normalized.filter((message) => !existingIds.has(message.id));
+        return older.length ? [...older, ...prev] : prev;
+      });
+
+      setUserLookup((prev) => {
+        const next = { ...prev };
+        normalized.forEach((message) => {
+          if (message.sender?.id) {
+            next[message.sender.id] = {
+              id: message.sender.id,
+              full_name: message.sender.full_name,
+            };
+          }
+        });
+        return next;
+      });
+    } finally {
+      setLoadingOlderMessages(false);
     }
   };
 
@@ -1087,6 +1232,11 @@ for (const m of normalized)
   setRefreshing(true);
 
   try {
+    if (messagesRef.current.length && hasMoreMessages) {
+      await loadOlderMessages();
+      return;
+    }
+
     triggerAppRefresh();
 
     await Promise.allSettled([
@@ -1105,6 +1255,7 @@ for (const m of normalized)
           onConflict: 'user_id,conversation_id',
         }
       );
+      await markMessageNotificationsRead(conversation.id);
     }
 
     emitChatBadgeRefresh();
@@ -1126,8 +1277,12 @@ for (const m of normalized)
     filter: `conversation_id=eq.${convId}`,
   },
     
-    async () => {
-  await fetchUserAndMessages();
+    async (payload) => {
+  appendMessage((payload as any)?.new);
+  if (userIdRef.current) {
+    void markMessageNotificationsRead(convId);
+  }
+  shouldStickToBottomRef.current = true;
   scrollToBottom(true);
   emitChatBadgeRefresh();
 }
@@ -1204,10 +1359,63 @@ for (const m of normalized)
       convoChannel;
   };
 
-  const scrollToBottom = (animated = true) =>
-  flatListRef.current?.scrollToEnd({
-    animated,
-  });
+  const scrollToBottom = useCallback((animated = true) => {
+    requestAnimationFrame(() => {
+      flatListRef.current?.scrollToEnd({
+        animated,
+      });
+    });
+  }, []);
+
+  const handleMessageScroll = useCallback((event: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const distanceFromBottom =
+      contentSize.height - (contentOffset.y + layoutMeasurement.height);
+    shouldStickToBottomRef.current =
+      distanceFromBottom < MESSAGE_BOTTOM_THRESHOLD;
+  }, []);
+
+  const handleMessageContentSizeChange = useCallback(() => {
+    const convId = conversation?.id ?? null;
+    const needsInitialBottom =
+      !!convId && initialBottomScrollConversationRef.current !== convId;
+
+    if (needsInitialBottom) {
+      initialBottomScrollConversationRef.current = convId;
+      scrollToBottom(false);
+      return;
+    }
+
+    if (shouldStickToBottomRef.current) {
+      scrollToBottom(true);
+    }
+  }, [conversation?.id, scrollToBottom]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onKeyboardMove = (event: any, visible: boolean) => {
+      try {
+        Keyboard.scheduleLayoutAnimation?.(event);
+      } catch {}
+      setKeyboardVisible(visible);
+      shouldStickToBottomRef.current = true;
+      setTimeout(() => scrollToBottom(true), Platform.OS === 'ios' ? 40 : 80);
+    };
+
+    const showSub = Keyboard.addListener(showEvent, (event) =>
+      onKeyboardMove(event, true)
+    );
+    const hideSub = Keyboard.addListener(hideEvent, (event) =>
+      onKeyboardMove(event, false)
+    );
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [scrollToBottom]);
 
   const updateConversationLastMessage = async (
     convId: string,
@@ -1254,7 +1462,7 @@ for (const m of normalized)
       Alert.alert('Content Not Allowed', moderationError);
       return false;
     }
-    const { error } =
+    const { data: insertedMessage, error } =
       await supabase
         .from('messages')
         .insert({
@@ -1264,7 +1472,9 @@ for (const m of normalized)
           content: text,
           delivered: true,
           message_type: 'text',
-        });
+        })
+        .select('id, conversation_id, sender_id, content, message_type, sent_at, delivered, is_removed')
+        .single();
     if (error) {
       Alert.alert(
         'Failed to send',
@@ -1272,28 +1482,30 @@ for (const m of normalized)
       );
       return false;
     }
-    await updateConversationLastMessage(
-  conversation.id,
-  text
-);
+    appendMessage(insertedMessage);
+    shouldStickToBottomRef.current = true;
+    scrollToBottom(true);
 
-await notifyRecipients(text);
+    void updateConversationLastMessage(conversation.id, text);
+    void notifyRecipients(text);
+    void supabase
+      .from('conversation_reads')
+      .upsert(
+        {
+          user_id: userId,
+          conversation_id: conversation.id,
+          last_read_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'user_id,conversation_id',
+        }
+      )
+      .then(() => {
+        void markMessageNotificationsRead(conversation.id);
+        emitChatBadgeRefresh();
+      });
 
-await supabase.from('conversation_reads').upsert(
-  {
-    user_id: userId,
-    conversation_id: conversation.id,
-    last_read_at: new Date().toISOString(),
-  },
-  {
-    onConflict: 'user_id,conversation_id',
-  }
-);
-
-await fetchUserAndMessages();
-scrollToBottom(true);
-emitChatBadgeRefresh();
-return true;
+    return true;
   };
 
   const reportMessage = (item: Message) => {
@@ -1442,7 +1654,7 @@ return true;
           );
         const content =
           `image:${publicUrl}`;
-        const { error } =
+        const { data: insertedImageMessage, error } =
           await supabase
             .from(
               'messages'
@@ -1456,7 +1668,9 @@ return true;
               delivered: true,
               message_type:
                 'media',
-            });
+            })
+            .select('id, conversation_id, sender_id, content, message_type, sent_at, delivered, is_removed')
+            .single();
         setSendingImage(false);
         if (error) {
           Alert.alert(
@@ -1465,32 +1679,33 @@ return true;
           );
           return;
         }
-        await updateConversationLastMessage(
-  conversation.id,
-  '[Photo]'
-);
-await notifyRecipients('Sent you a photo');
-
-await supabase.from('conversation_reads').upsert(
-  {
-    user_id: userId,
-    conversation_id: conversation.id,
-    last_read_at: new Date().toISOString(),
-  },
-  {
-    onConflict: 'user_id,conversation_id',
-  }
-);
-
-await fetchUserAndMessages();
-scrollToBottom(true);
-emitChatBadgeRefresh();
+        appendMessage(insertedImageMessage);
+        shouldStickToBottomRef.current = true;
+        scrollToBottom(true);
+        void updateConversationLastMessage(conversation.id, '[Photo]');
+        void notifyRecipients('Sent you a photo');
+        void supabase
+          .from('conversation_reads')
+          .upsert(
+            {
+              user_id: userId,
+              conversation_id: conversation.id,
+              last_read_at: new Date().toISOString(),
+            },
+            {
+              onConflict: 'user_id,conversation_id',
+            }
+          )
+          .then(() => {
+            void markMessageNotificationsRead(conversation.id);
+            emitChatBadgeRefresh();
+          });
       } else {
         const fileName =
           asset.name ||
           'file';
         const content = `📎 File: ${fileName}`;
-        const { error } =
+        const { data: insertedFileMessage, error } =
           await supabase
             .from(
               'messages'
@@ -1504,7 +1719,9 @@ emitChatBadgeRefresh();
               delivered: true,
               message_type:
                 'text',
-            });
+            })
+            .select('id, conversation_id, sender_id, content, message_type, sent_at, delivered, is_removed')
+            .single();
         if (error) {
           Alert.alert(
             'File send failed',
@@ -1512,26 +1729,27 @@ emitChatBadgeRefresh();
           );
           return;
         }
-        await updateConversationLastMessage(
-  conversation.id,
-  content
-);
-await notifyRecipients(content);
-
-await supabase.from('conversation_reads').upsert(
-  {
-    user_id: userId,
-    conversation_id: conversation.id,
-    last_read_at: new Date().toISOString(),
-  },
-  {
-    onConflict: 'user_id,conversation_id',
-  }
-);
-
-await fetchUserAndMessages();
-scrollToBottom(true);
-emitChatBadgeRefresh();
+        appendMessage(insertedFileMessage);
+        shouldStickToBottomRef.current = true;
+        scrollToBottom(true);
+        void updateConversationLastMessage(conversation.id, content);
+        void notifyRecipients(content);
+        void supabase
+          .from('conversation_reads')
+          .upsert(
+            {
+              user_id: userId,
+              conversation_id: conversation.id,
+              last_read_at: new Date().toISOString(),
+            },
+            {
+              onConflict: 'user_id,conversation_id',
+            }
+          )
+          .then(() => {
+            void markMessageNotificationsRead(conversation.id);
+            emitChatBadgeRefresh();
+          });
       }
     } catch (e: any) {
       setSendingImage(false);
@@ -1764,8 +1982,8 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
   return (
         <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: DARK_BG }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+      keyboardVerticalOffset={0}
     >
       {!isScreenReady ? (
   <View style={[styles.loaderWrap, { backgroundColor: DARK_BG }]}>
@@ -1779,15 +1997,21 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
   renderItem={renderItem}
   keyExtractor={(item) => item.id}
   contentContainerStyle={{ padding: 16, paddingTop: 8, paddingBottom: 12 }}
+  onLayout={() => scrollToBottom(false)}
+  onContentSizeChange={handleMessageContentSizeChange}
+  onScroll={handleMessageScroll}
+  scrollEventThrottle={64}
   removeClippedSubviews={Platform.OS !== 'ios'}
   initialNumToRender={12}
   maxToRenderPerBatch={8}
   windowSize={7}
   updateCellsBatchingPeriod={16}
+  automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+  keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
   keyboardShouldPersistTaps="handled"
   refreshControl={
     <RefreshControl
-      refreshing={refreshing}
+      refreshing={refreshing || loadingOlderMessages}
       onRefresh={onRefresh}
       tintColor={GOLD}
       progressBackgroundColor={ELEVATED}
@@ -1809,6 +2033,7 @@ const isScreenReady = loadState === 'ready' && !!conversation?.id;
       disabled={messagingDisabled}
       isBlockedByPeer={isBlockedByPeer}
       haveIBlockedPeer={haveIBlockedPeer}
+      bottomInset={Platform.OS === 'web' || keyboardVisible ? 0 : insets.bottom}
       onAttach={sendFile}
       onSend={sendMessage}
       onTyping={handleTyping}

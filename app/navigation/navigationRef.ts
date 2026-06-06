@@ -197,15 +197,21 @@ export function resetToCreateProfile() {
    ===================================================== */
 export function openChat(params: ChatRoomParams) {
   try {
-    store.ref.navigate("Chats" as any, {
-      screen: "ChatRoom",
-      params,
+    store.ref.navigate("MainTabs" as any, {
+      screen: "Chats",
+      params: {
+        screen: "ChatRoom",
+        params,
+      },
     });
   } catch (e) {
     try {
+      store.ref.navigate("Chats" as any, {
+        screen: "ChatRoom",
+        params,
+      });
+    } catch {
       store.ref.navigate("ChatRoom" as any, params as any);
-    } catch (err) {
-      console.warn("[nav] openChat failed", err);
     }
   }
 }

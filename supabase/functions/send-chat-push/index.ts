@@ -43,6 +43,53 @@ function allowsNotification(user: UserRow, key: "direct_messages" | "group_messa
   return prefs[key] !== false;
 }
 
+async function createInboxNotification(
+  supabase: any,
+  userId: string,
+  title: string,
+  body: string,
+  notificationType: string,
+  data: Record<string, unknown>
+) {
+  let notificationId: string | null = null;
+  let badge: number | undefined;
+
+  try {
+    const { data: inserted, error } = await supabase
+      .from("app_notifications")
+      .insert({
+        user_id: userId,
+        title,
+        body,
+        notification_type: notificationType,
+        data,
+      })
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    notificationId = inserted?.id ?? null;
+  } catch (error) {
+    console.log(
+      "app_notifications insert skipped:",
+      error instanceof Error ? error.message : error
+    );
+  }
+
+  try {
+    const { count, error } = await supabase
+      .from("app_notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .is("read_at", null);
+
+    if (error) throw error;
+    if (typeof count === "number") badge = count;
+  } catch {}
+
+  return { notificationId, badge };
+}
+
 serve(async (req: Request): Promise<Response> => {
   try {
     const body = (await req.json()) as WebhookBody;
@@ -126,13 +173,13 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const preferenceKey = conversation.is_group ? "group_messages" : "direct_messages";
-    const validRecipients = ((recipients ?? []) as UserRow[]).filter(
-      (user) => isExpoPushToken(user.expo_push_token) && allowsNotification(user, preferenceKey)
+    const allowedRecipients = ((recipients ?? []) as UserRow[]).filter(
+      (user) => allowsNotification(user, preferenceKey)
     );
 
-    if (!validRecipients.length) {
+    if (!allowedRecipients.length) {
       return new Response(
-        JSON.stringify({ ok: true, skipped: "No valid push tokens" }),
+        JSON.stringify({ ok: true, skipped: "No recipients allowed by preferences" }),
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -155,19 +202,59 @@ serve(async (req: Request): Promise<Response> => {
       ? `${senderName} · ${conversation.label ?? "Group chat"}`
       : senderName;
 
-    const pushMessages = validRecipients.map((user) => ({
-      to: user.expo_push_token!,
-      sound: "default",
-      title,
-      body: bodyText,
-      data: {
-        screen: "ChatRoom",
-        params: {
-          conversationId,
-          senderId,
-        },
+    const baseData = {
+      screen: "ChatRoom",
+      params: {
+        conversationId,
+        senderId,
       },
-    }));
+      notificationType: "message",
+      preferenceKey,
+    };
+
+    const pushMessages = await Promise.all(
+      allowedRecipients.map(async (user) => {
+        const inbox = await createInboxNotification(
+          supabase,
+          user.id,
+          title,
+          bodyText,
+          "message",
+          baseData
+        );
+
+        if (!isExpoPushToken(user.expo_push_token)) return null;
+
+        return {
+          to: user.expo_push_token!,
+          sound: "default",
+          title,
+          body: bodyText,
+          ...(typeof inbox.badge === "number" ? { badge: inbox.badge } : {}),
+          data: {
+            ...baseData,
+            ...(inbox.notificationId ? { notificationId: inbox.notificationId } : {}),
+          },
+        };
+      })
+    );
+
+    const deliverablePushMessages = pushMessages.filter(Boolean);
+
+    if (!deliverablePushMessages.length) {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          sent: 0,
+          inboxCreated: allowedRecipients.length,
+          skipped: "No valid push tokens",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    }
 
     const expoResponse = await fetch("https://exp.host/--/api/v2/push/send", {
       method: "POST",
@@ -176,7 +263,7 @@ serve(async (req: Request): Promise<Response> => {
         "Accept-Encoding": "gzip, deflate",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(pushMessages),
+      body: JSON.stringify(deliverablePushMessages),
     });
 
     const expoResult = await expoResponse.json();
@@ -184,7 +271,8 @@ serve(async (req: Request): Promise<Response> => {
     return new Response(
       JSON.stringify({
         ok: true,
-        sent: pushMessages.length,
+        sent: deliverablePushMessages.length,
+        inboxCreated: allowedRecipients.length,
         expoResult,
       }),
       {

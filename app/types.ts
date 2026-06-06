@@ -27,6 +27,7 @@ export type RootStackParamList = {
     conversation?: any;
     conversationId?: string;
     peerUser?: { id: string; full_name: string; avatar_url?: string | null };
+    currentUserId?: string | null;
     userId?: string; // legacy compatibility
   };
 

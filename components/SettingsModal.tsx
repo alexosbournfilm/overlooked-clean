@@ -18,6 +18,9 @@ import { useNavigation, CommonActions } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettingsModal } from '../app/context/SettingsModalContext';
 import { useAppTheme } from '../app/context/ThemeContext';
+import { useAppLanguage } from '../app/context/LanguageContext';
+import { AppLanguageCode } from '../app/i18n/languages';
+import { AppNotification, useInAppNotifications } from '../app/context/InAppNotificationsContext';
 import { supabase, FUNCTIONS_URL } from '../app/lib/supabase';
 import { UpgradeModal } from './UpgradeModal';
 import { unblockUser } from '../app/utils/unblockUser';
@@ -128,6 +131,19 @@ function clearAuthRoutingFlags() {
   }
 }
 
+function setSigningOutFlag(active: boolean) {
+  const G = globalThis as any;
+  G.__OVERLOOKED_SIGNING_OUT__ = active;
+
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    if (active) {
+      window.sessionStorage.setItem('overlooked.signingOut', 'true');
+    } else {
+      window.sessionStorage.removeItem('overlooked.signingOut');
+    }
+  }
+}
+
 const withTimeout = <T,>(p: Promise<T>, ms = 15000) =>
   new Promise<T>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('Request timed out')), ms);
@@ -196,6 +212,27 @@ async function openExternalManagementUrl(url?: string | null) {
   }
 }
 
+function formatNotificationTime(value?: string | null) {
+  if (!value) return '';
+
+  const then = new Date(value).getTime();
+  if (!Number.isFinite(then)) return '';
+
+  const diffMs = Date.now() - then;
+  const diffMin = Math.max(0, Math.floor(diffMs / 60000));
+
+  if (diffMin < 1) return 'Just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return new Date(value).toLocaleDateString();
+}
+
 /* ---------------------- DARK THEME SECTION BUTTON ---------------------- */
 function SectionButton(props: {
   title: string;
@@ -244,9 +281,17 @@ function SectionButton(props: {
 
 /* ----------------------------- MAIN MODAL ------------------------------ */
 export default function SettingsModal() {
-  const { isOpen, close } = useSettingsModal();
+  const { isOpen, close, revealNotificationsNonce } = useSettingsModal();
   const { colors, isLight, toggleThemeMode } = useAppTheme();
+  const { language, languageMeta, languages, setLanguage, t } = useAppLanguage();
   const navigation = useNavigation<any>();
+  const {
+    unreadCount,
+    settingsVisibleNotifications,
+    loading: notificationsLoading,
+    captureUnreadForSettings,
+    clearSettingsVisibleNotifications,
+  } = useInAppNotifications();
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const isGuest = !currentUserId;
@@ -264,6 +309,10 @@ export default function SettingsModal() {
   const [moderationActionId, setModerationActionId] = useState<string | null>(null);
   const [blockedExpanded, setBlockedExpanded] = useState(true);
   const [moderationExpanded, setModerationExpanded] = useState(false);
+  const [notificationsExpanded, setNotificationsExpanded] = useState(false);
+  const [openingNotifications, setOpeningNotifications] = useState(false);
+  const [languageExpanded, setLanguageExpanded] = useState(false);
+  const lastRevealNotificationsNonce = useRef(0);
 
   const [showUpgrade, setShowUpgrade] = useState(false);
   const sheetProgress = useRef(new Animated.Value(0)).current;
@@ -287,6 +336,36 @@ export default function SettingsModal() {
     setBlockedExpanded(true);
     setModerationExpanded(false);
   }, [isOpen]);
+
+  React.useEffect(() => {
+    if (!isOpen) {
+      setNotificationsExpanded(false);
+      setLanguageExpanded(false);
+      setOpeningNotifications(false);
+      clearSettingsVisibleNotifications();
+      return;
+    }
+
+    let cancelled = false;
+    const forcedReveal = revealNotificationsNonce > lastRevealNotificationsNonce.current;
+    lastRevealNotificationsNonce.current = revealNotificationsNonce;
+
+    setOpeningNotifications(true);
+    setNotificationsExpanded(forcedReveal || unreadCount > 0);
+
+    captureUnreadForSettings()
+      .then((rows) => {
+        if (cancelled) return;
+        setNotificationsExpanded(forcedReveal || rows.length > 0);
+      })
+      .finally(() => {
+        if (!cancelled) setOpeningNotifications(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, revealNotificationsNonce]);
 
   const checkModeratorStatus = useCallback(async (uid?: string | null) => {
     if (!uid) {
@@ -658,6 +737,10 @@ export default function SettingsModal() {
     } catch {
       navigation.reset({ index: 0, routes: [{ name: 'Auth' }] });
     }
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.history.replaceState(null, '', '/signin');
+    }
   };
 
   const openUpgradeFromSettings = () => {
@@ -686,30 +769,24 @@ export default function SettingsModal() {
 
     try {
       setSigningOut(true);
+      setSigningOutFlag(true);
       clearAuthRoutingFlags();
       close();
+      resetToAuthSignIn();
 
       const { error } = await supabase.auth.signOut();
       if (error) {
+        setSigningOutFlag(false);
         Alert.alert('Error', error.message);
         return;
       }
 
       clearAuthRoutingFlags();
 
-      if (Platform.OS === 'web') {
-        try {
-          // @ts-ignore
-          if (typeof window !== 'undefined') (window as any).__RECOVERY__ = false;
-        } catch {}
-
-        window.location.assign('/signin');
-        return;
-      }
-
       resetToAuthSignIn();
       setTimeout(resetToAuthSignIn, 160);
     } catch (e: any) {
+      setSigningOutFlag(false);
       Alert.alert('Error', e?.message || 'Failed to sign out.');
     } finally {
       setSigningOut(false);
@@ -833,12 +910,236 @@ export default function SettingsModal() {
               <View style={[styles.handle, { backgroundColor: colors.borderStrong }]} />
             </View>
 
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Settings</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>{t('Settings')}</Text>
 
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.scrollContent}
             >
+            <View
+              style={[
+                styles.notificationsSection,
+                {
+                  backgroundColor: colors.backgroundAlt,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Pressable
+                onPress={() => setNotificationsExpanded((prev) => !prev)}
+                style={({ pressed }) => [styles.collapsibleHeader, pressed && { opacity: 0.78 }]}
+              >
+                <View style={styles.collapsibleCopy}>
+                  <View style={styles.notificationTitleRow}>
+                    <Text style={[styles.blockedTitle, { color: colors.textPrimary }]}>
+                      {t('Notifications')}
+                    </Text>
+                    {settingsVisibleNotifications.length > 0 ? (
+                      <View style={[styles.notificationCountPill, { backgroundColor: colors.primary }]}>
+                        <Text style={[styles.notificationCountText, { color: colors.textOnPrimary }]}>
+                          {settingsVisibleNotifications.length > 99 ? '99+' : settingsVisibleNotifications.length}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={[styles.blockedSubtitle, { color: colors.textMuted }]} numberOfLines={2}>
+                    {settingsVisibleNotifications.length > 0
+                      ? t('New activity since you last checked.')
+                      : t('No new notifications.')}
+                  </Text>
+                </View>
+
+                <View style={styles.headerActions}>
+                  {(openingNotifications || notificationsLoading) && settingsVisibleNotifications.length === 0 ? (
+                    <ActivityIndicator color={colors.loader} size="small" />
+                  ) : null}
+
+                  <View
+                    style={[
+                      styles.chevronButton,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={notificationsExpanded ? 'chevron-up' : 'chevron-down'}
+                      size={16}
+                      color={colors.textMuted}
+                    />
+                  </View>
+                </View>
+              </Pressable>
+
+              {notificationsExpanded ? (
+                openingNotifications && settingsVisibleNotifications.length === 0 ? (
+                  <View style={styles.blockedLoadingRow}>
+                    <ActivityIndicator color={colors.loader} />
+                  </View>
+                ) : settingsVisibleNotifications.length === 0 ? (
+                  <Text style={[styles.blockedEmpty, { color: colors.textMuted }]}>
+                    {t('You are all caught up.')}
+                  </Text>
+                ) : (
+                  <View style={styles.notificationList}>
+                    {settingsVisibleNotifications.map((notice: AppNotification) => (
+                      <View
+                        key={notice.id}
+                        style={[
+                          styles.notificationRow,
+                          {
+                            backgroundColor: colors.card,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.notificationIcon,
+                            {
+                              backgroundColor: isLight ? '#F6ECD8' : 'rgba(198,166,100,0.10)',
+                              borderColor: isLight ? colors.borderStrong : 'rgba(198,166,100,0.24)',
+                            },
+                          ]}
+                        >
+                          <Ionicons
+                            name={notice.notification_type === 'message' ? 'chatbubble-ellipses-outline' : 'notifications-outline'}
+                            size={16}
+                            color={colors.primary}
+                          />
+                        </View>
+
+                        <View style={styles.notificationCopy}>
+                          <View style={styles.notificationMetaRow}>
+                            <Text style={[styles.notificationRowTitle, { color: colors.textPrimary }]} numberOfLines={2}>
+                              {notice.title || t('Notification')}
+                            </Text>
+                            <Text style={[styles.notificationTime, { color: colors.textMuted }]} numberOfLines={1}>
+                              {formatNotificationTime(notice.created_at)}
+                            </Text>
+                          </View>
+
+                          {notice.body ? (
+                            <Text style={[styles.notificationBody, { color: colors.textMuted }]} numberOfLines={2}>
+                              {notice.body}
+                            </Text>
+                          ) : null}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )
+              ) : null}
+            </View>
+
+            <View
+              style={[
+                styles.languageSection,
+                {
+                  backgroundColor: colors.backgroundAlt,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Pressable
+                onPress={() => setLanguageExpanded((prev) => !prev)}
+                style={({ pressed }) => [styles.collapsibleHeader, pressed && { opacity: 0.78 }]}
+              >
+                <View style={styles.collapsibleCopy}>
+                  <Text style={[styles.blockedTitle, { color: colors.textPrimary }]}>
+                    {t('Language')}
+                  </Text>
+                  <Text style={[styles.blockedSubtitle, { color: colors.textMuted }]} numberOfLines={2}>
+                    {languageMeta.nativeName} · {languageMeta.englishName}
+                  </Text>
+                </View>
+
+                <View
+                  style={[
+                    styles.chevronButton,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name={languageExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={colors.textMuted}
+                  />
+                </View>
+              </Pressable>
+
+              {languageExpanded ? (
+                <View style={styles.languageList}>
+                  <Text style={[styles.languageHelper, { color: colors.textMuted }]}>
+                    {t('Choose the language used across Overlooked.')}
+                  </Text>
+
+                  {languages.map((option) => {
+                    const selected = option.code === language;
+
+                    return (
+                      <Pressable
+                        key={option.code}
+                        onPress={() => void setLanguage(option.code as AppLanguageCode)}
+                        style={({ pressed }) => [
+                          styles.languageRow,
+                          {
+                            backgroundColor: selected
+                              ? isLight
+                                ? '#F6ECD8'
+                                : 'rgba(198,166,100,0.12)'
+                              : colors.card,
+                            borderColor: selected ? colors.primary : colors.border,
+                          },
+                          pressed && { opacity: 0.76 },
+                        ]}
+                      >
+                        <View style={styles.languageCopy}>
+                          <Text
+                            style={[
+                              styles.languageNativeName,
+                              styles.languageSelectorText,
+                              { color: colors.textPrimary },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {option.nativeName}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.languageEnglishName,
+                              styles.languageSelectorText,
+                              { color: colors.textMuted },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {option.englishName}
+                          </Text>
+                        </View>
+
+                        {selected ? (
+                          <View
+                            style={[
+                              styles.languageSelectedPill,
+                              { backgroundColor: colors.primary },
+                            ]}
+                          >
+                            <Ionicons name="checkmark" size={14} color={colors.textOnPrimary} />
+                            <Text style={[styles.languageSelectedText, { color: colors.textOnPrimary }]}>
+                              {t('Selected')}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
 
             <Pressable
               onPress={() => {
@@ -855,10 +1156,10 @@ export default function SettingsModal() {
             >
               <View style={styles.themeToggleCopy}>
                 <Text style={[styles.themeToggleTitle, { color: colors.textPrimary }]}>
-                  Light Mode
+                  {t('Light Mode')}
                 </Text>
                 <Text style={[styles.themeToggleSubtitle, { color: colors.textMuted }]}>
-                  {isLight ? 'Light app palette is on.' : 'Switch to a light app palette.'}
+                  {isLight ? t('Light app palette is on.') : t('Switch to a light app palette.')}
                 </Text>
               </View>
               <View
@@ -883,15 +1184,15 @@ export default function SettingsModal() {
             </Pressable>
 
             <SectionButton
-              title="Manage membership"
+              title={t('Manage membership')}
               subtitle={
                 isGuest
-                  ? 'Sign in to view or change your Overlooked plan.'
-                  : 'View or change your Overlooked plan.'
+                  ? t('Sign in to view or change your Overlooked plan.')
+                  : t('View or change your Overlooked plan.')
               }
               onPress={() => {
                 if (isGuest) {
-                  promptSignIn('Sign in or create an account to manage membership.');
+                  promptSignIn(t('Sign in or create an account to manage membership.'));
                   return;
                 }
 
@@ -901,8 +1202,8 @@ export default function SettingsModal() {
             />
 
             <SectionButton
-              title="Sign out"
-              subtitle="Return to the login screen."
+              title={t('Sign out')}
+              subtitle={t('Return to the login screen.')}
               onPress={onSignOut}
               loading={signingOut}
               disabled={deleting}
@@ -923,10 +1224,10 @@ export default function SettingsModal() {
               >
                 <View style={styles.collapsibleCopy}>
                   <Text style={[styles.blockedTitle, { color: colors.textPrimary }]}>
-                    Blocked Users
+                    {t('Blocked Users')}
                   </Text>
                   <Text style={[styles.blockedSubtitle, { color: colors.textMuted }]} numberOfLines={2}>
-                    Manage people you have hidden from your feeds.
+                    {t('Manage people you have hidden from your feeds.')}
                   </Text>
                 </View>
 
@@ -975,7 +1276,7 @@ export default function SettingsModal() {
               {blockedExpanded ? (
                 !currentUserId ? (
                   <Text style={[styles.blockedEmpty, { color: colors.textMuted }]}>
-                    Sign in to manage blocked users.
+                    {t('Sign in to manage blocked users.')}
                   </Text>
                 ) : blockedLoading && blockedUsers.length === 0 ? (
                   <View style={styles.blockedLoadingRow}>
@@ -983,7 +1284,7 @@ export default function SettingsModal() {
                   </View>
                 ) : blockedUsers.length === 0 ? (
                   <Text style={[styles.blockedEmpty, { color: colors.textMuted }]}>
-                    You haven’t blocked anyone.
+                    {t('You haven’t blocked anyone.')}
                   </Text>
                 ) : (
                   <View style={styles.blockedList}>
@@ -1021,7 +1322,7 @@ export default function SettingsModal() {
                             {user.full_name || 'Blocked user'}
                           </Text>
                           <Text style={[styles.blockedMeta, { color: colors.textMuted }]} numberOfLines={1}>
-                            {user.role_name ? `${user.role_name} • Blocked` : 'Blocked'}
+                            {user.role_name ? `${user.role_name} • ${t('Blocked')}` : t('Blocked')}
                           </Text>
                         </View>
 
@@ -1037,7 +1338,7 @@ export default function SettingsModal() {
                           {unblockingId === user.id ? (
                             <ActivityIndicator color={colors.textOnPrimary} size="small" />
                           ) : (
-                            <Text style={[styles.unblockText, { color: colors.textOnPrimary }]}>Unblock</Text>
+                            <Text style={[styles.unblockText, { color: colors.textOnPrimary }]}>{t('Unblock')}</Text>
                           )}
                         </Pressable>
                       </View>
@@ -1063,10 +1364,10 @@ export default function SettingsModal() {
                 >
                   <View style={styles.collapsibleCopy}>
                     <Text style={[styles.blockedTitle, { color: colors.textPrimary }]}>
-                      Moderation Inbox
+                      {t('Moderation Inbox')}
                     </Text>
                     <Text style={[styles.blockedSubtitle, { color: colors.textMuted }]} numberOfLines={2}>
-                      Review reports sent by users within 24 hours.
+                      {t('Review reports sent by users within 24 hours.')}
                     </Text>
                   </View>
 
@@ -1119,7 +1420,7 @@ export default function SettingsModal() {
                       <ActivityIndicator color={colors.loader} />
                     </View>
                   ) : moderationReports.length === 0 ? (
-                    <Text style={[styles.blockedEmpty, { color: colors.textMuted }]}>No open reports.</Text>
+                    <Text style={[styles.blockedEmpty, { color: colors.textMuted }]}>{t('No open reports.')}</Text>
                   ) : (
                     <View style={styles.moderationList}>
                       {moderationReports.map((report) => {
@@ -1192,7 +1493,7 @@ export default function SettingsModal() {
                                 busy && { opacity: 0.55 },
                               ]}
                             >
-                              <Text style={styles.reportActionText}>Resolve</Text>
+                              <Text style={styles.reportActionText}>{t('Resolve')}</Text>
                             </Pressable>
 
                             <Pressable
@@ -1205,7 +1506,7 @@ export default function SettingsModal() {
                                 (busy || !report.content_id) && { opacity: 0.45 },
                               ]}
                             >
-                              <Text style={styles.reportDangerText}>Remove</Text>
+                              <Text style={styles.reportDangerText}>{t('Remove')}</Text>
                             </Pressable>
 
                             <Pressable
@@ -1218,7 +1519,7 @@ export default function SettingsModal() {
                                 (busy || !report.reported_user_id) && { opacity: 0.45 },
                               ]}
                             >
-                              <Text style={styles.reportDangerSolidText}>Ban</Text>
+                              <Text style={styles.reportDangerSolidText}>{t('Ban')}</Text>
                             </Pressable>
                           </View>
                         </View>
@@ -1230,8 +1531,8 @@ export default function SettingsModal() {
             ) : null}
 
             <SectionButton
-              title="Delete account"
-              subtitle="Permanently remove your account and data."
+              title={t('Delete account')}
+              subtitle={t('Permanently remove your account and data.')}
               onPress={onDeleteAccount}
               danger
               loading={deleting}
@@ -1240,7 +1541,7 @@ export default function SettingsModal() {
 
             {debug ? <Text style={styles.debugText}>{debug}</Text> : null}
             <Text style={styles.supportText}>
-  For support, message overlookedsupport@gmail.com
+  {t('For support, message overlookedsupport@gmail.com')}
 </Text>
             </ScrollView>
 
@@ -1255,7 +1556,7 @@ export default function SettingsModal() {
                 pressed && { opacity: 0.7 },
               ]}
             >
-              <Text style={[styles.closeText, { color: isLight ? '#FFFFFF' : colors.textPrimary }]}>Close</Text>
+              <Text style={[styles.closeText, { color: isLight ? '#FFFFFF' : colors.textPrimary }]}>{t('Close')}</Text>
             </Pressable>
           </Animated.View>
         </Animated.View>
@@ -1383,6 +1684,159 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: DIVIDER,
     marginBottom: 12,
+  },
+  notificationsSection: {
+    backgroundColor: DARK_BG,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: DIVIDER,
+    marginBottom: 12,
+  },
+  languageSection: {
+    backgroundColor: DARK_BG,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: DIVIDER,
+    marginBottom: 12,
+  },
+  languageList: {
+    marginTop: 12,
+    gap: 8,
+  },
+  languageHelper: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: TEXT_MUTED,
+    fontFamily: SYSTEM_SANS,
+    marginBottom: 2,
+  },
+  languageRow: {
+    minHeight: 58,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  languageCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  languageSelectorText: {
+    alignSelf: 'stretch',
+    textAlign: 'left',
+    writingDirection: 'ltr',
+  },
+  languageNativeName: {
+    color: TEXT_IVORY,
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+  },
+  languageEnglishName: {
+    marginTop: 2,
+    color: TEXT_MUTED,
+    fontSize: 12,
+    lineHeight: 16,
+    fontFamily: SYSTEM_SANS,
+  },
+  languageSelectedPill: {
+    minHeight: 28,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    flexShrink: 0,
+  },
+  languageSelectedText: {
+    color: '#000000',
+    fontSize: 10,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+  },
+  notificationTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0,
+  },
+  notificationCountPill: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  notificationCountText: {
+    color: '#000000',
+    fontSize: 10,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+  },
+  notificationList: {
+    gap: 10,
+    marginTop: 12,
+  },
+  notificationRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: '#0A0A0A',
+    padding: 10,
+  },
+  notificationIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    backgroundColor: 'rgba(198,166,100,0.10)',
+    borderColor: 'rgba(198,166,100,0.24)',
+    flexShrink: 0,
+  },
+  notificationCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  notificationMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  notificationRowTitle: {
+    flex: 1,
+    minWidth: 0,
+    color: TEXT_IVORY,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+  },
+  notificationTime: {
+    color: TEXT_MUTED,
+    fontSize: 11,
+    lineHeight: 16,
+    fontWeight: '700',
+    fontFamily: SYSTEM_SANS,
+    flexShrink: 0,
+  },
+  notificationBody: {
+    marginTop: 3,
+    color: TEXT_MUTED,
+    fontSize: 12,
+    lineHeight: 17,
+    fontFamily: SYSTEM_SANS,
   },
   moderationSection: {
     backgroundColor: DARK_BG,

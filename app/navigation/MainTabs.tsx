@@ -1,7 +1,7 @@
 // app/navigation/MainTabs.tsx
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { useNavigation } from '@react-navigation/native';
+import { getFocusedRouteNameFromRoute, useNavigation } from '@react-navigation/native';
 import {
   StyleSheet,
   View,
@@ -36,14 +36,21 @@ import { useAuth } from '../context/AuthProvider';
 import { subscribeChatBadgeRefresh } from '../lib/chatBadgeEvents';
 import { useAppRefresh } from '../context/AppRefreshContext';
 import { useAppTheme } from '../context/ThemeContext';
+import { InAppNotificationsProvider, useInAppNotifications } from '../context/InAppNotificationsContext';
 
-import { SettingsModalProvider } from '../context/SettingsModalContext';
+import { SettingsModalProvider, useSettingsModal } from '../context/SettingsModalContext';
 import SettingsButton from '../../components/SettingsButton';
 import SettingsModal from '../../components/SettingsModal';
 
 
 import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 import { registerAndSavePushToken } from '../lib/pushRegistration';
+import {
+  isMobileWebViewport,
+  isPhoneViewport,
+  isTinyPhoneViewport,
+  usesNativeMobileLayoutOnWeb,
+} from '../utils/responsive';
 
 // NOTE: keeping this import because your file already has it.
 import { useGamification } from '../context/GamificationContext';
@@ -1426,18 +1433,23 @@ const TopBar = memo(function TopBar({
 }: TopBarProps) {
   const { width } = useWindowDimensions();
   const { colors, isLight } = useAppTheme();
+  const { unreadCount } = useInAppNotifications();
+  const { open: openSettings } = useSettingsModal();
   const isWide = width >= 980;
-  const isPhone = width < 420;
-  const isTinyPhone = Platform.OS !== 'web' && width < 380;
+  const isPhone = isPhoneViewport(width);
+  const isMobileWeb = isMobileWebViewport(width);
+  const isTinyPhone = isTinyPhoneViewport(width);
   const compactUI = !isWide;
+  const compactMobileActions = isPhone || isMobileWeb;
+  const settingsBadgeText = unreadCount > 99 ? '99+' : String(unreadCount);
 
 const settingsSize =
-  Platform.OS === 'web'
+  Platform.OS === 'web' && !compactMobileActions
     ? isWide
       ? 30
       : 30
-    : isPhone
-      ? isTinyPhone ? 28 : 30
+    : compactMobileActions
+      ? 32
       : 28;
 
   return (
@@ -1458,7 +1470,7 @@ const settingsSize =
       minHeight: navHeight,
       paddingHorizontal: isPhone ? 8 : 14,
       ...(isTinyPhone ? { paddingHorizontal: 6 } : null),
-      paddingTop: Platform.OS === 'web' ? 4 : 0,
+      paddingTop: Platform.OS === 'web' && !isMobileWeb ? 4 : 0,
       backgroundColor: colors.background,
     },
   ]}
@@ -1488,16 +1500,16 @@ const settingsSize =
   style={[
       styles.topActionBtn,
       styles.leaderboardBtn,
-      Platform.OS !== 'web' && isPhone && styles.topActionBtnPhone,
       compactUI && styles.topActionBtnCompact,
+      compactMobileActions && styles.topActionBtnPhone,
       isLight && {
         backgroundColor: 'rgba(201,164,92,0.16)',
         borderColor: 'rgba(154,118,44,0.24)',
       },
 ]}
 >
-                <Ionicons name="cloud-upload-outline" size={isTinyPhone ? 15 : isPhone ? 16 : 18} color={colors.primary} />
-                {!(Platform.OS !== 'web' && isPhone) && (
+                <Ionicons name="cloud-upload-outline" size={isTinyPhone ? 17 : isPhone ? 18 : 18} color={colors.primary} />
+                {!compactMobileActions && (
   <Text
     style={[
       styles.uploadBtnText,
@@ -1517,16 +1529,16 @@ const settingsSize =
     style={[
       styles.topActionBtn,
       styles.leaderboardBtn,
-      Platform.OS !== 'web' && isPhone && styles.topActionBtnPhone,
       compactUI && styles.topActionBtnCompact,
+      compactMobileActions && styles.topActionBtnPhone,
       isLight && {
         backgroundColor: 'rgba(201,164,92,0.16)',
         borderColor: 'rgba(154,118,44,0.24)',
       },
     ]}
   >
-    <Ionicons name="trophy-outline" size={isTinyPhone ? 15 : isPhone ? 16 : 18} color={colors.primary} />
-    {!(Platform.OS !== 'web' && isPhone) && (
+    <Ionicons name="trophy-outline" size={isTinyPhone ? 17 : isPhone ? 18 : 18} color={colors.primary} />
+    {!compactMobileActions && (
       <Text
         style={[
           styles.leaderboardBtnText,
@@ -1541,7 +1553,7 @@ const settingsSize =
   </View>
 </HoverPress>
 
-           {Platform.OS === 'web' ? (
+           {Platform.OS === 'web' && !compactMobileActions ? (
   <View
     style={[
       styles.settingsChipSmall,
@@ -1567,8 +1579,12 @@ const settingsSize =
     </View>
   </View>
 ) : (
-  <View
-    style={{
+  <Pressable
+    onPress={() => openSettings()}
+    hitSlop={8}
+    accessibilityRole="button"
+    accessibilityLabel="Open Settings"
+    style={({ pressed }) => [{
       width: settingsSize,
       height: settingsSize,
       borderRadius: settingsSize / 2,
@@ -1578,9 +1594,9 @@ const settingsSize =
       backgroundColor: isLight ? colors.card : '#151515',
       borderWidth: 1,
       borderColor: isLight ? colors.border : 'rgba(255,255,255,0.10)',
-      overflow: 'hidden',
+      overflow: 'visible',
       position: 'relative',
-    }}
+    }, pressed && { opacity: 0.72 }]}
   >
     <View
       pointerEvents="none"
@@ -1594,24 +1610,18 @@ const settingsSize =
         justifyContent: 'center',
       }}
     >
-      <Ionicons name="settings-outline" size={isTinyPhone ? 12 : isPhone ? 13 : 16} color={colors.textPrimary} />
+      <Ionicons name="settings-outline" size={isTinyPhone ? 16 : isPhone ? 18 : 16} color={colors.textPrimary} />
     </View>
 
-    <View
-      style={{
-        position: 'absolute',
-        top: 0,
-        right: 0,
-        bottom: 0,
-        left: 0,
-        opacity: 0.02,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <SettingsButton absolute={false} />
-    </View>
-  </View>
+    {unreadCount > 0 ? (
+      <View pointerEvents="none" style={styles.settingsTopBadge}>
+        <Text style={styles.settingsTopBadgeText} numberOfLines={1}>
+          {settingsBadgeText}
+        </Text>
+      </View>
+    ) : null}
+
+  </Pressable>
 )}
   
         </View>
@@ -1841,7 +1851,7 @@ borderRadius: isPhone ? 13 : 15,
                 borderColor: isLight ? colors.border : 'rgba(255,255,255,0.10)',
                 alignItems: 'center',
                 justifyContent: 'center',
-                overflow: 'hidden',
+                overflow: 'visible',
               }}
             >
               <View
@@ -2160,8 +2170,10 @@ useEffect(() => {
   };
 }, [badgeUserId, loadChatUnreadCount, triggerAppRefresh]);
 
-  const isPhone = width < 420;
-  const isTiny = width < 360;
+  const isPhone = isPhoneViewport(width);
+  const isTiny = isTinyPhoneViewport(width);
+  const isWebMobile = isMobileWebViewport(width);
+  const useNativeLikeHeader = usesNativeMobileLayoutOnWeb(width);
 
   const [showLeaderboard, setShowLeaderboard] = useState(false);
 const [hideTopBar, setHideTopBar] = useState(false);
@@ -2298,7 +2310,7 @@ const TOPBAR_EXTRA_ROW = 0;
 const topOffset = 0;
 
 const contentTopPadding =
-  Platform.OS === 'web'
+  Platform.OS === 'web' && !isWebMobile
     ? NAV_HEIGHT + TOPBAR_EXTRA_ROW + 10
     : NAV_HEIGHT + TOPBAR_EXTRA_ROW;
 
@@ -2341,11 +2353,18 @@ const tabPanResponder = useMemo(
 );
 
   const screenOptions = useCallback(
-  ({ route }: any): any => ({
+  ({ route }: any): any => {
+    const focusedNestedRoute =
+      route.name === 'Chats' ? getFocusedRouteNameFromRoute(route) : undefined;
+    const isChatRoomRoute =
+      route.name === 'Chats' && focusedNestedRoute === 'ChatRoom';
+
+    return {
     headerShown: false,
     tabBarActiveTintColor: colors.navActive,
     tabBarInactiveTintColor: colors.navInactive,
     tabBarShowLabel: false,
+    tabBarHideOnKeyboard: true,
 
     tabBarBadge:
       route.name === 'Chats' && Platform.OS === 'android' && chatUnreadCount > 0
@@ -2376,8 +2395,9 @@ const tabPanResponder = useMemo(
       borderTopWidth: 0,
       borderTopColor: 'transparent',
       height: TABBAR_HEIGHT,
+      display: isChatRoomRoute ? 'none' : 'flex',
       paddingTop: isTiny ? 5 : 6,
-      paddingBottom: Platform.OS === 'ios' ? (isPhone ? 10 : 12) : 8,
+      paddingBottom: Platform.OS === 'ios' || isWebMobile ? (isPhone ? 10 : 12) : 8,
       elevation: 0,
       shadowColor: colors.shadow,
       shadowOpacity: 0,
@@ -2452,11 +2472,13 @@ const tabPanResponder = useMemo(
         />
       );
     },
-  }),
-  [TABBAR_HEIGHT, isLight, isPhone, isTiny, chatUnreadCount, colors, loadChatUnreadCount, markActiveTab]
+  };
+  },
+  [TABBAR_HEIGHT, isLight, isPhone, isTiny, isWebMobile, chatUnreadCount, colors, loadChatUnreadCount, markActiveTab]
 );
 
   return (
+  <InAppNotificationsProvider>
   <SettingsModalProvider>
     <View
       style={{
@@ -2521,7 +2543,7 @@ const tabPanResponder = useMemo(
         </View>
       </SafeAreaView>
 
-      {Platform.OS === 'web' ? (
+      {!useNativeLikeHeader ? (
         <WebTopBar
           onOpenUpload={handleOpenUpload}
           onOpenLeaderboard={() => setShowLeaderboard(true)}
@@ -2563,6 +2585,7 @@ const tabPanResponder = useMemo(
       )}
     </View>
   </SettingsModalProvider>
+  </InAppNotificationsProvider>
 );
 }
 
@@ -2609,6 +2632,31 @@ chatBadge: {
 },
 
 chatBadgeText: {
+  color: '#000000',
+  fontSize: 9,
+  fontWeight: '900',
+  fontFamily: SYSTEM_SANS,
+  lineHeight: 10,
+},
+
+settingsTopBadge: {
+  position: 'absolute',
+  top: -5,
+  right: -6,
+  minWidth: 16,
+  height: 16,
+  borderRadius: 999,
+  backgroundColor: GOLD,
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingHorizontal: 4,
+  borderWidth: 1,
+  borderColor: '#000000',
+  zIndex: 5,
+  elevation: 5,
+},
+
+settingsTopBadgeText: {
   color: '#000000',
   fontSize: 9,
   fontWeight: '900',
@@ -2956,7 +3004,7 @@ chatBadgeText: {
   alignItems: 'center',
   justifyContent: 'center',
   alignSelf: 'center',
-  overflow: 'hidden',
+  overflow: 'visible',
 },
 
   settingsChipSmallPhone: {

@@ -25,6 +25,8 @@ import { UpgradeModal } from '../../components/UpgradeModal';
 import { useAppRefresh } from '../context/AppRefreshContext';
 import { getCurrentUserTierOrFree } from '../lib/membership';
 import { useAppTheme } from '../context/ThemeContext';
+import { useAppLanguage } from '../context/LanguageContext';
+import { translateTrustedText } from '../i18n/translations';
 
 /* -------------------------------- palette -------------------------------- */
 const BG = '#050505';
@@ -7700,9 +7702,14 @@ function LessonRowCard({
   onPress: () => void;
 }) {
   const { colors, isLight } = useAppTheme();
+  const { language } = useAppLanguage();
   const locked = state === 'locked';
   const completed = state === 'completed';
   const current = state === 'current';
+  const translateLessonCopy = useCallback(
+    (value?: string | null) => translateTrustedText(value || '', language),
+    [language]
+  );
 
   const scale = useRef(new Animated.Value(1)).current;
   const translateX = useRef(new Animated.Value(0)).current;
@@ -7805,14 +7812,14 @@ function LessonRowCard({
             style={[styles.lessonRowTitle, { color: colors.textPrimary }, locked && styles.lockedText, locked && { color: colors.textMuted }]}
             numberOfLines={2}
           >
-            {lesson.title}
+            {translateLessonCopy(lesson.title)}
           </Text>
 
           <Text
             style={[styles.lessonRowSubtitle, { color: colors.textMuted }, locked && styles.lockedText]}
             numberOfLines={2}
           >
-            {lesson.subtitle || lesson.description}
+            {translateLessonCopy(lesson.subtitle || lesson.description)}
           </Text>
 
           <View style={styles.lessonRowMeta}>
@@ -7837,6 +7844,7 @@ function LessonRowCard({
 /* -------------------------------- screen -------------------------------- */
 const WorkshopScreen: React.FC = () => {
   const { colors, isLight } = useAppTheme();
+  const { language } = useAppLanguage();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isDesktop = width >= 960;
@@ -7928,6 +7936,10 @@ const [expandedChapters, setExpandedChapters] = useState<Record<string, boolean>
 const wheelProgressAnim = useRef(new Animated.Value(0)).current;
 const wheelEntranceAnim = useRef(new Animated.Value(1)).current;
 const [animatedCompletionPercent, setAnimatedCompletionPercent] = useState(0);
+const translateLessonCopy = useCallback(
+  (value?: string | null) => translateTrustedText(value || '', language),
+  [language]
+);
 
 useEffect(() => {
   const listenerId = wheelProgressAnim.addListener(({ value }) => {
@@ -8721,7 +8733,9 @@ filmmaker: [],
                     <Text style={[styles.modalEyebrow, { color: GOLD }]}>
                       {activePath.label} • Step {selectedLesson.step}
                     </Text>
-                    <Text style={[styles.modalTitle, primaryTextStyle]}>{selectedLesson.title}</Text>
+                    <Text style={[styles.modalTitle, primaryTextStyle]}>
+                      {translateLessonCopy(selectedLesson.title)}
+                    </Text>
                     <Text style={[styles.modalMini, mutedTextStyle]}>
                       {kindLabel(selectedLesson.kind)}
                       {selectedLesson.missionType
@@ -8754,7 +8768,7 @@ filmmaker: [],
                 showsVerticalScrollIndicator={false}
               >
                 <Text style={[styles.modalDescription, { color: colors.textSecondary }]}>
-                  {selectedLesson.description}
+                  {translateLessonCopy(selectedLesson.description)}
                 </Text>
 
                 <View style={styles.modalMetaRow}>
@@ -8766,25 +8780,31 @@ filmmaker: [],
 
                 <View style={[styles.detailCard, softSurfaceStyle]}>
                   <Text style={[styles.detailLabel, { color: GOLD }]}>Challenge</Text>
-                  <Text style={[styles.detailText, { color: colors.textSecondary }]}>{selectedLesson.challenge}</Text>
+                  <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+                    {translateLessonCopy(selectedLesson.challenge)}
+                  </Text>
                 </View>
 
                 <View style={[styles.detailCard, softSurfaceStyle]}>
                   <Text style={[styles.detailLabel, { color: GOLD }]}>Objective</Text>
-                  <Text style={[styles.detailText, { color: colors.textSecondary }]}>{selectedLesson.objective}</Text>
+                  <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+                    {translateLessonCopy(selectedLesson.objective)}
+                  </Text>
                 </View>
 
                 <View style={[styles.detailCard, softSurfaceStyle]}>
                   <Text style={[styles.detailLabel, { color: GOLD }]}>Deliverable</Text>
                   <Text style={[styles.detailText, { color: colors.textSecondary }]}>
-                    {selectedLesson.deliverable}
+                    {translateLessonCopy(selectedLesson.deliverable)}
                   </Text>
                 </View>
 
                 {selectedLesson.learning ? (
                   <View style={[styles.detailCard, softSurfaceStyle]}>
                     <Text style={[styles.detailLabel, { color: GOLD }]}>Learning</Text>
-                    <Text style={[styles.detailText, { color: colors.textSecondary }]}>{selectedLesson.learning}</Text>
+                    <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+                      {translateLessonCopy(selectedLesson.learning)}
+                    </Text>
                   </View>
                 ) : null}
 
@@ -8792,7 +8812,7 @@ filmmaker: [],
                   <View style={[styles.detailCard, styles.detailCardSoft, softSurfaceStyle]}>
                     <Text style={[styles.detailLabel, { color: GOLD }]}>Bonus Note</Text>
                     <Text style={[styles.detailText, { color: colors.textSecondary }]}>
-                      {selectedLesson.bonusNote}
+                      {translateLessonCopy(selectedLesson.bonusNote)}
                     </Text>
                   </View>
                 ) : null}
@@ -8817,7 +8837,9 @@ filmmaker: [],
                   {selectedLesson.constraints.map((rule, i) => (
                     <View key={`${selectedLesson.id}-${i}`} style={styles.ruleRow}>
                       <Ionicons name="diamond-outline" size={12} color={GOLD} />
-                      <Text style={[styles.ruleText, { color: colors.textSecondary }]}>{rule}</Text>
+                      <Text style={[styles.ruleText, { color: colors.textSecondary }]}>
+                        {translateLessonCopy(rule)}
+                      </Text>
                     </View>
                   ))}
                 </View>

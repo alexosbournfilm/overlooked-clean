@@ -25,6 +25,7 @@ import
   FlatList,
   ScrollView,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,6 +43,7 @@ import { blockUser } from '../utils/blockUser';
 import { validateMultipleSafeTexts, validateSafeText } from '../utils/moderation';
 import ReportContentModal from '../../components/ReportContentModal';
 import { useAppTheme } from '../context/ThemeContext';
+import { isMobileWebViewport } from '../utils/responsive';
 
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
@@ -347,8 +349,11 @@ export default function JobsScreen() {
   const { colors, isLight } = useAppTheme();
   const navigation = useNavigation();
   const { show, ToastView } = useToast();
+  const { width } = useWindowDimensions();
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
+  const isWebMobile = isMobileWebViewport(width);
+  const nativeLikeModalAnimation = Platform.OS === 'web' && !isWebMobile ? 'none' : 'slide';
   const { triggerAppRefresh } = useAppRefresh();
   const GOLD = colors.primary;
   const GOLD_SOFT = isLight ? 'rgba(158,119,40,0.12)' : 'rgba(198,166,100,0.16)';
@@ -1949,7 +1954,7 @@ if (!me) {
   </View>
 }
         contentContainerStyle={{
-  paddingBottom: Platform.OS === 'web' ? 150 : 230,
+  paddingBottom: Platform.OS === 'web' && !isWebMobile ? 150 : 230,
 }}
         refreshing={activeTab === 'my' ? loadingMyJobs : isRefreshing}
 onRefresh={() => {
@@ -1976,7 +1981,7 @@ onRefresh={() => {
       backgroundColor: GOLD,
       borderColor: GOLD_LINE,
       shadowColor: colors.shadow,
-      bottom: Platform.OS === 'web' ? 28 : Math.max(tabBarHeight + 14, 84),
+      bottom: Platform.OS === 'web' && !isWebMobile ? 28 : Math.max(tabBarHeight + 14, 84),
     },
   ]}
   onPress={async () => {
@@ -2008,9 +2013,7 @@ onRefresh={() => {
       {/* Post Job Modal */}
       <Modal
         visible={jobFormVisible}
-        animationType={
-          Platform.OS === 'web' ? 'none' : 'slide'
-        }
+        animationType={nativeLikeModalAnimation}
         onRequestClose={() => setJobFormVisible(false)}
       >
         <KeyboardAvoidingView
@@ -2415,7 +2418,7 @@ onRefresh={() => {
             {/* Job City Search Modal */}
       <Modal
         visible={jobCityOverlayVisible}
-        animationType={Platform.OS === 'web' ? 'none' : 'slide'}
+        animationType={nativeLikeModalAnimation}
         onRequestClose={() => setJobCityOverlayVisible(false)}
       >
         <SafeAreaView style={[styles.cityModalSafeArea, { backgroundColor: T.bg }]} edges={['top']}>
@@ -2532,7 +2535,7 @@ onRefresh={() => {
                   {/* City Filter Modal */}
       <Modal
         visible={cityFilterModalVisible}
-        animationType={Platform.OS === 'web' ? 'none' : 'slide'}
+        animationType={nativeLikeModalAnimation}
         onRequestClose={() => setCityFilterModalVisible(false)}
       >
         <SafeAreaView style={[styles.cityModalSafeArea, { backgroundColor: T.bg }]} edges={['top']}>
@@ -2647,7 +2650,7 @@ onRefresh={() => {
       {/* Role Filter Modal */}
       <Modal
         visible={roleFilterModalVisible}
-        animationType={Platform.OS === 'web' ? 'none' : 'slide'}
+        animationType={nativeLikeModalAnimation}
         onRequestClose={() => setRoleFilterModalVisible(false)}
       >
         <View style={[styles.modalContainer, { backgroundColor: T.bg }]}>

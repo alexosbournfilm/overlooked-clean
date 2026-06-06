@@ -72,6 +72,18 @@ function getPasswordResetDone() {
   return Boolean(G.__OVERLOOKED_PASSWORD_RESET_DONE__);
 }
 
+function getSigningOutActive() {
+  const G = globalThis as any;
+
+  if (G.__OVERLOOKED_SIGNING_OUT__ === true) return true;
+
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    return window.sessionStorage.getItem("overlooked.signingOut") === "true";
+  }
+
+  return false;
+}
+
 function getCurrentLeafRouteName(route: any): string | undefined {
   if (!route) return undefined;
 
@@ -137,6 +149,7 @@ export default function AppNavigator({
 
   const isPasswordResetFlow = getPasswordResetFlowActive();
   const isPasswordResetDone = getPasswordResetDone();
+  const signingOutActive = getSigningOutActive();
   const allowCreateProfileFlow = getAllowCreateProfileFlow();
 
   useEffect(() => {
@@ -258,6 +271,11 @@ export default function AppNavigator({
       }
 
       if (resetFlowActive) {
+        return;
+      }
+
+      if (getSigningOutActive()) {
+        resetToAuth();
         return;
       }
 
@@ -439,6 +457,8 @@ export default function AppNavigator({
       ? "NewPassword"
       : isPasswordResetDone
       ? "Auth"
+      : signingOutActive
+      ? "Auth"
       : !userId
       ? "Auth"
       : G.__OVERLOOKED_PROFILE_JUST_COMPLETED__
@@ -522,7 +542,12 @@ export default function AppNavigator({
           component={WorkshopSubmitScreen}
           options={{
             gestureDirection: "vertical",
-            cardStyleInterpolator: CardStyleInterpolators.forModalPresentationIOS,
+            cardOverlayEnabled: false,
+            cardStyle: { backgroundColor: colors.background },
+            cardStyleInterpolator:
+              Platform.OS === "ios"
+                ? CardStyleInterpolators.forVerticalIOS
+                : CardStyleInterpolators.forFadeFromBottomAndroid,
             transitionSpec: {
               open: {
                 animation: "timing",

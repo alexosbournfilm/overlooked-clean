@@ -31,6 +31,7 @@
       "package": "com.overlooked.app",
       "versionCode": 3,
       "googleServicesFile": "./google-services.json",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#000000"

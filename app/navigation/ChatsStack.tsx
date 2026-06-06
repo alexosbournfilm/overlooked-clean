@@ -13,6 +13,7 @@ export type ChatsStackParamList = {
     conversation?: any;
     conversationId?: string;
     peerUser?: any;
+    currentUserId?: string | null;
   };
 };
 

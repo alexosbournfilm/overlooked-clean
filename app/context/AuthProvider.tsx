@@ -71,6 +71,10 @@ if (typeof G.__OVERLOOKED_MANUAL_SIGN_IN__ === "undefined") {
   G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
 }
 
+if (typeof G.__OVERLOOKED_SIGNING_OUT__ === "undefined") {
+  G.__OVERLOOKED_SIGNING_OUT__ = false;
+}
+
 const NATIVE_AUTH_STORAGE_KEY = "overlooked.supabase.auth";
 
 /* =====================================================
@@ -849,6 +853,49 @@ if (currentRoute?.name === "WorkshopSubmit") {
           return;
         }
 
+        const resumeSigningOut =
+          G.__OVERLOOKED_SIGNING_OUT__ === true ||
+          (Platform.OS === "web" &&
+            typeof window !== "undefined" &&
+            window.sessionStorage.getItem("overlooked.signingOut") === "true");
+
+        if (resumeSigningOut) {
+          G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
+          G.__OVERLOOKED_RECOVERY__ = false;
+          G.__OVERLOOKED_FORCE_NEW_PASSWORD__ = false;
+          G.__OVERLOOKED_PASSWORD_RESET_DONE__ = false;
+          G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
+          G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+          G.__OVERLOOKED_SIGNING_OUT__ = false;
+          pendingCreateProfileRedirectRef.current = false;
+
+          if (Platform.OS === "web" && typeof window !== "undefined") {
+            window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+            window.sessionStorage.removeItem("overlooked.manualSignIn");
+            window.sessionStorage.removeItem("overlooked.createProfileAllowed");
+            window.sessionStorage.removeItem("overlooked.signingOut");
+          }
+
+          try {
+            await supabase.auth.signOut({ scope: "local" as any });
+          } catch {}
+
+          await clearPersistedAuthSession();
+          clearLocalAuthState();
+
+          authBootstrappedRef.current = true;
+
+          if (mounted) {
+            setReady(true);
+          }
+
+          setTimeout(() => {
+            resetToSignIn();
+          }, 0);
+
+          return;
+        }
+
         const initialUrl =
           Platform.OS === "web" ? null : await Linking.getInitialURL();
 
@@ -1113,15 +1160,19 @@ if (currentRoute?.name === "WorkshopSubmit") {
         if (event === "SIGNED_OUT") {
   const wasPasswordResetFlow = isPasswordResetFlowActive();
 
+  resetToSignIn();
+
   G.__OVERLOOKED_EMAIL_CONFIRM__ = false;
 G.__OVERLOOKED_MANUAL_SIGN_IN__ = false;
 G.__OVERLOOKED_CREATE_PROFILE_ALLOWED__ = false;
+G.__OVERLOOKED_SIGNING_OUT__ = false;
 pendingCreateProfileRedirectRef.current = false;
 
 if (Platform.OS === "web" && typeof window !== "undefined") {
   window.sessionStorage.removeItem("overlooked.manualSignIn");
   window.sessionStorage.removeItem("overlooked.createProfileAllowed");
   window.sessionStorage.removeItem("overlooked.allowCreateProfile");
+  window.sessionStorage.removeItem("overlooked.signingOut");
 }
 
   if (!wasPasswordResetFlow) {

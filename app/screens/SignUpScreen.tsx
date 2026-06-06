@@ -1,5 +1,5 @@
 // screens/SignUpScreen.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,8 @@ import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
+import { useAppLanguage } from '../context/LanguageContext';
+import { translateTrustedText } from '../i18n/translations';
 
 // DARK THEME PALETTE (aligned with MainTabs)
 const DARK_BG = '#050505';
@@ -32,6 +34,7 @@ const BORDER = 'rgba(255,255,255,0.10)';
 export default function SignUpScreen() {
   const navigation = useNavigation<any>();
   const { colors } = useAppTheme();
+  const { language } = useAppLanguage();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -51,6 +54,12 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   // ✅ In-app "Email sent" modal (works on WEB + mobile)
   const [emailSentVisible, setEmailSentVisible] = useState(false);
   const [emailSentTo, setEmailSentTo] = useState<string>('');
+
+  const legalUpdatedAt = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const translateLegalText = useCallback(
+    (value: string) => translateTrustedText(value, language),
+    [language]
+  );
 
   const emailRedirectTo = useMemo(() => {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -490,7 +499,9 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
         <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
           <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <ScrollView>
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Terms of Service (Overlooked)</Text>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+                {translateLegalText('Terms of Service (Overlooked)')}
+              </Text>
               <Text
                 style={[
                   styles.modalText,
@@ -498,7 +509,7 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
                   Platform.OS === 'web' ? ({ whiteSpace: 'pre-wrap' } as any) : null,
                 ]}
               >
-                {`Last updated: ${new Date().toISOString().slice(0, 10)}
+                {translateLegalText(`Last updated: ${legalUpdatedAt}
 
 These Terms of Service (“Terms”) constitute a legally binding agreement between you and Overlooked LTD (“Overlooked”, “we”, “our”, “us”). By creating an account or using Overlooked, you agree to abide by these Terms and all applicable laws of England and Wales.
 
@@ -545,7 +556,7 @@ You must not upload or share:
 - Courts of England have exclusive jurisdiction.
 
 11. MODIFICATIONS
-- We may modify these Terms. We will notify users of material changes.`}
+- We may modify these Terms. We will notify users of material changes.`)}
               </Text>
             </ScrollView>
 
@@ -566,7 +577,9 @@ You must not upload or share:
         <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
           <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <ScrollView>
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Privacy Policy (Overlooked)</Text>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+                {translateLegalText('Privacy Policy (Overlooked)')}
+              </Text>
               <Text
                 style={[
                   styles.modalText,
@@ -574,7 +587,7 @@ You must not upload or share:
                   Platform.OS === 'web' ? ({ whiteSpace: 'pre-wrap' } as any) : null,
                 ]}
               >
-                {`Last updated: ${new Date().toISOString().slice(0, 10)}
+                {translateLegalText(`Last updated: ${legalUpdatedAt}
 
 This Privacy Policy explains how Overlooked LTD (“Overlooked”, “we”, “our”) collects and processes your personal data in accordance with UK GDPR.
 
@@ -613,7 +626,7 @@ This Privacy Policy explains how Overlooked LTD (“Overlooked”, “we”, “
 - Data may be transferred outside the UK using appropriate safeguards.
 
 9. CHANGES
-- We may update this Privacy Policy; material updates will be communicated.`}
+- We may update this Privacy Policy; material updates will be communicated.`)}
               </Text>
             </ScrollView>
 
@@ -637,7 +650,9 @@ This Privacy Policy explains how Overlooked LTD (“Overlooked”, “we”, “
         <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
           <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <ScrollView>
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Child Safety Policy (Overlooked)</Text>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+                {translateLegalText('Child Safety Policy (Overlooked)')}
+              </Text>
               <Text
                 style={[
                   styles.modalText,
@@ -645,7 +660,7 @@ This Privacy Policy explains how Overlooked LTD (“Overlooked”, “we”, “
                   Platform.OS === 'web' ? ({ whiteSpace: 'pre-wrap' } as any) : null,
                 ]}
               >
-                {`Last updated: ${new Date().toISOString().slice(0, 10)}
+                {translateLegalText(`Last updated: ${legalUpdatedAt}
 
 Overlooked is committed to maintaining a safe platform and has zero tolerance for child sexual abuse, child sexual exploitation, or any content that endangers minors.
 
@@ -681,7 +696,7 @@ overlookedsupport@gmail.com
 - We cooperate with lawful requests from regulators and law enforcement where required.
 
 7. POLICY UPDATES
-- We may update this Child Safety Policy from time to time to reflect legal, operational, or safety changes.`}
+- We may update this Child Safety Policy from time to time to reflect legal, operational, or safety changes.`)}
               </Text>
             </ScrollView>
 

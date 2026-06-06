@@ -1,5 +1,5 @@
 // app/screens/WorkshopSubmitScreen.tsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -35,6 +35,8 @@ import { useAppRefresh } from "../context/AppRefreshContext";
 import { getCurrentUserTierOrFree } from "../lib/membership";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppTheme } from "../context/ThemeContext";
+import { useAppLanguage } from "../context/LanguageContext";
+import { translateTrustedText } from "../i18n/translations";
 
 /* ------------------------------- palette ------------------------------- */
 
@@ -1007,6 +1009,7 @@ async function uploadFileToMuxDirectUrl(opts: {
 }
 export default function WorkshopSubmitScreen() {
   const { colors, isLight } = useAppTheme();
+  const { language } = useAppLanguage();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<WorkshopSubmitRouteParams, "WorkshopSubmit">>();
   const insets = useSafeAreaInsets();
@@ -1018,6 +1021,10 @@ export default function WorkshopSubmitScreen() {
   const isPhone = width < 520;
   const isTablet = width >= 768 && width < 1100;
   const [showInfoPanel, setShowInfoPanel] = useState(false);
+  const tt = useCallback(
+    (value: string) => translateTrustedText(value, language),
+    [language]
+  );
   const T = useMemo(
     () => ({
       bg: colors.background,
@@ -2093,8 +2100,11 @@ return (
   contentContainerStyle={[styles.scroll, { backgroundColor: T.bg }, isMobileWeb && styles.scrollMobileWeb]}
   contentInsetAdjustmentBehavior="never"
   showsVerticalScrollIndicator={true}
-  keyboardShouldPersistTaps="handled"
+  keyboardShouldPersistTaps="always"
   bounces={Platform.OS !== "web"}
+  scrollEventThrottle={16}
+  decelerationRate={Platform.OS === "ios" ? "fast" : 0.985}
+  overScrollMode="always"
   scrollEnabled
   nestedScrollEnabled
 >
@@ -2182,48 +2192,48 @@ return (
                     isPhone && styles.cardPhone,
                   ]}
                 >
-                  <Text style={[styles.infoSectionLabel, { color: T.accent }]}>How it works</Text>
-                  <Text style={[styles.infoSectionTitle, { color: T.text }]}>Quick checklist</Text>
+                  <Text style={[styles.infoSectionLabel, { color: T.accent }]}>{tt("How it works")}</Text>
+                  <Text style={[styles.infoSectionTitle, { color: T.text }]}>{tt("Quick checklist")}</Text>
                   <Text style={[styles.infoSectionBody, { color: T.sub }]}>
-                    Add a title, choose a category, upload your film and thumbnail, then submit it to Featured and this month’s challenge.
+                    {tt("Add a title, choose a category, upload your film and thumbnail, then submit it to Featured and this month’s challenge.")}
                   </Text>
 
                   <View style={[styles.softDivider, { backgroundColor: T.line }]} />
 
-                  <Text style={[styles.infoMiniTitle, { color: T.accent }]}>Steps</Text>
+                  <Text style={[styles.infoMiniTitle, { color: T.accent }]}>{tt("Steps")}</Text>
                   <View style={styles.infoList}>
-                    <Text style={[styles.infoBullet, { color: T.sub }]}>• Add a title</Text>
-                    <Text style={[styles.infoBullet, { color: T.sub }]}>• Choose 1 category</Text>
-                    <Text style={[styles.infoBullet, { color: T.sub }]}>• Upload your film + thumbnail</Text>
-                    <Text style={[styles.infoBullet, { color: T.sub }]}>• Agree to the rules</Text>
-                    <Text style={[styles.infoBullet, { color: T.sub }]}>• Submit your upload</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Add a title")}</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Choose 1 category")}</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Upload your film + thumbnail")}</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Agree to the rules")}</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Submit your upload")}</Text>
                   </View>
 
                   <View style={[styles.softDivider, { backgroundColor: T.line }]} />
 
-                  <Text style={[styles.infoMiniTitle, { color: T.accent }]}>What happens after upload</Text>
+                  <Text style={[styles.infoMiniTitle, { color: T.accent }]}>{tt("What happens after upload")}</Text>
 <View style={styles.infoList}>
-  <Text style={[styles.infoBullet, { color: T.sub }]}>• Your film is uploaded and entered into this month’s challenge</Text>
-  <Text style={[styles.infoBullet, { color: T.sub }]}>• Your lesson is completed straight away after upload</Text>
-  <Text style={[styles.infoBullet, { color: T.sub }]}>• Featured can take a little time to process your film before it appears</Text>
-  <Text style={[styles.infoBullet, { color: T.sub }]}>• Once processing finishes, it will show on Featured and play normally</Text>
-  <Text style={[styles.infoBullet, { color: T.sub }]}>• Other users can then watch and vote on it</Text>
+  <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Your film is uploaded and entered into this month’s challenge")}</Text>
+  <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Your lesson is completed straight away after upload")}</Text>
+  <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Featured can take a little time to process your film before it appears")}</Text>
+  <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Once processing finishes, it will show on Featured and play normally")}</Text>
+  <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Other users can then watch and vote on it")}</Text>
   {isWorkshopMode ? (
-    <Text style={[styles.infoBullet, { color: T.sub }]}>• This lesson is marked complete automatically</Text>
+    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• This lesson is marked complete automatically")}</Text>
   ) : null}
 </View>
 
                   <View style={[styles.softDivider, { backgroundColor: T.line }]} />
 
-                  <Text style={[styles.infoMiniTitle, { color: T.accent }]}>Rules</Text>
+                  <Text style={[styles.infoMiniTitle, { color: T.accent }]}>{tt("Rules")}</Text>
                   <View style={styles.infoList}>
-                    <Text style={[styles.infoBullet, { color: T.sub }]}>• File size must be 5GB or under</Text>
-                    <Text style={[styles.infoBullet, { color: T.sub }]}>• Your first film upload is free</Text>
-<Text style={[styles.infoBullet, { color: T.sub }]}>• Pro is required for additional uploads</Text>
-                    <Text style={[styles.infoBullet, { color: T.sub }]}>• Your film must be original</Text>
-                    <Text style={[styles.infoBullet, { color: T.sub }]}>• No stolen, hateful, or harmful content</Text>
-                    <Text style={[styles.infoBullet, { color: T.sub }]}>• Thumbnail is required</Text>
-                    <Text style={[styles.infoBullet, { color: T.sub }]}>• You must choose 1 category</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• File size must be 5GB or under")}</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Your first film upload is free")}</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Pro is required for additional uploads")}</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Your film must be original")}</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• No stolen, hateful, or harmful content")}</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Thumbnail is required")}</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• You must choose 1 category")}</Text>
                   </View>
                 </View>
               </View>
@@ -2890,22 +2900,22 @@ return (
             },
           ]}
         >
-          <Text style={[styles.modalTitle, { color: T.text }]}>{rulesTitle}</Text>
+          <Text style={[styles.modalTitle, { color: T.text }]}>{tt(rulesTitle)}</Text>
 
           <ScrollView style={{ marginBottom: 16 }}>
-            <Text style={[styles.modalText, { color: T.sub }]}>• File size: max 5GB.</Text>
-            <Text style={[styles.modalText, { color: T.sub }]}>• Your first film upload is free.</Text>
-<Text style={[styles.modalText, { color: T.sub }]}>• Pro is required for additional uploads.</Text>
-            <Text style={[styles.modalText, { color: T.sub }]}>• Keep it original. No stolen footage or unlicensed material.</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>{tt("• File size: max 5GB.")}</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>{tt("• Your first film upload is free.")}</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>{tt("• Pro is required for additional uploads.")}</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>{tt("• Keep it original. No stolen footage or unlicensed material.")}</Text>
             <Text style={[styles.modalText, { color: T.sub }]}>
-              • Keep it appropriate. No hate, harassment, or explicit harmful content.
+              {tt("• Keep it appropriate. No hate, harassment, or explicit harmful content.")}
             </Text>
-            <Text style={[styles.modalText, { color: T.sub }]}>• Thumbnail is required.</Text>
-            <Text style={[styles.modalText, { color: T.sub }]}>• You must choose a category.</Text>
-            <Text style={[styles.modalText, { color: T.sub }]}>• This upload will become a Featured submission.</Text>
-            <Text style={[styles.modalText, { color: T.sub }]}>• This upload will be entered into the current monthly challenge.</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>{tt("• Thumbnail is required.")}</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>{tt("• You must choose a category.")}</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>{tt("• This upload will become a Featured submission.")}</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>{tt("• This upload will be entered into the current monthly challenge.")}</Text>
             {isWorkshopMode ? (
-              <Text style={[styles.modalText, { color: T.sub }]}>• In workshop mode, this also marks your lesson complete.</Text>
+              <Text style={[styles.modalText, { color: T.sub }]}>{tt("• In workshop mode, this also marks your lesson complete.")}</Text>
             ) : null}
           </ScrollView>
 
