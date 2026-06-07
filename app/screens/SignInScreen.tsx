@@ -589,28 +589,6 @@ export default function SignInScreen() {
     };
   }, [displayText, isDeleting, fullLine, showSignIn, useSimpleMobileLayout]);
 
-  const handleEnterAsGuest = () => {
-    try {
-      const parentNav = navigation.getParent?.();
-
-      if (parentNav) {
-        parentNav.reset({
-          index: 0,
-          routes: [{ name: 'MainTabs' }],
-        });
-        return;
-      }
-
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'MainTabs' }],
-      });
-    } catch (e) {
-      console.log('Guest navigation error:', e);
-      showError('Navigation Error', 'Could not enter as guest.');
-    }
-  };
-
   const handleSignIn = async () => {
     const trimmedEmail = email.trim();
 
@@ -979,18 +957,6 @@ onBlur={() => {
       <TouchableOpacity
         onPress={() => {
           if (!mobileMode) setShowSignIn(false);
-          handleEnterAsGuest();
-        }}
-        style={{ marginTop: 16 }}
-      >
-        <Text style={[styles.link, { color: T.sub }]}>
-          <Text style={{ color: T.olive, textDecorationLine: 'underline' }}>Enter without an account</Text>
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={() => {
-          if (!mobileMode) setShowSignIn(false);
           navigation.navigate('SignUp');
         }}
         style={{ marginTop: 18 }}
@@ -1068,10 +1034,10 @@ onBlur={() => {
       </View>
 
       <Text style={[styles.desktopHeadline, { color: colors.textPrimary }]}>
-        The place for filmmakers to get seen, get better, and get moving.
+        The place for actors and filmmakers to get seen, get better, and get moving.
       </Text>
       <Text style={[styles.desktopSubcopy, { color: colors.textSecondary }]}>
-        Share films, complete creative exercises, build a portfolio, find collaborators, and keep your work visible.
+        Share your work, sharpen your craft, build your portfolio, and find people to create with.
       </Text>
       <Pressable
         accessibilityRole="image"
