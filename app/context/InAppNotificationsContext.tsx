@@ -61,36 +61,60 @@ function stringId(value: unknown) {
   return trimmed ? trimmed : null;
 }
 
+function notificationDataParams(data?: Record<string, any> | null) {
+  return data?.params && typeof data.params === 'object' && !Array.isArray(data.params)
+    ? data.params
+    : {};
+}
+
 function extractNotificationActorId(
   data?: Record<string, any> | null,
   notificationType?: string | null
 ) {
-  const params =
-    data?.params && typeof data.params === 'object' && !Array.isArray(data.params)
-      ? data.params
-      : {};
+  const params = notificationDataParams(data);
 
   const candidates = [
     data?.actorId,
+    data?.actor_id,
     data?.senderId,
+    data?.sender_id,
     data?.supporterId,
+    data?.supporter_id,
     data?.voterId,
+    data?.voter_id,
     data?.applicantId,
+    data?.applicant_id,
     data?.authorId,
+    data?.author_id,
     data?.commenterId,
+    data?.commenter_id,
     data?.replierId,
+    data?.replier_id,
+    data?.profileUserId,
+    data?.profile_user_id,
     params.actorId,
+    params.actor_id,
     params.senderId,
+    params.sender_id,
     params.supporterId,
+    params.supporter_id,
     params.voterId,
+    params.voter_id,
     params.applicantId,
+    params.applicant_id,
     params.authorId,
+    params.author_id,
     params.commenterId,
+    params.commenter_id,
     params.replierId,
+    params.replier_id,
+    params.profileUserId,
+    params.profile_user_id,
   ];
 
-  if (data?.screen === 'Profile') candidates.push(params.userId);
-  if (notificationType === 'city_creatives') candidates.push(params.userId);
+  if (data?.screen === 'Profile' || data?.screen === 'Location' || notificationType === 'city_creatives') {
+    candidates.push(params.userId, params.user_id, data?.userId, data?.user_id);
+  }
 
   for (const candidate of candidates) {
     const id = stringId(candidate);
@@ -98,6 +122,31 @@ function extractNotificationActorId(
   }
 
   return null;
+}
+
+function extractNotificationSubmissionId(data?: Record<string, any> | null) {
+  const params = notificationDataParams(data);
+  const candidates = [
+    params.openSubmissionId,
+    params.submissionId,
+    params.submission_id,
+    data?.openSubmissionId,
+    data?.submissionId,
+    data?.submission_id,
+  ];
+
+  for (const candidate of candidates) {
+    const id = stringId(candidate);
+    if (id) return id;
+  }
+
+  return null;
+}
+
+function shouldInferActorFromSubmission(notice: AppNotification) {
+  const type = String(notice.notification_type || notice.data?.preferenceKey || '').toLowerCase();
+  const title = String(notice.title || '').toLowerCase();
+  return type === 'followed_submissions' || title.includes('posted a new film');
 }
 
 function normalizeNotification(row: any): AppNotification {
@@ -119,11 +168,47 @@ function normalizeNotification(row: any): AppNotification {
 }
 
 async function enrichNotificationsWithActors(rows: AppNotification[]) {
-  const actorIds = Array.from(
-    new Set(rows.map((notice) => notice.actor_id).filter((id): id is string => !!id))
+  let rowsWithActorIds = rows;
+  const submissionIds = Array.from(
+    new Set(
+      rows
+        .filter((notice) => !notice.actor_id && shouldInferActorFromSubmission(notice))
+        .map((notice) => extractNotificationSubmissionId(notice.data))
+        .filter((id): id is string => !!id)
+    )
   );
 
-  if (!actorIds.length) return rows;
+  if (submissionIds.length) {
+    try {
+      const { data, error } = await supabase
+        .from('submissions')
+        .select('id, user_id')
+        .in('id', submissionIds);
+
+      if (error) throw error;
+
+      const authorBySubmissionId = new Map<string, string>(
+        ((data || []) as any[])
+          .map((submission) => [String(submission.id), stringId(submission.user_id)] as const)
+          .filter((entry): entry is readonly [string, string] => !!entry[1])
+      );
+
+      rowsWithActorIds = rows.map((notice) => {
+        if (notice.actor_id || !shouldInferActorFromSubmission(notice)) return notice;
+        const submissionId = extractNotificationSubmissionId(notice.data);
+        const actorId = submissionId ? authorBySubmissionId.get(submissionId) : null;
+        return actorId ? { ...notice, actor_id: actorId } : notice;
+      });
+    } catch (e: any) {
+      console.log('Notification submission authors unavailable:', e?.message || e);
+    }
+  }
+
+  const actorIds = Array.from(
+    new Set(rowsWithActorIds.map((notice) => notice.actor_id).filter((id): id is string => !!id))
+  );
+
+  if (!actorIds.length) return rowsWithActorIds;
 
   try {
     const { data, error } = await supabase
@@ -144,12 +229,12 @@ async function enrichNotificationsWithActors(rows: AppNotification[]) {
       ])
     );
 
-    return rows.map((notice) =>
+    return rowsWithActorIds.map((notice) =>
       notice.actor_id ? { ...notice, actor: actorsById.get(notice.actor_id) ?? null } : notice
     );
   } catch (e: any) {
     console.log('Notification actors unavailable:', e?.message || e);
-    return rows;
+    return rowsWithActorIds;
   }
 }
 

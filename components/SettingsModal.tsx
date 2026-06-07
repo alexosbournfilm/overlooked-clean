@@ -1014,8 +1014,12 @@ export default function SettingsModal() {
                 ) : (
                   <View style={styles.notificationList}>
                     {settingsVisibleNotifications.map((notice: AppNotification) => {
-                      const actor = notice.actor;
-                      const canOpenActor = !!(actor?.id || notice.actor_id);
+                      const actor =
+                        notice.actor ||
+                        (notice.actor_id
+                          ? { id: notice.actor_id, full_name: null, avatar_url: null }
+                          : null);
+                      const canOpenActor = !!actor?.id;
                       const actorInitial =
                         (actor?.full_name || notice.title || 'O').trim().slice(0, 1).toUpperCase() || 'O';
 
