@@ -28,6 +28,7 @@ import {
   ScrollView,
   Pressable,
   UIManager,
+  Image,
 } from 'react-native';
 import * as Linking from 'expo-linking';
 import { useNavigation } from '@react-navigation/native';
@@ -84,6 +85,36 @@ const TITLE_FADE_MS = 700;
 
 // Only allow CreateProfile when the account was confirmed very recently.
 const FRESH_CONFIRMATION_WINDOW_MS = 30 * 60 * 1000;
+
+const OVERLOOKED_ICON = require('../../assets/overlooked-icon-new.png');
+
+const DESKTOP_SIGNIN_SHOTS = [
+  {
+    source: require('../../assets/signin/featured-feed.png'),
+    label: 'Featured films',
+    copy: 'Submit work, watch new shorts, and build an audience.',
+  },
+  {
+    source: require('../../assets/signin/workshop.png'),
+    label: 'Creative exercises',
+    copy: 'Train acting, editing, sound, directing, and cinematography.',
+  },
+  {
+    source: require('../../assets/signin/profile.png'),
+    label: 'Portfolio profile',
+    copy: 'Show progress, showreels, submissions, and credits in one place.',
+  },
+  {
+    source: require('../../assets/signin/film-detail.png'),
+    label: 'Film pages',
+    copy: 'Collect votes, comments, credits, and collaborators.',
+  },
+  {
+    source: require('../../assets/signin/submissions.png'),
+    label: 'Submission library',
+    copy: 'Keep every finished piece easy to find and share.',
+  },
+] as const;
 
 type FeatureKey = 'profile' | 'location' | 'jobs' | 'festival';
 
@@ -215,6 +246,7 @@ export default function SignInScreen() {
   const isPhone = width < 420;
   const isShort = height < 720;
   const isWeb = Platform.OS === 'web';
+  const isDesktopWeb = isWeb && isWide;
 
   const isNativeMobile = Platform.OS === 'ios' || Platform.OS === 'android';
   const useSimpleMobileLayout = isNativeMobile;
@@ -735,7 +767,10 @@ export default function SignInScreen() {
   const modalMaxHeight = Math.max(260, height - insets.top - insets.bottom - 24);
 
   const renderAuthForm = (mobileMode = false) => {
-  const webCardWidth = Math.min(560, Math.max(330, width - 56));
+  const desktopFormMode = isDesktopWeb && mobileMode;
+  const webCardWidth = desktopFormMode
+    ? 430
+    : Math.min(560, Math.max(330, width - 56));
 
   const FormContent = (
     <>
@@ -750,7 +785,19 @@ export default function SignInScreen() {
         </View>
       )}
 
-      {mobileMode && (
+      {desktopFormMode && (
+        <View style={styles.desktopFormHeader}>
+          <Image source={OVERLOOKED_ICON} style={styles.desktopFormIcon} resizeMode="contain" />
+          <Text style={[styles.desktopFormTitle, { color: colors.textPrimary }]}>
+            Log in to Overlooked
+          </Text>
+          <Text style={[styles.desktopFormSubtitle, { color: colors.textSecondary }]}>
+            Keep building your films, exercises, profile, and crew.
+          </Text>
+        </View>
+      )}
+
+      {mobileMode && !desktopFormMode && (
   <View style={[styles.mobileHeader, isWeb && styles.webHeader]}>
     <Animated.Text
       style={[
@@ -945,6 +992,7 @@ onBlur={() => {
         styles.authCard,
         mobileMode ? styles.authCardMobile : null,
         isWeb && mobileMode ? styles.authCardWeb : null,
+        desktopFormMode ? styles.authCardDesktopWeb : null,
         {
           backgroundColor: colors.card,
           borderColor: colors.border,
@@ -984,6 +1032,64 @@ onBlur={() => {
   );
 };
 
+  const renderDesktopSignInShowcase = () => (
+    <View style={styles.desktopShowcase}>
+      <View style={styles.desktopBrandRow}>
+        <Image source={OVERLOOKED_ICON} style={styles.desktopBrandIcon} resizeMode="contain" />
+        <Text style={[styles.desktopBrandText, { color: colors.textPrimary }]}>OVERLOOKED</Text>
+      </View>
+
+      <Text style={[styles.desktopHeadline, { color: colors.textPrimary }]}>
+        The place for filmmakers to get seen, get better, and get moving.
+      </Text>
+      <Text style={[styles.desktopSubcopy, { color: colors.textSecondary }]}>
+        Share films, complete creative exercises, build a portfolio, find collaborators, and keep your work visible.
+      </Text>
+
+      <View style={styles.desktopPreviewStage}>
+        <View style={[styles.desktopPhoneFrame, styles.desktopPhoneLeft]}>
+          <Image
+            source={DESKTOP_SIGNIN_SHOTS[0].source}
+            style={styles.desktopPhoneImage}
+            resizeMode="cover"
+          />
+        </View>
+        <View style={[styles.desktopPhoneFrame, styles.desktopPhoneRight]}>
+          <Image
+            source={DESKTOP_SIGNIN_SHOTS[1].source}
+            style={styles.desktopPhoneImage}
+            resizeMode="cover"
+          />
+        </View>
+        <View style={[styles.desktopPhoneFrame, styles.desktopPhoneMain]}>
+          <Image
+            source={DESKTOP_SIGNIN_SHOTS[2].source}
+            style={styles.desktopPhoneImage}
+            resizeMode="cover"
+          />
+        </View>
+      </View>
+
+      <View style={styles.desktopFeatureGrid}>
+        {DESKTOP_SIGNIN_SHOTS.map((item, index) => (
+          <View key={item.label} style={styles.desktopFeatureTile}>
+            <View style={styles.desktopFeatureNumber}>
+              <Text style={styles.desktopFeatureNumberText}>{index + 1}</Text>
+            </View>
+            <View style={styles.desktopFeatureTextWrap}>
+              <Text style={[styles.desktopFeatureTitle, { color: colors.textPrimary }]}>
+                {item.label}
+              </Text>
+              <Text style={[styles.desktopFeatureCopy, { color: colors.textSecondary }]}>
+                {item.copy}
+              </Text>
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+
   if (useSimpleMobileLayout) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
@@ -1014,6 +1120,53 @@ onBlur={() => {
     </SafeAreaView>
   );
 }
+
+  if (isDesktopWeb) {
+    return (
+      <SafeAreaView
+        style={[
+          { flex: 1, backgroundColor: colors.background },
+          {
+            minHeight: '100vh',
+            overflowX: 'hidden',
+          } as any,
+        ]}
+      >
+        <View style={[styles.bgSolid, { backgroundColor: colors.background }]} />
+        {!isLight ? <View style={styles.webGradientBase} pointerEvents="none" /> : null}
+        {!isLight ? <View style={styles.webSoftVignette} pointerEvents="none" /> : null}
+
+        <ScrollView
+          style={({ flex: 1, backgroundColor: 'transparent', overscrollBehavior: 'none' } as any)}
+          contentContainerStyle={[
+            styles.desktopAuthScroll,
+            {
+              minHeight: height,
+              paddingTop: Math.max(insets.top, 34),
+              paddingBottom: Math.max(insets.bottom, 28),
+            },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+          overScrollMode="never"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.desktopAuthShell}>
+            {renderDesktopSignInShowcase()}
+
+            <View style={[styles.desktopDivider, { backgroundColor: colors.border }]} />
+
+            <View style={styles.desktopAuthPanel}>
+              {renderAuthForm(true)}
+              <Text style={[styles.desktopFooter, { color: colors.textMuted }]}>
+                Overlooked for independent creatives
+              </Text>
+            </View>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
     return (
     <SafeAreaView
       style={[
@@ -1227,6 +1380,182 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  desktopAuthScroll: {
+    flexGrow: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 48,
+  },
+  desktopAuthShell: {
+    width: '100%',
+    maxWidth: 1320,
+    minHeight: 720,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 54,
+  },
+  desktopShowcase: {
+    width: 670,
+    maxWidth: '52%',
+    minHeight: 650,
+    justifyContent: 'center',
+  },
+  desktopBrandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 13,
+    marginBottom: 30,
+  },
+  desktopBrandIcon: {
+    width: 48,
+    height: 48,
+  },
+  desktopBrandText: {
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 4.6,
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopHeadline: {
+    maxWidth: 660,
+    fontSize: 40,
+    lineHeight: 48,
+    fontWeight: '900',
+    letterSpacing: 0,
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopSubcopy: {
+    maxWidth: 620,
+    marginTop: 14,
+    fontSize: 16,
+    lineHeight: 25,
+    fontWeight: '600',
+    letterSpacing: 0,
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopPreviewStage: {
+    width: 620,
+    height: 350,
+    marginTop: 22,
+    marginBottom: 16,
+    position: 'relative',
+  },
+  desktopPhoneFrame: {
+    position: 'absolute',
+    overflow: 'hidden',
+    borderRadius: 32,
+    backgroundColor: '#050505',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    shadowColor: '#000',
+    shadowOpacity: 0.45,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 18 },
+  },
+  desktopPhoneMain: {
+    left: 232,
+    top: 0,
+    width: 168,
+    height: 348,
+    zIndex: 3,
+  },
+  desktopPhoneLeft: {
+    left: 98,
+    top: 52,
+    width: 148,
+    height: 306,
+    zIndex: 1,
+    transform: [{ rotate: '-7deg' }],
+    opacity: 0.94,
+  },
+  desktopPhoneRight: {
+    right: 92,
+    top: 58,
+    width: 148,
+    height: 306,
+    zIndex: 2,
+    transform: [{ rotate: '7deg' }],
+    opacity: 0.94,
+  },
+  desktopPhoneImage: {
+    width: '100%',
+    height: '100%',
+  },
+  desktopFeatureGrid: {
+    width: '100%',
+    maxWidth: 640,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  desktopFeatureTile: {
+    width: '31.5%',
+    minHeight: 82,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.18)',
+    backgroundColor: 'rgba(198,166,100,0.07)',
+  },
+  desktopFeatureNumber: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(198,166,100,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.28)',
+  },
+  desktopFeatureNumberText: {
+    color: GOLD,
+    fontSize: 12,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopFeatureTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  desktopFeatureTitle: {
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '900',
+    letterSpacing: 0,
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopFeatureCopy: {
+    marginTop: 4,
+    fontSize: 11.5,
+    lineHeight: 16,
+    fontWeight: '600',
+    letterSpacing: 0,
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    opacity: 0.8,
+  },
+  desktopAuthPanel: {
+    width: 470,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  desktopFooter: {
+    marginTop: 18,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+  },
 
   mobileContainer: {
     flex: 1,
@@ -1333,6 +1662,39 @@ heroHighlight: {
     backdropFilter: 'blur(14px) saturate(120%)',
     // @ts-ignore - web only
     WebkitBackdropFilter: 'blur(14px) saturate(120%)',
+  },
+  authCardDesktopWeb: {
+    borderRadius: 24,
+    shadowOpacity: 0.5,
+    shadowRadius: 34,
+    shadowOffset: { width: 0, height: 22 },
+  },
+  desktopFormHeader: {
+    alignItems: 'center',
+    marginBottom: 26,
+  },
+  desktopFormIcon: {
+    width: 58,
+    height: 58,
+    marginBottom: 14,
+  },
+  desktopFormTitle: {
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '900',
+    letterSpacing: 0,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopFormSubtitle: {
+    marginTop: 8,
+    maxWidth: 315,
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: '600',
+    letterSpacing: 0,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
   },
 
   authHeader: {

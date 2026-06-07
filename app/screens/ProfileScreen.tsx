@@ -26,7 +26,7 @@ import {
   InteractionManager,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { openChat, resetToSignIn } from '../navigation/navigationRef';
+import { openChat } from '../navigation/navigationRef';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Audio, Video, ResizeMode, VideoFullscreenUpdate, AVPlaybackStatus } from 'expo-av';
@@ -4596,7 +4596,6 @@ if (up.error) throw up.error;
     try {
       setSigningOutFlag(true);
       clearAuthRoutingFlags();
-      resetToSignIn();
 
       if (Platform.OS === "web" && typeof window !== "undefined") {
         window.history.replaceState(null, "", "/signin");
@@ -4610,8 +4609,6 @@ if (up.error) throw up.error;
       }
 
       clearAuthRoutingFlags();
-      resetToSignIn();
-      setTimeout(resetToSignIn, 160);
     } catch (e: any) {
       setSigningOutFlag(false);
       Alert.alert('Logout Failed', e?.message || 'Failed to sign out.');

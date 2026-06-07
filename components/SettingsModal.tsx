@@ -156,6 +156,8 @@ const withTimeout = <T,>(p: Promise<T>, ms = 15000) =>
     });
   });
 
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function getAccessToken() {
   const { data: s1 } = await supabase.auth.getSession();
   if (s1.session?.access_token) return s1.session.access_token;
@@ -817,7 +819,9 @@ export default function SettingsModal() {
       setSigningOutFlag(true);
       clearAuthRoutingFlags();
       close();
-      resetToAuthSignIn();
+
+      // Let the settings sheet finish its close animation before the root auth reset.
+      await wait(210);
 
       const { error } = await supabase.auth.signOut();
       if (error) {
@@ -827,9 +831,6 @@ export default function SettingsModal() {
       }
 
       clearAuthRoutingFlags();
-
-      resetToAuthSignIn();
-      setTimeout(resetToAuthSignIn, 160);
     } catch (e: any) {
       setSigningOutFlag(false);
       Alert.alert('Error', e?.message || 'Failed to sign out.');
