@@ -1049,23 +1049,23 @@ onBlur={() => {
       <View style={styles.desktopPreviewStage}>
         <View style={[styles.desktopPhoneFrame, styles.desktopPhoneLeft]}>
           <Image
-            source={DESKTOP_SIGNIN_SHOTS[0].source}
+            source={DESKTOP_SIGNIN_SHOTS[1].source}
             style={styles.desktopPhoneImage}
-            resizeMode="cover"
+            resizeMode="stretch"
           />
         </View>
         <View style={[styles.desktopPhoneFrame, styles.desktopPhoneRight]}>
           <Image
-            source={DESKTOP_SIGNIN_SHOTS[1].source}
+            source={DESKTOP_SIGNIN_SHOTS[2].source}
             style={styles.desktopPhoneImage}
-            resizeMode="cover"
+            resizeMode="stretch"
           />
         </View>
         <View style={[styles.desktopPhoneFrame, styles.desktopPhoneMain]}>
           <Image
-            source={DESKTOP_SIGNIN_SHOTS[2].source}
+            source={DESKTOP_SIGNIN_SHOTS[0].source}
             style={styles.desktopPhoneImage}
-            resizeMode="cover"
+            resizeMode="stretch"
           />
         </View>
       </View>
@@ -1455,25 +1455,25 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 18 },
   },
   desktopPhoneMain: {
-    left: 232,
+    left: 226,
     top: 0,
-    width: 168,
+    width: 180,
     height: 348,
     zIndex: 3,
   },
   desktopPhoneLeft: {
-    left: 98,
-    top: 52,
-    width: 148,
+    left: 58,
+    top: 48,
+    width: 168,
     height: 306,
     zIndex: 1,
     transform: [{ rotate: '-7deg' }],
     opacity: 0.94,
   },
   desktopPhoneRight: {
-    right: 92,
-    top: 58,
-    width: 148,
+    right: 54,
+    top: 52,
+    width: 168,
     height: 306,
     zIndex: 2,
     transform: [{ rotate: '7deg' }],
