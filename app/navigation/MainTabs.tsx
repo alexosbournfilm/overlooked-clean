@@ -2510,7 +2510,7 @@ const tabPanResponder = useMemo(
     },
 
     lazy: false,
-    animation: 'none',
+    animation: 'fade',
     unmountOnBlur: false,
     freezeOnBlur: false,
     tabBarStyle: {

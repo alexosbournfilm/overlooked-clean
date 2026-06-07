@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAppLanguage } from '../context/LanguageContext';
 import { translateTrustedText } from '../i18n/translations';
+import SmoothModal from '../../components/SmoothModal';
 
 // DARK THEME PALETTE (aligned with MainTabs)
 const DARK_BG = '#050505';
@@ -68,6 +69,15 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   return 'overlooked://callback';
 }, []);
+
+  const returnToSignIn = useCallback(() => {
+    if (navigation.canGoBack?.()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate('SignIn');
+  }, [navigation]);
 
   const refreshConfirmedFromUser = async () => {
     const { data } = await supabase.auth.getUser();
@@ -319,7 +329,7 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
               {emailConfirmed && (
                 <TouchableOpacity
-                  onPress={() => navigation.navigate('SignIn')}
+                  onPress={returnToSignIn}
                   style={styles.bannerAction}
                 >
                   <Text style={styles.bannerActionText}>Go to Sign In</Text>
@@ -436,7 +446,7 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => navigation.navigate('SignIn')}>
+          <TouchableOpacity onPress={returnToSignIn}>
             <Text style={[styles.signInLink, { color: colors.textSecondary }]}>
               Already have an account?{' '}
               <Text style={{ color: colors.primary, fontWeight: '700' }}>Sign In</Text>
@@ -469,7 +479,7 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
                 style={[styles.emailModalPrimary, { backgroundColor: colors.primary }]}
                 onPress={() => {
                   setEmailSentVisible(false);
-                  navigation.navigate('SignIn');
+                  returnToSignIn();
                 }}
               >
                 <Text style={[styles.emailModalPrimaryText, { color: colors.textOnPrimary }]}>Go to Sign In</Text>
@@ -479,7 +489,7 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
                 style={[styles.emailModalSecondary, { borderColor: colors.border }]}
                 onPress={() => {
                   setEmailSentVisible(false);
-                  navigation.navigate('SignIn');
+                  returnToSignIn();
                 }}
               >
                 <Text style={[styles.emailModalSecondaryText, { color: colors.textPrimary }]}>Back to Sign In</Text>
@@ -490,9 +500,8 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
       </Modal>
 
       {/* Terms of Service */}
-      <Modal
+      <SmoothModal
         visible={showTos}
-        animationType="slide"
         transparent
         onRequestClose={() => setShowTos(false)}
       >
@@ -565,12 +574,11 @@ You must not upload or share:
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      </SmoothModal>
 
       {/* Privacy Policy */}
-      <Modal
+      <SmoothModal
         visible={showPrivacy}
-        animationType="slide"
         transparent
         onRequestClose={() => setShowPrivacy(false)}
       >
@@ -638,12 +646,11 @@ This Privacy Policy explains how Overlooked LTD (“Overlooked”, “we”, “
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      </SmoothModal>
 
       {/* Child Safety Policy */}
-      <Modal
+      <SmoothModal
         visible={showChildSafety}
-        animationType="slide"
         transparent
         onRequestClose={() => setShowChildSafety(false)}
       >
@@ -708,7 +715,7 @@ overlookedsupport@gmail.com
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      </SmoothModal>
     </SafeAreaView>
   );
 }

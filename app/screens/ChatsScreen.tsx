@@ -46,6 +46,7 @@ import { reportContent, ReportReason } from '../utils/reportContent';
 import { blockUser as blockUserAndNotify } from '../utils/blockUser';
 import { validateSafeText } from '../utils/moderation';
 import ReportContentModal from '../../components/ReportContentModal';
+import SmoothModal from '../../components/SmoothModal';
 import { useAppTheme } from '../context/ThemeContext';
 /* ────────────────────────────────────────────────────────────
    CINEMATIC NOIR — black/white with gold accent
@@ -2675,10 +2676,9 @@ updateCellsBatchingPeriod={16}
 </Modal>
 
       {/* ───────────── Create Group Modal ───────────── */}
-      <Modal
+      <SmoothModal
         visible={createGroupOpen}
         transparent
-        animationType="slide"
         onRequestClose={() => setCreateGroupOpen(false)}
       >
         <Pressable
@@ -2820,7 +2820,7 @@ updateCellsBatchingPeriod={16}
             
           </ScrollView>
         </View>
-      </Modal>
+      </SmoothModal>
     </SafeAreaView>
   );
 }

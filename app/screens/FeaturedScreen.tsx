@@ -535,6 +535,7 @@ function HostedVideoInline({
   width,
   maxHeight,
   autoPlay,
+  autoPlayWithSound = false,
   posterUri,
   dimVignette = true,
   showControls = true,
@@ -551,6 +552,7 @@ function HostedVideoInline({
   width: number;
   maxHeight: number;
   autoPlay: boolean;
+  autoPlayWithSound?: boolean;
   posterUri?: string | null;
   dimVignette?: boolean;
   showControls?: boolean;
@@ -571,7 +573,7 @@ const [videoReady, setVideoReady] = useState(false);
 const opacity = useRef(new Animated.Value(0)).current;
 const [aspect, setAspect] = useState<number>(16 / 9);
 
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(!autoPlayWithSound);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playerChromeVisible, setPlayerChromeVisible] = useState(false);
   const playerChromeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -699,16 +701,16 @@ const [aspect, setAspect] = useState<number>(16 / 9);
       if (autoPlay) {
         if (Platform.OS === 'web') {
           if (htmlRef.current) {
-            htmlRef.current.muted = true;
+            htmlRef.current.muted = !autoPlayWithSound;
             htmlRef.current.controls = false;
           }
         } else {
           try {
-            await ref.current?.setIsMutedAsync(true);
+            await ref.current?.setIsMutedAsync(!autoPlayWithSound);
           } catch {}
         }
-        setMuted(true);
-        await play(false);
+        setMuted(!autoPlayWithSound);
+        await play(autoPlayWithSound);
       } else {
         await pause();
 
@@ -726,7 +728,7 @@ const [aspect, setAspect] = useState<number>(16 / 9);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, autoPlay]);
+  }, [src, autoPlay, autoPlayWithSound]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -763,9 +765,9 @@ const [aspect, setAspect] = useState<number>(16 / 9);
         }
       : {};
 
-  const onSurfacePressIn = async () => {
+const onSurfacePressIn = async () => {
   revealPlayerChrome();
-  await play(false);
+  await play(autoPlayWithSound);
 };
 
 const onSurfacePressOut = async () => {
@@ -775,7 +777,7 @@ const onSurfacePressOut = async () => {
 const onSurfaceTogglePress = async () => {
   revealPlayerChrome();
   if (isPlaying) await pause();
-  else await play(false);
+  else await play(autoPlayWithSound);
 };
 
   const maybeUpdateAspectFromStatus = (status?: AVPlaybackStatus) => {
@@ -5392,6 +5394,7 @@ maxToRenderPerBatch={2}
                     useDesktopWatch ? Math.min(winH * 0.68, 660) : Math.min(winH * 0.34, 340)
                   }
                   autoPlay={previewMediaReady && activeId === `preview-${previewItem.id}`}
+                  autoPlayWithSound
                   posterUri={previewItem.thumbnail_url ?? null}
                   dimVignette={false}
                   showControls={true}

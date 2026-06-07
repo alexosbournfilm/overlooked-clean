@@ -1,11 +1,12 @@
 // app/navigation/ChatsStack.tsx
 import React from 'react';
-import { Easing, Platform } from 'react-native';
-import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
+import { Platform } from 'react-native';
+import { createStackNavigator } from '@react-navigation/stack';
 
 import ChatsScreen from '../screens/ChatsScreen';
 import ChatRoomScreen from '../screens/ChatRoom';
 import { useAppTheme } from '../context/ThemeContext';
+import { getOverlookedStackScreenOptions } from './transitions';
 
 export type ChatsStackParamList = {
   ChatsHome: undefined;
@@ -32,6 +33,7 @@ export default function ChatsStack() {
   return (
     <Stack.Navigator
       screenOptions={{
+        ...getOverlookedStackScreenOptions(colors.background),
         headerStyle: { backgroundColor: colors.background, shadowColor: 'transparent', elevation: 0 },
         headerTintColor: colors.textPrimary,
         headerTitleStyle: {
@@ -41,27 +43,7 @@ export default function ChatsStack() {
           fontWeight: '900',
         },
         headerTitleAlign: 'center',
-        cardStyle: { backgroundColor: colors.background },
         animationEnabled: true,
-        gestureEnabled: true,
-        gestureDirection: 'horizontal',
-        cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
-        transitionSpec: {
-          open: {
-            animation: 'timing',
-            config: {
-              duration: 320,
-              easing: Easing.out(Easing.cubic),
-            },
-          },
-          close: {
-            animation: 'timing',
-            config: {
-              duration: 260,
-              easing: Easing.inOut(Easing.cubic),
-            },
-          },
-        },
       }}
     >
       <Stack.Screen

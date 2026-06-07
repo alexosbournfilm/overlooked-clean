@@ -53,6 +53,7 @@ import { reportContent, ReportReason } from '../utils/reportContent';
 import { blockUser } from '../utils/blockUser';
 import { validateMultipleSafeTexts, validateSafeText } from '../utils/moderation';
 import ReportContentModal from '../../components/ReportContentModal';
+import SmoothModal from '../../components/SmoothModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeyboardLift } from '../utils/useKeyboardLift';
 
@@ -1588,6 +1589,7 @@ const [sideRoleSearchFocused, setSideRoleSearchFocused] = useState(false);
   const [thumbUploading, setThumbUploading] = useState(false);
   const [thumbError, setThumbError] = useState<string | null>(null);
   const [activeSubmission, setActiveSubmission] = useState<SubmissionRow | null>(null);
+  const submissionModalCleanupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [comments, setComments] = useState<SubmissionCommentRow[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
   const [commentText, setCommentText] = useState("");
@@ -1787,7 +1789,15 @@ const [sideRoleSearchFocused, setSideRoleSearchFocused] = useState(false);
     useState<ShowreelCategory>('Acting');
     const [pendingShowreelThumbs, setPendingShowreelThumbs] = useState<Record<string, any>>({});
     const [activeShowreel, setActiveShowreel] = useState<ShowreelRow | null>(null);
+const showreelModalCleanupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 const [showreelModalOpen, setShowreelModalOpen] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (submissionModalCleanupRef.current) clearTimeout(submissionModalCleanupRef.current);
+      if (showreelModalCleanupRef.current) clearTimeout(showreelModalCleanupRef.current);
+    };
+  }, []);
 
   const [isDirty, setIsDirty] = useState(false);
 
@@ -3837,6 +3847,11 @@ const label = city?.name ?? '';
   );
 
   const openSubmissionModal = async (submission: SubmissionRow) => {
+    if (submissionModalCleanupRef.current) {
+      clearTimeout(submissionModalCleanupRef.current);
+      submissionModalCleanupRef.current = null;
+    }
+
     setActiveSubmission(submission);
     setSubmissionModalOpen(true);
     setCommentText('');
@@ -3861,13 +3876,22 @@ const label = city?.name ?? '';
     try {
       await pauseAllExcept(PAUSE_NONE_ID);
     } catch {}
+
     setSubmissionModalOpen(false);
-    setActiveSubmission(null);
-    setComments([]);
-    setCommentText('');
-    setSubmissionCommentsExpanded(false);
-    setWatchCreatorSupportUserId(null);
-    setWatchCreatorIsSupporting(false);
+
+    if (submissionModalCleanupRef.current) {
+      clearTimeout(submissionModalCleanupRef.current);
+    }
+
+    submissionModalCleanupRef.current = setTimeout(() => {
+      setActiveSubmission(null);
+      setComments([]);
+      setCommentText('');
+      setSubmissionCommentsExpanded(false);
+      setWatchCreatorSupportUserId(null);
+      setWatchCreatorIsSupporting(false);
+      submissionModalCleanupRef.current = null;
+    }, 260);
   };
 
   useEffect(() => {
@@ -4695,6 +4719,11 @@ const previewCreativeProtocolLink = () => {
   };
  const openShowreel = async (row: ShowreelRow) => {
     try {
+      if (showreelModalCleanupRef.current) {
+        clearTimeout(showreelModalCleanupRef.current);
+        showreelModalCleanupRef.current = null;
+      }
+
       await pauseAllExcept(PAUSE_NONE_ID);
       setActiveShowreel(row);
       setShowreelModalOpen(true);
@@ -4708,7 +4737,15 @@ const previewCreativeProtocolLink = () => {
     await pauseAllExcept(PAUSE_NONE_ID);
   } catch {}
   setShowreelModalOpen(false);
-  setActiveShowreel(null);
+
+  if (showreelModalCleanupRef.current) {
+    clearTimeout(showreelModalCleanupRef.current);
+  }
+
+  showreelModalCleanupRef.current = setTimeout(() => {
+    setActiveShowreel(null);
+    showreelModalCleanupRef.current = null;
+  }, 260);
 };
 /* ---------- RENDERERS ---------- */
 
@@ -6185,7 +6222,7 @@ const renderSubmissionsSection = () => {
   const watchMediaMaxH = Math.floor(
     isMobileLike ? Math.min(windowHeight * 0.38, 360) : Math.min(windowHeight * 0.68, 660)
   );
-  const watchSurface = isLight ? COLORS.background : "#050505";
+  const watchSurface = "#050505";
 
   const renderSubmissionGrid = (
     title: string,
@@ -6315,8 +6352,8 @@ const renderSubmissionsSection = () => {
       style={[
         styles.profileWatchPlayerWrap,
         {
-          backgroundColor: isLight ? "transparent" : "#000",
-          borderColor: isLight ? "transparent" : "rgba(255,255,255,0.08)",
+          backgroundColor: "#000",
+          borderColor: "rgba(255,255,255,0.08)",
         },
       ]}
     >
@@ -6334,7 +6371,7 @@ const renderSubmissionsSection = () => {
                 height={watchMediaH}
                 width={watchMediaW}
                 videoId={extractYoutubeId(activeSubmission.youtube_url) || undefined}
-                play={false}
+                play={true}
                 webViewStyle={{ backgroundColor: "#000" }}
                 webViewProps={{
                   allowsInlineMediaPlayback: true,
@@ -6352,7 +6389,7 @@ const renderSubmissionsSection = () => {
               width={watchMediaW}
               maxWidth={watchMediaW}
               maxHeight={watchMediaMaxH}
-              autoPlay={false}
+              autoPlay={true}
               squareCorners
             />
           ) : (
@@ -6362,7 +6399,7 @@ const renderSubmissionsSection = () => {
             {
               width: watchMediaW,
               height: watchMediaH,
-              backgroundColor: isLight ? COLORS.backgroundAlt : "transparent",
+              backgroundColor: "#000",
             },
           ]}
         >
@@ -6667,11 +6704,13 @@ const renderSubmissionsSection = () => {
       {renderSubmissionGrid("Worked On", visibleWorkedOnSubmissions, true)}
 
       {/* Playback modal */}
-      <Modal
+      <SmoothModal
         visible={submissionModalOpen}
-        transparent={false}
-        animationType="slide"
-        presentationStyle="fullScreen"
+        transparent
+        enterOffset={isMobileLike ? 88 : 64}
+        baseFrameStyle={{ backgroundColor: watchSurface }}
+        frameStyle={{ backgroundColor: watchSurface }}
+        presentationStyle="overFullScreen"
         hardwareAccelerated
         statusBarTranslucent
         onRequestClose={() => {
@@ -7053,7 +7092,7 @@ const renderSubmissionsSection = () => {
             </View>
           </ScrollView>
         </View>
-      </Modal>
+      </SmoothModal>
     </>
   );
 };
@@ -7271,12 +7310,14 @@ return (
     </Modal>
 
      {/* Secondary showreel playback modal */}
-    <Modal
+    <SmoothModal
       visible={showreelModalOpen}
-      transparent={false}
-      animationType="fade"
+      transparent
+      enterOffset={isMobileLike ? 88 : 64}
+      baseFrameStyle={{ backgroundColor: "#050505" }}
+      frameStyle={{ backgroundColor: "#050505" }}
       onRequestClose={closeShowreelModal}
-      presentationStyle="fullScreen"
+      presentationStyle="overFullScreen"
       hardwareAccelerated
       statusBarTranslucent
     >
@@ -7334,19 +7375,18 @@ return (
       maxWidth={Math.max(280, Math.min(width - (isMobileLike ? 24 : 88), 1180))}
       maxHeight={Math.max(220, windowHeight - insets.top - insets.bottom - (isMobileLike ? 140 : 172))}
       squareCorners
-      autoPlay={false}
+      autoPlay={true}
     />
   </View>
 ) : null}
         </View>
       </View>
-    </Modal>
+    </SmoothModal>
 
     {/* Edit Profile Modal */}
-    <Modal
+    <SmoothModal
       visible={showEditModal}
       transparent
-      animationType="slide"
       onRequestClose={() => setShowEditModal(false)}
     >
       <KeyboardAvoidingView
@@ -7931,7 +7971,7 @@ return (
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
-    </Modal>
+    </SmoothModal>
 
     {/* Showreel category picker modal */}
     <Modal
@@ -8014,9 +8054,8 @@ return (
     </Modal>
 
     {/* City search modal */}
-<Modal
+<SmoothModal
   visible={cityOpen}
-  animationType={Platform.OS === 'web' && !isMobileLike ? 'none' : 'slide'}
   onRequestClose={() => setCityOpen(false)}
 >
   <SafeAreaView style={styles.cityModalSafeArea} edges={['top']}>
@@ -8132,7 +8171,7 @@ return (
       </TouchableOpacity>
     </View>
   </SafeAreaView>
-</Modal>
+</SmoothModal>
 
     {/* Main role search modal */}
     <Modal

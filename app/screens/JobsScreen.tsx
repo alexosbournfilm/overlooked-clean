@@ -44,6 +44,7 @@ import { validateMultipleSafeTexts, validateSafeText } from '../utils/moderation
 import ReportContentModal from '../../components/ReportContentModal';
 import { useAppTheme } from '../context/ThemeContext';
 import { isMobileWebViewport } from '../utils/responsive';
+import SmoothModal from '../../components/SmoothModal';
 
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
@@ -2018,9 +2019,10 @@ onRefresh={() => {
 </TouchableOpacity>
 
       {/* Post Job Modal */}
-      <Modal
+      <SmoothModal
         visible={jobFormVisible}
-        animationType={nativeLikeModalAnimation}
+        enterOffset={96}
+        frameStyle={{ backgroundColor: T.bg }}
         onRequestClose={() => setJobFormVisible(false)}
       >
         <KeyboardAvoidingView
@@ -2420,7 +2422,7 @@ onRefresh={() => {
             </View>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </SmoothModal>
 
             {/* Job City Search Modal */}
       <Modal

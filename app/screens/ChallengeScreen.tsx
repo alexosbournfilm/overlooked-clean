@@ -11,7 +11,6 @@ import {
   Alert,
   Linking,
   Platform,
-  Modal,
   Pressable,
   Dimensions,
   Animated,
@@ -24,6 +23,7 @@ import { Audio, Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase, type UserTier } from '../lib/supabase';
 import { UpgradeModal } from '../../components/UpgradeModal';
+import SmoothModal from '../../components/SmoothModal';
 import { useAppRefresh } from '../context/AppRefreshContext';
 import { getCurrentUserTierOrFree } from '../lib/membership';
 import { useAppTheme } from '../context/ThemeContext';
@@ -388,6 +388,7 @@ const [soundProducts, setSoundProducts] = useState<WorkshopProduct[]>([]);
 
   const [previewVisible, setPreviewVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<WorkshopProduct | null>(null);
+  const previewCleanupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const videoRef = useRef<Video | null>(null);
   const webVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -406,12 +407,14 @@ const [soundProducts, setSoundProducts] = useState<WorkshopProduct[]>([]);
   const lastHandledRefreshKeyRef = useRef(0);
 
   const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+  const isMobileWeb = IS_WEB && SCREEN_W < 768;
+  const isCompactWorkshopLayout = !IS_WEB || isMobileWeb;
 
   const columns = useMemo(() => {
     if (IS_WEB && SCREEN_W >= 1080) return 2;
     return 1;
   }, [SCREEN_W]);
-  const isNarrowWorkshopLayout = SCREEN_W < 430;
+  const isNarrowWorkshopLayout = isCompactWorkshopLayout ? SCREEN_W < 768 : SCREEN_W < 430;
 
   const shouldShowLuts = activeFilter === 'all' || activeFilter === 'luts';
 const shouldShowMusic = activeFilter === 'all' || activeFilter === 'music';
@@ -425,6 +428,12 @@ const filteredItemCount = useMemo(() => {
 }, [activeFilter, lutProducts.length, musicProducts.length, soundProducts.length]);
 
   const cardScalesRef = useRef<Record<string, Animated.Value>>({});
+
+  useEffect(() => {
+    return () => {
+      if (previewCleanupRef.current) clearTimeout(previewCleanupRef.current);
+    };
+  }, []);
 
   const getCardScale = (id: string) => {
     if (!cardScalesRef.current[id]) {
@@ -1197,6 +1206,11 @@ const openProductContent = async (product: WorkshopProduct) => {
   };
 
   const openPreview = async (product: WorkshopProduct) => {
+    if (previewCleanupRef.current) {
+      clearTimeout(previewCleanupRef.current);
+      previewCleanupRef.current = null;
+    }
+
     try {
       if (audioRef.current) {
         await audioRef.current.stopAsync();
@@ -1208,7 +1222,7 @@ const openProductContent = async (product: WorkshopProduct) => {
     setSelectedProduct(product);
     setPreviewVisible(true);
     setIsPlaying(false);
-    setIsMuted(true);
+    setIsMuted(false);
     setPreviewAspect(16 / 9);
 
     const asset = (product.preview_url || product.image_url) ?? null;
@@ -1249,14 +1263,98 @@ const openProductContent = async (product: WorkshopProduct) => {
       }
     } catch {}
 
+    setPreviewVisible(false);
     setIsPlaying(false);
     setIsMuted(true);
-    setPreviewVisible(false);
-    setSelectedProduct(null);
-    setPreviewKind('none');
+
+    if (previewCleanupRef.current) {
+      clearTimeout(previewCleanupRef.current);
+    }
+
+    previewCleanupRef.current = setTimeout(() => {
+      setSelectedProduct(null);
+      setPreviewKind('none');
+      previewCleanupRef.current = null;
+    }, 260);
   };
 
   const MODAL_MAX_W = Math.min(560, SCREEN_W - 24);
+
+  useEffect(() => {
+    if (!previewVisible || !selectedProduct) return;
+    if (previewKind !== 'audio' && previewKind !== 'video') return;
+
+    const asset = selectedProduct.preview_url || selectedProduct.image_url;
+    if (!asset) return;
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        if (IS_WEB) {
+          const el: any =
+            previewKind === 'audio' ? webAudioRef.current : webVideoRef.current;
+
+          if (!el) return;
+
+          el.muted = false;
+          setIsMuted(false);
+
+          try {
+            await el.play();
+          } catch {
+            el.muted = true;
+            if (!cancelled) setIsMuted(true);
+            try {
+              await el.play();
+            } catch {}
+          }
+
+          if (!cancelled) setIsPlaying(!el.paused);
+          return;
+        }
+
+        if (previewKind === 'audio') {
+          if (audioRef.current) {
+            await audioRef.current.stopAsync();
+            await audioRef.current.unloadAsync();
+            audioRef.current = null;
+          }
+
+          const created = await Audio.Sound.createAsync(
+            { uri: asset },
+            { shouldPlay: true, isMuted: false, volume: 1 },
+            (status) => {
+              if (!status.isLoaded || cancelled) return;
+              setIsPlaying(!!status.isPlaying);
+              if (status.didJustFinish) setIsPlaying(false);
+            }
+          );
+
+          audioRef.current = created.sound;
+          if (!cancelled) {
+            setIsMuted(false);
+            setIsPlaying(true);
+          }
+
+          return;
+        }
+
+        if (previewKind === 'video' && videoRef.current) {
+          await videoRef.current.setIsMutedAsync(false);
+          await videoRef.current.playAsync();
+          if (!cancelled) {
+            setIsMuted(false);
+            setIsPlaying(true);
+          }
+        }
+      } catch {}
+    }, 80);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [previewKind, previewVisible, selectedProduct?.id]);
 
   const togglePlay = async () => {
     try {
@@ -1403,6 +1501,7 @@ const openProductContent = async (product: WorkshopProduct) => {
         key={value}
         style={[
           styles.filterChip,
+          isMobileWeb ? styles.filterChipMobileWeb : null,
           {
             backgroundColor: selected ? GOLD : 'transparent',
             borderColor: selected ? GOLD : 'transparent',
@@ -1412,7 +1511,13 @@ const openProductContent = async (product: WorkshopProduct) => {
         activeOpacity={0.86}
         onPress={() => setActiveFilter(value)}
       >
-        <Text style={[styles.filterChipText, { color: selected ? colors.textOnPrimary : TEXT_SOFT }]}>
+        <Text
+          style={[
+            styles.filterChipText,
+            isMobileWeb ? styles.filterChipTextMobileWeb : null,
+            { color: selected ? colors.textOnPrimary : TEXT_SOFT },
+          ]}
+        >
           {label}
         </Text>
       </TouchableOpacity>
@@ -1421,17 +1526,18 @@ const openProductContent = async (product: WorkshopProduct) => {
 
   const renderFilterSection = () => {
     return (
-      <View style={styles.filterSection}>
+      <View style={[styles.filterSection, isMobileWeb ? styles.filterSectionMobileWeb : null]}>
         <View
           style={[
             styles.filterChipsOuter,
+            isMobileWeb ? styles.filterChipsOuterMobileWeb : null,
             {
               backgroundColor: isLight ? '#FFFFFF' : 'rgba(255,255,255,0.035)',
               borderColor: BORDER,
             },
           ]}
         >
-          <View style={styles.filterChipsRow}>
+          <View style={[styles.filterChipsRow, isMobileWeb ? styles.filterChipsRowMobileWeb : null]}>
             {renderFilterChip('all', 'All')}
 {renderFilterChip('luts', 'LUTs')}
 {renderFilterChip('music', 'Music')}
@@ -1507,7 +1613,7 @@ const isAudioProduct = isMusic || isSound;
                 borderColor: BORDER,
                 shadowColor: colors.shadow,
               },
-              IS_WEB && columns === 2
+              IS_WEB && !isMobileWeb && columns === 2
                 ? {
                     height: WORKSHOP_WEB_CARD_HEIGHT,
                   }
@@ -1665,7 +1771,10 @@ const isAudioProduct = isMusic || isSound;
           ) : (
             <ScrollView
               style={styles.scroll}
-              contentContainerStyle={styles.scrollContent}
+              contentContainerStyle={[
+                styles.scrollContent,
+                isMobileWeb ? styles.scrollContentMobileWeb : null,
+              ]}
               showsVerticalScrollIndicator={false}
               refreshControl={
                 <RefreshControl
@@ -1696,7 +1805,7 @@ const isAudioProduct = isMusic || isSound;
               )}
 
               {shouldShowLuts && lutProducts.length > 0 && (
-                <View style={styles.sectionBlock}>
+                <View style={[styles.sectionBlock, isMobileWeb ? styles.sectionBlockMobileWeb : null]}>
                   {renderSectionHeader('Instant Cinema Looks', 'color-filter-outline', 'Color')}
 
                   <View style={[styles.grid, columns === 2 ? styles.gridTwoCol : null]}>
@@ -1706,7 +1815,7 @@ const isAudioProduct = isMusic || isSound;
               )}
 
               {shouldShowMusic && musicProducts.length > 0 && (
-  <View style={styles.sectionBlock}>
+  <View style={[styles.sectionBlock, isMobileWeb ? styles.sectionBlockMobileWeb : null]}>
     {renderSectionHeader('Music', 'musical-note-outline', 'Songs')}
 
     <View style={[styles.grid, columns === 2 ? styles.gridTwoCol : null]}>
@@ -1716,7 +1825,7 @@ const isAudioProduct = isMusic || isSound;
 )}
 
               {shouldShowSound && soundProducts.length > 0 && (
-                <View style={styles.sectionBlock}>
+                <View style={[styles.sectionBlock, isMobileWeb ? styles.sectionBlockMobileWeb : null]}>
                   {renderSectionHeader('Sound Effects', 'musical-notes-outline', 'Audio')}
 
                   <View style={[styles.grid, columns === 2 ? styles.gridTwoCol : null]}>
@@ -1745,7 +1854,16 @@ const isAudioProduct = isMusic || isSound;
             </ScrollView>
           )}
 
-          <Modal visible={previewVisible} transparent animationType="fade" onRequestClose={closePreview}>
+          <SmoothModal
+            visible={previewVisible}
+            transparent
+            enterOffset={isMobileWeb ? 88 : 72}
+            presentationStyle="overFullScreen"
+            hardwareAccelerated
+            statusBarTranslucent
+            frameStyle={{ backgroundColor: 'transparent' }}
+            onRequestClose={closePreview}
+          >
             <Pressable
               style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}
               onPress={closePreview}
@@ -1837,7 +1955,8 @@ const isAudioProduct = isMusic || isSound;
                                 }}
                                 src={asset}
                                 muted={isMuted}
-                                preload="metadata"
+                                autoPlay
+                                preload="auto"
                                 controls={false}
                                 onPlay={() => setIsPlaying(true)}
                                 onPause={() => setIsPlaying(false)}
@@ -1919,7 +2038,8 @@ const isAudioProduct = isMusic || isSound;
                                 }
                                 muted={isMuted}
                                 playsInline
-                                preload="metadata"
+                                autoPlay
+                                preload="auto"
                                 controls={false}
                                 onLoadedMetadata={(e: any) => {
                                   const el = e?.currentTarget as HTMLVideoElement | null;
@@ -1948,8 +2068,8 @@ const isAudioProduct = isMusic || isSound;
                                 style={[styles.video, WEB_VIDEO_FIT, { backgroundColor: isLight ? colors.backgroundAlt : '#000' }]}
                                 resizeMode={ResizeMode.CONTAIN}
                                 isLooping
-                                shouldPlay={false}
-                                isMuted={true}
+                                shouldPlay={previewVisible && previewKind === 'video'}
+                                isMuted={isMuted}
                                 useNativeControls={false}
                                 onPlaybackStatusUpdate={(status: any) => {
                                   if (!status?.isLoaded) return;
@@ -2097,7 +2217,7 @@ const isAudioProduct = isMusic || isSound;
                 )}
               </LinearGradient>
             </View>
-          </Modal>
+          </SmoothModal>
 
           <UpgradeModal
             visible={upgradeVisible}
@@ -2164,6 +2284,9 @@ const styles = StyleSheet.create({
     paddingTop: IS_WEB ? 18 : 8,
     paddingBottom: 92,
   },
+  scrollContentMobileWeb: {
+    paddingTop: 8,
+  },
 
   filterSection: {
     width: '100%',
@@ -2177,6 +2300,11 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     backgroundColor: 'transparent',
     borderWidth: 0,
+  },
+  filterSectionMobileWeb: {
+    maxWidth: 320,
+    marginTop: 4,
+    marginBottom: 12,
   },
   filterTopRow: {
     width: '100%',
@@ -2224,6 +2352,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.065)',
   },
+  filterChipsOuterMobileWeb: {
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
   filterChipsScroller: {
     alignSelf: 'center',
     maxWidth: '100%',
@@ -2234,6 +2366,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: IS_WEB ? 5 : 4,
   },
+  filterChipsRowMobileWeb: {
+    gap: 4,
+  },
   filterChip: {
     minHeight: IS_WEB ? 24 : 22,
     alignItems: 'center',
@@ -2243,6 +2378,11 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: 'transparent',
     borderWidth: 0,
+  },
+  filterChipMobileWeb: {
+    minHeight: 22,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
   filterChipActive: {
     backgroundColor: GOLD,
@@ -2261,6 +2401,10 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     textAlign: 'center',
   },
+  filterChipTextMobileWeb: {
+    fontSize: 6.8,
+    letterSpacing: 0.45,
+  },
   filterChipTextActive: {
     color: '#050505',
   },
@@ -2268,6 +2412,9 @@ const styles = StyleSheet.create({
   sectionBlock: {
     width: '100%',
     marginBottom: 20,
+  },
+  sectionBlockMobileWeb: {
+    marginBottom: 14,
   },
 
   grid: {

@@ -52,6 +52,16 @@ const GOLD = '#C6A664';
 const SYSTEM_SANS =
   Platform.select({ ios: 'System', android: 'Roboto', web: undefined }) || undefined;
 
+const WEB_VERTICAL_SCROLL =
+  Platform.OS === 'web'
+    ? ({
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        WebkitOverflowScrolling: 'touch',
+        touchAction: 'pan-y',
+      } as any)
+    : null;
+
 const T = {
   bg: DARK_BG,
   card: DARK_ELEVATED,
@@ -270,6 +280,21 @@ export default function SignInScreen() {
 
   const emailInputRef = useRef<TextInput>(null);
   const passwordInputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (!isWeb || typeof document === 'undefined') return;
+
+    try {
+      document.documentElement.style.overflow = 'auto';
+      document.documentElement.style.overflowX = 'hidden';
+      document.documentElement.style.overflowY = 'auto';
+      document.documentElement.style.touchAction = 'pan-y';
+      document.body.style.overflow = 'auto';
+      document.body.style.overflowX = 'hidden';
+      document.body.style.overflowY = 'auto';
+      document.body.style.touchAction = 'pan-y';
+    } catch {}
+  }, [isWeb]);
 
   const showError = (title: string, message: string) => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -1099,7 +1124,8 @@ onBlur={() => {
           isWeb
             ? ({
                 minHeight: '100dvh',
-                overflowX: 'hidden',
+                height: '100dvh',
+                ...WEB_VERTICAL_SCROLL,
               } as any)
             : null,
         ]}
@@ -1110,7 +1136,10 @@ onBlur={() => {
           {!isLight ? <View style={styles.mobileGlowBottom} pointerEvents="none" /> : null}
 
           <ScrollView
-            style={{ flex: 1 }}
+            style={[
+              { flex: 1 },
+              isWeb ? WEB_VERTICAL_SCROLL : null,
+            ]}
             contentContainerStyle={[
               styles.mobileContainer,
               {
@@ -1139,7 +1168,8 @@ onBlur={() => {
           { flex: 1, backgroundColor: colors.background },
           {
             minHeight: '100vh',
-            overflowX: 'hidden',
+            height: '100vh',
+            ...WEB_VERTICAL_SCROLL,
           } as any,
         ]}
       >
@@ -1148,7 +1178,10 @@ onBlur={() => {
         {!isLight ? <View style={styles.webSoftVignette} pointerEvents="none" /> : null}
 
         <ScrollView
-          style={({ flex: 1, backgroundColor: 'transparent', overscrollBehavior: 'none' } as any)}
+          style={[
+            { flex: 1, backgroundColor: 'transparent' },
+            WEB_VERTICAL_SCROLL,
+          ] as any}
           contentContainerStyle={[
             styles.desktopAuthScroll,
             {
@@ -1185,7 +1218,8 @@ onBlur={() => {
         Platform.OS === 'web'
           ? ({
               minHeight: '100vh',
-              overflowX: 'hidden',
+              height: '100vh',
+              ...WEB_VERTICAL_SCROLL,
             } as any)
           : ({ overflow: 'hidden' } as any),
       ]}
@@ -1205,7 +1239,7 @@ onBlur={() => {
           style={[
             { flex: 1, backgroundColor: 'transparent' },
             Platform.OS === 'web'
-              ? ({ overscrollBehavior: 'none', overflowX: 'hidden' } as any)
+              ? WEB_VERTICAL_SCROLL
               : null,
           ]}
           contentContainerStyle={[
@@ -1583,7 +1617,7 @@ const styles = StyleSheet.create({
   },
 
   mobileContainer: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 18,
     justifyContent: 'center',
   },

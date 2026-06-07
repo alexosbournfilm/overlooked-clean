@@ -31,6 +31,7 @@ import { reportContent, ReportReason } from '../utils/reportContent';
 import { blockUser } from '../utils/blockUser';
 import { validateSafeText } from '../utils/moderation';
 import ReportContentModal from '../../components/ReportContentModal';
+import SmoothModal from '../../components/SmoothModal';
 import { useAppTheme } from '../context/ThemeContext';
 import { useInAppNotifications } from '../context/InAppNotificationsContext';
 import { useKeyboardLift } from '../utils/useKeyboardLift';
@@ -2087,10 +2088,9 @@ const chatKeyboardContainerProps =
       </Modal>
 
             {/* Members sheet */}
-      <Modal
+      <SmoothModal
         visible={membersVisible && !!conversation}
         transparent
-        animationType="slide"
         onRequestClose={() =>
           setMembersVisible(false)
         }
@@ -2255,7 +2255,7 @@ const chatKeyboardContainerProps =
             />
           )}
         </View>
-      </Modal>
+      </SmoothModal>
       <ReportContentModal
         visible={!!reportTargetMessage}
         selectedReason={reportReason}

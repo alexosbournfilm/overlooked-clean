@@ -31,6 +31,15 @@ export default function ForgotPassword() {
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
 
+  const returnToSignIn = () => {
+    if (navigation.canGoBack?.()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate("SignIn");
+  };
+
   const handleReset = async () => {
     const trimmed = email.trim();
 
@@ -77,7 +86,7 @@ const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View style={styles.container}>
-          <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()}>
+          <TouchableOpacity style={styles.back} onPress={returnToSignIn}>
             <Ionicons name="chevron-back" size={20} color={colors.textMuted} />
             <Text style={[styles.backText, { color: colors.textMuted }]}>Back</Text>
           </TouchableOpacity>
