@@ -29,6 +29,7 @@ import {
   Pressable,
   UIManager,
   Image,
+  ImageStyle,
 } from 'react-native';
 import * as Linking from 'expo-linking';
 import { useNavigation } from '@react-navigation/native';
@@ -87,32 +88,20 @@ const TITLE_FADE_MS = 700;
 const FRESH_CONFIRMATION_WINDOW_MS = 30 * 60 * 1000;
 
 const OVERLOOKED_ICON = require('../../assets/overlooked-icon-new.png');
+const DESKTOP_SHOWCASE_IMAGE = require('../../assets/signin/desktop-showcase.png');
 
 const DESKTOP_SIGNIN_SHOTS = [
   {
-    source: require('../../assets/signin/featured-feed.png'),
-    label: 'Featured films',
-    copy: 'Submit work, watch new shorts, and build an audience.',
+    label: 'Post your work',
+    copy: 'Share films and monologues to grow an audience and meet collaborators.',
   },
   {
-    source: require('../../assets/signin/workshop.png'),
-    label: 'Creative exercises',
-    copy: 'Train acting, editing, sound, directing, and cinematography.',
+    label: 'Practice the craft',
+    copy: 'Build acting, editing, sound, directing, and cinematography skills.',
   },
   {
-    source: require('../../assets/signin/profile.png'),
-    label: 'Portfolio profile',
-    copy: 'Show progress, showreels, submissions, and credits in one place.',
-  },
-  {
-    source: require('../../assets/signin/film-detail.png'),
-    label: 'Film pages',
-    copy: 'Collect votes, comments, credits, and collaborators.',
-  },
-  {
-    source: require('../../assets/signin/submissions.png'),
-    label: 'Submission library',
-    copy: 'Keep every finished piece easy to find and share.',
+    label: 'Build your portfolio',
+    copy: 'Show your work, credits, submissions, and progress on one page.',
   },
 ] as const;
 
@@ -247,9 +236,12 @@ export default function SignInScreen() {
   const isShort = height < 720;
   const isWeb = Platform.OS === 'web';
   const isDesktopWeb = isWeb && isWide;
+  const isWebMobile = isWeb && !isDesktopWeb;
 
   const isNativeMobile = Platform.OS === 'ios' || Platform.OS === 'android';
-  const useSimpleMobileLayout = isNativeMobile;
+  const useSimpleMobileLayout = isNativeMobile || isWebMobile;
+  const useNativeLikeMobileLayout = useSimpleMobileLayout && !isDesktopWeb;
+  const useWideWebFormStyles = isWeb && !useNativeLikeMobileLayout;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -257,6 +249,7 @@ export default function SignInScreen() {
   const [loading, setLoading] = useState(false);
   const [showSignIn, setShowSignIn] = useState(!useSimpleMobileLayout);
   const [activeFeature, setActiveFeature] = useState<FeatureKey | null>(null);
+  const [isShowcaseHovered, setIsShowcaseHovered] = useState(false);
 
   const titleOpacity = useRef(new Animated.Value(0)).current;
   const titleTranslate = useRef(new Animated.Value(8)).current;
@@ -787,7 +780,15 @@ export default function SignInScreen() {
 
       {desktopFormMode && (
         <View style={styles.desktopFormHeader}>
-          <Image source={OVERLOOKED_ICON} style={styles.desktopFormIcon} resizeMode="contain" />
+          <Image
+            source={OVERLOOKED_ICON}
+            style={{
+              width: 58,
+              height: 58,
+              marginBottom: 14,
+            }}
+            resizeMode="contain"
+          />
           <Text style={[styles.desktopFormTitle, { color: colors.textPrimary }]}>
             Log in to Overlooked
           </Text>
@@ -798,32 +799,52 @@ export default function SignInScreen() {
       )}
 
       {mobileMode && !desktopFormMode && (
-  <View style={[styles.mobileHeader, isWeb && styles.webHeader]}>
-    <Animated.Text
-      style={[
-        styles.mobileBrand,
-        isWeb && styles.webBrand,
-        {
-          color: colors.textPrimary,
-          opacity: titleOpacity,
-          transform: [{ translateY: titleTranslate }],
-        },
-      ]}
-    >
-      OVERLOOKED
-    </Animated.Text>
+        <View style={[styles.mobileHeader, useWideWebFormStyles && styles.webHeader]}>
+          <Animated.Text
+            style={[
+              styles.mobileBrand,
+              useWideWebFormStyles && styles.webBrand,
+              {
+                color: colors.textPrimary,
+                opacity: titleOpacity,
+                transform: [{ translateY: titleTranslate }],
+              },
+            ]}
+          >
+            OVERLOOKED
+          </Animated.Text>
 
-    <Text style={[styles.heroPrompt, isWeb && styles.heroPromptWeb, { color: colors.textPrimary }]}>
-  <Text style={styles.heroHighlight}>Meet</Text> other creatives.{'\n'}
-  <Text style={styles.heroHighlight}>Share</Text> your work worldwide.
-</Text>
+          <Text
+            style={[
+              styles.heroPrompt,
+              useWideWebFormStyles && styles.heroPromptWeb,
+              { color: colors.textPrimary },
+            ]}
+          >
+            <Text style={styles.heroHighlight}>Meet</Text> other creatives.{'\n'}
+            <Text style={styles.heroHighlight}>Share</Text> your work worldwide.
+          </Text>
 
-    <Text style={[styles.mobileTitle, isWeb && styles.webTitle, { color: colors.textPrimary }]}>Sign in</Text>
-    <Text style={[styles.mobileSubtitle, isWeb && styles.webSubtitle, { color: colors.textSecondary }]}>
-      Welcome back. Get straight into your account.
-    </Text>
-  </View>
-)}
+          <Text
+            style={[
+              styles.mobileTitle,
+              useWideWebFormStyles && styles.webTitle,
+              { color: colors.textPrimary },
+            ]}
+          >
+            Sign in
+          </Text>
+          <Text
+            style={[
+              styles.mobileSubtitle,
+              useWideWebFormStyles && styles.webSubtitle,
+              { color: colors.textSecondary },
+            ]}
+          >
+            Welcome back. Get straight into your account.
+          </Text>
+        </View>
+      )}
 
       {!mobileMode && (
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
@@ -834,18 +855,18 @@ export default function SignInScreen() {
        <View
   style={[
     styles.inputWrap,
-    isWeb && styles.inputWrapWeb,
+    useWideWebFormStyles && styles.inputWrapWeb,
     {
       backgroundColor: colors.input,
       borderColor: focus === 'email' ? colors.primary : colors.border,
     },
-    isWeb && focus === 'email' && styles.inputWrapFocused,
+    useWideWebFormStyles && focus === 'email' && styles.inputWrapFocused,
   ]}
 >
         <Ionicons name="mail" size={17} color={focus === 'email' ? colors.primary : colors.textMuted} />
         <TextInput
           ref={emailInputRef}
-          style={[styles.input, isWeb && styles.inputWeb, { color: colors.textPrimary }]}
+          style={[styles.input, useWideWebFormStyles && styles.inputWeb, { color: colors.textPrimary }]}
           placeholder="Email"
           placeholderTextColor={colors.textMuted}
           autoCapitalize="none"
@@ -874,13 +895,13 @@ onBlur={() => {
       <View
   style={[
     styles.inputWrap,
-    isWeb && styles.inputWrapWeb,
+    useWideWebFormStyles && styles.inputWrapWeb,
     { marginTop: 14 },
     {
       backgroundColor: colors.input,
       borderColor: focus === 'password' ? colors.primary : colors.border,
     },
-    isWeb && focus === 'password' && styles.inputWrapFocused,
+    useWideWebFormStyles && focus === 'password' && styles.inputWrapFocused,
   ]}
 >
         <Ionicons
@@ -890,7 +911,7 @@ onBlur={() => {
         />
         <TextInput
           ref={passwordInputRef}
-          style={[styles.input, isWeb && styles.inputWeb, { color: colors.textPrimary }]}
+          style={[styles.input, useWideWebFormStyles && styles.inputWeb, { color: colors.textPrimary }]}
           placeholder="Password"
           placeholderTextColor={colors.textMuted}
           secureTextEntry={!showPassword}
@@ -938,7 +959,7 @@ onBlur={() => {
       <TouchableOpacity
         style={[
           styles.button,
-          isWeb && styles.buttonWeb,
+          useWideWebFormStyles && styles.buttonWeb,
           loading && { opacity: 0.9 },
           mobileMode && { marginTop: 22 },
         ]}
@@ -949,7 +970,7 @@ onBlur={() => {
         {loading ? (
           <ActivityIndicator color={DARK_BG} />
         ) : (
-          <Text style={[styles.buttonText, isWeb && styles.buttonTextWeb]}>
+          <Text style={[styles.buttonText, useWideWebFormStyles && styles.buttonTextWeb]}>
             Sign In
           </Text>
         )}
@@ -991,7 +1012,7 @@ onBlur={() => {
       style={[
         styles.authCard,
         mobileMode ? styles.authCardMobile : null,
-        isWeb && mobileMode ? styles.authCardWeb : null,
+        useWideWebFormStyles && mobileMode ? styles.authCardWeb : null,
         desktopFormMode ? styles.authCardDesktopWeb : null,
         {
           backgroundColor: colors.card,
@@ -999,11 +1020,11 @@ onBlur={() => {
           shadowColor: colors.shadow,
         },
         {
-          width: mobileMode ? (isWeb ? webCardWidth : '100%') : maxModalWidth(460),
+          width: mobileMode ? (useWideWebFormStyles ? webCardWidth : '100%') : maxModalWidth(460),
           maxHeight: mobileMode ? undefined : modalMaxHeight,
           alignSelf: 'center',
           padding:
-            mobileMode && isWeb
+            mobileMode && useWideWebFormStyles
               ? width >= 900
                 ? 36
                 : 28
@@ -1015,7 +1036,7 @@ onBlur={() => {
         },
       ]}
     >
-      {isNativeMobile && mobileMode ? (
+      {useSimpleMobileLayout && mobileMode ? (
         FormContent
       ) : (
         <ScrollView
@@ -1035,7 +1056,14 @@ onBlur={() => {
   const renderDesktopSignInShowcase = () => (
     <View style={styles.desktopShowcase}>
       <View style={styles.desktopBrandRow}>
-        <Image source={OVERLOOKED_ICON} style={styles.desktopBrandIcon} resizeMode="contain" />
+        <Image
+          source={OVERLOOKED_ICON}
+          style={{
+            width: 48,
+            height: 48,
+          }}
+          resizeMode="contain"
+        />
         <Text style={[styles.desktopBrandText, { color: colors.textPrimary }]}>OVERLOOKED</Text>
       </View>
 
@@ -1045,34 +1073,41 @@ onBlur={() => {
       <Text style={[styles.desktopSubcopy, { color: colors.textSecondary }]}>
         Share films, complete creative exercises, build a portfolio, find collaborators, and keep your work visible.
       </Text>
-
-      <View style={styles.desktopPreviewStage}>
-        <View style={[styles.desktopPhoneFrame, styles.desktopPhoneLeft]}>
-          <Image
-            source={DESKTOP_SIGNIN_SHOTS[1].source}
-            style={styles.desktopPhoneImage}
-            resizeMode="stretch"
-          />
-        </View>
-        <View style={[styles.desktopPhoneFrame, styles.desktopPhoneRight]}>
-          <Image
-            source={DESKTOP_SIGNIN_SHOTS[2].source}
-            style={styles.desktopPhoneImage}
-            resizeMode="stretch"
-          />
-        </View>
-        <View style={[styles.desktopPhoneFrame, styles.desktopPhoneMain]}>
-          <Image
-            source={DESKTOP_SIGNIN_SHOTS[0].source}
-            style={styles.desktopPhoneImage}
-            resizeMode="stretch"
-          />
-        </View>
-      </View>
+      <Pressable
+        accessibilityRole="image"
+        onHoverIn={() => setIsShowcaseHovered(true)}
+        onHoverOut={() => setIsShowcaseHovered(false)}
+        style={styles.desktopPreviewStage}
+      >
+        <Image
+          source={DESKTOP_SHOWCASE_IMAGE}
+          resizeMode="contain"
+          style={[
+            styles.desktopPreviewImage,
+            isShowcaseHovered ? styles.desktopPreviewImageHover : null,
+          ] as ImageStyle}
+        />
+      </Pressable>
 
       <View style={styles.desktopFeatureGrid}>
         {DESKTOP_SIGNIN_SHOTS.map((item, index) => (
-          <View key={item.label} style={styles.desktopFeatureTile}>
+          <Pressable
+            key={item.label}
+            style={(state: any) => [
+              styles.desktopFeatureTile,
+              {
+                backgroundColor: state.hovered
+                  ? isLight
+                    ? colors.card
+                    : colors.elevated
+                  : isLight
+                    ? colors.mutedCard
+                    : colors.cardAlt,
+                borderColor: state.hovered ? colors.primary : colors.borderStrong,
+              },
+              state.hovered ? styles.desktopFeatureTileHover : null,
+            ]}
+          >
             <View style={styles.desktopFeatureNumber}>
               <Text style={styles.desktopFeatureNumberText}>{index + 1}</Text>
             </View>
@@ -1084,42 +1119,52 @@ onBlur={() => {
                 {item.copy}
               </Text>
             </View>
-          </View>
+          </Pressable>
         ))}
       </View>
     </View>
   );
 
   if (useSimpleMobileLayout) {
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ flex: 1 }}>
-        <View style={[styles.bgSolid, { backgroundColor: colors.background }]} />
-        {!isLight ? <View style={styles.mobileGlowTop} pointerEvents="none" /> : null}
-        {!isLight ? <View style={styles.mobileGlowBottom} pointerEvents="none" /> : null}
+    return (
+      <SafeAreaView
+        style={[
+          { flex: 1, backgroundColor: colors.background },
+          isWeb
+            ? ({
+                minHeight: '100dvh',
+                overflowX: 'hidden',
+              } as any)
+            : null,
+        ]}
+      >
+        <View style={{ flex: 1 }}>
+          <View style={[styles.bgSolid, { backgroundColor: colors.background }]} />
+          {!isLight ? <View style={styles.mobileGlowTop} pointerEvents="none" /> : null}
+          {!isLight ? <View style={styles.mobileGlowBottom} pointerEvents="none" /> : null}
 
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={[
-            styles.mobileContainer,
-            {
-              flexGrow: 1,
-              paddingTop: Math.max(insets.top, 20),
-              paddingBottom: Math.max(insets.bottom, 20),
-            },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="none"
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-          overScrollMode="never"
-        >
-          {renderAuthForm(true)}
-        </ScrollView>
-      </View>
-    </SafeAreaView>
-  );
-}
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={[
+              styles.mobileContainer,
+              {
+                flexGrow: 1,
+                paddingTop: Math.max(insets.top, 20),
+                paddingBottom: Math.max(insets.bottom, 20),
+              },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="none"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            overScrollMode="never"
+          >
+            {renderAuthForm(true)}
+          </ScrollView>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (isDesktopWeb) {
     return (
@@ -1436,59 +1481,49 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
   desktopPreviewStage: {
-    width: 620,
-    height: 350,
-    marginTop: 22,
-    marginBottom: 16,
     position: 'relative',
-  },
-  desktopPhoneFrame: {
-    position: 'absolute',
-    overflow: 'hidden',
-    borderRadius: 32,
-    backgroundColor: '#050505',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    shadowColor: '#000',
-    shadowOpacity: 0.45,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 18 },
-  },
-  desktopPhoneMain: {
-    left: 226,
-    top: 0,
-    width: 180,
-    height: 348,
-    zIndex: 3,
-  },
-  desktopPhoneLeft: {
-    left: 58,
-    top: 48,
-    width: 168,
-    height: 306,
+    width: 660,
+    height: 370,
+    marginTop: 2,
+    marginBottom: 4,
+    alignSelf: 'center',
     zIndex: 1,
-    transform: [{ rotate: '-7deg' }],
-    opacity: 0.94,
-  },
-  desktopPhoneRight: {
-    right: 54,
-    top: 52,
-    width: 168,
-    height: 306,
-    zIndex: 2,
-    transform: [{ rotate: '7deg' }],
-    opacity: 0.94,
-  },
-  desktopPhoneImage: {
+    ...(Platform.OS === 'web'
+      ? {
+          cursor: 'default',
+        }
+      : null),
+  } as any,
+  desktopPreviewImage: {
     width: '100%',
     height: '100%',
+    ...(Platform.OS === 'web'
+      ? {
+          transitionProperty: 'filter, opacity, transform',
+          transitionDuration: '220ms',
+          transitionTimingFunction: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+          willChange: 'filter, transform',
+          backfaceVisibility: 'hidden',
+        }
+      : null),
+  } as any,
+  desktopPreviewImageHover: {
+    opacity: 1,
+    ...(Platform.OS === 'web'
+      ? {
+          filter: 'brightness(1.08) saturate(1.08) drop-shadow(0 24px 42px rgba(20, 17, 13, 0.24))',
+          transform: 'translate3d(0, -5px, 0) scale(1.018)',
+        }
+      : null),
   },
   desktopFeatureGrid: {
+    position: 'relative',
     width: '100%',
     maxWidth: 640,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
+    zIndex: 2,
   },
   desktopFeatureTile: {
     width: '31.5%',
@@ -1500,8 +1535,32 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(198,166,100,0.18)',
-    backgroundColor: 'rgba(198,166,100,0.07)',
-  },
+    backgroundColor: '#F1E8DA',
+    shadowColor: '#000',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    ...(Platform.OS === 'web'
+      ? {
+          transitionProperty: 'transform, box-shadow, border-color, background-color',
+          transitionDuration: '180ms',
+          transitionTimingFunction: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+          cursor: 'default',
+        }
+      : null),
+  } as any,
+  desktopFeatureTileHover: {
+    transform: [{ translateY: -5 }],
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    ...(Platform.OS === 'web'
+      ? {
+          boxShadow: '0 16px 34px rgba(20, 17, 13, 0.13)',
+        }
+      : null),
+  } as any,
   desktopFeatureNumber: {
     width: 26,
     height: 26,
@@ -1588,7 +1647,7 @@ const styles = StyleSheet.create({
   fontWeight: '800',
   color: T.text,
   textAlign: 'center',
-  letterSpacing: -0.2,
+  letterSpacing: 0,
   fontFamily: SYSTEM_SANS,
   maxWidth: 320,
 },
@@ -1613,7 +1672,7 @@ heroHighlight: {
     marginTop: 20,
     fontSize: 36,
     lineHeight: 43,
-    letterSpacing: -0.4,
+    letterSpacing: 0,
   },
   mobileSubtitle: {
     marginTop: 8,
