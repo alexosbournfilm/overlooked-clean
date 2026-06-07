@@ -4825,15 +4825,12 @@ paddingHorizontal: compactMobile ? 10 : 0,
       <View style={{ height: compactMobile ? 0 : 8 }} />
       {achievement ? (
         <View style={styles.profileAchievementMeta}>
-          <View style={styles.profileAchievementTitleRow}>
-            <Ionicons name="trophy-outline" size={13} color={achievement.color} />
-            <Text
-              style={[styles.profileAchievementTitle, { color: achievement.color }]}
-              numberOfLines={1}
-            >
-              {achievement.badgeTitle}
-            </Text>
-          </View>
+          <Text
+            style={[styles.profileAchievementTitle, { color: achievement.color }]}
+            numberOfLines={2}
+          >
+            {achievement.badgeTitle}
+          </Text>
           <Text style={[styles.profileAchievementDetail, { color: COLORS.textSecondary }]} numberOfLines={1}>
             {achievement.detail}
           </Text>
@@ -5219,7 +5216,11 @@ const heroBg = avatarUrl;
   const title = (displayTitle || defaultTitle).toUpperCase();
   const ringColor = getRingColorForLevel(level);
   const achievement = workshopAchievement;
-  const avatarRingColor = achievement?.color || ringColor;
+  const achievementColor = achievement?.color || ringColor;
+  const avatarRingColor = ringColor;
+  const mobileAchievementTitle = achievement
+    ? `${achievement.pathLabel} Ch. ${achievement.chapterNumber} Complete`
+    : "";
 
   // ✅ Better mobile + mobile-web spacing: clamp hero width + consistent side padding
   const heroPad = isMobileLike ? 0 : 20;
@@ -5426,35 +5427,6 @@ const heroMaxW = isMobileLike ? contentMaxWidth : "100%";
               {/* Avatar */}
               <View style={{ alignItems: "center" }}>
                 <View style={styles.avatarAchievementFrame}>
-                  {achievement ? (
-                    <View pointerEvents="none" style={styles.avatarFestivalLaurels}>
-                      <View style={styles.avatarLaurelLeft}>
-                        {[0, 1, 2].map((item) => (
-                          <Ionicons
-                            key={`left-${item}`}
-                            name="leaf-outline"
-                            size={isCompact ? 15 : 18}
-                            color={avatarRingColor}
-                            style={{ transform: [{ rotate: `${-36 + item * 18}deg` }] }}
-                          />
-                        ))}
-                      </View>
-                      <View style={styles.avatarLaurelRight}>
-                        {[0, 1, 2].map((item) => (
-                          <Ionicons
-                            key={`right-${item}`}
-                            name="leaf-outline"
-                            size={isCompact ? 15 : 18}
-                            color={avatarRingColor}
-                            style={{ transform: [{ rotate: `${36 - item * 18}deg` }, { scaleX: -1 }] }}
-                          />
-                        ))}
-                      </View>
-                      <View style={[styles.avatarAwardCrest, { backgroundColor: avatarRingColor }]}>
-                        <Ionicons name="film-outline" size={11} color="#000000" />
-                      </View>
-                    </View>
-                  ) : null}
                   <LinearGradient
                     colors={[avatarRingColor, avatarRingColor]}
                     start={{ x: 0, y: 0 }}
@@ -5478,8 +5450,8 @@ const heroMaxW = isMobileLike ? contentMaxWidth : "100%";
                 </View>
                 {achievement && isMobileLike ? (
                   <View style={styles.mobileAchievementMeta}>
-                    <Text style={[styles.mobileAchievementTitle, { color: avatarRingColor }]} numberOfLines={1}>
-                      {achievement.badgeTitle}
+                    <Text style={[styles.mobileAchievementTitle, { color: achievementColor }]} numberOfLines={2}>
+                      {mobileAchievementTitle}
                     </Text>
                     <Text style={styles.mobileAchievementDetail} numberOfLines={1}>
                       {achievement.detail}
@@ -8626,69 +8598,31 @@ const styles = StyleSheet.create({
     position: "relative",
     alignItems: "center",
     justifyContent: "center",
-    overflow: "visible",
-  },
-  avatarFestivalLaurels: {
-    position: "absolute",
-    top: -14,
-    left: -24,
-    right: -24,
-    bottom: -12,
-    zIndex: 2,
-    elevation: 2,
-    pointerEvents: "none",
-  },
-  avatarLaurelLeft: {
-    position: "absolute",
-    left: -2,
-    top: 15,
-    gap: 1,
-    alignItems: "center",
-  },
-  avatarLaurelRight: {
-    position: "absolute",
-    right: -2,
-    top: 15,
-    gap: 1,
-    alignItems: "center",
-  },
-  avatarAwardCrest: {
-    position: "absolute",
-    left: "50%",
-    top: 0,
-    width: 22,
-    height: 22,
-    marginLeft: -11,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.38)",
+    overflow: "hidden",
   },
   mobileAchievementMeta: {
-    marginTop: 7,
-    maxWidth: 160,
+    marginTop: 5,
+    maxWidth: 150,
     alignItems: "center",
   },
   mobileAchievementTitle: {
     fontFamily: FONT_OBLIVION,
-    fontSize: 9.5,
-    lineHeight: 12,
+    fontSize: 9,
+    lineHeight: 11,
     fontWeight: "900",
-    letterSpacing: 0.7,
-    textTransform: "uppercase",
+    letterSpacing: 0.25,
     textAlign: "center",
     textShadowColor: "rgba(0,0,0,0.65)",
     textShadowRadius: 6,
   },
   mobileAchievementDetail: {
-    marginTop: 2,
-    maxWidth: 160,
+    marginTop: 1,
+    maxWidth: 150,
     color: "rgba(255,255,255,0.76)",
     fontFamily: FONT_OBLIVION,
-    fontSize: 9,
-    lineHeight: 11,
-    letterSpacing: 0.2,
+    fontSize: 8.5,
+    lineHeight: 10,
+    letterSpacing: 0.1,
     textAlign: "center",
     textShadowColor: "rgba(0,0,0,0.65)",
     textShadowRadius: 6,
@@ -8716,22 +8650,15 @@ const styles = StyleSheet.create({
     gap: 2,
     paddingHorizontal: 8,
   },
-  profileAchievementTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    maxWidth: "100%",
-  },
   profileAchievementTitle: {
-    flexShrink: 1,
-    minWidth: 0,
     fontSize: 11,
     lineHeight: 14,
     fontFamily: FONT_OBLIVION,
-    letterSpacing: 0.8,
+    letterSpacing: 0.55,
     fontWeight: "900",
     textTransform: "uppercase",
+    textAlign: "center",
+    maxWidth: "100%",
   },
   profileAchievementDetail: {
     fontSize: 10,
