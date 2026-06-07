@@ -1059,10 +1059,10 @@ onBlur={() => {
       </View>
 
       <Text style={[styles.desktopHeadline, { color: colors.textPrimary }]}>
-        Where actors and filmmakers get seen.
+        For actors and filmmakers ready to be seen.
       </Text>
       <Text style={[styles.desktopSubcopy, { color: colors.textSecondary }]}>
-        Post your work, sharpen your craft, and build your crew.
+        Share your work, build your craft, and find your crew.
       </Text>
       <Pressable
         accessibilityRole="image"
