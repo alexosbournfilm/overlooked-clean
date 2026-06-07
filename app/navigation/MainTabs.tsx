@@ -751,6 +751,7 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
   const [userCityId, setUserCityId] = useState<number | null>(null);
   const [userCityName, setUserCityName] = useState<string | null>(null);
   const modalProgress = useRef(new Animated.Value(0)).current;
+  const [leaderboardRendered, setLeaderboardRendered] = useState(false);
 
   const mountedRef = useRef(false);
   useEffect(() => {
@@ -761,18 +762,32 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
   }, []);
 
   useEffect(() => {
-    if (!visible) return;
-
     modalProgress.stopAnimation();
-    modalProgress.setValue(0);
+
+    if (visible) {
+      setLeaderboardRendered(true);
+      modalProgress.setValue(0);
+
+      Animated.timing(modalProgress, {
+        toValue: 1,
+        duration: 250,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+      return;
+    }
+
+    if (!leaderboardRendered) return;
 
     Animated.timing(modalProgress, {
-      toValue: 1,
-      duration: 240,
-      easing: Easing.out(Easing.cubic),
+      toValue: 0,
+      duration: 190,
+      easing: Easing.in(Easing.cubic),
       useNativeDriver: true,
-    }).start();
-  }, [modalProgress, visible]);
+    }).start(({ finished }) => {
+      if (finished) setLeaderboardRendered(false);
+    });
+  }, [leaderboardRendered, modalProgress, visible]);
 
   const safeSet = (fn: () => void) => {
     if (!mountedRef.current) return;
@@ -1016,7 +1031,7 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
 
   return (
     <Modal
-      visible={visible}
+      visible={leaderboardRendered}
       animationType="none"
       transparent
       statusBarTranslucent
@@ -1047,7 +1062,7 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
                 {
                   translateY: modalProgress.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [18, 0],
+                    outputRange: [82, 0],
                   }),
                 },
                 {
@@ -2689,12 +2704,10 @@ const tabPanResponder = useMemo(
 
       <SettingsModal />
 
-      {showLeaderboard && (
-        <LeaderboardModal
-          visible={showLeaderboard}
-          onClose={() => setShowLeaderboard(false)}
-        />
-      )}
+      <LeaderboardModal
+        visible={showLeaderboard}
+        onClose={() => setShowLeaderboard(false)}
+      />
     </View>
   </SettingsModalProvider>
   </InAppNotificationsProvider>

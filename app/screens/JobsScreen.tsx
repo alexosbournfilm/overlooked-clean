@@ -1907,6 +1907,12 @@ if (!me) {
     filterRole,
     includeRemote,
     anyFilterActive,
+    T,
+    GOLD,
+    GOLD_LINE,
+    GOLD_SOFT,
+    colors.shadow,
+    isLight,
     gamifyLoading,
     jobs.length,
     myJobs.length,
@@ -1929,6 +1935,7 @@ if (!me) {
             ? (renderMyJob as any)
             : (renderJob as any)
         }
+        extraData={isLight ? 'light' : 'dark'}
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={
   <View style={styles.emptyWrap}>

@@ -317,20 +317,35 @@ export default function SettingsModal() {
 
   const [showUpgrade, setShowUpgrade] = useState(false);
   const sheetProgress = useRef(new Animated.Value(0)).current;
+  const [settingsRendered, setSettingsRendered] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) return;
-
     sheetProgress.stopAnimation();
-    sheetProgress.setValue(0);
+
+    if (isOpen) {
+      setSettingsRendered(true);
+      sheetProgress.setValue(0);
+
+      Animated.timing(sheetProgress, {
+        toValue: 1,
+        duration: 250,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+      return;
+    }
+
+    if (!settingsRendered) return;
 
     Animated.timing(sheetProgress, {
-      toValue: 1,
-      duration: 240,
-      easing: Easing.out(Easing.cubic),
+      toValue: 0,
+      duration: 190,
+      easing: Easing.in(Easing.cubic),
       useNativeDriver: true,
-    }).start();
-  }, [isOpen, sheetProgress]);
+    }).start(({ finished }) => {
+      if (finished) setSettingsRendered(false);
+    });
+  }, [isOpen, settingsRendered, sheetProgress]);
 
   useEffect(() => {
     return () => {
@@ -895,7 +910,7 @@ export default function SettingsModal() {
   return (
     <>
       <Modal
-        visible={isOpen}
+        visible={settingsRendered}
         transparent
         animationType="none"
         onRequestClose={close}
@@ -923,7 +938,7 @@ export default function SettingsModal() {
                   {
                     translateY: sheetProgress.interpolate({
                       inputRange: [0, 1],
-                      outputRange: [24, 0],
+                      outputRange: [96, 0],
                     }),
                   },
                   {
@@ -1613,13 +1628,13 @@ export default function SettingsModal() {
               style={({ pressed }) => [
                 styles.closeButton,
                 {
-                  backgroundColor: isLight ? '#14110D' : colors.elevated,
-                  borderColor: isLight ? '#14110D' : colors.border,
+                  backgroundColor: isLight ? colors.backgroundAlt : colors.elevated,
+                  borderColor: isLight ? colors.borderStrong : colors.border,
                 },
                 pressed && { opacity: 0.7 },
               ]}
             >
-              <Text style={[styles.closeText, { color: isLight ? '#FFFFFF' : colors.textPrimary }]}>{t('Close')}</Text>
+              <Text style={[styles.closeText, { color: colors.textPrimary }]}>{t('Close')}</Text>
             </Pressable>
           </Animated.View>
         </Animated.View>

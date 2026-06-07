@@ -243,6 +243,828 @@ const makeSeed = (
   bonusNote,
   learning,
 });
+
+type SeedRewrite = Partial<Omit<LessonSeed, 'constraints' | 'kind'>> & {
+  constraints?: string[];
+  kind?: LessonKind;
+};
+
+type DiversityCopy = {
+  challenge: string;
+  deliverable: string;
+  constraints: string[];
+};
+
+type BossRewrite = SeedRewrite & {
+  replaceChallenge?: boolean;
+  replaceDeliverable?: boolean;
+  replaceConstraints?: boolean;
+};
+
+const DIVERSITY_ANCHORS = [
+  'a transit receipt from the wrong city',
+  'a voicemail with its first sentence missing',
+  'a coat that still smells of rain',
+  'a borrowed ring sealed in an envelope',
+  'a cracked phone paused at 02:17',
+  'a tournament badge with the name crossed out',
+  'a map with one street circled twice',
+  'an unpaid electricity notice',
+  'a toy car with one wheel missing',
+  'a wedding speech draft',
+  'a coffee cup with a lipstick mark',
+  'a film festival rejection email',
+  'a locker key with no label',
+  'a burned recipe card',
+  'a camera battery stuck at 3 percent',
+  'a bus ticket stamped yesterday',
+  'a watch stopped at noon',
+  'a hospital bracelet',
+  'an apology note that was never sent',
+  'a USB stick taped under a table',
+  'a passport photo with one corner torn',
+  'a theater program with a seat number circled',
+  'a metronome that will not stay still',
+  'a library book overdue for years',
+  'a missing-person flyer',
+  'a voice memo titled do not send',
+  'a flower receipt for a delivery that failed',
+  'a fake ID with a real address',
+  'old audition sides stained with coffee',
+  'an empty picture frame on a wall',
+  'a key ring with one impossible extra key',
+  'a postcard from somewhere nobody visited',
+  'a contact lens case with only one lens',
+  'a tiny notebook full of wrong names',
+  'a silent weather alert on a phone',
+  'a borrowed hoodie with hidden cash',
+  'a cracked compact mirror',
+  'a memory card labeled final take',
+  'a chess piece found in a shoe',
+  'a train schedule with the last train circled',
+];
+
+const DIVERSITY_STRUCTURES = [
+  'a false start, a swallowed question, and a final look that refuses the obvious answer',
+  'three timestamps where the second one contradicts the first',
+  'a private preparation beat, a public performance beat, and a private aftermath beat',
+  'one piece of information withheld until the final third',
+  'a repeated gesture that changes meaning on its third return',
+  'a mistake the audience notices before the character does',
+  'a scene that begins as help and ends as a demand',
+  'a calm opening that hides a decision already made',
+  'one interruption that forces the character to abandon their planned tactic',
+  'a silent reveal before the first spoken line',
+  'a practical task that becomes harder as the truth gets closer',
+  'a choice made offscreen that arrives as consequence onscreen',
+  'one polite sentence that destroys the room when it lands',
+  'a public face, a private leak, and a final self-correction',
+  'a delayed reaction that becomes more important than the event',
+  'a visible preparation, an invisible pressure, and a changed exit',
+  'one object handled normally at first and with fear by the end',
+  'a promise, a contradiction, and a refusal to explain either one',
+  'a countdown that is never announced out loud',
+  'a joke that becomes a threat without changing volume',
+  'a moment where the listener becomes the person in control',
+  'an action that looks caring but is actually a trap',
+  'a scene split by one piece of bad news',
+  'a final frame that makes the first frame feel dishonest',
+  'a small lie that saves time and costs trust',
+  'a cutaway, sound, or pause that exposes what the character hides',
+  'a social ritual that breaks one beat too early',
+  'one ordinary sound that becomes evidence',
+  'a location rule the character breaks only once',
+  'a reversal caused by what is not said',
+  'a character entering with the wrong objective and leaving with the right one',
+  'a visible plan failing in real time',
+  'a room that becomes smaller without the camera moving closer',
+  'one prop moved from background to foreground as the scene turns',
+  'a half-confession, a denial, and a final non-answer',
+  'a moment where kindness becomes leverage',
+  'a memory triggered by texture, not dialogue',
+  'a choice between pride and safety',
+  'a beat where the audience changes sides',
+  'a final silence that is more active than the last line',
+];
+
+const DIVERSITY_SPACES = [
+  'a stairwell with one unreliable light',
+  'the edge of a closed shopfront',
+  'a bedroom doorway at night',
+  'a kitchen table after everyone else has left',
+  'the back seat of a parked car',
+  'a rehearsal room with taped marks still on the floor',
+  'a laundry room during a spin cycle',
+  'a balcony just before rain',
+  'an empty classroom after an exam',
+  'a hallway outside a locked office',
+  'a bathroom mirror with harsh light',
+  'a train platform after the last announcement',
+  'a storage cupboard that is too small for comfort',
+  'a rooftop where sound carries badly',
+  'a living room during a power cut',
+  'a cafe table beside the exit',
+  'a loading bay before sunrise',
+  'a church or town hall corridor',
+  'a car park with bad echo',
+  'a motel room with one practical lamp',
+];
+
+const SELF_TAPE_CASTING_SCENARIOS = [
+  'Tape for a junior doctor who has to keep speaking calmly while deleting a message that would end their career.',
+  'Tape for a disgraced chess prodigy returning a stolen trophy without admitting why they took it.',
+  'Tape for a night-shift hotel clerk who recognizes a guest from a missing-person poster.',
+  'Tape for a young parent recording a birthday message before a custody hearing.',
+  'Tape for a climate activist asked to apologize on camera for a protest they still believe in.',
+  'Tape for an understudy who gets the lead role because the star vanished mid-show.',
+  'Tape for a chef who must explain why the signature dish tastes exactly like their dead mother made it.',
+  'Tape for a debt collector who realizes the person in front of them once saved their life.',
+  'Tape for a museum guard who has been secretly moving one painting every night.',
+  'Tape for a runaway bride pretending the wedding video is a thank-you speech.',
+  'Tape for a delivery driver holding a package that keeps ringing from inside.',
+  'Tape for a prison visitor who has rehearsed forgiveness and then loses it.',
+  'Tape for a teenage goalkeeper after deliberately letting in the final shot.',
+  'Tape for a politician reading a prepared apology while changing their mind sentence by sentence.',
+  'Tape for a magician explaining the one trick they genuinely cannot reverse.',
+  'Tape for a sibling selling the family home before telling anyone else.',
+  'Tape for a translator who refuses to translate one sentence correctly.',
+  'Tape for a violinist auditioning with a hand injury nobody is allowed to notice.',
+  'Tape for a courier who realizes the address is their childhood home.',
+  'Tape for a teacher resigning after protecting the wrong student.',
+  'Tape for a wedding photographer who deleted the only honest photo.',
+  'Tape for an astronaut candidate who failed the psychological test and knows why.',
+  'Tape for a gambler who wins enough money to leave, then cannot move.',
+  'Tape for a funeral singer asked to perform for someone they betrayed.',
+  'Tape for a hacker who finds their own name inside the leak.',
+  'Tape for a witness rehearsing a statement they plan to change in court.',
+  'Tape for a washed-up child star reading fan mail from someone they hurt.',
+  'Tape for a nurse stealing one extra minute before the night shift ends.',
+  'Tape for a stage manager calling places while hiding that the lead actor is gone.',
+  'Tape for a mechanic returning a car with evidence still in the glovebox.',
+  'Tape for a student presenting a fake science project that accidentally works.',
+  'Tape for an exorcist who no longer believes but recognizes the voice.',
+  'Tape for a radio host staying on air during a citywide blackout.',
+  'Tape for a locksmith opening the door they promised never to open.',
+  'Tape for a boxer throwing a fight for a reason that is not money.',
+  'Tape for a tour guide describing a place where something terrible happened to them.',
+  'Tape for a babysitter making a calm phone call while the child is missing for 40 seconds.',
+  'Tape for a retired detective apologizing to the person they falsely accused.',
+  'Tape for a dancer learning the role was offered out of pity, not talent.',
+  'Tape for a filmmaker pitching a happy ending they know they cannot shoot.',
+];
+
+const SPECIFIC_LESSON_REWRITES: Partial<Record<WorkshopPathKey, Record<string, SeedRewrite>>> = {
+  acting: {
+    'Uninflected Line Learning': {
+      title: 'Four Actions, Four Fresh Lines',
+      description: 'Strip away preset line readings by changing the action and the text each time.',
+      challenge:
+        'Write 4 tiny lines that each belong to a different situation: comfort, accusation, seduction, and refusal. Learn them neutrally, then perform one clean take of each so the action shapes the line instead of a preset line reading.',
+      objective:
+        'Train freedom from baked-in inflection while avoiding a repeated-line exercise.',
+      deliverable: 'Four short takes, each with different words, action, and relationship.',
+      constraints: [
+        'Do not reuse the same sentence in more than one take.',
+        'Keep each line short enough to behave through it.',
+        'Let the action change the sound naturally.',
+      ],
+    },
+    'As If: Unexpected Reunion': {
+      title: 'Threshold Recognition',
+      description: 'Use a precise imaginative reality without repeating an old prompt.',
+      challenge:
+        'Create a 30-second doorway moment where you recognize someone before they recognize you. You may use only one original sentence. The sentence must be specific to this situation and cannot be reused anywhere else in the path.',
+      objective: 'Train precise substitution, recognition, and private history.',
+      deliverable: 'A single-take recognition moment with one original line and a clear private history.',
+      constraints: [
+        'Use one original sentence only.',
+        'No costume tricks.',
+        'The shift must come from thought, breath, and behavior.',
+      ],
+    },
+    'As If: Quiet Enemy': {
+      title: 'The Receipt Under Glass',
+      description: 'Build quiet danger around evidence, not around repeated text.',
+      challenge:
+        'Place a small piece of evidence on a table and speak one original line to the person who ruined something for you. Keep the voice civil. Let the danger come from what you know, not from volume.',
+      objective: 'Train controlled threat, evidence, and inner action.',
+      deliverable: 'A restrained confrontation where the object and one new line carry the pressure.',
+      constraints: [
+        'Use a different line from any previous acting step.',
+        'No shouting.',
+        'The evidence must matter even if you never explain it fully.',
+      ],
+    },
+    'Dual As-If': {
+      title: 'Three Tactics, One Bad-News Beat',
+      description: 'Change tactics without repeating the same script.',
+      challenge:
+        'Create three separate 20-second beats around bad news: one where you stall, one where you confess, and one where you recruit the other person into the problem. Each beat must use different words and a different physical action.',
+      objective: 'Train tactical flexibility through fresh material instead of repeated text.',
+      deliverable: 'Three short beats with different words, tactics, and physical behavior.',
+      constraints: [
+        'No sentence may appear in more than one beat.',
+        'Each beat needs a different objective.',
+        'Keep the setup simple and playable.',
+      ],
+    },
+    'Dual Reality Master Take': {
+      title: 'Objective Reversal Master Take',
+      description: 'Make the objective flip once, clearly and permanently.',
+      challenge:
+        'Film one 3-minute scene where you enter trying to keep someone close and leave trying to release them. Write the scene so the words change with the objective instead of repeating the same script.',
+      objective: 'Train a full internal reversal without using duplicate text.',
+      deliverable: 'One continuous scene with a clear objective reversal and no repeated-script versioning.',
+      constraints: [
+        'One continuous scene only.',
+        'The objective must reverse by the midpoint.',
+        'Do not film alternate versions of the same text.',
+      ],
+    },
+  },
+  selftape: {
+    'One Line, Ten Worlds': {
+      title: 'Ten Tiny Audition Worlds',
+      description: 'Build ten different micro-auditions without repeating one line.',
+      challenge:
+        'Create ten 8-second micro-auditions. Each one must have a different original line, genre, relationship, and casting world. After filming, choose the three that feel most castable and most different from each other.',
+      objective:
+        'Train imagination, playable circumstance, and contrast without repeating a line or as-if list.',
+      deliverable: 'Ten tiny auditions using ten different lines, with the strongest three selected.',
+      constraints: [
+        'No line may repeat.',
+        'No relationship may repeat.',
+        'Do not rely on accents, filters, or costume gimmicks.',
+      ],
+      learning:
+        'Learning: Range is stronger when the actor can meet different briefs, not only replay one sentence with different moods. Treat each micro-audition as a separate casting world with its own need, pressure, rhythm, and listener.',
+    },
+  },
+  editing: {
+    'Choose the Best Take': {
+      title: 'Choose the Clearest Behavior',
+      description: 'Learn to spot performance truth across different beats.',
+      challenge:
+        'Record 3 different one-line moments: an apology, a denial, and a hidden joke. Build a 20-40 second edit using the one take where behavior reads most clearly, then add one reaction or insert that supports your choice.',
+      objective: 'Train take selection and editorial taste without repeating the same line.',
+      deliverable: 'A short edit built around the clearest behavioral take.',
+      constraints: [
+        'Use three different lines.',
+        'Choose based on truth, not just cleanliness.',
+        'Be able to explain why your chosen take works best.',
+      ],
+    },
+    'Trim In and Out Points': {
+      title: 'Three Cut-Point Problems',
+      description: 'Learn how entering and exiting shots changes energy across different moments.',
+      challenge:
+        'Use three different 10-15 second exchanges: one interruption, one hesitation, and one exit. For each, make one precise timing adjustment that changes the energy without repeating the same scene.',
+      objective: 'Train precision and timing at cut points across fresh material.',
+      deliverable: 'Three tiny cut-point studies, each using different footage and a different timing problem.',
+      constraints: [
+        'Use different footage for each study.',
+        'Change only in-points and out-points.',
+        'Name what each timing adjustment changed.',
+      ],
+    },
+  },
+  directing: {
+    'Playable Verb Pass': {
+      title: 'Playable Verb Relay',
+      description: 'Learn to direct actors with actions across fresh scene material.',
+      challenge:
+        'Direct three different 30-second scene starts. In one, direct to win over. In one, direct to corner. In one, direct to disarm. Each scene start must use different words, stakes, and blocking.',
+      objective:
+        'Train playable direction without repeating the same text three times.',
+      deliverable: 'Three short directed scene starts with different text and different playable verbs.',
+      constraints: [
+        'Do not reuse a script between passes.',
+        'Do not give vague notes like more emotion.',
+        'Each pass must have a distinct power relationship.',
+      ],
+    },
+    'Same Text, Two Different Scenes': {
+      title: 'Two Briefs, Two Fresh Scenes',
+      description: 'Direct two different scripts into two different emotional events.',
+      challenge:
+        'Write or choose two short scenes that share a theme but not the same text. Direct one as seduction and one as interrogation, or one as grief and one as manipulation. Use blocking, pace, silence, and actor notes to make each feel authored.',
+      objective:
+        'Train interpretation and prove the director changes meaning without recycling the same writing.',
+      deliverable: 'Two distinct directed scenes with different scripts and clearly different readings.',
+      constraints: [
+        'The scripts must be different.',
+        'The emotional event must be different.',
+        'The audience must feel two different stories, not two versions of one exercise.',
+      ],
+    },
+  },
+};
+
+const SELF_TAPE_REPEAT_CONSTRAINT = /as-if|same monologue|same text|same words|same script|exact same/i;
+
+const BOSS_REWRITES: Partial<Record<WorkshopPathKey, Record<number, BossRewrite>>> = {
+  acting: {
+    40: {
+      title: 'Acting Boss 5 - The Last Visit',
+      description:
+        'Play one complete final scene where the objective changes forever instead of repeating the same breakup text.',
+      challenge:
+        'Create a 6-8 minute final acting scene set during one last visit to a place both characters know. One character arrives to ask for another chance, then discovers a fact that makes asking impossible. The scene must include one practical task, one failed joke, one almost-confession, and one final choice to leave something behind.',
+      objective:
+        'Prove total control of action, subtext, adjustment, and emotional reversal without duplicate text.',
+      deliverable:
+        'One complete final acting scene where the objective changes permanently and the ending feels earned.',
+      constraints: [
+        'One complete scene only.',
+        'Do not film two versions of the same script.',
+        'Include one practical task, one failed joke, one almost-confession, and one final left-behind object.',
+        'The objective must change because of a discovered fact.',
+        'No shouting in the final minute.',
+      ],
+      replaceChallenge: true,
+      replaceDeliverable: true,
+      replaceConstraints: true,
+    },
+  },
+  selftape: {
+    8: {
+      title: 'Self Tape Boss 1 - Clean Audition Brief',
+      description:
+        'Create a simple professional self tape from one specific casting brief, not a repeated as-if list.',
+      challenge:
+        'Treat this like a real audition request. Brief: a night-shift receptionist records a calm incident report after recognizing someone from a missing-person flyer. Start with a slate, then perform one 60-90 second close-frame tape. The role should feel tired, alert, kind, and increasingly unsure whether telling the truth will hurt someone.',
+      deliverable:
+        'One clean self tape with slate, close frame, audible sound, clear eyeline, and one finished audition take.',
+      constraints: [
+        'One final take only.',
+        'No numbered as-if versions.',
+        'Keep the frame clean from head to mid-chest.',
+        'Use front or front-side light.',
+        'No music, filters, or dramatic editing.',
+      ],
+      replaceChallenge: true,
+      replaceDeliverable: true,
+      replaceConstraints: true,
+    },
+    16: {
+      title: 'Self Tape Boss 2 - Five Casting Briefs',
+      description:
+        'Prove range by answering five different audition briefs with five different micro-sides.',
+      challenge:
+        'Record five separate 25-35 second audition pieces. Piece 1: a romantic lead asks for one impossible favor. Piece 2: a political aide refuses to leak a name. Piece 3: a dark comedy character tries to return a stolen plant. Piece 4: a thriller witness realizes the detective is lying. Piece 5: a coming-of-age character admits they forged a signature. Each piece needs its own line, listener, rhythm, and stakes.',
+      objective:
+        'Prove range through distinct casting briefs, not five versions of one monologue.',
+      deliverable:
+        'A five-part audition range package with five different micro-sides and one short note naming the strongest two.',
+      constraints: [
+        'Use five different scripts.',
+        'Use five different listeners or relationships.',
+        'No monologue may repeat.',
+        'No as-if list.',
+        'Submit the two most castable pieces as your selected finals.',
+      ],
+      replaceChallenge: true,
+      replaceDeliverable: true,
+      replaceConstraints: true,
+    },
+    24: {
+      title: 'Self Tape Boss 3 - Technical Rescue Brief',
+      description:
+        'Diagnose a weak tape and rebuild it using a new role-specific brief.',
+      challenge:
+        'Part 1: record a deliberately weak 20-second tape for a courier who realizes the package is addressed to their old home. Include at least three technical problems. Part 2: name the problems. Part 3: rebuild the tape cleanly as one finished 60-90 second audition with corrected frame, light, sound, and eyeline.',
+      deliverable:
+        'A before-and-after rescue package showing specific technical improvement and one finished role take.',
+      constraints: [
+        'Create a weak version intentionally.',
+        'Fix at least 3 technical issues.',
+        'Use one role-specific final take, not repeated monologue variations.',
+        'No filters, music, or heavy editing.',
+        'Explain the technical fixes you made.',
+      ],
+      replaceChallenge: true,
+      replaceDeliverable: true,
+      replaceConstraints: true,
+    },
+    32: {
+      title: 'Self Tape Boss 4 - Fictional Casting Package',
+      description:
+        'Respond to one detailed casting package with discipline and specificity.',
+      challenge:
+        'Casting brief: independent feature, grounded mystery-drama. Role: a museum guard who has been moving one painting every night to protect a secret. Tape request: slate, one intimate close frame, no props except a key if needed, no music, one final take. The scene must begin controlled and end with a quiet decision that changes the guard from witness to participant.',
+      deliverable:
+        'A slate plus one final selected self tape that fits the fictional casting package exactly.',
+      constraints: [
+        'Follow every instruction in the casting brief.',
+        'One final take only.',
+        'No numbered director-note versions.',
+        'Keep the performance intimate and specific.',
+        'Include a short note explaining how you matched the brief.',
+      ],
+      replaceChallenge: true,
+      replaceDeliverable: true,
+      replaceConstraints: true,
+    },
+    40: {
+      title: 'Self Tape Boss 5 - Professional Audition Portfolio',
+      description:
+        'Create a final self-tape portfolio made of distinct professional pieces.',
+      challenge:
+        'Build a final audition portfolio with four different pieces: 1) a slate, 2) a 60-90 second dramatic close-frame scene, 3) a 30-second comedy redirect using different text, 4) a 20-second silent reaction beat. Each piece should feel like a different casting request while still looking clean and professional.',
+      objective:
+        'Prove technical clarity, acting truth, imaginative range, and final-take judgment across distinct audition formats.',
+      deliverable:
+        'A complete final self-tape portfolio: slate, dramatic piece, comedy redirect, silent reaction, and optional short reflection.',
+      constraints: [
+        'No repeated monologue.',
+        'No repeated as-if setup.',
+        'Use distinct text or silent behavior for every portfolio piece.',
+        'Keep all pieces technically clean.',
+        'Submit without filters, music under the scene, or apology notes.',
+      ],
+      replaceChallenge: true,
+      replaceDeliverable: true,
+      replaceConstraints: true,
+    },
+  },
+  cinematography: {
+    32: {
+      title: 'Cinematography Boss 4 - The Lens Psychology Triptych',
+      description:
+        'Use lens relationships across three different emotional beats instead of repeating one line.',
+      challenge:
+        'Shoot three different 30-45 second visual beats. Beat 1: a person asks permission from too close on a wide lens. Beat 2: a person watches a lie from far away on a longer lens. Beat 3: a person chooses not to enter a room in a neutral frame. The emotional read must come from camera distance, focal length, and composition.',
+      deliverable:
+        'A three-part lens study where each beat has different action, psychology, and lens relationship.',
+      constraints: [
+        'Use three different beats.',
+        'Do not repeat the same line or action.',
+        'One beat must be wide and physically close.',
+        'One beat must be longer-lens and physically distant.',
+        'One beat must be neutral and observational.',
+      ],
+      replaceChallenge: true,
+      replaceDeliverable: true,
+      replaceConstraints: true,
+    },
+  },
+  editing: {
+    8: {
+      title: 'Editing Boss 1 - Three Source Packs',
+      description:
+        'Create three different scene meanings from three different tiny source packs.',
+      challenge:
+        'Shoot or gather three separate 45-60 second source packs. Pack 1: an apartment entrance with a voicemail. Pack 2: a cafe table with a returned object. Pack 3: a corridor wait with a delayed arrival. Edit Pack 1 as thriller, Pack 2 as breakup drama, and Pack 3 as dark comedy. Do not recycle footage between packs.',
+      deliverable:
+        'Three finished edits built from three different source packs, each with a distinct tone and story reading.',
+      constraints: [
+        'Use different footage for each tone.',
+        'No source shot may appear in more than one edit.',
+        'Each version must be 45-90 seconds.',
+        'Use edit, sound, timing, and order deliberately.',
+        'All 3 versions must feel intentional and complete.',
+      ],
+      replaceChallenge: true,
+      replaceDeliverable: true,
+      replaceConstraints: true,
+    },
+    16: {
+      title: 'Editing Boss 2 - Three Reaction Problems',
+      description:
+        'Show reaction timing across three different story moments.',
+      challenge:
+        'Build three short edits from three different moments: a secret being heard, a joke failing, and an apology landing too late. In each edit, make reaction timing the main storytelling choice. One reaction must be immediate, one delayed, and one withheld completely.',
+      deliverable:
+        'Three short reaction-timing edits using different footage and different emotional problems.',
+      constraints: [
+        'Use different source footage for each reaction problem.',
+        'No music.',
+        'Do not repeat the same line.',
+        'Name what the reaction timing changes in each edit.',
+        'The withheld reaction must still feel intentional.',
+      ],
+      replaceChallenge: true,
+      replaceDeliverable: true,
+      replaceConstraints: true,
+    },
+    24: {
+      title: 'Editing Boss 3 - Performance Rescue Trio',
+      description:
+        'Rescue three different flawed moments instead of one repeated scene.',
+      challenge:
+        'Shoot or use three flawed micro-scenes: one rushed confession, one flat goodbye, and one overplayed accusation. Cut each into its strongest 20-30 second version, then combine the best two into one 60-90 second finished sequence that still feels emotionally coherent.',
+      deliverable:
+        'A performance rescue package with three different flawed moments and one strongest combined sequence.',
+      constraints: [
+        'Use three different micro-scenes.',
+        'No ADR.',
+        'No music.',
+        'Maximum final sequence length is 90 seconds.',
+        'The final cut must feel playable and emotionally coherent.',
+      ],
+      replaceChallenge: true,
+      replaceDeliverable: true,
+      replaceConstraints: true,
+    },
+    32: {
+      title: 'Editing Boss 4 - Compression, Expansion, Omission',
+      description:
+        'Control time through three different practical sequences.',
+      challenge:
+        'Build three time-control edits. Sequence 1: pack a bag in 25 seconds. Sequence 2: wait for a text in 75 seconds. Sequence 3: omit the key action and let the aftermath explain it in 40 seconds. Each sequence uses different footage and a different time strategy.',
+      deliverable:
+        'Three finished time-control edits: compressed, expanded, and omitted.',
+      constraints: [
+        'Use different footage for each sequence.',
+        'One edit must compress time.',
+        'One edit must expand time.',
+        'One edit must rely on omission.',
+        'All three must remain readable.',
+      ],
+      replaceChallenge: true,
+      replaceDeliverable: true,
+      replaceConstraints: true,
+    },
+  },
+};
+
+function diversityPick(items: string[], step: number, salt = 0) {
+  return items[(Math.max(step, 1) - 1 + salt) % items.length];
+}
+
+function applyLessonRewrite(pathKey: WorkshopPathKey, seed: LessonSeed): LessonSeed {
+  const rewrite = SPECIFIC_LESSON_REWRITES[pathKey]?.[seed.title];
+
+  if (!rewrite) return seed;
+
+  return {
+    ...seed,
+    ...rewrite,
+    constraints: rewrite.constraints || seed.constraints,
+    kind: rewrite.kind || seed.kind,
+    learning: rewrite.learning || seed.learning,
+  };
+}
+
+function normalizeSelfTapeChallenge(challenge: string) {
+  return challenge
+    .replace(
+      /\n\nAs if \d+:\n[\s\S]*?(?=(?:\n\nAs if \d+:)|(?:\n\nFinal task:)|(?:\n\nAfter filming)|$)/g,
+      ''
+    )
+    .replace(
+      /Film this monologue five times[\s\S]*?(?=\n\nMONOLOGUE:)/gi,
+      'Prepare this audition material as one focused, final take for the unique casting format below.'
+    )
+    .replace(
+      /Film this monologue three times[\s\S]*?(?=\n\nMONOLOGUE:)/gi,
+      'Prepare this audition material as one focused, final take for the unique casting format below.'
+    )
+    .replace(
+      /Film the same monologue twice[\s\S]*?(?=\n\nMONOLOGUE:)/gi,
+      'Prepare this audition material as one focused, final take for the unique casting format below.'
+    )
+    .replace(
+      /Film the monologue once[\s\S]*?(?=\n\nMONOLOGUE:)/gi,
+      'Prepare this audition material as one focused, final take for the unique casting format below.'
+    )
+    .replace(/Record at least 3 as-if versions\./gi, 'Record one precise version shaped by this step-specific casting format.')
+    .replace(/Record at least three different as-if versions\./gi, 'Record one precise version shaped by this step-specific casting format.')
+    .trim();
+}
+
+function normalizeSelfTapeDeliverable(deliverable: string) {
+  return deliverable
+    .replace(/Five takes of the same monologue[^.]*\./gi, 'A set of distinct audition pieces selected for range.')
+    .replace(/Multiple takes of the same monologue/gi, 'One selected audition take')
+    .replace(/same monologue/gi, 'audition material')
+    .replace(/same text/gi, 'fresh material')
+    .trim();
+}
+
+function lessonDiversityCopy(pathKey: WorkshopPathKey, step: number): DiversityCopy {
+  const anchor = diversityPick(DIVERSITY_ANCHORS, step);
+  const structure = diversityPick(DIVERSITY_STRUCTURES, step, 7);
+  const space = diversityPick(DIVERSITY_SPACES, step, 11);
+
+  switch (pathKey) {
+    case 'acting':
+      return {
+        challenge: `Acting lock for this exact step: build the playable need around ${anchor}. The beat must pass through ${structure}, and it must happen in or just outside ${space}.`,
+        deliverable:
+          'Distinct proof: add one sentence naming the need, the obstacle, and why this acting setup cannot be swapped with another step.',
+        constraints: [
+          `Use ${anchor} as the private trigger.`,
+          'Do not reuse a line, premise, relationship, or private circumstance from another acting exercise.',
+        ],
+      };
+    case 'selftape':
+      return {
+        challenge: `Casting format for this exact step: ${diversityPick(SELF_TAPE_CASTING_SCENARIOS, step)} Use ${anchor} as the private trigger, but keep the tape clean and castable.`,
+        deliverable:
+          'Distinct proof: submit one selected audition take plus a one-sentence casting note for this role only.',
+        constraints: [
+          'No repeated monologue, no numbered as-if list, and no reused audition setup.',
+          `The private trigger for this step is ${anchor}.`,
+        ],
+      };
+    case 'editing':
+      return {
+        challenge: `Editing lock for this exact step: design the cut around ${structure}. The key piece of story evidence is ${anchor}, and the scene world is ${space}.`,
+        deliverable:
+          'Distinct proof: include a one-sentence edit note naming the single timing choice that makes this cut different.',
+        constraints: [
+          `Use ${anchor} as the edit's story clue.`,
+          'Do not reuse footage structure, reaction timing, or sound/edit pattern from another editing exercise.',
+        ],
+      };
+    case 'cinematography':
+      return {
+        challenge: `Cinematography lock for this exact step: make the image answer ${structure}. The visual anchor is ${anchor}, and the space is ${space}.`,
+        deliverable:
+          'Distinct proof: add one sentence naming the frame, light, or movement choice that makes this setup unique.',
+        constraints: [
+          `Feature ${anchor} as a visual anchor or motivated detail.`,
+          'Do not reuse the same lighting setup, location logic, blocking, or frame progression from another cinematography exercise.',
+        ],
+      };
+    case 'directing':
+      return {
+        challenge: `Directing lock for this exact step: stage the scene around ${structure}. The scene must turn because of ${anchor}, and the pressure should be shaped by ${space}.`,
+        deliverable:
+          'Distinct proof: include a one-sentence director note naming the actor behavior or blocking choice that belongs only to this step.',
+        constraints: [
+          `Build the turn around ${anchor}.`,
+          'Do not reuse a script, actor note, blocking pattern, or power dynamic from another directing exercise.',
+        ],
+      };
+    case 'sound':
+      return {
+        challenge: `Sound lock for this exact step: make the audience understand ${structure} through sound. The key sonic clue is ${anchor}, and the acoustic world is ${space}.`,
+        deliverable:
+          'Distinct proof: include a one-sentence sound note naming the motif, silence, or perspective shift that makes this piece unique.',
+        constraints: [
+          `Turn ${anchor} into a sound cue, texture, or implied offscreen detail.`,
+          'Do not reuse a motif, silence trick, ambience plan, or mix structure from another sound exercise.',
+        ],
+      };
+    case 'filmmaker':
+      return {
+        challenge: `Filmmaker lock for this exact step: build the whole mini-piece around ${structure}. The production anchor is ${anchor}, and the location pressure is ${space}.`,
+        deliverable:
+          'Distinct proof: include one sentence naming how acting, image, sound, and edit each support this one specific setup.',
+        constraints: [
+          `Make ${anchor} matter across at least two departments.`,
+          'Do not reuse a premise, object, location, sound idea, edit rhythm, or final image from another filmmaker exercise.',
+        ],
+      };
+    default:
+      return {
+        challenge: `Unique step lock: use ${anchor} and ${structure} inside ${space}.`,
+        deliverable: 'Distinct proof: explain why this setup belongs only to this step.',
+        constraints: ['Do not reuse this setup elsewhere.'],
+      };
+  }
+}
+
+function bossDiversityCopy(pathKey: WorkshopPathKey, step: number): DiversityCopy {
+  const anchor = diversityPick(DIVERSITY_ANCHORS, step, 3);
+  const structure = diversityPick(DIVERSITY_STRUCTURES, step, 13);
+  const space = diversityPick(DIVERSITY_SPACES, step, 5);
+
+  switch (pathKey) {
+    case 'acting':
+      return {
+        challenge: `Boss signature: this must feel like a milestone scene, not a longer drill. The boss-specific engine is ${structure}; ${anchor} must change power inside ${space}.`,
+        deliverable:
+          'Boss proof: submit a finished scene plus one short note naming the irreversible acting turn.',
+        constraints: [
+          'This boss may not repeat a previous line, monologue, relationship, or as-if setup.',
+          `The irreversible turn must involve ${anchor}.`,
+        ],
+      };
+    case 'selftape':
+      return {
+        challenge: `Boss signature: answer one professional casting package built around ${structure}. The role-specific private trigger is ${anchor}.`,
+        deliverable:
+          'Boss proof: submit only the chosen professional tape or package requested by this boss.',
+        constraints: [
+          'No repeated monologue, no repeated as-if list, and no five moods of the same words.',
+          `The casting package must include ${anchor} as a story trigger.`,
+        ],
+      };
+    case 'editing':
+      return {
+        challenge: `Boss signature: make the edit solve ${structure}. The footage must turn around ${anchor}, and the world should feel like ${space}.`,
+        deliverable:
+          'Boss proof: submit the final edit package plus a note naming the structural editing decision.',
+        constraints: [
+          'Do not reuse source footage, scene premise, or timing pattern from an earlier editing boss.',
+          `Make ${anchor} the editorial hinge.`,
+        ],
+      };
+    case 'cinematography':
+      return {
+        challenge: `Boss signature: create a portfolio-level visual sequence around ${structure}. ${anchor} must become a visible story force inside ${space}.`,
+        deliverable:
+          'Boss proof: submit a finished visual sequence plus a note naming the lens, light, or movement decision that carries the boss.',
+        constraints: [
+          'Do not repeat a location, lighting scheme, lens exercise, or frame progression from an earlier cinematography boss.',
+          `Make ${anchor} visible without turning it into decoration.`,
+        ],
+      };
+    case 'directing':
+      return {
+        challenge: `Boss signature: direct a complete scene where ${structure}. ${anchor} must force a blocking or performance change inside ${space}.`,
+        deliverable:
+          'Boss proof: submit the finished scene plus one director note naming the decisive rehearsal or blocking choice.',
+        constraints: [
+          'Do not reuse a script, table setup, power dynamic, or actor note from an earlier directing boss.',
+          `Make ${anchor} alter the staging.`,
+        ],
+      };
+    case 'sound':
+      return {
+        challenge: `Boss signature: make sound carry ${structure}. ${anchor} must be heard, implied, or transformed inside ${space}.`,
+        deliverable:
+          'Boss proof: submit the finished mix plus one sound note naming the motif, silence, or perspective rule.',
+        constraints: [
+          'Do not reuse a sonic motif, offscreen threat, silence drop, or repair problem from an earlier sound boss.',
+          `Make ${anchor} part of the sound logic.`,
+        ],
+      };
+    case 'filmmaker':
+      return {
+        challenge: `Boss signature: build a complete short where ${structure}. ${anchor} must matter across acting, image, sound, and edit inside ${space}.`,
+        deliverable:
+          'Boss proof: submit a finished film plus one sentence naming the cross-department idea that makes this boss unique.',
+        constraints: [
+          'Do not reuse a boss premise, final image, main object, or location engine from another filmmaker boss.',
+          `Make ${anchor} affect at least three departments.`,
+        ],
+      };
+    default:
+      return {
+        challenge: `Boss signature: use ${anchor}, ${structure}, and ${space} as the unique boss engine.`,
+        deliverable: 'Boss proof: explain why this boss cannot be confused with another one.',
+        constraints: ['Do not reuse this boss setup elsewhere.'],
+      };
+  }
+}
+
+function diversifyWorkshopSeed(
+  pathKey: WorkshopPathKey,
+  step: number,
+  seed: LessonSeed,
+  isBoss: boolean
+): LessonSeed {
+  const rewritten = applyLessonRewrite(pathKey, seed);
+  const bossRewrite = isBoss ? BOSS_REWRITES[pathKey]?.[step] : undefined;
+  const copy = isBoss ? bossDiversityCopy(pathKey, step) : lessonDiversityCopy(pathKey, step);
+  const baseChallenge =
+    pathKey === 'selftape' && !isBoss
+      ? normalizeSelfTapeChallenge(rewritten.challenge)
+      : rewritten.challenge.trim();
+  const baseDeliverable =
+    pathKey === 'selftape' && !isBoss
+      ? normalizeSelfTapeDeliverable(rewritten.deliverable)
+      : rewritten.deliverable.trim();
+  const baseConstraints =
+    pathKey === 'selftape' && !isBoss
+      ? rewritten.constraints.filter((constraint) => !SELF_TAPE_REPEAT_CONSTRAINT.test(constraint))
+      : rewritten.constraints;
+
+  const title = bossRewrite?.title || rewritten.title;
+  const description = bossRewrite?.description || rewritten.description;
+  const objective = bossRewrite?.objective || rewritten.objective;
+  const learning = bossRewrite?.learning || rewritten.learning;
+  const kind = bossRewrite?.kind || rewritten.kind;
+  const bonusNote = [rewritten.bonusNote, bossRewrite?.bonusNote]
+    .filter(Boolean)
+    .join(' ');
+  const challenge = bossRewrite?.replaceChallenge
+    ? (bossRewrite.challenge || rewritten.challenge).trim()
+    : `${copy.challenge}\n\nBase craft task:\n${baseChallenge}`;
+  const deliverable = bossRewrite?.replaceDeliverable
+    ? (bossRewrite.deliverable || rewritten.deliverable).trim()
+    : `${baseDeliverable}\n\n${copy.deliverable}`;
+  const constraints = bossRewrite?.replaceConstraints
+    ? bossRewrite.constraints || rewritten.constraints
+    : [...baseConstraints, ...copy.constraints, ...(bossRewrite?.constraints || [])];
+
+  return {
+    ...rewritten,
+    title,
+    description,
+    challenge,
+    objective,
+    deliverable,
+    bonusNote: bonusNote || undefined,
+    constraints,
+    kind,
+    learning,
+  };
+}
 /* -------------------------------- ACTING -------------------------------- */
 /* 35 unique non-boss lessons */
 const ACTING_BASE: LessonSeed[] = [
@@ -7088,6 +7910,7 @@ function missionForStep(step: number): Mission | null {
 }
 
 function buildLessonsFromBase(
+  pathKey: WorkshopPathKey,
   base: LessonSeed[],
   bosses: Record<number, LessonSeed>,
   total = 40
@@ -7099,13 +7922,15 @@ function buildLessonsFromBase(
     const mission = missionForStep(step);
 
     if (isBoss) {
-      const boss = bosses[step];
+      const bossSeed = bosses[step];
 
-      if (!boss) {
+      if (!bossSeed) {
         throw new Error(`Missing boss lesson for step ${step}`);
       }
 
-       lessons.push({
+      const boss = diversifyWorkshopSeed(pathKey, step, bossSeed, true);
+
+      lessons.push({
         id: step,
         step,
         title: boss.title,
@@ -7126,13 +7951,15 @@ function buildLessonsFromBase(
       });
     } else {
       const normalIndex = step - Math.floor(step / 8) - 1;
-      const item = base[normalIndex];
+      const itemSeed = base[normalIndex];
 
-      if (!item) {
+      if (!itemSeed) {
         throw new Error(
           `Missing lesson for step ${step} in path bank. normalIndex=${normalIndex}, bankLength=${base.length}`
         );
       }
+
+      const item = diversifyWorkshopSeed(pathKey, step, itemSeed, false);
 
       lessons.push({
         id: step,
@@ -7166,11 +7993,13 @@ function buildEditingLessons(total = 40): Lesson[] {
     const mission = missionForStep(step);
 
     if (isBoss) {
-      const boss = EDITING_BOSSES[step];
+      const bossSeed = EDITING_BOSSES[step];
 
-      if (!boss) {
+      if (!bossSeed) {
         throw new Error(`Missing editing boss lesson for step ${step}`);
       }
+
+      const boss = diversifyWorkshopSeed('editing', step, bossSeed, true);
 
       lessons.push({
         id: step,
@@ -7194,14 +8023,16 @@ function buildEditingLessons(total = 40): Lesson[] {
     } else {
       const normalIndex = step - Math.floor(step / 8) - 1;
 
-      let item: LessonSeed;
+      let itemSeed: LessonSeed;
       if (normalIndex <= 6) {
-        item = EDITING_FOUNDATION[normalIndex];
+        itemSeed = EDITING_FOUNDATION[normalIndex];
       } else if (normalIndex <= 20) {
-        item = EDITING_INTERMEDIATE[normalIndex - 7];
+        itemSeed = EDITING_INTERMEDIATE[normalIndex - 7];
       } else {
-        item = EDITING_ADVANCED[normalIndex - 21];
+        itemSeed = EDITING_ADVANCED[normalIndex - 21];
       }
+
+      const item = diversifyWorkshopSeed('editing', step, itemSeed, false);
 
       lessons.push({
         id: step,
@@ -7235,11 +8066,13 @@ function buildFilmmakerLessons(total = 40): Lesson[] {
     const mission = missionForStep(step);
 
     if (isBoss) {
-      const boss = FILMMAKER_BOSSES[step];
+      const bossSeed = FILMMAKER_BOSSES[step];
 
-      if (!boss) {
+      if (!bossSeed) {
         throw new Error(`Missing filmmaker boss lesson for step ${step}`);
       }
+
+      const boss = diversifyWorkshopSeed('filmmaker', step, bossSeed, true);
 
       lessons.push({
         id: step,
@@ -7262,7 +8095,8 @@ function buildFilmmakerLessons(total = 40): Lesson[] {
       });
     } else {
       const normalIndex = step - Math.floor(step / 8) - 1;
-      const item = FILMMAKER_ROTATION[normalIndex];
+      const itemSeed = FILMMAKER_ROTATION[normalIndex];
+      const item = diversifyWorkshopSeed('filmmaker', step, itemSeed, false);
 
       lessons.push({
         id: step,
@@ -7293,21 +8127,25 @@ function buildFilmmakerLessons(total = 40): Lesson[] {
 function buildPathLessons(path: WorkshopPathKey): Lesson[] {
   switch (path) {
     case 'acting':
-      return buildLessonsFromBase(ACTING_BASE, ACTING_BOSSES);
-          case 'selftape':
-      return buildLessonsFromBase(SELFTAPE_BASE, SELFTAPE_BOSSES);
+      return buildLessonsFromBase('acting', ACTING_BASE, ACTING_BOSSES);
+    case 'selftape':
+      return buildLessonsFromBase('selftape', SELFTAPE_BASE, SELFTAPE_BOSSES);
     case 'editing':
       return buildEditingLessons();
     case 'cinematography':
-      return buildLessonsFromBase(CINEMATOGRAPHY_BASE, CINEMATOGRAPHY_BOSSES);
+      return buildLessonsFromBase(
+        'cinematography',
+        CINEMATOGRAPHY_BASE,
+        CINEMATOGRAPHY_BOSSES
+      );
     case 'directing':
-      return buildLessonsFromBase(DIRECTING_BASE, DIRECTING_BOSSES);
+      return buildLessonsFromBase('directing', DIRECTING_BASE, DIRECTING_BOSSES);
     case 'sound':
-      return buildLessonsFromBase(SOUND_BASE, SOUND_BOSSES);
+      return buildLessonsFromBase('sound', SOUND_BASE, SOUND_BOSSES);
     case 'filmmaker':
       return buildFilmmakerLessons();
     default:
-      return buildLessonsFromBase(ACTING_BASE, ACTING_BOSSES);
+      return buildLessonsFromBase('acting', ACTING_BASE, ACTING_BOSSES);
   }
 }
 function nodeState(step: number, completedSteps: number[]): NodeState {
