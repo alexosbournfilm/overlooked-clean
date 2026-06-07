@@ -98,6 +98,7 @@ type CollaboratorCreditSnapshot = {
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024; // 5GB
 const STORAGE_BUCKET = "films";
 const THUMB_BUCKET = "thumbnails";
+const MUX_METADATA_TITLE_MAX_CHARS = 16;
 
 const FILM_TAGS: string[] = [
   "Drama",
@@ -156,6 +157,11 @@ function notify(title: string, message?: string, setStatusFn?: (s: string) => vo
       Alert.alert(title, message);
     }
   } catch {}
+}
+
+function compactMuxMetadataText(value: string | null | undefined, maxChars: number) {
+  const text = String(value ?? "").trim().replace(/\s+/g, " ");
+  return text.length > maxChars ? text.slice(0, maxChars) : text;
 }
 
 function formatBytes(bytes?: number | null) {
@@ -882,17 +888,19 @@ async function createMuxDirectUpload(input: {
   workshopStep?: number | null;
   workshopLessonTitle?: string | null;
 }) {
+  const body: Record<string, any> = {
+    userId: input.userId,
+    title: compactMuxMetadataText(input.title, MUX_METADATA_TITLE_MAX_CHARS) || "Untitled",
+    mimeType: input.mimeType ?? "video/mp4",
+    category: input.category ?? "film",
+  };
+
+  if (input.challengeId != null) body.challengeId = input.challengeId;
+  if (input.workshopPath) body.workshopPath = input.workshopPath;
+  if (typeof input.workshopStep === "number") body.workshopStep = input.workshopStep;
+
   const { data, error } = await supabase.functions.invoke("mux-create-upload", {
-    body: {
-      userId: input.userId,
-      title: input.title,
-      mimeType: input.mimeType ?? null,
-      category: input.category ?? null,
-      challengeId: input.challengeId ?? null,
-      workshopPath: input.workshopPath ?? null,
-      workshopStep: input.workshopStep ?? null,
-      workshopLessonTitle: input.workshopLessonTitle ?? null,
-    },
+    body,
   });
 
   if (error) {
@@ -1762,8 +1770,16 @@ return;
       );
     }
 
+    let lastSubmitStep = isWorkshopMode
+      ? "Checking workshop + monthly eligibility…"
+      : "Checking monthly eligibility…";
+    const setSubmitStatus = (next: string) => {
+      lastSubmitStep = next;
+      setStatus(next);
+    };
+
     setLoading(true);
-    setStatus(isWorkshopMode ? "Checking workshop + monthly eligibility…" : "Checking monthly eligibility…");
+    setSubmitStatus(lastSubmitStep);
     setProgressPct(0);
 
     try {
@@ -1821,7 +1837,7 @@ if (!canUpload.allowed) {
         }
       }
 
-      setStatus("Preparing upload…");
+      setSubmitStatus("Preparing upload…");
 
 const uploadPrefix = isWorkshopMode ? `workshop/${user.id}` : `monthly/${user.id}`;
 
@@ -1845,7 +1861,7 @@ const muxUpload = await createMuxDirectUpload({
   workshopLessonTitle: isWorkshopMode ? lessonTitle ?? null : null,
 });
 
-setStatus("Creating submission…");
+setSubmitStatus("Creating submission…");
 
 const media_kind = mediaKindFromMime(contentType);
 const initialCollaboratorCredits = buildCollaboratorCreditSnapshots(collaborators);
@@ -1886,7 +1902,7 @@ if (!createdSubmission?.id) {
 
 await saveSubmissionCollaborators(createdSubmission.id, collaborators);
 
-setStatus(
+setSubmitStatus(
   Platform.OS === "web"
     ? "Uploading to Overlooked… This can take a while for large files."
     : "Uploading to Overlooked… Please keep the app open for large files."
@@ -1901,7 +1917,7 @@ await uploadFileToMuxDirectUrl({
   onProgress: (pct) => setProgressPct(pct),
 });
 
-setStatus("Uploading thumbnail…");
+setSubmitStatus("Uploading thumbnail…");
 
 const thumbRes = await uploadThumbnailToStorage({
   userId: user.id,
@@ -1911,7 +1927,7 @@ const thumbRes = await uploadThumbnailToStorage({
 });
 
 setProgressPct(100);
-setStatus("Finalizing submission…");
+setSubmitStatus("Finalizing submission…");
 
 const { error: finalizeError } = await supabase
   .from("submissions")
@@ -1933,7 +1949,7 @@ const sharedFilmUrl = buildSharedFilmUrl(shareSlug);
 console.log("Shared film URL:", sharedFilmUrl);
 
 if (isWorkshopMode && pathKey && typeof step === "number") {
-  setStatus("Marking lesson complete…");
+  setSubmitStatus("Marking lesson complete…");
 
   const { error: progressInsertError } = await supabase.from("workshop_progress").insert({
     user_id: user.id,
@@ -1975,7 +1991,7 @@ if (isWorkshopMode) {
   setAlreadyCompleted(true);
 }
 
-setStatus("Submitted! 🎉");
+setSubmitStatus("Submitted! 🎉");
 await refreshUploadLimit();
 
       const successTitle = isWorkshopMode ? "Workshop submitted!" : "Film uploaded!";
@@ -2051,11 +2067,14 @@ const successMessage = isWorkshopMode
         ]);
       }
     } catch (e: any) {
-  console.warn("Workshop/monthly submit failed:", e?.message ?? e);
-  const stepMessage = status ? `Last step: ${status}\n\n${e?.message ?? "Please try again."}` : (e?.message ?? "Please try again.");
-  notify("Submission failed", stepMessage, setStatus);
-  setProgressPct(0);
-} finally {
+      console.warn("Workshop/monthly submit failed:", e?.message ?? e);
+      const errorMessage = e?.message ?? "Please try again.";
+      const stepMessage = lastSubmitStep
+        ? `Last step: ${lastSubmitStep}\n\n${errorMessage}`
+        : errorMessage;
+      notify("Submission failed", stepMessage, setStatus);
+      setProgressPct(0);
+    } finally {
       setLoading(false);
     }
   };
