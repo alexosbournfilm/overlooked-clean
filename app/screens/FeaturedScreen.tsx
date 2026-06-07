@@ -52,6 +52,7 @@ import { blockUser } from '../utils/blockUser';
 import { validateMultipleSafeTexts, validateSafeText } from '../utils/moderation';
 import { supportUser, unsupportUser } from '../lib/connections';
 import ReportContentModal from '../../components/ReportContentModal';
+import { useKeyboardLift } from '../utils/useKeyboardLift';
 
 
 const SYSTEM_SANS = Platform.select({
@@ -2107,6 +2108,14 @@ const repliesByParent = useMemo(() => {
 
   // ✅ Preview modal for wide web compact cards
   const [previewOpen, setPreviewOpen] = useState(false);
+  const {
+    keyboardVisible: commentsKeyboardVisible,
+    keyboardLift: commentsKeyboardLift,
+    keyboardLiftStyle: commentsKeyboardLiftStyle,
+  } = useKeyboardLift({
+    enabled: Platform.OS === 'android' && (commentsOpen || previewOpen),
+    extraSpacing: 8,
+  });
   const [previewItem, setPreviewItem] = useState<
     | (Submission & {
         description?: string | null;
@@ -2132,6 +2141,13 @@ const repliesByParent = useMemo(() => {
   const previewAnimateInRef = useRef(false);
   const previewWorkSeqRef = useRef(0);
   const watchScrollRef = useRef<ScrollView | null>(null);
+  const handleCommentInputFocus = useCallback(() => {
+    if (Platform.OS !== 'android') return;
+
+    setTimeout(() => {
+      watchScrollRef.current?.scrollToEnd({ animated: true });
+    }, 90);
+  }, []);
 
   useEffect(() => {
     if (!previewOpen || !previewItem) return;
@@ -4951,6 +4967,7 @@ const renderCommentsPanel = (
       <View style={styles.commentComposer}>
         <TextInput
           value={commentText}
+          onFocus={handleCommentInputFocus}
           onChangeText={(txt) => {
             if (isGuest) {
               promptSignIn('Create an account or sign in to comment on films.');
@@ -5317,6 +5334,9 @@ maxToRenderPerBatch={2}
             styles.watchContent,
             useDesktopWatch && styles.watchContentDesktop,
             { backgroundColor: featuredBackground },
+            commentsKeyboardVisible && !useDesktopWatch
+              ? { paddingBottom: commentsKeyboardLift + 36 }
+              : null,
           ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="always"
@@ -6019,6 +6039,7 @@ maxToRenderPerBatch={2}
               <View style={styles.commentComposer}>
                 <TextInput
                   value={commentText}
+                  onFocus={handleCommentInputFocus}
                   onChangeText={(txt) => {
                     if (isGuest) {
                       promptSignIn('Create an account or sign in to comment on films.');
@@ -6233,23 +6254,25 @@ maxToRenderPerBatch={2}
           ]}
         >
           <Pressable style={StyleSheet.absoluteFillObject} onPress={closeComments} />
-          {renderCommentsPanel(
-            isMobile
-              ? {
-                  width: winW,
-                  maxWidth: winW,
-                  height: Math.min(winH * 0.72, 620),
-                  borderBottomLeftRadius: 0,
-                  borderBottomRightRadius: 0,
-                }
-              : {
-                  width: '100%',
-                  maxWidth: 820,
-                  height: Math.min(winH * 0.72, 620),
-                  borderBottomLeftRadius: 0,
-                  borderBottomRightRadius: 0,
-                }
-          )}
+          <Animated.View style={Platform.OS === 'android' ? commentsKeyboardLiftStyle : null}>
+            {renderCommentsPanel(
+              isMobile
+                ? {
+                    width: winW,
+                    maxWidth: winW,
+                    height: Math.min(winH * 0.72, 620),
+                    borderBottomLeftRadius: 0,
+                    borderBottomRightRadius: 0,
+                  }
+                : {
+                    width: '100%',
+                    maxWidth: 820,
+                    height: Math.min(winH * 0.72, 620),
+                    borderBottomLeftRadius: 0,
+                    borderBottomRightRadius: 0,
+                  }
+            )}
+          </Animated.View>
         </View>
       ) : null}
     </Animated.View>
@@ -6267,25 +6290,39 @@ maxToRenderPerBatch={2}
     <View
       style={[
         styles.commentsOverlay,
-        { backgroundColor: isLight ? 'rgba(20,17,13,0.24)' : 'rgba(0,0,0,0.78)' },
+        {
+          backgroundColor: isLight ? 'rgba(20,17,13,0.24)' : 'rgba(0,0,0,0.78)',
+          ...(isMobile
+            ? {
+                justifyContent: 'flex-end',
+                paddingHorizontal: 0,
+                paddingTop: 80,
+                paddingBottom: 0,
+              }
+            : null),
+        },
       ]}
     >
       <Pressable style={StyleSheet.absoluteFillObject} onPress={closeComments} />
 
-      <View
+      <Animated.View
   style={[
     styles.commentsModalCard,
+    Platform.OS === 'android' ? commentsKeyboardLiftStyle : null,
     {
       backgroundColor: featuredSurface,
       borderColor: featuredBorder,
       shadowColor: colors.shadow,
     },
     isMobile && {
-  width: winW - 24,
-  maxWidth: winW - 24,
-  maxHeight: Math.min(winH * 0.68, 460),
-  alignSelf: 'center',
-}
+      width: winW,
+      maxWidth: winW,
+      height: Math.min(winH * 0.72, 620),
+      maxHeight: Math.min(winH * 0.72, 620),
+      alignSelf: 'stretch',
+      borderBottomLeftRadius: 0,
+      borderBottomRightRadius: 0,
+    }
   ]}
 >
         <View
@@ -6457,6 +6494,7 @@ maxToRenderPerBatch={2}
           <View style={styles.commentComposer}>
             <TextInput
   value={commentText}
+  onFocus={handleCommentInputFocus}
   onChangeText={(txt) => {
     if (isGuest) {
       promptSignIn('Create an account or sign in to comment on films.');
@@ -6507,7 +6545,7 @@ maxToRenderPerBatch={2}
 </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </Animated.View>
     </View>
   </Modal>
 )}

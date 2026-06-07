@@ -27,6 +27,7 @@ import { getCurrentUserTierOrFree } from '../lib/membership';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAppLanguage } from '../context/LanguageContext';
 import { translateTrustedText } from '../i18n/translations';
+import { schedulePersonalizedReengagementNotifications } from '../lib/reengagementNotifications';
 
 /* -------------------------------- palette -------------------------------- */
 const BG = '#050505';
@@ -8371,6 +8372,8 @@ filmmaker: [],
       try {
         await refreshStreak?.();
       } catch {}
+
+      void schedulePersonalizedReengagementNotifications(userId);
 
       setSelectedLesson(null);
     } catch (e) {

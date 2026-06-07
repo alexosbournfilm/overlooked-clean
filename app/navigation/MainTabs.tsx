@@ -36,7 +36,11 @@ import { useAuth } from '../context/AuthProvider';
 import { subscribeChatBadgeRefresh } from '../lib/chatBadgeEvents';
 import { useAppRefresh } from '../context/AppRefreshContext';
 import { useAppTheme } from '../context/ThemeContext';
-import { InAppNotificationsProvider, useInAppNotifications } from '../context/InAppNotificationsContext';
+import {
+  InAppNotificationsProvider,
+  useInAppNotifications,
+  type AppNotification,
+} from '../context/InAppNotificationsContext';
 
 import { SettingsModalProvider, useSettingsModal } from '../context/SettingsModalContext';
 import SettingsButton from '../../components/SettingsButton';
@@ -45,6 +49,7 @@ import SettingsModal from '../../components/SettingsModal';
 
 import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 import { registerAndSavePushToken } from '../lib/pushRegistration';
+import { schedulePersonalizedReengagementNotifications } from '../lib/reengagementNotifications';
 import {
   isMobileWebViewport,
   isPhoneViewport,
@@ -295,13 +300,29 @@ const GlobalFilmSearch = memo(function GlobalFilmSearch({
   onSelectFilm: (filmId: string) => void;
 }) {
   const { colors, isLight } = useAppTheme();
+  const { width: viewportWidth } = useWindowDimensions();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<GlobalFilmSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [searchWidth, setSearchWidth] = useState(0);
   const requestSeqRef = useRef(0);
   const trimmed = query.trim();
   const showResults = focused && (trimmed.length > 0 || loading);
+  const mobileSearch = !!(compact || micro);
+  const preferredDropdownWidth = micro ? 300 : 328;
+  const maxDropdownWidth = Math.max(searchWidth || 0, viewportWidth - 18);
+  const mobileDropdownWidth = mobileSearch
+    ? Math.min(maxDropdownWidth, Math.max(searchWidth || 0, preferredDropdownWidth))
+    : undefined;
+  const mobileDropdownLayout =
+    mobileSearch && searchWidth > 0 && mobileDropdownWidth
+      ? {
+          width: mobileDropdownWidth,
+          left: -Math.max(0, (mobileDropdownWidth - searchWidth) / 2),
+          right: undefined,
+        }
+      : null;
 
   useEffect(() => {
     const q = query.trim();
@@ -365,9 +386,16 @@ const GlobalFilmSearch = memo(function GlobalFilmSearch({
   const inputBorder = isLight ? colors.border : 'rgba(255,255,255,0.12)';
   const dropdownBg = isLight ? colors.card : '#0D0D0F';
   const muted = isLight ? colors.textSecondary : 'rgba(244,239,230,0.62)';
+  const handleSearchLayout = useCallback((event: any) => {
+    const nextWidth = Math.round(event?.nativeEvent?.layout?.width || 0);
+    if (nextWidth <= 0) return;
+
+    setSearchWidth((prev) => (Math.abs(prev - nextWidth) > 1 ? nextWidth : prev));
+  }, []);
 
   return (
     <View
+      onLayout={handleSearchLayout}
       style={[
         styles.globalSearchWrap,
         compact && styles.globalSearchWrapCompact,
@@ -400,7 +428,7 @@ const GlobalFilmSearch = memo(function GlobalFilmSearch({
             if (first?.id) selectFilm(first.id);
           }}
           returnKeyType="search"
-          placeholder={micro ? "Search" : "Search film..."}
+          placeholder={compact || micro ? "Search film" : "Search film..."}
           placeholderTextColor={colors.textMuted}
           selectionColor={colors.primary}
           cursorColor={colors.primary}
@@ -432,6 +460,7 @@ const GlobalFilmSearch = memo(function GlobalFilmSearch({
             styles.globalSearchDropdown,
             compact && styles.globalSearchDropdownCompact,
             micro && styles.globalSearchDropdownMicro,
+            mobileDropdownLayout,
             {
               backgroundColor: dropdownBg,
               borderColor: inputBorder,
@@ -448,6 +477,7 @@ const GlobalFilmSearch = memo(function GlobalFilmSearch({
                 onPress={() => selectFilm(item.id)}
                 style={({ pressed }) => [
                   styles.globalSearchResult,
+                  compact && styles.globalSearchResultCompact,
                   pressed && { backgroundColor: isLight ? colors.backgroundAlt : '#16161A' },
                 ]}
               >
@@ -464,8 +494,12 @@ const GlobalFilmSearch = memo(function GlobalFilmSearch({
                 </View>
                 <View style={styles.globalSearchResultText}>
                   <Text
-                    style={[styles.globalSearchResultTitle, { color: colors.textPrimary }]}
-                    numberOfLines={1}
+                    style={[
+                      styles.globalSearchResultTitle,
+                      compact && styles.globalSearchResultTitleCompact,
+                      { color: colors.textPrimary },
+                    ]}
+                    numberOfLines={compact || micro ? 2 : 1}
                   >
                     {item.title || 'Untitled film'}
                   </Text>
@@ -1874,6 +1908,54 @@ borderRadius: isPhone ? 13 : 15,
   );
 });
 
+function getMessageNotificationConversationId(notice: AppNotification) {
+  const data = notice.data;
+  const params =
+    data?.params && typeof data.params === 'object' && !Array.isArray(data.params)
+      ? data.params
+      : {};
+
+  const isMessageNotification =
+    notice.notification_type === 'message' ||
+    data?.notificationType === 'message' ||
+    data?.screen === 'ChatRoom';
+
+  if (!isMessageNotification) return null;
+
+  const rawConversationId = params.conversationId ?? data?.conversationId;
+  if (typeof rawConversationId !== 'string') return null;
+
+  const conversationId = rawConversationId.trim();
+  return conversationId || null;
+}
+
+const ChatNotificationBadgeBridge = memo(function ChatNotificationBadgeBridge({
+  markConversationsUnread,
+  refreshChatUnread,
+}: {
+  markConversationsUnread: (conversationIds: string[]) => void;
+  refreshChatUnread: () => void;
+}) {
+  const { unreadNotifications } = useInAppNotifications();
+
+  useEffect(() => {
+    const conversationIds = Array.from(
+      new Set(
+        unreadNotifications
+          .map(getMessageNotificationConversationId)
+          .filter((conversationId): conversationId is string => !!conversationId)
+      )
+    );
+
+    if (!conversationIds.length) return;
+
+    markConversationsUnread(conversationIds);
+    refreshChatUnread();
+  }, [markConversationsUnread, refreshChatUnread, unreadNotifications]);
+
+  return null;
+});
+
 export default function MainTabs() {
   const navigation = useNavigation<any>();
   const { width } = useWindowDimensions();
@@ -2077,6 +2159,27 @@ const queueUnreadRefresh = useCallback(() => {
   }, 150);
 }, [loadChatUnreadCount]);
 
+const markNotificationConversationsUnread = useCallback(
+  (conversationIds: string[]) => {
+    if (!badgeUserId || !conversationIds.length) return;
+
+    setChatUnreadConversationIds((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+
+      conversationIds.forEach((conversationId) => {
+        if (!next.has(conversationId)) {
+          next.add(conversationId);
+          changed = true;
+        }
+      });
+
+      return changed ? next : prev;
+    });
+  },
+  [badgeUserId]
+);
+
 useEffect(() => {
   return () => {
     if (unreadRefreshTimeout.current) {
@@ -2100,6 +2203,9 @@ useEffect(() => {
 
   registerAndSavePushToken(badgeUserId).catch((err: any) => {
     console.log('Push token save skipped:', err?.message || err);
+  });
+  schedulePersonalizedReengagementNotifications(badgeUserId).catch((err: any) => {
+    console.log('Re-engagement reminder schedule skipped:', err?.message || err);
   });
 
   loadChatUnreadCount();
@@ -2148,6 +2254,7 @@ useEffect(() => {
 
       if (badgeUserId) {
         loadChatUnreadCount();
+        void schedulePersonalizedReengagementNotifications(badgeUserId);
       }
     }, Platform.OS === 'web' ? 120 : 220);
   };
@@ -2481,6 +2588,10 @@ const tabPanResponder = useMemo(
   return (
   <InAppNotificationsProvider>
   <SettingsModalProvider>
+    <ChatNotificationBadgeBridge
+      markConversationsUnread={markNotificationConversationsUnread}
+      refreshChatUnread={queueUnreadRefresh}
+    />
     <View
       style={{
         flex: 1,
@@ -2619,8 +2730,8 @@ const styles = StyleSheet.create({
 
 chatBadge: {
   position: 'absolute',
-  top: -6,
-  right: -10,
+  top: 0,
+  right: 2,
   minWidth: 16,
   height: 16,
   borderRadius: 999,
@@ -2642,8 +2753,8 @@ chatBadgeText: {
 
 settingsTopBadge: {
   position: 'absolute',
-  top: -5,
-  right: -6,
+  top: 1,
+  right: 1,
   minWidth: 16,
   height: 16,
   borderRadius: 999,
@@ -2670,12 +2781,14 @@ settingsTopBadgeText: {
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
+    overflow: 'visible',
   },
 
   topBarWrapper: {
   backgroundColor: DARK_BG,
   borderBottomWidth: 0,
   borderBottomColor: 'transparent',
+  overflow: 'visible',
 },
 
   topBarInner: {
@@ -2684,6 +2797,7 @@ settingsTopBadgeText: {
     alignSelf: 'center',
     justifyContent: 'center',
     backgroundColor: DARK_BG,
+    overflow: 'visible',
   },
 
   topBarLeft: {
@@ -2699,11 +2813,12 @@ settingsTopBadgeText: {
     paddingHorizontal: 6,
     zIndex: 100000,
     elevation: 100000,
+    overflow: 'visible',
   },
 
   topBarSearchSlotTiny: {
-    minWidth: 78,
-    maxWidth: 104,
+    minWidth: 86,
+    maxWidth: 116,
     paddingHorizontal: 3,
   },
 
@@ -2719,6 +2834,7 @@ settingsTopBadgeText: {
   globalSearchWrap: {
     width: '100%',
     position: 'relative',
+    overflow: 'visible',
   },
 
   globalSearchWrapCompact: {
@@ -2762,11 +2878,11 @@ settingsTopBadgeText: {
   },
 
   globalSearchInputCompact: {
-    fontSize: 10.5,
+    fontSize: 9.5,
   },
 
   globalSearchInputMicro: {
-    fontSize: 10,
+    fontSize: 8.8,
   },
 
   globalSearchDropdown: {
@@ -2786,15 +2902,10 @@ settingsTopBadgeText: {
 
   globalSearchDropdownCompact: {
     top: 35,
-    left: -72,
-    right: -72,
     borderRadius: 12,
   },
 
-  globalSearchDropdownMicro: {
-    left: -88,
-    right: -88,
-  },
+  globalSearchDropdownMicro: {},
 
   globalSearchResult: {
     minHeight: 64,
@@ -2803,6 +2914,12 @@ settingsTopBadgeText: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 11,
+  },
+
+  globalSearchResultCompact: {
+    minHeight: 68,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
   },
 
   globalSearchThumb: {
@@ -2824,6 +2941,11 @@ settingsTopBadgeText: {
     fontSize: 14,
     fontWeight: '900',
     fontFamily: SYSTEM_SANS,
+  },
+
+  globalSearchResultTitleCompact: {
+    fontSize: 13,
+    lineHeight: 16,
   },
 
   globalSearchResultMeta: {

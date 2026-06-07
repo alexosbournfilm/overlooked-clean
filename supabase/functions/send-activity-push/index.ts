@@ -307,7 +307,11 @@ serve(async (req: Request): Promise<Response> => {
           preferenceKey: "new_supporters",
           title: `${supporterName} supports you`,
           body: "Open their profile on Overlooked",
-          data: screenData("Profile", { userId: supporterId }),
+          data: screenData("Profile", {
+            userId: supporterId,
+            actorId: supporterId,
+            supporterId,
+          }),
         });
       }
     }
@@ -329,7 +333,10 @@ serve(async (req: Request): Promise<Response> => {
           preferenceKey: "followed_submissions",
           title: `${authorName} posted a new film`,
           body: text(submission?.title, "Watch it on Overlooked"),
-          data: featuredFilmData(submission?.id ?? record.id),
+          data: featuredFilmData(submission?.id ?? record.id, {
+            actorId: authorId,
+            authorId,
+          }),
         });
       }
     }
@@ -351,6 +358,8 @@ serve(async (req: Request): Promise<Response> => {
           title: `${actorName} commented on your film`,
           body: commentBody,
           data: featuredFilmData(submission.id, {
+            actorId,
+            commenterId: actorId,
             commentId: record.id,
           }),
         });
@@ -370,6 +379,8 @@ serve(async (req: Request): Promise<Response> => {
             title: `${actorName} replied to your comment`,
             body: commentBody,
             data: featuredFilmData(submission?.id ?? record.submission_id, {
+              actorId,
+              replierId: actorId,
               commentId: record.id,
             }),
           });
@@ -388,6 +399,7 @@ serve(async (req: Request): Promise<Response> => {
           title: "Your film received a vote",
           body: text(submission.title, "Someone voted for your submission"),
           data: featuredFilmData(submission.id, {
+            actorId: voterId,
             submissionId: submission.id,
             voterId,
           }),
@@ -431,7 +443,11 @@ serve(async (req: Request): Promise<Response> => {
             preferenceKey: "city_creatives",
             title: "New creative in your city",
             body: `${newUserName} joined Overlooked`,
-            data: screenData("Location", { userId: record.id, cityId: record.city_id }),
+            data: screenData("Location", {
+              userId: record.id,
+              actorId: record.id,
+              cityId: record.city_id,
+            }),
           });
         }
       }
@@ -447,7 +463,12 @@ serve(async (req: Request): Promise<Response> => {
           preferenceKey: "job_applications",
           title: "New application received",
           body: `${applicantName} applied to ${text(job.title, "your job")}`,
-          data: screenData("Jobs", { jobId: job.id, applicationId: record.id }),
+          data: screenData("Jobs", {
+            actorId: record.applicant_id,
+            applicantId: record.applicant_id,
+            jobId: job.id,
+            applicationId: record.id,
+          }),
         });
       }
     }

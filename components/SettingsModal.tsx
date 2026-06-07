@@ -313,6 +313,7 @@ export default function SettingsModal() {
   const [openingNotifications, setOpeningNotifications] = useState(false);
   const [languageExpanded, setLanguageExpanded] = useState(false);
   const lastRevealNotificationsNonce = useRef(0);
+  const profileRevealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [showUpgrade, setShowUpgrade] = useState(false);
   const sheetProgress = useRef(new Animated.Value(0)).current;
@@ -330,6 +331,15 @@ export default function SettingsModal() {
       useNativeDriver: true,
     }).start();
   }, [isOpen, sheetProgress]);
+
+  useEffect(() => {
+    return () => {
+      if (profileRevealTimeoutRef.current) {
+        clearTimeout(profileRevealTimeoutRef.current);
+        profileRevealTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -366,6 +376,26 @@ export default function SettingsModal() {
       cancelled = true;
     };
   }, [isOpen, revealNotificationsNonce]);
+
+  const openNotificationActorProfile = useCallback(
+    (notice: AppNotification) => {
+      const actorId = notice.actor?.id || notice.actor_id;
+      if (!actorId) return;
+
+      if (profileRevealTimeoutRef.current) {
+        clearTimeout(profileRevealTimeoutRef.current);
+        profileRevealTimeoutRef.current = null;
+      }
+
+      navigation.navigate('Profile', { userId: actorId });
+
+      profileRevealTimeoutRef.current = setTimeout(() => {
+        profileRevealTimeoutRef.current = null;
+        close();
+      }, Platform.OS === 'android' ? 140 : 90);
+    },
+    [close, navigation]
+  );
 
   const checkModeratorStatus = useCallback(async (uid?: string | null) => {
     if (!uid) {
@@ -983,51 +1013,80 @@ export default function SettingsModal() {
                   </Text>
                 ) : (
                   <View style={styles.notificationList}>
-                    {settingsVisibleNotifications.map((notice: AppNotification) => (
-                      <View
-                        key={notice.id}
-                        style={[
-                          styles.notificationRow,
-                          {
-                            backgroundColor: colors.card,
-                            borderColor: colors.border,
-                          },
-                        ]}
-                      >
+                    {settingsVisibleNotifications.map((notice: AppNotification) => {
+                      const actor = notice.actor;
+                      const canOpenActor = !!(actor?.id || notice.actor_id);
+                      const actorInitial =
+                        (actor?.full_name || notice.title || 'O').trim().slice(0, 1).toUpperCase() || 'O';
+
+                      return (
                         <View
+                          key={notice.id}
                           style={[
-                            styles.notificationIcon,
+                            styles.notificationRow,
                             {
-                              backgroundColor: isLight ? '#F6ECD8' : 'rgba(198,166,100,0.10)',
-                              borderColor: isLight ? colors.borderStrong : 'rgba(198,166,100,0.24)',
+                              backgroundColor: colors.card,
+                              borderColor: colors.border,
                             },
                           ]}
                         >
-                          <Ionicons
-                            name={notice.notification_type === 'message' ? 'chatbubble-ellipses-outline' : 'notifications-outline'}
-                            size={16}
-                            color={colors.primary}
-                          />
-                        </View>
+                          <Pressable
+                            onPress={() => openNotificationActorProfile(notice)}
+                            disabled={!canOpenActor}
+                            accessibilityRole={canOpenActor ? 'button' : undefined}
+                            accessibilityLabel={
+                              canOpenActor
+                                ? `Open ${actor?.full_name || notice.title || 'profile'}`
+                                : undefined
+                            }
+                            style={({ pressed }) => [
+                              styles.notificationIcon,
+                              {
+                                backgroundColor: isLight ? '#F6ECD8' : 'rgba(198,166,100,0.10)',
+                                borderColor: isLight ? colors.borderStrong : 'rgba(198,166,100,0.24)',
+                              },
+                              canOpenActor && styles.notificationAvatarButton,
+                              pressed && canOpenActor && { opacity: 0.72 },
+                            ]}
+                          >
+                            {actor?.avatar_url ? (
+                              <Image source={{ uri: actor.avatar_url }} style={styles.notificationAvatarImage} />
+                            ) : actor ? (
+                              <Text style={[styles.notificationAvatarInitial, { color: colors.primary }]}>
+                                {actorInitial}
+                              </Text>
+                            ) : (
+                              <Ionicons
+                                name={
+                                  notice.notification_type === 'message'
+                                    ? 'chatbubble-ellipses-outline'
+                                    : 'notifications-outline'
+                                }
+                                size={16}
+                                color={colors.primary}
+                              />
+                            )}
+                          </Pressable>
 
-                        <View style={styles.notificationCopy}>
-                          <View style={styles.notificationMetaRow}>
-                            <Text style={[styles.notificationRowTitle, { color: colors.textPrimary }]} numberOfLines={2}>
-                              {notice.title || t('Notification')}
-                            </Text>
-                            <Text style={[styles.notificationTime, { color: colors.textMuted }]} numberOfLines={1}>
-                              {formatNotificationTime(notice.created_at)}
-                            </Text>
+                          <View style={styles.notificationCopy}>
+                            <View style={styles.notificationMetaRow}>
+                              <Text style={[styles.notificationRowTitle, { color: colors.textPrimary }]} numberOfLines={2}>
+                                {notice.title || t('Notification')}
+                              </Text>
+                              <Text style={[styles.notificationTime, { color: colors.textMuted }]} numberOfLines={1}>
+                                {formatNotificationTime(notice.created_at)}
+                              </Text>
+                            </View>
+
+                            {notice.body ? (
+                              <Text style={[styles.notificationBody, { color: colors.textMuted }]} numberOfLines={2}>
+                                {notice.body}
+                              </Text>
+                            ) : null}
                           </View>
-
-                          {notice.body ? (
-                            <Text style={[styles.notificationBody, { color: colors.textMuted }]} numberOfLines={2}>
-                              {notice.body}
-                            </Text>
-                          ) : null}
                         </View>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </View>
                 )
               ) : null}
@@ -1804,6 +1863,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(198,166,100,0.10)',
     borderColor: 'rgba(198,166,100,0.24)',
     flexShrink: 0,
+    overflow: 'hidden',
+  },
+  notificationAvatarButton: {
+    borderColor: 'rgba(198,166,100,0.42)',
+  },
+  notificationAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 18,
+  },
+  notificationAvatarInitial: {
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
   },
   notificationCopy: {
     flex: 1,

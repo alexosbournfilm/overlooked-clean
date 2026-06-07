@@ -37,6 +37,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAppTheme } from "../context/ThemeContext";
 import { useAppLanguage } from "../context/LanguageContext";
 import { translateTrustedText } from "../i18n/translations";
+import { schedulePersonalizedReengagementNotifications } from "../lib/reengagementNotifications";
 
 /* ------------------------------- palette ------------------------------- */
 
@@ -1967,6 +1968,8 @@ try {
 try {
   triggerAppRefresh();
 } catch {}
+
+void schedulePersonalizedReengagementNotifications(user.id);
 
 if (isWorkshopMode) {
   setAlreadyCompleted(true);

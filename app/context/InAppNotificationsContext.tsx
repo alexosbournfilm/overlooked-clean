@@ -12,6 +12,12 @@ import { AppState, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { supabase } from '../lib/supabase';
 
+export type AppNotificationActor = {
+  id: string;
+  full_name?: string | null;
+  avatar_url?: string | null;
+};
+
 export type AppNotification = {
   id: string;
   user_id?: string;
@@ -19,6 +25,8 @@ export type AppNotification = {
   body?: string | null;
   notification_type?: string | null;
   data?: Record<string, any> | null;
+  actor_id?: string | null;
+  actor?: AppNotificationActor | null;
   created_at?: string | null;
   read_at?: string | null;
 };
@@ -47,17 +55,102 @@ const EMPTY_CTX: Ctx = {
 
 const InAppNotificationsContext = createContext<Ctx>(EMPTY_CTX);
 
+function stringId(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function extractNotificationActorId(
+  data?: Record<string, any> | null,
+  notificationType?: string | null
+) {
+  const params =
+    data?.params && typeof data.params === 'object' && !Array.isArray(data.params)
+      ? data.params
+      : {};
+
+  const candidates = [
+    data?.actorId,
+    data?.senderId,
+    data?.supporterId,
+    data?.voterId,
+    data?.applicantId,
+    data?.authorId,
+    data?.commenterId,
+    data?.replierId,
+    params.actorId,
+    params.senderId,
+    params.supporterId,
+    params.voterId,
+    params.applicantId,
+    params.authorId,
+    params.commenterId,
+    params.replierId,
+  ];
+
+  if (data?.screen === 'Profile') candidates.push(params.userId);
+  if (notificationType === 'city_creatives') candidates.push(params.userId);
+
+  for (const candidate of candidates) {
+    const id = stringId(candidate);
+    if (id) return id;
+  }
+
+  return null;
+}
+
 function normalizeNotification(row: any): AppNotification {
+  const data = row.data && typeof row.data === 'object' ? row.data : {};
+  const notificationType = row.notification_type ?? null;
+
   return {
     id: String(row.id),
     user_id: row.user_id,
     title: row.title || 'Notification',
     body: row.body ?? null,
-    notification_type: row.notification_type ?? null,
-    data: row.data && typeof row.data === 'object' ? row.data : {},
+    notification_type: notificationType,
+    data,
+    actor_id: extractNotificationActorId(data, notificationType),
+    actor: null,
     created_at: row.created_at ?? null,
     read_at: row.read_at ?? null,
   };
+}
+
+async function enrichNotificationsWithActors(rows: AppNotification[]) {
+  const actorIds = Array.from(
+    new Set(rows.map((notice) => notice.actor_id).filter((id): id is string => !!id))
+  );
+
+  if (!actorIds.length) return rows;
+
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, full_name, avatar_url')
+      .in('id', actorIds);
+
+    if (error) throw error;
+
+    const actorsById = new Map<string, AppNotificationActor>(
+      ((data || []) as any[]).map((user) => [
+        String(user.id),
+        {
+          id: String(user.id),
+          full_name: user.full_name ?? null,
+          avatar_url: user.avatar_url ?? null,
+        },
+      ])
+    );
+
+    return rows.map((notice) =>
+      notice.actor_id ? { ...notice, actor: actorsById.get(notice.actor_id) ?? null } : notice
+    );
+  } catch (e: any) {
+    console.log('Notification actors unavailable:', e?.message || e);
+    return rows;
+  }
 }
 
 async function setPhoneBadgeCount(count: number) {
@@ -133,7 +226,7 @@ export function InAppNotificationsProvider({ children }: { children: ReactNode }
 
       if (error) throw error;
 
-      const rows = (data || []).map(normalizeNotification);
+      const rows = await enrichNotificationsWithActors((data || []).map(normalizeNotification));
 
       if (requestId === requestIdRef.current) {
         setUnreadCount(typeof count === 'number' ? count : rows.length);

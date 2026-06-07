@@ -178,6 +178,7 @@ const DEFAULT_NOTIFICATION_PREFERENCES = {
   comment_replies: true,
   challenge_reminders: true,
   challenge_results: true,
+  reengagement_reminders: true,
 };
 
 const G = globalThis as any;

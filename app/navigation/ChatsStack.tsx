@@ -1,6 +1,6 @@
 // app/navigation/ChatsStack.tsx
 import React from 'react';
-import { Platform } from 'react-native';
+import { Easing, Platform } from 'react-native';
 import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 
 import ChatsScreen from '../screens/ChatsScreen';
@@ -42,34 +42,26 @@ export default function ChatsStack() {
         },
         headerTitleAlign: 'center',
         cardStyle: { backgroundColor: colors.background },
+        animationEnabled: true,
         gestureEnabled: true,
-        ...(Platform.OS === 'ios'
-          ? {
-              cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
-              transitionSpec: {
-                open: {
-                  animation: 'timing',
-                  config: { duration: 220 },
-                },
-                close: {
-                  animation: 'timing',
-                  config: { duration: 220 },
-                },
-              },
-            }
-          : {
-              cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid,
-              transitionSpec: {
-                open: {
-                  animation: 'timing',
-                  config: { duration: 220 },
-                },
-                close: {
-                  animation: 'timing',
-                  config: { duration: 220 },
-                },
-              },
-            }),
+        gestureDirection: 'horizontal',
+        cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+        transitionSpec: {
+          open: {
+            animation: 'timing',
+            config: {
+              duration: 320,
+              easing: Easing.out(Easing.cubic),
+            },
+          },
+          close: {
+            animation: 'timing',
+            config: {
+              duration: 260,
+              easing: Easing.inOut(Easing.cubic),
+            },
+          },
+        },
       }}
     >
       <Stack.Screen

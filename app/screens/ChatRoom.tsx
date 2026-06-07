@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useLayoutEffect, useEffect, useRef } from 'react';
+import React, { useCallback, useMemo, useState, useLayoutEffect, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,6 @@ import {
   Dimensions,
   RefreshControl,
   BackHandler,
-  Keyboard,
   Animated,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
@@ -28,13 +27,13 @@ import { useMonthlyStreak } from '../lib/useMonthlyStreak';
 import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { emitChatBadgeRefresh } from '../lib/chatBadgeEvents';
-import { useAppRefresh } from '../context/AppRefreshContext';
 import { reportContent, ReportReason } from '../utils/reportContent';
 import { blockUser } from '../utils/blockUser';
 import { validateSafeText } from '../utils/moderation';
 import ReportContentModal from '../../components/ReportContentModal';
 import { useAppTheme } from '../context/ThemeContext';
 import { useInAppNotifications } from '../context/InAppNotificationsContext';
+import { useKeyboardLift } from '../utils/useKeyboardLift';
 /* ------------------------------- Noir palette ------------------------------- */
 const DARK_BG = '#050505';
 const ELEVATED = '#0D0D0F';
@@ -267,7 +266,6 @@ export default function ChatRoom() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const { triggerAppRefresh } = useAppRefresh();
   const { markMessageNotificationsRead } = useInAppNotifications();
   const DARK_BG = colors.background;
   const ELEVATED = colors.card;
@@ -278,9 +276,6 @@ export default function ChatRoom() {
   const GOLD = colors.primary;
   const BUBBLE_IN = colors.cardAlt;
   const BUBBLE_OUT = colors.primary;
-
-  const [refreshing, setRefreshing] = useState(false);
-
   const {
     conversation: routeConversation,
     conversationId: routeConversationId,
@@ -302,8 +297,14 @@ export default function ChatRoom() {
   );
   const [typingUser, setTypingUser] = useState<string | null>(null);
   const [sendingImage, setSendingImage] = useState(false);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const keyboardOffsetAnim = useRef(new Animated.Value(0)).current;
+  const {
+    keyboardVisible,
+    keyboardLift,
+    keyboardLiftStyle,
+  } = useKeyboardLift({
+    enabled: Platform.OS === 'android',
+    extraSpacing: 2,
+  });
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
 
@@ -376,6 +377,8 @@ const messagesRef = useRef<Message[]>([]);
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  const displayedMessages = useMemo(() => [...messages].reverse(), [messages]);
 
   const appendMessage = useCallback((row: any) => {
     if (!row?.id || row.is_removed) return;
@@ -1236,44 +1239,6 @@ useFocusEffect(
     }
   };
 
-  const onRefresh = async () => {
-  if (!conversation?.id) return;
-
-  setRefreshing(true);
-
-  try {
-    if (messagesRef.current.length && hasMoreMessages) {
-      await loadOlderMessages();
-      return;
-    }
-
-    triggerAppRefresh();
-
-    await Promise.allSettled([
-      fetchUserAndMessages(),
-      conversation.is_group ? refreshMembers() : Promise.resolve(),
-    ]);
-
-    if (userId) {
-      await supabase.from('conversation_reads').upsert(
-        {
-          user_id: userId,
-          conversation_id: conversation.id,
-          last_read_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'user_id,conversation_id',
-        }
-      );
-      await markMessageNotificationsRead(conversation.id);
-    }
-
-    emitChatBadgeRefresh();
-  } finally {
-    setRefreshing(false);
-  }
-};
-
   const setupRealtime = (convId: string) => {
     const messageChannel =
       supabase
@@ -1293,7 +1258,7 @@ useFocusEffect(
     void markMessageNotificationsRead(convId);
   }
   shouldStickToBottomRef.current = true;
-  scrollToBottom(true);
+  scrollToBottom(false);
   emitChatBadgeRefresh();
 }
 )
@@ -1371,16 +1336,16 @@ useFocusEffect(
 
   const scrollToBottom = useCallback((animated = true) => {
     requestAnimationFrame(() => {
-      flatListRef.current?.scrollToEnd({
+      flatListRef.current?.scrollToOffset({
+        offset: 0,
         animated,
       });
     });
   }, []);
 
   const handleMessageScroll = useCallback((event: any) => {
-    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    const distanceFromBottom =
-      contentSize.height - (contentOffset.y + layoutMeasurement.height);
+    const { contentOffset } = event.nativeEvent;
+    const distanceFromBottom = Math.max(0, contentOffset.y || 0);
     shouldStickToBottomRef.current =
       distanceFromBottom < MESSAGE_BOTTOM_THRESHOLD;
   }, []);
@@ -1397,51 +1362,16 @@ useFocusEffect(
     }
 
     if (shouldStickToBottomRef.current) {
-      scrollToBottom(true);
+      scrollToBottom(false);
     }
   }, [conversation?.id, scrollToBottom]);
 
   useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    if (!keyboardVisible) return;
 
-    const onKeyboardMove = (event: any, visible: boolean) => {
-      try {
-        Keyboard.scheduleLayoutAnimation?.(event);
-      } catch {}
-      setKeyboardVisible(visible);
-      const keyboardHeight =
-        Platform.OS === 'android' && visible
-          ? Math.max(0, event?.endCoordinates?.height ?? 0)
-          : 0;
-
-      Animated.timing(keyboardOffsetAnim, {
-        toValue: keyboardHeight,
-        duration:
-          typeof event?.duration === 'number'
-            ? Math.max(140, Math.min(event.duration, 280))
-            : visible
-            ? 190
-            : 170,
-        useNativeDriver: true,
-      }).start();
-
-      shouldStickToBottomRef.current = true;
-      setTimeout(() => scrollToBottom(true), Platform.OS === 'ios' ? 40 : 80);
-    };
-
-    const showSub = Keyboard.addListener(showEvent, (event) =>
-      onKeyboardMove(event, true)
-    );
-    const hideSub = Keyboard.addListener(hideEvent, (event) =>
-      onKeyboardMove(event, false)
-    );
-
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, [keyboardOffsetAnim, scrollToBottom]);
+    shouldStickToBottomRef.current = true;
+    setTimeout(() => scrollToBottom(false), Platform.OS === 'ios' ? 40 : 90);
+  }, [keyboardVisible, keyboardLift, scrollToBottom]);
 
   const updateConversationLastMessage = async (
     convId: string,
@@ -1510,7 +1440,7 @@ useFocusEffect(
     }
     appendMessage(insertedMessage);
     shouldStickToBottomRef.current = true;
-    scrollToBottom(true);
+    scrollToBottom(false);
 
     void updateConversationLastMessage(conversation.id, text);
     void notifyRecipients(text);
@@ -1707,7 +1637,7 @@ useFocusEffect(
         }
         appendMessage(insertedImageMessage);
         shouldStickToBottomRef.current = true;
-        scrollToBottom(true);
+        scrollToBottom(false);
         void updateConversationLastMessage(conversation.id, '[Photo]');
         void notifyRecipients('Sent you a photo');
         void supabase
@@ -1757,7 +1687,7 @@ useFocusEffect(
         }
         appendMessage(insertedFileMessage);
         shouldStickToBottomRef.current = true;
-        scrollToBottom(true);
+        scrollToBottom(false);
         void updateConversationLastMessage(conversation.id, content);
         void notifyRecipients(content);
         void supabase
@@ -2026,34 +1956,42 @@ const chatKeyboardContainerProps =
   <>
         <FlatList
   ref={flatListRef}
-  data={messages}
+  data={displayedMessages}
+  inverted
   renderItem={renderItem}
   keyExtractor={(item) => item.id}
   contentContainerStyle={{
     padding: 16,
-    paddingTop: 8,
-    paddingBottom: Platform.OS === 'android' && keyboardVisible ? 82 : 12,
+    paddingTop:
+      Platform.OS === 'android' && keyboardVisible
+        ? Math.max(120, keyboardLift + 92)
+        : 16,
+    paddingBottom: 12,
   }}
-  onLayout={() => scrollToBottom(false)}
   onContentSizeChange={handleMessageContentSizeChange}
   onScroll={handleMessageScroll}
+  onEndReached={() => {
+    if (messagesRef.current.length && hasMoreMessages && !loadingOlderMessages) {
+      void loadOlderMessages();
+    }
+  }}
+  onEndReachedThreshold={0.18}
   scrollEventThrottle={64}
-  removeClippedSubviews={Platform.OS !== 'ios'}
+  removeClippedSubviews={false}
   initialNumToRender={12}
   maxToRenderPerBatch={8}
   windowSize={7}
   updateCellsBatchingPeriod={16}
+  ListFooterComponent={
+    loadingOlderMessages ? (
+      <View style={styles.olderMessagesLoader}>
+        <ActivityIndicator color={GOLD} size="small" />
+      </View>
+    ) : null
+  }
   automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
   keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
   keyboardShouldPersistTaps="handled"
-  refreshControl={
-    <RefreshControl
-      refreshing={refreshing || loadingOlderMessages}
-      onRefresh={onRefresh}
-      tintColor={GOLD}
-      progressBackgroundColor={ELEVATED}
-    />
-  }
 />
 
     {typingUser && (
@@ -2063,18 +2001,7 @@ const chatKeyboardContainerProps =
     <Animated.View
       style={[
         styles.composerLift,
-        Platform.OS === 'android'
-          ? {
-              transform: [
-                {
-                  translateY: keyboardOffsetAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -1],
-                  }),
-                },
-              ],
-            }
-          : null,
+        Platform.OS === 'android' ? keyboardLiftStyle : null,
       ]}
     >
       <ChatComposer
@@ -2356,6 +2283,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: DARK_BG,
+  },
+  olderMessagesLoader: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
   },
 
   // Header bits

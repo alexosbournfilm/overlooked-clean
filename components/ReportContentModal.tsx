@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Modal,
   Platform,
   Pressable,
@@ -14,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { REPORT_REASONS, ReportReason } from '../app/utils/reportContent';
 import { useAppTheme } from '../app/context/ThemeContext';
+import { useKeyboardLift } from '../app/utils/useKeyboardLift';
 
 const GOLD = '#C6A664';
 const TEXT = '#F4EFE6';
@@ -56,6 +58,11 @@ export default function ReportContentModal({
   const { colors, isLight } = useAppTheme();
   const goldSoft = isLight ? 'rgba(158,119,40,0.10)' : 'rgba(198,166,100,0.11)';
   const goldBorder = isLight ? 'rgba(158,119,40,0.24)' : 'rgba(198,166,100,0.22)';
+  const { keyboardLiftStyle } = useKeyboardLift({
+    enabled: Platform.OS === 'android' && visible,
+    extraSpacing: 8,
+    maxLift: 260,
+  });
 
   return (
     <Modal
@@ -68,7 +75,13 @@ export default function ReportContentModal({
       <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>
         <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
 
-        <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border, shadowColor: colors.shadow }]}>
+        <Animated.View
+          style={[
+            styles.sheet,
+            Platform.OS === 'android' ? keyboardLiftStyle : null,
+            { backgroundColor: colors.card, borderColor: colors.border, shadowColor: colors.shadow },
+          ]}
+        >
           <View style={[styles.handle, { backgroundColor: colors.borderStrong }]} />
 
           <View style={styles.header}>
@@ -138,7 +151,7 @@ export default function ReportContentModal({
               <Text style={[styles.submitText, { color: colors.textOnPrimary }]}>Send Report</Text>
             )}
           </TouchableOpacity>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

@@ -70,8 +70,8 @@ export default function SettingsButton({ absolute = true, topOffset = 16, rightO
           pointerEvents="none"
           style={{
             position: 'absolute',
-            top: -5,
-            right: -6,
+            top: 1,
+            right: 1,
             minWidth: 18,
             height: 18,
             borderRadius: 999,

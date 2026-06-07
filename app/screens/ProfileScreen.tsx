@@ -54,6 +54,7 @@ import { blockUser } from '../utils/blockUser';
 import { validateMultipleSafeTexts, validateSafeText } from '../utils/moderation';
 import ReportContentModal from '../../components/ReportContentModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useKeyboardLift } from '../utils/useKeyboardLift';
 
 /* ---------- Noir palette ---------- */
 const GOLD = '#C6A664';
@@ -1222,6 +1223,100 @@ interface LevelRow {
   min_xp: number;
 }
 
+type WorkshopPathKey =
+  | 'acting'
+  | 'selftape'
+  | 'editing'
+  | 'cinematography'
+  | 'directing'
+  | 'sound'
+  | 'filmmaker';
+
+type ProfileWorkshopAchievement = {
+  pathKey: WorkshopPathKey;
+  pathLabel: string;
+  chapterIndex: number;
+  chapterNumber: number;
+  chapterTitle: string;
+  badgeTitle: string;
+  detail: string;
+  color: string;
+};
+
+const PROFILE_WORKSHOP_PATH_META: Record<WorkshopPathKey, { label: string; color: string }> = {
+  acting: { label: 'Acting', color: '#D7B46A' },
+  selftape: { label: 'Self Tape', color: '#CDA7F2' },
+  editing: { label: 'Editing', color: '#8EC7FF' },
+  cinematography: { label: 'Cinematography', color: '#7FD4B0' },
+  directing: { label: 'Directing', color: '#F2A36F' },
+  sound: { label: 'Sound', color: '#A8D66D' },
+  filmmaker: { label: 'Filmmaker', color: '#E6D28A' },
+};
+
+const PROFILE_WORKSHOP_CHAPTERS: Record<WorkshopPathKey, string[]> = {
+  acting: ['Foundations', 'Emotional Control', 'Conflict & Presence', 'Performance Mastery'],
+  selftape: ['Self Tape Foundations', 'Performance for Self Tape', 'Technical Polish', 'Audition Mastery'],
+  editing: ['Foundations', 'Rhythm & Tension', 'Story Through the Cut', 'Editorial Mastery'],
+  cinematography: ['Framing & Light', 'Mood & Perspective', 'Visual Tension', 'Cinematic Control'],
+  directing: ['Blocking & Intention', 'Performance Direction', 'Power & Scene Design', 'Directorial Mastery'],
+  sound: ['Atmosphere & Detail', 'Tension & Space', 'Sonic Storytelling', 'Sound Mastery'],
+  filmmaker: ['Core Craft', 'Scene Building', 'Voice & Collaboration', 'Complete Filmmaker'],
+};
+
+function toWorkshopPathKey(value: unknown): WorkshopPathKey | null {
+  const key = String(value || '').trim().toLowerCase() as WorkshopPathKey;
+  return key && PROFILE_WORKSHOP_PATH_META[key] ? key : null;
+}
+
+function buildWorkshopAchievement(rows: any[]): ProfileWorkshopAchievement | null {
+  const byPath = new Map<WorkshopPathKey, Map<number, number>>();
+
+  rows.forEach((row) => {
+    const pathKey = toWorkshopPathKey(row?.path_key);
+    const step = Number(row?.step);
+    if (!pathKey || !Number.isFinite(step) || step < 1) return;
+
+    const completedAt = row?.created_at ? new Date(row.created_at).getTime() : 0;
+    if (!byPath.has(pathKey)) byPath.set(pathKey, new Map());
+    byPath.get(pathKey)!.set(step, Number.isFinite(completedAt) ? completedAt : 0);
+  });
+
+  const completed: Array<ProfileWorkshopAchievement & { score: number }> = [];
+
+  byPath.forEach((steps, pathKey) => {
+    for (let chapterIndex = 0; chapterIndex < 4; chapterIndex += 1) {
+      const start = chapterIndex * 10 + 1;
+      const requiredSteps = Array.from({ length: 10 }, (_, index) => start + index);
+      if (!requiredSteps.every((step) => steps.has(step))) continue;
+
+      const meta = PROFILE_WORKSHOP_PATH_META[pathKey];
+      const chapterNumber = chapterIndex + 1;
+      const chapterTitle = PROFILE_WORKSHOP_CHAPTERS[pathKey][chapterIndex] || `Chapter ${chapterNumber}`;
+      const latestStepTime = Math.max(...requiredSteps.map((step) => steps.get(step) || 0));
+
+      completed.push({
+        pathKey,
+        pathLabel: meta.label,
+        chapterIndex,
+        chapterNumber,
+        chapterTitle,
+        badgeTitle: `${meta.label} Chapter ${chapterNumber} Complete`,
+        detail: chapterTitle,
+        color: meta.color,
+        score: latestStepTime || chapterNumber,
+      });
+    }
+  });
+
+  completed.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.chapterIndex !== a.chapterIndex) return b.chapterIndex - a.chapterIndex;
+    return a.pathLabel.localeCompare(b.pathLabel);
+  });
+
+  return completed[0] ?? null;
+}
+
 /* ---------- level-based ring colors ---------- */
 const LEVEL_RING_STEPS = [
   { max: 24, color: '#E0E0EA' },
@@ -1500,6 +1595,14 @@ const [sideRoleSearchFocused, setSideRoleSearchFocused] = useState(false);
   const [submissionCommentsExpanded, setSubmissionCommentsExpanded] = useState(false);
   const submissionWatchScrollRef = useRef<ScrollView | null>(null);
   const submissionCommentInputRef = useRef<TextInput | null>(null);
+  const {
+    keyboardVisible: submissionKeyboardVisible,
+    keyboardLift: submissionKeyboardLift,
+    keyboardLiftStyle: submissionKeyboardLiftStyle,
+  } = useKeyboardLift({
+    enabled: Platform.OS === 'android' && submissionModalOpen && submissionCommentsExpanded,
+    extraSpacing: 8,
+  });
   const [thumbUploadingId, setThumbUploadingId] = useState<string | null>(null);
   const [showreelThumbUploadingId, setShowreelThumbUploadingId] = useState<string | null>(null);
   const [localHiddenSubmissionIds, setLocalHiddenSubmissionIds] = useState<Set<string>>(new Set());
@@ -1693,6 +1796,7 @@ const [showreelModalOpen, setShowreelModalOpen] = useState(false);
   const [displayTitle, setDisplayTitle] = useState<string>(defaultTitle);
   const [displayBannerColor, setDisplayBannerColor] = useState<string>('#FFEDE4');
   const [displayXp, setDisplayXp] = useState<number>(0);
+  const [workshopAchievement, setWorkshopAchievement] = useState<ProfileWorkshopAchievement | null>(null);
 
   /* ---------- gamification meta ---------- */
   const loadGamificationMeta = useCallback(async (pd: ProfileData) => {
@@ -1744,6 +1848,34 @@ if (data) row = data as LevelRow;
     }
   }, []);
 
+  const loadWorkshopAchievement = useCallback(async (targetUserId?: string | null) => {
+    if (!targetUserId) {
+      setWorkshopAchievement(null);
+      return;
+    }
+
+    try {
+      let result = await supabase
+        .from('workshop_progress')
+        .select('path_key, step, created_at')
+        .eq('user_id', targetUserId);
+
+      if (result.error && /created_at/i.test(result.error.message || '')) {
+        result = await supabase
+          .from('workshop_progress')
+          .select('path_key, step')
+          .eq('user_id', targetUserId);
+      }
+
+      if (result.error) throw result.error;
+
+      setWorkshopAchievement(buildWorkshopAchievement((result.data || []) as any[]));
+    } catch (e: any) {
+      console.log('Profile workshop achievement unavailable:', e?.message || e);
+      setWorkshopAchievement(null);
+    }
+  }, []);
+
   /* ---------- warmups ---------- */
 
   const fetchCreativeRoles = async () => {
@@ -1769,6 +1901,7 @@ try {
 
   if (!targetId) {
     setProfile(null);
+    setWorkshopAchievement(null);
     setIsOwnProfile(false);
     setMyJobs([]);
     setUserJobs([]);
@@ -1908,6 +2041,7 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
       }
 
       await loadGamificationMeta(pd);
+      await loadWorkshopAchievement(targetId);
 
       if (blockedByMe || (!own && pd.is_banned)) {
         setPortfolioItems([]);
@@ -1941,7 +2075,7 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
     } finally {
       setIsLoading(false);
     }
- }, [targetIdParam, loadGamificationMeta, authUserId, authReady]);
+ }, [targetIdParam, loadGamificationMeta, loadWorkshopAchievement, authUserId, authReady]);
 
   useEffect(() => {
   fetchProfile();
@@ -4587,6 +4721,7 @@ const renderEditProfileCard = () => {
   const xp = displayXp || 0;
   const ringColor = getRingColorForLevel(level);
   const compactMobile = isMobileLike;
+  const achievement = workshopAchievement;
 
   return (
     <View
@@ -4688,15 +4823,31 @@ paddingHorizontal: compactMobile ? 10 : 0,
       </View>
 
       <View style={{ height: compactMobile ? 0 : 8 }} />
-      <View
-  style={{
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: compactMobile ? 7 : 10,
-    flexWrap: "wrap",
-  }}
->
+      {achievement ? (
+        <View style={styles.profileAchievementMeta}>
+          <View style={styles.profileAchievementTitleRow}>
+            <Ionicons name="trophy-outline" size={13} color={achievement.color} />
+            <Text
+              style={[styles.profileAchievementTitle, { color: achievement.color }]}
+              numberOfLines={1}
+            >
+              {achievement.badgeTitle}
+            </Text>
+          </View>
+          <Text style={[styles.profileAchievementDetail, { color: COLORS.textSecondary }]} numberOfLines={1}>
+            {achievement.detail}
+          </Text>
+        </View>
+      ) : (
+        <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: compactMobile ? 7 : 10,
+      flexWrap: "wrap",
+    }}
+  >
         <Text
           style={{
             color: ringColor,
@@ -4754,7 +4905,8 @@ paddingHorizontal: compactMobile ? 10 : 0,
         >
           {displayTitle || defaultTitle}
         </Text>
-      </View>
+        </View>
+      )}
     </View>
   );
 };
@@ -5066,6 +5218,8 @@ const heroBg = avatarUrl;
   const xp = displayXp || 0;
   const title = (displayTitle || defaultTitle).toUpperCase();
   const ringColor = getRingColorForLevel(level);
+  const achievement = workshopAchievement;
+  const avatarRingColor = achievement?.color || ringColor;
 
   // ✅ Better mobile + mobile-web spacing: clamp hero width + consistent side padding
   const heroPad = isMobileLike ? 0 : 20;
@@ -5271,26 +5425,67 @@ const heroMaxW = isMobileLike ? contentMaxWidth : "100%";
             >
               {/* Avatar */}
               <View style={{ alignItems: "center" }}>
-                <LinearGradient
-                  colors={[ringColor, ringColor]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={[styles.avatarRing, { borderColor: ringColor }]}
-                >
-                  <View style={[styles.avatarInner, isMobileLike && styles.avatarInnerMobile, isCompact && styles.avatarInnerCompact]}>
-                    {avatarUrl ? (
-                      <Image
-  source={{ uri: avatarUrl }}
-  style={styles.avatarImage}
-  resizeMode="cover"
-/>
-                    ) : (
-                      <View style={styles.avatarFallback}>
-                        <Ionicons name="person-outline" size={26} color={COLORS.textSecondary} />
+                <View style={styles.avatarAchievementFrame}>
+                  {achievement ? (
+                    <View pointerEvents="none" style={styles.avatarFestivalLaurels}>
+                      <View style={styles.avatarLaurelLeft}>
+                        {[0, 1, 2].map((item) => (
+                          <Ionicons
+                            key={`left-${item}`}
+                            name="leaf-outline"
+                            size={isCompact ? 15 : 18}
+                            color={avatarRingColor}
+                            style={{ transform: [{ rotate: `${-36 + item * 18}deg` }] }}
+                          />
+                        ))}
                       </View>
-                    )}
+                      <View style={styles.avatarLaurelRight}>
+                        {[0, 1, 2].map((item) => (
+                          <Ionicons
+                            key={`right-${item}`}
+                            name="leaf-outline"
+                            size={isCompact ? 15 : 18}
+                            color={avatarRingColor}
+                            style={{ transform: [{ rotate: `${36 - item * 18}deg` }, { scaleX: -1 }] }}
+                          />
+                        ))}
+                      </View>
+                      <View style={[styles.avatarAwardCrest, { backgroundColor: avatarRingColor }]}>
+                        <Ionicons name="film-outline" size={11} color="#000000" />
+                      </View>
+                    </View>
+                  ) : null}
+                  <LinearGradient
+                    colors={[avatarRingColor, avatarRingColor]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={[styles.avatarRing, { borderColor: avatarRingColor }]}
+                  >
+                    <View style={[styles.avatarInner, isMobileLike && styles.avatarInnerMobile, isCompact && styles.avatarInnerCompact]}>
+                      {avatarUrl ? (
+                        <Image
+    source={{ uri: avatarUrl }}
+    style={styles.avatarImage}
+    resizeMode="cover"
+  />
+                      ) : (
+                        <View style={styles.avatarFallback}>
+                          <Ionicons name="person-outline" size={26} color={COLORS.textSecondary} />
+                        </View>
+                      )}
+                    </View>
+                  </LinearGradient>
+                </View>
+                {achievement && isMobileLike ? (
+                  <View style={styles.mobileAchievementMeta}>
+                    <Text style={[styles.mobileAchievementTitle, { color: avatarRingColor }]} numberOfLines={1}>
+                      {achievement.badgeTitle}
+                    </Text>
+                    <Text style={styles.mobileAchievementDetail} numberOfLines={1}>
+                      {achievement.detail}
+                    </Text>
                   </View>
-                </LinearGradient>
+                ) : null}
               </View>
 
               {/* ✅ DESKTOP ONLY: counts stay here (UPDATED: centered + tighter) */}
@@ -6129,8 +6324,16 @@ const renderSubmissionsSection = () => {
   const profileSoftSurface = isLight ? COLORS.card : "#0B0B0B";
   const profileAltSurface = isLight ? COLORS.cardAlt : "rgba(255,255,255,0.075)";
   const profileSubText = isLight ? COLORS.textSecondary : "rgba(216,210,200,0.62)";
+  const scrollSubmissionComposerIntoView = () => {
+    if (Platform.OS !== 'android') return;
+
+    setTimeout(() => {
+      submissionWatchScrollRef.current?.scrollToEnd({ animated: true });
+    }, 90);
+  };
   const openSubmissionComments = (focusComposer = false) => {
     setSubmissionCommentsExpanded(true);
+    scrollSubmissionComposerIntoView();
     if (focusComposer) {
       setTimeout(() => {
         submissionCommentInputRef.current?.focus();
@@ -6310,48 +6513,51 @@ const renderSubmissionsSection = () => {
         </ScrollView>
       )}
 
-      <View style={styles.profileCommentComposer}>
-        <TextInput
-          ref={submissionCommentInputRef}
-          value={commentText}
-          onChangeText={setCommentText}
-          placeholder={currentUserId ? "Add a comment..." : "Sign in to comment..."}
-          placeholderTextColor={COLORS.textMuted}
-          style={[
-            styles.profileCommentInput,
-            WEB_NO_OUTLINE,
-            {
-              backgroundColor: COLORS.input,
-              borderColor: COLORS.border,
-              color: COLORS.textPrimary,
-            },
-          ]}
-          multiline
-          maxLength={500}
-          onFocus={() => {
-            if (!currentUserId) {
-              promptSignIn('Create an account or sign in to comment on films.');
-            }
-          }}
-        />
-        <TouchableOpacity
-          onPress={submitSubmissionComment}
-          disabled={sendingComment || (!!currentUserId && !commentText.trim())}
-          style={[
-            styles.profileCommentPostBtn,
-            (sendingComment || (!!currentUserId && !commentText.trim())) && { opacity: 0.5 },
-          ]}
-          activeOpacity={0.9}
-        >
-          {sendingComment ? (
-            <ActivityIndicator color="#000" size="small" />
-          ) : (
-            <Text style={styles.profileCommentPostText}>
-              {currentUserId ? "Post" : "Sign In"}
-            </Text>
-          )}
-        </TouchableOpacity>
-      </View>
+      <Animated.View style={Platform.OS === 'android' ? submissionKeyboardLiftStyle : null}>
+        <View style={styles.profileCommentComposer}>
+          <TextInput
+            ref={submissionCommentInputRef}
+            value={commentText}
+            onChangeText={setCommentText}
+            placeholder={currentUserId ? "Add a comment..." : "Sign in to comment..."}
+            placeholderTextColor={COLORS.textMuted}
+            style={[
+              styles.profileCommentInput,
+              WEB_NO_OUTLINE,
+              {
+                backgroundColor: COLORS.input,
+                borderColor: COLORS.border,
+                color: COLORS.textPrimary,
+              },
+            ]}
+            multiline
+            maxLength={500}
+            onFocus={() => {
+              scrollSubmissionComposerIntoView();
+              if (!currentUserId) {
+                promptSignIn('Create an account or sign in to comment on films.');
+              }
+            }}
+          />
+          <TouchableOpacity
+            onPress={submitSubmissionComment}
+            disabled={sendingComment || (!!currentUserId && !commentText.trim())}
+            style={[
+              styles.profileCommentPostBtn,
+              (sendingComment || (!!currentUserId && !commentText.trim())) && { opacity: 0.5 },
+            ]}
+            activeOpacity={0.9}
+          >
+            {sendingComment ? (
+              <ActivityIndicator color="#000" size="small" />
+            ) : (
+              <Text style={styles.profileCommentPostText}>
+                {currentUserId ? "Post" : "Sign In"}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
     </View>
   );
 
@@ -6535,7 +6741,9 @@ const renderSubmissionsSection = () => {
               {
                 paddingHorizontal: watchPagePadX,
                 paddingTop: watchPagePadTop,
-                paddingBottom: Math.max(insets.bottom + 30, 48),
+                paddingBottom:
+                  Math.max(insets.bottom + 30, 48) +
+                  (submissionKeyboardVisible ? submissionKeyboardLift + 28 : 0),
                 backgroundColor: watchSurface,
               },
             ]}
@@ -8414,6 +8622,77 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  avatarAchievementFrame: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "visible",
+  },
+  avatarFestivalLaurels: {
+    position: "absolute",
+    top: -14,
+    left: -24,
+    right: -24,
+    bottom: -12,
+    zIndex: 2,
+    elevation: 2,
+    pointerEvents: "none",
+  },
+  avatarLaurelLeft: {
+    position: "absolute",
+    left: -2,
+    top: 15,
+    gap: 1,
+    alignItems: "center",
+  },
+  avatarLaurelRight: {
+    position: "absolute",
+    right: -2,
+    top: 15,
+    gap: 1,
+    alignItems: "center",
+  },
+  avatarAwardCrest: {
+    position: "absolute",
+    left: "50%",
+    top: 0,
+    width: 22,
+    height: 22,
+    marginLeft: -11,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.38)",
+  },
+  mobileAchievementMeta: {
+    marginTop: 7,
+    maxWidth: 160,
+    alignItems: "center",
+  },
+  mobileAchievementTitle: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 9.5,
+    lineHeight: 12,
+    fontWeight: "900",
+    letterSpacing: 0.7,
+    textTransform: "uppercase",
+    textAlign: "center",
+    textShadowColor: "rgba(0,0,0,0.65)",
+    textShadowRadius: 6,
+  },
+  mobileAchievementDetail: {
+    marginTop: 2,
+    maxWidth: 160,
+    color: "rgba(255,255,255,0.76)",
+    fontFamily: FONT_OBLIVION,
+    fontSize: 9,
+    lineHeight: 11,
+    letterSpacing: 0.2,
+    textAlign: "center",
+    textShadowColor: "rgba(0,0,0,0.65)",
+    textShadowRadius: 6,
+  },
   utilityCard: {
     backgroundColor: "transparent",
     borderWidth: 0,
@@ -8430,6 +8709,36 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     flexWrap: "wrap",
+  },
+  profileAchievementMeta: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    paddingHorizontal: 8,
+  },
+  profileAchievementTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    maxWidth: "100%",
+  },
+  profileAchievementTitle: {
+    flexShrink: 1,
+    minWidth: 0,
+    fontSize: 11,
+    lineHeight: 14,
+    fontFamily: FONT_OBLIVION,
+    letterSpacing: 0.8,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  profileAchievementDetail: {
+    fontSize: 10,
+    lineHeight: 13,
+    fontFamily: FONT_OBLIVION,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
   },
   profilePrimaryAction: {
     minHeight: 44,
