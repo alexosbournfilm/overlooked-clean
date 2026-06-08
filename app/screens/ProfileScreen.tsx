@@ -141,6 +141,15 @@ const SHOWREEL_CATEGORIES = [
 
 type ShowreelCategory = typeof SHOWREEL_CATEGORIES[number];
 
+const SHOWREEL_CATEGORY_META: Record<ShowreelCategory, { icon: string; detail: string }> = {
+  Acting: { icon: 'videocam-outline', detail: 'Performance reel' },
+  Editing: { icon: 'cut-outline', detail: 'Cuts and pacing' },
+  Directing: { icon: 'megaphone-outline', detail: 'Scene command' },
+  Sound: { icon: 'mic-outline', detail: 'Audio craft' },
+  Cinematography: { icon: 'aperture-outline', detail: 'Camera and light' },
+  'All-in-one Filmmaker': { icon: 'sparkles-outline', detail: 'Full authorship' },
+};
+
 /* ---------- helpers ---------- */
 const sanitizeFileName = (name: string) => name.replace(/[^\w.\-]+/g, '_').slice(-120);
 const ts = () => `?t=${Date.now()}`;
@@ -149,6 +158,80 @@ const addBuster = (url?: string | null) =>
 const stripBuster = (url?: string | null) => (url ? url.replace(/[?&]t=\d+$/, '') : url);
 
 const ONE_GB = 1024 * 1024 * 1024;
+
+async function pickWebShowreelFile(): Promise<File | null> {
+  if (Platform.OS !== 'web') return null;
+
+  return new Promise((resolve) => {
+    try {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.mp4,video/mp4';
+      input.style.display = 'none';
+
+      input.onchange = () => {
+        const file = input.files?.[0] ?? null;
+
+        try {
+          document.body.removeChild(input);
+        } catch {}
+
+        resolve(file);
+      };
+
+      input.oncancel = () => {
+        try {
+          document.body.removeChild(input);
+        } catch {}
+
+        resolve(null);
+      };
+
+      document.body.appendChild(input);
+      input.click();
+    } catch (err) {
+      console.warn('pickWebShowreelFile failed:', err);
+      resolve(null);
+    }
+  });
+}
+
+async function pickWebImageFile(): Promise<File | null> {
+  if (Platform.OS !== 'web') return null;
+
+  return new Promise((resolve) => {
+    try {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.style.display = 'none';
+
+      input.onchange = () => {
+        const file = input.files?.[0] ?? null;
+
+        try {
+          document.body.removeChild(input);
+        } catch {}
+
+        resolve(file);
+      };
+
+      input.oncancel = () => {
+        try {
+          document.body.removeChild(input);
+        } catch {}
+
+        resolve(null);
+      };
+
+      document.body.appendChild(input);
+      input.click();
+    } catch (err) {
+      console.warn('pickWebImageFile failed:', err);
+      resolve(null);
+    }
+  });
+}
 
 const looksLikeVideo = (u: string) => {
   const s = (u || "").toLowerCase();
@@ -246,16 +329,19 @@ async function uploadResumableToBucket(opts: {
 
   let file: Blob;
   let type = contentType || 'video/mp4';
+  let uploadSize: number | undefined;
 
   if (fileBlob) {
     file = fileBlob as Blob;
     // @ts-ignore
     if ((fileBlob as any)?.type) type = (fileBlob as any).type as string;
+    if (typeof (fileBlob as any)?.size === 'number') uploadSize = (fileBlob as any).size;
   } else if (localUri) {
     const resp = await fetch(localUri);
     file = await resp.blob();
     // @ts-ignore
     if ((file as any)?.type) type = (file as any).type as string;
+    if (typeof (file as any)?.size === 'number') uploadSize = (file as any).size;
   } else {
     throw new Error('No file to upload');
   }
@@ -289,12 +375,31 @@ async function uploadResumableToBucket(opts: {
         contentType: type,
         cacheControl: '3600',
       },
+      uploadSize,
       onProgress: (sent, total) => {
         if (!total) return;
         const pct = Math.max(0, Math.min(100, Math.round((sent / total) * 100)));
         onProgress?.(pct);
       },
-      onError: (err) => reject(err),
+      onError: (err: any) => {
+        try {
+          const res = err?.originalResponse;
+          const status =
+            res?.getStatus?.() ??
+            res?.getStatusCode?.() ??
+            res?.status ??
+            err?.originalResponse?.status;
+          const body =
+            res?.getBody?.() ??
+            res?.responseText ??
+            err?.originalResponse?.responseText ??
+            '';
+          const detail = String(body || '').slice(0, 350);
+          reject(new Error(`Upload failed (${status || 'unknown'}): ${detail || err?.message || 'Unknown error'}`));
+        } catch {
+          reject(err);
+        }
+      },
       onSuccess: () => resolve({ path: finalObjectName, contentType: type }),
     });
 
@@ -375,45 +480,20 @@ const showreelInflight = new Map<string, Promise<string>>();
 async function signShowreelPath(pathOrUrl: string, expiresInSec = 3600): Promise<string> {
   if (!pathOrUrl) throw new Error("Missing showreel path");
 
-  const stripQuery = (u: string) => (u ? u.split("?")[0] : u);
-
-  const pathFromSupabaseUrl = (u: string) => {
-    const clean = stripQuery(u);
-    const m = clean.match(/\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/);
-    if (!m) return null;
-    return { bucket: m[1], path: m[2] };
-  };
-
   const now = Date.now();
   const cached = showreelSignedUrlCache.get(pathOrUrl);
   if (cached && now < cached.exp - 30_000) return cached.url;
   if (showreelInflight.has(pathOrUrl)) return showreelInflight.get(pathOrUrl)!;
 
   const p = (async () => {
-    // Case 1: already a Supabase public URL -> convert it to a signed URL
+    // Case 1: already a playable URL. Keep it direct so playback can start immediately after a tap.
     if (/^https?:\/\//i.test(pathOrUrl)) {
-      const parsed = pathFromSupabaseUrl(pathOrUrl);
-
-      if (!parsed) {
-        showreelInflight.delete(pathOrUrl);
-        return pathOrUrl;
-      }
-
-      const { data, error } = await supabase.storage
-        .from(parsed.bucket)
-        .createSignedUrl(parsed.path, expiresInSec);
-
-      if (error || !data?.signedUrl) {
-        showreelInflight.delete(pathOrUrl);
-        throw error ?? new Error("Failed to sign showreel URL");
-      }
-
       showreelSignedUrlCache.set(pathOrUrl, {
-        url: data.signedUrl,
+        url: pathOrUrl,
         exp: now + expiresInSec * 1000,
       });
       showreelInflight.delete(pathOrUrl);
-      return data.signedUrl;
+      return pathOrUrl;
     }
 
     // Case 2: raw storage path -> sign from portfolios bucket
@@ -482,7 +562,6 @@ function ShowreelVideoInline({
   const [isPlaying, setIsPlaying] = useState(false);
   const [playerChromeVisible, setPlayerChromeVisible] = useState(false);
   const playerChromeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [pendingShowreelThumbs, setPendingShowreelThumbs] = useState<Record<string, any>>({});
 
   const [duration, setDuration] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -847,6 +926,8 @@ function ShowreelVideoInline({
             }}
             loop
             playsInline
+            autoPlay={autoPlay}
+            muted={muted}
             preload="auto"
             controls={false}
             // @ts-ignore
@@ -854,6 +935,9 @@ function ShowreelVideoInline({
             disablePictureInPicture
             onContextMenu={(e: any) => e.preventDefault()}
             onLoadedMetadata={onWebLoadedMeta}
+            onCanPlay={() => {
+              if (autoPlay) void play(true);
+            }}
             onTimeUpdate={onWebTimeUpdate}
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
@@ -1024,10 +1108,6 @@ interface ShowreelRow {
   thumbnail_url: string | null;
   is_primary: boolean | null;
   sort_order?: number | null;
-    mux_upload_id?: string | null;
-  mux_asset_id?: string | null;
-  mux_playback_id?: string | null;
-  mux_status?: string | null;
   created_at: string;
   url: string;
 }
@@ -1786,17 +1866,35 @@ const [sideRoleSearchFocused, setSideRoleSearchFocused] = useState(false);
   const [srStatus, setSrStatus] = useState('');
   const [showreelCategoryModalVisible, setShowreelCategoryModalVisible] = useState(false);
   const [pendingShowreelAsset, setPendingShowreelAsset] = useState<any | null>(null);
+  const [pendingShowreelPreviewUri, setPendingShowreelPreviewUri] = useState<string | null>(null);
+  const [pendingShowreelThumbAsset, setPendingShowreelThumbAsset] = useState<any | null>(null);
+  const [pendingShowreelThumbPreviewUri, setPendingShowreelThumbPreviewUri] = useState<string | null>(null);
+  const [pendingShowreelError, setPendingShowreelError] = useState('');
+  const [showreelUploadNotice, setShowreelUploadNotice] = useState('');
+  const pendingShowreelObjectUrlRef = useRef<string | null>(null);
+  const pendingShowreelThumbObjectUrlRef = useRef<string | null>(null);
   const [selectedShowreelCategory, setSelectedShowreelCategory] =
     useState<ShowreelCategory>('Acting');
-    const [pendingShowreelThumbs, setPendingShowreelThumbs] = useState<Record<string, any>>({});
-    const [activeShowreel, setActiveShowreel] = useState<ShowreelRow | null>(null);
-const showreelModalCleanupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-const [showreelModalOpen, setShowreelModalOpen] = useState(false);
+  const [pendingShowreelThumbs, setPendingShowreelThumbs] = useState<Record<string, any>>({});
+  const [activeShowreel, setActiveShowreel] = useState<ShowreelRow | null>(null);
+  const [showreelPlaybackKey, setShowreelPlaybackKey] = useState(0);
+  const showreelModalCleanupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showreelModalOpen, setShowreelModalOpen] = useState(false);
 
   useEffect(() => {
     return () => {
       if (submissionModalCleanupRef.current) clearTimeout(submissionModalCleanupRef.current);
       if (showreelModalCleanupRef.current) clearTimeout(showreelModalCleanupRef.current);
+      if (pendingShowreelObjectUrlRef.current) {
+        try {
+          URL.revokeObjectURL(pendingShowreelObjectUrlRef.current);
+        } catch {}
+      }
+      if (pendingShowreelThumbObjectUrlRef.current) {
+        try {
+          URL.revokeObjectURL(pendingShowreelThumbObjectUrlRef.current);
+        } catch {}
+      }
     };
   }, []);
 
@@ -2121,21 +2219,6 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
     return;
   }
 
-  const isMuxReady = (status?: string | null) => {
-    const s = String(status || '').toLowerCase();
-    return s === 'ready' || s === 'asset_ready' || s === 'playable';
-  };
-
-  const getMuxPlaybackUrl = (playbackId?: string | null) => {
-    if (!playbackId) return null;
-    return `https://stream.mux.com/${playbackId}.m3u8`;
-  };
-
-  const getMuxThumbnailUrl = (playbackId?: string | null) => {
-    if (!playbackId) return null;
-    return `https://image.mux.com/${playbackId}/thumbnail.jpg`;
-  };
-
   const rows: ShowreelRow[] = (data || []).map((row: any) => {
   const storageUrl =
     row.file_path
@@ -2161,6 +2244,107 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
   setShowreels(rows.slice(0, 3));
 };
 
+  const releasePendingShowreelObjectUrls = () => {
+    if (pendingShowreelObjectUrlRef.current) {
+      try {
+        URL.revokeObjectURL(pendingShowreelObjectUrlRef.current);
+      } catch {}
+      pendingShowreelObjectUrlRef.current = null;
+    }
+
+    if (pendingShowreelThumbObjectUrlRef.current) {
+      try {
+        URL.revokeObjectURL(pendingShowreelThumbObjectUrlRef.current);
+      } catch {}
+      pendingShowreelThumbObjectUrlRef.current = null;
+    }
+  };
+
+  const clearPendingShowreelDraft = () => {
+    releasePendingShowreelObjectUrls();
+    setPendingShowreelAsset(null);
+    setPendingShowreelPreviewUri(null);
+    setPendingShowreelThumbAsset(null);
+    setPendingShowreelThumbPreviewUri(null);
+    setPendingShowreelError('');
+  };
+
+  const getShowreelPreviewUri = (asset: any) => {
+    if (Platform.OS === 'web' && asset?.file) {
+      const objUrl = URL.createObjectURL(asset.file as File);
+      pendingShowreelObjectUrlRef.current = objUrl;
+      return objUrl;
+    }
+
+    return asset?.uri || null;
+  };
+
+  const pickShowreelAsset = async () => {
+    if (Platform.OS === 'web') {
+      const file = await pickWebShowreelFile();
+      if (!file) return null;
+
+      return {
+        file,
+        name: file.name || `showreel_${Date.now()}.mp4`,
+        mimeType: file.type || 'video/mp4',
+        size: file.size,
+      };
+    }
+
+    const pick = await DocumentPicker.getDocumentAsync({
+      type: ['video/mp4'],
+      multiple: false,
+      copyToCacheDirectory: true,
+    });
+
+    if (pick.canceled || !pick.assets?.length) return null;
+    return pick.assets[0];
+  };
+
+  const pickPendingShowreelThumbnail = async () => {
+    try {
+      let asset: any | null = null;
+
+      if (Platform.OS === 'web') {
+        const file = await pickWebImageFile();
+        if (!file) return;
+        const objUrl = URL.createObjectURL(file);
+
+        if (pendingShowreelThumbObjectUrlRef.current) {
+          try {
+            URL.revokeObjectURL(pendingShowreelThumbObjectUrlRef.current);
+          } catch {}
+        }
+
+        pendingShowreelThumbObjectUrlRef.current = objUrl;
+        asset = {
+          file,
+          name: file.name || `showreel_thumb_${Date.now()}.jpg`,
+          mimeType: file.type || 'image/jpeg',
+          uri: objUrl,
+        };
+        setPendingShowreelThumbPreviewUri(objUrl);
+      } else {
+        const pick = await DocumentPicker.getDocumentAsync({
+          type: ['image/*'] as any,
+          multiple: false,
+          copyToCacheDirectory: true,
+        });
+
+        if (pick.canceled || !pick.assets?.length) return;
+        asset = pick.assets[0];
+        setPendingShowreelThumbPreviewUri(asset?.uri || null);
+      }
+
+      setPendingShowreelThumbAsset(asset);
+      setPendingShowreelError('');
+    } catch (e: any) {
+      console.warn('pickPendingShowreelThumbnail failed:', e?.message ?? e);
+      setPendingShowreelError(e?.message ?? 'Could not pick thumbnail.');
+    }
+  };
+
   const uploadAnotherShowreel = async () => {
     try {
       if (showreels.length >= 3) {
@@ -2168,17 +2352,15 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
         return;
       }
 
-      const pick = await DocumentPicker.getDocumentAsync({
-        type: ['video/mp4'],
-        multiple: false,
-        copyToCacheDirectory: true,
-      });
-      if (pick.canceled || !pick.assets?.length) return;
+      const asset: any = await pickShowreelAsset();
+      if (!asset) return;
 
-      const asset: any = pick.assets[0];
-      const name = (asset.name || '').toLowerCase();
-      const mime = (asset.mime_type || asset.mimeType || '').toLowerCase() || 'video/mp4';
-      const size = asset.size ?? asset.fileSize ?? asset.bytes ?? null;
+      const name = String(asset.name || asset.fileName || '').toLowerCase();
+      const mime =
+        String(asset.mime_type || asset.mimeType || asset.file?.type || '').toLowerCase() ||
+        'video/mp4';
+      const rawSize = asset.size ?? asset.fileSize ?? asset.bytes ?? asset.file?.size ?? null;
+      const size = typeof rawSize === 'number' ? rawSize : rawSize ? Number(rawSize) : null;
 
       const isMp4 = name.endsWith('.mp4') || mime === 'video/mp4';
 
@@ -2191,8 +2373,14 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
         return;
       }
 
+      clearPendingShowreelDraft();
+      const previewUri = getShowreelPreviewUri(asset);
+
       setPendingShowreelAsset(asset);
+      setPendingShowreelPreviewUri(previewUri);
       setSelectedShowreelCategory('Acting');
+      setShowreelUploadNotice('');
+      setShowEditModal(true);
       setShowreelCategoryModalVisible(true);
     } catch (e: any) {
       console.warn('uploadAnotherShowreel failed:', e?.message ?? e);
@@ -2201,117 +2389,172 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
   };
 
   const confirmUploadShowreel = async () => {
-  try {
-    if (!pendingShowreelAsset) return;
+    let createdShowreelId: string | null = null;
+    let uploadedVideoPath: string | null = null;
+    let uploadedThumbPath: string | null = null;
 
-    const asset: any = pendingShowreelAsset;
-    const name = (asset.name || '').toLowerCase();
-
-    setShowreelCategoryModalVisible(false);
-    setSrUploading(true);
-    setSrProgress(0);
-    setSrStatus('Preparing…');
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) throw new Error('Not authenticated');
-
-    const { path } = await uploadResumableToBucket({
-      userId: user.id,
-      fileBlob:
-        Platform.OS === 'web' ? ((asset.file as File | Blob | null) ?? undefined) : undefined,
-      localUri: Platform.OS !== 'web' ? (asset.uri as string) : undefined,
-      onProgress: (pct) => setSrProgress(pct),
-      onPhase: (label) => setSrStatus(label),
-      objectName: `user_${user.id}/${Date.now()}_${sanitizeFileName(name || 'showreel')}`,
-      bucket: SHOWREEL_BUCKET,
-    });
-
-    console.log('[SHOWREEL] storage upload complete, path =', path);
-
-    const currentCount = showreels.length;
-    const makePrimary = currentCount === 0;
-
-    const insertPayload = {
-  user_id: user.id,
-  file_path: path,
-  title: asset.name || selectedShowreelCategory,
-  category: selectedShowreelCategory,
-  thumbnail_url: null,
-  is_primary: makePrimary,
-  sort_order: currentCount,
-};
-
-    console.log('[SHOWREEL] inserting row into user_showreels:', insertPayload);
-
-    const { data: ins, error: insErr } = await supabase
-      .from('user_showreels')
-      .insert(insertPayload)
-      .select('*')
-      .single();
-
-    if (insErr) {
-      console.error('[SHOWREEL] insert failed:', insErr);
-      throw insErr;
-    }
-
-    if (!ins) {
-      throw new Error('Insert succeeded but no row was returned from user_showreels.');
-    }
-
-    console.log('[SHOWREEL] insert success:', ins);
-
-    if (makePrimary) {
-      const publicUrl =
-        ins.mux_playback_id
-          ? `https://stream.mux.com/${ins.mux_playback_id}.m3u8`
-          : path
-          ? supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(path).data.publicUrl
-          : null;
-
-      if (!publicUrl) {
-        throw new Error('No playable URL found for the uploaded showreel.');
+    try {
+      if (!pendingShowreelAsset) return;
+      if (!pendingShowreelThumbAsset) {
+        setPendingShowreelError('Add a thumbnail before uploading your showreel.');
+        return;
       }
 
-      const { error: profileErr } = await supabase
-        .from('users')
-        .update({ portfolio_url: publicUrl })
-        .eq('id', user.id);
+      const asset: any = pendingShowreelAsset;
+      const originalName = asset.name || asset.fileName || 'Showreel.mp4';
+      const contentType = asset.mime_type || asset.mimeType || asset.file?.type || 'video/mp4';
+      const cleanBaseName =
+        sanitizeFileName(String(originalName).replace(/\.[^.]+$/, '')) || 'showreel';
 
-      if (profileErr) {
-        console.error('[SHOWREEL] users.portfolio_url update failed:', profileErr);
-        throw profileErr;
+      setShowEditModal(true);
+      setShowreelCategoryModalVisible(false);
+      setSrUploading(true);
+      setSrProgress(0);
+      setSrStatus('Preparing upload…');
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) throw new Error('Not authenticated');
+
+      setSrStatus(
+        Platform.OS === 'web'
+          ? 'Uploading to Overlooked… This can take a while for large files.'
+          : 'Uploading to Overlooked… Please keep the app open.'
+      );
+
+      const { path } = await uploadResumableToBucket({
+        userId: user.id,
+        fileBlob:
+          Platform.OS === 'web' ? ((asset.file as File | Blob | null) ?? undefined) : undefined,
+        localUri: Platform.OS !== 'web' ? (asset.uri as string) : undefined,
+        onProgress: (pct) => setSrProgress(pct),
+        onPhase: (label) => {
+          if (label === 'Uploading file…') {
+            setSrStatus(
+              Platform.OS === 'web'
+                ? 'Uploading to Overlooked… This can take a while for large files.'
+                : 'Uploading to Overlooked… Please keep the app open.'
+            );
+          } else {
+            setSrStatus(label);
+          }
+        },
+        objectName: `user_${user.id}/${Date.now()}_${cleanBaseName}`,
+        bucket: SHOWREEL_BUCKET,
+        contentType,
+      });
+
+      uploadedVideoPath = path;
+
+      const currentCount = showreels.length;
+      const makePrimary = currentCount === 0;
+
+      setSrProgress(100);
+      setSrStatus('Saving showreel…');
+
+      const insertPayload = {
+        user_id: user.id,
+        file_path: path,
+        title: originalName || selectedShowreelCategory,
+        category: selectedShowreelCategory,
+        thumbnail_url: null,
+        is_primary: makePrimary,
+        sort_order: currentCount,
+      };
+
+      console.log('[SHOWREEL] inserting row into user_showreels:', insertPayload);
+
+      const { data: ins, error: insErr } = await supabase
+        .from('user_showreels')
+        .insert(insertPayload)
+        .select('*')
+        .single();
+
+      if (insErr) {
+        console.error('[SHOWREEL] insert failed:', insErr);
+        throw insErr;
       }
 
-      setMp4MainUrl(`${publicUrl}${ts()}`);
-      setMp4MainName(asset.name || 'Showreel.mp4');
+      if (!ins?.id) {
+        throw new Error('Showreel was uploaded, but no row ID was returned.');
+      }
+
+      createdShowreelId = ins.id;
+
+      setSrStatus('Uploading thumbnail…');
+
+      const thumbRes = await uploadShowreelThumbToStorage({
+        userId: user.id,
+        showreelId: ins.id,
+        asset: pendingShowreelThumbAsset,
+        bucket: THUMB_BUCKET,
+      });
+
+      uploadedThumbPath = thumbRes.path;
+
+      const { error: thumbUpdateError } = await supabase
+        .from('user_showreels')
+        .update({ thumbnail_url: thumbRes.publicUrl })
+        .eq('id', ins.id)
+        .eq('user_id', user.id);
+
+      if (thumbUpdateError) throw thumbUpdateError;
+
+      const publicUrl = supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(path).data.publicUrl;
+
+      if (makePrimary && publicUrl) {
+        await supabase.from('users').update({ portfolio_url: publicUrl }).eq('id', user.id);
+        setMp4MainUrl(`${publicUrl}${ts()}`);
+        setMp4MainName(originalName || selectedShowreelCategory || 'Showreel.mp4');
+      }
+
+      setSrStatus('Refreshing profile…');
+
+      await fetchShowreelList(user.id);
+      await fetchProfile();
+      setShowEditModal(true);
+      clearPendingShowreelDraft();
+      setShowreelUploadNotice(
+        'Upload complete. It may take a little time before the showreel appears on your profile.'
+      );
+      setSrStatus('Upload complete.');
+    } catch (e: any) {
+      console.error('[SHOWREEL] confirmUploadShowreel failed:', e);
+      const message = e?.message ?? 'Could not upload video.';
+      setSrStatus(`Upload failed: ${message}`);
+
+      if (createdShowreelId) {
+        try {
+          await supabase.from('user_showreels').delete().eq('id', createdShowreelId);
+        } catch {}
+      }
+
+      if (uploadedVideoPath) {
+        try {
+          await supabase.storage.from(SHOWREEL_BUCKET).remove([uploadedVideoPath]);
+        } catch {}
+      }
+
+      if (uploadedThumbPath) {
+        try {
+          await supabase.storage.from(THUMB_BUCKET).remove([uploadedThumbPath]);
+        } catch {}
+      }
+
+      if (pendingShowreelAsset) {
+        setPendingShowreelError(message);
+        setShowEditModal(true);
+        setShowreelCategoryModalVisible(true);
+      }
+
+      Alert.alert('Upload failed', message);
+    } finally {
+      setSrUploading(false);
+      setTimeout(() => setSrStatus(''), 1200);
     }
-
-    setPendingShowreelAsset(null);
-
-    await fetchShowreelList(user.id);
-    await fetchProfile();
-
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.alert('Showreel uploaded successfully.');
-    } else {
-      Alert.alert('Uploaded', 'Showreel added.');
-    }
-  } catch (e: any) {
-    console.error('[SHOWREEL] confirmUploadShowreel failed:', e);
-
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.alert(`Upload failed: ${e?.message ?? 'Could not upload video.'}`);
-    } else {
-      Alert.alert('Upload failed', e?.message ?? 'Could not upload video.');
-    }
-  } finally {
-    setSrUploading(false);
-    setTimeout(() => setSrStatus(''), 1200);
-  }
-};
+  };
 
   const setPrimaryShowreel = async (row: ShowreelRow) => {
     try {
@@ -2320,22 +2563,9 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
       } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const isMuxReady = (status?: string | null) => {
-  const s = String(status || '').toLowerCase();
-  return s === 'ready' || s === 'asset_ready' || s === 'playable';
-};
-
-const getMuxPlaybackUrl = (playbackId?: string | null) => {
-  if (!playbackId) return null;
-  return `https://stream.mux.com/${playbackId}.m3u8`;
-};
-
-const publicUrl =
-  row.mux_playback_id && isMuxReady(row.mux_status)
-    ? getMuxPlaybackUrl(row.mux_playback_id)
-    : row.file_path
-    ? supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(row.file_path).data.publicUrl
-    : null;
+      const publicUrl = row.file_path
+        ? supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(row.file_path).data.publicUrl
+        : null;
 
 if (!publicUrl) {
   throw new Error('No playable URL found for this showreel.');
@@ -2406,7 +2636,9 @@ if (!publicUrl) {
         } catch {}
       }
 
-      await supabase.storage.from(SHOWREEL_BUCKET).remove([row.file_path]);
+      if (row.file_path) {
+        await supabase.storage.from(SHOWREEL_BUCKET).remove([row.file_path]);
+      }
       await supabase.from('user_showreels').delete().eq('id', row.id).eq('user_id', user.id);
 
       const remaining = showreels.filter((s) => s.id !== row.id);
@@ -2421,22 +2653,9 @@ if (!publicUrl) {
           .eq('id', fallback.id)
           .eq('user_id', user.id);
 
-        const isMuxReady = (status?: string | null) => {
-  const s = String(status || '').toLowerCase();
-  return s === 'ready' || s === 'asset_ready' || s === 'playable';
-};
-
-const getMuxPlaybackUrl = (playbackId?: string | null) => {
-  if (!playbackId) return null;
-  return `https://stream.mux.com/${playbackId}.m3u8`;
-};
-
-const fallbackUrl =
-  fallback.mux_playback_id && isMuxReady(fallback.mux_status)
-    ? getMuxPlaybackUrl(fallback.mux_playback_id)
-    : fallback.file_path
-    ? supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(fallback.file_path).data.publicUrl
-    : null;
+        const fallbackUrl = fallback.file_path
+          ? supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(fallback.file_path).data.publicUrl
+          : null;
 
 await supabase.from('users').update({ portfolio_url: fallbackUrl }).eq('id', user.id);
 
@@ -3234,37 +3453,7 @@ const fetchCities = async (query: string) => {
 
   const uploadMainMP4 = async () => {
     try {
-      if (showreels.length >= 3) {
-        Alert.alert('Maximum reached', 'Users can only have up to 3 showreels.');
-        return;
-      }
-
-      const pick = await DocumentPicker.getDocumentAsync({
-        type: ['video/mp4'],
-        multiple: false,
-        copyToCacheDirectory: true,
-      });
-      if (pick.canceled || !pick.assets?.length) return;
-
-      const asset: any = pick.assets[0];
-      const name = (asset.name || '').toLowerCase();
-      const mime = (asset.mime_type || asset.mimeType || '').toLowerCase() || 'video/mp4';
-      const size = asset.size ?? asset.fileSize ?? asset.bytes ?? null;
-
-      const isMp4 = name.endsWith('.mp4') || mime === 'video/mp4';
-
-      if (!isMp4) {
-        Alert.alert('MP4 only', 'Please select an .mp4 video.');
-        return;
-      }
-      if (size && size > ONE_GB) {
-        Alert.alert('Too large', 'Please select a video that is 1 GB or less.');
-        return;
-      }
-
-      setPendingShowreelAsset(asset);
-      setSelectedShowreelCategory('Acting');
-      setShowreelCategoryModalVisible(true);
+      await uploadAnotherShowreel();
     } catch (e: any) {
       console.warn('Showreel upload failed:', e?.message ?? e);
       Alert.alert('Upload failed', e?.message ?? 'Could not prepare video.');
@@ -4728,8 +4917,20 @@ const previewCreativeProtocolLink = () => {
         showreelModalCleanupRef.current = null;
       }
 
-      await pauseAllExcept(PAUSE_NONE_ID);
-      setActiveShowreel(row);
+      const playbackUrl =
+        row.url ||
+        (row.file_path
+          ? supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(row.file_path).data.publicUrl
+          : '');
+
+      if (!playbackUrl && !row.file_path) {
+        Alert.alert('Still preparing', 'This showreel is still being prepared. Please try again in a moment.');
+        return;
+      }
+
+      void pauseAllExcept(PAUSE_NONE_ID);
+      setActiveShowreel({ ...row, url: playbackUrl || row.url });
+      setShowreelPlaybackKey((key) => key + 1);
       setShowreelModalOpen(true);
     } catch (e) {
       console.warn("openShowreel failed:", e);
@@ -5654,6 +5855,7 @@ const renderFeaturedFilm = () => {
 
   if (!primaryRow) return null;
 
+  const primaryPlayable = !!(primaryRow.url || primaryRow.file_path);
   const secondaryRows = showreels
     .filter((r) => r.id !== primaryRow.id)
     .slice(0, 2);
@@ -5684,8 +5886,18 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
 </Text>
 
       <Pressable
-  onPress={() => openShowreel(primaryRow)}
-  style={[
+  accessibilityRole="button"
+  onPress={() => {
+    if (!primaryPlayable) {
+      Alert.alert(
+        'Still preparing',
+        'This showreel is still being prepared. Please try again in a moment.'
+      );
+      return;
+    }
+    void openShowreel(primaryRow);
+  }}
+  style={({ pressed }) => [
     block.mediaCard,
     {
       width: "100%",
@@ -5693,7 +5905,9 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
       alignSelf: "center",
       padding: 0,
       overflow: "hidden",
-    },
+      cursor: Platform.OS === "web" ? "pointer" : undefined,
+    } as any,
+    pressed && { opacity: 0.88 },
   ]}
 >
   <View
@@ -5748,7 +5962,7 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
           fontWeight: "800",
         }}
       >
-        ▶ Play
+        {primaryPlayable ? '▶ Play' : 'Preparing'}
       </Text>
     </View>
   </View>
@@ -5788,6 +6002,7 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
 >
             {secondaryRows.map((r) => {
               const thumb = r.thumbnail_url || null;
+              const secondaryPlayable = !!(r.url || r.file_path);
 
               return (
                 <View
@@ -5798,7 +6013,16 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
                 >
                   <TouchableOpacity
   activeOpacity={0.92}
-  onPress={() => openShowreel(r)}
+  onPress={() => {
+    if (!secondaryPlayable) {
+      Alert.alert(
+        'Still preparing',
+        'This showreel is still being prepared. Please try again in a moment.'
+      );
+      return;
+    }
+    void openShowreel(r);
+  }}
 >
                     <View
   style={[
@@ -7463,8 +7687,9 @@ return (
           {activeShowreel ? (
   <View style={styles.showreelPreviewPlayerWrap}>
     <ShowreelVideoInline
-      playerId={`secondary_showreel_${activeShowreel.id}`}
-      filePathOrUrl={activeShowreel.file_path || activeShowreel.url}
+      key={`${activeShowreel.id}_${showreelPlaybackKey}`}
+      playerId={`showreel_modal_${activeShowreel.id}_${showreelPlaybackKey}`}
+      filePathOrUrl={activeShowreel.url || activeShowreel.file_path}
       width={Math.max(280, Math.min(width - (isMobileLike ? 24 : 88), 1180))}
       maxWidth={Math.max(280, Math.min(width - (isMobileLike ? 24 : 88), 1180))}
       maxHeight={Math.max(220, windowHeight - insets.top - insets.bottom - (isMobileLike ? 140 : 172))}
@@ -7481,7 +7706,10 @@ return (
     <SmoothModal
       visible={showEditModal}
       transparent
-      onRequestClose={() => setShowEditModal(false)}
+      onRequestClose={() => {
+        if (srUploading || mp4MainUploading) return;
+        setShowEditModal(false);
+      }}
     >
       <KeyboardAvoidingView
   style={[
@@ -7740,6 +7968,7 @@ return (
                           rawTitle && !looksLikeFilename
                             ? rawTitle
                             : `${r.category || "Showreel"} ${index + 1}`;
+                        const isUnavailable = !r.url && !r.file_path;
                         const pendingThumb = pendingShowreelThumbs[r.id];
                         const thumbUri =
                           r.thumbnail_url ||
@@ -7844,6 +8073,7 @@ return (
                                 >
                                   {r.category || "No category selected"}
                                   {isMain ? " • Main showreel" : ""}
+                                  {isUnavailable ? " • Preparing" : ""}
                                 </Text>
                               </View>
 
@@ -7853,7 +8083,9 @@ return (
                                   style={[
                                     styles.pillBtn,
                                     { backgroundColor: COLORS.backgroundAlt, borderColor: COLORS.border },
+                                    isUnavailable ? { opacity: 0.55 } : null,
                                   ]}
+                                  disabled={isUnavailable}
                                 >
                                   <Text style={[styles.pillText, { color: COLORS.textPrimary }]}>Make Main</Text>
                                 </TouchableOpacity>
@@ -7972,6 +8204,32 @@ return (
                   )}
                 </TouchableOpacity>
 
+                {!!showreelUploadNotice && (
+                  <View
+                    style={{
+                      marginTop: 10,
+                      borderWidth: 1,
+                      borderColor: COLORS.primary,
+                      backgroundColor: editModalPillSelected,
+                      borderRadius: 12,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: COLORS.textPrimary,
+                        fontFamily: FONT_OBLIVION,
+                        fontSize: 12,
+                        lineHeight: 17,
+                        textAlign: 'center',
+                      }}
+                    >
+                      {showreelUploadNotice}
+                    </Text>
+                  </View>
+                )}
+
                 {(mp4MainUploading || srUploading) && (
                   <View style={{ marginTop: 8, alignItems: "center" }}>
                     {!!(mp4Status || srStatus) && (
@@ -8043,8 +8301,11 @@ return (
                     borderColor: COLORS.border,
                   },
                 ]}
-                onPress={() => setShowEditModal(false)}
-                disabled={uploading}
+                onPress={() => {
+                  if (srUploading || mp4MainUploading) return;
+                  setShowEditModal(false);
+                }}
+                disabled={uploading || srUploading || mp4MainUploading}
               >
                 <Text style={[styles.ghostBtnText, { color: COLORS.textPrimary }]}>Cancel</Text>
               </TouchableOpacity>
@@ -8054,12 +8315,12 @@ return (
                   styles.primaryBtn,
                   {
                     flex: 1,
-                    opacity: !isDirty || uploading ? 0.72 : 1,
+                    opacity: !isDirty || uploading || srUploading || mp4MainUploading ? 0.72 : 1,
                     backgroundColor: COLORS.primary,
                     borderColor: COLORS.primary,
                   },
                 ]}
-                disabled={!isDirty || uploading}
+                disabled={!isDirty || uploading || srUploading || mp4MainUploading}
                 onPress={saveProfile}
               >
                 {uploading ? (
@@ -8071,88 +8332,287 @@ return (
             </View>
           </ScrollView>
         </View>
-      </KeyboardAvoidingView>
-    </SmoothModal>
 
-    {/* Showreel category picker modal */}
-    <Modal
-      visible={showreelCategoryModalVisible}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setShowreelCategoryModalVisible(false)}
-    >
-      <View
-        style={[
-          centered.overlay,
-          { backgroundColor: isLight ? "rgba(20,17,13,0.26)" : "#000000CC" },
-        ]}
-      >
-        <View
-          style={[
-            centered.card,
-            { backgroundColor: editModalBackground, borderColor: COLORS.border },
-          ]}
-        >
-          <Text style={[centered.title, { color: COLORS.textPrimary }]}>Choose Showreel Category</Text>
-
-          <View style={{ gap: 8, marginTop: 8 }}>
-            {SHOWREEL_CATEGORIES.map((cat) => {
-              const selected = selectedShowreelCategory === cat;
-
-              return (
-                <TouchableOpacity
-                  key={cat}
-                  style={[
-                    block.row,
-                    {
-                      backgroundColor: selected ? editModalPillSelected : editModalCard,
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: selected ? COLORS.primary : COLORS.border,
-                    },
-                  ]}
-                  onPress={() => setSelectedShowreelCategory(cat)}
-                >
-                  <Text style={{ color: COLORS.textPrimary, fontFamily: FONT_OBLIVION }}>
-                    {cat}
-                  </Text>
-                  {selected && <Ionicons name="checkmark" size={18} color={COLORS.primary} />}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
-            <TouchableOpacity
+        {(showreelCategoryModalVisible || srUploading) && (
+          <View
+            style={[
+              showreelSetup.overlay,
+              { backgroundColor: isLight ? 'rgba(20,17,13,0.46)' : 'rgba(0,0,0,0.72)' },
+            ]}
+          >
+            <View
               style={[
-                styles.ghostBtn,
+                showreelSetup.panel,
                 {
-                  flex: 1,
-                  backgroundColor: editModalPill,
+                  backgroundColor: editModalBackground,
                   borderColor: COLORS.border,
                 },
               ]}
-              onPress={() => {
-                setShowreelCategoryModalVisible(false);
-                setPendingShowreelAsset(null);
-              }}
             >
-              <Text style={[styles.ghostBtnText, { color: COLORS.textPrimary }]}>Cancel</Text>
-            </TouchableOpacity>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingBottom: 2 }}
+              >
+              {srUploading ? (
+                <>
+                  <View
+                    style={[
+                      showreelSetup.progressIcon,
+                      { backgroundColor: editModalPillSelected, borderColor: COLORS.primary },
+                    ]}
+                  >
+                    {srProgress >= 100 ? (
+                      <Ionicons name="checkmark" size={24} color={COLORS.primary} />
+                    ) : (
+                      <ActivityIndicator color={COLORS.primary} />
+                    )}
+                  </View>
 
-            <TouchableOpacity
-              style={[
-                styles.primaryBtn,
-                { flex: 1, backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-              ]}
-              onPress={confirmUploadShowreel}
-            >
-              <Text style={[styles.primaryBtnText, { color: COLORS.textOnPrimary }]}>Upload</Text>
-            </TouchableOpacity>
+                  <Text style={[showreelSetup.progressTitle, { color: COLORS.textPrimary }]}>
+                    Uploading to Overlooked
+                  </Text>
+                  <Text style={[showreelSetup.progressBody, { color: COLORS.textSecondary }]}>
+                    {srStatus || 'Uploading your showreel…'}
+                  </Text>
+
+                  {pendingShowreelThumbPreviewUri ? (
+                    <Image
+                      source={{ uri: pendingShowreelThumbPreviewUri }}
+                      style={showreelSetup.progressThumb}
+                      resizeMode="cover"
+                    />
+                  ) : null}
+
+                  <View
+                    style={[
+                      showreelSetup.progressTrack,
+                      { backgroundColor: isLight ? COLORS.backgroundAlt : '#0F0F0F', borderColor: COLORS.border },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        showreelSetup.progressFill,
+                        {
+                          width: `${Math.max(0, Math.min(100, srProgress || 0))}%`,
+                          backgroundColor: COLORS.primary,
+                        },
+                      ]}
+                    />
+                  </View>
+
+                  <Text style={[showreelSetup.progressPercent, { color: COLORS.textPrimary }]}>
+                    {Math.max(0, Math.min(100, srProgress || 0))}%
+                  </Text>
+                  <Text style={[showreelSetup.progressFootnote, { color: COLORS.textSecondary }]}>
+                    After upload finishes, it may take a little time before it appears on your profile.
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={[showreelSetup.eyebrow, { color: COLORS.primary }]}>New Showreel</Text>
+                  <Text style={[showreelSetup.title, { color: COLORS.textPrimary }]}>
+                    Prepare Upload
+                  </Text>
+
+                  <View style={showreelSetup.previewGrid}>
+                    <View
+                      style={[
+                        showreelSetup.videoPreview,
+                        { backgroundColor: '#000', borderColor: COLORS.border },
+                      ]}
+                    >
+                      {pendingShowreelPreviewUri ? (
+                        Platform.OS === 'web' ? (
+                          // @ts-ignore - react-native-web passes this through as a real HTML video element.
+                          <WebVideo
+                            src={pendingShowreelPreviewUri}
+                            controls
+                            playsInline
+                            preload="metadata"
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'contain',
+                              objectPosition: 'center center',
+                              display: 'block',
+                              background: '#000',
+                            }}
+                          />
+                        ) : (
+                          <Video
+                            source={{ uri: pendingShowreelPreviewUri }}
+                            style={showreelSetup.previewMedia}
+                            useNativeControls
+                            resizeMode={ResizeMode.CONTAIN}
+                            shouldPlay={false}
+                          />
+                        )
+                      ) : (
+                        <Ionicons name="videocam-outline" size={30} color={COLORS.textSecondary} />
+                      )}
+                    </View>
+
+                    <TouchableOpacity
+                      activeOpacity={0.9}
+                      onPress={pickPendingShowreelThumbnail}
+                      style={[
+                        showreelSetup.thumbPicker,
+                        {
+                          backgroundColor: pendingShowreelThumbPreviewUri ? '#000' : editModalCard,
+                          borderColor: pendingShowreelThumbPreviewUri
+                            ? COLORS.primary
+                            : pendingShowreelError
+                            ? COLORS.danger
+                            : COLORS.border,
+                        },
+                      ]}
+                    >
+                      {pendingShowreelThumbPreviewUri ? (
+                        <Image
+                          source={{ uri: pendingShowreelThumbPreviewUri }}
+                          style={showreelSetup.previewMedia}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View style={{ alignItems: 'center', gap: 8 }}>
+                          <Ionicons name="image-outline" size={26} color={COLORS.primary} />
+                          <Text style={[showreelSetup.thumbText, { color: COLORS.textPrimary }]}>
+                            Add thumbnail
+                          </Text>
+                          <Text style={[showreelSetup.thumbHint, { color: COLORS.textSecondary }]}>
+                            Required
+                          </Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={showreelSetup.sectionHeader}>
+                    <Text style={[showreelSetup.sectionLabel, { color: COLORS.textSecondary }]}>
+                      Category
+                    </Text>
+                    <Text style={[showreelSetup.sectionHint, { color: COLORS.textSecondary }]}>
+                      Choose where this reel belongs
+                    </Text>
+                  </View>
+
+                  <View style={showreelSetup.categoryGrid}>
+                    {SHOWREEL_CATEGORIES.map((cat) => {
+                      const selected = selectedShowreelCategory === cat;
+                      const meta = SHOWREEL_CATEGORY_META[cat];
+
+                      return (
+                        <TouchableOpacity
+                          key={cat}
+                          activeOpacity={0.9}
+                          onPress={() => {
+                            setSelectedShowreelCategory(cat);
+                            setPendingShowreelError('');
+                          }}
+                          style={[
+                            showreelSetup.categoryCard,
+                            {
+                              backgroundColor: selected ? editModalPillSelected : editModalCard,
+                              borderColor: selected ? COLORS.primary : COLORS.border,
+                            },
+                          ]}
+                        >
+                          <View
+                            style={[
+                              showreelSetup.categoryIcon,
+                              {
+                                backgroundColor: selected ? COLORS.primary : COLORS.backgroundAlt,
+                                borderColor: selected ? COLORS.primary : COLORS.border,
+                              },
+                            ]}
+                          >
+                            <Ionicons
+                              name={meta.icon as any}
+                              size={18}
+                              color={selected ? COLORS.textOnPrimary : COLORS.textSecondary}
+                            />
+                          </View>
+
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text
+                              style={[
+                                showreelSetup.categoryTitle,
+                                { color: selected ? COLORS.textPrimary : COLORS.textPrimary },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {cat}
+                            </Text>
+                            <Text
+                              style={[showreelSetup.categoryDetail, { color: COLORS.textSecondary }]}
+                              numberOfLines={1}
+                            >
+                              {meta.detail}
+                            </Text>
+                          </View>
+
+                          {selected ? (
+                            <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
+                          ) : null}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {!!pendingShowreelError && (
+                    <Text style={[showreelSetup.errorText, { color: COLORS.danger }]}>
+                      {pendingShowreelError}
+                    </Text>
+                  )}
+
+                  <Text style={[showreelSetup.footnote, { color: COLORS.textSecondary }]}>
+                    Your video uploads to Overlooked. Once uploaded, it may take a little time before playback is ready.
+                  </Text>
+
+                  <View style={showreelSetup.actions}>
+                    <TouchableOpacity
+                      style={[
+                        styles.ghostBtn,
+                        {
+                          flex: 1,
+                          backgroundColor: editModalPill,
+                          borderColor: COLORS.border,
+                        },
+                      ]}
+                      onPress={() => {
+                        setShowreelCategoryModalVisible(false);
+                        clearPendingShowreelDraft();
+                      }}
+                    >
+                      <Text style={[styles.ghostBtnText, { color: COLORS.textPrimary }]}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.primaryBtn,
+                        {
+                          flex: 1,
+                          backgroundColor: COLORS.primary,
+                          borderColor: COLORS.primary,
+                          opacity: pendingShowreelThumbAsset ? 1 : 0.68,
+                        },
+                      ]}
+                      onPress={confirmUploadShowreel}
+                    >
+                      <Text style={[styles.primaryBtnText, { color: COLORS.textOnPrimary }]}>
+                        Upload
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+              </ScrollView>
+            </View>
           </View>
-        </View>
-      </View>
-    </Modal>
+        )}
+      </KeyboardAvoidingView>
+    </SmoothModal>
 
     {/* City search modal */}
 <SmoothModal
@@ -10710,6 +11170,235 @@ const centered = StyleSheet.create({
     fontFamily: FONT_OBLIVION,
     letterSpacing: 2.6,
     textTransform: "uppercase",
+  },
+});
+
+const showreelSetup = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 50,
+    elevation: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 22,
+  },
+  panel: {
+    width: '100%',
+    maxWidth: 700,
+    maxHeight: '96%',
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+  },
+  eyebrow: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 2.1,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  title: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 21,
+    fontWeight: '900',
+    letterSpacing: 2.4,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+  body: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  previewGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginTop: 16,
+  },
+  videoPreview: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 400,
+    minWidth: 300,
+    aspectRatio: 16 / 9,
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  thumbPicker: {
+    flexGrow: 0.68,
+    flexShrink: 1,
+    flexBasis: 270,
+    minWidth: 260,
+    aspectRatio: 16 / 9,
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewMedia: {
+    width: '100%',
+    height: '100%',
+  },
+  progressTitle: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 2.2,
+    lineHeight: 24,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+  progressBody: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 20,
+    textAlign: 'center',
+    marginTop: 9,
+  },
+  progressFootnote: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 18,
+    textAlign: 'center',
+    marginTop: 14,
+  },
+  progressPercent: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    textAlign: 'center',
+    marginTop: 13,
+  },
+  thumbText: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  thumbHint: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 16,
+    marginBottom: 9,
+  },
+  sectionLabel: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  sectionHint: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+  },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 9,
+  },
+  categoryCard: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    minWidth: 210,
+    minHeight: 66,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  categoryIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryTitle: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  categoryDetail: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  errorText: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  footnote: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  progressIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  progressThumb: {
+    width: 192,
+    height: 108,
+    borderRadius: 12,
+    alignSelf: 'center',
+    marginTop: 16,
+  },
+  progressTrack: {
+    height: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    overflow: 'hidden',
+    marginTop: 18,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
   },
 });
 

@@ -4086,6 +4086,7 @@ const renderHeroOverlay = (s: Submission & { users?: { id: string; full_name: st
 const heroTitleSize = isTinyHero ? 18 : isCompactHero ? 22 : isWideWeb ? 40 : 52;
 const heroTitleLine = isTinyHero ? 22 : isCompactHero ? 26 : isWideWeb ? 44 : 58;
 const heroBylineSize = isTinyHero ? 10 : isCompactHero ? 11 : 16;
+const heroPrizeSize = isTinyHero ? 9 : isCompactHero ? 10 : 13;
 
   return (
     <View style={styles.heroOverlay} pointerEvents="box-none">
@@ -4120,23 +4121,55 @@ paddingBottom: 2,
         </Text>
       </View>
       {name ? (
-        <TouchableOpacity
-          onPress={() => goToProfile(userObj)}
-          activeOpacity={0.9}
-          style={styles.heroBylineTap}
-        >
-          <Text
-            style={[
-              styles.heroByline,
-              {
-                fontSize: heroBylineSize,
-                marginTop: isCompactHero ? 2 : 4,
-              },
-            ]}
+        <View style={styles.heroBylineBlock}>
+          <TouchableOpacity
+            onPress={() => goToProfile(userObj)}
+            activeOpacity={0.9}
+            style={styles.heroBylineTap}
           >
-            by {name}
-          </Text>
-        </TouchableOpacity>
+            <Text
+              style={[
+                styles.heroByline,
+                {
+                  fontSize: heroBylineSize,
+                  marginTop: isCompactHero ? 2 : 4,
+                },
+              ]}
+            >
+              by {name}
+            </Text>
+          </TouchableOpacity>
+          <View
+  style={[
+    styles.heroPrizeBadge,
+    {
+      marginTop: isCompactHero ? 8 : 10,
+    },
+  ]}
+>
+  <Text
+    style={[
+      styles.heroPrizeLabel,
+      {
+        fontSize: isCompactHero ? 9 : 10,
+      },
+    ]}
+  >
+    MONTHLY PRIZE
+  </Text>
+
+  <Text
+    style={[
+      styles.heroPrizeText,
+      {
+        fontSize: heroPrizeSize,
+      },
+    ]}
+  >
+    Top-voted film wins $100
+  </Text>
+</View>
+        </View>
       ) : null}
     </View>
   );
@@ -7261,6 +7294,36 @@ mobileMediaWrap: {
     maxWidth: '100%',
     alignItems: 'center',
   },
+  heroPrizeBadge: {
+  alignSelf: 'center',
+  paddingHorizontal: 16,
+  paddingVertical: 8,
+  borderRadius: 999,
+  backgroundColor: 'rgba(0,0,0,0.38)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.18)',
+  shadowColor: '#000',
+  shadowOpacity: 0.35,
+  shadowRadius: 12,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 6,
+},
+
+heroPrizeLabel: {
+  color: 'rgba(255,255,255,0.58)',
+  fontWeight: '900',
+  letterSpacing: 1.4,
+  textAlign: 'center',
+  textTransform: 'uppercase',
+  marginBottom: 2,
+},
+
+heroPrizeText: {
+  color: 'rgba(255,255,255,0.88)',
+  fontWeight: '800',
+  textAlign: 'center',
+  letterSpacing: 0.2,
+},
 
   heroKicker: {
     color: GOLD,
@@ -7288,9 +7351,14 @@ mobileMediaWrap: {
     textShadowRadius: 14,
   },
 
-  heroBylineTap: {
+  heroBylineBlock: {
     alignSelf: 'center',
     marginTop: 8,
+    alignItems: 'center',
+  },
+
+  heroBylineTap: {
+    alignSelf: 'center',
   },
 
   heroByline: {
@@ -7301,6 +7369,17 @@ mobileMediaWrap: {
     textTransform: 'uppercase',
     textAlign: 'center',
     textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
+  },
+
+  heroPrizeNote: {
+    color: 'rgba(255,255,255,0.74)',
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.48)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 6,
   },
