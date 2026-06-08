@@ -102,16 +102,16 @@ const DESKTOP_SHOWCASE_IMAGE = require('../../assets/signin/desktop-showcase.png
 
 const DESKTOP_SIGNIN_SHOTS = [
   {
-    label: 'Post your work',
-    copy: 'Share films and monologues to grow an audience and meet collaborators.',
+    label: 'Share your work',
+    copy: 'Post films, scenes, and exercises.',
   },
   {
     label: 'Practice the craft',
-    copy: 'Build acting, editing, sound, directing, and cinematography skills.',
+    copy: 'Improve through monthly creative challenges.',
   },
   {
     label: 'Build your portfolio',
-    copy: 'Show your work, credits, submissions, and progress on one page.',
+    copy: 'Show your range, credits, and submissions.',
   },
 ] as const;
 
@@ -765,7 +765,7 @@ export default function SignInScreen() {
   const renderAuthForm = (mobileMode = false) => {
   const desktopFormMode = isDesktopWeb && mobileMode;
   const webCardWidth = desktopFormMode
-    ? 430
+    ? 420
     : Math.min(560, Math.max(330, width - 56));
 
   const FormContent = (
@@ -786,9 +786,9 @@ export default function SignInScreen() {
           <Image
             source={OVERLOOKED_ICON}
             style={{
-              width: 58,
-              height: 58,
-              marginBottom: 14,
+              width: 50,
+              height: 50,
+              marginBottom: 12,
             }}
             resizeMode="contain"
           />
@@ -796,7 +796,7 @@ export default function SignInScreen() {
             Log in to Overlooked
           </Text>
           <Text style={[styles.desktopFormSubtitle, { color: colors.textSecondary }]}>
-            Keep building your films, exercises, profile, and crew.
+            Pick up where you left off and keep building your creative network.
           </Text>
         </View>
       )}
@@ -1015,7 +1015,9 @@ onBlur={() => {
           maxHeight: mobileMode ? undefined : modalMaxHeight,
           alignSelf: 'center',
           padding:
-            mobileMode && useWideWebFormStyles
+            desktopFormMode
+              ? 32
+              : mobileMode && useWideWebFormStyles
               ? width >= 900
                 ? 36
                 : 28
@@ -1058,60 +1060,62 @@ onBlur={() => {
         <Text style={[styles.desktopBrandText, { color: colors.textPrimary }]}>OVERLOOKED</Text>
       </View>
 
-      <Text style={[styles.desktopHeadline, { color: colors.textPrimary }]}>
-        For actors and filmmakers ready to be seen.
-      </Text>
-      <Text style={[styles.desktopSubcopy, { color: colors.textSecondary }]}>
-        Share your work, build your craft, and find your crew.
-      </Text>
-      <Pressable
-        accessibilityRole="image"
-        onHoverIn={() => setIsShowcaseHovered(true)}
-        onHoverOut={() => setIsShowcaseHovered(false)}
-        style={styles.desktopPreviewStage}
-      >
-        <Image
-          source={DESKTOP_SHOWCASE_IMAGE}
-          resizeMode="contain"
-          style={[
-            styles.desktopPreviewImage,
-            isShowcaseHovered ? styles.desktopPreviewImageHover : null,
-          ] as ImageStyle}
-        />
-      </Pressable>
+      <View style={styles.desktopShowcaseBody}>
+        <Text style={[styles.desktopHeadline, { color: colors.textPrimary }]}>
+          For actors and filmmakers ready{'\n'}to be seen.
+        </Text>
+        <Text style={[styles.desktopSubcopy, { color: colors.textSecondary }]}>
+          Build your craft. Share your films. Find your crew.
+        </Text>
+        <Pressable
+          accessibilityRole="image"
+          onHoverIn={() => setIsShowcaseHovered(true)}
+          onHoverOut={() => setIsShowcaseHovered(false)}
+          style={styles.desktopPreviewStage}
+        >
+          <Image
+            source={DESKTOP_SHOWCASE_IMAGE}
+            resizeMode="contain"
+            style={[
+              styles.desktopPreviewImage,
+              isShowcaseHovered ? styles.desktopPreviewImageHover : null,
+            ] as ImageStyle}
+          />
+        </Pressable>
 
-      <View style={styles.desktopFeatureGrid}>
-        {DESKTOP_SIGNIN_SHOTS.map((item, index) => (
-          <Pressable
-            key={item.label}
-            style={(state: any) => [
-              styles.desktopFeatureTile,
-              {
-                backgroundColor: state.hovered
-                  ? isLight
-                    ? colors.card
-                    : colors.elevated
-                  : isLight
-                    ? colors.mutedCard
-                    : colors.cardAlt,
-                borderColor: state.hovered ? colors.primary : colors.borderStrong,
-              },
-              state.hovered ? styles.desktopFeatureTileHover : null,
-            ]}
-          >
-            <View style={styles.desktopFeatureNumber}>
-              <Text style={styles.desktopFeatureNumberText}>{index + 1}</Text>
-            </View>
-            <View style={styles.desktopFeatureTextWrap}>
-              <Text style={[styles.desktopFeatureTitle, { color: colors.textPrimary }]}>
-                {item.label}
-              </Text>
-              <Text style={[styles.desktopFeatureCopy, { color: colors.textSecondary }]}>
-                {item.copy}
-              </Text>
-            </View>
-          </Pressable>
-        ))}
+        <View style={styles.desktopFeatureGrid}>
+          {DESKTOP_SIGNIN_SHOTS.map((item, index) => (
+            <Pressable
+              key={item.label}
+              style={(state: any) => [
+                styles.desktopFeatureTile,
+                {
+                  backgroundColor: state.hovered
+                    ? isLight
+                      ? colors.card
+                      : colors.elevated
+                    : isLight
+                      ? colors.mutedCard
+                      : colors.cardAlt,
+                  borderColor: state.hovered ? colors.primary : colors.borderStrong,
+                },
+                state.hovered ? styles.desktopFeatureTileHover : null,
+              ]}
+            >
+              <View style={styles.desktopFeatureNumber}>
+                <Text style={styles.desktopFeatureNumberText}>{index + 1}</Text>
+              </View>
+              <View style={styles.desktopFeatureTextWrap}>
+                <Text style={[styles.desktopFeatureTitle, { color: colors.textPrimary }]}>
+                  {item.label}
+                </Text>
+                <Text style={[styles.desktopFeatureCopy, { color: colors.textSecondary }]}>
+                  {item.copy}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -1442,16 +1446,19 @@ const styles = StyleSheet.create({
     gap: 54,
   },
   desktopShowcase: {
-    width: 670,
+    position: 'relative',
+    width: 640,
     maxWidth: '52%',
     minHeight: 650,
     justifyContent: 'center',
   },
   desktopBrandRow: {
+    position: 'absolute',
+    top: -44,
+    left: -12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 13,
-    marginBottom: 30,
   },
   desktopBrandIcon: {
     width: 48,
@@ -1463,29 +1470,35 @@ const styles = StyleSheet.create({
     letterSpacing: 4.6,
     fontFamily: SYSTEM_SANS,
   },
+  desktopShowcaseBody: {
+    width: '100%',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    transform: [{ translateY: -30 }],
+  },
   desktopHeadline: {
-    maxWidth: 660,
-    fontSize: 40,
-    lineHeight: 48,
+    maxWidth: 620,
+    fontSize: 35,
+    lineHeight: 41,
     fontWeight: '900',
     letterSpacing: 0,
     fontFamily: SYSTEM_SANS,
   },
   desktopSubcopy: {
-    maxWidth: 620,
-    marginTop: 14,
+    maxWidth: 590,
+    marginTop: 12,
     fontSize: 16,
-    lineHeight: 25,
+    lineHeight: 23,
     fontWeight: '600',
     letterSpacing: 0,
     fontFamily: SYSTEM_SANS,
   },
   desktopPreviewStage: {
     position: 'relative',
-    width: 660,
-    height: 370,
-    marginTop: 2,
-    marginBottom: 4,
+    width: 610,
+    height: 342,
+    marginTop: 18,
+    marginBottom: 14,
     alignSelf: 'center',
     zIndex: 1,
     ...(Platform.OS === 'web'
@@ -1519,20 +1532,21 @@ const styles = StyleSheet.create({
   desktopFeatureGrid: {
     position: 'relative',
     width: '100%',
-    maxWidth: 640,
+    maxWidth: 610,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
+    alignSelf: 'center',
     zIndex: 2,
   },
   desktopFeatureTile: {
-    width: '31.5%',
-    minHeight: 82,
+    width: '32%',
+    height: 78,
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 12,
-    padding: 12,
-    borderRadius: 18,
+    gap: 9,
+    padding: 11,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: 'rgba(198,166,100,0.18)',
     backgroundColor: '#F1E8DA',
@@ -1562,9 +1576,9 @@ const styles = StyleSheet.create({
       : null),
   } as any,
   desktopFeatureNumber: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(198,166,100,0.18)',
@@ -1573,7 +1587,7 @@ const styles = StyleSheet.create({
   },
   desktopFeatureNumberText: {
     color: GOLD,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '900',
     fontFamily: SYSTEM_SANS,
   },
@@ -1582,29 +1596,31 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   desktopFeatureTitle: {
-    fontSize: 13,
-    lineHeight: 17,
+    fontSize: 12.5,
+    lineHeight: 15,
     fontWeight: '900',
     letterSpacing: 0,
     fontFamily: SYSTEM_SANS,
   },
   desktopFeatureCopy: {
-    marginTop: 4,
-    fontSize: 11.5,
-    lineHeight: 16,
+    marginTop: 3,
+    fontSize: 10.8,
+    lineHeight: 14,
     fontWeight: '600',
     letterSpacing: 0,
     fontFamily: SYSTEM_SANS,
   },
   desktopDivider: {
     width: 1,
-    alignSelf: 'stretch',
+    height: 660,
+    alignSelf: 'center',
     opacity: 0.8,
   },
   desktopAuthPanel: {
     width: 470,
     alignItems: 'center',
     justifyContent: 'center',
+    transform: [{ translateY: -8 }],
   },
   desktopFooter: {
     marginTop: 18,
@@ -1723,14 +1739,14 @@ heroHighlight: {
     WebkitBackdropFilter: 'blur(14px) saturate(120%)',
   },
   authCardDesktopWeb: {
-    borderRadius: 24,
-    shadowOpacity: 0.5,
-    shadowRadius: 34,
-    shadowOffset: { width: 0, height: 22 },
+    borderRadius: 22,
+    shadowOpacity: 0.42,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: 18 },
   },
   desktopFormHeader: {
     alignItems: 'center',
-    marginBottom: 26,
+    marginBottom: 24,
   },
   desktopFormIcon: {
     width: 58,
@@ -1747,9 +1763,9 @@ heroHighlight: {
   },
   desktopFormSubtitle: {
     marginTop: 8,
-    maxWidth: 315,
+    maxWidth: 330,
     fontSize: 14,
-    lineHeight: 21,
+    lineHeight: 20,
     fontWeight: '600',
     letterSpacing: 0,
     textAlign: 'center',
@@ -1796,7 +1812,7 @@ heroHighlight: {
   inputWrapWeb: {
     borderRadius: 17,
     paddingHorizontal: 17,
-    paddingVertical: 15,
+    paddingVertical: 14,
     backgroundColor: 'rgba(7,7,7,0.88)',
     borderColor: 'rgba(255,255,255,0.12)',
   },
@@ -1841,7 +1857,7 @@ inputWeb: {
     shadowOffset: { width: 0, height: 10 },
   },
   buttonWeb: {
-    paddingVertical: 17,
+    paddingVertical: 16,
     borderRadius: 17,
     shadowOpacity: 0.38,
     shadowRadius: 18,
@@ -1868,7 +1884,7 @@ inputWeb: {
   },
 
   supportText: {
-    marginTop: 20,
+    marginTop: 18,
     textAlign: 'center',
     fontSize: 13,
     lineHeight: 18,

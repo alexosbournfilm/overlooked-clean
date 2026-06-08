@@ -2131,6 +2131,7 @@ const repliesByParent = useMemo(() => {
   const [previewCommentsExpanded, setPreviewCommentsExpanded] = useState(false);
   const [previewMediaReady, setPreviewMediaReady] = useState(false);
   const [collaboratorEditorOpen, setCollaboratorEditorOpen] = useState(false);
+  const [watchActionsMenuOpen, setWatchActionsMenuOpen] = useState(false);
   const [collaboratorQuery, setCollaboratorQuery] = useState('');
   const [collaboratorRole, setCollaboratorRole] = useState('');
   const [collaboratorResults, setCollaboratorResults] = useState<CollaboratorSearchUser[]>([]);
@@ -2974,6 +2975,7 @@ const removeBlockedContentLocally = (blockedId: string) => {
       clearTimeout(previewMediaTimerRef.current);
       previewMediaTimerRef.current = null;
     }
+    setWatchActionsMenuOpen(false);
     setPreviewMediaReady(false);
     setPreviewOpen(false);
     setPreviewItem(null);
@@ -3020,6 +3022,7 @@ const openReportModal = ({
       clearTimeout(previewMediaTimerRef.current);
       previewMediaTimerRef.current = null;
     }
+    setWatchActionsMenuOpen(false);
     setPreviewMediaReady(false);
     setPreviewOpen(false);
     setPreviewItem(null);
@@ -3209,6 +3212,7 @@ const goToProfile = (user?: { id: string; full_name: string }) => {
       clearTimeout(previewMediaTimerRef.current);
       previewMediaTimerRef.current = null;
     }
+    setWatchActionsMenuOpen(false);
     setPreviewMediaReady(false);
     setPreviewOpen(false);
     setPreviewItem(null);
@@ -3429,6 +3433,7 @@ const shareSubmissionLink = async (
   setCommentText('');
   setReplyingTo(null);
   setCommentsOpen(false);
+  setWatchActionsMenuOpen(false);
   setCollaboratorEditorOpen(false);
   setCollaboratorQuery('');
   setCollaboratorRole('');
@@ -3472,6 +3477,7 @@ const shareSubmissionLink = async (
     setPreviewMediaReady(false);
     setActiveId(null);
     setCommentsOpen(false);
+    setWatchActionsMenuOpen(false);
 
     Animated.timing(previewMotion, {
       toValue: 0,
@@ -3491,6 +3497,7 @@ const shareSubmissionLink = async (
       setReplyingTo(null);
       setPreviewCommentsExpanded(false);
       setCollaboratorEditorOpen(false);
+      setWatchActionsMenuOpen(false);
       setCollaboratorQuery('');
       setCollaboratorRole('');
       setCollaboratorResults([]);
@@ -5474,19 +5481,19 @@ maxToRenderPerBatch={2}
                       {
                         backgroundColor: isSupported
                           ? isLight
-                            ? colors.cardAlt
-                            : 'rgba(198,166,100,0.14)'
+                            ? 'rgba(198,166,100,0.12)'
+                            : 'rgba(198,166,100,0.10)'
                           : isLight
                           ? colors.card
-                          : 'rgba(255,255,255,0.075)',
-                        borderColor: isSupported ? colors.primary : featuredBorder,
+                          : '#101010',
+                        borderColor: isSupported ? 'rgba(198,166,100,0.32)' : featuredBorder,
                         opacity: busy ? 0.62 : 1,
                       },
                     ]}
                   >
                     <Ionicons
                       name={isSupported ? 'checkmark-circle-outline' : 'star-outline'}
-                      size={15}
+                      size={13}
                       color={isSupported ? colors.primary : featuredText}
                     />
                     <Text
@@ -5563,6 +5570,7 @@ maxToRenderPerBatch={2}
               <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={() => {
+                  setWatchActionsMenuOpen(false);
                   if (isGuest) {
                     navigation.navigate('Auth', { screen: 'SignIn' });
                     return;
@@ -5576,14 +5584,16 @@ maxToRenderPerBatch={2}
                 style={[
                   styles.watchActionChip,
                   {
-                    backgroundColor: isLight ? colors.card : 'rgba(255,255,255,0.075)',
-                    borderColor: featuredBorder,
+                    backgroundColor: isLight ? colors.card : '#101010',
+                    borderColor: isLight ? colors.border : '#242424',
                   },
                   votedIds.has(previewItem.id) && styles.watchActionChipActive,
                   votedIds.has(previewItem.id) &&
-                    isLight && {
-                      backgroundColor: colors.cardAlt,
-                      borderColor: colors.primary,
+                    {
+                      backgroundColor: isLight
+                        ? 'rgba(198,166,100,0.13)'
+                        : 'rgba(198,166,100,0.12)',
+                      borderColor: 'rgba(198,166,100,0.35)',
                     },
                   (voteBusy[previewItem.id] ||
                     (!!currentUserId && (previewItem as any).user_id === currentUserId)) && {
@@ -5607,13 +5617,14 @@ maxToRenderPerBatch={2}
               <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={() => {
+                  setWatchActionsMenuOpen(false);
                   void openPreviewComments();
                 }}
                 style={[
                   styles.watchActionChip,
                   {
-                    backgroundColor: isLight ? colors.card : 'rgba(255,255,255,0.075)',
-                    borderColor: featuredBorder,
+                    backgroundColor: isLight ? colors.card : '#101010',
+                    borderColor: isLight ? colors.border : '#242424',
                   },
                 ]}
               >
@@ -5626,12 +5637,15 @@ maxToRenderPerBatch={2}
 
               <TouchableOpacity
                 activeOpacity={0.9}
-                onPress={() => shareSubmissionLink(previewItem as any)}
+                onPress={() => {
+                  setWatchActionsMenuOpen(false);
+                  shareSubmissionLink(previewItem as any);
+                }}
                 style={[
                   styles.watchActionChip,
                   {
-                    backgroundColor: isLight ? colors.card : 'rgba(255,255,255,0.075)',
-                    borderColor: featuredBorder,
+                    backgroundColor: isLight ? colors.card : '#101010',
+                    borderColor: isLight ? colors.border : '#242424',
                   },
                 ]}
               >
@@ -5641,75 +5655,100 @@ maxToRenderPerBatch={2}
 
               <TouchableOpacity
                 activeOpacity={0.9}
-                onPress={() =>
-                  openReportModal({
-                    contentType: 'submission',
-                    contentId: previewItem.id,
-                    reportedUserId: (previewItem as any).user_id,
-                    title: previewItem.title,
-                  })
-                }
+                onPress={() => {
+                  setWatchActionsMenuOpen(false);
+                  if (currentUserId && (previewItem as any).user_id === currentUserId) {
+                    setCollaboratorEditorOpen((open) => !open);
+                  }
+                }}
                 style={[
                   styles.watchActionChip,
                   {
-                    backgroundColor: isLight ? colors.card : 'rgba(255,255,255,0.075)',
-                    borderColor: featuredBorder,
+                    backgroundColor: isLight ? colors.card : '#101010',
+                    borderColor: isLight ? colors.border : '#242424',
+                  },
+                  collaboratorEditorOpen && styles.watchActionChipActive,
+                  collaboratorEditorOpen &&
+                    {
+                      backgroundColor: isLight
+                        ? 'rgba(198,166,100,0.13)'
+                        : 'rgba(198,166,100,0.12)',
+                      borderColor: 'rgba(198,166,100,0.35)',
+                    },
+                ]}
+              >
+                <Ionicons name="people-outline" size={17} color={featuredText} />
+                <Text style={[styles.watchActionText, { color: featuredText }]}>Credits</Text>
+                <Text style={[styles.watchActionMeta, { color: featuredSubText }]}>
+                  {((previewItem as any).collaborators || []).length}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => setWatchActionsMenuOpen((open) => !open)}
+                style={[
+                  styles.watchActionChip,
+                  styles.watchActionChipIconOnly,
+                  {
+                    backgroundColor: isLight ? colors.card : '#101010',
+                    borderColor: isLight ? colors.border : '#242424',
                   },
                 ]}
               >
-                <Ionicons name="flag-outline" size={18} color={featuredText} />
-                <Text style={[styles.watchActionText, { color: featuredText }]}>Report</Text>
+                <Ionicons name="ellipsis-horizontal" size={18} color={featuredText} />
               </TouchableOpacity>
+            </View>
 
-              {currentUserId && (previewItem as any).user_id !== currentUserId ? (
+            {watchActionsMenuOpen ? (
+              <View
+                style={[
+                  styles.watchMoreMenu,
+                  {
+                    backgroundColor: isLight ? colors.card : '#101010',
+                    borderColor: isLight ? colors.border : '#242424',
+                  },
+                ]}
+              >
                 <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() =>
-                    confirmBlockUser({
-                      blockedUserId: (previewItem as any).user_id,
-                      blockedUserName: previewItem.users?.full_name,
-                  })
-                  }
-                  style={[
-                    styles.watchActionChip,
-                    styles.watchActionDangerChip,
-                    {
-                      backgroundColor: isLight ? '#F8E1DC' : 'rgba(255,70,70,0.075)',
-                      borderColor: isLight ? '#E5B3A8' : 'rgba(255,90,90,0.22)',
-                    },
-                  ]}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    setWatchActionsMenuOpen(false);
+                    openReportModal({
+                      contentType: 'submission',
+                      contentId: previewItem.id,
+                      reportedUserId: (previewItem as any).user_id,
+                      title: previewItem.title,
+                    });
+                  }}
+                  style={styles.watchMoreMenuItem}
                 >
-                  <Ionicons name="ban-outline" size={18} color={colors.danger} />
-                  <Text style={[styles.watchActionDangerText, { color: colors.danger }]}>Block</Text>
-                </TouchableOpacity>
-              ) : null}
-
-              {currentUserId && (previewItem as any).user_id === currentUserId ? (
-                <TouchableOpacity
-                  activeOpacity={0.9}
-                  onPress={() => setCollaboratorEditorOpen((open) => !open)}
-                  style={[
-                    styles.watchActionChip,
-                    {
-                      backgroundColor: isLight ? colors.card : 'rgba(255,255,255,0.075)',
-                      borderColor: featuredBorder,
-                    },
-                    collaboratorEditorOpen && styles.watchActionChipActive,
-                    collaboratorEditorOpen &&
-                      isLight && {
-                        backgroundColor: colors.cardAlt,
-                        borderColor: colors.primary,
-                      },
-                  ]}
-                >
-                  <Ionicons name="people-outline" size={18} color={featuredText} />
-                  <Text style={[styles.watchActionText, { color: featuredText }]}>Credits</Text>
-                  <Text style={[styles.watchActionMeta, { color: featuredSubText }]}>
-                    {((previewItem as any).collaborators || []).length}
+                  <Ionicons name="flag-outline" size={15} color={colors.danger} />
+                  <Text style={[styles.watchMoreMenuText, { color: colors.danger }]}>
+                    Report film
                   </Text>
                 </TouchableOpacity>
-              ) : null}
-            </View>
+
+                {currentUserId && (previewItem as any).user_id !== currentUserId ? (
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      setWatchActionsMenuOpen(false);
+                      confirmBlockUser({
+                        blockedUserId: (previewItem as any).user_id,
+                        blockedUserName: previewItem.users?.full_name,
+                      });
+                    }}
+                    style={styles.watchMoreMenuItem}
+                  >
+                    <Ionicons name="ban-outline" size={15} color={colors.danger} />
+                    <Text style={[styles.watchMoreMenuText, { color: colors.danger }]}>
+                      Block creator
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ) : null}
 
             {currentUserId &&
             (previewItem as any).user_id === currentUserId &&
@@ -7885,21 +7924,21 @@ watchCreatorTap: {
 },
 
 watchSupportButton: {
-  minHeight: 34,
+  minHeight: 26,
   borderRadius: 999,
   borderWidth: 1,
-  paddingHorizontal: 12,
+  paddingHorizontal: 9,
   flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: 5,
+  gap: 4,
 },
 
 watchSupportText: {
   fontFamily: SYSTEM_SANS,
   fontWeight: '900',
-  fontSize: 10,
-  letterSpacing: 0.4,
+  fontSize: 9.5,
+  letterSpacing: 0.2,
   textTransform: 'uppercase',
 },
 
@@ -8238,44 +8277,48 @@ watchCollaboratorRemoveBtn: {
 watchActionsRow: {
   marginTop: 12,
   flexDirection: 'row',
-  flexWrap: 'nowrap',
+  flexWrap: 'wrap',
   alignItems: 'center',
-  gap: 4,
+  gap: 7,
 },
 
 watchActionChip: {
-  width: 56,
-  height: 52,
-  borderRadius: 13,
-  paddingHorizontal: 4,
-  paddingVertical: 6,
+  minHeight: 34,
+  borderRadius: 999,
+  paddingHorizontal: 11,
+  paddingVertical: 7,
   backgroundColor: 'rgba(255,255,255,0.075)',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.10)',
+  flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'center',
+  gap: 5,
+},
+
+watchActionChipIconOnly: {
+  width: 36,
+  paddingHorizontal: 0,
 },
 
 watchActionChipActive: {
-  backgroundColor: 'rgba(198,166,100,0.15)',
-  borderColor: 'rgba(198,166,100,0.34)',
+  backgroundColor: 'rgba(198,166,100,0.12)',
+  borderColor: 'rgba(198,166,100,0.35)',
 },
 
 watchActionText: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
   fontWeight: '900',
-  fontSize: 8.5,
+  fontSize: 11,
   letterSpacing: 0,
-  marginTop: 3,
 },
 
 watchActionMeta: {
   color: 'rgba(237,235,230,0.50)',
   fontFamily: SYSTEM_SANS,
   fontWeight: '800',
-  fontSize: 8,
-  marginTop: 1,
+  fontSize: 11,
 },
 
 watchActionDangerChip: {
@@ -8287,9 +8330,31 @@ watchActionDangerText: {
   color: '#FF8A8A',
   fontFamily: SYSTEM_SANS,
   fontWeight: '900',
-  fontSize: 8.5,
+  fontSize: 11,
   letterSpacing: 0,
-  marginTop: 3,
+},
+
+watchMoreMenu: {
+  alignSelf: 'flex-start',
+  marginTop: 8,
+  borderRadius: 14,
+  borderWidth: 1,
+  paddingVertical: 6,
+  minWidth: 172,
+},
+
+watchMoreMenuItem: {
+  minHeight: 36,
+  paddingHorizontal: 12,
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+},
+
+watchMoreMenuText: {
+  fontFamily: SYSTEM_SANS,
+  fontSize: 12,
+  fontWeight: '900',
 },
 
 watchCommentsPreview: {

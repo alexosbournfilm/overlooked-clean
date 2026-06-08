@@ -1595,6 +1595,7 @@ const [sideRoleSearchFocused, setSideRoleSearchFocused] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [sendingComment, setSendingComment] = useState(false);
   const [submissionCommentsExpanded, setSubmissionCommentsExpanded] = useState(false);
+  const [submissionActionsMenuOpen, setSubmissionActionsMenuOpen] = useState(false);
   const submissionWatchScrollRef = useRef<ScrollView | null>(null);
   const submissionCommentInputRef = useRef<TextInput | null>(null);
   const {
@@ -3857,6 +3858,7 @@ const label = city?.name ?? '';
     setCommentText('');
     setComments([]);
     setSubmissionCommentsExpanded(false);
+    setSubmissionActionsMenuOpen(false);
 
     const scrollToPlayer = () => {
       submissionWatchScrollRef.current?.scrollTo({ y: 0, animated: true });
@@ -3878,6 +3880,7 @@ const label = city?.name ?? '';
     } catch {}
 
     setSubmissionModalOpen(false);
+    setSubmissionActionsMenuOpen(false);
 
     if (submissionModalCleanupRef.current) {
       clearTimeout(submissionModalCleanupRef.current);
@@ -3888,6 +3891,7 @@ const label = city?.name ?? '';
       setComments([]);
       setCommentText('');
       setSubmissionCommentsExpanded(false);
+      setSubmissionActionsMenuOpen(false);
       setWatchCreatorSupportUserId(null);
       setWatchCreatorIsSupporting(false);
       submissionModalCleanupRef.current = null;
@@ -5762,6 +5766,7 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
           <Text
   style={[
     block.h3Centered,
+    { color: COLORS.textPrimary },
     isMobileLike && {
       fontSize: 10,
       letterSpacing: 1,
@@ -5944,12 +5949,14 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
     onPress={() => deleteShowreel(r)}
     style={[
       block.rowBtnGhost,
+      { backgroundColor: isLight ? COLORS.card : "#0C0C0C", borderColor: COLORS.border },
       isMobileLike && { width: "100%", paddingVertical: 6, paddingHorizontal: 8, marginLeft: 0 },
     ]}
   >
     <Text
       style={[
         block.rowBtnGhostText,
+        { color: COLORS.textPrimary },
         isMobileLike && { fontSize: 10, letterSpacing: 0.3 },
       ]}
       numberOfLines={1}
@@ -5962,7 +5969,7 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
                       <View style={{ marginTop: isMobileLike ? 6 : 10 }}>
   <Text
     style={{
-      color: COLORS.textSecondary,
+      color: COLORS.textPrimary,
       fontSize: isMobileLike ? 9 : 11,
       fontFamily: FONT_OBLIVION,
       marginBottom: 5,
@@ -5987,14 +5994,18 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
           paddingHorizontal: isMobileLike ? 7 : 10,
           paddingVertical: isMobileLike ? 5 : 6,
           borderRadius: 999,
-          backgroundColor: selected ? "rgba(198,166,100,0.18)" : "#111",
+          backgroundColor: selected
+            ? "rgba(198,166,100,0.18)"
+            : isLight
+            ? COLORS.card
+            : "#111",
           borderWidth: 1,
           borderColor: selected ? COLORS.primary : COLORS.border,
         }}
       >
         <Text
           style={{
-            color: selected ? COLORS.primary : COLORS.textSecondary,
+            color: selected ? COLORS.primary : COLORS.textPrimary,
             fontSize: isMobileLike ? 9 : 11,
             fontFamily: FONT_OBLIVION,
             fontWeight: "700",
@@ -6020,16 +6031,26 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
 };
 
 const AudioTile = ({ item }: { item: PortfolioItem }) => (
-  <View style={block.mediaRowCard}>
-    <View style={block.mediaIcon}>
+  <View style={[block.mediaRowCard, { backgroundColor: COLORS.card, borderColor: COLORS.border }]}>
+    <View
+      style={[
+        block.mediaIcon,
+        { backgroundColor: isLight ? COLORS.backgroundAlt : "#0C0C0C", borderColor: COLORS.border },
+      ]}
+    >
       <Ionicons name="musical-notes-outline" size={20} color={COLORS.textSecondary} />
     </View>
 
     <View style={{ flex: 1 }}>
-      <Text style={block.mediaRowTitle} numberOfLines={1}>
+      <Text style={[block.mediaRowTitle, { color: COLORS.textPrimary }]} numberOfLines={1}>
         {item.title ?? "Audio"}
       </Text>
-      <View style={block.progressRail}>
+      <View
+        style={[
+          block.progressRail,
+          { backgroundColor: isLight ? COLORS.backgroundAlt : "#0F0F0F", borderColor: COLORS.border },
+        ]}
+      >
         <View style={[block.progressFill, { width: playingId === item.id ? "35%" : "0%" }]} />
       </View>
     </View>
@@ -6039,20 +6060,31 @@ const AudioTile = ({ item }: { item: PortfolioItem }) => (
     </TouchableOpacity>
 
     {isOwnProfile && (
-      <TouchableOpacity onPress={() => deletePortfolioItem(item.id)} style={block.rowBtnGhost}>
-        <Text style={block.rowBtnGhostText}>Delete</Text>
+      <TouchableOpacity
+        onPress={() => deletePortfolioItem(item.id)}
+        style={[
+          block.rowBtnGhost,
+          { backgroundColor: isLight ? COLORS.card : "#0C0C0C", borderColor: COLORS.border },
+        ]}
+      >
+        <Text style={[block.rowBtnGhostText, { color: COLORS.textPrimary }]}>Delete</Text>
       </TouchableOpacity>
     )}
   </View>
 );
 
 const PdfTile = ({ item }: { item: PortfolioItem }) => (
-  <View style={block.mediaRowCard}>
-    <View style={block.mediaIcon}>
+  <View style={[block.mediaRowCard, { backgroundColor: COLORS.card, borderColor: COLORS.border }]}>
+    <View
+      style={[
+        block.mediaIcon,
+        { backgroundColor: isLight ? COLORS.backgroundAlt : "#0C0C0C", borderColor: COLORS.border },
+      ]}
+    >
       <Ionicons name="document-text-outline" size={20} color={COLORS.textSecondary} />
     </View>
 
-    <Text style={[block.mediaRowTitle, { flex: 1 }]} numberOfLines={1}>
+    <Text style={[block.mediaRowTitle, { flex: 1, color: COLORS.textPrimary }]} numberOfLines={1}>
       {item.title ?? "PDF"}
     </Text>
 
@@ -6061,8 +6093,14 @@ const PdfTile = ({ item }: { item: PortfolioItem }) => (
     </TouchableOpacity>
 
     {isOwnProfile && (
-      <TouchableOpacity onPress={() => deletePortfolioItem(item.id)} style={block.rowBtnGhost}>
-        <Text style={block.rowBtnGhostText}>Delete</Text>
+      <TouchableOpacity
+        onPress={() => deletePortfolioItem(item.id)}
+        style={[
+          block.rowBtnGhost,
+          { backgroundColor: isLight ? COLORS.card : "#0C0C0C", borderColor: COLORS.border },
+        ]}
+      >
+        <Text style={[block.rowBtnGhostText, { color: COLORS.textPrimary }]}>Delete</Text>
       </TouchableOpacity>
     )}
   </View>
@@ -6110,6 +6148,7 @@ const renderEditorialPortfolio = () => {
           <Text
   style={[
     block.sectionTitleCentered,
+    { color: COLORS.textPrimary },
     isMobileLike && {
       fontSize: 12,
       letterSpacing: 2.2,
@@ -6149,7 +6188,7 @@ const renderEditorialPortfolio = () => {
 
       {auds.length > 0 && (
         <View style={block.section}>
-          <Text style={block.h3Centered}>Audio</Text>
+          <Text style={[block.h3Centered, { color: COLORS.textPrimary }]}>Audio</Text>
           <View style={{ gap: 10 }}>
             {auds.map((item) => (
               <AudioTile key={item.id} item={item} />
@@ -6160,7 +6199,7 @@ const renderEditorialPortfolio = () => {
 
       {pdfs.length > 0 && (
         <View style={block.section}>
-          <Text style={block.h3Centered}>PDF</Text>
+          <Text style={[block.h3Centered, { color: COLORS.textPrimary }]}>PDF</Text>
           <View style={{ gap: 10 }}>
             {pdfs.map((item) => (
               <PdfTile key={item.id} item={item} />
@@ -6179,6 +6218,7 @@ const renderSubmissionsSection = () => {
         <Text
   style={[
     block.sectionTitleCentered,
+    { color: COLORS.textPrimary },
     isMobileLike && {
       fontSize: 12,
       letterSpacing: 2.2,
@@ -6222,7 +6262,7 @@ const renderSubmissionsSection = () => {
   const watchMediaMaxH = Math.floor(
     isMobileLike ? Math.min(windowHeight * 0.38, 360) : Math.min(windowHeight * 0.68, 660)
   );
-  const watchSurface = "#050505";
+  const watchSurface = isLight ? COLORS.background : "#050505";
 
   const renderSubmissionGrid = (
     title: string,
@@ -6328,8 +6368,8 @@ const renderSubmissionsSection = () => {
     ? visibleSubmissions.filter((submission) => submission.id !== activeSubmission.id)
     : [];
   const profileSoftSurface = isLight ? COLORS.card : "#0B0B0B";
-  const profileAltSurface = isLight ? COLORS.cardAlt : "rgba(255,255,255,0.075)";
   const profileSubText = isLight ? COLORS.textSecondary : "rgba(216,210,200,0.62)";
+  const profileWatchBorder = isLight ? COLORS.border : "rgba(255,255,255,0.08)";
   const scrollSubmissionComposerIntoView = () => {
     if (Platform.OS !== 'android') return;
 
@@ -6353,7 +6393,7 @@ const renderSubmissionsSection = () => {
         styles.profileWatchPlayerWrap,
         {
           backgroundColor: "#000",
-          borderColor: "rgba(255,255,255,0.08)",
+          borderColor: isLight ? "transparent" : profileWatchBorder,
         },
       ]}
     >
@@ -6403,7 +6443,7 @@ const renderSubmissionsSection = () => {
             },
           ]}
         >
-              <Text style={[block.muted, { textAlign: "center" }]}>
+              <Text style={[block.muted, { color: COLORS.textSecondary, textAlign: "center" }]}>
                 No video found for this submission.
               </Text>
             </View>
@@ -6422,7 +6462,7 @@ const renderSubmissionsSection = () => {
         },
       ]}
     >
-      <View style={styles.profileCommentsHeader}>
+      <View style={[styles.profileCommentsHeader, { borderBottomColor: COLORS.border }]}>
         <View>
           <Text style={[styles.profileCommentsTitle, { color: COLORS.textPrimary }]}>Comments</Text>
           <Text style={[styles.profileCommentsSubtitle, { color: COLORS.textSecondary }]}>
@@ -6434,7 +6474,13 @@ const renderSubmissionsSection = () => {
           <TouchableOpacity
             onPress={() => setSubmissionCommentsExpanded(false)}
             activeOpacity={0.85}
-            style={styles.profileCommentsCollapseBtn}
+            style={[
+              styles.profileCommentsCollapseBtn,
+              {
+                backgroundColor: isLight ? COLORS.backgroundAlt : "rgba(255,255,255,0.05)",
+                borderColor: COLORS.border,
+              },
+            ]}
           >
             <Ionicons name="chevron-up" size={16} color={COLORS.textSecondary} />
           </TouchableOpacity>
@@ -6480,8 +6526,16 @@ const renderSubmissionsSection = () => {
                   {user?.avatar_url ? (
                     <Image source={{ uri: user.avatar_url }} style={styles.profileCommentAvatar} />
                   ) : (
-                    <View style={styles.profileCommentAvatarFallback}>
-                      <Text style={styles.profileCommentAvatarText}>
+                    <View
+                      style={[
+                        styles.profileCommentAvatarFallback,
+                        {
+                          backgroundColor: isLight ? COLORS.backgroundAlt : "#111",
+                          borderColor: COLORS.border,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.profileCommentAvatarText, { color: COLORS.textPrimary }]}>
                         {(user?.full_name || "U").slice(0, 1).toUpperCase()}
                       </Text>
                     </View>
@@ -6505,7 +6559,10 @@ const renderSubmissionsSection = () => {
                         void reportSubmissionComment(comment);
                       }}
                       activeOpacity={0.8}
-                      style={styles.profileCommentReport}
+                      style={[
+                        styles.profileCommentReport,
+                        { backgroundColor: isLight ? COLORS.backgroundAlt : "rgba(255,255,255,0.035)" },
+                      ]}
                     >
                       <Ionicons name="flag-outline" size={13} color={COLORS.textSecondary} />
                       <Text style={[styles.profileCommentReportText, { color: COLORS.textSecondary }]}>Report</Text>
@@ -6520,7 +6577,7 @@ const renderSubmissionsSection = () => {
       )}
 
       <Animated.View style={Platform.OS === 'android' ? submissionKeyboardLiftStyle : null}>
-        <View style={styles.profileCommentComposer}>
+        <View style={[styles.profileCommentComposer, { borderTopColor: COLORS.border }]}>
           <TextInput
             ref={submissionCommentInputRef}
             value={commentText}
@@ -6657,8 +6714,9 @@ const renderSubmissionsSection = () => {
         style={[
           styles.profileWatchSuggestionCard,
           {
-            backgroundColor: isLight ? "transparent" : "#080808",
-            borderColor: isLight ? "transparent" : "rgba(255,255,255,0.08)",
+            backgroundColor: isLight ? COLORS.card : "#080808",
+            borderColor: profileWatchBorder,
+            borderWidth: StyleSheet.hairlineWidth,
           },
         ]}
       >
@@ -6835,11 +6893,13 @@ const renderSubmissionsSection = () => {
                             {
                               backgroundColor: activeCreatorSupportActive
                                 ? isLight
-                                  ? COLORS.cardAlt
-                                  : "rgba(198,166,100,0.14)"
-                                : profileAltSurface,
+                                  ? "rgba(198,166,100,0.12)"
+                                  : "rgba(198,166,100,0.10)"
+                                : isLight
+                                ? COLORS.card
+                                : "#101010",
                               borderColor: activeCreatorSupportActive
-                                ? COLORS.primary
+                                ? "rgba(198,166,100,0.32)"
                                 : COLORS.border,
                               opacity: watchCreatorSupportBusy ? 0.62 : 1,
                             },
@@ -6847,7 +6907,7 @@ const renderSubmissionsSection = () => {
                         >
                           <Ionicons
                             name={activeCreatorSupportActive ? "checkmark-circle-outline" : "star-outline"}
-                            size={15}
+                            size={13}
                             color={activeCreatorSupportActive ? COLORS.primary : COLORS.textPrimary}
                           />
                           <Text
@@ -6922,20 +6982,23 @@ const renderSubmissionsSection = () => {
                         <TouchableOpacity
                           activeOpacity={0.9}
                           onPress={() => {
+                            setSubmissionActionsMenuOpen(false);
                             void toggleProfileSubmissionVote(activeSubmission);
                           }}
                           disabled={activeSubmissionVoteBusy || activeSubmission.user_id === currentUserId}
                           style={[
                             styles.profileWatchActionChip,
                             {
-                              backgroundColor: profileAltSurface,
-                              borderColor: COLORS.border,
+                              backgroundColor: isLight ? COLORS.card : "#101010",
+                              borderColor: isLight ? COLORS.border : "#242424",
                             },
                             activeSubmissionVoteActive && styles.profileWatchActionChipActive,
                             activeSubmissionVoteActive &&
-                              isLight && {
-                                backgroundColor: COLORS.cardAlt,
-                                borderColor: COLORS.primary,
+                              {
+                                backgroundColor: isLight
+                                  ? "rgba(198,166,100,0.13)"
+                                  : "rgba(198,166,100,0.12)",
+                                borderColor: "rgba(198,166,100,0.35)",
                               },
                             (activeSubmissionVoteBusy || activeSubmission.user_id === currentUserId) && {
                               opacity: 0.55,
@@ -6959,13 +7022,14 @@ const renderSubmissionsSection = () => {
                       <TouchableOpacity
                         activeOpacity={0.9}
                         onPress={() => {
+                          setSubmissionActionsMenuOpen(false);
                           openSubmissionComments(true);
                         }}
                         style={[
                           styles.profileWatchActionChip,
                           {
-                            backgroundColor: profileAltSurface,
-                            borderColor: COLORS.border,
+                            backgroundColor: isLight ? COLORS.card : "#101010",
+                            borderColor: isLight ? COLORS.border : "#242424",
                           },
                         ]}
                       >
@@ -6980,13 +7044,14 @@ const renderSubmissionsSection = () => {
                         <TouchableOpacity
                           activeOpacity={0.9}
                           onPress={() => {
+                            setSubmissionActionsMenuOpen(false);
                             void shareProfileSubmissionLink(activeSubmission);
                           }}
                           style={[
                             styles.profileWatchActionChip,
                             {
-                              backgroundColor: profileAltSurface,
-                              borderColor: COLORS.border,
+                              backgroundColor: isLight ? COLORS.card : "#101010",
+                              borderColor: isLight ? COLORS.border : "#242424",
                             },
                           ]}
                         >
@@ -6995,85 +7060,114 @@ const renderSubmissionsSection = () => {
                         </TouchableOpacity>
                       ) : null}
 
-                      {activeSubmission ? (
+                      <TouchableOpacity
+                        activeOpacity={0.9}
+                        onPress={() => setSubmissionActionsMenuOpen(false)}
+                        style={[
+                          styles.profileWatchActionChip,
+                          {
+                            backgroundColor: isLight ? COLORS.card : "#101010",
+                            borderColor: isLight ? COLORS.border : "#242424",
+                          },
+                        ]}
+                      >
+                        <Ionicons name="people-outline" size={17} color={COLORS.textPrimary} />
+                        <Text style={[styles.profileWatchActionText, { color: COLORS.textPrimary }]}>Credits</Text>
+                        <Text style={[styles.profileWatchActionMeta, { color: profileSubText }]}>
+                          {activeSubmissionCollaborators.length}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        activeOpacity={0.9}
+                        onPress={() => setSubmissionActionsMenuOpen((open) => !open)}
+                        style={[
+                          styles.profileWatchActionChip,
+                          styles.profileWatchActionChipIconOnly,
+                          {
+                            backgroundColor: isLight ? COLORS.card : "#101010",
+                            borderColor: isLight ? COLORS.border : "#242424",
+                          },
+                        ]}
+                      >
+                        <Ionicons name="ellipsis-horizontal" size={18} color={COLORS.textPrimary} />
+                      </TouchableOpacity>
+                    </View>
+
+                    {submissionActionsMenuOpen && activeSubmission ? (
+                      <View
+                        style={[
+                          styles.profileWatchMoreMenu,
+                          {
+                            backgroundColor: isLight ? COLORS.card : "#101010",
+                            borderColor: isLight ? COLORS.border : "#242424",
+                          },
+                        ]}
+                      >
                         <TouchableOpacity
-                          activeOpacity={0.9}
+                          activeOpacity={0.85}
                           onPress={() => {
+                            setSubmissionActionsMenuOpen(false);
                             void reportProfileSubmission(activeSubmission);
                           }}
-                          style={[
-                            styles.profileWatchActionChip,
-                            {
-                              backgroundColor: profileAltSurface,
-                              borderColor: COLORS.border,
-                            },
-                          ]}
+                          style={styles.profileWatchMoreMenuItem}
                         >
-                          <Ionicons name="flag-outline" size={18} color={COLORS.textPrimary} />
-                          <Text style={[styles.profileWatchActionText, { color: COLORS.textPrimary }]}>Report</Text>
+                          <Ionicons name="flag-outline" size={15} color={COLORS.danger} />
+                          <Text style={[styles.profileWatchMoreMenuText, { color: COLORS.danger }]}>
+                            Report film
+                          </Text>
                         </TouchableOpacity>
-                      ) : null}
 
-                      {activeSubmission && activeCreatorId && !activeCreatorIsCurrentUser ? (
-                        <TouchableOpacity
-                          activeOpacity={0.9}
-                          onPress={() => {
-                            void blockProfileSubmissionCreator(activeSubmission);
-                          }}
-                          style={[
-                            styles.profileWatchActionChip,
-                            styles.profileWatchDangerChip,
-                            {
-                              backgroundColor: isLight ? "rgba(185,71,71,0.08)" : "rgba(255,70,70,0.075)",
-                              borderColor: isLight ? "rgba(185,71,71,0.22)" : "rgba(255,90,90,0.22)",
-                            },
-                          ]}
-                        >
-                          <Ionicons name="ban-outline" size={18} color={COLORS.danger} />
-                          <Text style={[styles.profileWatchDangerText, { color: COLORS.danger }]}>Block</Text>
-                        </TouchableOpacity>
-                      ) : null}
+                        {activeCreatorId && !activeCreatorIsCurrentUser ? (
+                          <TouchableOpacity
+                            activeOpacity={0.85}
+                            onPress={() => {
+                              setSubmissionActionsMenuOpen(false);
+                              void blockProfileSubmissionCreator(activeSubmission);
+                            }}
+                            style={styles.profileWatchMoreMenuItem}
+                          >
+                            <Ionicons name="ban-outline" size={15} color={COLORS.danger} />
+                            <Text style={[styles.profileWatchMoreMenuText, { color: COLORS.danger }]}>
+                              Block creator
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
 
-                      {isOwnProfile && activeSubmission ? (
-                        <TouchableOpacity
-                          activeOpacity={0.9}
-                          onPress={() => {
-                            void updateSubmissionProfileVisibility(activeSubmission, true);
-                          }}
-                          style={[
-                            styles.profileWatchActionChip,
-                            {
-                              backgroundColor: profileAltSurface,
-                              borderColor: COLORS.border,
-                            },
-                          ]}
-                        >
-                          <Ionicons name="eye-off-outline" size={18} color={COLORS.textPrimary} />
-                          <Text style={[styles.profileWatchActionText, { color: COLORS.textPrimary }]}>Hide</Text>
-                        </TouchableOpacity>
-                      ) : null}
+                        {isOwnProfile ? (
+                          <TouchableOpacity
+                            activeOpacity={0.85}
+                            onPress={() => {
+                              setSubmissionActionsMenuOpen(false);
+                              void updateSubmissionProfileVisibility(activeSubmission, true);
+                            }}
+                            style={styles.profileWatchMoreMenuItem}
+                          >
+                            <Ionicons name="eye-off-outline" size={15} color={COLORS.textSecondary} />
+                            <Text style={[styles.profileWatchMoreMenuText, { color: COLORS.textPrimary }]}>
+                              Hide from profile
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
 
-                      {activeSubmission?.user_id === currentUserId &&
-                      !activeSubmission?.is_collaboration_credit ? (
-                        <TouchableOpacity
-                          activeOpacity={0.9}
-                          onPress={() => {
-                            void deleteSubmission(activeSubmission);
-                          }}
-                          style={[
-                            styles.profileWatchActionChip,
-                            styles.profileWatchDangerChip,
-                            {
-                              backgroundColor: isLight ? "rgba(185,71,71,0.08)" : "rgba(255,70,70,0.075)",
-                              borderColor: isLight ? "rgba(185,71,71,0.22)" : "rgba(255,90,90,0.22)",
-                            },
-                          ]}
-                        >
-                          <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
-                          <Text style={[styles.profileWatchDangerText, { color: COLORS.danger }]}>Delete</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
+                        {activeSubmission.user_id === currentUserId &&
+                        !activeSubmission.is_collaboration_credit ? (
+                          <TouchableOpacity
+                            activeOpacity={0.85}
+                            onPress={() => {
+                              setSubmissionActionsMenuOpen(false);
+                              void deleteSubmission(activeSubmission);
+                            }}
+                            style={styles.profileWatchMoreMenuItem}
+                          >
+                            <Ionicons name="trash-outline" size={15} color={COLORS.danger} />
+                            <Text style={[styles.profileWatchMoreMenuText, { color: COLORS.danger }]}>
+                              Delete film
+                            </Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    ) : null}
                   </View>
 
                   {submissionCommentsExpanded
@@ -7849,7 +7943,7 @@ return (
                     </View>
                   </>
                 ) : (
-                  <Text style={[block.muted, { marginBottom: 6 }]}>
+                  <Text style={[block.muted, { color: COLORS.textSecondary, marginBottom: 6 }]}>
                     Upload up to 3 showreels. Pick a category for each one and choose which is the main featured reel.
                   </Text>
                 )}
@@ -7881,9 +7975,16 @@ return (
                 {(mp4MainUploading || srUploading) && (
                   <View style={{ marginTop: 8, alignItems: "center" }}>
                     {!!(mp4Status || srStatus) && (
-                      <Text style={[block.muted, { marginBottom: 4 }]}>{mp4Status || srStatus}</Text>
+                      <Text style={[block.muted, { color: COLORS.textSecondary, marginBottom: 4 }]}>
+                        {mp4Status || srStatus}
+                      </Text>
                     )}
-                    <View style={block.progressRail}>
+                    <View
+                      style={[
+                        block.progressRail,
+                        { backgroundColor: isLight ? COLORS.backgroundAlt : "#0F0F0F", borderColor: COLORS.border },
+                      ]}
+                    >
                       <View
                         style={[
                           block.progressFill,
@@ -7891,7 +7992,7 @@ return (
                         ]}
                       />
                     </View>
-                    <Text style={[block.muted, { marginTop: 4 }]}>
+                    <Text style={[block.muted, { color: COLORS.textSecondary, marginTop: 4 }]}>
                       {Math.max(mp4Progress || 0, srProgress || 0)}%
                     </Text>
                   </View>
@@ -9589,20 +9690,20 @@ heroIdentityEpicDesktop: {
     minWidth: 0,
   },
   profileWatchSupportButton: {
-    minHeight: 34,
+    minHeight: 26,
     borderRadius: 999,
     borderWidth: 1,
-    paddingHorizontal: 12,
+    paddingHorizontal: 9,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
+    gap: 4,
   },
   profileWatchSupportText: {
     fontFamily: FONT_OBLIVION,
     fontWeight: "900",
-    fontSize: 10,
-    letterSpacing: 0.4,
+    fontSize: 9.5,
+    letterSpacing: 0.2,
     textTransform: "uppercase",
   },
   profileWatchCreatorAvatar: {
@@ -9702,23 +9803,28 @@ heroIdentityEpicDesktop: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: 6,
+    gap: 7,
   },
   profileWatchActionChip: {
-    width: 76,
-    height: 54,
-    borderRadius: 14,
-    paddingHorizontal: 6,
+    minHeight: 34,
+    borderRadius: 999,
+    paddingHorizontal: 11,
     paddingVertical: 7,
     backgroundColor: "rgba(255,255,255,0.075)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.10)",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 5,
+  },
+  profileWatchActionChipIconOnly: {
+    width: 36,
+    paddingHorizontal: 0,
   },
   profileWatchActionChipActive: {
-    backgroundColor: "rgba(198,166,100,0.14)",
-    borderColor: "rgba(198,166,100,0.42)",
+    backgroundColor: "rgba(198,166,100,0.12)",
+    borderColor: "rgba(198,166,100,0.35)",
   },
   profileWatchDangerChip: {
     backgroundColor: "rgba(255,70,70,0.075)",
@@ -9728,24 +9834,41 @@ heroIdentityEpicDesktop: {
     color: COLORS.textPrimary,
     fontFamily: FONT_OBLIVION,
     fontWeight: "900",
-    fontSize: 10,
+    fontSize: 11,
     letterSpacing: 0.2,
-    marginTop: 3,
   },
   profileWatchActionMeta: {
     color: "rgba(216,210,200,0.54)",
     fontFamily: FONT_OBLIVION,
     fontWeight: "800",
-    fontSize: 9,
-    marginTop: 1,
+    fontSize: 11,
   },
   profileWatchDangerText: {
     color: COLORS.danger,
     fontFamily: FONT_OBLIVION,
     fontWeight: "900",
-    fontSize: 10,
+    fontSize: 11,
     letterSpacing: 0.2,
-    marginTop: 3,
+  },
+  profileWatchMoreMenu: {
+    alignSelf: "flex-start",
+    marginTop: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 6,
+    minWidth: 172,
+  },
+  profileWatchMoreMenuItem: {
+    minHeight: 36,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  profileWatchMoreMenuText: {
+    fontFamily: FONT_OBLIVION,
+    fontSize: 12,
+    fontWeight: "900",
   },
   profileWatchCommentsPreview: {
     borderRadius: 14,

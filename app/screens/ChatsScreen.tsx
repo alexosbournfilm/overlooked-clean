@@ -21,6 +21,7 @@ import {
   TouchableOpacity,
   ScrollView,
   RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -41,6 +42,7 @@ import {
   emitChatBadgeRefresh,
   subscribeChatBadgeRefresh,
 } from '../lib/chatBadgeEvents';
+import * as DocumentPicker from 'expo-document-picker';
 import { useAppRefresh } from '../context/AppRefreshContext';
 import { reportContent, ReportReason } from '../utils/reportContent';
 import { blockUser as blockUserAndNotify } from '../utils/blockUser';
@@ -134,6 +136,24 @@ type SimpleUser = {
   level?: number | null;
 };
 
+type DesktopChatFilter = 'all' | 'unread' | 'groups';
+
+type DesktopMessage = {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  content: string;
+  sent_at: string;
+  delivered?: boolean | null;
+  message_type?: 'text' | 'system' | 'media' | null;
+  is_removed?: boolean | null;
+  sender?: { id: string; full_name: string } | null;
+};
+
+type DesktopMessageListItem =
+  | { type: 'date'; id: string; label: string }
+  | { type: 'message'; id: string; message: DesktopMessage };
+
 /* Level-based ring colors */
 
 // throttle helper
@@ -171,6 +191,7 @@ export default function ChatsScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { triggerAppRefresh } = useAppRefresh();
   const GOLD = colors.primary;
   const T = useMemo(
@@ -232,10 +253,22 @@ export default function ChatsScreen() {
 const unreadRequestInFlight = useRef(false);
 const unreadRefreshTimeout = useRef<any>(null);
   const [search, setSearch] = useState('');
+  const isDesktopChatLayout = Platform.OS === 'web' && width >= 900;
 
   // users search tab
   const [activeTab, setActiveTab] =
   useState<'chats' | 'contacts' | 'users'>('chats');
+  const [desktopChatFilter, setDesktopChatFilter] = useState<DesktopChatFilter>('all');
+  const [desktopActiveChatId, setDesktopActiveChatId] = useState<string | null>(null);
+  const [desktopMessages, setDesktopMessages] = useState<DesktopMessage[]>([]);
+  const [desktopMessagesLoading, setDesktopMessagesLoading] = useState(false);
+  const [desktopDraft, setDesktopDraft] = useState('');
+  const [desktopSending, setDesktopSending] = useState(false);
+  const [desktopUploadingFile, setDesktopUploadingFile] = useState(false);
+  const [desktopTypingUser, setDesktopTypingUser] = useState<string | null>(null);
+  const [desktopUserLookup, setDesktopUserLookup] = useState<
+    Record<string, { id: string; full_name: string }>
+  >({});
   const [userQuery, setUserQuery] = useState('');
   const [users, setUsers] = useState<SimpleUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -271,6 +304,11 @@ const [reportSubmitting, setReportSubmitting] = useState(false);
   const hideMapRef = useRef<HideMap>({});
   const unhideSetRef = useRef<Set<string>>(new Set());
   const mountedRef = useRef(true);
+  const desktopMessageListRef = useRef<FlatList<DesktopMessageListItem>>(null);
+  const desktopMessageChannelRef = useRef<any>(null);
+  const desktopTypingChannelRef = useRef<any>(null);
+  const desktopTypingTimeoutRef = useRef<any>(null);
+  const desktopLastTypingSignalRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -282,6 +320,15 @@ const [reportSubmitting, setReportSubmitting] = useState(false);
     return () => {
       if (unreadRefreshTimeout.current) {
         clearTimeout(unreadRefreshTimeout.current);
+      }
+      if (desktopTypingTimeoutRef.current) {
+        clearTimeout(desktopTypingTimeoutRef.current);
+      }
+      if (desktopMessageChannelRef.current) {
+        supabase.removeChannel(desktopMessageChannelRef.current);
+      }
+      if (desktopTypingChannelRef.current) {
+        supabase.removeChannel(desktopTypingChannelRef.current);
       }
     };
   }, []);
@@ -302,6 +349,75 @@ const [reportSubmitting, setReportSubmitting] = useState(false);
       Alert.alert(title, message);
     }
   };
+
+  const getChatTitle = (chat: any) =>
+    chat?.is_group
+      ? chat?.is_city_group
+        ? chat?.cityInfo?.name || chat?.label || 'City'
+        : chat?.label || 'Group chat'
+      : chat?.derivedTitle || chat?.peerUser?.full_name || 'Conversation';
+
+  const getChatAvatarUri = (chat: any) =>
+    !chat?.is_group
+      ? chat?.peerUser?.avatar_url || undefined
+      : chat?.is_city_group
+      ? chat?.cityInfo?.flagUri || undefined
+      : chat?.group_avatar_url || undefined;
+
+  const getChatFallbackIcon = (chat: any): keyof typeof Ionicons.glyphMap =>
+    !chat?.is_group
+      ? 'person-outline'
+      : chat?.is_city_group
+      ? 'location-outline'
+      : 'people-outline';
+
+  const formatDesktopChatTime = (timestamp?: string | null) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return '';
+
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startYesterday = startToday - 24 * 60 * 60 * 1000;
+    const time = date.getTime();
+
+    if (time >= startToday) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    if (time >= startYesterday) return 'Yesterday';
+
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  const getDesktopDateLabel = (timestamp?: string | null) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return '';
+
+    const now = new Date();
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startYesterday = startToday - 24 * 60 * 60 * 1000;
+    const time = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+
+    if (time >= startToday) return 'Today';
+    if (time >= startYesterday) return 'Yesterday';
+
+    return date.toLocaleDateString([], {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const normalizeDesktopMessage = (row: any): DesktopMessage => ({
+    ...row,
+    sender: row?.sender
+      ? Array.isArray(row.sender)
+        ? row.sender[0] ?? null
+        : row.sender
+      : null,
+  });
 
   useEffect(() => {
   let isMounted = true;
@@ -2022,11 +2138,15 @@ const isDirectBlocked =
     emitChatBadgeRefresh();
   }
 
-  navigation.navigate('ChatRoom', {
-    conversation: item,
-    peerUser: item.peerUser,
-    currentUserId: meId,
-  });
+  if (isDesktopChatLayout) {
+    setDesktopActiveChatId(String(item.id));
+  } else {
+    navigation.navigate('ChatRoom', {
+      conversation: item,
+      peerUser: item.peerUser,
+      currentUserId: meId,
+    });
+  }
 
   setTimeout(() => {
     void markConversationActive(String(item.id));
@@ -2202,6 +2322,481 @@ const isDirectBlocked =
     .includes(search.toLowerCase());
 });
 
+const desktopFilteredChats = useMemo(() => {
+  if (!isDesktopChatLayout) return filteredChats;
+
+  if (desktopChatFilter === 'unread') {
+    return filteredChats.filter((chat) => unreadConversationIds.has(String(chat.id)));
+  }
+
+  if (desktopChatFilter === 'groups') {
+    return filteredChats.filter((chat) => !!chat.is_group);
+  }
+
+  return filteredChats;
+}, [desktopChatFilter, filteredChats, isDesktopChatLayout, unreadConversationIds]);
+
+const desktopActiveChat = useMemo(() => {
+  if (!isDesktopChatLayout) return null;
+
+  const activeFromAll = desktopActiveChatId
+    ? chats.find((chat) => String(chat.id) === String(desktopActiveChatId))
+    : null;
+
+  return activeFromAll || desktopFilteredChats[0] || null;
+}, [chats, desktopActiveChatId, desktopFilteredChats, isDesktopChatLayout]);
+
+const desktopActivePeerBlocked =
+  !!desktopActiveChat &&
+  !desktopActiveChat.is_group &&
+  !!desktopActiveChat?.peerUser?.id &&
+  blockedUserIds.has(desktopActiveChat.peerUser.id);
+
+useEffect(() => {
+  if (!isDesktopChatLayout) return;
+
+  const firstVisibleId = desktopFilteredChats[0]?.id ? String(desktopFilteredChats[0].id) : null;
+  const activeVisible =
+    !!desktopActiveChatId &&
+    desktopFilteredChats.some((chat) => String(chat.id) === String(desktopActiveChatId));
+
+  if (!desktopActiveChatId && firstVisibleId) {
+    setDesktopActiveChatId(firstVisibleId);
+    return;
+  }
+
+  if (desktopActiveChatId && !activeVisible && firstVisibleId) {
+    setDesktopActiveChatId(firstVisibleId);
+  }
+}, [desktopActiveChatId, desktopFilteredChats, isDesktopChatLayout]);
+
+useEffect(() => {
+  if (!isDesktopChatLayout || !desktopActiveChat?.id || !meId) {
+    setDesktopMessages([]);
+    setDesktopUserLookup({});
+    setDesktopTypingUser(null);
+    return;
+  }
+
+  let cancelled = false;
+  const conversationId = String(desktopActiveChat.id);
+  const participantIds = Array.isArray(desktopActiveChat.participant_ids)
+    ? desktopActiveChat.participant_ids
+    : [];
+
+  setDesktopMessagesLoading(true);
+  setDesktopDraft('');
+  setDesktopTypingUser(null);
+
+  if (desktopMessageChannelRef.current) {
+    supabase.removeChannel(desktopMessageChannelRef.current);
+    desktopMessageChannelRef.current = null;
+  }
+  if (desktopTypingChannelRef.current) {
+    supabase.removeChannel(desktopTypingChannelRef.current);
+    desktopTypingChannelRef.current = null;
+  }
+
+  const loadDesktopConversation = async () => {
+    try {
+      const messagesRequest = supabase
+        .from('messages')
+        .select(
+          'id, conversation_id, sender_id, content, message_type, sent_at, delivered, is_removed, sender:users!messages_sender_id_fkey(id, full_name)'
+        )
+        .eq('conversation_id', conversationId)
+        .order('sent_at', { ascending: true })
+        .limit(120);
+
+      const participantsRequest = participantIds.length
+        ? supabase.from('users').select('id, full_name').in('id', participantIds)
+        : Promise.resolve({ data: [] } as any);
+
+      const [{ data, error }, participantsResult] = await Promise.all([
+        messagesRequest,
+        participantsRequest,
+      ]);
+
+      if (cancelled) return;
+
+      if (error || !data) {
+        if (error) logChatsIssue('Desktop chat messages unavailable', error);
+        setDesktopMessages([]);
+        return;
+      }
+
+      const lookup: Record<string, { id: string; full_name: string }> = {};
+      (participantsResult?.data || []).forEach((user: any) => {
+        lookup[user.id] = {
+          id: user.id,
+          full_name: user.full_name,
+        };
+      });
+
+      const normalized = (data as any[])
+        .map(normalizeDesktopMessage)
+        .filter(
+          (message) =>
+            !message.is_removed && !blockedUserIds.has(message.sender_id)
+        );
+
+      normalized.forEach((message) => {
+        if (message.sender?.id) {
+          lookup[message.sender.id] = {
+            id: message.sender.id,
+            full_name: message.sender.full_name,
+          };
+        }
+      });
+
+      setDesktopUserLookup(lookup);
+      setDesktopMessages(normalized);
+
+      setUnreadConversationIds((prev) => {
+        const next = new Set(prev);
+        next.delete(conversationId);
+        return next;
+      });
+
+      void markConversationActive(conversationId);
+      void supabase
+        .from('conversation_reads')
+        .upsert(
+          {
+            user_id: meId,
+            conversation_id: conversationId,
+            last_read_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'user_id,conversation_id',
+          }
+        )
+        .then(({ error: readError }) => {
+          if (readError) logChatsIssue('Desktop mark read unavailable', readError);
+          emitChatBadgeRefresh();
+        });
+    } finally {
+      if (!cancelled) setDesktopMessagesLoading(false);
+    }
+  };
+
+  void loadDesktopConversation();
+
+  const messageChannel = supabase
+    .channel(`desktop-chat-${conversationId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      (payload) => {
+        const nextMessage = normalizeDesktopMessage((payload as any)?.new);
+        if (!nextMessage?.id || nextMessage.is_removed) return;
+        if (blockedUserIds.has(nextMessage.sender_id)) return;
+
+        setDesktopMessages((prev) => {
+          if (prev.some((message) => message.id === nextMessage.id)) return prev;
+          return [...prev, nextMessage].sort(
+            (a, b) => new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime()
+          );
+        });
+
+        if (nextMessage.sender_id !== meId) {
+          void supabase
+            .from('conversation_reads')
+            .upsert(
+              {
+                user_id: meId,
+                conversation_id: conversationId,
+                last_read_at: new Date().toISOString(),
+              },
+              {
+                onConflict: 'user_id,conversation_id',
+              }
+            );
+        }
+
+        emitChatBadgeRefresh();
+      }
+    )
+    .subscribe();
+
+  const typingChannel = supabase
+    .channel(`desktop-typing-${conversationId}`)
+    .on('broadcast', { event: 'typing' }, (payload) => {
+      const sender = payload?.payload?.sender as string | null;
+      if (!sender || sender === meId) return;
+
+      setDesktopTypingUser(sender);
+      if (desktopTypingTimeoutRef.current) {
+        clearTimeout(desktopTypingTimeoutRef.current);
+      }
+      desktopTypingTimeoutRef.current = setTimeout(() => {
+        setDesktopTypingUser(null);
+      }, 2000);
+    })
+    .subscribe();
+
+  desktopMessageChannelRef.current = messageChannel;
+  desktopTypingChannelRef.current = typingChannel;
+
+  return () => {
+    cancelled = true;
+    supabase.removeChannel(messageChannel);
+    supabase.removeChannel(typingChannel);
+    if (desktopMessageChannelRef.current === messageChannel) {
+      desktopMessageChannelRef.current = null;
+    }
+    if (desktopTypingChannelRef.current === typingChannel) {
+      desktopTypingChannelRef.current = null;
+    }
+  };
+}, [
+  blockedUserIds,
+  desktopActiveChat?.id,
+  desktopActiveChat?.participant_ids,
+  isDesktopChatLayout,
+  markConversationActive,
+  meId,
+]);
+
+const desktopMessageItems = useMemo<DesktopMessageListItem[]>(() => {
+  const items: DesktopMessageListItem[] = [];
+  let lastDateLabel = '';
+
+  desktopMessages.forEach((message) => {
+    const dateLabel = getDesktopDateLabel(message.sent_at);
+    if (dateLabel && dateLabel !== lastDateLabel) {
+      items.push({
+        type: 'date',
+        id: `date-${message.sent_at}`,
+        label: dateLabel,
+      });
+      lastDateLabel = dateLabel;
+    }
+
+    items.push({
+      type: 'message',
+      id: message.id,
+      message,
+    });
+  });
+
+  return items;
+}, [desktopMessages]);
+
+const handleDesktopDraftChange = useCallback(
+  (text: string) => {
+    setDesktopDraft(text);
+
+    if (!text.trim() || !desktopTypingChannelRef.current || !meId) return;
+
+    const now = Date.now();
+    if (now - desktopLastTypingSignalRef.current < 900) return;
+    desktopLastTypingSignalRef.current = now;
+
+    desktopTypingChannelRef.current.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { sender: meId },
+    });
+  },
+  [meId]
+);
+
+const sendDesktopMessage = useCallback(async () => {
+  const text = desktopDraft.trim();
+  if (!text || !desktopActiveChat?.id || !meId || desktopSending) return;
+
+  if (desktopActivePeerBlocked) {
+    showAlert('User blocked', 'Unblock this user to send messages.');
+    return;
+  }
+
+  const moderationError = validateSafeText(text);
+  if (moderationError) {
+    showAlert('Content Not Allowed', moderationError);
+    return;
+  }
+
+  setDesktopSending(true);
+  try {
+    const { data: insertedMessage, error } = await supabase
+      .from('messages')
+      .insert({
+        conversation_id: desktopActiveChat.id,
+        sender_id: meId,
+        content: text,
+        delivered: true,
+        message_type: 'text',
+      })
+      .select('id, conversation_id, sender_id, content, message_type, sent_at, delivered, is_removed')
+      .single();
+
+    if (error || !insertedMessage) {
+      showAlert('Failed to send', error?.message || 'Please try again.');
+      return;
+    }
+
+    const normalized = normalizeDesktopMessage(insertedMessage);
+    setDesktopMessages((prev) => {
+      if (prev.some((message) => message.id === normalized.id)) return prev;
+      return [...prev, normalized].sort(
+        (a, b) => new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime()
+      );
+    });
+    setDesktopDraft('');
+
+    void supabase
+      .from('conversations')
+      .update({
+        last_message_content: text,
+        last_message_sent_at: new Date().toISOString(),
+      })
+      .eq('id', desktopActiveChat.id);
+
+    void supabase
+      .from('conversation_reads')
+      .upsert(
+        {
+          user_id: meId,
+          conversation_id: desktopActiveChat.id,
+          last_read_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'user_id,conversation_id',
+        }
+      )
+      .then(() => emitChatBadgeRefresh());
+
+    void fetchUserChats({ showSpinner: false });
+  } finally {
+    setDesktopSending(false);
+  }
+}, [
+  desktopActiveChat?.id,
+  desktopActivePeerBlocked,
+  desktopDraft,
+  desktopSending,
+  fetchUserChats,
+  meId,
+]);
+
+const sendDesktopAttachment = useCallback(async () => {
+  if (!desktopActiveChat?.id || !meId || desktopUploadingFile) return;
+
+  if (desktopActivePeerBlocked) {
+    showAlert('User blocked', 'Unblock this user to send attachments.');
+    return;
+  }
+
+  try {
+    const result = await DocumentPicker.getDocumentAsync({
+      multiple: false,
+      copyToCacheDirectory: true,
+    });
+
+    if (!result.assets || result.assets.length === 0) return;
+
+    const asset = result.assets[0];
+    const isImage = (asset.mimeType || '').startsWith('image/');
+    setDesktopUploadingFile(true);
+
+    let content = `File: ${asset.name || 'Attachment'}`;
+    let messageType: 'text' | 'media' = 'text';
+    let lastMessage = content;
+
+    if (isImage) {
+      const ext = (asset.mimeType?.split('/')[1] || 'jpg').split(';')[0];
+      const filePath = `${desktopActiveChat.id}/${meId}/${Date.now()}.${ext}`;
+      const res = await fetch(asset.uri);
+      const blob = await res.blob();
+
+      const { error: uploadError } = await supabase.storage
+        .from('chat-uploads')
+        .upload(filePath, blob, {
+          upsert: true,
+          contentType: asset.mimeType || 'image/jpeg',
+        });
+
+      if (uploadError) {
+        showAlert('Attachment error', uploadError.message);
+        return;
+      }
+
+      const { data: publicUrl } = supabase.storage
+        .from('chat-uploads')
+        .getPublicUrl(filePath);
+
+      content = `image:${publicUrl.publicUrl}`;
+      messageType = 'media';
+      lastMessage = '[Photo]';
+    }
+
+    const { data: insertedMessage, error } = await supabase
+      .from('messages')
+      .insert({
+        conversation_id: desktopActiveChat.id,
+        sender_id: meId,
+        content,
+        delivered: true,
+        message_type: messageType,
+      })
+      .select('id, conversation_id, sender_id, content, message_type, sent_at, delivered, is_removed')
+      .single();
+
+    if (error || !insertedMessage) {
+      showAlert('Attachment error', error?.message || 'Unable to send attachment.');
+      return;
+    }
+
+    const normalized = normalizeDesktopMessage(insertedMessage);
+    setDesktopMessages((prev) => {
+      if (prev.some((message) => message.id === normalized.id)) return prev;
+      return [...prev, normalized].sort(
+        (a, b) => new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime()
+      );
+    });
+
+    void supabase
+      .from('conversations')
+      .update({
+        last_message_content: lastMessage,
+        last_message_sent_at: new Date().toISOString(),
+      })
+      .eq('id', desktopActiveChat.id);
+
+    void supabase
+      .from('conversation_reads')
+      .upsert(
+        {
+          user_id: meId,
+          conversation_id: desktopActiveChat.id,
+          last_read_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'user_id,conversation_id',
+        }
+      )
+      .then(() => emitChatBadgeRefresh());
+
+    void fetchUserChats({ showSpinner: false });
+  } catch (e: any) {
+    showAlert('Attachment error', String(e?.message || e || 'Unable to send attachment.'));
+  } finally {
+    setDesktopUploadingFile(false);
+  }
+}, [
+  desktopActiveChat?.id,
+  desktopActivePeerBlocked,
+  desktopUploadingFile,
+  fetchUserChats,
+  meId,
+]);
+
   /* -------- row renderer: users (with rings) -------- */
 
   const renderUser = ({
@@ -2271,6 +2866,728 @@ const isDirectBlocked =
     );
   };
 
+  /* -------- desktop web split layout -------- */
+
+  const renderDesktopChatRow = ({ item }: any) => {
+    const title = getChatTitle(item);
+    const avatarUri = getChatAvatarUri(item);
+    const isUnread = unreadConversationIds.has(String(item.id));
+    const isSelected = String(desktopActiveChat?.id || '') === String(item.id);
+    const isDeleting = deletingId === item.id;
+    const isDirectBlocked =
+      !item.is_group &&
+      !!item?.peerUser?.id &&
+      blockedUserIds.has(item.peerUser.id);
+
+    const openDesktopChat = () => {
+      if (isDeleting) return;
+
+      if (isGuest) {
+        promptSignIn('Create an account or sign in to open chats.');
+        return;
+      }
+
+      if (isDirectBlocked) {
+        showAlert(
+          'User blocked',
+          'You have blocked this user. Unblock them to open the chat.'
+        );
+        return;
+      }
+
+      setDesktopActiveChatId(String(item.id));
+      setUnreadConversationIds((prev) => {
+        const next = new Set(prev);
+        next.delete(String(item.id));
+        return next;
+      });
+      emitChatBadgeRefresh();
+
+      setTimeout(() => {
+        void markConversationActive(String(item.id));
+        if (!meId || !item?.id) return;
+
+        supabase
+          .from('conversation_reads')
+          .upsert(
+            {
+              user_id: meId,
+              conversation_id: item.id,
+              last_read_at: new Date().toISOString(),
+            },
+            {
+              onConflict: 'user_id,conversation_id',
+            }
+          )
+          .then(({ error }) => {
+            if (error) logChatsIssue('desktop markReadFromChats unavailable', error);
+          });
+      }, 180);
+    };
+
+    return (
+      <Pressable
+        onPress={openDesktopChat}
+        onLongPress={() => removeChatForMe(item)}
+        disabled={isDeleting}
+        style={({ pressed }) => [
+          styles.desktopChatRow,
+          {
+            backgroundColor: isSelected
+              ? isLight
+                ? '#F3E8D2'
+                : '#17130A'
+              : 'transparent',
+            borderColor: isSelected
+              ? isLight
+                ? 'rgba(198,166,100,0.34)'
+                : 'rgba(198,166,100,0.28)'
+              : isLight
+              ? '#E7DDCC'
+              : '#242424',
+          },
+          pressed && {
+            backgroundColor: isLight ? '#F7EFDF' : '#121212',
+          },
+          isDeleting && { opacity: 0.55 },
+        ]}
+      >
+        {avatarUri ? (
+          <Image source={{ uri: avatarUri }} style={styles.desktopChatAvatar as any} />
+        ) : (
+          <View
+            style={[
+              styles.desktopChatAvatar,
+              styles.fallbackAvatar,
+              { backgroundColor: T.card2, borderColor: T.border },
+            ]}
+          >
+            <Ionicons name={getChatFallbackIcon(item)} size={19} color={T.sub} />
+          </View>
+        )}
+
+        <View style={styles.desktopChatTextCol}>
+          <View style={styles.desktopChatNameLine}>
+            <Text
+              style={[
+                styles.desktopChatName,
+                { color: isUnread ? T.accent : T.text },
+              ]}
+              numberOfLines={1}
+            >
+              {title}
+            </Text>
+            {isUnread ? <View style={styles.desktopUnreadDot} /> : null}
+          </View>
+          <Text
+            style={[styles.desktopChatPreview, { color: T.sub }]}
+            numberOfLines={1}
+          >
+            {isDirectBlocked
+              ? 'Blocked user'
+              : item.isTyping
+              ? 'Typing...'
+              : item.lastMessage || 'No messages yet'}
+          </Text>
+        </View>
+
+        <View style={styles.desktopChatMetaCol}>
+          <Text style={[styles.desktopChatTime, { color: T.mute }]} numberOfLines={1}>
+            {formatDesktopChatTime(item.lastMessageTime)}
+          </Text>
+          {isUnread ? (
+            <View style={styles.desktopUnreadBadge}>
+              <Text style={styles.desktopUnreadBadgeText}>1</Text>
+            </View>
+          ) : isSelected || isDeleting ? (
+            <Pressable
+              style={styles.desktopChatMoreButton}
+              onPress={(e) => {
+                e.stopPropagation?.();
+                openChatOptions(item);
+              }}
+            >
+              {isDeleting ? (
+                <ActivityIndicator size="small" color={T.accent} />
+              ) : (
+                <Ionicons name="ellipsis-horizontal" size={16} color={T.mute} />
+              )}
+            </Pressable>
+          ) : (
+            <View style={styles.desktopChatMorePlaceholder} />
+          )}
+        </View>
+      </Pressable>
+    );
+  };
+
+  const renderDesktopMessageItem = ({ item }: { item: DesktopMessageListItem }) => {
+    if (item.type === 'date') {
+      return (
+        <View
+          style={[
+            styles.desktopDateSeparator,
+            {
+              backgroundColor: isLight ? 'rgba(255,255,255,0.78)' : '#101010',
+              borderColor: isLight ? 'rgba(198,166,100,0.14)' : '#242424',
+            },
+          ]}
+        >
+          <Text style={[styles.desktopDateSeparatorText, { color: T.sub }]}>
+            {item.label}
+          </Text>
+        </View>
+      );
+    }
+
+    const message = item.message;
+
+    if (message.message_type === 'system') {
+      return (
+        <View
+          style={[
+            styles.desktopSystemMessage,
+            {
+              backgroundColor: isLight ? 'rgba(255,255,255,0.74)' : '#101010',
+              borderColor: isLight ? 'rgba(198,166,100,0.12)' : '#242424',
+            },
+          ]}
+        >
+          <Text style={[styles.desktopSystemMessageText, { color: T.sub }]}>
+            {message.content}
+          </Text>
+        </View>
+      );
+    }
+
+    const isOwn = message.sender_id === meId;
+    const isImage = message.content?.startsWith?.('image:');
+    const imageUrl = isImage ? message.content.replace(/^image:/, '') : null;
+    const senderName =
+      message.sender?.full_name ||
+      desktopUserLookup[message.sender_id]?.full_name ||
+      'Creative';
+    const shouldShowSender = !!desktopActiveChat?.is_group && !isOwn;
+    const webTextFix =
+      Platform.OS === 'web'
+        ? ({
+            wordBreak: 'break-word',
+            whiteSpace: 'pre-wrap',
+          } as any)
+        : null;
+
+    return (
+      <View
+        style={[
+          styles.desktopMessageRow,
+          isOwn ? styles.desktopMessageRowOwn : styles.desktopMessageRowIncoming,
+        ]}
+      >
+        <View
+          style={[
+            styles.desktopMessageBubble,
+            {
+              backgroundColor: isOwn
+                ? isLight
+                  ? '#EFE2BF'
+                  : 'rgba(198,166,100,0.88)'
+                : isLight
+                ? '#FFFFFF'
+                : '#101010',
+              borderColor: isOwn
+                ? 'rgba(198,166,100,0.32)'
+                : isLight
+                ? '#E5D9C6'
+                : '#242424',
+            },
+            isOwn ? styles.desktopMessageBubbleOwn : styles.desktopMessageBubbleIncoming,
+          ]}
+        >
+          {shouldShowSender ? (
+            <Text style={[styles.desktopMessageSender, { color: T.accent }]} numberOfLines={1}>
+              {senderName}
+            </Text>
+          ) : null}
+
+          {isImage && imageUrl ? (
+            <Image source={{ uri: imageUrl }} style={styles.desktopMessageImage as any} />
+          ) : (
+            <Text
+              style={[
+                styles.desktopMessageText,
+                { color: isOwn && !isLight ? '#0B0905' : T.text },
+                webTextFix as any,
+              ]}
+            >
+              {message.content}
+            </Text>
+          )}
+
+          <View style={styles.desktopMessageMetaRow}>
+            <Text
+              style={[
+                styles.desktopMessageTime,
+                { color: isOwn && !isLight ? 'rgba(11,9,5,0.62)' : T.mute },
+              ]}
+            >
+              {formatDesktopChatTime(message.sent_at)}
+            </Text>
+            {isOwn && message.delivered ? (
+              <Ionicons
+                name="checkmark-done"
+                size={13}
+                color={isOwn && !isLight ? 'rgba(11,9,5,0.62)' : T.mute}
+              />
+            ) : null}
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const renderDesktopChatLayout = () => {
+    const activeTitle = desktopActiveChat ? getChatTitle(desktopActiveChat) : 'Select a chat';
+    const activeAvatarUri = desktopActiveChat ? getChatAvatarUri(desktopActiveChat) : undefined;
+    const activeMemberCount = Array.isArray(desktopActiveChat?.participant_ids)
+      ? desktopActiveChat.participant_ids.length
+      : 0;
+    const typingName = desktopTypingUser
+      ? desktopUserLookup[desktopTypingUser]?.full_name || 'Someone'
+      : null;
+    const activeStatus = desktopActiveChat
+      ? desktopActivePeerBlocked
+        ? 'Blocked'
+        : typingName
+        ? `${typingName} is typing...`
+        : desktopActiveChat.is_group
+        ? `${activeMemberCount} members`
+        : 'Online'
+      : 'Choose a conversation';
+    const canSendDesktopMessage =
+      !!desktopDraft.trim() && !!desktopActiveChat?.id && !desktopSending && !desktopActivePeerBlocked;
+    const desktopSidebarTitle =
+      activeTab === 'contacts'
+        ? 'Search contacts'
+        : activeTab === 'users'
+        ? 'New chat'
+        : 'Chats';
+    const desktopSidebarSubtitle =
+      activeTab === 'contacts'
+        ? 'People you already message'
+        : activeTab === 'users'
+        ? 'Find a creative'
+        : 'Recent conversations';
+
+    return (
+      <View style={styles.desktopShell}>
+        <View
+          style={[
+            styles.desktopSidebar,
+            {
+              backgroundColor: isLight ? '#F7F0E5' : T.card,
+              borderColor: T.border,
+            },
+          ]}
+        >
+          <View style={styles.desktopSidebarHeader}>
+            <View style={styles.desktopSidebarTitleRow}>
+              {activeTab !== 'chats' ? (
+                <Pressable
+                  onPress={() => {
+                    setActiveTab('chats');
+                    setUserQuery('');
+                  }}
+                  style={[
+                    styles.desktopSidebarBackButton,
+                    { backgroundColor: T.card, borderColor: T.border },
+                  ]}
+                >
+                  <Ionicons name="chevron-back" size={18} color={T.text} />
+                </Pressable>
+              ) : null}
+
+              <View style={styles.desktopSidebarTitleTextCol}>
+                <Text style={[styles.desktopSidebarTitle, { color: T.text }]}>
+                  {desktopSidebarTitle}
+                </Text>
+                <Text style={[styles.desktopSidebarSubtitle, { color: T.sub }]}>
+                  {desktopSidebarSubtitle}
+                </Text>
+              </View>
+            </View>
+
+            {activeTab === 'chats' ? (
+              <Pressable
+                onPress={() => {
+                  if (isGuest) {
+                    promptSignIn('Create an account or sign in to start a new chat.');
+                    return;
+                  }
+                  setNewChatMenuVisible(true);
+                }}
+                style={[
+                  styles.desktopNewChatButton,
+                  { backgroundColor: T.card, borderColor: T.border },
+                ]}
+              >
+                <Ionicons name="add" size={19} color={T.text} />
+              </Pressable>
+            ) : (
+              <TouchableOpacity
+                onPress={() => {
+                  setActiveTab('chats');
+                  setUserQuery('');
+                }}
+                style={[
+                  styles.desktopCancelButton,
+                  { backgroundColor: T.card, borderColor: T.border },
+                ]}
+                activeOpacity={0.86}
+              >
+                <Text style={[styles.desktopCancelButtonText, { color: T.text }]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View
+            style={[
+              styles.desktopSearchWrap,
+              { backgroundColor: T.card, borderColor: T.border },
+            ]}
+          >
+            <Ionicons name="search-outline" size={17} color={T.mute} />
+            <TextInput
+              placeholder={
+                activeTab === 'contacts'
+                  ? 'Search current contacts'
+                  : activeTab === 'users'
+                  ? 'Search all users'
+                  : 'Search recent chats'
+              }
+              placeholderTextColor={T.mute}
+              style={[styles.desktopSearchInput, { color: T.text }]}
+              value={activeTab === 'chats' ? search : userQuery}
+              onChangeText={(text) => {
+                if (activeTab === 'chats') {
+                  setSearch(text);
+                  return;
+                }
+
+                if (isGuest) {
+                  promptSignIn(
+                    activeTab === 'contacts'
+                      ? 'Create an account or sign in to search current contacts.'
+                      : 'Create an account or sign in to start a new 1-to-1 chat.'
+                  );
+                  return;
+                }
+
+                setUserQuery(text);
+              }}
+              autoCorrect={false}
+              autoCapitalize={activeTab === 'chats' ? 'none' : 'words'}
+            />
+          </View>
+
+          {activeTab === 'chats' ? (
+            <View style={styles.desktopFilterRow}>
+              {(
+                [
+                  ['all', 'All'],
+                  ['unread', `Unread ${unreadConversationIds.size || ''}`.trim()],
+                  ['groups', 'Groups'],
+                ] as const
+              ).map(([value, label]) => {
+                const active = desktopChatFilter === value;
+                return (
+                  <Pressable
+                    key={value}
+                    onPress={() => setDesktopChatFilter(value)}
+                    style={[
+                      styles.desktopFilterPill,
+                      {
+                        backgroundColor: active
+                          ? isLight
+                            ? '#EFE2BF'
+                            : 'rgba(198,166,100,0.18)'
+                          : T.card,
+                        borderColor: active
+                          ? 'rgba(198,166,100,0.38)'
+                          : T.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.desktopFilterText,
+                        { color: active ? T.text : T.sub },
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+
+          {activeTab !== 'chats' ? (
+            <FlatList
+              data={users}
+              keyExtractor={(item) => item.id}
+              renderItem={renderUser}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.desktopChatListContent}
+              showsVerticalScrollIndicator={false}
+              ListEmptyComponent={
+                loadingUsers ? (
+                  <ActivityIndicator color={T.accent} style={{ marginTop: 34 }} />
+                ) : (
+                  <Text style={[styles.desktopEmptyText, { color: T.mute }]}>
+                    {userQuery.trim().length === 0
+                      ? activeTab === 'contacts'
+                        ? 'Start typing a name to search your chats.'
+                        : 'Start typing a name to search all users.'
+                      : activeTab === 'contacts'
+                      ? 'No current contacts found.'
+                      : 'No users found.'}
+                  </Text>
+                )
+              }
+            />
+          ) : loadingChats ? (
+            <View style={styles.desktopSidebarLoader}>
+              <ActivityIndicator color={T.accent} />
+            </View>
+          ) : (
+            <FlatList
+              data={desktopFilteredChats}
+              keyExtractor={(item) => String(item.id)}
+              renderItem={renderDesktopChatRow}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.desktopChatListContent}
+              showsVerticalScrollIndicator={false}
+              ListEmptyComponent={
+                <Text style={[styles.desktopEmptyText, { color: T.mute }]}>
+                  No chats found.
+                </Text>
+              }
+            />
+          )}
+        </View>
+
+        <View
+          style={[
+            styles.desktopConversationPanel,
+            {
+              backgroundColor: isLight ? '#F4EEE4' : '#050505',
+              borderColor: T.border,
+            },
+          ]}
+        >
+          {isLight ? (
+            <View pointerEvents="none" style={styles.desktopConversationPattern as any} />
+          ) : null}
+
+          {desktopActiveChat ? (
+            <>
+              <View
+                style={[
+                  styles.desktopConversationHeader,
+                  {
+                    backgroundColor: isLight ? '#FFFCF7' : '#101010',
+                    borderColor: T.border,
+                  },
+                ]}
+              >
+                <Pressable
+                  onPress={() => {
+                    if (!desktopActiveChat.is_group && desktopActiveChat?.peerUser?.id) {
+                      navigation.navigate('Profile', {
+                        user: desktopActiveChat.peerUser,
+                        userId: desktopActiveChat.peerUser.id,
+                      });
+                    }
+                  }}
+                  style={styles.desktopConversationIdentity}
+                >
+                  {activeAvatarUri ? (
+                    <Image source={{ uri: activeAvatarUri }} style={styles.desktopHeaderAvatar as any} />
+                  ) : (
+                    <View
+                      style={[
+                        styles.desktopHeaderAvatar,
+                        styles.fallbackAvatar,
+                        { backgroundColor: T.card2, borderColor: T.border },
+                      ]}
+                    >
+                      <Ionicons
+                        name={getChatFallbackIcon(desktopActiveChat)}
+                        size={20}
+                        color={T.sub}
+                      />
+                    </View>
+                  )}
+                  <View style={styles.desktopConversationTitleCol}>
+                    <Text style={[styles.desktopConversationTitle, { color: T.text }]} numberOfLines={1}>
+                      {activeTitle}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.desktopConversationStatus,
+                        { color: typingName ? T.accent : T.sub },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {activeStatus}
+                    </Text>
+                  </View>
+                </Pressable>
+
+                <Pressable
+                  style={[
+                    styles.desktopHeaderIconButton,
+                    { backgroundColor: T.card, borderColor: T.border },
+                  ]}
+                  onPress={() => openChatOptions(desktopActiveChat)}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={18} color={T.text} />
+                </Pressable>
+              </View>
+
+              <FlatList
+                ref={desktopMessageListRef}
+                data={desktopMessageItems}
+                keyExtractor={(item) => item.id}
+                renderItem={renderDesktopMessageItem}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={[
+                  styles.desktopMessagesContent,
+                  desktopMessageItems.length === 0 && styles.desktopMessagesEmptyContent,
+                ]}
+                onContentSizeChange={() => {
+                  desktopMessageListRef.current?.scrollToEnd({ animated: false });
+                }}
+                showsVerticalScrollIndicator={false}
+                ListEmptyComponent={
+                  desktopMessagesLoading ? (
+                    <ActivityIndicator color={T.accent} />
+                  ) : (
+                    <View style={styles.desktopNoMessagesWrap}>
+                      <Text style={[styles.desktopNoMessagesTitle, { color: T.text }]}>
+                        No messages yet
+                      </Text>
+                      <Text style={[styles.desktopNoMessagesCopy, { color: T.sub }]}>
+                        Start the conversation when you are ready.
+                      </Text>
+                    </View>
+                  )
+                }
+              />
+
+              <View
+                style={[
+                  styles.desktopComposer,
+                  {
+                    backgroundColor: isLight ? '#FFFCF7' : '#101010',
+                    borderColor: T.border,
+                  },
+                ]}
+              >
+                <Pressable
+                  style={[
+                    styles.desktopComposerIconButton,
+                    (desktopUploadingFile || desktopActivePeerBlocked) && { opacity: 0.55 },
+                  ]}
+                  onPress={() => {
+                    void sendDesktopAttachment();
+                  }}
+                  disabled={desktopUploadingFile || desktopActivePeerBlocked}
+                >
+                  {desktopUploadingFile ? (
+                    <ActivityIndicator color={T.accent} size="small" />
+                  ) : (
+                    <Ionicons name="add" size={22} color={T.text} />
+                  )}
+                </Pressable>
+
+                <View
+                  style={[
+                    styles.desktopComposerInputWrap,
+                    { backgroundColor: isLight ? '#FFFFFF' : '#050505', borderColor: T.border },
+                  ]}
+                >
+                  <TextInput
+                    value={desktopDraft}
+                    onChangeText={handleDesktopDraftChange}
+                    placeholder={
+                      desktopActivePeerBlocked
+                        ? 'Unblock this user to message them'
+                        : 'Type a message...'
+                    }
+                    placeholderTextColor={T.mute}
+                    style={[styles.desktopComposerInput, { color: T.text }]}
+                    multiline
+                    editable={!desktopActivePeerBlocked}
+                    onKeyPress={(e: any) => {
+                      const key = e?.nativeEvent?.key;
+                      const shift = !!e?.nativeEvent?.shiftKey;
+                      const isComposing = !!e?.nativeEvent?.isComposing;
+                      if (key === 'Enter' && !shift) {
+                        if (isComposing) return;
+                        if (typeof e?.preventDefault === 'function') e.preventDefault();
+                        void sendDesktopMessage();
+                      }
+                    }}
+                    {...(Platform.OS === 'web' ? ({ tabIndex: 0 } as any) : {})}
+                  />
+                </View>
+
+                <Pressable
+                  style={[
+                    styles.desktopSendButton,
+                    {
+                      backgroundColor: canSendDesktopMessage ? T.accent : 'transparent',
+                      borderColor: canSendDesktopMessage ? T.accent : T.border,
+                    },
+                  ]}
+                  onPress={() => {
+                    if (desktopDraft.trim()) {
+                      void sendDesktopMessage();
+                    }
+                  }}
+                  disabled={!canSendDesktopMessage || desktopSending || desktopActivePeerBlocked}
+                >
+                  {desktopSending ? (
+                    <ActivityIndicator color={colors.textOnPrimary} size="small" />
+                  ) : (
+                    <Ionicons
+                      name="send"
+                      size={18}
+                      color={canSendDesktopMessage ? colors.textOnPrimary : T.mute}
+                    />
+                  )}
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            <View style={styles.desktopConversationEmpty}>
+              <Ionicons name="chatbubble-ellipses-outline" size={34} color={T.accent} />
+              <Text style={[styles.desktopConversationEmptyTitle, { color: T.text }]}>
+                Select a conversation
+              </Text>
+              <Text style={[styles.desktopConversationEmptyCopy, { color: T.sub }]}>
+                Your recent chats will open here on desktop.
+              </Text>
+            </View>
+          )}
+        </View>
+      </View>
+    );
+  };
+
   /* -------- top search / tabs header -------- */
 
   const TopSearchHeader = (
@@ -2324,8 +3641,6 @@ const isDirectBlocked =
     </Pressable>
   )}
 </View>
-
-    
 
     {activeTab === 'chats' ? (
   <View style={[styles.searchInputWrap, { backgroundColor: T.card, borderColor: T.border }]}>
@@ -2388,8 +3703,9 @@ const isDirectBlocked =
     styles.container,
     {
       backgroundColor: T.bg,
-      paddingTop: insets.top > 0 ? 6 : 12,
-      paddingBottom: Math.max(insets.bottom, 8),
+      paddingTop: isDesktopChatLayout ? 0 : insets.top > 0 ? 6 : 12,
+      paddingBottom: isDesktopChatLayout ? 0 : Math.max(insets.bottom, 8),
+      paddingHorizontal: isDesktopChatLayout ? 0 : 14,
     },
   ]}
   edges={['top', 'left', 'right']}
@@ -2422,118 +3738,124 @@ const isDirectBlocked =
         </View>
       )}
 
-      {TopSearchHeader}
-
-      {activeTab ===
-      'chats' ? (
-        loadingChats ? (
-          <ActivityIndicator
-            size="large"
-            color={T.accent}
-            style={{
-              marginTop: 20,
-            }}
-          />
-        ) : (
-          <FlatList
-            data={
-              filteredChats
-            }
-            keyExtractor={(
-              item
-            ) =>
-              String(
-                item.id
-              )
-            }
-            renderItem={
-              renderItem
-            }
-            contentInsetAdjustmentBehavior="automatic"
-            keyboardShouldPersistTaps="handled"
-            maxToRenderPerBatch={8}
-updateCellsBatchingPeriod={16}
-            contentContainerStyle={{
-              paddingTop: 4,
-              paddingBottom:
-                Math.max(
-                  insets.bottom +
-                    12,
-                  24
-                ),
-            }}
-            ListEmptyComponent={
-              <Text
-                style={[styles.emptyText, { color: T.mute }]}
-              >
-                No chats
-                found.
-              </Text>
-            }
-            refreshControl={
-  <RefreshControl
-    refreshing={refreshing}
-    onRefresh={onRefresh}
-    tintColor={GOLD}
-    progressBackgroundColor={T.card}
-  />
-}
-            removeClippedSubviews
-            windowSize={9}
-            initialNumToRender={
-              12
-            }
-          />
-        )
+      {isDesktopChatLayout ? (
+        renderDesktopChatLayout()
       ) : (
-        <FlatList
-          data={users}
-          keyExtractor={(
-            item
-          ) => item.id}
-          renderItem={
-            renderUser
-          }
-          contentInsetAdjustmentBehavior="automatic"
-          keyboardShouldPersistTaps="handled"
-          maxToRenderPerBatch={8}
-updateCellsBatchingPeriod={16}
-          contentContainerStyle={{
-            paddingTop: 4,
-            paddingBottom:
-              Math.max(
-                insets.bottom +
-                  12,
-                24
-              ),
-          }}
-          ListEmptyComponent={
-  loadingUsers ? null : (
-    <Text style={[styles.emptyText, { color: T.mute }]}>
-      {userQuery.trim().length === 0
-        ? activeTab === 'contacts'
-          ? 'Start typing a name to search your chats.'
-          : 'Start typing a name to search all users.'
-        : activeTab === 'contacts'
-        ? 'No current contacts found.'
-        : 'No users found.'}
-    </Text>
-  )
-}
-          refreshControl={
-  <RefreshControl
-    refreshing={refreshing}
-    onRefresh={onRefresh}
-    tintColor={GOLD}
-    progressBackgroundColor={T.card}
-  />
-}
-          removeClippedSubviews
-          windowSize={10}
-          initialNumToRender={
-            15
-          }
-        />
+        <>
+          {TopSearchHeader}
+
+          {activeTab ===
+          'chats' ? (
+            loadingChats ? (
+              <ActivityIndicator
+                size="large"
+                color={T.accent}
+                style={{
+                  marginTop: 20,
+                }}
+              />
+            ) : (
+              <FlatList
+                data={
+                  filteredChats
+                }
+                keyExtractor={(
+                  item
+                ) =>
+                  String(
+                    item.id
+                  )
+                }
+                renderItem={
+                  renderItem
+                }
+                contentInsetAdjustmentBehavior="automatic"
+                keyboardShouldPersistTaps="handled"
+                maxToRenderPerBatch={8}
+    updateCellsBatchingPeriod={16}
+                contentContainerStyle={{
+                  paddingTop: 4,
+                  paddingBottom:
+                    Math.max(
+                      insets.bottom +
+                        12,
+                      24
+                    ),
+                }}
+                ListEmptyComponent={
+                  <Text
+                    style={[styles.emptyText, { color: T.mute }]}
+                  >
+                    No chats
+                    found.
+                  </Text>
+                }
+                refreshControl={
+      <RefreshControl
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        tintColor={GOLD}
+        progressBackgroundColor={T.card}
+      />
+    }
+                removeClippedSubviews
+                windowSize={9}
+                initialNumToRender={
+                  12
+                }
+              />
+            )
+          ) : (
+            <FlatList
+              data={users}
+              keyExtractor={(
+                item
+              ) => item.id}
+              renderItem={
+                renderUser
+              }
+              contentInsetAdjustmentBehavior="automatic"
+              keyboardShouldPersistTaps="handled"
+              maxToRenderPerBatch={8}
+    updateCellsBatchingPeriod={16}
+              contentContainerStyle={{
+                paddingTop: 4,
+                paddingBottom:
+                  Math.max(
+                    insets.bottom +
+                      12,
+                    24
+                  ),
+              }}
+              ListEmptyComponent={
+      loadingUsers ? null : (
+        <Text style={[styles.emptyText, { color: T.mute }]}>
+          {userQuery.trim().length === 0
+            ? activeTab === 'contacts'
+              ? 'Start typing a name to search your chats.'
+              : 'Start typing a name to search all users.'
+            : activeTab === 'contacts'
+            ? 'No current contacts found.'
+            : 'No users found.'}
+        </Text>
+      )
+    }
+              refreshControl={
+      <RefreshControl
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        tintColor={GOLD}
+        progressBackgroundColor={T.card}
+      />
+    }
+              removeClippedSubviews
+              windowSize={10}
+              initialNumToRender={
+                15
+              }
+            />
+          )}
+        </>
       )}
 
       <Modal
@@ -2834,6 +4156,500 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: T.bg,
     paddingHorizontal: 14,
+  },
+  desktopShell: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 0,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+  },
+  desktopSidebar: {
+    width: 390,
+    minWidth: 360,
+    maxWidth: 420,
+    borderRadius: 0,
+    borderWidth: 0,
+    borderRightWidth: 1,
+    overflow: 'hidden',
+  },
+  desktopSidebarHeader: {
+    minHeight: 68,
+    paddingHorizontal: 16,
+    paddingTop: 13,
+    paddingBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  desktopSidebarTitleRow: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  desktopSidebarTitleTextCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  desktopSidebarBackButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  desktopSidebarTitle: {
+    fontSize: 22,
+    lineHeight: 27,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+    letterSpacing: 0,
+  },
+  desktopSidebarSubtitle: {
+    marginTop: 2,
+    fontSize: 11.5,
+    lineHeight: 16,
+    fontWeight: '700',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopNewChatButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  desktopCancelButton: {
+    height: 34,
+    paddingHorizontal: 13,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  desktopCancelButtonText: {
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopSearchWrap: {
+    height: 38,
+    marginHorizontal: 12,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  desktopSearchInput: {
+    flex: 1,
+    marginLeft: 9,
+    fontSize: 13.5,
+    lineHeight: 18,
+    fontWeight: '600',
+    fontFamily: SYSTEM_SANS,
+    ...(Platform.OS === 'web'
+      ? ({
+          outlineStyle: 'none',
+          boxShadow: 'none',
+        } as any)
+      : null),
+  } as any,
+  desktopFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingBottom: 9,
+  },
+  desktopFilterPill: {
+    minHeight: 28,
+    paddingHorizontal: 11,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  desktopFilterText: {
+    fontSize: 11.5,
+    lineHeight: 14,
+    fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopSidebarLoader: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  desktopChatListContent: {
+    paddingHorizontal: 0,
+    paddingBottom: 10,
+  },
+  desktopEmptyText: {
+    marginTop: 34,
+    textAlign: 'center',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopChatRow: {
+    minHeight: 74,
+    borderRadius: 0,
+    borderWidth: 0,
+    borderBottomWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginBottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  desktopChatAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.16)',
+    backgroundColor: '#111',
+  },
+  desktopChatTextCol: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  desktopChatNameLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  desktopChatName: {
+    flexShrink: 1,
+    fontSize: 13.5,
+    lineHeight: 17,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopChatPreview: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopChatMetaCol: {
+    width: 58,
+    minHeight: 48,
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  desktopChatTime: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopUnreadDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: GOLD,
+  },
+  desktopUnreadBadge: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: GOLD,
+  },
+  desktopUnreadBadgeText: {
+    color: '#0B0905',
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopChatMoreButton: {
+    width: 28,
+    height: 24,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  desktopChatMorePlaceholder: {
+    width: 28,
+    height: 24,
+  },
+  desktopConversationPanel: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 0,
+    borderWidth: 0,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  desktopConversationPattern: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.42,
+    ...(Platform.OS === 'web'
+      ? ({
+          backgroundImage:
+            'radial-gradient(circle at 16px 16px, rgba(198,166,100,0.10) 1.2px, transparent 1.2px), radial-gradient(circle at 38px 34px, rgba(84,73,58,0.08) 1px, transparent 1px)',
+          backgroundSize: '48px 48px',
+        } as any)
+      : null),
+  } as any,
+  desktopConversationHeader: {
+    minHeight: 66,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    zIndex: 2,
+  },
+  desktopConversationIdentity: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+  },
+  desktopHeaderAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.18)',
+    backgroundColor: '#111',
+  },
+  desktopConversationTitleCol: {
+    flex: 1,
+    minWidth: 0,
+  },
+  desktopConversationTitle: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopConversationStatus: {
+    marginTop: 2,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopHeaderIconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  desktopMessagesContent: {
+    paddingHorizontal: 26,
+    paddingTop: 14,
+    paddingBottom: 18,
+    flexGrow: 1,
+  },
+  desktopMessagesEmptyContent: {
+    justifyContent: 'center',
+  },
+  desktopDateSeparator: {
+    alignSelf: 'center',
+    marginVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.74)',
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.14)',
+  },
+  desktopDateSeparatorText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopSystemMessage: {
+    alignSelf: 'center',
+    marginVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderWidth: 1,
+  },
+  desktopSystemMessageText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopMessageRow: {
+    width: '100%',
+    marginVertical: 2,
+  },
+  desktopMessageRowOwn: {
+    alignItems: 'flex-end',
+  },
+  desktopMessageRowIncoming: {
+    alignItems: 'flex-start',
+  },
+  desktopMessageBubble: {
+    maxWidth: '62%',
+    minHeight: 30,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  desktopMessageBubbleOwn: {
+    borderTopRightRadius: 4,
+  },
+  desktopMessageBubbleIncoming: {
+    borderTopLeftRadius: 4,
+  },
+  desktopMessageSender: {
+    marginBottom: 3,
+    fontSize: 11.5,
+    lineHeight: 14,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopMessageText: {
+    fontSize: 13.5,
+    lineHeight: 18,
+    fontWeight: '500',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopMessageImage: {
+    width: 260,
+    height: 190,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  desktopMessageMetaRow: {
+    marginTop: 2,
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  desktopMessageTime: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '700',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopNoMessagesWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  desktopNoMessagesTitle: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopNoMessagesCopy: {
+    marginTop: 5,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600',
+    fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
+  },
+  desktopComposer: {
+    minHeight: 60,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    zIndex: 2,
+  },
+  desktopComposerIconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  desktopComposerInputWrap: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 82,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingLeft: 16,
+    paddingRight: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  desktopComposerInput: {
+    flex: 1,
+    minHeight: 34,
+    maxHeight: 74,
+    paddingVertical: 7,
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: '600',
+    fontFamily: SYSTEM_SANS,
+    ...(Platform.OS === 'web'
+      ? ({
+          outlineStyle: 'none',
+          boxShadow: 'none',
+          resize: 'none',
+        } as any)
+      : null),
+  } as any,
+  desktopSendButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  desktopConversationEmpty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    zIndex: 1,
+  },
+  desktopConversationEmptyTitle: {
+    marginTop: 12,
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+  },
+  desktopConversationEmptyCopy: {
+    marginTop: 6,
+    maxWidth: 300,
+    textAlign: 'center',
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '600',
+    fontFamily: SYSTEM_SANS,
   },
 optionsModalCard: {
   position: 'absolute',
