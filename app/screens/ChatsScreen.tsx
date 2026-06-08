@@ -136,7 +136,7 @@ type SimpleUser = {
   level?: number | null;
 };
 
-type DesktopChatFilter = 'all' | 'unread' | 'groups';
+type DesktopChatFilter = 'all' | 'groups';
 
 type DesktopMessage = {
   id: string;
@@ -262,6 +262,7 @@ const unreadRefreshTimeout = useRef<any>(null);
   const [desktopActiveChatId, setDesktopActiveChatId] = useState<string | null>(null);
   const [desktopMessages, setDesktopMessages] = useState<DesktopMessage[]>([]);
   const [desktopMessagesLoading, setDesktopMessagesLoading] = useState(false);
+  const [desktopConversationReady, setDesktopConversationReady] = useState(false);
   const [desktopDraft, setDesktopDraft] = useState('');
   const [desktopSending, setDesktopSending] = useState(false);
   const [desktopUploadingFile, setDesktopUploadingFile] = useState(false);
@@ -284,6 +285,11 @@ const [reportTargetChat, setReportTargetChat] = useState<any | null>(null);
 const [reportReason, setReportReason] = useState<ReportReason>('Harassment or bullying');
 const [reportDetails, setReportDetails] = useState('');
 const [reportSubmitting, setReportSubmitting] = useState(false);
+
+const [membersModalVisible, setMembersModalVisible] = useState(false);
+const [membersModalChat, setMembersModalChat] = useState<any | null>(null);
+const [membersList, setMembersList] = useState<SimpleUser[]>([]);
+const [membersLoading, setMembersLoading] = useState(false);
 
   // create group modal
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
@@ -2008,6 +2014,34 @@ const reportSelectedChat = () => {
   closeOptionsModal();
   openChatReport(chat);
 };
+const openMembersModal = async (chat: any) => {
+  if (!chat?.participant_ids?.length) {
+    showAlert('No members found', 'This group does not have any visible members yet.');
+    return;
+  }
+
+  setMembersModalChat(chat);
+  setMembersModalVisible(true);
+  setMembersLoading(true);
+  setMembersList([]);
+
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, full_name, avatar_url, level')
+      .in('id', chat.participant_ids);
+
+    if (error) throw error;
+
+    setMembersList((data || []) as SimpleUser[]);
+  } catch (e: any) {
+    logChatsIssue('openMembersModal unavailable', e);
+    showAlert('Could not load members', String(e?.message ?? e));
+    setMembersList([]);
+  } finally {
+    setMembersLoading(false);
+  }
+};
 
 const submitChatReport = async () => {
   if (!reportTargetChat) return;
@@ -2325,9 +2359,6 @@ const isDirectBlocked =
 const desktopFilteredChats = useMemo(() => {
   if (!isDesktopChatLayout) return filteredChats;
 
-  if (desktopChatFilter === 'unread') {
-    return filteredChats.filter((chat) => unreadConversationIds.has(String(chat.id)));
-  }
 
   if (desktopChatFilter === 'groups') {
     return filteredChats.filter((chat) => !!chat.is_group);
@@ -2372,11 +2403,12 @@ useEffect(() => {
 
 useEffect(() => {
   if (!isDesktopChatLayout || !desktopActiveChat?.id || !meId) {
-    setDesktopMessages([]);
-    setDesktopUserLookup({});
-    setDesktopTypingUser(null);
-    return;
-  }
+  setDesktopMessages([]);
+  setDesktopUserLookup({});
+  setDesktopTypingUser(null);
+  setDesktopConversationReady(false);
+  return;
+}
 
   let cancelled = false;
   const conversationId = String(desktopActiveChat.id);
@@ -2385,6 +2417,7 @@ useEffect(() => {
     : [];
 
   setDesktopMessagesLoading(true);
+  setDesktopConversationReady(false);
   setDesktopDraft('');
   setDesktopTypingUser(null);
 
@@ -2420,10 +2453,11 @@ useEffect(() => {
       if (cancelled) return;
 
       if (error || !data) {
-        if (error) logChatsIssue('Desktop chat messages unavailable', error);
-        setDesktopMessages([]);
-        return;
-      }
+  if (error) logChatsIssue('Desktop chat messages unavailable', error);
+  setDesktopMessages([]);
+  setDesktopConversationReady(true);
+  return;
+}
 
       const lookup: Record<string, { id: string; full_name: string }> = {};
       (participantsResult?.data || []).forEach((user: any) => {
@@ -2451,6 +2485,7 @@ useEffect(() => {
 
       setDesktopUserLookup(lookup);
       setDesktopMessages(normalized);
+      setDesktopConversationReady(true);
 
       setUnreadConversationIds((prev) => {
         const next = new Set(prev);
@@ -2850,13 +2885,14 @@ const sendDesktopAttachment = useCallback(async () => {
 )}
 
         <Text
-          style={
-            styles.userName
-          }
-          numberOfLines={1}
-        >
-          {item.full_name}
-        </Text>
+  style={[
+    styles.userName,
+    { color: T.text },
+  ]}
+  numberOfLines={1}
+>
+  {item.full_name}
+</Text>
         <Ionicons
           name="chevron-forward"
           size={18}
@@ -3155,14 +3191,14 @@ const sendDesktopAttachment = useCallback(async () => {
       ? desktopUserLookup[desktopTypingUser]?.full_name || 'Someone'
       : null;
     const activeStatus = desktopActiveChat
-      ? desktopActivePeerBlocked
-        ? 'Blocked'
-        : typingName
-        ? `${typingName} is typing...`
-        : desktopActiveChat.is_group
-        ? `${activeMemberCount} members`
-        : 'Online'
-      : 'Choose a conversation';
+  ? desktopActivePeerBlocked
+    ? 'Blocked'
+    : typingName
+    ? `${typingName} is typing...`
+    : desktopActiveChat.is_group
+    ? `${activeMemberCount} members`
+    : ''
+  : 'Choose a conversation';
     const canSendDesktopMessage =
       !!desktopDraft.trim() && !!desktopActiveChat?.id && !desktopSending && !desktopActivePeerBlocked;
     const desktopSidebarTitle =
@@ -3295,10 +3331,9 @@ const sendDesktopAttachment = useCallback(async () => {
             <View style={styles.desktopFilterRow}>
               {(
                 [
-                  ['all', 'All'],
-                  ['unread', `Unread ${unreadConversationIds.size || ''}`.trim()],
-                  ['groups', 'Groups'],
-                ] as const
+  ['all', 'All'],
+  ['groups', 'Groups'],
+] as const
               ).map(([value, label]) => {
                 const active = desktopChatFilter === value;
                 return (
@@ -3403,16 +3438,21 @@ const sendDesktopAttachment = useCallback(async () => {
                 ]}
               >
                 <Pressable
-                  onPress={() => {
-                    if (!desktopActiveChat.is_group && desktopActiveChat?.peerUser?.id) {
-                      navigation.navigate('Profile', {
-                        user: desktopActiveChat.peerUser,
-                        userId: desktopActiveChat.peerUser.id,
-                      });
-                    }
-                  }}
-                  style={styles.desktopConversationIdentity}
-                >
+  onPress={() => {
+    if (desktopActiveChat.is_group) {
+      openMembersModal(desktopActiveChat);
+      return;
+    }
+
+    if (desktopActiveChat?.peerUser?.id) {
+      navigation.navigate('Profile', {
+        user: desktopActiveChat.peerUser,
+        userId: desktopActiveChat.peerUser.id,
+      });
+    }
+  }}
+  style={styles.desktopConversationIdentity}
+>
                   {activeAvatarUri ? (
                     <Image source={{ uri: activeAvatarUri }} style={styles.desktopHeaderAvatar as any} />
                   ) : (
@@ -3434,15 +3474,17 @@ const sendDesktopAttachment = useCallback(async () => {
                     <Text style={[styles.desktopConversationTitle, { color: T.text }]} numberOfLines={1}>
                       {activeTitle}
                     </Text>
-                    <Text
-                      style={[
-                        styles.desktopConversationStatus,
-                        { color: typingName ? T.accent : T.sub },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {activeStatus}
-                    </Text>
+                    {activeStatus ? (
+  <Text
+    style={[
+      styles.desktopConversationStatus,
+      { color: typingName ? T.accent : T.sub },
+    ]}
+    numberOfLines={1}
+  >
+    {activeStatus}
+  </Text>
+) : null}
                   </View>
                 </Pressable>
 
@@ -3472,19 +3514,19 @@ const sendDesktopAttachment = useCallback(async () => {
                 }}
                 showsVerticalScrollIndicator={false}
                 ListEmptyComponent={
-                  desktopMessagesLoading ? (
-                    <ActivityIndicator color={T.accent} />
-                  ) : (
-                    <View style={styles.desktopNoMessagesWrap}>
-                      <Text style={[styles.desktopNoMessagesTitle, { color: T.text }]}>
-                        No messages yet
-                      </Text>
-                      <Text style={[styles.desktopNoMessagesCopy, { color: T.sub }]}>
-                        Start the conversation when you are ready.
-                      </Text>
-                    </View>
-                  )
-                }
+  desktopMessagesLoading || !desktopConversationReady ? (
+    <ActivityIndicator color={T.accent} />
+  ) : (
+    <View style={styles.desktopNoMessagesWrap}>
+      <Text style={[styles.desktopNoMessagesTitle, { color: T.text }]}>
+        No messages yet
+      </Text>
+      <Text style={[styles.desktopNoMessagesCopy, { color: T.sub }]}>
+        Start the conversation when you are ready.
+      </Text>
+    </View>
+  )
+}
               />
 
               <View
@@ -3876,22 +3918,43 @@ const sendDesktopAttachment = useCallback(async () => {
     </Text>
 
     {selectedChat?.is_group ? (
-      <TouchableOpacity
-        style={[
-          styles.optionsModalButton,
-          styles.optionsDeleteButton,
-          { backgroundColor: isLight ? '#FFF2F2' : '#1A1010', borderColor: isLight ? '#E2B4B4' : '#3A1C1C' },
-        ]}
-        onPress={async () => {
-          const chatToLeave = selectedChat;
-          closeOptionsModal();
-          await leaveGroupChat(chatToLeave);
-        }}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.optionsDeleteButtonText}>Leave group chat</Text>
-      </TouchableOpacity>
-    ) : (
+  <>
+    <TouchableOpacity
+      style={[styles.optionsModalButton, { backgroundColor: T.card2, borderColor: T.border }]}
+      onPress={() => {
+        closeOptionsModal();
+        openMembersModal(selectedChat);
+      }}
+      activeOpacity={0.85}
+    >
+      <Text style={[styles.optionsModalButtonText, { color: T.text }]}>View members</Text>
+    </TouchableOpacity>
+
+    <TouchableOpacity
+      style={[styles.optionsModalButton, { backgroundColor: T.card2, borderColor: T.border }]}
+      onPress={reportSelectedChat}
+      activeOpacity={0.85}
+    >
+      <Text style={[styles.optionsModalButtonText, { color: T.text }]}>Report group</Text>
+    </TouchableOpacity>
+
+    <TouchableOpacity
+      style={[
+        styles.optionsModalButton,
+        styles.optionsDeleteButton,
+        { backgroundColor: isLight ? '#FFF2F2' : '#1A1010', borderColor: isLight ? '#E2B4B4' : '#3A1C1C' },
+      ]}
+      onPress={async () => {
+        const chatToLeave = selectedChat;
+        closeOptionsModal();
+        await leaveGroupChat(chatToLeave);
+      }}
+      activeOpacity={0.85}
+    >
+      <Text style={styles.optionsDeleteButtonText}>Leave group chat</Text>
+    </TouchableOpacity>
+  </>
+) : (
       <>
         <TouchableOpacity
           style={[styles.optionsModalButton, { backgroundColor: T.card2, borderColor: T.border }]}
@@ -3950,6 +4013,92 @@ const sendDesktopAttachment = useCallback(async () => {
   }}
   onSubmit={submitChatReport}
 />
+
+<Modal
+  visible={membersModalVisible}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setMembersModalVisible(false)}
+>
+  <Pressable
+    style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}
+    onPress={() => setMembersModalVisible(false)}
+  />
+
+  <View style={[styles.optionsModalCard, { backgroundColor: T.card, borderColor: T.border }]}>
+    <Text style={[styles.optionsModalTitle, { color: T.text }]}>
+      {membersModalChat?.label || membersModalChat?.cityInfo?.name || 'Group members'}
+    </Text>
+
+    {membersLoading ? (
+      <ActivityIndicator color={T.accent} style={{ marginVertical: 16 }} />
+    ) : (
+      <ScrollView style={{ maxHeight: 320 }}>
+        {membersList.length === 0 ? (
+          <Text style={[styles.emptyText, { color: T.mute, marginTop: 12 }]}>
+            No members found.
+          </Text>
+        ) : (
+          membersList.map((member) => (
+            <TouchableOpacity
+              key={member.id}
+              style={[
+                styles.optionsModalButton,
+                {
+                  backgroundColor: T.card2,
+                  borderColor: T.border,
+                  flexDirection: 'row',
+                  justifyContent: 'flex-start',
+                  gap: 10,
+                },
+              ]}
+              activeOpacity={0.85}
+              onPress={() => {
+                setMembersModalVisible(false);
+                navigation.navigate('Profile', {
+                  user: member,
+                  userId: member.id,
+                });
+              }}
+            >
+              {member.avatar_url ? (
+                <Image
+                  source={{ uri: member.avatar_url }}
+                  style={styles.avatarSmall as any}
+                />
+              ) : (
+                <View
+                  style={[
+                    styles.avatarSmall,
+                    styles.fallbackAvatar,
+                    { backgroundColor: T.card2 },
+                  ]}
+                >
+                  <Ionicons name="person-outline" size={16} color={T.sub} />
+                </View>
+              )}
+
+              <Text
+                style={[styles.optionsModalButtonText, { color: T.text, flex: 1, textAlign: 'left' }]}
+                numberOfLines={1}
+              >
+                {member.full_name}
+              </Text>
+            </TouchableOpacity>
+          ))
+        )}
+      </ScrollView>
+    )}
+
+    <TouchableOpacity
+      style={styles.optionsModalCancel}
+      onPress={() => setMembersModalVisible(false)}
+      activeOpacity={0.85}
+    >
+      <Text style={[styles.optionsModalCancelText, { color: T.sub }]}>Close</Text>
+    </TouchableOpacity>
+  </View>
+</Modal>
 
 <Modal
   visible={newChatMenuVisible}
