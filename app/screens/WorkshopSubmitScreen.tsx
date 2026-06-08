@@ -1886,7 +1886,7 @@ const submissionInsert = await insertSubmissionRobust(
     mux_asset_id: null,
     mux_playback_id: null,
     mux_status: "waiting",
-    collaborator_credits: initialCollaboratorCredits.length > 0 ? initialCollaboratorCredits : null,
+    collaborator_credits: initialCollaboratorCredits,
     source: isWorkshopMode ? "workshop" : "monthly_upload",
     workshop_path: isWorkshopMode ? pathKey ?? null : null,
     workshop_step: isWorkshopMode ? step ?? null : null,
