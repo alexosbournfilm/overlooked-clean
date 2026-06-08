@@ -106,8 +106,8 @@ const DESKTOP_SIGNIN_SHOTS = [
     copy: 'Post films, scenes, and exercises.',
   },
   {
-    label: 'Practice the craft',
-    copy: 'Improve through monthly creative challenges.',
+    label: 'Train your craft',
+    copy: 'Level up through focused creative exercises.',
   },
   {
     label: 'Build your portfolio',

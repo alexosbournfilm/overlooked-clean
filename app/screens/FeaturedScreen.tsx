@@ -4103,76 +4103,90 @@ const heroPrizeSize = isTinyHero ? 9 : isCompactHero ? 10 : 13;
 >
   LAST MONTH’S WINNER
 </Text>
-                <Text
-          style={[
-            styles.heroTitle,
-            {
-              fontSize: heroTitleSize,
-              lineHeight: heroTitleLine,
-              maxWidth: '100%', // ✅ deterministic, prevents edge clipping
-              letterSpacing: isCompactHero ? 0.3 : 0.9,
-paddingBottom: 2,
-            },
-          ]}
-          numberOfLines={2}
-          ellipsizeMode="tail"
-        >
-          {s.title}
-        </Text>
-      </View>
-      {name ? (
-        <View style={styles.heroBylineBlock}>
-          <TouchableOpacity
-            onPress={() => goToProfile(userObj)}
-            activeOpacity={0.9}
-            style={styles.heroBylineTap}
-          >
-            <Text
-              style={[
-                styles.heroByline,
-                {
-                  fontSize: heroBylineSize,
-                  marginTop: isCompactHero ? 2 : 4,
-                },
-              ]}
-            >
-              by {name}
-            </Text>
-          </TouchableOpacity>
-          <View
+
+<Text
   style={[
-    styles.heroPrizeBadge,
+    styles.heroTitle,
     {
-      marginTop: isCompactHero ? 8 : 10,
+      fontSize: heroTitleSize,
+      lineHeight: heroTitleLine,
+      maxWidth: '100%', // ✅ deterministic, prevents edge clipping
+      letterSpacing: isCompactHero ? 0.3 : 0.9,
+      paddingBottom: 2,
     },
   ]}
+  numberOfLines={2}
+  ellipsizeMode="tail"
 >
-  <Text
-    style={[
-      styles.heroPrizeLabel,
-      {
-        fontSize: isCompactHero ? 9 : 10,
-      },
-    ]}
-  >
-    MONTHLY PRIZE
-  </Text>
-
-  <Text
-    style={[
-      styles.heroPrizeText,
-      {
-        fontSize: heroPrizeSize,
-      },
-    ]}
-  >
-    Top-voted film wins $100
-  </Text>
+  {s.title}
+</Text>
 </View>
-        </View>
-      ) : null}
+
+{name ? (
+  <View style={styles.heroBylineBlock}>
+    <TouchableOpacity
+      onPress={() => goToProfile(userObj)}
+      activeOpacity={0.9}
+      style={styles.heroBylineTap}
+    >
+      <Text
+        style={[
+          styles.heroByline,
+          {
+            fontSize: heroBylineSize,
+            marginTop: isCompactHero ? 2 : 4,
+          },
+        ]}
+      >
+        by {name}
+      </Text>
+    </TouchableOpacity>
+
+    <View
+      style={[
+        styles.heroPrizeBadge,
+        {
+          marginTop: isCompactHero ? 8 : 12,
+        },
+      ]}
+    >
+      <Text
+        style={[
+          styles.heroPrizeLabel,
+          {
+            fontSize: isCompactHero ? 8.5 : 9.5,
+          },
+        ]}
+      >
+        OVERLOOKED AWARD
+      </Text>
+
+      <Text
+        style={[
+          styles.heroPrizeAmount,
+          {
+            fontSize: isCompactHero ? 14 : 16,
+          },
+        ]}
+      >
+        $100 Monthly Prize
+      </Text>
+
+      <Text
+        style={[
+          styles.heroPrizeSubtext,
+          {
+            fontSize: isCompactHero ? 9.5 : 10.5,
+          },
+        ]}
+      >
+        Awarded to the top-voted film
+      </Text>
     </View>
-  );
+  </View>
+) : null}
+</View>
+);
 };
 
 // ✅ Reddit-style vote column (kept for narrow/mobile layout)
@@ -7296,27 +7310,44 @@ mobileMediaWrap: {
   },
   heroPrizeBadge: {
   alignSelf: 'center',
-  paddingHorizontal: 16,
-  paddingVertical: 8,
+  paddingHorizontal: 18,
+  paddingVertical: 10,
   borderRadius: 999,
-  backgroundColor: 'rgba(0,0,0,0.38)',
+  backgroundColor: 'rgba(12, 12, 12, 0.34)',
   borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.18)',
+  borderColor: 'rgba(255, 255, 255, 0.24)',
+  alignItems: 'center',
+  justifyContent: 'center',
   shadowColor: '#000',
-  shadowOpacity: 0.35,
-  shadowRadius: 12,
-  shadowOffset: { width: 0, height: 6 },
-  elevation: 6,
+  shadowOpacity: 0.22,
+  shadowRadius: 16,
+  shadowOffset: { width: 0, height: 8 },
+  maxWidth: 260,
 },
 
 heroPrizeLabel: {
-  color: 'rgba(255,255,255,0.58)',
+  color: 'rgba(226, 190, 122, 0.95)',
   fontWeight: '900',
-  letterSpacing: 1.4,
-  textAlign: 'center',
+  letterSpacing: 1.8,
   textTransform: 'uppercase',
-  marginBottom: 2,
+  marginBottom: 3,
 },
+
+heroPrizeAmount: {
+  color: '#FFFFFF',
+  fontWeight: '900',
+  letterSpacing: 0.4,
+  textAlign: 'center',
+},
+
+heroPrizeSubtext: {
+  marginTop: 2,
+  color: 'rgba(255, 255, 255, 0.78)',
+  fontWeight: '700',
+  letterSpacing: 0.2,
+  textAlign: 'center',
+},
+
 
 heroPrizeText: {
   color: 'rgba(255,255,255,0.88)',
