@@ -46,10 +46,16 @@ export class AppErrorBoundary extends React.Component<Props, State> {
     if (this.state.error) {
       const { error, info, route } = this.state;
       return (
-        <ScrollView contentContainerStyle={styles.container}>
-          <Text style={styles.title}>Something went wrong.</Text>
-          {route ? <Text style={styles.sub}>Route: {route}</Text> : null}
-          <Text style={styles.message}>{error.name}: {error.message}</Text>
+        <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+          <View style={styles.brandMark}>
+            <Text style={styles.brandText}>OVERLOOKED</Text>
+          </View>
+          <View style={styles.panel}>
+            <Text style={styles.eyebrow}>Playback paused</Text>
+            <Text style={styles.title}>Something went wrong.</Text>
+            {route ? <Text style={styles.sub}>Route: {route}</Text> : null}
+            <Text style={styles.message}>{error.name}: {error.message}</Text>
+          </View>
           {Platform.OS === 'web' && error.stack ? (
             <Text selectable style={styles.stack}>{error.stack}</Text>
           ) : null}
@@ -72,27 +78,93 @@ export class AppErrorBoundary extends React.Component<Props, State> {
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: '#050505',
+  },
   container: {
     flexGrow: 1,
-    padding: 24,
-    paddingTop: 64,
+    paddingHorizontal: 24,
+    paddingVertical: 56,
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    backgroundColor: '#FFFFFF',
-    gap: 8,
+    justifyContent: 'center',
+    backgroundColor: '#050505',
+    gap: 14,
   },
-  title: { fontSize: 20, fontWeight: '700', color: '#1E1E1E' },
-  sub: { fontSize: 12, opacity: 0.8, color: '#1E1E1E', marginBottom: 8 },
+  brandMark: {
+    marginBottom: 6,
+  },
+  brandText: {
+    color: '#F4F1EA',
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: 5,
+  },
+  panel: {
+    width: '100%',
+    maxWidth: 720,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.28)',
+    backgroundColor: '#0B0B0B',
+    paddingHorizontal: 22,
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  eyebrow: {
+    color: '#C6A664',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 2.2,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#F4F1EA',
+    textAlign: 'center',
+  },
+  sub: {
+    fontSize: 12,
+    color: 'rgba(244,241,234,0.64)',
+    marginTop: 8,
+  },
   message: {
-    fontSize: 14, color: '#1E1E1E', textAlign: 'center', marginBottom: 8, maxWidth: 900,
+    fontSize: 14,
+    color: 'rgba(244,241,234,0.82)',
+    textAlign: 'center',
+    marginTop: 12,
+    maxWidth: 900,
   },
   stack: {
-    fontSize: 12, color: '#333', opacity: 0.85, maxWidth: 1000, lineHeight: 16,
-    backgroundColor: '#f7f7f7', borderRadius: 8, padding: 12,
+    width: '100%',
+    maxWidth: 980,
+    fontSize: 12,
+    color: 'rgba(244,241,234,0.76)',
+    lineHeight: 16,
+    backgroundColor: '#101010',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    padding: 12,
   },
   button: {
-    marginTop: 12, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, backgroundColor: '#F8A998',
+    marginTop: 6,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: 999,
+    backgroundColor: '#C6A664',
   },
-  buttonText: { color: '#fff', fontWeight: '600' },
-  hint: { fontSize: 12, opacity: 0.7, marginTop: 6, textAlign: 'center' },
+  buttonText: {
+    color: '#050505',
+    fontWeight: '900',
+    letterSpacing: 0.4,
+  },
+  hint: {
+    fontSize: 12,
+    color: 'rgba(244,241,234,0.56)',
+    marginTop: 2,
+    textAlign: 'center',
+  },
 });

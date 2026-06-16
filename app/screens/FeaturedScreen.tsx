@@ -271,6 +271,12 @@ function injectWebVideoCSS() {
     .ovk-video::-webkit-media-controls-fullscreen-button { display: none !important; }
     .ovk-video::-webkit-media-controls-mute-button { display: none !important; }
     .ovk-video::-webkit-media-controls-toggle-closed-captions-button { display: none !important; }
+    .ovk-video::-webkit-media-controls-overlay-play-button { display: none !important; -webkit-appearance: none !important; }
+    .ovk-video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none !important; }
+    .ovk-video::-webkit-media-controls-volume-slider { display: none !important; }
+    .ovk-video::-webkit-media-controls-timeline-container { display: none !important; }
+    .ovk-video::-webkit-media-controls-rewind-button { display: none !important; }
+    .ovk-video::-webkit-media-controls-return-to-realtime-button { display: none !important; }
   `;
   document.head.appendChild(style);
   CSS_INJECTED = true;
@@ -281,6 +287,127 @@ const webWarmStore: {
   links: Map<string, HTMLLinkElement>;
   warmVideos: Map<string, HTMLVideoElement>;
 } = { links: new Map(), warmVideos: new Map() };
+
+const HLS_JS_URL = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js';
+let hlsLoadPromise: Promise<any | null> | null = null;
+
+function isHlsUrl(url?: string | null) {
+  return !!url && /\.m3u8(?:\?|$)/i.test(url);
+}
+
+function loadHlsJs() {
+  if (Platform.OS !== 'web') return Promise.resolve(null);
+  const existing = (window as any).Hls;
+  if (existing) return Promise.resolve(existing);
+  if (hlsLoadPromise) return hlsLoadPromise;
+
+  hlsLoadPromise = new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.src = HLS_JS_URL;
+    script.async = true;
+    script.crossOrigin = 'anonymous';
+    script.onload = () => resolve((window as any).Hls || null);
+    script.onerror = () => resolve(null);
+    document.head.appendChild(script);
+  });
+
+  return hlsLoadPromise;
+}
+
+async function setWebVideoSource(el: any, src: string) {
+  if (Platform.OS !== 'web') return false;
+
+  const currentSrc = el.getAttribute?.('src') || el.currentSrc || '';
+  const existingHls = el.__ovkHls;
+
+  if (!isHlsUrl(src)) {
+    if (existingHls) {
+      try {
+        existingHls.destroy();
+      } catch {}
+      el.__ovkHls = null;
+      el.__ovkHlsSrc = null;
+    }
+
+    if (currentSrc !== src) {
+      el.src = src;
+      try {
+        el.load();
+      } catch {}
+    }
+
+    return false;
+  }
+
+  if (el.canPlayType?.('application/vnd.apple.mpegurl')) {
+    if (existingHls) {
+      try {
+        existingHls.destroy();
+      } catch {}
+      el.__ovkHls = null;
+      el.__ovkHlsSrc = null;
+    }
+
+    if (currentSrc !== src) {
+      el.src = src;
+      try {
+        el.load();
+      } catch {}
+    }
+
+    return false;
+  }
+
+  const Hls = await loadHlsJs();
+  if (!Hls?.isSupported?.()) {
+    if (currentSrc !== src) {
+      el.src = src;
+      try {
+        el.load();
+      } catch {}
+    }
+    return false;
+  }
+
+  if (el.__ovkHls && el.__ovkHlsSrc === src) return true;
+
+  if (existingHls) {
+    try {
+      existingHls.destroy();
+    } catch {}
+  }
+
+  const hls = new Hls({
+    enableWorker: true,
+    lowLatencyMode: false,
+    startLevel: -1,
+  });
+
+  el.__ovkHls = hls;
+  el.__ovkHlsSrc = src;
+  hls.loadSource(src);
+  hls.attachMedia(el);
+
+  await new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve(null);
+    };
+
+    try {
+      hls.once(Hls.Events.MANIFEST_PARSED, finish);
+      hls.once(Hls.Events.ERROR, finish);
+    } catch {
+      finish();
+    }
+
+    setTimeout(finish, 900);
+  });
+
+  return true;
+}
 
 function webPreloadHref(href: string) {
   if (Platform.OS !== 'web') return;
@@ -306,29 +433,60 @@ try {
 webWarmStore.warmVideos.set(href, v);
 }
 
+function cleanFilmStoragePath(pathOrUrl: string) {
+  const raw = String(pathOrUrl || '').trim();
+  if (!raw) return raw;
+
+  if (/^https?:\/\//i.test(raw)) {
+    const storageMatch = raw.match(/\/storage\/v1\/object\/(?:public|sign)\/films\/([^?]+)/i);
+    if (storageMatch?.[1]) {
+      try {
+        return decodeURIComponent(storageMatch[1]);
+      } catch {
+        return storageMatch[1];
+      }
+    }
+
+    return raw;
+  }
+
+  let path = raw.split('?')[0].trim();
+  path = path.replace(/^\/+/, '');
+  path = path.replace(/^films\//i, '');
+  return path;
+}
+
 async function signStoragePath(path: string, expiresInSec = 3600): Promise<string> {
+  const cleaned = cleanFilmStoragePath(path);
+
+  if (/^https?:\/\//i.test(cleaned)) {
+    webPreloadHref(cleaned);
+    webWarmVideo(cleaned);
+    return cleaned;
+  }
+
   const now = Date.now();
-  const cached = signedUrlCache.get(path);
+  const cached = signedUrlCache.get(cleaned);
   if (cached && now < cached.exp - 30_000) return cached.url;
-  if (inflight.has(path)) return inflight.get(path)!;
+  if (inflight.has(cleaned)) return inflight.get(cleaned)!;
 
   const p = (async () => {
     const { data, error } = await supabase.storage
       .from('films')
-      .createSignedUrl(path, expiresInSec);
+      .createSignedUrl(cleaned, expiresInSec);
     if (error || !data) {
-      inflight.delete(path);
+      inflight.delete(cleaned);
       throw error ?? new Error('Failed to sign media URL');
     }
     const url = data.signedUrl;
-    signedUrlCache.set(path, { url, exp: now + expiresInSec * 1000 });
+    signedUrlCache.set(cleaned, { url, exp: now + expiresInSec * 1000 });
     webPreloadHref(url);
     webWarmVideo(url);
-    inflight.delete(path);
+    inflight.delete(cleaned);
     return url;
   })();
 
-  inflight.set(path, p);
+  inflight.set(cleaned, p);
   return p;
 }
 
@@ -409,10 +567,18 @@ type PlayerHandle = { pause: () => Promise<void> | void; id: string };
 const playerRegistry = new Map<string, PlayerHandle>();
 const PAUSE_NONE_ID = '__NONE__';
 
-async function pauseAllExcept(id?: string | null) {
+async function pauseAllExcept(
+  id?: string | null,
+  options: { preserveWinner?: boolean } = {}
+) {
   const target = id || PAUSE_NONE_ID;
+  const preserveWinner =
+    options.preserveWinner ?? (target === PAUSE_NONE_ID || target.startsWith('winner-'));
   const ops: Promise<void>[] = [];
   playerRegistry.forEach((h) => {
+    if (preserveWinner && Platform.OS === 'web' && h.id.startsWith('winner-') && h.id !== target) {
+      return;
+    }
     if (h.id !== target) ops.push(Promise.resolve(h.pause()));
   });
   await Promise.allSettled(ops);
@@ -495,6 +661,17 @@ const IconSpeaker = ({ muted = false }: { muted?: boolean }) => (
   </View>
 );
 
+function formatPlayerTime(seconds?: number | null) {
+  const total = Math.max(0, Math.floor(Number.isFinite(seconds || 0) ? seconds || 0 : 0));
+  const hrs = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (hrs > 0) {
+    return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
 /* ---------------- Reddit-style vote arrow ---------------- */
 const VoteArrow = ({ up = true, active = false, disabled = false }: { up?: boolean; active?: boolean; disabled?: boolean }) => (
   <View
@@ -515,6 +692,9 @@ const WebVideo: any = 'video';
 function warmPlayableUrl(url?: string | null) {
   if (!url) return;
   if (Platform.OS === 'web') {
+    if (isHlsUrl(url)) {
+      loadHlsJs().catch(() => {});
+    }
     webPreloadHref(url);
     webWarmVideo(url);
   }
@@ -528,9 +708,46 @@ function getMuxPlaybackUrl(playbackId?: string | null) {
   if (!playbackId) return null;
   return `https://stream.mux.com/${playbackId}.m3u8`;
 }
+
+function getWinnerMuxPlaybackUrl(playbackId?: string | null) {
+  if (!playbackId) return null;
+  return `https://stream.mux.com/${playbackId}.m3u8`;
+}
+
+function getMuxFallbackPlaybackUrls(url?: string | null) {
+  if (!url || Platform.OS !== 'web') return [];
+  const match = String(url).match(/stream\.mux\.com\/([^/.?]+)/);
+  if (!match?.[1]) return [];
+  const playbackId = match[1];
+  return [
+    `https://stream.mux.com/${playbackId}/medium.mp4`,
+    `https://stream.mux.com/${playbackId}/low.mp4`,
+    `https://stream.mux.com/${playbackId}.m3u8`,
+  ];
+}
+
+type VideoSourceOption = {
+  label: string;
+  uri: string;
+};
+
+function getMuxPlaybackOptions(url?: string | null): VideoSourceOption[] {
+  if (!url || Platform.OS !== 'web') return url ? [{ label: 'Auto', uri: url }] : [];
+  const match = String(url).match(/stream\.mux\.com\/([^/.?]+)/);
+  if (!match?.[1]) return [{ label: 'Auto', uri: url }];
+
+  const playbackId = match[1];
+  return [
+    { label: 'Auto', uri: `https://stream.mux.com/${playbackId}.m3u8` },
+    { label: 'High', uri: `https://stream.mux.com/${playbackId}/high.mp4` },
+    { label: 'Medium', uri: `https://stream.mux.com/${playbackId}/medium.mp4` },
+    { label: 'Low', uri: `https://stream.mux.com/${playbackId}/low.mp4` },
+  ];
+}
 function HostedVideoInline({
   playerId,
   storagePath,
+  storagePathCandidates,
   directUri,
   width,
   maxHeight,
@@ -545,9 +762,15 @@ function HostedVideoInline({
   fixedAspect,
   fitToVideoFrame = false,
   squareCorners = false,
+  playRequestKey,
+  preferDirectUriFirst = false,
+  transparentUntilReady = false,
+  loop = true,
+  onPlaybackEnd,
 }: {
   playerId: string;
   storagePath?: string | null;
+  storagePathCandidates?: Array<string | null | undefined>;
   directUri?: string | null;
   width: number;
   maxHeight: number;
@@ -562,31 +785,56 @@ function HostedVideoInline({
   fixedAspect?: number;
   fitToVideoFrame?: boolean;
   squareCorners?: boolean;
+  playRequestKey?: number | string;
+  preferDirectUriFirst?: boolean;
+  transparentUntilReady?: boolean;
+  loop?: boolean;
+  onPlaybackEnd?: () => void;
 }){
   
   const { colors, isLight } = useAppTheme();
   const ref = useRef<Video>(null);
   const htmlRef = useRef<any>(null);
-  const [src, setSrc] = useState<string | null>(null);
+  const playerRootRef = useRef<any>(null);
+  const [sourceOptions, setSourceOptions] = useState<VideoSourceOption[]>([]);
+  const [sourceIndex, setSourceIndex] = useState(0);
 const [videoReady, setVideoReady] = useState(false);
 
 const opacity = useRef(new Animated.Value(0)).current;
 const [aspect, setAspect] = useState<number>(16 / 9);
+  const controlsOpacity = useRef(new Animated.Value(0)).current;
+  const cueOpacity = useRef(new Animated.Value(0)).current;
+  const cueScale = useRef(new Animated.Value(0.92)).current;
+  const cueTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wantsPlayRef = useRef(autoPlay);
+  const finishedRef = useRef(false);
 
   const [muted, setMuted] = useState(!autoPlayWithSound);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackCue, setPlaybackCue] = useState<'play' | 'pause'>('play');
+  const [playbackCueActive, setPlaybackCueActive] = useState(false);
   const [playerChromeVisible, setPlayerChromeVisible] = useState(false);
+  const [qualityMenuOpen, setQualityMenuOpen] = useState(false);
   const playerChromeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const progressRef = useRef<View>(null);
+  const [progressRailWidth, setProgressRailWidth] = useState(1);
+  const [seeking, setSeeking] = useState(false);
+  const isWinnerPlayer = playerId.startsWith('winner-');
+  const storageCandidateKey = [
+    storagePath || '',
+    ...(storagePathCandidates || []).filter(Boolean).map((candidate) => String(candidate)),
+  ].join('|');
+  const directFirst = isWinnerPlayer || preferDirectUriFirst;
 
 
   useEffect(() => {
     const handle: PlayerHandle = {
       id: playerId,
       pause: async () => {
+        wantsPlayRef.current = false;
         try {
           if (Platform.OS === 'web') {
             htmlRef.current?.pause();
@@ -599,6 +847,9 @@ const [aspect, setAspect] = useState<number>(16 / 9);
     };
     playerRegistry.set(playerId, handle);
     return () => {
+      try {
+        htmlRef.current?.__ovkHls?.destroy?.();
+      } catch {}
       playerRegistry.delete(playerId);
     };
   }, [playerId]);
@@ -607,33 +858,116 @@ const [aspect, setAspect] = useState<number>(16 / 9);
   let alive = true;
 
   (async () => {
-    try {
-      if (directUri) {
-        if (alive) {
-          setVideoReady(false);
-          opacity.setValue(0);
-          setSrc(directUri);
-        }
-        return;
-      }
+    const nextOptions: VideoSourceOption[] = [];
+    let hasPublishedInitialSources = false;
 
-      if (!storagePath) return;
+    const publishSources = (reset: boolean) => {
+      if (!alive) return;
 
-      const url = await signStoragePath(storagePath, 3600);
-      if (alive) {
+      const deduped = nextOptions.filter(
+        (candidate, index, arr) =>
+          !!candidate.uri && arr.findIndex((item) => item.uri === candidate.uri) === index
+      );
+
+      setSourceOptions(deduped);
+      if (reset) {
+        setSourceIndex(0);
+        setQualityMenuOpen(false);
         setVideoReady(false);
         opacity.setValue(0);
-        setSrc(url);
       }
-    } catch (e) {
-      console.warn('[HostedVideoInline] src setup failed', e);
+    };
+
+    if (directUri && directFirst) {
+      if (isWinnerPlayer) {
+        nextOptions.push({ label: 'Auto', uri: directUri });
+      } else {
+        nextOptions.push(...getMuxPlaybackOptions(directUri));
+      }
+      publishSources(true);
+      hasPublishedInitialSources = true;
+    }
+
+    const rawStorageCandidates = [
+      storagePath,
+      ...(storagePathCandidates || []),
+    ].filter(Boolean) as string[];
+
+    const storageCandidates = rawStorageCandidates.filter(
+      (candidate, index, arr) =>
+        arr.findIndex((item) => cleanFilmStoragePath(item) === cleanFilmStoragePath(candidate)) === index
+    );
+
+    for (const candidate of storageCandidates) {
+      try {
+        const url = await signStoragePath(candidate, 3600);
+        nextOptions.push({
+          label: nextOptions.length === 0 ? 'Auto' : `Backup ${nextOptions.length}`,
+          uri: url,
+        });
+        publishSources(!hasPublishedInitialSources);
+        hasPublishedInitialSources = true;
+      } catch (e) {
+        console.warn('[HostedVideoInline] storage source failed', e);
+      }
+    }
+
+    if (directUri && !directFirst) {
+      nextOptions.push(...getMuxPlaybackOptions(directUri));
+      publishSources(!hasPublishedInitialSources);
+      hasPublishedInitialSources = true;
+    }
+
+    if (!hasPublishedInitialSources) {
+      publishSources(true);
     }
   })();
 
   return () => {
     alive = false;
   };
-}, [storagePath, directUri]);
+}, [storageCandidateKey, directUri, directFirst]);
+
+  const src = sourceOptions[sourceIndex]?.uri ?? null;
+  const selectedQualityLabel = sourceOptions[sourceIndex]?.label ?? 'Auto';
+
+  useEffect(() => {
+    finishedRef.current = false;
+  }, [src, playRequestKey]);
+
+  const flashPlaybackCue = (nextCue: 'play' | 'pause') => {
+    setPlaybackCue(nextCue);
+    setPlaybackCueActive(true);
+    if (cueTimerRef.current) clearTimeout(cueTimerRef.current);
+    cueOpacity.stopAnimation();
+    cueScale.stopAnimation();
+    cueOpacity.setValue(0);
+    cueScale.setValue(0.92);
+
+    Animated.parallel([
+      Animated.timing(cueOpacity, {
+        toValue: 1,
+        duration: 110,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.spring(cueScale, {
+        toValue: 1,
+        friction: 6,
+        tension: 140,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    cueTimerRef.current = setTimeout(() => {
+      Animated.timing(cueOpacity, {
+        toValue: 0,
+        duration: 260,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start(() => setPlaybackCueActive(false));
+    }, 420);
+  };
 
   const fadeIn = () => {
     Animated.timing(opacity, {
@@ -652,24 +986,63 @@ const [aspect, setAspect] = useState<number>(16 / 9);
     }
   };
 
-  const play = async (ensureSound = false) => {
+  const play = async (ensureSound = false): Promise<boolean> => {
+    wantsPlayRef.current = true;
+    finishedRef.current = false;
     try {
       await pauseAllExcept(playerId);
       if (Platform.OS === 'web') {
-        const el = htmlRef.current!;
+        const el = htmlRef.current;
+        if (!el || !src) return false;
+
+        const managedHlsSource = await setWebVideoSource(el, src);
+
         if (ensureSound) {
           el.muted = false;
           setMuted(false);
         }
+
         el.controls = false;
-        await el.play().catch(async () => {
-          el.muted = true;
-          setMuted(true);
+        el.autoplay = true;
+        el.playsInline = true;
+        el.preload = 'auto';
+
+        if (!managedHlsSource && el.readyState === 0) {
+          try {
+            el.load();
+          } catch {}
+        }
+
+        const tryPlay = async () => {
           try {
             await el.play();
-          } catch {}
-        });
-        setIsPlaying(!el.paused);
+            return true;
+          } catch {
+            return false;
+          }
+        };
+
+        let started = await tryPlay();
+
+        if (!started && ensureSound) {
+          el.muted = true;
+          setMuted(true);
+          await new Promise((resolve) => setTimeout(resolve, 40));
+          started = await tryPlay();
+        }
+
+        if (!started) {
+          await new Promise((resolve) => setTimeout(resolve, 120));
+          started = await tryPlay();
+        }
+
+        const playing = started && !el.paused;
+        setIsPlaying(playing);
+        if (playing) {
+          setVideoReady(true);
+          fadeIn();
+        }
+        return playing;
       } else {
         if (ensureSound) {
           await ref.current?.setIsMutedAsync(false);
@@ -677,14 +1050,22 @@ const [aspect, setAspect] = useState<number>(16 / 9);
         }
         await ref.current?.playAsync();
         setIsPlaying(true);
+        setVideoReady(true);
+        fadeIn();
+        return true;
       }
-    } catch {}
+    } catch {
+      setIsPlaying(false);
+      return false;
+    }
   };
 
   const pause = async () => {
+    wantsPlayRef.current = false;
     try {
       if (Platform.OS === 'web') {
-        const el = htmlRef.current!;
+        const el = htmlRef.current;
+        if (!el) return;
         el.pause();
         setIsPlaying(false);
       } else {
@@ -695,22 +1076,39 @@ const [aspect, setAspect] = useState<number>(16 / 9);
   };
 
   useEffect(() => {
+    const playTimers: ReturnType<typeof setTimeout>[] = [];
+
     (async () => {
       if (!src) return;
 
-      if (autoPlay) {
+      const shouldPlayWhenReady = autoPlay || wantsPlayRef.current;
+
+      if (shouldPlayWhenReady) {
+        const playWithSound = autoPlay ? autoPlayWithSound : true;
+        wantsPlayRef.current = true;
         if (Platform.OS === 'web') {
           if (htmlRef.current) {
-            htmlRef.current.muted = !autoPlayWithSound;
+            htmlRef.current.muted = !playWithSound;
             htmlRef.current.controls = false;
           }
         } else {
           try {
-            await ref.current?.setIsMutedAsync(!autoPlayWithSound);
+            await ref.current?.setIsMutedAsync(!playWithSound);
           } catch {}
         }
-        setMuted(!autoPlayWithSound);
-        await play(autoPlayWithSound);
+        setMuted(!playWithSound);
+        const requestPlay = () => {
+          if (!wantsPlayRef.current) return;
+          void play(playWithSound);
+        };
+
+        if (Platform.OS === 'web' && typeof requestAnimationFrame !== 'undefined') {
+          requestAnimationFrame(requestPlay);
+        }
+        const retryDelays = Platform.OS === 'web' ? [0, 90, 240, 520, 1100] : [0, 180, 500];
+        retryDelays.forEach((delay) => {
+          playTimers.push(setTimeout(requestPlay, delay));
+        });
       } else {
         await pause();
 
@@ -727,8 +1125,11 @@ const [aspect, setAspect] = useState<number>(16 / 9);
         setMuted(true);
       }
     })();
+    return () => {
+      playTimers.forEach(clearTimeout);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, autoPlay, autoPlayWithSound]);
+  }, [src, autoPlay, autoPlayWithSound, playRequestKey]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -740,44 +1141,62 @@ const [aspect, setAspect] = useState<number>(16 / 9);
   }, []);
 
   const revealPlayerChrome = useCallback(() => {
-    if (Platform.OS === 'web') return;
     setPlayerChromeVisible(true);
     if (playerChromeTimerRef.current) clearTimeout(playerChromeTimerRef.current);
-    playerChromeTimerRef.current = setTimeout(() => setPlayerChromeVisible(false), 2200);
-  }, []);
+    if (isPlaying) {
+      playerChromeTimerRef.current = setTimeout(() => setPlayerChromeVisible(false), 2200);
+    }
+  }, [isPlaying]);
 
   useEffect(
     () => () => {
       if (playerChromeTimerRef.current) clearTimeout(playerChromeTimerRef.current);
+      if (cueTimerRef.current) clearTimeout(cueTimerRef.current);
     },
     []
   );
 
-  const controlsVisible = playerChromeVisible;
+  const controlsVisible = (videoReady || isPlaying || seeking) && (playerChromeVisible || !isPlaying || seeking);
   const playerHoverProps =
     Platform.OS === 'web'
       ? {
-          onMouseEnter: () => setPlayerChromeVisible(true),
+          onMouseEnter: revealPlayerChrome,
+          onMouseMove: revealPlayerChrome,
           onMouseLeave: () => {
-            setPlayerChromeVisible(false);
-            setSeeking(false);
+            if (!seeking) setPlayerChromeVisible(false);
           },
         }
       : {};
 
+  useEffect(() => {
+    Animated.timing(controlsOpacity, {
+      toValue: controlsVisible ? 1 : 0,
+      duration: controlsVisible ? 130 : 240,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [controlsOpacity, controlsVisible]);
+
 const onSurfacePressIn = async () => {
   revealPlayerChrome();
-  await play(autoPlayWithSound);
+  const didPlay = await play(autoPlayWithSound);
+  flashPlaybackCue(didPlay ? 'play' : 'pause');
 };
 
 const onSurfacePressOut = async () => {
   await pause();
+  flashPlaybackCue('pause');
 };
 
 const onSurfaceTogglePress = async () => {
   revealPlayerChrome();
-  if (isPlaying) await pause();
-  else await play(autoPlayWithSound);
+  if (isPlaying) {
+    await pause();
+    flashPlaybackCue('pause');
+  } else {
+    const didPlay = await play(autoPlayWithSound);
+    flashPlaybackCue(didPlay ? 'play' : 'pause');
+  }
 };
 
   const maybeUpdateAspectFromStatus = (status?: AVPlaybackStatus) => {
@@ -795,6 +1214,18 @@ const onSurfaceTogglePress = async () => {
     if (dur > 0) {
       setProgress(Math.max(0, Math.min(1, pos / dur)));
     }
+
+    if (!loop && (status as any).didJustFinish) {
+      handlePlaybackEnd();
+    }
+  };
+
+  const handlePlaybackEnd = () => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    wantsPlayRef.current = false;
+    setIsPlaying(false);
+    onPlaybackEnd?.();
   };
 
   const handleLoad = (status?: AVPlaybackStatus) => {
@@ -836,6 +1267,12 @@ const onSurfaceTogglePress = async () => {
   el.controls = false;
   setVideoReady(true);
   fadeIn();
+  if (wantsPlayRef.current) {
+    const playWithSound = autoPlay ? autoPlayWithSound : true;
+    setTimeout(() => {
+      void play(playWithSound);
+    }, 25);
+  }
 };
 
   const onWebTimeUpdate = () => {
@@ -848,12 +1285,57 @@ const onSurfaceTogglePress = async () => {
     }
   };
 
+  const handleMediaError = () => {
+    if (sourceIndex < sourceOptions.length - 1) {
+      setVideoReady(false);
+      opacity.setValue(0);
+      setSourceIndex((prev) => Math.min(prev + 1, sourceOptions.length - 1));
+      return;
+    }
+
+    setVideoReady(true);
+    setIsPlaying(false);
+  };
+
+  const selectQuality = (index: number) => {
+    if (index === sourceIndex) {
+      setQualityMenuOpen(false);
+      return;
+    }
+
+    let resumeAt = 0;
+    const shouldResume = wantsPlayRef.current || isPlaying;
+    try {
+      if (Platform.OS === 'web') {
+        resumeAt = htmlRef.current?.currentTime || 0;
+      }
+    } catch {}
+
+    setQualityMenuOpen(false);
+    setSourceIndex(index);
+    setVideoReady(false);
+    opacity.setValue(0);
+    wantsPlayRef.current = shouldResume;
+
+    setTimeout(async () => {
+      try {
+        if (Platform.OS === 'web' && htmlRef.current && resumeAt > 0) {
+          htmlRef.current.currentTime = resumeAt;
+        } else if (Platform.OS !== 'web' && ref.current && resumeAt > 0) {
+          await ref.current.setPositionAsync(resumeAt * 1000);
+        }
+      } catch {}
+      if (shouldResume) void play(autoPlayWithSound);
+    }, 80);
+  };
+
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const handler = () => {
       const el = htmlRef.current as any;
+      const root = playerRootRef.current as any;
       const fs = (document as any).fullscreenElement;
-      if (el && fs === el) {
+      if (el && (fs === el || fs === root)) {
         pauseAllExcept(playerId).then(async () => {
           try {
             el.muted = false;
@@ -876,8 +1358,10 @@ const onSurfaceTogglePress = async () => {
       await pauseAllExcept(playerId);
       await play(true);
       if (Platform.OS === 'web') {
+        const root = playerRootRef.current as any;
         const el = htmlRef.current as any;
-        if (el?.requestFullscreen) await el.requestFullscreen();
+        if (root?.requestFullscreen) await root.requestFullscreen();
+        else if (el?.requestFullscreen) await el.requestFullscreen();
       } else {
         (ref.current as any)?.presentFullscreenPlayer?.();
       }
@@ -902,24 +1386,29 @@ const onSurfaceTogglePress = async () => {
     } catch {}
   };
 
-  const [seeking, setSeeking] = useState(false);
+  const seekToRatio = (ratio: number) => {
+    const next = Math.max(0, Math.min(1, ratio));
+    const d = duration || 0;
+    setProgress(next);
+    if (d <= 0) return;
+    if (Platform.OS === 'web' && htmlRef.current) {
+      htmlRef.current.currentTime = next * d;
+    } else if (ref.current) {
+      void ref.current.setPositionAsync(next * d * 1000);
+    }
+  };
+
+  const setFromRailLocation = (locationX: number) => {
+    seekToRatio(locationX / Math.max(1, progressRailWidth));
+  };
 
   const setFromClientX = (clientX: number) => {
     if (!progressRef.current) return;
     const el: any = progressRef.current;
     const rect = el.getBoundingClientRect
       ? el.getBoundingClientRect()
-      : { left: 0, width: 1 };
-    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    const d = duration || 0;
-    if (Platform.OS === 'web' && htmlRef.current) {
-      htmlRef.current.currentTime = ratio * d;
-      setProgress(ratio);
-    } else if (ref.current) {
-      const durMs = d * 1000;
-      ref.current.setPositionAsync(ratio * durMs);
-      setProgress(ratio);
-    }
+      : { left: 0, width: progressRailWidth || 1 };
+    seekToRatio((clientX - rect.left) / Math.max(1, rect.width));
   };
 
   useEffect(() => {
@@ -945,9 +1434,16 @@ const onSurfaceTogglePress = async () => {
   const shouldClampPlayerHeight = fitToVideoFrame && maxHeight > 0 && rawPlayerHeight > maxHeight;
   const playerWidth = shouldClampPlayerHeight ? maxHeight * playerAspect : width;
   const playerHeight = shouldClampPlayerHeight ? maxHeight : rawPlayerHeight;
+  const playerBackground =
+    transparentUntilReady && !videoReady ? 'transparent' : '#000';
+  const progressPct = Math.max(0, Math.min(100, progress * 100));
+  const elapsedLabel = formatPlayerTime(duration * progress);
+  const durationLabel = duration > 0 ? formatPlayerTime(duration) : '0:00';
+  const compactControls = width < 520;
 
   return (
     <View
+      ref={playerRootRef}
       {...(playerHoverProps as any)}
       style={{
         width: fitToVideoFrame ? playerWidth : width,
@@ -955,8 +1451,9 @@ const onSurfaceTogglePress = async () => {
         aspectRatio: fitToVideoFrame ? undefined : (playerAspect as any),
         borderRadius: playerRadius,
         overflow: 'hidden',
-        backgroundColor: '#000',
+        backgroundColor: playerBackground,
         alignSelf: 'center',
+        position: 'relative',
       }}
     >
       {posterUri && !videoReady ? (
@@ -996,12 +1493,14 @@ const onSurfaceTogglePress = async () => {
                 objectFit: 'contain',
                 objectPosition: 'center center',
                 display: 'block',
-                background: '#000',
+                background: playerBackground,
               } as any
             }
-            loop
+            loop={loop}
 playsInline
-preload="metadata"
+autoPlay={autoPlay}
+muted={muted}
+preload={autoPlay ? 'auto' : 'metadata'}
 controls={false}
 // @ts-ignore
 controlsList="nodownload noplaybackrate noremoteplayback nofullscreen"
@@ -1011,14 +1510,23 @@ onLoadedMetadata={onWebLoadedMeta}
 onCanPlay={() => {
   setVideoReady(true);
   fadeIn();
+  if (wantsPlayRef.current) {
+    void play(autoPlay ? autoPlayWithSound : true);
+  }
 }}
 onLoadedData={() => {
   setVideoReady(true);
   fadeIn();
+  if (wantsPlayRef.current) {
+    void play(autoPlay ? autoPlayWithSound : true);
+  }
 }}
 onTimeUpdate={onWebTimeUpdate}
 onPlay={() => setIsPlaying(true)}
+onPlaying={() => setIsPlaying(true)}
+onEnded={handlePlaybackEnd}
 onPause={() => setIsPlaying(false)}
+onError={handleMediaError}
 />
         ) : (
           <Video
@@ -1026,7 +1534,7 @@ onPause={() => setIsPlaying(false)}
             source={src ? { uri: src } : undefined}
             style={{ width: '100%', height: '100%' }}
             resizeMode={ResizeMode.CONTAIN}
-            isLooping
+            isLooping={loop}
             shouldPlay={autoPlay}
             isMuted={muted}
             useNativeControls={false}
@@ -1034,34 +1542,53 @@ onPause={() => setIsPlaying(false)}
             posterSource={posterUri ? { uri: posterUri } : undefined}
             posterStyle={[StyleSheet.absoluteFillObject, { borderRadius: playerRadius }]}
             onLoad={handleLoad}
-            onReadyForDisplay={handleReadyForDisplay}
+            onReadyForDisplay={(evt: any) => {
+              handleReadyForDisplay(evt);
+              if (wantsPlayRef.current) {
+                void play(autoPlay ? autoPlayWithSound : true);
+              }
+            }}
             onFullscreenUpdate={handleFsUpdate}
             onPlaybackStatusUpdate={maybeUpdateAspectFromStatus}
+            onError={handleMediaError as any}
             progressUpdateIntervalMillis={150}
           />
         )}
       </Animated.View>
 
+      {!isWinnerPlayer && captureSurfacePress ? (
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.playerCenterCue,
+          {
+            opacity: playbackCueActive ? cueOpacity : 0,
+            transform: [{ scale: playbackCueActive ? cueScale : 1 }],
+          },
+        ]}
+      >
+        <Ionicons
+          name={playbackCueActive ? playbackCue : isPlaying ? 'pause' : 'play'}
+          size={34}
+          color="#fff"
+        />
+      </Animated.View>
+      ) : null}
+
       {captureSurfacePress ? (
   <Pressable
     onPress={
-      playerId.startsWith('winner-')
-        ? () => {}
-        : surfacePressMode === 'toggle'
+      surfacePressMode === 'toggle'
         ? onSurfaceTogglePress
         : () => {}
     }
     onPressIn={
-      playerId.startsWith('winner-')
-        ? undefined
-        : surfacePressMode === 'hold'
+      surfacePressMode === 'hold'
         ? onSurfacePressIn
         : undefined
     }
     onPressOut={
-      playerId.startsWith('winner-')
-        ? undefined
-        : surfacePressMode === 'hold'
+      surfacePressMode === 'hold'
         ? onSurfacePressOut
         : undefined
     }
@@ -1075,52 +1602,118 @@ onPause={() => setIsPlaying(false)}
   />
 ) : null}
 
-      {showProgress && controlsVisible ? (
-  <View
-    ref={progressRef}
-    style={[styles.progressHit, { zIndex: 15 }]}
-    {...(Platform.OS === 'web'
-      ? {
-          onMouseDown: (e: any) => {
+      {!showControls && showProgress ? (
+        <Animated.View
+          ref={progressRef}
+          pointerEvents={controlsVisible ? 'auto' : 'none'}
+          style={[styles.progressHit, { opacity: controlsOpacity }]}
+          onLayout={(evt) => setProgressRailWidth(Math.max(1, evt.nativeEvent.layout.width))}
+          onStartShouldSetResponder={() => true}
+          onMoveShouldSetResponder={() => true}
+          onResponderGrant={(evt: any) => {
             setSeeking(true);
-            setFromClientX(e.clientX);
-          },
-        }
-      : {})}
-  >
-    <View style={styles.progressTrack}>
-      <View
-        style={[
-          styles.progressFill,
-          {
-            width: `${Math.max(0, Math.min(100, progress * 100))}%`,
-          },
-        ]}
-      />
-    </View>
-  </View>
-) : null}
+            setFromRailLocation(evt.nativeEvent.locationX ?? 0);
+          }}
+          onResponderMove={(evt: any) => setFromRailLocation(evt.nativeEvent.locationX ?? 0)}
+          onResponderRelease={(evt: any) => {
+            setFromRailLocation(evt.nativeEvent.locationX ?? 0);
+            setSeeking(false);
+          }}
+          onResponderTerminate={() => setSeeking(false)}
+          {...(Platform.OS === 'web'
+            ? {
+                onMouseDown: (e: any) => {
+                  setSeeking(true);
+                  setFromClientX(e.clientX);
+                },
+              }
+            : {})}
+        >
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
+            <View style={[styles.progressThumb, { left: `${progressPct}%` }]} />
+          </View>
+        </Animated.View>
+      ) : null}
 
-      {showControls && controlsVisible && (
-  <TouchableOpacity
-    onPress={enterFullscreen}
-    activeOpacity={0.9}
-    style={[styles.fsButton, { zIndex: 20 }]}
-  >
-    <IconCorners />
-  </TouchableOpacity>
-)}
+      {showControls ? (
+        <Animated.View
+          pointerEvents={controlsVisible ? 'box-none' : 'none'}
+          style={[styles.playerChromeDock, { opacity: controlsOpacity }]}
+        >
+          {showProgress ? (
+            <View
+              ref={progressRef}
+              style={styles.playerTimeline}
+              onLayout={(evt) => setProgressRailWidth(Math.max(1, evt.nativeEvent.layout.width))}
+              onStartShouldSetResponder={() => true}
+              onMoveShouldSetResponder={() => true}
+              onResponderGrant={(evt: any) => {
+                setSeeking(true);
+                setFromRailLocation(evt.nativeEvent.locationX ?? 0);
+              }}
+              onResponderMove={(evt: any) => setFromRailLocation(evt.nativeEvent.locationX ?? 0)}
+              onResponderRelease={(evt: any) => {
+                setFromRailLocation(evt.nativeEvent.locationX ?? 0);
+                setSeeking(false);
+              }}
+              onResponderTerminate={() => setSeeking(false)}
+              {...(Platform.OS === 'web'
+                ? {
+                    onMouseDown: (e: any) => {
+                      setSeeking(true);
+                      setFromClientX(e.clientX);
+                    },
+                  }
+                : {})}
+            >
+              <View style={styles.playerTimelineTrack}>
+                <View style={[styles.playerTimelineFill, { width: `${progressPct}%` }]} />
+                <View style={[styles.playerTimelineThumb, { left: `${progressPct}%` }]} />
+              </View>
+            </View>
+          ) : null}
 
-{showControls && controlsVisible && (
-  <TouchableOpacity
-    onPress={toggleMute}
-    style={[styles.soundBtn, { zIndex: 20 }]}
-    activeOpacity={0.9}
-  >
-    <IconSpeaker muted={muted} />
-    <Text style={styles.soundText}>{muted ? 'OFF' : 'ON'}</Text>
-  </TouchableOpacity>
-)}
+          <View style={styles.playerControlRow}>
+            <View style={styles.playerControlLeft}>
+              <TouchableOpacity
+                onPress={onSurfaceTogglePress}
+                activeOpacity={0.82}
+                style={styles.playerIconButton}
+              >
+                <Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color="#FFF" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={toggleMute}
+                activeOpacity={0.82}
+                style={styles.playerIconButton}
+              >
+                <Ionicons
+                  name={muted ? 'volume-mute-outline' : 'volume-high-outline'}
+                  size={18}
+                  color="#FFF"
+                />
+              </TouchableOpacity>
+
+              <Text style={styles.playerTimeText} numberOfLines={1}>
+                {elapsedLabel}
+                {!compactControls ? ` / ${durationLabel}` : ''}
+              </Text>
+            </View>
+
+            <View style={styles.playerControlRight}>
+              <TouchableOpacity
+                onPress={enterFullscreen}
+                activeOpacity={0.82}
+                style={styles.playerIconButton}
+              >
+                <Ionicons name="scan-outline" size={18} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }
@@ -1602,6 +2195,152 @@ function buildForYouMix<T extends { user_id?: string | null; submitted_at?: stri
   return result;
 }
 
+type UpNextQueueItem = {
+  id: string;
+  user_id?: string | null;
+  users?: { id?: string | null } | null;
+  submitted_at?: string | null;
+  votes?: number | null;
+  category?: string | null;
+  film_category?: string | null;
+  word?: string | null;
+};
+
+function stableUpNextNoise(seed: string) {
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967295;
+}
+
+function getUpNextCreatorId(item?: UpNextQueueItem | null) {
+  return item?.user_id || item?.users?.id || null;
+}
+
+function getUpNextGenre(item?: UpNextQueueItem | null, fallback?: string | null) {
+  return String(item?.film_category || item?.category || item?.word || fallback || '')
+    .trim()
+    .toLowerCase();
+}
+
+function buildUpNextQueue<T extends UpNextQueueItem>(
+  current: T | null,
+  items: T[],
+  options: { recentIds?: string[]; fallbackGenre?: string | null; limit?: number } = {}
+) {
+  if (!current) return [];
+
+  const limit = options.limit ?? 8;
+  const recentIds = options.recentIds ?? [];
+  const recentRank = new Map(recentIds.map((id, index) => [id, index]));
+  const currentCreatorId = getUpNextCreatorId(current);
+  const currentGenre = getUpNextGenre(current, options.fallbackGenre);
+  const noiseSeed = `${current.id}:${recentIds.slice(0, 8).join('|')}`;
+
+  const pool = items.filter((item) => item.id !== current.id);
+  if (pool.length <= 1) return pool.slice(0, limit);
+
+  const hardRecentCount = pool.length >= 8 ? 4 : pool.length >= 5 ? 3 : 1;
+  const hardRecent = new Set(
+    recentIds.filter((id) => id !== current.id).slice(0, hardRecentCount)
+  );
+  const primary = pool.filter((item) => !hardRecent.has(item.id));
+  const fallbackRecent = pool.filter((item) => hardRecent.has(item.id));
+  const source = primary.length >= Math.min(4, pool.length) ? primary : pool;
+
+  const getSignals = (item: T) => {
+    const sameCreator = !!currentCreatorId && getUpNextCreatorId(item) === currentCreatorId;
+    const sameGenre = !!currentGenre && getUpNextGenre(item) === currentGenre;
+    const time = getSubmissionTimeMs(item);
+    const ageDays = time ? Math.max(0, (Date.now() - time) / 86_400_000) : 365;
+    const freshness = Math.max(0, 16 - Math.min(16, ageDays / 4));
+    const popularity = Math.log10(Math.max(0, item.votes ?? 0) + 1) * 7;
+    const watchedRank = recentRank.get(item.id);
+    const recentPenalty =
+      watchedRank === undefined ? 0 : Math.max(8, 42 - watchedRank * 6);
+    const noise = stableUpNextNoise(`${noiseSeed}:${item.id}`) * 4;
+
+    return {
+      sameCreator,
+      sameGenre,
+      freshness,
+      popularity,
+      recentPenalty,
+      noise,
+    };
+  };
+
+  const byScore = (kind: 'similar' | 'fresh' | 'popular' | 'explore' | 'any') => (a: T, b: T) => {
+    const signalScore = (item: T) => {
+      const s = getSignals(item);
+      const relevance = (s.sameCreator ? 26 : 0) + (s.sameGenre ? 18 : 0);
+      if (kind === 'fresh') return s.freshness * 2.1 + relevance * 0.35 + s.noise - s.recentPenalty;
+      if (kind === 'popular') return s.popularity * 2 + relevance * 0.35 + s.noise - s.recentPenalty;
+      if (kind === 'explore') return s.freshness + s.popularity + s.noise - s.recentPenalty;
+      if (kind === 'similar') return relevance * 1.6 + s.freshness + s.popularity + s.noise - s.recentPenalty;
+      return relevance + s.freshness + s.popularity + s.noise - s.recentPenalty;
+    };
+
+    return signalScore(b) - signalScore(a);
+  };
+
+  const similar = source
+    .filter((item) => {
+      const s = getSignals(item);
+      return s.sameCreator || s.sameGenre;
+    })
+    .sort(byScore('similar'));
+  const fresh = [...source].sort(byScore('fresh'));
+  const popular = [...source].sort(byScore('popular'));
+  const explore = source
+    .filter((item) => {
+      const s = getSignals(item);
+      return !s.sameCreator && !s.sameGenre;
+    })
+    .sort(byScore('explore'));
+  const any = [...source].sort(byScore('any'));
+  const buckets = { similar, fresh, popular, explore, any };
+  const pattern: Array<keyof typeof buckets> = [
+    'similar',
+    'fresh',
+    'explore',
+    'similar',
+    'popular',
+    'fresh',
+    'explore',
+    'any',
+  ];
+  const result: T[] = [];
+  const used = new Set<string>();
+  const takeFrom = (bucket: T[]) => {
+    const picked = bucket.find((item) => !used.has(item.id));
+    if (!picked) return false;
+    used.add(picked.id);
+    result.push(picked);
+    return true;
+  };
+
+  for (let guard = 0; result.length < Math.min(limit, source.length) && guard < limit * 4; guard += 1) {
+    const bucketName = pattern[guard % pattern.length];
+    if (!takeFrom(buckets[bucketName])) takeFrom(any);
+  }
+
+  const fallback = [...fallbackRecent, ...pool]
+    .filter((item, index, arr) => arr.findIndex((candidate) => candidate.id === item.id) === index)
+    .sort(byScore('any'));
+
+  for (const item of fallback) {
+    if (result.length >= limit) break;
+    if (used.has(item.id)) continue;
+    used.add(item.id);
+    result.push(item);
+  }
+
+  return result;
+}
+
 /* ---------------- Memoized Header Controls ---------------- */
 type HeaderControlsProps = {
   category: Category;
@@ -2058,6 +2797,7 @@ const [refreshing, setRefreshing] = useState(false);
   const [supportBusy, setSupportBusy] = useState<Record<string, boolean>>({});
   const [deleteBusy, setDeleteBusy] = useState<Record<string, boolean>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [featuredFocusPlayKey, setFeaturedFocusPlayKey] = useState(0);
 
   type CommentRow = {
   id: string;
@@ -2110,6 +2850,7 @@ const repliesByParent = useMemo(() => {
 
   // ✅ Preview modal for wide web compact cards
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewPlayKey, setPreviewPlayKey] = useState(0);
   const {
     keyboardVisible: commentsKeyboardVisible,
     keyboardLift: commentsKeyboardLift,
@@ -2143,6 +2884,7 @@ const repliesByParent = useMemo(() => {
   const previewOpenRef = useRef(false);
   const previewAnimateInRef = useRef(false);
   const previewWorkSeqRef = useRef(0);
+  const [recentPreviewIds, setRecentPreviewIds] = useState<string[]>([]);
   const watchScrollRef = useRef<ScrollView | null>(null);
   const handleCommentInputFocus = useCallback(() => {
     if (Platform.OS !== 'android') return;
@@ -2176,6 +2918,20 @@ const repliesByParent = useMemo(() => {
     previewOpenRef.current = previewOpen;
   }, [previewOpen]);
 
+  useFocusEffect(
+    useCallback(() => {
+      setFeaturedFocusPlayKey((key) => key + 1);
+
+      if (!previewOpenRef.current && winner?.id) {
+        setActiveId(`winner-${winner.id}`);
+      }
+
+      return () => {
+        pauseAllExcept(PAUSE_NONE_ID, { preserveWinner: false }).catch(() => {});
+      };
+    }, [winner?.id])
+  );
+
   useEffect(() => {
     return () => {
       if (previewMediaTimerRef.current) {
@@ -2186,32 +2942,12 @@ const repliesByParent = useMemo(() => {
 
   const previewSuggestions = useMemo(() => {
     if (!previewItem) return [];
-
-    const currentUserIdForPreview = (previewItem as any).user_id;
-    const currentGenre =
-      (previewItem as any).film_category || (previewItem as any).category || category;
-
-    const scored = submissions
-      .filter((item) => item.id !== previewItem.id)
-      .map((item) => {
-        const sameCreator =
-          !!currentUserIdForPreview && (item as any).user_id === currentUserIdForPreview;
-        const sameGenre =
-          !!currentGenre &&
-          (((item as any).film_category || (item as any).category || category) === currentGenre);
-
-        return {
-          item,
-          score: (sameCreator ? 2 : 0) + (sameGenre ? 1 : 0),
-        };
-      })
-      .sort((a, b) => b.score - a.score || (b.item.votes ?? 0) - (a.item.votes ?? 0));
-
-    const matches = scored.filter(({ score }) => score > 0);
-    const fallback = scored.filter(({ score }) => score === 0);
-
-    return [...matches, ...fallback].slice(0, 8).map(({ item }) => item);
-  }, [category, previewItem, submissions]);
+    return buildUpNextQueue(previewItem, submissions, {
+      recentIds: recentPreviewIds,
+      fallbackGenre: category,
+      limit: 8,
+    });
+  }, [category, previewItem, recentPreviewIds, submissions]);
 
   const updateCollaboratorsForSubmission = (
     submissionId: string,
@@ -2464,6 +3200,10 @@ const lastAppliedFetchKeyRef = useRef<string | null>(null);
       shouldDuckAndroid: false,
       playThroughEarpieceAndroid: false,
     }).catch(() => {});
+
+    if (Platform.OS === 'web') {
+      loadHlsJs().catch(() => {});
+    }
   }, []);
 
   // ✅ Page sizing — sidebar + grid on wide web
@@ -2794,10 +3534,10 @@ const fetchContent = async (
         ? getMuxPlaybackUrl((winnerData as any)?.mux_playback_id)
         : null;
 
-      if (winnerMuxUri) {
-        warmPlayableUrl(winnerMuxUri);
-      } else if ((winnerData as any)?.storage_path) {
+      if ((winnerData as any)?.storage_path) {
         signStoragePath((winnerData as any).storage_path!, 3600).catch(() => {});
+      } else if (winnerMuxUri) {
+        warmPlayableUrl(winnerMuxUri);
       }
     }
 
@@ -2845,14 +3585,14 @@ const fetchContent = async (
 }, 300);
     }, 0);
 
-    playableWithCollaborators.slice(0, 6).forEach((s) => {
+    playableWithCollaborators.slice(0, 24).forEach((s) => {
       const muxReady = isMuxReady((s as any).mux_status);
       const muxUri = muxReady ? getMuxPlaybackUrl((s as any).mux_playback_id) : null;
 
-      if (muxUri) {
-        warmPlayableUrl(muxUri);
-      } else if ((s as any).storage_path) {
+      if ((s as any).storage_path) {
         signStoragePath((s as any).storage_path, 3600).catch(() => {});
+      } else if (muxUri) {
+        warmPlayableUrl(muxUri);
       }
     });
 
@@ -2879,9 +3619,19 @@ const fetchContent = async (
       setMonthlyVotesUsed(0);
     }
 
-    const firstPlayable = winnerData?.storage_path
+    const winnerCanPlay = !!(
+      winnerData?.storage_path ||
+      (isMuxReady((winnerData as any)?.mux_status) && (winnerData as any)?.mux_playback_id)
+    );
+
+    const firstPlayable = winnerCanPlay
       ? `winner-${winnerData.id}`
-      : playableOnly.find((r) => !!r.storage_path && r.media_kind !== 'file_audio')?.id ?? null;
+      : playableOnly.find(
+          (r) =>
+            r.media_kind !== 'file_audio' &&
+            (!!r.storage_path ||
+              (isMuxReady((r as any)?.mux_status) && !!(r as any)?.mux_playback_id))
+        )?.id ?? null;
 
     if (seq !== fetchSeqRef.current) return;
 
@@ -3426,8 +4176,10 @@ const shareSubmissionLink = async (
 
   setPreviewItem(s);
   setPreviewOpen(true);
+  if (s?.id) {
+    setRecentPreviewIds((prev) => [s.id, ...prev.filter((id) => id !== s.id)].slice(0, 24));
+  }
   previewOpenRef.current = true;
-  setActiveId(PAUSE_NONE_ID);
   setPreviewCommentsExpanded(false);
   setCommentsFor(s);
   setCommentText('');
@@ -3438,6 +4190,9 @@ const shareSubmissionLink = async (
   setCollaboratorQuery('');
   setCollaboratorRole('');
   setCollaboratorResults([]);
+  setPreviewMediaReady(true);
+  setPreviewPlayKey((key) => key + 1);
+  setActiveId(`preview-${s.id}`);
 
   InteractionManager.runAfterInteractions(() => {
     if (workSeq !== previewWorkSeqRef.current) return;
@@ -3461,7 +4216,7 @@ const shareSubmissionLink = async (
     if (previewClosingRef.current) return;
     setPreviewMediaReady(true);
     setActiveId(`preview-${s.id}`);
-  }, Platform.OS === 'web' ? 140 : 190);
+  }, Platform.OS === 'web' ? 40 : 70);
 };
 
   const closePreview = () => {
@@ -3799,7 +4554,11 @@ setPreviewItem((prev) =>
 // If nothing is active, immediately resume last month's winner if it exists.
 useEffect(() => {
   (async () => {
-    const fallbackWinnerId = winner?.storage_path ? `winner-${winner.id}` : null;
+    const fallbackWinnerId =
+      winner?.storage_path ||
+      (isMuxReady((winner as any)?.mux_status) && (winner as any)?.mux_playback_id)
+        ? `winner-${winner.id}`
+        : null;
     const targetId = activeId || fallbackWinnerId || PAUSE_NONE_ID;
     await pauseAllExcept(targetId);
   })();
@@ -3903,6 +4662,14 @@ const onScrollImmediate = useRef((e: NativeSyntheticEvent<NativeScrollEvent>) =>
 
 const onMomentumEnd = useRef(() => {}).current;
 
+const resumeWinnerAfterHover = useCallback((hoveredId: string) => {
+  setActiveId((prev) => (prev === hoveredId ? null : prev));
+
+  if (!previewOpenRef.current) {
+    setFeaturedFocusPlayKey((key) => key + 1);
+  }
+}, []);
+
 const onRemoveSubmission = async (s: Submission & { description?: string | null }) => {
   const prevSubs = submissions;
   setSubmissions((p) => p.filter((row) => row.id !== s.id));
@@ -3936,8 +4703,13 @@ const renderMedia = (
   s: Submission & {
     description?: string | null;
     storage_path?: string | null;
+    video_path?: string | null;
     thumbnail_url?: string | null;
     media_kind?: RawSubmission['media_kind'];
+    videos?: {
+      original_path?: string | null;
+      video_variants?: { path: string; label?: string | null }[] | null;
+    } | null;
   },
   isActive: boolean,
   isWinnerRow: boolean
@@ -3948,18 +4720,16 @@ const renderMedia = (
 const webHoverProps =
   Platform.OS === 'web'
     ? {
+        onHoverIn: () => setActiveId(rowId),
+        onHoverOut: () => {
+          if (isWinnerPlayer) return;
+          resumeWinnerAfterHover(rowId);
+        },
         onMouseEnter: () => setActiveId(rowId),
         onMouseLeave: () => {
           // Winner should keep playing when mouse leaves it
           if (isWinnerPlayer) return;
-
-          setActiveId((prev) => {
-            if (prev === rowId) {
-              pauseAllExcept(PAUSE_NONE_ID);
-              return null;
-            }
-            return prev;
-          });
+          resumeWinnerAfterHover(rowId);
         },
       }
     : {};
@@ -3979,7 +4749,11 @@ const frameW = fitted.w;
 const frameH = fitted.h;
 
   const muxReady = isMuxReady((s as any).mux_status);
-const muxUri = muxReady ? getMuxPlaybackUrl((s as any).mux_playback_id) : null;
+const muxUri = muxReady
+  ? isWinnerRow
+    ? getWinnerMuxPlaybackUrl((s as any).mux_playback_id)
+    : getMuxPlaybackUrl((s as any).mux_playback_id)
+  : null;
 const playableUri = muxUri || s.storage_path || null;
 
 if (!playableUri) {
@@ -4059,17 +4833,25 @@ if (!playableUri) {
   },
 ]}
     >
-      <HostedVideoInline
+  <HostedVideoInline
   playerId={rowId}
-  storagePath={muxUri ? null : s.storage_path ?? null}
+  storagePath={s.storage_path ?? null}
+  storagePathCandidates={[
+    s.storage_path ?? null,
+    s.video_path ?? null,
+    s.videos?.original_path ?? null,
+  ]}
   directUri={muxUri}
+  preferDirectUriFirst={!isWinnerRow && isActive}
   width={frameW}
   maxHeight={frameH}
-  autoPlay={isActive}
+  autoPlay={isWinnerRow ? true : isActive}
+  playRequestKey={isWinnerRow ? featuredFocusPlayKey : undefined}
   posterUri={s.thumbnail_url ?? null}
   dimVignette={isWinnerRow}
-  showControls={false}
-  showProgress={!isWinnerRow}
+  showControls={isWinnerRow}
+  showProgress
+  surfacePressMode={isWinnerRow ? 'toggle' : 'hold'}
 />
     </View>
   );
@@ -4244,20 +5026,12 @@ const hasPlayableVideo = !!(muxUri || s.storage_path);
         onHoverIn: () => {
   if (hoverIntentRef.current[playerId]) {
     clearTimeout(hoverIntentRef.current[playerId]);
+    delete hoverIntentRef.current[playerId];
   }
 
-  hoverIntentRef.current[playerId] = setTimeout(() => {
-    if (muxUri) {
-      warmPlayableUrl(muxUri);
-      setActiveId(playerId);
-      return;
-    }
-
-    if (s.storage_path) {
-      signStoragePath(s.storage_path, 3600).catch(() => {});
-      setActiveId(playerId);
-    }
-  }, 90);
+  if (muxUri) warmPlayableUrl(muxUri);
+  if (s.storage_path) signStoragePath(s.storage_path, 3600).catch(() => {});
+  setActiveId(playerId);
 },
 onHoverOut: () => {
   if (hoverIntentRef.current[playerId]) {
@@ -4265,7 +5039,25 @@ onHoverOut: () => {
     delete hoverIntentRef.current[playerId];
   }
 
-  setActiveId((prev) => (prev === playerId ? null : prev));
+  resumeWinnerAfterHover(playerId);
+},
+        onMouseEnter: () => {
+  if (hoverIntentRef.current[playerId]) {
+    clearTimeout(hoverIntentRef.current[playerId]);
+    delete hoverIntentRef.current[playerId];
+  }
+
+  if (muxUri) warmPlayableUrl(muxUri);
+  if (s.storage_path) signStoragePath(s.storage_path, 3600).catch(() => {});
+  setActiveId(playerId);
+},
+onMouseLeave: () => {
+  if (hoverIntentRef.current[playerId]) {
+    clearTimeout(hoverIntentRef.current[playerId]);
+    delete hoverIntentRef.current[playerId];
+  }
+
+  resumeWinnerAfterHover(playerId);
 },
       }
     : {})}
@@ -4276,18 +5068,26 @@ onHoverOut: () => {
 
          {/* Only mount video while hovered / holding */}
 {hasPlayableVideo && isActiveCard ? (
-  <View style={StyleSheet.absoluteFillObject}>
+  <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
     <HostedVideoInline
       playerId={playerId}
-      storagePath={muxUri ? null : s.storage_path ?? null}
+      storagePath={s.storage_path ?? null}
+      storagePathCandidates={[
+        s.storage_path ?? null,
+        (s as any).video_path ?? null,
+        (s as any).videos?.original_path ?? null,
+      ]}
       directUri={muxUri}
+      preferDirectUriFirst
       width={gridCardW}
       maxHeight={gridCardW / (16 / 9)}
       autoPlay={true}
       posterUri={s.thumbnail_url ?? null}
       dimVignette={false}
       showControls={false}
+      showProgress={false}
       captureSurfacePress={false}
+      transparentUntilReady
     />
   </View>
 ) : null}
@@ -4317,7 +5117,7 @@ onHoverOut: () => {
       </Pressable>
     );
   },
-  [gridCardW, activeId, isLight]
+  [gridCardW, activeId, isLight, resumeWinnerAfterHover]
 );
 const renderMobileYouTubeCard = useCallback(
   (
@@ -4684,6 +5484,8 @@ const renderCard = useCallback(
     featuredBackground,
     isMobile,
     winH,
+    featuredFocusPlayKey,
+    resumeWinnerAfterHover,
   ]
 );
 
@@ -4701,7 +5503,7 @@ const headerElement = useMemo(
       <View style={{ height: isNarrow ? 12 : 12 }} />
     </View>
   ),
-  [winner, activeId, isNarrow, cardW, availableHForMedia]
+  [winner, activeId, isNarrow, cardW, availableHForMedia, renderCard, featuredFocusPlayKey]
 );
 
 const sidebarElement = useMemo(() => {
@@ -5398,13 +6200,19 @@ maxToRenderPerBatch={2}
               return previewItem.storage_path || previewMuxUri ? (
                 <HostedVideoInline
                   playerId={`preview-${previewItem.id}`}
-                  storagePath={previewMuxUri ? null : previewItem.storage_path ?? null}
+                  storagePath={previewItem.storage_path ?? null}
+                  storagePathCandidates={[
+                    previewItem.storage_path ?? null,
+                    (previewItem as any).video_path ?? null,
+                    (previewItem as any).videos?.original_path ?? null,
+                  ]}
                   directUri={previewMuxUri}
                   width={featuredWatchMainW}
                   maxHeight={
                     useDesktopWatch ? Math.min(winH * 0.68, 660) : Math.min(winH * 0.34, 340)
                   }
                   autoPlay={previewMediaReady && activeId === `preview-${previewItem.id}`}
+                  playRequestKey={previewPlayKey}
                   autoPlayWithSound
                   posterUri={previewItem.thumbnail_url ?? null}
                   dimVignette={false}
@@ -5412,6 +6220,11 @@ maxToRenderPerBatch={2}
                   captureSurfacePress={true}
                   surfacePressMode="toggle"
                   squareCorners
+                  loop={false}
+                  onPlaybackEnd={() => {
+                    const next = previewSuggestions[0];
+                    if (next) openPreview(next as any);
+                  }}
                 />
               ) : (
                 <View
@@ -7544,22 +8357,139 @@ previewCommentsCard: {
     position: 'absolute',
     left: 14,
     right: 14,
-    bottom: 10,
-    height: 24,
+    bottom: 8,
+    height: 18,
     justifyContent: 'center',
+    zIndex: 15,
   },
 
   progressTrack: {
-    height: 3,
+    height: 2,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.22)',
   },
 
   progressFill: {
-    height: 3,
+    height: 2,
     borderRadius: 999,
     backgroundColor: GOLD,
+  },
+
+  progressThumb: {
+    position: 'absolute',
+    top: -4,
+    width: 10,
+    height: 10,
+    marginLeft: -5,
+    borderRadius: 5,
+    backgroundColor: GOLD,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+
+  playerChromeDock: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 8,
+    paddingHorizontal: 10,
+    paddingTop: 7,
+    paddingBottom: 7,
+    borderRadius: 10,
+    backgroundColor: 'rgba(5,5,5,0.58)',
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    zIndex: 20,
+    elevation: 20,
+  },
+
+  playerTimeline: {
+    height: 12,
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+
+  playerTimelineTrack: {
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.26)',
+  },
+
+  playerTimelineFill: {
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: GOLD,
+  },
+
+  playerTimelineThumb: {
+    position: 'absolute',
+    top: -4,
+    width: 10,
+    height: 10,
+    marginLeft: -5,
+    borderRadius: 5,
+    backgroundColor: GOLD,
+  },
+
+  playerControlRow: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+
+  playerControlLeft: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+
+  playerControlRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+
+  playerIconButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+
+  playerTimeText: {
+    flexShrink: 1,
+    color: '#F7F2E8',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.1,
+  },
+
+  playerCenterCue: {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    width: 76,
+    height: 76,
+    marginLeft: -38,
+    marginTop: -38,
+    borderRadius: 38,
+    backgroundColor: 'rgba(0,0,0,0.58)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 16,
   },
 
   fsButton: {
@@ -7589,6 +8519,70 @@ previewCommentsCard: {
   flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'center',
+},
+
+qualityBtn: {
+  position: 'absolute',
+  right: 10,
+  top: 10,
+  minHeight: 36,
+  paddingHorizontal: 10,
+  borderRadius: 999,
+  backgroundColor: 'rgba(0,0,0,0.58)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.12)',
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 5,
+},
+
+qualityBtnText: {
+  color: '#fff',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 8,
+  letterSpacing: 0.3,
+  textTransform: 'uppercase',
+},
+
+qualityMenu: {
+  position: 'absolute',
+  right: 10,
+  top: 52,
+  minWidth: 124,
+  borderRadius: 14,
+  backgroundColor: 'rgba(0,0,0,0.82)',
+  borderWidth: 1,
+  borderColor: 'rgba(255,255,255,0.16)',
+  overflow: 'hidden',
+  paddingVertical: 4,
+},
+
+qualityMenuItem: {
+  minHeight: 34,
+  paddingHorizontal: 10,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+},
+
+qualityMenuItemSelected: {
+  backgroundColor: 'rgba(198,166,100,0.14)',
+},
+
+qualityMenuText: {
+  color: '#fff',
+  fontFamily: SYSTEM_SANS,
+  fontSize: 11,
+  fontWeight: '800',
+  letterSpacing: 0.3,
+  textTransform: 'uppercase',
+},
+
+qualityMenuTextSelected: {
+  color: GOLD,
 },
 
 soundText: {

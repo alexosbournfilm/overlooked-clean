@@ -116,6 +116,80 @@ async function ensureProfileSubmissionShareSlug(submission: {
 
   return slug;
 }
+
+type InlineSelectorOverlayProps = {
+  visible: boolean;
+  children: React.ReactNode;
+  style?: any;
+};
+
+function InlineSelectorOverlay({ visible, children, style }: InlineSelectorOverlayProps) {
+  const progress = useRef(new Animated.Value(0)).current;
+  const lastChildrenRef = useRef<React.ReactNode>(children);
+  const [rendered, setRendered] = useState(visible);
+
+  if (visible) {
+    lastChildrenRef.current = children;
+  }
+
+  useEffect(() => {
+    progress.stopAnimation();
+
+    if (visible) {
+      setRendered(true);
+      progress.setValue(0);
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+      return;
+    }
+
+    if (!rendered) return;
+
+    Animated.timing(progress, {
+      toValue: 0,
+      duration: 160,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) setRendered(false);
+    });
+  }, [progress, rendered, visible]);
+
+  if (!rendered) return null;
+
+  return (
+    <Animated.View
+      pointerEvents={visible ? 'auto' : 'none'}
+      style={[
+        styles.editSelectorOverlay,
+        style,
+        {
+          opacity: progress,
+          transform: [
+            {
+              translateY: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [18, 0],
+              }),
+            },
+            {
+              scale: progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.985, 1],
+              }),
+            },
+          ],
+        },
+      ]}
+    >
+      {visible ? children : lastChildrenRef.current}
+    </Animated.View>
+  );
+}
 /* ---------- layout constants ---------- */
 const PAGE_MAX = 1160;
 
@@ -297,6 +371,7 @@ const codeToFlag = (cc?: string) => {
 
 /* ---------- resumable upload helpers (use "portfolios" bucket) ---------- */
 const SHOWREEL_BUCKET = 'portfolios';
+const THUMB_BUCKET = "thumbnails";
 
 async function getResumableEndpoint(bucket = SHOWREEL_BUCKET) {
   const { data } = supabase.storage.from(bucket).getPublicUrl('__probe__');
@@ -465,6 +540,12 @@ function injectWebVideoCSS() {
     .ovk-video::-webkit-media-controls-fullscreen-button { display: none !important; }
     .ovk-video::-webkit-media-controls-mute-button { display: none !important; }
     .ovk-video::-webkit-media-controls-toggle-closed-captions-button { display: none !important; }
+    .ovk-video::-webkit-media-controls-overlay-play-button { display: none !important; -webkit-appearance: none !important; }
+    .ovk-video::-webkit-media-controls-start-playback-button { display: none !important; -webkit-appearance: none !important; }
+    .ovk-video::-webkit-media-controls-volume-slider { display: none !important; }
+    .ovk-video::-webkit-media-controls-timeline-container { display: none !important; }
+    .ovk-video::-webkit-media-controls-rewind-button { display: none !important; }
+    .ovk-video::-webkit-media-controls-return-to-realtime-button { display: none !important; }
   `;
   document.head.appendChild(style);
   PROFILE_VIDEO_CSS_INJECTED = true;
@@ -475,6 +556,17 @@ injectWebVideoCSS();
 /* Signed URL cache just for showreels */
 const showreelSignedUrlCache = new Map<string, { url: string; exp: number }>();
 const showreelInflight = new Map<string, Promise<string>>();
+
+function formatPlayerTime(seconds?: number | null) {
+  const total = Math.max(0, Math.floor(Number.isFinite(seconds || 0) ? seconds || 0 : 0));
+  const hrs = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (hrs > 0) {
+    return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+}
 
 /** Sign a storage path from portfolios, or pass through if it's already a URL */
 async function signShowreelPath(pathOrUrl: string, expiresInSec = 3600): Promise<string> {
@@ -518,6 +610,35 @@ async function signShowreelPath(pathOrUrl: string, expiresInSec = 3600): Promise
   return p;
 }
 
+function normalizeStorageObjectPath(pathOrUrl: string, bucket: string) {
+  const raw = String(pathOrUrl || '').trim();
+  if (!raw) return raw;
+
+  if (/^https?:\/\//i.test(raw)) {
+    const match = raw.match(new RegExp(`/storage/v1/object/(?:public|sign)/${bucket}/([^?]+)`, 'i'));
+    if (!match?.[1]) return raw;
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return match[1];
+    }
+  }
+
+  return raw
+    .split('?')[0]
+    .replace(/^\/+/, '')
+    .replace(new RegExp(`^${bucket}/`, 'i'), '');
+}
+
+function resolveShowreelPosterUri(uri?: string | null) {
+  const raw = String(uri || '').trim();
+  if (!raw) return null;
+  if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
+
+  const path = normalizeStorageObjectPath(raw, THUMB_BUCKET);
+  return supabase.storage.from(THUMB_BUCKET).getPublicUrl(path).data.publicUrl || raw;
+}
+
 /* Player registry (unify behavior with Featured) */
 type PlayerHandle = { id: string; pause: () => Promise<void> | void };
 const playerRegistry = new Map<string, PlayerHandle>();
@@ -534,6 +655,26 @@ async function pauseAllExcept(id?: string | null) {
 
 const WebVideo: any = 'video';
 
+type VideoSourceOption = {
+  label: string;
+  uri: string;
+};
+
+function getMuxPlaybackOptionsFromUrl(url?: string | null): VideoSourceOption[] {
+  if (!url) return [];
+  if (Platform.OS !== 'web') return [{ label: 'Auto', uri: url }];
+
+  const match = String(url).match(/stream\.mux\.com\/([^/.?]+)/);
+  if (!match?.[1]) return [{ label: 'Auto', uri: url }];
+
+  const playbackId = match[1];
+  return [
+    { label: 'High', uri: `https://stream.mux.com/${playbackId}/high.mp4` },
+    { label: 'Medium', uri: `https://stream.mux.com/${playbackId}/medium.mp4` },
+    { label: 'Low', uri: `https://stream.mux.com/${playbackId}/low.mp4` },
+  ];
+}
+
 /* ---------- Inline showreel video (Featured-style) ---------- */
 
 function ShowreelVideoInline({
@@ -541,33 +682,66 @@ function ShowreelVideoInline({
   filePathOrUrl,
   width,
   autoPlay,
+  posterUri,
   maxWidth = SHOWREEL_MAX_W,
   maxHeight,
   squareCorners = false,
+  loop = true,
+  onPlaybackEnd,
 }: {
   playerId: string;
   filePathOrUrl: string;
   width: number;
   autoPlay: boolean;
+  posterUri?: string | null;
   maxWidth?: number;
   maxHeight?: number;
   squareCorners?: boolean;
+  loop?: boolean;
+  onPlaybackEnd?: () => void;
 }) {
   const expoRef = useRef<Video>(null);
   const htmlRef = useRef<any>(null);
+  const playerRootRef = useRef<any>(null);
 
-  const [src, setSrc] = useState<string | null>(null);
+  const [sourceOptions, setSourceOptions] = useState<VideoSourceOption[]>(() =>
+    /^https?:\/\//i.test(filePathOrUrl) ? getMuxPlaybackOptionsFromUrl(filePathOrUrl) : []
+  );
+  const sourceKeyRef = useRef(sourceOptions.map((option) => option.uri).join('|'));
+  const [sourceIndex, setSourceIndex] = useState(0);
+  const [hasLoadedFrame, setHasLoadedFrame] = useState(false);
+  const [resolvedPosterUri, setResolvedPosterUri] = useState<string | null>(() =>
+    resolveShowreelPosterUri(posterUri)
+  );
   const [aspect, setAspect] = useState(16 / 9);
   const [muted, setMuted] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playerChromeVisible, setPlayerChromeVisible] = useState(false);
+  const [qualityMenuOpen, setQualityMenuOpen] = useState(false);
   const playerChromeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [duration, setDuration] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [progressRailWidth, setProgressRailWidth] = useState(1);
   const opacity = useRef(new Animated.Value(0)).current;
+  const controlsOpacity = useRef(new Animated.Value(0)).current;
+  const cueOpacity = useRef(new Animated.Value(0)).current;
+  const cueScale = useRef(new Animated.Value(0.92)).current;
+  const cueTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wantsPlayRef = useRef(autoPlay);
+  const finishedRef = useRef(false);
+  const [playbackCue, setPlaybackCue] = useState<'play' | 'pause'>('play');
+  const [playbackCueActive, setPlaybackCueActive] = useState(false);
+  const [seeking, setSeeking] = useState(false);
 
   const progressRef = useRef<View>(null);
+  const src = sourceOptions[sourceIndex]?.uri ?? null;
+  const selectedQualityLabel = sourceOptions[sourceIndex]?.label ?? 'Auto';
+  const posterSourceUri = resolvedPosterUri;
+
+  useEffect(() => {
+    finishedRef.current = false;
+  }, [src]);
 
   // ✅ Still keep this for your fullscreen logic + audio behavior
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -578,12 +752,17 @@ function ShowreelVideoInline({
   const playerW = shouldClampHeight ? maxHeight! * aspect : clampedW;
   const playerH = shouldClampHeight ? maxHeight! : rawHeightFromAspect;
   const playerRadius = squareCorners ? 0 : 12;
+  const progressPct = Math.max(0, Math.min(100, progress * 100));
+  const elapsedLabel = formatPlayerTime(duration * progress);
+  const durationLabel = duration > 0 ? formatPlayerTime(duration) : '0:00';
+  const compactControls = playerW < 520;
 
   // register in player registry
   useEffect(() => {
     const handle: PlayerHandle = {
       id: playerId,
       pause: async () => {
+        wantsPlayRef.current = false;
         try {
           if (Platform.OS === 'web') {
             htmlRef.current?.pause();
@@ -606,7 +785,19 @@ function ShowreelVideoInline({
     (async () => {
       try {
         const url = await signShowreelPath(filePathOrUrl);
-        if (alive) setSrc(url);
+        if (alive) {
+          const nextOptions = getMuxPlaybackOptionsFromUrl(url);
+          const nextKey = nextOptions.map((option) => option.uri).join('|');
+
+          if (sourceKeyRef.current !== nextKey) {
+            sourceKeyRef.current = nextKey;
+            setSourceOptions(nextOptions);
+            setSourceIndex(0);
+            setQualityMenuOpen(false);
+            setHasLoadedFrame(false);
+            opacity.setValue(0);
+          }
+        }
       } catch (e) {
         console.warn('[ShowreelVideoInline] sign failed', e);
       }
@@ -616,13 +807,54 @@ function ShowreelVideoInline({
     };
   }, [filePathOrUrl]);
 
+  useEffect(() => {
+    setResolvedPosterUri(resolveShowreelPosterUri(posterUri));
+    setHasLoadedFrame(false);
+    opacity.setValue(0);
+  }, [posterUri, opacity]);
+
   const fadeIn = () => {
+    setHasLoadedFrame(true);
     Animated.timing(opacity, {
       toValue: 1,
       duration: 220,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
+  };
+
+  const flashPlaybackCue = (nextCue: 'play' | 'pause') => {
+    setPlaybackCue(nextCue);
+    setPlaybackCueActive(true);
+    if (cueTimerRef.current) clearTimeout(cueTimerRef.current);
+    cueOpacity.stopAnimation();
+    cueScale.stopAnimation();
+    cueOpacity.setValue(0);
+    cueScale.setValue(0.92);
+
+    Animated.parallel([
+      Animated.timing(cueOpacity, {
+        toValue: 1,
+        duration: 110,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.spring(cueScale, {
+        toValue: 1,
+        friction: 6,
+        tension: 140,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    cueTimerRef.current = setTimeout(() => {
+      Animated.timing(cueOpacity, {
+        toValue: 0,
+        duration: 260,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start(() => setPlaybackCueActive(false));
+    }, 420);
   };
 
   const updateAspect = (w?: number, h?: number) => {
@@ -648,27 +880,61 @@ function ShowreelVideoInline({
       setDuration(d / 1000);
       setProgress(Math.max(0, Math.min(1, p / d)));
     }
+
+    if (!loop && s.didJustFinish) {
+      handlePlaybackEnd();
+    }
   };
 
-  const play = async (ensureSound = false) => {
+  const handlePlaybackEnd = () => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    wantsPlayRef.current = false;
+    setIsPlaying(false);
+    onPlaybackEnd?.();
+  };
+
+  const play = async (ensureSound = false): Promise<boolean> => {
+    wantsPlayRef.current = true;
+    finishedRef.current = false;
     try {
       await pauseAllExcept(playerId);
       if (Platform.OS === 'web') {
         const el = htmlRef.current;
-        if (!el) return;
+        if (!el || !src) return false;
+
+        const currentSrc = el.getAttribute?.('src') || el.currentSrc || '';
+        if (currentSrc !== src) {
+          el.src = src;
+          try {
+            el.load();
+          } catch {}
+        }
+
         if (ensureSound) {
           el.muted = false;
           setMuted(false);
         }
         el.controls = false;
+
+        if (el.readyState === 0) {
+          try {
+            el.load();
+          } catch {}
+        }
+
         await el.play().catch(async () => {
           el.muted = true;
           setMuted(true);
+          await new Promise((resolve) => setTimeout(resolve, 40));
           try {
             await el.play();
           } catch {}
         });
-        setIsPlaying(!el.paused);
+        const playing = !el.paused;
+        setIsPlaying(playing);
+        if (playing) fadeIn();
+        return playing;
       } else {
         if (ensureSound) {
           await expoRef.current?.setIsMutedAsync(false);
@@ -676,13 +942,18 @@ function ShowreelVideoInline({
         }
         await expoRef.current?.playAsync();
         setIsPlaying(true);
+        fadeIn();
+        return true;
       }
     } catch (e) {
       console.warn('[ShowreelVideoInline] play error', e);
+      setIsPlaying(false);
+      return false;
     }
   };
 
   const pause = async () => {
+    wantsPlayRef.current = false;
     try {
       if (Platform.OS === 'web') {
         const el = htmlRef.current;
@@ -696,10 +967,20 @@ function ShowreelVideoInline({
 
   // initial autoplay / mute behavior once src is ready
   useEffect(() => {
+    const playTimers: ReturnType<typeof setTimeout>[] = [];
+
     (async () => {
       if (!src) return;
-      if (autoPlay) {
-        await play(true);
+      if (autoPlay || wantsPlayRef.current) {
+        wantsPlayRef.current = true;
+        const requestPlay = () => {
+          if (!wantsPlayRef.current) return;
+          void play(true);
+        };
+        const retryDelays = Platform.OS === 'web' ? [0, 80, 220, 520, 1100] : [0, 180, 500];
+        retryDelays.forEach((delay) => {
+          playTimers.push(setTimeout(requestPlay, delay));
+        });
       } else {
         await pause();
         if (Platform.OS === 'web') {
@@ -715,6 +996,9 @@ function ShowreelVideoInline({
         setMuted(true);
       }
     })();
+    return () => {
+      playTimers.forEach(clearTimeout);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src, autoPlay]);
 
@@ -729,32 +1013,51 @@ function ShowreelVideoInline({
   }, []);
 
   const revealPlayerChrome = useCallback(() => {
-    if (Platform.OS === 'web') return;
     setPlayerChromeVisible(true);
     if (playerChromeTimerRef.current) clearTimeout(playerChromeTimerRef.current);
-    playerChromeTimerRef.current = setTimeout(() => setPlayerChromeVisible(false), 2200);
-  }, []);
+    if (isPlaying) {
+      playerChromeTimerRef.current = setTimeout(() => setPlayerChromeVisible(false), 2200);
+    }
+  }, [isPlaying]);
 
   useEffect(
     () => () => {
       if (playerChromeTimerRef.current) clearTimeout(playerChromeTimerRef.current);
+      if (cueTimerRef.current) clearTimeout(cueTimerRef.current);
     },
     []
   );
 
-  const controlsVisible = playerChromeVisible;
+  const controlsVisible = hasLoadedFrame && (playerChromeVisible || !isPlaying || seeking);
   const playerHoverProps =
     Platform.OS === 'web'
       ? {
-          onMouseEnter: () => setPlayerChromeVisible(true),
-          onMouseLeave: () => setPlayerChromeVisible(false),
+          onMouseEnter: revealPlayerChrome,
+          onMouseMove: revealPlayerChrome,
+          onMouseLeave: () => {
+            if (!seeking) setPlayerChromeVisible(false);
+          },
         }
       : {};
 
+  useEffect(() => {
+    Animated.timing(controlsOpacity, {
+      toValue: controlsVisible ? 1 : 0,
+      duration: controlsVisible ? 130 : 240,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [controlsOpacity, controlsVisible]);
+
   const onSurfacePress = async () => {
     revealPlayerChrome();
-    if (isPlaying) await pause();
-    else await play(false);
+    if (isPlaying) {
+      await pause();
+      flashPlaybackCue('pause');
+    } else {
+      const didPlay = await play(true);
+      flashPlaybackCue(didPlay ? 'play' : 'pause');
+    }
   };
 
   const onExpoStatus = (status: AVPlaybackStatus) => {
@@ -764,7 +1067,6 @@ function ShowreelVideoInline({
   const onExpoReady = (e: any) => {
     const ns = e?.naturalSize;
     if (ns?.width && ns?.height) updateAspect(ns.width, ns.height);
-    fadeIn();
   };
 
   const onExpoFullscreen = async ({ fullscreenUpdate }: { fullscreenUpdate: number }) => {
@@ -794,7 +1096,12 @@ function ShowreelVideoInline({
     updateAspect(el.videoWidth, el.videoHeight);
     setDuration(el.duration || 0);
     el.controls = false;
-    fadeIn();
+    if (wantsPlayRef.current) {
+      fadeIn();
+      setTimeout(() => {
+        void play(true);
+      }, 25);
+    }
   };
 
   const onWebTimeUpdate = () => {
@@ -808,14 +1115,61 @@ function ShowreelVideoInline({
     }
   };
 
+  const onVideoError = () => {
+    setIsPlaying(false);
+
+    if (sourceIndex < sourceOptions.length - 1) {
+      setSourceIndex((prev) => Math.min(prev + 1, sourceOptions.length - 1));
+      if (!wantsPlayRef.current) {
+        setHasLoadedFrame(false);
+        opacity.setValue(0);
+      }
+      return;
+    }
+
+    if (!posterSourceUri || wantsPlayRef.current) {
+      fadeIn();
+    }
+  };
+
+  const selectQuality = (index: number) => {
+    if (index === sourceIndex) {
+      setQualityMenuOpen(false);
+      return;
+    }
+
+    let resumeAt = 0;
+    const shouldResume = wantsPlayRef.current || isPlaying;
+    try {
+      if (Platform.OS === 'web') resumeAt = htmlRef.current?.currentTime || 0;
+    } catch {}
+
+    setQualityMenuOpen(false);
+    setSourceIndex(index);
+    wantsPlayRef.current = shouldResume;
+    opacity.setValue(0);
+
+    setTimeout(async () => {
+      try {
+        if (Platform.OS === 'web' && htmlRef.current && resumeAt > 0) {
+          htmlRef.current.currentTime = resumeAt;
+        } else if (Platform.OS !== 'web' && expoRef.current && resumeAt > 0) {
+          await expoRef.current.setPositionAsync(resumeAt * 1000);
+        }
+      } catch {}
+      if (shouldResume) void play(true);
+    }, 80);
+  };
+
   useEffect(() => {
     if (Platform.OS !== 'web') return;
 
     const handler = () => {
       const el = htmlRef.current as any;
+      const root = playerRootRef.current as any;
       const fs = (document as any).fullscreenElement;
 
-      if (el && fs === el) {
+      if (el && (fs === el || fs === root)) {
         setIsFullscreen(true);
         pauseAllExcept(playerId).then(async () => {
           try {
@@ -843,8 +1197,12 @@ function ShowreelVideoInline({
       await play(true);
 
       if (Platform.OS === 'web') {
+        const root = playerRootRef.current as any;
         const el = htmlRef.current as any;
-        if (el?.requestFullscreen) {
+        if (root?.requestFullscreen) {
+          await root.requestFullscreen();
+          setIsFullscreen(true);
+        } else if (el?.requestFullscreen) {
           await el.requestFullscreen();
           setIsFullscreen(true);
         }
@@ -872,31 +1230,52 @@ function ShowreelVideoInline({
     } catch {}
   };
 
-  const onProgressPress = async (evt: any) => {
-    try {
-      if (!progressRef.current || !duration) return;
-      const node: any = progressRef.current;
-      const rect = node.getBoundingClientRect ? node.getBoundingClientRect() : { left: 0, width: 1 };
+  const seekToRatio = (ratio: number) => {
+    const next = Math.max(0, Math.min(1, ratio));
+    const d = duration || 0;
+    setProgress(next);
+    if (d <= 0) return;
 
-      const clientX =
-        evt.nativeEvent?.locationX != null
-          ? rect.left + evt.nativeEvent.locationX
-          : evt.nativeEvent?.pageX ?? 0;
-
-      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      const target = ratio * duration;
-
-      if (Platform.OS === 'web' && htmlRef.current) {
-        htmlRef.current.currentTime = target;
-      } else if (expoRef.current) {
-        await expoRef.current.setPositionAsync(target * 1000);
-      }
-      setProgress(ratio);
-    } catch {}
+    if (Platform.OS === 'web' && htmlRef.current) {
+      htmlRef.current.currentTime = next * d;
+    } else if (expoRef.current) {
+      void expoRef.current.setPositionAsync(next * d * 1000);
+    }
   };
+
+  const setFromRailLocation = (locationX: number) => {
+    seekToRatio(locationX / Math.max(1, progressRailWidth));
+  };
+
+  const setFromClientX = (clientX: number) => {
+    if (!progressRef.current) return;
+    const node: any = progressRef.current;
+    const rect = node.getBoundingClientRect
+      ? node.getBoundingClientRect()
+      : { left: 0, width: progressRailWidth || 1 };
+    seekToRatio((clientX - rect.left) / Math.max(1, rect.width));
+  };
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !seeking) return;
+    const onMove = (evt: MouseEvent) => setFromClientX(evt.clientX);
+    const onUp = (evt: MouseEvent) => {
+      setFromClientX(evt.clientX);
+      setSeeking(false);
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, [seeking, duration, progressRailWidth]);
 
   return (
     <View
+      ref={playerRootRef}
       {...(playerHoverProps as any)}
       style={{
         width: playerW,
@@ -914,6 +1293,7 @@ function ShowreelVideoInline({
           <WebVideo
             ref={htmlRef}
             src={src || undefined}
+            poster={posterSourceUri || undefined}
             className="ovk-video"
             style={{
               width: '100%',
@@ -924,7 +1304,7 @@ function ShowreelVideoInline({
               display: 'block',
               background: '#000',
             }}
-            loop
+            loop={loop}
             playsInline
             autoPlay={autoPlay}
             muted={muted}
@@ -936,11 +1316,22 @@ function ShowreelVideoInline({
             onContextMenu={(e: any) => e.preventDefault()}
             onLoadedMetadata={onWebLoadedMeta}
             onCanPlay={() => {
-              if (autoPlay) void play(true);
+              if (wantsPlayRef.current) {
+                fadeIn();
+                void play(true);
+              }
+            }}
+            onLoadedData={() => {
+              if (wantsPlayRef.current) {
+                fadeIn();
+                void play(true);
+              }
             }}
             onTimeUpdate={onWebTimeUpdate}
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
+            onEnded={handlePlaybackEnd}
+            onError={onVideoError}
           />
         ) : (
           <Video
@@ -948,51 +1339,127 @@ function ShowreelVideoInline({
   source={src ? { uri: src } : undefined}
   style={StyleSheet.absoluteFillObject}
   resizeMode={ResizeMode.CONTAIN}
-  isLooping
+  isLooping={loop}
   shouldPlay={false}
   isMuted={muted}
   useNativeControls={false}
-  onReadyForDisplay={onExpoReady}
+  usePoster={!!posterSourceUri && !hasLoadedFrame}
+  posterSource={posterSourceUri ? { uri: posterSourceUri } : undefined}
+  posterStyle={StyleSheet.absoluteFillObject}
+  onReadyForDisplay={(evt: any) => {
+    onExpoReady(evt);
+    if (wantsPlayRef.current) {
+      fadeIn();
+      void play(true);
+    }
+  }}
   onPlaybackStatusUpdate={onExpoStatus}
   onFullscreenUpdate={onExpoFullscreen}
+  onError={onVideoError}
   progressUpdateIntervalMillis={150}
 />
         )}
       </Animated.View>
 
-      <Grain opacity={0.05} />
-
-      <Pressable style={StyleSheet.absoluteFillObject} onPress={onSurfacePress} />
-
-      {controlsVisible ? (
-      <Pressable ref={progressRef} onPress={onProgressPress} style={stylesShowreel.progressHit}>
-        <View style={stylesShowreel.progressTrack}>
-          <View
-            style={[
-              stylesShowreel.progressFill,
-              { width: `${Math.max(0, Math.min(100, progress * 100))}%` },
-            ]}
+      {posterSourceUri && !hasLoadedFrame ? (
+        <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { zIndex: 2 }]}>
+          <Image
+            source={{ uri: posterSourceUri }}
+            style={StyleSheet.absoluteFillObject}
+            resizeMode="cover"
           />
         </View>
-      </Pressable>
       ) : null}
 
-      {controlsVisible ? (
-      <TouchableOpacity onPress={enterFullscreen} style={stylesShowreel.fsButton} activeOpacity={0.9}>
-        <Ionicons name="scan-outline" size={18} color="#FFF" />
-      </TouchableOpacity>
-      ) : null}
+      <Grain opacity={0.05} />
 
-      {controlsVisible ? (
-      <TouchableOpacity onPress={toggleMute} style={stylesShowreel.soundBtn} activeOpacity={0.9}>
-        <Ionicons
-          name={muted ? 'volume-mute-outline' : 'volume-high-outline'}
-          size={16}
-          color="#fff"
-        />
-        <Text style={stylesShowreel.soundText}>{muted ? 'OFF' : 'ON'}</Text>
-      </TouchableOpacity>
-      ) : null}
+      <Pressable style={[StyleSheet.absoluteFillObject, { zIndex: 6 }]} onPress={onSurfacePress} />
+
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          stylesShowreel.centerCue,
+          {
+            opacity: playbackCueActive ? cueOpacity : 0,
+            transform: [{ scale: playbackCueActive ? cueScale : 1 }],
+          },
+        ]}
+      >
+        <Ionicons name={playbackCueActive ? playbackCue : 'play'} size={34} color="#fff" />
+      </Animated.View>
+
+      <Animated.View
+        pointerEvents={controlsVisible ? 'box-none' : 'none'}
+        style={[stylesShowreel.playerChromeDock, { opacity: controlsOpacity }]}
+      >
+          <View
+            ref={progressRef}
+            style={stylesShowreel.playerTimeline}
+            onLayout={(evt) => setProgressRailWidth(Math.max(1, evt.nativeEvent.layout.width))}
+            onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => true}
+            onResponderGrant={(evt: any) => {
+              setSeeking(true);
+              setFromRailLocation(evt.nativeEvent.locationX ?? 0);
+            }}
+            onResponderMove={(evt: any) => setFromRailLocation(evt.nativeEvent.locationX ?? 0)}
+            onResponderRelease={(evt: any) => {
+              setFromRailLocation(evt.nativeEvent.locationX ?? 0);
+              setSeeking(false);
+            }}
+            onResponderTerminate={() => setSeeking(false)}
+            {...(Platform.OS === 'web'
+              ? {
+                  onMouseDown: (evt: any) => {
+                    setSeeking(true);
+                    setFromClientX(evt.clientX);
+                  },
+                }
+              : {})}
+          >
+            <View style={stylesShowreel.playerTimelineTrack}>
+              <View style={[stylesShowreel.playerTimelineFill, { width: `${progressPct}%` }]} />
+              <View style={[stylesShowreel.playerTimelineThumb, { left: `${progressPct}%` }]} />
+            </View>
+          </View>
+
+          <View style={stylesShowreel.playerControlRow}>
+            <View style={stylesShowreel.playerControlLeft}>
+              <TouchableOpacity
+                onPress={onSurfacePress}
+                style={stylesShowreel.playerIconButton}
+                activeOpacity={0.82}
+              >
+                <Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color="#FFF" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={toggleMute}
+                style={stylesShowreel.playerIconButton}
+                activeOpacity={0.82}
+              >
+                <Ionicons
+                  name={muted ? 'volume-mute-outline' : 'volume-high-outline'}
+                  size={18}
+                  color="#FFF"
+                />
+              </TouchableOpacity>
+
+              <Text style={stylesShowreel.playerTimeText} numberOfLines={1}>
+                {elapsedLabel}
+                {!compactControls ? ` / ${durationLabel}` : ''}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={enterFullscreen}
+              style={stylesShowreel.playerIconButton}
+              activeOpacity={0.82}
+            >
+              <Ionicons name="scan-outline" size={18} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+      </Animated.View>
     </View>
   );
 }
@@ -1068,6 +1535,157 @@ interface SubmissionRow {
     avatar_url?: string | null;
   } | null;
   submitted_at: string;
+}
+
+type UpNextQueueItem = {
+  id: string;
+  user_id?: string | null;
+  users?: { id?: string | null } | null;
+  submitted_at?: string | null;
+  votes?: number | null;
+  category?: string | null;
+  film_category?: string | null;
+  word?: string | null;
+};
+
+function profileSubmissionTimeMs(item: { submitted_at?: string | null }) {
+  const ms = item.submitted_at ? new Date(item.submitted_at).getTime() : 0;
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function stableProfileUpNextNoise(seed: string) {
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967295;
+}
+
+function getProfileUpNextCreatorId(item?: UpNextQueueItem | null) {
+  return item?.user_id || item?.users?.id || null;
+}
+
+function getProfileUpNextGenre(item?: UpNextQueueItem | null, fallback?: string | null) {
+  return String(item?.film_category || item?.category || item?.word || fallback || '')
+    .trim()
+    .toLowerCase();
+}
+
+function buildProfileUpNextQueue<T extends UpNextQueueItem>(
+  current: T | null,
+  items: T[],
+  options: { recentIds?: string[]; fallbackGenre?: string | null; limit?: number } = {}
+) {
+  if (!current) return [];
+
+  const limit = options.limit ?? 8;
+  const recentIds = options.recentIds ?? [];
+  const recentRank = new Map(recentIds.map((id, index) => [id, index]));
+  const currentCreatorId = getProfileUpNextCreatorId(current);
+  const currentGenre = getProfileUpNextGenre(current, options.fallbackGenre);
+  const noiseSeed = `${current.id}:${recentIds.slice(0, 8).join('|')}`;
+
+  const pool = items.filter((item) => item.id !== current.id);
+  if (pool.length <= 1) return pool.slice(0, limit);
+
+  const hardRecentCount = pool.length >= 8 ? 4 : pool.length >= 5 ? 3 : 1;
+  const hardRecent = new Set(
+    recentIds.filter((id) => id !== current.id).slice(0, hardRecentCount)
+  );
+  const primary = pool.filter((item) => !hardRecent.has(item.id));
+  const fallbackRecent = pool.filter((item) => hardRecent.has(item.id));
+  const source = primary.length >= Math.min(4, pool.length) ? primary : pool;
+
+  const getSignals = (item: T) => {
+    const sameCreator = !!currentCreatorId && getProfileUpNextCreatorId(item) === currentCreatorId;
+    const sameGenre = !!currentGenre && getProfileUpNextGenre(item) === currentGenre;
+    const time = profileSubmissionTimeMs(item);
+    const ageDays = time ? Math.max(0, (Date.now() - time) / 86_400_000) : 365;
+    const freshness = Math.max(0, 16 - Math.min(16, ageDays / 4));
+    const popularity = Math.log10(Math.max(0, item.votes ?? 0) + 1) * 7;
+    const watchedRank = recentRank.get(item.id);
+    const recentPenalty =
+      watchedRank === undefined ? 0 : Math.max(8, 42 - watchedRank * 6);
+    const noise = stableProfileUpNextNoise(`${noiseSeed}:${item.id}`) * 4;
+
+    return {
+      sameCreator,
+      sameGenre,
+      freshness,
+      popularity,
+      recentPenalty,
+      noise,
+    };
+  };
+
+  const byScore = (kind: 'similar' | 'fresh' | 'popular' | 'explore' | 'any') => (a: T, b: T) => {
+    const signalScore = (item: T) => {
+      const s = getSignals(item);
+      const relevance = (s.sameCreator ? 26 : 0) + (s.sameGenre ? 18 : 0);
+      if (kind === 'fresh') return s.freshness * 2.1 + relevance * 0.35 + s.noise - s.recentPenalty;
+      if (kind === 'popular') return s.popularity * 2 + relevance * 0.35 + s.noise - s.recentPenalty;
+      if (kind === 'explore') return s.freshness + s.popularity + s.noise - s.recentPenalty;
+      if (kind === 'similar') return relevance * 1.6 + s.freshness + s.popularity + s.noise - s.recentPenalty;
+      return relevance + s.freshness + s.popularity + s.noise - s.recentPenalty;
+    };
+
+    return signalScore(b) - signalScore(a);
+  };
+
+  const similar = source
+    .filter((item) => {
+      const s = getSignals(item);
+      return s.sameCreator || s.sameGenre;
+    })
+    .sort(byScore('similar'));
+  const fresh = [...source].sort(byScore('fresh'));
+  const popular = [...source].sort(byScore('popular'));
+  const explore = source
+    .filter((item) => {
+      const s = getSignals(item);
+      return !s.sameCreator && !s.sameGenre;
+    })
+    .sort(byScore('explore'));
+  const any = [...source].sort(byScore('any'));
+  const buckets = { similar, fresh, popular, explore, any };
+  const pattern: Array<keyof typeof buckets> = [
+    'similar',
+    'fresh',
+    'explore',
+    'similar',
+    'popular',
+    'fresh',
+    'explore',
+    'any',
+  ];
+  const result: T[] = [];
+  const used = new Set<string>();
+  const takeFrom = (bucket: T[]) => {
+    const picked = bucket.find((item) => !used.has(item.id));
+    if (!picked) return false;
+    used.add(picked.id);
+    result.push(picked);
+    return true;
+  };
+
+  for (let guard = 0; result.length < Math.min(limit, source.length) && guard < limit * 4; guard += 1) {
+    const bucketName = pattern[guard % pattern.length];
+    if (!takeFrom(buckets[bucketName])) takeFrom(any);
+  }
+
+  const fallback = [...fallbackRecent, ...pool]
+    .filter((item, index, arr) => arr.findIndex((candidate) => candidate.id === item.id) === index)
+    .sort(byScore('any'));
+
+  for (const item of fallback) {
+    if (result.length >= limit) break;
+    if (used.has(item.id)) continue;
+    used.add(item.id);
+    result.push(item);
+  }
+
+  return result;
 }
 
 type SubmissionCollaborator = {
@@ -1669,6 +2287,7 @@ const [sideRoleSearchFocused, setSideRoleSearchFocused] = useState(false);
   const [thumbUploading, setThumbUploading] = useState(false);
   const [thumbError, setThumbError] = useState<string | null>(null);
   const [activeSubmission, setActiveSubmission] = useState<SubmissionRow | null>(null);
+  const [recentSubmissionWatchIds, setRecentSubmissionWatchIds] = useState<string[]>([]);
   const submissionModalCleanupRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [comments, setComments] = useState<SubmissionCommentRow[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
@@ -2790,7 +3409,9 @@ setMp4MainUrl(fallbackUrl ? `${fallbackUrl}${ts()}` : '');
 
 function getMuxPlaybackUrl(playbackId?: string | null) {
   if (!playbackId) return null;
-  return `https://stream.mux.com/${playbackId}.m3u8`;
+  return Platform.OS === 'web'
+    ? `https://stream.mux.com/${playbackId}/high.mp4`
+    : `https://stream.mux.com/${playbackId}.m3u8`;
 }
 
 function getMuxThumbnailUrl(playbackId?: string | null) {
@@ -4043,6 +4664,9 @@ const label = city?.name ?? '';
     }
 
     setActiveSubmission(submission);
+    setRecentSubmissionWatchIds((prev) =>
+      [submission.id, ...prev.filter((id) => id !== submission.id)].slice(0, 24)
+    );
     setSubmissionModalOpen(true);
     setCommentText('');
     setComments([]);
@@ -4526,8 +5150,6 @@ const label = city?.name ?? '';
   };
 
   /* ---------- submission thumbnail upload (copy from Challenge) ---------- */
-
-const THUMB_BUCKET = "thumbnails";
 
 function withTimeout<T>(promise: Promise<T>, ms = 20000): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -5868,6 +6490,11 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
   const secondaryTileH = isMobileLike
   ? Math.floor(secondaryTileW * 0.64)
   : Math.floor(secondaryTileW * (9 / 16));
+  const primaryPlaybackUrl =
+    primaryRow.url ||
+    (primaryRow.file_path
+      ? supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(primaryRow.file_path).data.publicUrl
+      : '');
 
   return (
     <View style={[block.section, { alignItems: "center" }]}>
@@ -5885,88 +6512,53 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
   {primaryRow.category ? `${primaryRow.category} Showreel` : "Showreel"}
 </Text>
 
-      <Pressable
-  accessibilityRole="button"
-  onPress={() => {
-    if (!primaryPlayable) {
-      Alert.alert(
-        'Still preparing',
-        'This showreel is still being prepared. Please try again in a moment.'
-      );
-      return;
-    }
-    void openShowreel(primaryRow);
-  }}
-  style={({ pressed }) => [
-    block.mediaCard,
-    {
-      width: "100%",
-      maxWidth: maxW,
-      alignSelf: "center",
-      padding: 0,
-      overflow: "hidden",
-      cursor: Platform.OS === "web" ? "pointer" : undefined,
-    } as any,
-    pressed && { opacity: 0.88 },
-  ]}
->
-  <View
-    style={{
-      width: "100%",
-      aspectRatio: 16 / 9,
-      backgroundColor: "#000",
-      alignItems: "center",
-      justifyContent: "center",
-      position: "relative",
-    }}
-  >
-    {primaryRow.thumbnail_url ? (
-      <Image
-        source={{ uri: addBuster(primaryRow.thumbnail_url) || primaryRow.thumbnail_url }}
-        style={{ width: "100%", height: "100%" }}
-        resizeMode="cover"
-      />
-    ) : (
-      <>
-        <Ionicons name="videocam" size={34} color={COLORS.textSecondary} />
-        <Text
-          style={{
-            marginTop: 8,
-            color: COLORS.textSecondary,
-            fontFamily: FONT_OBLIVION,
-            fontSize: 12,
-          }}
-        >
-          Tap to play showreel
-        </Text>
-      </>
-    )}
-
-    <View
-      pointerEvents="none"
-      style={{
-        position: "absolute",
-        top: 12,
-        right: 12,
-        backgroundColor: "rgba(0,0,0,0.55)",
-        borderRadius: 999,
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-      }}
-    >
-      <Text
-        style={{
-          color: "#fff",
-          fontSize: 11,
-          fontFamily: FONT_OBLIVION,
-          fontWeight: "800",
-        }}
+      <View
+        style={[
+          block.mediaCard,
+          {
+            width: '100%',
+            maxWidth: maxW,
+            alignSelf: 'center',
+            padding: 0,
+            overflow: 'hidden',
+            backgroundColor: '#000',
+          },
+        ]}
       >
-        {primaryPlayable ? '▶ Play' : 'Preparing'}
-      </Text>
-    </View>
-  </View>
-</Pressable>
+        {primaryPlayable ? (
+          <ShowreelVideoInline
+            key={`primary_showreel_${primaryRow.id}`}
+            playerId={`primary_showreel_${primaryRow.id}`}
+            filePathOrUrl={primaryPlaybackUrl || primaryRow.file_path}
+            width={maxW}
+            maxWidth={maxW}
+            autoPlay={false}
+            posterUri={primaryRow.thumbnail_url}
+          />
+        ) : (
+          <View
+            style={{
+              width: '100%',
+              aspectRatio: 16 / 9,
+              backgroundColor: '#000',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="videocam" size={34} color={COLORS.textSecondary} />
+            <Text
+              style={{
+                marginTop: 8,
+                color: COLORS.textSecondary,
+                fontFamily: FONT_OBLIVION,
+                fontSize: 12,
+              }}
+            >
+              Preparing showreel
+            </Text>
+          </View>
+        )}
+      </View>
 
       {secondaryRows.length > 0 && (
         <View
@@ -6096,29 +6688,6 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
       </>
     )}
 
-    <View
-  pointerEvents="none"
-  style={{
-    position: "absolute",
-    top: isMobileLike ? 6 : 10,
-    right: isMobileLike ? 6 : 10,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    borderRadius: 999,
-    paddingHorizontal: isMobileLike ? 8 : 10,
-    paddingVertical: isMobileLike ? 4 : 6,
-  }}
->
-  <Text
-    style={{
-      color: "#fff",
-      fontSize: isMobileLike ? 9 : 11,
-      fontFamily: FONT_OBLIVION,
-      fontWeight: "800",
-    }}
-  >
-    ▶ Play
-  </Text>
-</View>
   </View>
 </View>
                   </TouchableOpacity>
@@ -6589,8 +7158,20 @@ const renderSubmissionsSection = () => {
   const activeSubmissionCollaborators =
     (((activeSubmission as any)?.collaborators || []) as SubmissionCollaborator[]);
   const profileSubmissionSuggestions = activeSubmission
-    ? visibleSubmissions.filter((submission) => submission.id !== activeSubmission.id)
+    ? buildProfileUpNextQueue(activeSubmission, visibleSubmissions, {
+        recentIds: recentSubmissionWatchIds,
+        fallbackGenre:
+          activeSubmission.film_category ||
+          activeSubmission.category ||
+          activeSubmission.word ||
+          null,
+        limit: 8,
+      })
     : [];
+  const autoplayNextProfileSubmission = () => {
+    const next = profileSubmissionSuggestions[0];
+    if (next) void openSubmissionModal(next);
+  };
   const profileSoftSurface = isLight ? COLORS.card : "#0B0B0B";
   const profileSubText = isLight ? COLORS.textSecondary : "rgba(216,210,200,0.62)";
   const profileWatchBorder = isLight ? COLORS.border : "rgba(255,255,255,0.08)";
@@ -6644,6 +7225,9 @@ const renderSubmissionsSection = () => {
                   allowsFullscreenVideo: true,
                 }}
                 initialPlayerParams={{ rel: false }}
+                onChangeState={(state) => {
+                  if (state === "ended") autoplayNextProfileSubmission();
+                }}
               />
             </View>
           ) : activeSubmission.video_url || activeSubmission.video_path ? (
@@ -6655,6 +7239,8 @@ const renderSubmissionsSection = () => {
               maxHeight={watchMediaMaxH}
               autoPlay={true}
               squareCorners
+              loop={false}
+              onPlaybackEnd={autoplayNextProfileSubmission}
             />
           ) : (
         <View
@@ -7707,6 +8293,18 @@ return (
       visible={showEditModal}
       transparent
       onRequestClose={() => {
+        if (cityOpen) {
+          setCityOpen(false);
+          return;
+        }
+        if (roleSearchModalVisible) {
+          setRoleSearchModalVisible(false);
+          return;
+        }
+        if (sideRoleModalVisible) {
+          setSideRoleModalVisible(false);
+          return;
+        }
         if (srUploading || mp4MainUploading) return;
         setShowEditModal(false);
       }}
@@ -7810,10 +8408,11 @@ return (
               <TouchableOpacity
                 style={[styles.pickerBtn, { backgroundColor: editModalInput, borderColor: COLORS.border }]}
                 onPress={() => {
-  setCitySearch('');
-  setCityItems([]);
-  setCityOpen(true);
-}}
+                  setCitySearch('');
+                  setCityItems([]);
+                  setSearchingCities(false);
+                  setCityOpen(true);
+                }}
               >
                 <Text style={[styles.pickerBtnText, { color: cityName ? COLORS.textPrimary : COLORS.textSecondary }]}>
                   {cityName || "Search city"}
@@ -7831,6 +8430,7 @@ return (
                   setRoleSearchModalVisible(true);
                   setRoleSearchTerm("");
                   setRoleSearchItems([]);
+                  setSearchingRoles(false);
                 }}
               >
                 <Text style={[styles.pickerBtnText, { color: mainRoleName ? COLORS.textPrimary : COLORS.textSecondary }]}>
@@ -7849,6 +8449,7 @@ return (
                   setSideRoleModalVisible(true);
                   setRoleSearchTerm("");
                   setRoleSearchItems([]);
+                  setSearchingRoles(false);
                 }}
               >
                 <Text style={[styles.pickerBtnText, { color: sideRoles.length ? COLORS.textPrimary : COLORS.textSecondary }]}>
@@ -8611,263 +9212,353 @@ return (
             </View>
           </View>
         )}
-      </KeyboardAvoidingView>
-    </SmoothModal>
-
-    {/* City search modal */}
-<SmoothModal
-  visible={cityOpen}
-  onRequestClose={() => setCityOpen(false)}
->
-  <SafeAreaView style={styles.cityModalSafeArea} edges={['top']}>
-    <View style={styles.cityModalShell}>
-      <View style={styles.cityModalHeader}>
-        <Text style={styles.cityModalTitle}>Choose a city</Text>
-
-        <TouchableOpacity
-          onPress={() => setCityOpen(false)}
-          style={styles.cityModalCloseIcon}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="close" size={18} color={COLORS.textPrimary} />
-        </TouchableOpacity>
-      </View>
-
-      <TextInput
-        value={citySearch}
-        onChangeText={(text) => {
-          setCitySearch(text);
-          fetchCities(text);
-        }}
-        placeholder="Start typing a city..."
-        placeholderTextColor={COLORS.textSecondary}
-        style={[styles.citySearchInput, WEB_NO_OUTLINE]}
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoFocus
-        blurOnSubmit={false}
-        returnKeyType="search"
-        onFocus={() => setCitySearchFocused(true)}
-        onBlur={() => setCitySearchFocused(false)}
-      />
-
-      {searchingCities ? (
-        <View style={styles.cityModalLoadingWrap}>
-          <ActivityIndicator color={COLORS.primary} />
-        </View>
-      ) : (
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.cityListContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {cityItems.length === 0 ? (
-            citySearch.trim().length >= 2 ? (
-              <View style={styles.emptySearchState}>
-                <Text style={block.muted}>No matching cities found.</Text>
-              </View>
-            ) : (
-              <View style={styles.emptySearchState}>
-                <Text style={block.muted}>Type to search cities.</Text>
-              </View>
-            )
-          ) : (
-            cityItems.map((c, index) => {
-              const isSelected = Number(cityId) === Number(c.value);
-
-              return (
-                <TouchableOpacity
-                  key={c.value}
-                  style={[
-                    styles.cityPickerItem,
-                    isSelected && styles.cityPickerItemSelected,
-                  ]}
-                  onPress={() => {
-                    const cleanLabel = `${c.name}, ${c.country_code}`;
-                    setCityId(c.value);
-                    setCityName(cleanLabel);
-                    setCityOpen(false);
-                  }}
-                  activeOpacity={0.9}
-                >
-                  <View style={styles.cityPickerItemLeft}>
-                    <View
-                      style={[
-                        styles.radioOuter,
-                        isSelected && styles.radioOuterSelected,
-                      ]}
-                    >
-                      {isSelected ? <View style={styles.radioInner} /> : null}
-                    </View>
-
-                    <Text
-                      style={[
-                        styles.cityPickerText,
-                        isSelected && styles.cityPickerTextSelected,
-                      ]}
-                    >
-                      {c.label}
-                    </Text>
-                  </View>
-
-                  {index === 0 && parseCityQuery(citySearch).cityQuery.length >= 3 ? (
-                    <View style={styles.bestMatchBadge}>
-                      <Text style={styles.bestMatchText}>Best match</Text>
-                    </View>
-                  ) : null}
-                </TouchableOpacity>
-              );
-            })
-          )}
-        </ScrollView>
-      )}
-
-      <TouchableOpacity
-        style={styles.cityModalCancelButton}
-        onPress={() => setCityOpen(false)}
-        activeOpacity={0.92}
-      >
-        <Text style={styles.cityModalCancelText}>Cancel</Text>
-      </TouchableOpacity>
-    </View>
-  </SafeAreaView>
-</SmoothModal>
-
-    {/* Main role search modal */}
-    <Modal
-  visible={roleSearchModalVisible}
-  transparent
-  animationType="fade"
-  onRequestClose={() => setRoleSearchModalVisible(false)}
->
-  <KeyboardAvoidingView
-    style={centered.overlay}
-    behavior={Platform.OS === "ios" ? "padding" : undefined}
-  >
-    <View style={[centered.card, { minHeight: 390, maxHeight: 390 }]}>
-          <Text style={centered.title}>Select Main Role</Text>
-          <TextInput
-  value={roleSearchTerm}
-  onChangeText={(t) => {
-    setRoleSearchTerm(t);
-    fetchSearchRoles(t);
-  }}
-  placeholder="Search roles"
-  placeholderTextColor={COLORS.textSecondary}
-  style={[styles.input, roleSearchFocused && styles.inputFocused, WEB_NO_OUTLINE]}
-  autoCapitalize="none"
-  autoCorrect={false}
-  autoFocus
-  blurOnSubmit={false}
-  returnKeyType="search"
-  onFocus={() => setRoleSearchFocused(true)}
-  onBlur={() => setRoleSearchFocused(false)}
-/>
-          <View style={{ height: 220, marginTop: 10 }}>
-  <ScrollView
-    style={{ flex: 1 }}
-    contentContainerStyle={{ paddingBottom: 6 }}
-    keyboardShouldPersistTaps="handled"
-    showsVerticalScrollIndicator={false}
-  >
-    {searchingRoles && <ActivityIndicator color={COLORS.primary} />}
-
-    {!searchingRoles &&
-      roleSearchItems.map((r) => (
-        <TouchableOpacity
-          key={r.value}
-          style={block.row}
-          onPress={() => {
-            setMainRole(r.value);
-            setMainRoleName(r.label);
-            setRoleSearchModalVisible(false);
+        <InlineSelectorOverlay
+          visible={cityOpen || roleSearchModalVisible || sideRoleModalVisible}
+          style={{
+            backgroundColor: isLight ? "rgba(20,17,13,0.32)" : "rgba(0,0,0,0.78)",
           }}
         >
-          <Text style={{ color: COLORS.textPrimary, fontFamily: FONT_OBLIVION }}>
-            {translateRoleLabel(r.label)}
-          </Text>
-        </TouchableOpacity>
-      ))}
+          <KeyboardAvoidingView
+            style={styles.editSelectorKeyboard}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+          >
+            {cityOpen ? (
+              <View
+                style={[
+                  styles.editSelectorCard,
+                  {
+                    backgroundColor: editModalBackground,
+                    borderColor: COLORS.border,
+                    shadowColor: isLight ? "rgba(0,0,0,0.22)" : "#000",
+                  },
+                ]}
+              >
+                <Text style={[styles.editSelectorTitle, { color: COLORS.textPrimary }]}>Select City</Text>
 
-    {!searchingRoles && !roleSearchItems.length && (
-      <Text style={block.muted}>Type to search roles.</Text>
-    )}
-  </ScrollView>
-</View>
-          <TouchableOpacity style={[styles.ghostBtn, { marginTop: 10 }]} onPress={() => setRoleSearchModalVisible(false)}>
-            <Text style={styles.ghostBtnText}>Close</Text>
-          </TouchableOpacity>
-         </View>
-  </KeyboardAvoidingView>
-</Modal>
+                <TextInput
+                  value={citySearch}
+                  onChangeText={(text) => {
+                    setCitySearch(text);
+                    fetchCities(text);
+                  }}
+                  placeholder="Start typing your city..."
+                  placeholderTextColor={COLORS.textSecondary}
+                  style={[
+                    styles.editSelectorSearchInput,
+                    {
+                      backgroundColor: editModalInput,
+                      borderColor: citySearchFocused ? COLORS.primary : COLORS.border,
+                      color: COLORS.textPrimary,
+                    },
+                    WEB_NO_OUTLINE,
+                  ]}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoFocus
+                  blurOnSubmit={false}
+                  returnKeyType="search"
+                  onFocus={() => setCitySearchFocused(true)}
+                  onBlur={() => setCitySearchFocused(false)}
+                />
 
-    {/* Side roles modal */}
-    <Modal
-  visible={sideRoleModalVisible}
-  transparent
-  animationType="fade"
-  onRequestClose={() => setSideRoleModalVisible(false)}
->
-  <KeyboardAvoidingView
-    style={centered.overlay}
-    behavior={Platform.OS === "ios" ? "padding" : undefined}
-  >
-    <View style={centered.card}>
-          <Text style={centered.title}>Add Side Roles</Text>
-          <TextInput
-  value={roleSearchTerm}
-  onChangeText={(t) => {
-    setRoleSearchTerm(t);
-    fetchSearchRoles(t);
-  }}
-  placeholder="Search roles"
-  placeholderTextColor={COLORS.textSecondary}
-  style={[styles.input, sideRoleSearchFocused && styles.inputFocused, WEB_NO_OUTLINE]}
-  autoCapitalize="none"
-  autoCorrect={false}
-  autoFocus
-  blurOnSubmit={false}
-  returnKeyType="search"
-  onFocus={() => setSideRoleSearchFocused(true)}
-  onBlur={() => setSideRoleSearchFocused(false)}
-/>
-          <ScrollView style={{ maxHeight: 260, marginTop: 8 }}>
-            {searchingRoles && <ActivityIndicator color={COLORS.primary} />}
+                <View style={styles.editSelectorResultsArea}>
+                  {searchingCities ? (
+                    <View style={styles.editSelectorLoadingWrap}>
+                      <ActivityIndicator color={COLORS.primary} />
+                    </View>
+                  ) : (
+                    <ScrollView
+                      style={styles.editSelectorScroll}
+                      keyboardShouldPersistTaps="handled"
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {cityItems.length === 0 ? (
+                        <Text style={[styles.editSelectorEmptyText, { color: COLORS.textSecondary }]}>
+                          {citySearch.trim().length >= 2
+                            ? "No matching cities found. Try a broader search."
+                            : "Type to search cities."}
+                        </Text>
+                      ) : (
+                        cityItems.map((c) => {
+                          const isSelected = Number(cityId) === Number(c.value);
 
-            {!searchingRoles &&
-              roleSearchItems.map((r) => {
-                const isSelected = sideRoles.includes(r.label);
-                return (
-                  <TouchableOpacity
-                    key={r.value}
-                    style={[
-                      block.row,
-                      { backgroundColor: isSelected ? "#111" : "transparent" },
-                    ]}
-                    onPress={() => {
-                      setSideRoles((prev) =>
-                        isSelected ? prev.filter((x) => x !== r.label) : [...prev, r.label]
-                      );
-                    }}
-                  >
-                    <Text style={{ color: COLORS.textPrimary, fontFamily: FONT_OBLIVION }}>
-                      {translateRoleLabel(r.label)}
-                    </Text>
-                    {isSelected && <Ionicons name="checkmark" size={18} color={COLORS.primary} />}
-                  </TouchableOpacity>
-                );
-              })}
+                          return (
+                            <TouchableOpacity
+                              key={c.value}
+                              style={[
+                                styles.editSelectorListItem,
+                                { borderColor: COLORS.border },
+                                isSelected && {
+                                  backgroundColor: editModalPillSelected,
+                                  borderColor: COLORS.primary,
+                                },
+                              ]}
+                              onPress={() => {
+                                const cleanLabel = `${c.name}, ${c.country_code}`;
+                                setCityId(c.value);
+                                setCityName(cleanLabel);
+                                setCityOpen(false);
+                              }}
+                              activeOpacity={0.82}
+                            >
+                              <Text
+                                style={[
+                                  styles.editSelectorListItemText,
+                                  { color: COLORS.textPrimary },
+                                  isSelected && { color: COLORS.primary },
+                                ]}
+                                numberOfLines={1}
+                              >
+                                {c.label}
+                              </Text>
 
-            {!searchingRoles && !roleSearchItems.length && <Text style={block.muted}>Type to search roles.</Text>}
-          </ScrollView>
+                              {isSelected ? (
+                                <Ionicons name="checkmark-circle" size={19} color={COLORS.primary} />
+                              ) : null}
+                            </TouchableOpacity>
+                          );
+                        })
+                      )}
+                    </ScrollView>
+                  )}
+                </View>
 
-          <TouchableOpacity style={[styles.primaryBtn, { marginTop: 10 }]} onPress={() => setSideRoleModalVisible(false)}>
-            <Text style={styles.primaryBtnText}>Done</Text>
-          </TouchableOpacity>
-         </View>
-  </KeyboardAvoidingView>
-</Modal>
+                <TouchableOpacity
+                  onPress={() => setCityOpen(false)}
+                  style={[
+                    styles.editSelectorCloseButton,
+                    { backgroundColor: editModalPill, borderColor: COLORS.border },
+                  ]}
+                  activeOpacity={0.86}
+                >
+                  <Text style={[styles.editSelectorCloseText, { color: COLORS.textPrimary }]}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            ) : roleSearchModalVisible ? (
+              <View
+                style={[
+                  styles.editSelectorCard,
+                  {
+                    backgroundColor: editModalBackground,
+                    borderColor: COLORS.border,
+                    shadowColor: isLight ? "rgba(0,0,0,0.22)" : "#000",
+                  },
+                ]}
+              >
+                <Text style={[styles.editSelectorTitle, { color: COLORS.textPrimary }]}>Select Main Role</Text>
+
+                <TextInput
+                  value={roleSearchTerm}
+                  onChangeText={(t) => {
+                    setRoleSearchTerm(t);
+                    fetchSearchRoles(t);
+                  }}
+                  placeholder="Start typing a role..."
+                  placeholderTextColor={COLORS.textSecondary}
+                  style={[
+                    styles.editSelectorSearchInput,
+                    {
+                      backgroundColor: editModalInput,
+                      borderColor: roleSearchFocused ? COLORS.primary : COLORS.border,
+                      color: COLORS.textPrimary,
+                    },
+                    WEB_NO_OUTLINE,
+                  ]}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoFocus
+                  blurOnSubmit={false}
+                  returnKeyType="search"
+                  onFocus={() => setRoleSearchFocused(true)}
+                  onBlur={() => setRoleSearchFocused(false)}
+                />
+
+                <View style={styles.editSelectorResultsArea}>
+                  {searchingRoles ? (
+                    <View style={styles.editSelectorLoadingWrap}>
+                      <ActivityIndicator color={COLORS.primary} />
+                    </View>
+                  ) : (
+                    <ScrollView
+                      style={styles.editSelectorScroll}
+                      keyboardShouldPersistTaps="handled"
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {roleSearchItems.length === 0 ? (
+                        <Text style={[styles.editSelectorEmptyText, { color: COLORS.textSecondary }]}>
+                          Type to search roles.
+                        </Text>
+                      ) : (
+                        roleSearchItems.map((r) => {
+                          const isSelected = Number(mainRole) === Number(r.value);
+
+                          return (
+                            <TouchableOpacity
+                              key={r.value}
+                              style={[
+                                styles.editSelectorListItem,
+                                { borderColor: COLORS.border },
+                                isSelected && {
+                                  backgroundColor: editModalPillSelected,
+                                  borderColor: COLORS.primary,
+                                },
+                              ]}
+                              onPress={() => {
+                                setMainRole(r.value);
+                                setMainRoleName(r.label);
+                                setRoleSearchModalVisible(false);
+                              }}
+                              activeOpacity={0.82}
+                            >
+                              <Text
+                                style={[
+                                  styles.editSelectorListItemText,
+                                  { color: COLORS.textPrimary },
+                                  isSelected && { color: COLORS.primary },
+                                ]}
+                                numberOfLines={1}
+                              >
+                                {translateRoleLabel(r.label)}
+                              </Text>
+
+                              {isSelected ? (
+                                <Ionicons name="checkmark-circle" size={19} color={COLORS.primary} />
+                              ) : null}
+                            </TouchableOpacity>
+                          );
+                        })
+                      )}
+                    </ScrollView>
+                  )}
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => setRoleSearchModalVisible(false)}
+                  style={[
+                    styles.editSelectorCloseButton,
+                    { backgroundColor: editModalPill, borderColor: COLORS.border },
+                  ]}
+                  activeOpacity={0.86}
+                >
+                  <Text style={[styles.editSelectorCloseText, { color: COLORS.textPrimary }]}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            ) : sideRoleModalVisible ? (
+              <View
+                style={[
+                  styles.editSelectorCard,
+                  {
+                    backgroundColor: editModalBackground,
+                    borderColor: COLORS.border,
+                    shadowColor: isLight ? "rgba(0,0,0,0.22)" : "#000",
+                  },
+                ]}
+              >
+                <Text style={[styles.editSelectorTitle, { color: COLORS.textPrimary }]}>Add Side Roles</Text>
+
+                <TextInput
+                  value={roleSearchTerm}
+                  onChangeText={(t) => {
+                    setRoleSearchTerm(t);
+                    fetchSearchRoles(t);
+                  }}
+                  placeholder="Start typing a role..."
+                  placeholderTextColor={COLORS.textSecondary}
+                  style={[
+                    styles.editSelectorSearchInput,
+                    {
+                      backgroundColor: editModalInput,
+                      borderColor: sideRoleSearchFocused ? COLORS.primary : COLORS.border,
+                      color: COLORS.textPrimary,
+                    },
+                    WEB_NO_OUTLINE,
+                  ]}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoFocus
+                  blurOnSubmit={false}
+                  returnKeyType="search"
+                  onFocus={() => setSideRoleSearchFocused(true)}
+                  onBlur={() => setSideRoleSearchFocused(false)}
+                />
+
+                <View style={styles.editSelectorResultsArea}>
+                  {searchingRoles ? (
+                    <View style={styles.editSelectorLoadingWrap}>
+                      <ActivityIndicator color={COLORS.primary} />
+                    </View>
+                  ) : (
+                    <ScrollView
+                      style={styles.editSelectorScroll}
+                      keyboardShouldPersistTaps="handled"
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {roleSearchItems.length === 0 ? (
+                        <Text style={[styles.editSelectorEmptyText, { color: COLORS.textSecondary }]}>
+                          Type to search roles.
+                        </Text>
+                      ) : (
+                        roleSearchItems.map((r) => {
+                          const isSelected = sideRoles.includes(r.label);
+
+                          return (
+                            <TouchableOpacity
+                              key={r.value}
+                              style={[
+                                styles.editSelectorListItem,
+                                { borderColor: COLORS.border },
+                                isSelected && {
+                                  backgroundColor: editModalPillSelected,
+                                  borderColor: COLORS.primary,
+                                },
+                              ]}
+                              onPress={() => {
+                                setSideRoles((prev) =>
+                                  isSelected ? prev.filter((x) => x !== r.label) : [...prev, r.label]
+                                );
+                              }}
+                              activeOpacity={0.82}
+                            >
+                              <Text
+                                style={[
+                                  styles.editSelectorListItemText,
+                                  { color: COLORS.textPrimary },
+                                  isSelected && { color: COLORS.primary },
+                                ]}
+                                numberOfLines={1}
+                              >
+                                {translateRoleLabel(r.label)}
+                              </Text>
+
+                              <Ionicons
+                                name={isSelected ? "checkmark-circle" : "add-circle-outline"}
+                                size={19}
+                                color={isSelected ? COLORS.primary : COLORS.textSecondary}
+                              />
+                            </TouchableOpacity>
+                          );
+                        })
+                      )}
+                    </ScrollView>
+                  )}
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => setSideRoleModalVisible(false)}
+                  style={[
+                    styles.editSelectorDoneButton,
+                    { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+                  ]}
+                  activeOpacity={0.88}
+                >
+                  <Text style={[styles.editSelectorDoneText, { color: COLORS.textOnPrimary }]}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+          </KeyboardAvoidingView>
+        </InlineSelectorOverlay>
+      </KeyboardAvoidingView>
+    </SmoothModal>
 
     {/* Avatar cropper */}
     <AvatarCropper
@@ -10731,6 +11422,115 @@ heroIdentityEpicDesktop: {
     borderColor: COLORS.border,
     marginTop: "auto",
   },
+  editSelectorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 120,
+    elevation: 120,
+    justifyContent: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 24,
+  },
+  editSelectorKeyboard: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editSelectorCard: {
+    width: "100%",
+    maxWidth: 620,
+    height: 460,
+    alignSelf: "center",
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 18,
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 12,
+  },
+  editSelectorTitle: {
+    fontSize: 19,
+    fontWeight: "900",
+    marginBottom: 14,
+    textAlign: "center",
+    letterSpacing: 0.8,
+    fontFamily: FONT_OBLIVION,
+    textTransform: "uppercase",
+  },
+  editSelectorSearchInput: {
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    fontFamily: FONT_OBLIVION,
+    fontSize: 15,
+  },
+  editSelectorResultsArea: {
+    flex: 1,
+    minHeight: 0,
+    marginTop: 10,
+  },
+  editSelectorLoadingWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editSelectorScroll: {
+    width: "100%",
+    flex: 1,
+  },
+  editSelectorListItem: {
+    minHeight: 52,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  editSelectorListItemText: {
+    flex: 1,
+    fontSize: 15,
+    textAlign: "center",
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "700",
+  },
+  editSelectorEmptyText: {
+    marginTop: 24,
+    textAlign: "center",
+    fontSize: 13,
+    fontFamily: FONT_OBLIVION,
+    lineHeight: 18,
+  },
+  editSelectorCloseButton: {
+    marginTop: 16,
+    paddingVertical: 13,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  editSelectorCloseText: {
+    fontSize: 14,
+    fontWeight: "700",
+    fontFamily: FONT_OBLIVION,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  editSelectorDoneButton: {
+    marginTop: 16,
+    paddingVertical: 13,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  editSelectorDoneText: {
+    fontSize: 14,
+    fontWeight: "900",
+    fontFamily: FONT_OBLIVION,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
 
   compactSupportBtn: {
     borderRadius: 999,
@@ -11418,20 +12218,118 @@ const stylesShowreel = StyleSheet.create({
     position: "absolute",
     left: 12,
     right: 12,
-    bottom: 12,
-    height: 16,
+    bottom: 8,
+    height: 18,
     justifyContent: "center",
+    zIndex: 20,
+    elevation: 20,
   },
   progressTrack: {
-    height: 3,
+    height: 2,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.22)",
     overflow: "hidden",
   },
   progressFill: {
-    height: "100%",
+    height: 2,
     borderRadius: 999,
     backgroundColor: GOLD,
+  },
+  progressThumb: {
+    position: "absolute",
+    top: -4,
+    width: 10,
+    height: 10,
+    marginLeft: -5,
+    borderRadius: 5,
+    backgroundColor: GOLD,
+  },
+  playerChromeDock: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    bottom: 8,
+    paddingHorizontal: 10,
+    paddingTop: 7,
+    paddingBottom: 7,
+    borderRadius: 10,
+    backgroundColor: "rgba(5,5,5,0.58)",
+    shadowColor: "#000",
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    zIndex: 20,
+    elevation: 20,
+  },
+  playerTimeline: {
+    height: 12,
+    justifyContent: "center",
+    marginBottom: 2,
+  },
+  playerTimelineTrack: {
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.26)",
+  },
+  playerTimelineFill: {
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: GOLD,
+  },
+  playerTimelineThumb: {
+    position: "absolute",
+    top: -4,
+    width: 10,
+    height: 10,
+    marginLeft: -5,
+    borderRadius: 5,
+    backgroundColor: GOLD,
+  },
+  playerControlRow: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
+  },
+  playerControlLeft: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  playerIconButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "transparent",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  playerTimeText: {
+    flexShrink: 1,
+    color: "#F7F2E8",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.1,
+    fontFamily: FONT_OBLIVION,
+  },
+  centerCue: {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: 76,
+    height: 76,
+    marginLeft: -38,
+    marginTop: -38,
+    borderRadius: 38,
+    backgroundColor: "rgba(0,0,0,0.58)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 8,
   },
   fsButton: {
     position: "absolute",
@@ -11445,6 +12343,8 @@ const stylesShowreel = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.14)",
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 20,
+    elevation: 20,
   },
   soundBtn: {
     position: "absolute",
@@ -11460,6 +12360,69 @@ const stylesShowreel = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 5,
+    zIndex: 20,
+    elevation: 20,
+  },
+  qualityBtn: {
+    position: "absolute",
+    right: 10,
+    top: 10,
+    minHeight: 36,
+    paddingHorizontal: 10,
+    backgroundColor: "rgba(0,0,0,0.58)",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    zIndex: 20,
+    elevation: 20,
+  },
+  qualityBtnText: {
+    color: "#fff",
+    fontSize: 8,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    fontFamily: FONT_OBLIVION,
+  },
+  qualityMenu: {
+    position: "absolute",
+    right: 10,
+    top: 52,
+    minWidth: 124,
+    borderRadius: 14,
+    backgroundColor: "rgba(0,0,0,0.82)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    overflow: "hidden",
+    paddingVertical: 4,
+    zIndex: 22,
+    elevation: 22,
+  },
+  qualityMenuItem: {
+    minHeight: 34,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  qualityMenuItemSelected: {
+    backgroundColor: "rgba(198,166,100,0.14)",
+  },
+  qualityMenuText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+    fontFamily: FONT_OBLIVION,
+  },
+  qualityMenuTextSelected: {
+    color: GOLD,
   },
   soundText: {
     color: "#fff",
