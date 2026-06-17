@@ -1267,7 +1267,7 @@ export default function SettingsModal() {
               subtitle={
                 isGuest
                   ? t('Sign in to view or change your Overlooked plan.')
-                  : t('View or change your Overlooked plan.')
+                  : t('View plan, renewal, and Pro showreel limits.')
               }
               onPress={() => {
                 if (isGuest) {

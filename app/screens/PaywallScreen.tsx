@@ -446,8 +446,8 @@ export default function PaywallScreen() {
           setMessage(
             result?.message ||
               (endLabel
-                ? `You already have a mobile subscription that remains active until ${endLabel}.`
-                : 'You already have a mobile subscription that remains active until the end of the billing period.')
+                ? `You already have a mobile subscription that remains active until ${endLabel}, including Pro access for up to 3 showreels.`
+                : 'You already have a mobile subscription that remains active until the end of the billing period, including Pro access for up to 3 showreels.')
           );
           return;
         }
@@ -478,8 +478,8 @@ export default function PaywallScreen() {
         setMessage(
           result?.message ||
             (endLabel
-              ? `You already have Pro and it stays active until ${endLabel}.`
-              : 'You already have Pro until the end of your current billing period.')
+              ? `You already have Pro and it stays active until ${endLabel}, including up to 3 showreels.`
+              : 'You already have Pro until the end of your current billing period, including up to 3 showreels.')
         );
         return;
       }
@@ -825,8 +825,8 @@ export default function PaywallScreen() {
 
             <Text style={[styles.subtitle, mutedTextStyle]}>
               {cancelAtPeriodEnd && endLabel
-                ? `Your subscription is set to cancel. You’ll keep Pro until ${endLabel}.`
-                : 'You’re currently on Pro. No need to upgrade again.'}
+                ? `Your subscription is set to cancel. You’ll keep Pro, including up to 3 showreels, until ${endLabel}.`
+                : 'You’re currently on Pro, including up to 3 showreels. No need to upgrade again.'}
             </Text>
 
             <TouchableOpacity
@@ -879,7 +879,7 @@ export default function PaywallScreen() {
           <Text style={[styles.kicker, { color: GOLD }]}>UPGRADE</Text>
           <Text style={[styles.title, primaryTextStyle]}>Unlock your full filmmaking access</Text>
           <Text style={[styles.subtitle, mutedTextStyle]}>
-            Upload your films, apply for paid jobs, and unlock the full Filmmaking Bootcamp — a premium space to train across every major film discipline through high-level lessons, practical exercises, and powerful Workshop tools built to help you actually make films.
+            Upload your films, add up to 3 showreels, apply for paid jobs, and unlock the full Filmmaking Bootcamp — a premium space to train across every major film discipline through high-level lessons, practical exercises, and powerful Workshop tools built to help you actually make films.
           </Text>
 
           <View style={styles.plansArea}>
@@ -953,7 +953,7 @@ export default function PaywallScreen() {
             <Text style={[styles.subscriptionInfoTitle, primaryTextStyle]}>{SUBSCRIPTION_TITLE}</Text>
 
             <Text style={[styles.subscriptionInfoText, mutedTextStyle]}>
-              Auto-renewable monthly subscription. Price: {rcPriceLabel ?? SUBSCRIPTION_PRICE_FALLBACK} per month.
+              Auto-renewable monthly subscription. Price: {rcPriceLabel ?? SUBSCRIPTION_PRICE_FALLBACK} per month. Pro includes up to 3 showreels on your profile.
             </Text>
 
             <Text style={[styles.subscriptionInfoText, mutedTextStyle]}>
@@ -981,6 +981,7 @@ export default function PaywallScreen() {
 
           <View style={styles.benefits}>
             <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Upload films to the Monthly Film Challenge</Text>
+            <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Upload up to 3 showreels on your profile</Text>
             <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Apply for paid jobs across Overlooked</Text>
             <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Unlock the full Filmmaking Bootcamp</Text>
             <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Learn every major film discipline through focused lessons and exercises</Text>

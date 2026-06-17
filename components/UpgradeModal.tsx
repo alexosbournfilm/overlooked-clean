@@ -410,7 +410,7 @@ export const UpgradeModal: React.FC<Props> = ({
 
   const title = 'Unlock full filmmaking access';
   const subtitle =
-    'Submit films, apply for paid jobs, unlock the Bootcamp, and use Workshop tools to plan, train, and make better films.';
+    'Submit films, upload up to 3 showreels, apply for paid jobs, unlock the Bootcamp, and use Workshop tools to plan, train, and make better films.';
 
   const isActuallyPro =
     Boolean(billingState?.hasProAccess) ||
@@ -440,6 +440,7 @@ export const UpgradeModal: React.FC<Props> = ({
   const downgradeLossBullets = useMemo(() => {
     return [
       'Uploading films to the Monthly Film Challenge will be locked (Pro only).',
+      'Extra showreel uploads will be locked. Free accounts can keep 1 showreel; Pro supports up to 3.',
       'Paid job applications will be locked (Pro only).',
       'The full Filmmaking Bootcamp will be locked (Pro only).',
       'Workshop tools and film resources that help you make films will be locked (Pro only).',
@@ -589,8 +590,8 @@ export const UpgradeModal: React.FC<Props> = ({
           setDowngradeConfirmVisible(false);
           setSuccessText(
             latestEndLabel
-              ? `Your renewal is cancelled. You’ll keep Pro until ${latestEndLabel}, then your Pro features will end.`
-              : 'Your renewal is cancelled. You’ll keep Pro until the end of your billing period, then your Pro features will end.'
+              ? `Your renewal is cancelled. You’ll keep Pro, including up to 3 showreels, until ${latestEndLabel}. After that, Pro features will end.`
+              : 'Your renewal is cancelled. You’ll keep Pro, including up to 3 showreels, until the end of your billing period. After that, Pro features will end.'
           );
           return;
         }
@@ -622,8 +623,8 @@ export const UpgradeModal: React.FC<Props> = ({
       setDowngradeConfirmVisible(false);
       setSuccessText(
         latestEndLabel
-          ? `Your renewal has been cancelled. You’ll keep Pro until ${latestEndLabel}, then your Pro features will end.`
-          : 'Your renewal has been cancelled. You’ll keep Pro until the end of your billing period, then your Pro features will end.'
+          ? `Your renewal has been cancelled. You’ll keep Pro, including up to 3 showreels, until ${latestEndLabel}. After that, Pro features will end.`
+          : 'Your renewal has been cancelled. You’ll keep Pro, including up to 3 showreels, until the end of your billing period. After that, Pro features will end.'
       );
     } catch (err: any) {
       console.log('UpgradeModal downgrade error', err?.message || err);
@@ -755,13 +756,13 @@ export const UpgradeModal: React.FC<Props> = ({
     : cancelAtPeriodEnd
     ? `Your Pro renewal is already cancelled.${
         endDateLabel
-          ? ` You’ll keep Pro until ${endDateLabel}, then switch to Free.`
-          : ` You’ll keep Pro until the end of your current billing period.`
+          ? ` You’ll keep Pro, including up to 3 showreels, until ${endDateLabel}, then switch to Free.`
+          : ` You’ll keep Pro, including up to 3 showreels, until the end of your current billing period.`
       }`
     : `Your Pro subscription will be cancelled so you won’t be charged again.${
         endDateLabel
-          ? ` You’ll keep Pro until ${endDateLabel}, then switch to Free.`
-          : ` You’ll keep Pro until the end of your current billing period.`
+          ? ` You’ll keep Pro, including up to 3 showreels, until ${endDateLabel}, then switch to Free.`
+          : ` You’ll keep Pro, including up to 3 showreels, until the end of your current billing period.`
       }`;
 
   const confirmPrimaryButtonLabel = isGrandfathered
@@ -1022,6 +1023,7 @@ export const UpgradeModal: React.FC<Props> = ({
 
                   <View style={styles.featureGrid}>
                     <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Monthly Film Challenge uploads</Text>
+                    <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Up to 3 profile showreels</Text>
                     <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Paid job applications</Text>
                     <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Full Filmmaking Bootcamp</Text>
                     <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Workshop tools and film resources</Text>
@@ -1034,7 +1036,7 @@ export const UpgradeModal: React.FC<Props> = ({
               <View style={[styles.subscriptionInfoBox, { backgroundColor: modalSoftSurface, borderColor: colors.border }]}>
                 <Text style={[styles.subscriptionInfoTitle, { color: membershipText }]}>{SUBSCRIPTION_TITLE}</Text>
                 <Text style={[styles.subscriptionInfoText, { color: membershipSubText }]}>
-                  Auto-renewable monthly subscription. Price: {SUBSCRIPTION_PRICE_FALLBACK} per month.
+                  Auto-renewable monthly subscription. Price: {SUBSCRIPTION_PRICE_FALLBACK} per month. Pro includes up to 3 showreels on your profile.
                 </Text>
                 <Text style={[styles.subscriptionInfoText, { color: membershipSubText }]}>
                   {Platform.OS === 'ios'
@@ -1153,8 +1155,8 @@ export const UpgradeModal: React.FC<Props> = ({
                       </Text>
                       <Text style={[styles.confirmStatusBody, { color: membershipSubText }]}>
                         {endDateLabel
-                          ? `You’ll stay on Pro until ${endDateLabel}. After that, Pro features end and your account returns to Free.`
-                          : 'You’ll stay on Pro until the end of your current billing period. After that, Pro features end and your account returns to Free.'}
+                          ? `You’ll stay on Pro, including up to 3 showreels, until ${endDateLabel}. After that, Pro features end and your account returns to Free.`
+                          : 'You’ll stay on Pro, including up to 3 showreels, until the end of your current billing period. After that, Pro features end and your account returns to Free.'}
                       </Text>
                     </View>
                   ) : null}

@@ -816,6 +816,9 @@ function HostedVideoInline({
   const [sourceOptions, setSourceOptions] = useState<VideoSourceOption[]>([]);
   const [sourceIndex, setSourceIndex] = useState(0);
 const [videoReady, setVideoReady] = useState(false);
+  const [sourcesResolved, setSourcesResolved] = useState(false);
+  const [isMediaLoading, setIsMediaLoading] = useState(autoPlay);
+  const [mediaUnavailable, setMediaUnavailable] = useState(false);
 
 const opacity = useRef(new Animated.Value(0)).current;
 const [aspect, setAspect] = useState<number>(16 / 9);
@@ -873,6 +876,9 @@ const [aspect, setAspect] = useState<number>(16 / 9);
 
   useEffect(() => {
   let alive = true;
+  setSourcesResolved(false);
+  setMediaUnavailable(false);
+  setIsMediaLoading(true);
 
   (async () => {
     const nextOptions: VideoSourceOption[] = [];
@@ -887,6 +893,9 @@ const [aspect, setAspect] = useState<number>(16 / 9);
       );
 
       setSourceOptions(deduped);
+      if (deduped.length > 0) {
+        setMediaUnavailable(false);
+      }
       if (reset) {
         setSourceIndex(0);
         setQualityMenuOpen(false);
@@ -938,6 +947,14 @@ const [aspect, setAspect] = useState<number>(16 / 9);
     if (!hasPublishedInitialSources) {
       publishSources(true);
     }
+
+    if (alive) {
+      setSourcesResolved(true);
+      if (nextOptions.length === 0) {
+        setMediaUnavailable(true);
+        setIsMediaLoading(false);
+      }
+    }
   })();
 
   return () => {
@@ -950,6 +967,8 @@ const [aspect, setAspect] = useState<number>(16 / 9);
 
   useEffect(() => {
     finishedRef.current = false;
+    setMediaUnavailable(false);
+    setIsMediaLoading(src ? autoPlay || wantsPlayRef.current : !sourcesResolved);
   }, [src, playRequestKey]);
 
   const flashPlaybackCue = (nextCue: 'play' | 'pause') => {
@@ -1006,6 +1025,8 @@ const [aspect, setAspect] = useState<number>(16 / 9);
   const play = async (ensureSound = false): Promise<boolean> => {
     wantsPlayRef.current = true;
     finishedRef.current = false;
+    setMediaUnavailable(false);
+    setIsMediaLoading(true);
     try {
       await pauseAllExcept(playerId);
       if (Platform.OS === 'web') {
@@ -1056,6 +1077,7 @@ const [aspect, setAspect] = useState<number>(16 / 9);
         const playing = started && !el.paused;
         setIsPlaying(playing);
         if (playing) {
+          setIsMediaLoading(false);
           setVideoReady(true);
           fadeIn();
         }
@@ -1067,6 +1089,7 @@ const [aspect, setAspect] = useState<number>(16 / 9);
         }
         await ref.current?.playAsync();
         setIsPlaying(true);
+        setIsMediaLoading(false);
         setVideoReady(true);
         fadeIn();
         return true;
@@ -1090,6 +1113,7 @@ const [aspect, setAspect] = useState<number>(16 / 9);
         setIsPlaying(false);
       }
     } catch {}
+    setIsMediaLoading(false);
   };
 
   useEffect(() => {
@@ -1103,6 +1127,7 @@ const [aspect, setAspect] = useState<number>(16 / 9);
       if (shouldPlayWhenReady) {
         const playWithSound = autoPlay ? autoPlayWithSound : true;
         wantsPlayRef.current = true;
+        setIsMediaLoading(true);
         if (Platform.OS === 'web') {
           if (htmlRef.current) {
             htmlRef.current.muted = !playWithSound;
@@ -1140,6 +1165,7 @@ const [aspect, setAspect] = useState<number>(16 / 9);
           } catch {}
         }
         setMuted(true);
+        setIsMediaLoading(false);
       }
     })();
     return () => {
@@ -1223,6 +1249,11 @@ const onSurfaceTogglePress = async () => {
     updateAspectFromDims(ns?.width, ns?.height);
 
     setIsPlaying((status as any).isPlaying ?? false);
+    if ((status as any).isBuffering && (wantsPlayRef.current || (status as any).isPlaying)) {
+      setIsMediaLoading(true);
+    } else if ((status as any).isPlaying || videoReady) {
+      setIsMediaLoading(false);
+    }
 
     const dur = (status as any).durationMillis ?? 0;
     const pos = (status as any).positionMillis ?? 0;
@@ -1249,6 +1280,7 @@ const onSurfaceTogglePress = async () => {
   if (Platform.OS !== 'web') {
     maybeUpdateAspectFromStatus(status);
     setVideoReady(true);
+    setIsMediaLoading(false);
     fadeIn();
   }
 };
@@ -1259,6 +1291,7 @@ const onSurfaceTogglePress = async () => {
     updateAspectFromDims(ns?.width, ns?.height);
   }
   setVideoReady(true);
+  setIsMediaLoading(false);
   fadeIn();
 };
 
@@ -1283,6 +1316,7 @@ const onSurfaceTogglePress = async () => {
   setDuration(el.duration || 0);
   el.controls = false;
   setVideoReady(true);
+  setIsMediaLoading(false);
   fadeIn();
   if (wantsPlayRef.current) {
     const playWithSound = autoPlay ? autoPlayWithSound : true;
@@ -1305,12 +1339,15 @@ const onSurfaceTogglePress = async () => {
   const handleMediaError = () => {
     if (sourceIndex < sourceOptions.length - 1) {
       setVideoReady(false);
+      setIsMediaLoading(true);
       opacity.setValue(0);
       setSourceIndex((prev) => Math.min(prev + 1, sourceOptions.length - 1));
       return;
     }
 
     setVideoReady(true);
+    setMediaUnavailable(true);
+    setIsMediaLoading(false);
     setIsPlaying(false);
   };
 
@@ -1331,6 +1368,8 @@ const onSurfaceTogglePress = async () => {
     setQualityMenuOpen(false);
     setSourceIndex(index);
     setVideoReady(false);
+    setIsMediaLoading(true);
+    setMediaUnavailable(false);
     opacity.setValue(0);
     wantsPlayRef.current = shouldResume;
 
@@ -1457,6 +1496,11 @@ const onSurfaceTogglePress = async () => {
   const elapsedLabel = formatPlayerTime(duration * progress);
   const durationLabel = duration > 0 ? formatPlayerTime(duration) : '0:00';
   const compactControls = width < 520;
+  const showUnavailableOverlay = mediaUnavailable || (!src && sourcesResolved);
+  const showLoadingOverlay =
+    !showUnavailableOverlay &&
+    (isMediaLoading ||
+      (!videoReady && (autoPlay || wantsPlayRef.current || !sourcesResolved)));
 
   return (
     <View
@@ -1523,9 +1567,14 @@ controls={false}
 controlsList="nodownload noplaybackrate noremoteplayback nofullscreen"
 disablePictureInPicture
 onContextMenu={(e: any) => e.preventDefault()}
+onLoadStart={() => {
+  setMediaUnavailable(false);
+  if (autoPlay || wantsPlayRef.current) setIsMediaLoading(true);
+}}
 onLoadedMetadata={onWebLoadedMeta}
 onCanPlay={() => {
   setVideoReady(true);
+  setIsMediaLoading(false);
   fadeIn();
   if (wantsPlayRef.current) {
     void play(autoPlay ? autoPlayWithSound : true);
@@ -1533,14 +1582,20 @@ onCanPlay={() => {
 }}
 onLoadedData={() => {
   setVideoReady(true);
+  setIsMediaLoading(false);
   fadeIn();
   if (wantsPlayRef.current) {
     void play(autoPlay ? autoPlayWithSound : true);
   }
 }}
 onTimeUpdate={onWebTimeUpdate}
+onWaiting={() => setIsMediaLoading(true)}
+onStalled={() => setIsMediaLoading(true)}
 onPlay={() => setIsPlaying(true)}
-onPlaying={() => setIsPlaying(true)}
+onPlaying={() => {
+  setIsPlaying(true);
+  setIsMediaLoading(false);
+}}
 onEnded={handlePlaybackEnd}
 onPause={() => setIsPlaying(false)}
 onError={handleMediaError}
@@ -1572,6 +1627,19 @@ onError={handleMediaError}
           />
         )}
       </Animated.View>
+
+      {showLoadingOverlay || showUnavailableOverlay ? (
+        <View pointerEvents="none" style={styles.playerLoadingOverlay}>
+          <View style={styles.playerLoadingBubble}>
+            <ActivityIndicator color={GOLD} />
+          </View>
+          {showUnavailableOverlay && !transparentUntilReady ? (
+            <Text style={styles.playerLoadingText} numberOfLines={1}>
+              Video is still processing
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
 
       {!isWinnerPlayer && captureSurfacePress ? (
       <Animated.View
@@ -4774,6 +4842,14 @@ const muxUri = muxReady
     : getMuxPlaybackUrl((s as any).mux_playback_id)
   : null;
 const playableUri = muxUri || s.storage_path || null;
+const isProcessingVideo =
+  !playableUri &&
+  !!(
+    (s as any).mux_upload_id ||
+    (s as any).mux_asset_id ||
+    (s as any).mux_playback_id ||
+    (s as any).mux_status
+  );
 
 if (!playableUri) {
   return (
@@ -4805,6 +4881,13 @@ if (!playableUri) {
           resizeMode="contain"
         />
       </View>
+      {isProcessingVideo ? (
+        <View pointerEvents="none" style={styles.playerLoadingOverlay}>
+          <View style={styles.playerLoadingBubble}>
+            <ActivityIndicator color={GOLD} />
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -6215,6 +6298,15 @@ maxToRenderPerBatch={2}
               const previewMuxUri = previewMuxReady
                 ? getMuxPlaybackUrl((previewItem as any).mux_playback_id)
                 : null;
+              const previewProcessing =
+                !previewItem.storage_path &&
+                !previewMuxUri &&
+                !!(
+                  (previewItem as any).mux_upload_id ||
+                  (previewItem as any).mux_asset_id ||
+                  (previewItem as any).mux_playback_id ||
+                  (previewItem as any).mux_status
+                );
 
               return previewItem.storage_path || previewMuxUri ? (
                 <HostedVideoInline
@@ -6251,7 +6343,15 @@ maxToRenderPerBatch={2}
                     styles.watchPlayerFallback,
                     { backgroundColor: featuredSoftSurface },
                   ]}
-                />
+                >
+                  {previewProcessing ? (
+                    <View pointerEvents="none" style={styles.playerLoadingOverlay}>
+                      <View style={styles.playerLoadingBubble}>
+                        <ActivityIndicator color={GOLD} />
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
               );
             })()}
           </View>
@@ -8574,6 +8674,37 @@ previewCommentsCard: {
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 16,
+  },
+  playerLoadingOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 14,
+    gap: 8,
+  },
+  playerLoadingBubble: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  playerLoadingText: {
+    maxWidth: '82%',
+    color: '#F7F2E8',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 11,
+    fontWeight: '800',
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.7)',
+    textShadowRadius: 8,
   },
 
   fsButton: {

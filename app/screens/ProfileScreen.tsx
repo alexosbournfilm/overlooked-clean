@@ -852,6 +852,9 @@ function ShowreelVideoInline({
   const sourceKeyRef = useRef(sourceOptions.map((option) => option.uri).join('|'));
   const [sourceIndex, setSourceIndex] = useState(0);
   const [hasLoadedFrame, setHasLoadedFrame] = useState(false);
+  const [sourcesResolved, setSourcesResolved] = useState(() => /^https?:\/\//i.test(filePathOrUrl));
+  const [isMediaLoading, setIsMediaLoading] = useState(autoPlay);
+  const [mediaUnavailable, setMediaUnavailable] = useState(false);
   const [resolvedPosterUri, setResolvedPosterUri] = useState<string | null>(() =>
     resolveShowreelPosterUri(posterUri)
   );
@@ -886,6 +889,8 @@ function ShowreelVideoInline({
     setDuration(0);
     setProgress(0);
     setIsPlaying(false);
+    setMediaUnavailable(false);
+    setIsMediaLoading(src ? autoPlay || wantsPlayRef.current : !sourcesResolved);
   }, [src]);
 
   // ✅ Still keep this for your fullscreen logic + audio behavior
@@ -901,6 +906,11 @@ function ShowreelVideoInline({
   const elapsedLabel = formatPlayerTime(duration * progress);
   const durationLabel = duration > 0 ? formatPlayerTime(duration) : '0:00';
   const compactControls = playerW < 520;
+  const showUnavailableOverlay = mediaUnavailable || (!src && sourcesResolved);
+  const showLoadingOverlay =
+    !showUnavailableOverlay &&
+    (isMediaLoading ||
+      (!hasLoadedFrame && (autoPlay || wantsPlayRef.current || !sourcesResolved)));
 
   // register in player registry
   useEffect(() => {
@@ -930,6 +940,9 @@ function ShowreelVideoInline({
   // resolve signed URL / direct URL
   useEffect(() => {
     let alive = true;
+    setSourcesResolved(false);
+    setMediaUnavailable(false);
+    setIsMediaLoading(true);
     (async () => {
       try {
         const url = await signShowreelPath(filePathOrUrl);
@@ -943,11 +956,21 @@ function ShowreelVideoInline({
             setSourceIndex(0);
             setQualityMenuOpen(false);
             setHasLoadedFrame(false);
+            setMediaUnavailable(false);
             opacity.setValue(0);
+          }
+          setSourcesResolved(true);
+          if (!autoPlay && !wantsPlayRef.current) {
+            setIsMediaLoading(false);
           }
         }
       } catch (e) {
         console.warn('[ShowreelVideoInline] sign failed', e);
+        if (alive) {
+          setSourcesResolved(true);
+          setMediaUnavailable(true);
+          setIsMediaLoading(false);
+        }
       }
     })();
     return () => {
@@ -1021,6 +1044,11 @@ function ShowreelVideoInline({
     if (ns?.width && ns?.height) updateAspect(ns.width, ns.height);
 
     setIsPlaying(!!s.isPlaying);
+    if (s.isBuffering && (wantsPlayRef.current || s.isPlaying)) {
+      setIsMediaLoading(true);
+    } else if (s.isPlaying || hasLoadedFrame) {
+      setIsMediaLoading(false);
+    }
 
     const d = s.durationMillis || 0;
     const p = s.positionMillis || 0;
@@ -1045,6 +1073,8 @@ function ShowreelVideoInline({
   const play = async (ensureSound = false): Promise<boolean> => {
     wantsPlayRef.current = true;
     finishedRef.current = false;
+    setMediaUnavailable(false);
+    setIsMediaLoading(true);
     try {
       await pauseAllExcept(playerId);
       if (Platform.OS === 'web') {
@@ -1093,7 +1123,10 @@ function ShowreelVideoInline({
 
         const playing = started && !el.paused;
         setIsPlaying(playing);
-        if (playing) fadeIn();
+        if (playing) {
+          setIsMediaLoading(false);
+          fadeIn();
+        }
         return playing;
       } else {
         if (ensureSound) {
@@ -1102,6 +1135,7 @@ function ShowreelVideoInline({
         }
         await expoRef.current?.playAsync();
         setIsPlaying(true);
+        setIsMediaLoading(false);
         fadeIn();
         return true;
       }
@@ -1123,6 +1157,7 @@ function ShowreelVideoInline({
       }
     } catch {}
     setIsPlaying(false);
+    setIsMediaLoading(false);
   };
 
   // initial autoplay / mute behavior once src is ready
@@ -1133,6 +1168,7 @@ function ShowreelVideoInline({
       if (!src) return;
       if (autoPlay || wantsPlayRef.current) {
         wantsPlayRef.current = true;
+        setIsMediaLoading(true);
         const playWithSound = !autoPlay && wantsPlayRef.current;
         if (Platform.OS === 'web') {
           if (htmlRef.current) {
@@ -1155,6 +1191,7 @@ function ShowreelVideoInline({
         });
       } else {
         await pause();
+        setIsMediaLoading(false);
         if (Platform.OS === 'web') {
           if (htmlRef.current) {
             htmlRef.current.muted = true;
@@ -1239,6 +1276,7 @@ function ShowreelVideoInline({
   const onExpoReady = (e: any) => {
     const ns = e?.naturalSize;
     if (ns?.width && ns?.height) updateAspect(ns.width, ns.height);
+    setIsMediaLoading(false);
   };
 
   const onExpoFullscreen = async ({ fullscreenUpdate }: { fullscreenUpdate: number }) => {
@@ -1252,6 +1290,7 @@ function ShowreelVideoInline({
         setMuted(false);
         await expoRef.current?.playAsync();
         setIsPlaying(true);
+        setIsMediaLoading(false);
       } catch (e) {
         console.warn('Fullscreen error', e);
       }
@@ -1268,6 +1307,7 @@ function ShowreelVideoInline({
     updateAspect(el.videoWidth, el.videoHeight);
     setDuration(el.duration || 0);
     el.controls = false;
+    setIsMediaLoading(false);
     if (wantsPlayRef.current) {
       fadeIn();
       setTimeout(() => {
@@ -1291,6 +1331,7 @@ function ShowreelVideoInline({
     setIsPlaying(false);
 
     if (sourceIndex < sourceOptions.length - 1) {
+      setIsMediaLoading(true);
       setSourceIndex((prev) => Math.min(prev + 1, sourceOptions.length - 1));
       if (!wantsPlayRef.current) {
         setHasLoadedFrame(false);
@@ -1299,6 +1340,8 @@ function ShowreelVideoInline({
       return;
     }
 
+    setMediaUnavailable(true);
+    setIsMediaLoading(false);
     if (!posterSourceUri || wantsPlayRef.current) {
       fadeIn();
     }
@@ -1319,6 +1362,8 @@ function ShowreelVideoInline({
     setQualityMenuOpen(false);
     setSourceIndex(index);
     wantsPlayRef.current = shouldResume;
+    setMediaUnavailable(false);
+    setIsMediaLoading(true);
     opacity.setValue(0);
 
     setTimeout(async () => {
@@ -1486,21 +1531,33 @@ function ShowreelVideoInline({
             controlsList="nodownload noplaybackrate noremoteplayback nofullscreen"
             disablePictureInPicture
             onContextMenu={(e: any) => e.preventDefault()}
+            onLoadStart={() => {
+              setMediaUnavailable(false);
+              if (autoPlay || wantsPlayRef.current) setIsMediaLoading(true);
+            }}
             onLoadedMetadata={onWebLoadedMeta}
             onCanPlay={() => {
+              setIsMediaLoading(false);
               if (wantsPlayRef.current) {
                 fadeIn();
                 void play(true);
               }
             }}
             onLoadedData={() => {
+              setIsMediaLoading(false);
               if (wantsPlayRef.current) {
                 fadeIn();
                 void play(true);
               }
             }}
             onTimeUpdate={onWebTimeUpdate}
+            onWaiting={() => setIsMediaLoading(true)}
+            onStalled={() => setIsMediaLoading(true)}
             onPlay={() => setIsPlaying(true)}
+            onPlaying={() => {
+              setIsPlaying(true);
+              setIsMediaLoading(false);
+            }}
             onPause={() => setIsPlaying(false)}
             onEnded={handlePlaybackEnd}
             onError={onVideoError}
@@ -1532,6 +1589,19 @@ function ShowreelVideoInline({
 />
         )}
       </Animated.View>
+
+      {showLoadingOverlay || showUnavailableOverlay ? (
+        <View pointerEvents="none" style={stylesShowreel.loadingOverlay}>
+          <View style={stylesShowreel.loadingBubble}>
+            <ActivityIndicator color={COLORS.primary} />
+          </View>
+          {showUnavailableOverlay ? (
+            <Text style={stylesShowreel.loadingText} numberOfLines={1}>
+              Video is still processing
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
 
       {posterSourceUri && !hasLoadedFrame ? (
         <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { zIndex: 2 }]}>
@@ -7458,9 +7528,30 @@ const renderSubmissionsSection = () => {
             },
           ]}
         >
-              <Text style={[block.muted, { color: COLORS.textSecondary, textAlign: "center" }]}>
-                No video found for this submission.
-              </Text>
+              {!!(
+                activeSubmission?.mux_upload_id ||
+                activeSubmission?.mux_asset_id ||
+                activeSubmission?.mux_playback_id ||
+                activeSubmission?.mux_status
+              ) ? (
+                <>
+                  <View style={stylesShowreel.loadingBubble}>
+                    <ActivityIndicator color={COLORS.primary} />
+                  </View>
+                  <Text
+                    style={[
+                      block.muted,
+                      { color: COLORS.textSecondary, textAlign: "center", marginTop: 10 },
+                    ]}
+                  >
+                    Video is still processing
+                  </Text>
+                </>
+              ) : (
+                <Text style={[block.muted, { color: COLORS.textSecondary, textAlign: "center" }]}>
+                  No video found for this submission.
+                </Text>
+              )}
             </View>
           )
         ) : null}
@@ -9062,7 +9153,7 @@ return (
                   </>
                 ) : (
                   <Text style={[block.muted, { color: COLORS.textSecondary, marginBottom: 6 }]}>
-                    Upload up to 3 showreels. Pick a category for each one and choose which is the main featured reel.
+                    Free includes 1 showreel. Pro lets you upload up to 3 showreels and choose your main featured reel.
                   </Text>
                 )}
 
@@ -12834,6 +12925,38 @@ const stylesShowreel = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     zIndex: 8,
+  },
+  loadingOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 14,
+    elevation: 14,
+    gap: 8,
+  },
+  loadingBubble: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.62)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+  },
+  loadingText: {
+    maxWidth: "82%",
+    color: "#F7F2E8",
+    fontSize: 11,
+    fontWeight: "800",
+    textAlign: "center",
+    fontFamily: FONT_OBLIVION,
+    textShadowColor: "rgba(0,0,0,0.7)",
+    textShadowRadius: 8,
   },
   fsButton: {
     position: "absolute",

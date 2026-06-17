@@ -2252,6 +2252,7 @@ return (
                     <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• File size must be 5GB or under")}</Text>
                     <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Your first film upload is free")}</Text>
                     <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Pro is required for additional uploads")}</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Pro also includes up to 3 profile showreels")}</Text>
                     <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Your film must be original")}</Text>
                     <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• No stolen, hateful, or harmful content")}</Text>
                     <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Thumbnail is required")}</Text>
@@ -2928,6 +2929,7 @@ return (
             <Text style={[styles.modalText, { color: T.sub }]}>{tt("• File size: max 5GB.")}</Text>
             <Text style={[styles.modalText, { color: T.sub }]}>{tt("• Your first film upload is free.")}</Text>
             <Text style={[styles.modalText, { color: T.sub }]}>{tt("• Pro is required for additional uploads.")}</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>{tt("• Pro also includes up to 3 profile showreels.")}</Text>
             <Text style={[styles.modalText, { color: T.sub }]}>{tt("• Keep it original. No stolen footage or unlicensed material.")}</Text>
             <Text style={[styles.modalText, { color: T.sub }]}>
               {tt("• Keep it appropriate. No hate, harassment, or explicit harmful content.")}
