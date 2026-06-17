@@ -39,9 +39,6 @@ import {
 } from '../lib/legal';
 import { useAppTheme } from '../context/ThemeContext';
 
-/* -------------------------- Stripe Price IDs -------------------------- */
-const STRIPE_PRICE_MONTHLY = 'price_1TjIhmIaba42c4jITdM4RgDL';
-
 /* -------------------------- RevenueCat -------------------------- */
 const REVENUECAT_ANDROID_PUBLIC_SDK_KEY = 'goog_yNsgMdHFvNRzhpfDwICFHbSXuvC';
 const REVENUECAT_IOS_PUBLIC_SDK_KEY = 'appl_dOTwRcKraCRSTIBoaxPUVEEJcWh';
@@ -504,7 +501,7 @@ export default function PaywallScreen() {
   }, [rcPriceLabel]);
 
   const selectedPlanPayload = useMemo(() => {
-    return { plan: 'monthly' as const, priceId: STRIPE_PRICE_MONTHLY };
+    return { plan: 'monthly' as const };
   }, []);
 
   const enterFeatured = useCallback(() => {
@@ -638,15 +635,10 @@ export default function PaywallScreen() {
       throw new Error('Not signed in.');
     }
 
-    if (!selectedPlanPayload?.priceId) {
-      throw new Error('Missing Stripe price id for this plan.');
-    }
-
     const requestBody = {
       user_id: user.id,
       email: user.email ?? undefined,
       plan: selectedPlanPayload.plan,
-      priceId: selectedPlanPayload.priceId,
     };
 
     const invokeRes = await supabase.functions.invoke('create-checkout-session', {

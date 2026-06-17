@@ -108,7 +108,6 @@ type Incoming = {
   plan?: Plan;
   referral_code?: string;
   promoCode?: string;
-  priceId?: string;
 };
 
 type RcSubscriberV1 = {
@@ -270,7 +269,7 @@ Deno.serve(async (req) => {
       ? PRICE_YEARLY
       : PRICE_LIFETIME;
 
-  const priceId = body.priceId ?? fallbackPrice;
+  const priceId = fallbackPrice;
 
   if (!priceId) {
     return err(

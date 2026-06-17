@@ -332,7 +332,7 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
                   onPress={returnToSignIn}
                   style={styles.bannerAction}
                 >
-                  <Text style={styles.bannerActionText}>Go to Sign In</Text>
+                  <Text style={styles.bannerActionText}>Back to Sign In</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -482,17 +482,7 @@ const [showConfirmPassword, setShowConfirmPassword] = useState(false);
                   returnToSignIn();
                 }}
               >
-                <Text style={[styles.emailModalPrimaryText, { color: colors.textOnPrimary }]}>Go to Sign In</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.emailModalSecondary, { borderColor: colors.border }]}
-                onPress={() => {
-                  setEmailSentVisible(false);
-                  returnToSignIn();
-                }}
-              >
-                <Text style={[styles.emailModalSecondaryText, { color: colors.textPrimary }]}>Back to Sign In</Text>
+                <Text style={[styles.emailModalPrimaryText, { color: colors.textOnPrimary }]}>Back to Sign In</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -905,18 +895,6 @@ passwordInput: {
       } as any)
     : {}),
 },
-  emailModalSecondary: {
-    borderWidth: 1,
-    borderColor: BORDER,
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  emailModalSecondaryText: {
-    color: TEXT_IVORY,
-    fontWeight: '800',
-    fontSize: 14,
-  },
 
   modalOverlay: {
     flex: 1,
