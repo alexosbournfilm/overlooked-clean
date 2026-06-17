@@ -56,6 +56,7 @@ import ReportContentModal from '../../components/ReportContentModal';
 import SmoothModal from '../../components/SmoothModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeyboardLift } from '../utils/useKeyboardLift';
+import { isCurrentUserPro } from '../lib/membership';
 
 /* ---------- Noir palette ---------- */
 const GOLD = '#C6A664';
@@ -568,6 +569,23 @@ function formatPlayerTime(seconds?: number | null) {
   return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
+function formatWatchDateShort(dateString?: string | null) {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  if (!Number.isFinite(date.getTime())) return null;
+
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function formatVoteCount(count?: number | null) {
+  const value = Math.max(0, Math.floor(count ?? 0));
+  return `${value} vote${value === 1 ? '' : 's'}`;
+}
+
 /** Sign a storage path from portfolios, or pass through if it's already a URL */
 async function signShowreelPath(pathOrUrl: string, expiresInSec = 3600): Promise<string> {
   if (!pathOrUrl) throw new Error("Missing showreel path");
@@ -655,6 +673,127 @@ async function pauseAllExcept(id?: string | null) {
 
 const WebVideo: any = 'video';
 
+const HLS_JS_URL = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js';
+let hlsLoadPromise: Promise<any | null> | null = null;
+
+function isHlsUrl(url?: string | null) {
+  return !!url && /\.m3u8(?:\?|$)/i.test(url);
+}
+
+function loadHlsJs() {
+  if (Platform.OS !== 'web') return Promise.resolve(null);
+  const existing = (window as any).Hls;
+  if (existing) return Promise.resolve(existing);
+  if (hlsLoadPromise) return hlsLoadPromise;
+
+  hlsLoadPromise = new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.src = HLS_JS_URL;
+    script.async = true;
+    script.crossOrigin = 'anonymous';
+    script.onload = () => resolve((window as any).Hls || null);
+    script.onerror = () => resolve(null);
+    document.head.appendChild(script);
+  });
+
+  return hlsLoadPromise;
+}
+
+async function setWebVideoSource(el: any, src: string) {
+  if (Platform.OS !== 'web') return false;
+
+  const currentSrc = el.getAttribute?.('src') || el.currentSrc || '';
+  const existingHls = el.__ovkHls;
+
+  if (!isHlsUrl(src)) {
+    if (existingHls) {
+      try {
+        existingHls.destroy();
+      } catch {}
+      el.__ovkHls = null;
+      el.__ovkHlsSrc = null;
+    }
+
+    if (currentSrc !== src) {
+      el.src = src;
+      try {
+        el.load();
+      } catch {}
+    }
+
+    return false;
+  }
+
+  if (el.canPlayType?.('application/vnd.apple.mpegurl')) {
+    if (existingHls) {
+      try {
+        existingHls.destroy();
+      } catch {}
+      el.__ovkHls = null;
+      el.__ovkHlsSrc = null;
+    }
+
+    if (currentSrc !== src) {
+      el.src = src;
+      try {
+        el.load();
+      } catch {}
+    }
+
+    return false;
+  }
+
+  const Hls = await loadHlsJs();
+  if (!Hls?.isSupported?.()) {
+    if (currentSrc !== src) {
+      el.src = src;
+      try {
+        el.load();
+      } catch {}
+    }
+    return false;
+  }
+
+  if (el.__ovkHls && el.__ovkHlsSrc === src) return true;
+
+  if (existingHls) {
+    try {
+      existingHls.destroy();
+    } catch {}
+  }
+
+  const hls = new Hls({
+    enableWorker: true,
+    lowLatencyMode: false,
+    startLevel: -1,
+  });
+
+  el.__ovkHls = hls;
+  el.__ovkHlsSrc = src;
+  hls.loadSource(src);
+  hls.attachMedia(el);
+
+  await new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve(null);
+    };
+
+    try {
+      hls.once(Hls.Events.MANIFEST_PARSED, finish);
+      hls.once(Hls.Events.ERROR, finish);
+    } catch {
+      finish();
+    }
+
+    setTimeout(finish, 900);
+  });
+
+  return true;
+}
+
 type VideoSourceOption = {
   label: string;
   uri: string;
@@ -669,6 +808,7 @@ function getMuxPlaybackOptionsFromUrl(url?: string | null): VideoSourceOption[] 
 
   const playbackId = match[1];
   return [
+    { label: 'Auto', uri: `https://stream.mux.com/${playbackId}.m3u8` },
     { label: 'High', uri: `https://stream.mux.com/${playbackId}/high.mp4` },
     { label: 'Medium', uri: `https://stream.mux.com/${playbackId}/medium.mp4` },
     { label: 'Low', uri: `https://stream.mux.com/${playbackId}/low.mp4` },
@@ -685,6 +825,7 @@ function ShowreelVideoInline({
   posterUri,
   maxWidth = SHOWREEL_MAX_W,
   maxHeight,
+  alignSelf = 'center',
   squareCorners = false,
   loop = true,
   onPlaybackEnd,
@@ -696,6 +837,7 @@ function ShowreelVideoInline({
   posterUri?: string | null;
   maxWidth?: number;
   maxHeight?: number;
+  alignSelf?: 'center' | 'flex-start';
   squareCorners?: boolean;
   loop?: boolean;
   onPlaybackEnd?: () => void;
@@ -741,6 +883,9 @@ function ShowreelVideoInline({
 
   useEffect(() => {
     finishedRef.current = false;
+    setDuration(0);
+    setProgress(0);
+    setIsPlaying(false);
   }, [src]);
 
   // ✅ Still keep this for your fullscreen logic + audio behavior
@@ -775,6 +920,9 @@ function ShowreelVideoInline({
     };
     playerRegistry.set(playerId, handle);
     return () => {
+      try {
+        htmlRef.current?.__ovkHls?.destroy?.();
+      } catch {}
       playerRegistry.delete(playerId);
     };
   }, [playerId]);
@@ -903,35 +1051,47 @@ function ShowreelVideoInline({
         const el = htmlRef.current;
         if (!el || !src) return false;
 
-        const currentSrc = el.getAttribute?.('src') || el.currentSrc || '';
-        if (currentSrc !== src) {
-          el.src = src;
-          try {
-            el.load();
-          } catch {}
-        }
+        const managedHlsSource = await setWebVideoSource(el, src);
 
         if (ensureSound) {
           el.muted = false;
           setMuted(false);
         }
         el.controls = false;
+        el.autoplay = true;
+        el.playsInline = true;
+        el.preload = 'auto';
 
-        if (el.readyState === 0) {
+        if (!managedHlsSource && el.readyState === 0) {
           try {
             el.load();
           } catch {}
         }
 
-        await el.play().catch(async () => {
+        const tryPlay = async () => {
+          try {
+            await el.play();
+            return true;
+          } catch {
+            return false;
+          }
+        };
+
+        let started = await tryPlay();
+
+        if (!started && ensureSound) {
           el.muted = true;
           setMuted(true);
           await new Promise((resolve) => setTimeout(resolve, 40));
-          try {
-            await el.play();
-          } catch {}
-        });
-        const playing = !el.paused;
+          started = await tryPlay();
+        }
+
+        if (!started) {
+          await new Promise((resolve) => setTimeout(resolve, 120));
+          started = await tryPlay();
+        }
+
+        const playing = started && !el.paused;
         setIsPlaying(playing);
         if (playing) fadeIn();
         return playing;
@@ -973,9 +1133,21 @@ function ShowreelVideoInline({
       if (!src) return;
       if (autoPlay || wantsPlayRef.current) {
         wantsPlayRef.current = true;
+        const playWithSound = !autoPlay && wantsPlayRef.current;
+        if (Platform.OS === 'web') {
+          if (htmlRef.current) {
+            htmlRef.current.muted = !playWithSound;
+            htmlRef.current.controls = false;
+          }
+        } else {
+          try {
+            await expoRef.current?.setIsMutedAsync(!playWithSound);
+          } catch {}
+        }
+        setMuted(!playWithSound);
         const requestPlay = () => {
           if (!wantsPlayRef.current) return;
-          void play(true);
+          void play(playWithSound);
         };
         const retryDelays = Platform.OS === 'web' ? [0, 80, 220, 520, 1100] : [0, 180, 500];
         retryDelays.forEach((delay) => {
@@ -1283,7 +1455,7 @@ function ShowreelVideoInline({
         borderRadius: playerRadius,
         overflow: 'hidden',
         backgroundColor: '#000',
-        alignSelf: 'center',
+        alignSelf,
         position: 'relative',
       }}
     >
@@ -2480,6 +2652,7 @@ const [sideRoleSearchFocused, setSideRoleSearchFocused] = useState(false);
 
   // showreels
   const [showreels, setShowreels] = useState<ShowreelRow[]>([]);
+  const [currentUserHasProAccess, setCurrentUserHasProAccess] = useState<boolean | null>(null);
   const [srUploading, setSrUploading] = useState(false);
   const [srProgress, setSrProgress] = useState(0);
   const [srStatus, setSrStatus] = useState('');
@@ -2631,6 +2804,7 @@ try {
     setProfile(null);
     setWorkshopAchievement(null);
     setIsOwnProfile(false);
+    setCurrentUserHasProAccess(null);
     setMyJobs([]);
     setUserJobs([]);
     setAlreadyAppliedJobIds([]);
@@ -2639,6 +2813,16 @@ try {
 
   const own = !!authUserIdLocal && targetId === authUserIdLocal;
   setIsOwnProfile(own);
+  if (own) {
+    isCurrentUserPro({ force: true })
+      .then(setCurrentUserHasProAccess)
+      .catch((e) => {
+        console.warn('profile pro status unavailable:', e?.message ?? e);
+        setCurrentUserHasProAccess(null);
+      });
+  } else {
+    setCurrentUserHasProAccess(null);
+  }
   setHasBlockedProfile(false);
   let blockedByMe = false;
 
@@ -2898,6 +3082,96 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
     return asset?.uri || null;
   };
 
+  const getShowreelAssetError = (asset: any) => {
+    const name = String(asset?.name || asset?.fileName || '').toLowerCase();
+    const mime =
+      String(asset?.mime_type || asset?.mimeType || asset?.file?.type || '').toLowerCase() ||
+      'video/mp4';
+    const rawSize = asset?.size ?? asset?.fileSize ?? asset?.bytes ?? asset?.file?.size ?? null;
+    const size = typeof rawSize === 'number' ? rawSize : rawSize ? Number(rawSize) : null;
+
+    if (!name.endsWith('.mp4') && mime !== 'video/mp4') {
+      return 'Please select an .mp4 video.';
+    }
+    if (size && size > ONE_GB) {
+      return 'Please select a video that is 1 GB or less.';
+    }
+    return null;
+  };
+
+  const setPendingShowreelVideoAsset = (asset: any) => {
+    if (pendingShowreelObjectUrlRef.current) {
+      try {
+        URL.revokeObjectURL(pendingShowreelObjectUrlRef.current);
+      } catch {}
+      pendingShowreelObjectUrlRef.current = null;
+    }
+
+    setPendingShowreelAsset(asset);
+    setPendingShowreelPreviewUri(getShowreelPreviewUri(asset));
+  };
+
+  const setPendingShowreelVideoFile = (file: any) => {
+    if (!file) return;
+
+    const asset = {
+      file,
+      name: file.name || `showreel_${Date.now()}.mp4`,
+      mimeType: file.type || 'video/mp4',
+      size: file.size,
+    };
+    const assetError = getShowreelAssetError(asset);
+    if (assetError) {
+      setPendingShowreelError(assetError);
+      return;
+    }
+
+    setPendingShowreelVideoAsset(asset);
+    setPendingShowreelError('');
+    setShowreelUploadNotice('');
+  };
+
+  const setPendingShowreelThumbnailFile = (file: any) => {
+    if (!file) return;
+
+    const mime = String(file.type || '').toLowerCase();
+    if (mime && !mime.startsWith('image/')) {
+      setPendingShowreelError('Please select an image thumbnail.');
+      return;
+    }
+
+    const objUrl = URL.createObjectURL(file);
+    if (pendingShowreelThumbObjectUrlRef.current) {
+      try {
+        URL.revokeObjectURL(pendingShowreelThumbObjectUrlRef.current);
+      } catch {}
+    }
+
+    pendingShowreelThumbObjectUrlRef.current = objUrl;
+    setPendingShowreelThumbAsset({
+      file,
+      name: file.name || `showreel_thumb_${Date.now()}.jpg`,
+      mimeType: file.type || 'image/jpeg',
+      uri: objUrl,
+    });
+    setPendingShowreelThumbPreviewUri(objUrl);
+    setPendingShowreelError('');
+  };
+
+  const handlePendingShowreelVideoDrop = (evt: any) => {
+    if (Platform.OS !== 'web') return;
+    evt.preventDefault?.();
+    evt.stopPropagation?.();
+    setPendingShowreelVideoFile(evt.dataTransfer?.files?.[0]);
+  };
+
+  const handlePendingShowreelThumbDrop = (evt: any) => {
+    if (Platform.OS !== 'web') return;
+    evt.preventDefault?.();
+    evt.stopPropagation?.();
+    setPendingShowreelThumbnailFile(evt.dataTransfer?.files?.[0]);
+  };
+
   const pickShowreelAsset = async () => {
     if (Platform.OS === 'web') {
       const file = await pickWebShowreelFile();
@@ -2964,6 +3238,61 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
     }
   };
 
+  const getCurrentShowreelCountForUser = async (userId: string) => {
+    const { count, error } = await supabase
+      .from('user_showreels')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId);
+
+    if (error) {
+      console.warn('showreel count unavailable:', error.message);
+      return showreels.length;
+    }
+
+    return count ?? showreels.length;
+  };
+
+  const openShowreelUpgradePaywall = () => {
+    setShowreelCategoryModalVisible(false);
+    setShowEditModal(false);
+    setTimeout(() => {
+      navigation.navigate('Paywall');
+    }, 0);
+  };
+
+  const canStartShowreelUpload = async () => {
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
+
+    if (error) {
+      Alert.alert('Please try again', 'We could not verify your account right now.');
+      return false;
+    }
+
+    if (!user?.id) {
+      Alert.alert('Sign in required', 'Please sign in to upload a showreel.');
+      return false;
+    }
+
+    const existingShowreelCount = await getCurrentShowreelCountForUser(user.id);
+
+    if (existingShowreelCount >= 3) {
+      Alert.alert('Maximum reached', 'Users can only have up to 3 showreels.');
+      return false;
+    }
+
+    const hasProAccess = await isCurrentUserPro({ force: true });
+
+    if (!hasProAccess && existingShowreelCount >= 1) {
+      openShowreelUpgradePaywall();
+      return false;
+    }
+
+    return true;
+  };
+
   const uploadAnotherShowreel = async () => {
     try {
       if (showreels.length >= 3) {
@@ -2971,32 +3300,27 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
         return;
       }
 
+      if (currentUserHasProAccess === false && showreels.length >= 1) {
+        openShowreelUpgradePaywall();
+        return;
+      }
+
       const asset: any = await pickShowreelAsset();
       if (!asset) return;
 
-      const name = String(asset.name || asset.fileName || '').toLowerCase();
-      const mime =
-        String(asset.mime_type || asset.mimeType || asset.file?.type || '').toLowerCase() ||
-        'video/mp4';
-      const rawSize = asset.size ?? asset.fileSize ?? asset.bytes ?? asset.file?.size ?? null;
-      const size = typeof rawSize === 'number' ? rawSize : rawSize ? Number(rawSize) : null;
-
-      const isMp4 = name.endsWith('.mp4') || mime === 'video/mp4';
-
-      if (!isMp4) {
-        Alert.alert('MP4 only', 'Please select an .mp4 video.');
+      const allowed = await canStartShowreelUpload();
+      if (!allowed) {
         return;
       }
-      if (size && size > ONE_GB) {
-        Alert.alert('Too large', 'Please select a video that is 1 GB or less.');
+
+      const assetError = getShowreelAssetError(asset);
+      if (assetError) {
+        Alert.alert(assetError.includes('1 GB') ? 'Too large' : 'MP4 only', assetError);
         return;
       }
 
       clearPendingShowreelDraft();
-      const previewUri = getShowreelPreviewUri(asset);
-
-      setPendingShowreelAsset(asset);
-      setPendingShowreelPreviewUri(previewUri);
+      setPendingShowreelVideoAsset(asset);
       setSelectedShowreelCategory('Acting');
       setShowreelUploadNotice('');
       setShowEditModal(true);
@@ -3004,6 +3328,26 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
     } catch (e: any) {
       console.warn('uploadAnotherShowreel failed:', e?.message ?? e);
       Alert.alert('Upload failed', e?.message ?? 'Could not prepare showreel upload.');
+    }
+  };
+
+  const choosePendingShowreelVideo = async () => {
+    try {
+      const asset: any = await pickShowreelAsset();
+      if (!asset) return;
+
+      const assetError = getShowreelAssetError(asset);
+      if (assetError) {
+        setPendingShowreelError(assetError);
+        return;
+      }
+
+      setPendingShowreelVideoAsset(asset);
+      setPendingShowreelError('');
+      setShowreelUploadNotice('');
+    } catch (e: any) {
+      console.warn('choosePendingShowreelVideo failed:', e?.message ?? e);
+      setPendingShowreelError(e?.message ?? 'Could not choose video.');
     }
   };
 
@@ -3025,17 +3369,34 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
       const cleanBaseName =
         sanitizeFileName(String(originalName).replace(/\.[^.]+$/, '')) || 'showreel';
 
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) throw userError;
+      if (!user) throw new Error('Not authenticated');
+
+      const existingShowreelCount = await getCurrentShowreelCountForUser(user.id);
+
+      if (existingShowreelCount >= 3) {
+        setPendingShowreelError('Users can only have up to 3 showreels.');
+        Alert.alert('Maximum reached', 'Users can only have up to 3 showreels.');
+        return;
+      }
+
+      const hasProAccess = await isCurrentUserPro({ force: true });
+
+      if (!hasProAccess && existingShowreelCount >= 1) {
+        openShowreelUpgradePaywall();
+        return;
+      }
+
       setShowEditModal(true);
       setShowreelCategoryModalVisible(false);
       setSrUploading(true);
       setSrProgress(0);
       setSrStatus('Preparing upload…');
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) throw new Error('Not authenticated');
 
       setSrStatus(
         Platform.OS === 'web'
@@ -6569,20 +6930,6 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
             marginTop: 14,
           }}
         >
-          <Text
-  style={[
-    block.h3Centered,
-    { color: COLORS.textPrimary },
-    isMobileLike && {
-      fontSize: 10,
-      letterSpacing: 1,
-      marginBottom: 8,
-    },
-  ]}
->
-  More Showreels
-</Text>
-
           <View
   style={{
     flexDirection: "row",
@@ -6593,8 +6940,13 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
   }}
 >
             {secondaryRows.map((r) => {
-              const thumb = r.thumbnail_url || null;
               const secondaryPlayable = !!(r.url || r.file_path);
+              const secondaryPlaybackUrl =
+                r.url ||
+                (r.file_path
+                  ? supabase.storage.from(SHOWREEL_BUCKET).getPublicUrl(r.file_path).data.publicUrl
+                  : '');
+              const secondaryLabel = r.category ? `${r.category} Showreel` : 'Showreel';
 
               return (
                 <View
@@ -6603,216 +6955,58 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
                     width: secondaryTileW,
                   }}
                 >
-                  <TouchableOpacity
-  activeOpacity={0.92}
-  onPress={() => {
-    if (!secondaryPlayable) {
-      Alert.alert(
-        'Still preparing',
-        'This showreel is still being prepared. Please try again in a moment.'
-      );
-      return;
-    }
-    void openShowreel(r);
-  }}
->
-                    <View
-  style={[
-    block.mediaCard,
-    {
-      padding: 0,
-      overflow: "hidden",
-    },
-  ]}
->
-  <View
-  style={{
-    paddingTop: isMobileLike ? 10 : 14,
-    paddingBottom: isMobileLike ? 8 : 10,
-    paddingHorizontal: isMobileLike ? 8 : 10,
-    alignItems: "center",
-    justifyContent: "center",
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    backgroundColor: COLORS.card,
-    minHeight: isMobileLike ? 40 : 48,
-  }}
->
-  <Text
-  style={{
-    color: COLORS.primary,
-    fontSize: isMobileLike ? 10 : 14,
-    fontFamily: FONT_OBLIVION,
-    fontWeight: "900",
-    letterSpacing: isMobileLike ? 0.3 : 1,
-    textAlign: "center",
-    textTransform: "uppercase",
-  }}
-    numberOfLines={1}
-    adjustsFontSizeToFit
-    minimumFontScale={0.8}
-  >
-    {r.category || "Showreel"}
-  </Text>
-</View>
+                  <Text
+                    style={{
+                      color: COLORS.textPrimary,
+                      fontSize: isMobileLike ? 10 : 12,
+                      fontFamily: FONT_OBLIVION,
+                      fontWeight: "900",
+                      letterSpacing: isMobileLike ? 0.5 : 0.8,
+                      textTransform: "uppercase",
+                      marginBottom: 7,
+                    }}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.82}
+                  >
+                    {secondaryLabel}
+                  </Text>
 
-  <View
-    style={{
-      width: "100%",
-      height: secondaryTileH,
-      backgroundColor: "#000",
-      alignItems: "center",
-      justifyContent: "center",
-      position: "relative",
-    }}
-  >
-    {thumb ? (
-      <Image
-        source={{ uri: thumb }}
-        style={{ width: "100%", height: "100%" }}
-        resizeMode="cover"
-      />
-    ) : (
-      <>
-        <Ionicons name="videocam" size={28} color={COLORS.textSecondary} />
-        <Text
-          style={{
-            marginTop: 6,
-            color: COLORS.textSecondary,
-            fontFamily: FONT_OBLIVION,
-            fontSize: 11,
-          }}
-        >
-          No thumbnail yet
-        </Text>
-      </>
-    )}
-
-  </View>
-</View>
-                  </TouchableOpacity>
-
-                  {isOwnProfile && (
-                    <>
+                  <View
+                    style={[
+                      block.mediaCard,
+                      {
+                        padding: 0,
+                        overflow: "hidden",
+                        backgroundColor: "#000",
+                      },
+                    ]}
+                  >
+                    {secondaryPlayable ? (
+                      <ShowreelVideoInline
+                        key={`secondary_showreel_${r.id}`}
+                        playerId={`secondary_showreel_${r.id}`}
+                        filePathOrUrl={secondaryPlaybackUrl || r.file_path}
+                        width={secondaryTileW}
+                        maxWidth={secondaryTileW}
+                        maxHeight={secondaryTileH}
+                        autoPlay={false}
+                        posterUri={r.thumbnail_url}
+                      />
+                    ) : (
                       <View
-  style={{
-    marginTop: isMobileLike ? 8 : 10,
-    gap: isMobileLike ? 6 : 8,
-  }}
->
-  <TouchableOpacity
-    onPress={() => setPrimaryShowreel(r)}
-    style={[
-      block.rowBtn,
-      isMobileLike && { width: "100%", paddingVertical: 6, paddingHorizontal: 8 },
-    ]}
-  >
-    <Text
-      style={[
-        block.rowBtnText,
-        isMobileLike && { fontSize: 10, letterSpacing: 0.3 },
-      ]}
-      numberOfLines={1}
-    >
-      Make Main
-    </Text>
-  </TouchableOpacity>
-
-  <TouchableOpacity
-    onPress={() => changeShowreelThumbnail(r)}
-    style={[
-      block.rowBtn,
-      isMobileLike && { width: "100%", paddingVertical: 6, paddingHorizontal: 8 },
-    ]}
-  >
-    <Text
-      style={[
-        block.rowBtnText,
-        isMobileLike && { fontSize: 10, letterSpacing: 0.3 },
-      ]}
-      numberOfLines={1}
-    >
-      {pendingShowreelThumbs[r.id] || r.thumbnail_url
-        ? "Change Thumb"
-        : "Add Thumb"}
-    </Text>
-  </TouchableOpacity>
-
-  <TouchableOpacity
-    onPress={() => deleteShowreel(r)}
-    style={[
-      block.rowBtnGhost,
-      { backgroundColor: isLight ? COLORS.card : "#0C0C0C", borderColor: COLORS.border },
-      isMobileLike && { width: "100%", paddingVertical: 6, paddingHorizontal: 8, marginLeft: 0 },
-    ]}
-  >
-    <Text
-      style={[
-        block.rowBtnGhostText,
-        { color: COLORS.textPrimary },
-        isMobileLike && { fontSize: 10, letterSpacing: 0.3 },
-      ]}
-      numberOfLines={1}
-    >
-      Delete
-    </Text>
-  </TouchableOpacity>
-</View>
-
-                      <View style={{ marginTop: isMobileLike ? 6 : 10 }}>
-  <Text
-    style={{
-      color: COLORS.textPrimary,
-      fontSize: isMobileLike ? 9 : 11,
-      fontFamily: FONT_OBLIVION,
-      marginBottom: 5,
-      letterSpacing: isMobileLike ? 0.3 : 0.6,
-    }}
-  >
-    Category
-  </Text>
-
-  <ScrollView
-  horizontal
-  showsHorizontalScrollIndicator={false}
-  contentContainerStyle={{ gap: isMobileLike ? 6 : 8, paddingRight: 4 }}
->
-  {SHOWREEL_CATEGORIES.map((cat) => {
-    const selected = r.category === cat;
-    return (
-      <TouchableOpacity
-        key={`${r.id}_${cat}`}
-        onPress={() => updateShowreelCategory(r, cat)}
-        style={{
-          paddingHorizontal: isMobileLike ? 7 : 10,
-          paddingVertical: isMobileLike ? 5 : 6,
-          borderRadius: 999,
-          backgroundColor: selected
-            ? "rgba(198,166,100,0.18)"
-            : isLight
-            ? COLORS.card
-            : "#111",
-          borderWidth: 1,
-          borderColor: selected ? COLORS.primary : COLORS.border,
-        }}
-      >
-        <Text
-          style={{
-            color: selected ? COLORS.primary : COLORS.textPrimary,
-            fontSize: isMobileLike ? 9 : 11,
-            fontFamily: FONT_OBLIVION,
-            fontWeight: "700",
-          }}
-        >
-          {cat}
-        </Text>
-      </TouchableOpacity>
-    );
-  })}
-</ScrollView>
+                        style={{
+                          width: "100%",
+                          height: secondaryTileH,
+                          backgroundColor: "#000",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Ionicons name="videocam" size={24} color={COLORS.textSecondary} />
                       </View>
-                    </>
-                  )}
+                    )}
+                  </View>
                 </View>
               );
             })}
@@ -7035,7 +7229,7 @@ const renderSubmissionsSection = () => {
   const tileW = Math.floor((usable - GRID_GAP * (cols - 1)) / cols);
   const tileH = Math.floor(tileW * (9 / 16));
 
-  const watchPagePadX = isMobileLike ? 0 : 18;
+  const watchPagePadX = isMobileLike ? 0 : 22;
   const watchPagePadTop = isMobileLike
     ? Math.max(insets.top, 0)
     : Math.max(insets.top + 8, 18);
@@ -7043,19 +7237,27 @@ const renderSubmissionsSection = () => {
     !isMobileLike &&
     !!activeSubmission &&
     visibleSubmissions.some((submission) => submission.id !== activeSubmission.id);
-  const watchSideRailW = hasWatchSideRail
-    ? Math.min(388, Math.max(304, Math.floor(width * 0.28)))
+  const watchReservedRailW = !isMobileLike
+    ? Math.min(520, Math.max(340, Math.floor(width * 0.26)))
     : 0;
-  const watchRailGap = hasWatchSideRail ? 22 : 0;
+  const watchSideRailW = hasWatchSideRail ? watchReservedRailW : 0;
+  const watchRailGap = hasWatchSideRail ? 20 : 0;
+  const watchDesktopMaxH = Math.min(windowHeight * 0.7, 720);
+  const watchDesktopMaxW = Math.floor(watchDesktopMaxH * (16 / 9));
+  const watchDesktopReserveW = watchReservedRailW > 0 ? watchReservedRailW + 20 : 0;
+  const watchDesktopAvailableW = Math.max(
+    360,
+    width - watchPagePadX * 2 - watchDesktopReserveW
+  );
   const watchMainW = isMobileLike
     ? Math.max(280, width)
-    : Math.max(360, width - watchPagePadX * 2 - watchRailGap - watchSideRailW);
+    : Math.max(360, Math.min(watchDesktopAvailableW, watchDesktopMaxW));
   const watchMediaW = Math.floor(watchMainW);
   const watchMediaH = Math.floor(watchMediaW * (9 / 16));
   const watchMediaMaxH = Math.floor(
-    isMobileLike ? Math.min(windowHeight * 0.38, 360) : Math.min(windowHeight * 0.68, 660)
+    isMobileLike ? Math.min(windowHeight * 0.38, 360) : watchDesktopMaxH
   );
-  const watchSurface = isLight ? COLORS.background : "#050505";
+  const watchSurface = isLight ? "#FAF7F1" : "#000000";
 
   const renderSubmissionGrid = (
     title: string,
@@ -7172,9 +7374,9 @@ const renderSubmissionsSection = () => {
     const next = profileSubmissionSuggestions[0];
     if (next) void openSubmissionModal(next);
   };
-  const profileSoftSurface = isLight ? COLORS.card : "#0B0B0B";
-  const profileSubText = isLight ? COLORS.textSecondary : "rgba(216,210,200,0.62)";
-  const profileWatchBorder = isLight ? COLORS.border : "rgba(255,255,255,0.08)";
+  const profileSoftSurface = isLight ? "#FFFDF8" : "#0B0B0B";
+  const profileSubText = isLight ? "#62584B" : "rgba(216,210,200,0.62)";
+  const profileWatchBorder = isLight ? "rgba(93,72,43,0.16)" : "rgba(255,255,255,0.08)";
   const scrollSubmissionComposerIntoView = () => {
     if (Platform.OS !== 'android') return;
 
@@ -7232,12 +7434,15 @@ const renderSubmissionsSection = () => {
             </View>
           ) : activeSubmission.video_url || activeSubmission.video_path ? (
             <ShowreelVideoInline
+              key={`submission_${activeSubmission.id}_${activeSubmission.video_url || activeSubmission.video_path || ""}`}
               playerId={`submission_${activeSubmission.id}`}
               filePathOrUrl={activeSubmission.video_url || activeSubmission.video_path || ""}
               width={watchMediaW}
               maxWidth={watchMediaW}
               maxHeight={watchMediaMaxH}
+              alignSelf="flex-start"
               autoPlay={true}
+              posterUri={activeSubmission.thumbnail_url}
               squareCorners
               loop={false}
               onPlaybackEnd={autoplayNextProfileSubmission}
@@ -7323,7 +7528,7 @@ const renderSubmissionsSection = () => {
                 key={comment.id}
                 style={[
                   styles.profileCommentCard,
-                  { backgroundColor: isLight ? COLORS.card : "#111111", borderColor: COLORS.border },
+                  { backgroundColor: "transparent", borderColor: COLORS.border },
                 ]}
               >
                 <TouchableOpacity
@@ -7371,7 +7576,7 @@ const renderSubmissionsSection = () => {
                       activeOpacity={0.8}
                       style={[
                         styles.profileCommentReport,
-                        { backgroundColor: isLight ? COLORS.backgroundAlt : "rgba(255,255,255,0.035)" },
+                        { backgroundColor: "transparent" },
                       ]}
                     >
                       <Ionicons name="flag-outline" size={13} color={COLORS.textSecondary} />
@@ -7513,31 +7718,49 @@ const renderSubmissionsSection = () => {
         ? `Worked on as ${role}`
         : "Worked on"
       : submission.users?.full_name || profile?.full_name || profileWatchName;
+    const suggestionGenre = String(
+      submission.film_category || submission.category || submission.word || "Film"
+    );
+    const suggestionMetaParts = [
+      formatVoteCount(submission.votes),
+      suggestionGenre,
+    ].filter(Boolean);
 
     return (
-      <TouchableOpacity
+      <Pressable
         key={submission.id}
-        activeOpacity={0.9}
         onPress={() => {
           void openSubmissionModal(submission);
         }}
-        style={[
+        style={(state: any) => [
           styles.profileWatchSuggestionCard,
           {
-            backgroundColor: isLight ? COLORS.card : "#080808",
-            borderColor: profileWatchBorder,
-            borderWidth: StyleSheet.hairlineWidth,
+            backgroundColor: state.hovered
+              ? isLight
+                ? "rgba(20,17,13,0.055)"
+                : "rgba(255,255,255,0.055)"
+              : "transparent",
+            opacity: state.pressed ? 0.86 : 1,
           },
         ]}
       >
         {thumb ? (
           <Image
             source={{ uri: thumb }}
-            style={styles.profileWatchSuggestionThumb}
+            style={[
+              styles.profileWatchSuggestionThumb,
+              !isMobileLike && styles.profileWatchSuggestionThumbDesktop,
+            ]}
             resizeMode="cover"
           />
         ) : (
-          <View style={[styles.profileWatchSuggestionThumb, styles.profileWatchSuggestionFallback]}>
+          <View
+            style={[
+              styles.profileWatchSuggestionThumb,
+              !isMobileLike && styles.profileWatchSuggestionThumbDesktop,
+              styles.profileWatchSuggestionFallback,
+            ]}
+          >
             <Ionicons name="videocam" size={20} color={COLORS.textSecondary} />
           </View>
         )}
@@ -7545,11 +7768,14 @@ const renderSubmissionsSection = () => {
           <Text style={[styles.profileWatchSuggestionTitle, { color: COLORS.textPrimary }]} numberOfLines={2}>
             {submission.title || "Untitled"}
           </Text>
-          <Text style={[styles.profileWatchSuggestionMeta, { color: COLORS.textSecondary }]} numberOfLines={1}>
+          <Text style={[styles.profileWatchSuggestionCreator, { color: profileSubText }]} numberOfLines={1}>
             {meta}
           </Text>
+          <Text style={[styles.profileWatchSuggestionMeta, { color: profileSubText }]} numberOfLines={1}>
+            {suggestionMetaParts.join(" · ")}
+          </Text>
         </View>
-      </TouchableOpacity>
+      </Pressable>
     );
   };
 
@@ -7604,7 +7830,7 @@ const renderSubmissionsSection = () => {
               },
             ]}
           >
-            <Ionicons name="close" size={30} color={isLight ? COLORS.textPrimary : "#F4EFE6"} />
+            <Ionicons name="close" size={22} color={isLight ? COLORS.textPrimary : "#F4EFE6"} />
           </TouchableOpacity>
 
           <ScrollView
@@ -7705,19 +7931,19 @@ const renderSubmissionsSection = () => {
                                 ? isLight
                                   ? "rgba(198,166,100,0.12)"
                                   : "rgba(198,166,100,0.10)"
-                                : isLight
-                                ? COLORS.card
-                                : "#101010",
+                                : "transparent",
                               borderColor: activeCreatorSupportActive
                                 ? "rgba(198,166,100,0.32)"
-                                : COLORS.border,
+                                : isLight
+                                ? "rgba(20,17,13,0.14)"
+                                : "rgba(255,255,255,0.12)",
                               opacity: watchCreatorSupportBusy ? 0.62 : 1,
                             },
                           ]}
                         >
                           <Ionicons
                             name={activeCreatorSupportActive ? "checkmark-circle-outline" : "star-outline"}
-                            size={13}
+                            size={12}
                             color={activeCreatorSupportActive ? COLORS.primary : COLORS.textPrimary}
                           />
                           <Text
@@ -7817,7 +8043,7 @@ const renderSubmissionsSection = () => {
                         >
                           <Ionicons
                             name={activeSubmissionVoteActive ? "heart" : "heart-outline"}
-                            size={18}
+                            size={16}
                             color={activeSubmissionVoteActive ? COLORS.primary : COLORS.textPrimary}
                           />
                           <Text style={[styles.profileWatchActionText, { color: COLORS.textPrimary }]}>
@@ -7843,7 +8069,7 @@ const renderSubmissionsSection = () => {
                           },
                         ]}
                       >
-                        <Ionicons name="chatbubble-ellipses-outline" size={18} color={COLORS.textPrimary} />
+                        <Ionicons name="chatbubble-ellipses-outline" size={16} color={COLORS.textPrimary} />
                         <Text style={[styles.profileWatchActionText, { color: COLORS.textPrimary }]}>Comment</Text>
                         <Text style={[styles.profileWatchActionMeta, { color: profileSubText }]}>
                           {comments.length}
@@ -7865,7 +8091,7 @@ const renderSubmissionsSection = () => {
                             },
                           ]}
                         >
-                          <Ionicons name="arrow-redo-outline" size={18} color={COLORS.textPrimary} />
+                          <Ionicons name="arrow-redo-outline" size={16} color={COLORS.textPrimary} />
                           <Text style={[styles.profileWatchActionText, { color: COLORS.textPrimary }]}>Share</Text>
                         </TouchableOpacity>
                       ) : null}
@@ -7881,7 +8107,7 @@ const renderSubmissionsSection = () => {
                           },
                         ]}
                       >
-                        <Ionicons name="people-outline" size={17} color={COLORS.textPrimary} />
+                        <Ionicons name="people-outline" size={16} color={COLORS.textPrimary} />
                         <Text style={[styles.profileWatchActionText, { color: COLORS.textPrimary }]}>Credits</Text>
                         <Text style={[styles.profileWatchActionMeta, { color: profileSubText }]}>
                           {activeSubmissionCollaborators.length}
@@ -7900,7 +8126,7 @@ const renderSubmissionsSection = () => {
                           },
                         ]}
                       >
-                        <Ionicons name="ellipsis-horizontal" size={18} color={COLORS.textPrimary} />
+                        <Ionicons name="ellipsis-horizontal" size={16} color={COLORS.textPrimary} />
                       </TouchableOpacity>
                     </View>
 
@@ -7979,6 +8205,65 @@ const renderSubmissionsSection = () => {
                       </View>
                     ) : null}
                   </View>
+
+                  {activeSubmission ? (
+                    <View
+                      style={[
+                        styles.profileWatchDescriptionPanel,
+                        {
+                          backgroundColor: isLight
+                            ? "rgba(255,253,248,0.86)"
+                            : "rgba(255,255,255,0.035)",
+                          borderColor: profileWatchBorder,
+                        },
+                      ]}
+                    >
+                      {(() => {
+                        const genre = String(
+                          activeSubmission.film_category ||
+                            activeSubmission.category ||
+                            activeSubmission.word ||
+                            "Film"
+                        );
+                        const date = formatWatchDateShort(activeSubmission.submitted_at);
+                        const description = String(
+                          (activeSubmission as any).description || activeSubmission.word || ""
+                        ).trim();
+                        const metaParts = [
+                          formatVoteCount(activeSubmission.votes),
+                          genre,
+                          date,
+                        ].filter(Boolean);
+
+                        return (
+                          <>
+                            {metaParts.length > 0 ? (
+                              <Text
+                                style={[
+                                  styles.profileWatchDescriptionMeta,
+                                  { color: COLORS.textPrimary },
+                                ]}
+                                numberOfLines={1}
+                              >
+                                {metaParts.join(" · ")}
+                              </Text>
+                            ) : null}
+                            {description ? (
+                              <Text
+                                style={[
+                                  styles.profileWatchDescriptionText,
+                                  { color: profileSubText },
+                                ]}
+                                numberOfLines={4}
+                              >
+                                {description}
+                              </Text>
+                            ) : null}
+                          </>
+                        );
+                      })()}
+                    </View>
+                  ) : null}
 
                   {submissionCommentsExpanded
                     ? renderSubmissionCommentsPanel()
@@ -8945,270 +9230,290 @@ return (
               style={[
                 showreelSetup.panel,
                 {
-                  backgroundColor: editModalBackground,
-                  borderColor: COLORS.border,
+                  backgroundColor: '#090806',
+                  borderColor: 'rgba(198,166,100,0.22)',
                 },
               ]}
             >
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={{ paddingBottom: 2 }}
-              >
-              {srUploading ? (
-                <>
-                  <View
-                    style={[
-                      showreelSetup.progressIcon,
-                      { backgroundColor: editModalPillSelected, borderColor: COLORS.primary },
-                    ]}
-                  >
-                    {srProgress >= 100 ? (
-                      <Ionicons name="checkmark" size={24} color={COLORS.primary} />
-                    ) : (
-                      <ActivityIndicator color={COLORS.primary} />
-                    )}
-                  </View>
+              <View style={showreelSetup.header}>
+                <Text style={showreelSetup.title}>Upload showreel</Text>
+                <Text style={showreelSetup.subtitle}>
+                  Add your video, thumbnail, and category before publishing.
+                </Text>
+              </View>
 
-                  <Text style={[showreelSetup.progressTitle, { color: COLORS.textPrimary }]}>
-                    Uploading to Overlooked
-                  </Text>
-                  <Text style={[showreelSetup.progressBody, { color: COLORS.textSecondary }]}>
-                    {srStatus || 'Uploading your showreel…'}
-                  </Text>
+              {srUploading ? (
+                <View style={showreelSetup.progressState}>
+                  <View style={showreelSetup.progressTopRow}>
+                    <View style={showreelSetup.progressIcon}>
+                      {srProgress >= 100 ? (
+                        <Ionicons name="checkmark" size={20} color="#C6A664" />
+                      ) : (
+                        <ActivityIndicator color="#C6A664" />
+                      )}
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={showreelSetup.progressTitle}>Uploading to Overlooked</Text>
+                      <Text style={showreelSetup.progressBody} numberOfLines={2}>
+                        {srStatus || 'Uploading your showreel...'}
+                      </Text>
+                    </View>
+                    <Text style={showreelSetup.progressPercent}>
+                      {Math.max(0, Math.min(100, srProgress || 0))}%
+                    </Text>
+                  </View>
 
                   {pendingShowreelThumbPreviewUri ? (
                     <Image
                       source={{ uri: pendingShowreelThumbPreviewUri }}
-                      style={showreelSetup.progressThumb}
+                      style={showreelSetup.progressThumb as any}
                       resizeMode="cover"
                     />
                   ) : null}
 
-                  <View
-                    style={[
-                      showreelSetup.progressTrack,
-                      { backgroundColor: isLight ? COLORS.backgroundAlt : '#0F0F0F', borderColor: COLORS.border },
-                    ]}
-                  >
+                  <View style={showreelSetup.progressTrack}>
                     <View
                       style={[
                         showreelSetup.progressFill,
-                        {
-                          width: `${Math.max(0, Math.min(100, srProgress || 0))}%`,
-                          backgroundColor: COLORS.primary,
-                        },
+                        { width: `${Math.max(0, Math.min(100, srProgress || 0))}%` },
                       ]}
                     />
                   </View>
 
-                  <Text style={[showreelSetup.progressPercent, { color: COLORS.textPrimary }]}>
-                    {Math.max(0, Math.min(100, srProgress || 0))}%
+                  <Text style={showreelSetup.progressFootnote}>
+                    Keep this window open. Processing may continue briefly after upload completes.
                   </Text>
-                  <Text style={[showreelSetup.progressFootnote, { color: COLORS.textSecondary }]}>
-                    After upload finishes, it may take a little time before it appears on your profile.
-                  </Text>
-                </>
+                </View>
               ) : (
                 <>
-                  <Text style={[showreelSetup.eyebrow, { color: COLORS.primary }]}>New Showreel</Text>
-                  <Text style={[showreelSetup.title, { color: COLORS.textPrimary }]}>
-                    Prepare Upload
-                  </Text>
-
-                  <View style={showreelSetup.previewGrid}>
+                  <ScrollView
+                    style={showreelSetup.bodyScroll}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={showreelSetup.bodyContent}
+                  >
                     <View
                       style={[
-                        showreelSetup.videoPreview,
-                        { backgroundColor: '#000', borderColor: COLORS.border },
+                        showreelSetup.uploadGrid,
+                        !isMobileLike && showreelSetup.uploadGridDesktop,
                       ]}
                     >
-                      {pendingShowreelPreviewUri ? (
-                        Platform.OS === 'web' ? (
-                          // @ts-ignore - react-native-web passes this through as a real HTML video element.
-                          <WebVideo
-                            src={pendingShowreelPreviewUri}
-                            controls
-                            playsInline
-                            preload="metadata"
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              objectFit: 'contain',
-                              objectPosition: 'center center',
-                              display: 'block',
-                              background: '#000',
-                            }}
-                          />
-                        ) : (
-                          <Video
-                            source={{ uri: pendingShowreelPreviewUri }}
-                            style={showreelSetup.previewMedia}
-                            useNativeControls
-                            resizeMode={ResizeMode.CONTAIN}
-                            shouldPlay={false}
-                          />
-                        )
+                      <View style={showreelSetup.videoColumn}>
+                        <Text style={showreelSetup.fieldLabel}>Video file</Text>
+                        <Pressable
+                          onPress={pendingShowreelPreviewUri ? undefined : choosePendingShowreelVideo}
+                          {...(Platform.OS === 'web'
+                            ? {
+                                onDragOver: (evt: any) => evt.preventDefault?.(),
+                                onDrop: handlePendingShowreelVideoDrop,
+                              }
+                            : {})}
+                          style={(state: any) => [
+                            showreelSetup.videoDropzone,
+                            state.hovered && showreelSetup.dropzoneHover,
+                          ]}
+                        >
+                          {pendingShowreelPreviewUri ? (
+                            Platform.OS === 'web' ? (
+                              // @ts-ignore - react-native-web passes this through as a real HTML video element.
+                              <WebVideo
+                                src={pendingShowreelPreviewUri}
+                                controls
+                                playsInline
+                                preload="metadata"
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'contain',
+                                  objectPosition: 'center center',
+                                  display: 'block',
+                                  background: '#000',
+                                }}
+                              />
+                            ) : (
+                              <Video
+                                source={{ uri: pendingShowreelPreviewUri }}
+                                style={showreelSetup.previewMedia}
+                                useNativeControls
+                                resizeMode={ResizeMode.CONTAIN}
+                                shouldPlay={false}
+                              />
+                            )
+                          ) : (
+                            <View style={showreelSetup.dropzoneEmpty}>
+                              <Ionicons name="cloud-upload-outline" size={26} color="#C6A664" />
+                              <Text style={showreelSetup.dropzoneTitle}>
+                                Drop your showreel here or choose a video file
+                              </Text>
+                              <Text style={showreelSetup.dropzoneHint}>MP4 only · up to 1 GB</Text>
+                            </View>
+                          )}
+
+                          {pendingShowreelPreviewUri ? (
+                            <Pressable
+                              onPress={choosePendingShowreelVideo}
+                              style={(state: any) => [
+                                showreelSetup.videoChangeBadge,
+                                state.hovered && showreelSetup.videoChangeBadgeHover,
+                              ]}
+                            >
+                              <Ionicons name="swap-horizontal-outline" size={13} color="#F6E7BD" />
+                              <Text style={showreelSetup.videoChangeText}>Choose different video</Text>
+                            </Pressable>
+                          ) : null}
+                        </Pressable>
+                        <Text style={showreelSetup.helperText}>
+                          MP4 only. Large files may take a few minutes to upload.
+                        </Text>
+                      </View>
+
+                      <View style={showreelSetup.sideColumn}>
+                        <Text style={showreelSetup.fieldLabel}>Thumbnail</Text>
+                        <Pressable
+                          onPress={pickPendingShowreelThumbnail}
+                          {...(Platform.OS === 'web'
+                            ? {
+                                onDragOver: (evt: any) => evt.preventDefault?.(),
+                                onDrop: handlePendingShowreelThumbDrop,
+                              }
+                            : {})}
+                          style={(state: any) => [
+                            showreelSetup.thumbDropzone,
+                            pendingShowreelError && !pendingShowreelThumbAsset
+                              ? showreelSetup.dropzoneError
+                              : null,
+                            pendingShowreelThumbPreviewUri ? showreelSetup.dropzoneSelected : null,
+                            state.hovered && showreelSetup.dropzoneHover,
+                          ]}
+                        >
+                          {pendingShowreelThumbPreviewUri ? (
+                            <Image
+                              source={{ uri: pendingShowreelThumbPreviewUri }}
+                              style={showreelSetup.previewMedia as any}
+                              resizeMode="cover"
+                            />
+                          ) : (
+                            <View style={showreelSetup.dropzoneEmptyCompact}>
+                              <Ionicons name="image-outline" size={22} color="#C6A664" />
+                              <Text style={showreelSetup.dropzoneTitleSmall}>
+                                Add thumbnail — required
+                              </Text>
+                              <Text style={showreelSetup.dropzoneHint}>16:9 recommended</Text>
+                            </View>
+                          )}
+                        </Pressable>
+
+                        <View style={showreelSetup.categoryBlock}>
+                          <View style={showreelSetup.sectionHeader}>
+                            <Text style={showreelSetup.fieldLabel}>Category</Text>
+                            <Text style={showreelSetup.sectionHint}>Choose one</Text>
+                          </View>
+
+                          <View style={showreelSetup.categoryGrid}>
+                            {SHOWREEL_CATEGORIES.map((cat) => {
+                              const selected = selectedShowreelCategory === cat;
+                              const meta = SHOWREEL_CATEGORY_META[cat];
+
+                              return (
+                                <Pressable
+                                  key={cat}
+                                  onPress={() => {
+                                    setSelectedShowreelCategory(cat);
+                                    setPendingShowreelError('');
+                                  }}
+                                  style={(state: any) => [
+                                    showreelSetup.categoryCard,
+                                    selected && showreelSetup.categoryCardSelected,
+                                    state.hovered && !selected ? showreelSetup.categoryCardHover : null,
+                                  ]}
+                                >
+                                  <View
+                                    style={[
+                                      showreelSetup.categoryIcon,
+                                      selected && showreelSetup.categoryIconSelected,
+                                    ]}
+                                  >
+                                    <Ionicons
+                                      name={meta.icon as any}
+                                      size={14}
+                                      color={selected ? '#C6A664' : 'rgba(247,242,232,0.58)'}
+                                    />
+                                  </View>
+
+                                  <View style={{ flex: 1, minWidth: 0 }}>
+                                    <Text style={showreelSetup.categoryTitle} numberOfLines={1}>
+                                      {cat}
+                                    </Text>
+                                    <Text style={showreelSetup.categoryDetail} numberOfLines={1}>
+                                      {meta.detail}
+                                    </Text>
+                                  </View>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  </ScrollView>
+
+                  <View style={showreelSetup.footer}>
+                    <View style={showreelSetup.validationWrap}>
+                      {!!pendingShowreelError ? (
+                        <Text style={showreelSetup.errorText}>{pendingShowreelError}</Text>
                       ) : (
-                        <Ionicons name="videocam-outline" size={30} color={COLORS.textSecondary} />
+                        <Text
+                          style={[
+                            showreelSetup.validationText,
+                            pendingShowreelAsset && pendingShowreelThumbAsset
+                              ? showreelSetup.validationReady
+                              : null,
+                          ]}
+                        >
+                          {!pendingShowreelAsset
+                            ? 'Choose a video file to continue.'
+                            : !pendingShowreelThumbAsset
+                            ? 'Thumbnail required before upload.'
+                            : 'Ready to upload.'}
+                        </Text>
                       )}
                     </View>
 
-                    <TouchableOpacity
-                      activeOpacity={0.9}
-                      onPress={pickPendingShowreelThumbnail}
-                      style={[
-                        showreelSetup.thumbPicker,
-                        {
-                          backgroundColor: pendingShowreelThumbPreviewUri ? '#000' : editModalCard,
-                          borderColor: pendingShowreelThumbPreviewUri
-                            ? COLORS.primary
-                            : pendingShowreelError
-                            ? COLORS.danger
-                            : COLORS.border,
-                        },
-                      ]}
-                    >
-                      {pendingShowreelThumbPreviewUri ? (
-                        <Image
-                          source={{ uri: pendingShowreelThumbPreviewUri }}
-                          style={showreelSetup.previewMedia}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <View style={{ alignItems: 'center', gap: 8 }}>
-                          <Ionicons name="image-outline" size={26} color={COLORS.primary} />
-                          <Text style={[showreelSetup.thumbText, { color: COLORS.textPrimary }]}>
-                            Add thumbnail
-                          </Text>
-                          <Text style={[showreelSetup.thumbHint, { color: COLORS.textSecondary }]}>
-                            Required
-                          </Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  </View>
+                    <View style={showreelSetup.footerActions}>
+                      <Pressable
+                        onPress={() => {
+                          setShowreelCategoryModalVisible(false);
+                          clearPendingShowreelDraft();
+                        }}
+                        style={(state: any) => [
+                          showreelSetup.footerButton,
+                          showreelSetup.footerButtonGhost,
+                          state.hovered && showreelSetup.footerButtonGhostHover,
+                        ]}
+                      >
+                        <Text style={showreelSetup.footerButtonGhostText}>Cancel</Text>
+                      </Pressable>
 
-                  <View style={showreelSetup.sectionHeader}>
-                    <Text style={[showreelSetup.sectionLabel, { color: COLORS.textSecondary }]}>
-                      Category
-                    </Text>
-                    <Text style={[showreelSetup.sectionHint, { color: COLORS.textSecondary }]}>
-                      Choose where this reel belongs
-                    </Text>
-                  </View>
-
-                  <View style={showreelSetup.categoryGrid}>
-                    {SHOWREEL_CATEGORIES.map((cat) => {
-                      const selected = selectedShowreelCategory === cat;
-                      const meta = SHOWREEL_CATEGORY_META[cat];
-
-                      return (
-                        <TouchableOpacity
-                          key={cat}
-                          activeOpacity={0.9}
-                          onPress={() => {
-                            setSelectedShowreelCategory(cat);
-                            setPendingShowreelError('');
-                          }}
-                          style={[
-                            showreelSetup.categoryCard,
-                            {
-                              backgroundColor: selected ? editModalPillSelected : editModalCard,
-                              borderColor: selected ? COLORS.primary : COLORS.border,
-                            },
-                          ]}
-                        >
-                          <View
-                            style={[
-                              showreelSetup.categoryIcon,
-                              {
-                                backgroundColor: selected ? COLORS.primary : COLORS.backgroundAlt,
-                                borderColor: selected ? COLORS.primary : COLORS.border,
-                              },
-                            ]}
-                          >
-                            <Ionicons
-                              name={meta.icon as any}
-                              size={18}
-                              color={selected ? COLORS.textOnPrimary : COLORS.textSecondary}
-                            />
-                          </View>
-
-                          <View style={{ flex: 1, minWidth: 0 }}>
-                            <Text
-                              style={[
-                                showreelSetup.categoryTitle,
-                                { color: selected ? COLORS.textPrimary : COLORS.textPrimary },
-                              ]}
-                              numberOfLines={1}
-                            >
-                              {cat}
-                            </Text>
-                            <Text
-                              style={[showreelSetup.categoryDetail, { color: COLORS.textSecondary }]}
-                              numberOfLines={1}
-                            >
-                              {meta.detail}
-                            </Text>
-                          </View>
-
-                          {selected ? (
-                            <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
-                          ) : null}
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-
-                  {!!pendingShowreelError && (
-                    <Text style={[showreelSetup.errorText, { color: COLORS.danger }]}>
-                      {pendingShowreelError}
-                    </Text>
-                  )}
-
-                  <Text style={[showreelSetup.footnote, { color: COLORS.textSecondary }]}>
-                    Your video uploads to Overlooked. Once uploaded, it may take a little time before playback is ready.
-                  </Text>
-
-                  <View style={showreelSetup.actions}>
-                    <TouchableOpacity
-                      style={[
-                        styles.ghostBtn,
-                        {
-                          flex: 1,
-                          backgroundColor: editModalPill,
-                          borderColor: COLORS.border,
-                        },
-                      ]}
-                      onPress={() => {
-                        setShowreelCategoryModalVisible(false);
-                        clearPendingShowreelDraft();
-                      }}
-                    >
-                      <Text style={[styles.ghostBtnText, { color: COLORS.textPrimary }]}>Cancel</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.primaryBtn,
-                        {
-                          flex: 1,
-                          backgroundColor: COLORS.primary,
-                          borderColor: COLORS.primary,
-                          opacity: pendingShowreelThumbAsset ? 1 : 0.68,
-                        },
-                      ]}
-                      onPress={confirmUploadShowreel}
-                    >
-                      <Text style={[styles.primaryBtnText, { color: COLORS.textOnPrimary }]}>
-                        Upload
-                      </Text>
-                    </TouchableOpacity>
+                      <Pressable
+                        disabled={!pendingShowreelAsset || !pendingShowreelThumbAsset}
+                        onPress={confirmUploadShowreel}
+                        style={(state: any) => [
+                          showreelSetup.footerButton,
+                          showreelSetup.footerButtonPrimary,
+                          (!pendingShowreelAsset || !pendingShowreelThumbAsset) &&
+                            showreelSetup.footerButtonDisabled,
+                          state.hovered &&
+                            pendingShowreelAsset &&
+                            pendingShowreelThumbAsset &&
+                            showreelSetup.footerButtonPrimaryHover,
+                        ]}
+                      >
+                        <Text style={showreelSetup.footerButtonPrimaryText}>Upload</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 </>
               )}
-              </ScrollView>
             </View>
           </View>
         )}
@@ -10654,7 +10959,7 @@ heroIdentityEpicDesktop: {
 
   profileWatchOverlay: {
     flex: 1,
-    backgroundColor: "#050505",
+    backgroundColor: "#000000",
     alignItems: "stretch",
     justifyContent: "flex-start",
   },
@@ -10662,9 +10967,9 @@ heroIdentityEpicDesktop: {
     position: "absolute",
     zIndex: 100,
     elevation: 100,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -10712,14 +11017,14 @@ heroIdentityEpicDesktop: {
   },
   profileWatchDetailsPanel: {
     width: "100%",
-    paddingTop: 2,
+    paddingTop: 0,
     paddingBottom: 8,
   },
   profileWatchSideRail: {
     flexShrink: 0,
     minWidth: 0,
-    paddingTop: 2,
-    paddingRight: 6,
+    paddingTop: 1,
+    paddingRight: 2,
   },
   showreelPreviewOverlay: {
     flex: 1,
@@ -10800,14 +11105,14 @@ heroIdentityEpicDesktop: {
   },
   profileWatchPlayerWrap: {
     width: "100%",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "center",
-    borderRadius: 0,
+    borderRadius: Platform.OS === "web" ? 10 : 0,
     overflow: "hidden",
     backgroundColor: "#000",
-    borderWidth: 0,
-    borderColor: "transparent",
-    marginBottom: 12,
+    borderWidth: Platform.OS === "web" ? StyleSheet.hairlineWidth : 0,
+    borderColor: "rgba(255,255,255,0.08)",
+    marginBottom: 10,
   },
   profileWatchPlayerFallback: {
     flex: 1,
@@ -10816,51 +11121,51 @@ heroIdentityEpicDesktop: {
     paddingHorizontal: 18,
   },
   profileWatchMetaBlock: {
-    paddingBottom: 4,
-    marginBottom: 10,
+    paddingBottom: 0,
+    marginBottom: 8,
   },
   profileWatchTitle: {
     color: COLORS.textPrimary,
     fontFamily: FONT_OBLIVION,
     fontWeight: "900",
-    fontSize: 18,
-    lineHeight: 22,
+    fontSize: 19,
+    lineHeight: 24,
   },
   profileWatchCreatorRow: {
-    marginTop: 10,
+    marginTop: 7,
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 10,
   },
   profileWatchCreatorTap: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
     maxWidth: "100%",
     minWidth: 0,
   },
   profileWatchSupportButton: {
-    minHeight: 26,
-    borderRadius: 999,
+    minHeight: 24,
+    borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 9,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
+    gap: 3,
   },
   profileWatchSupportText: {
     fontFamily: FONT_OBLIVION,
     fontWeight: "900",
-    fontSize: 9.5,
-    letterSpacing: 0.2,
+    fontSize: 9,
+    letterSpacing: 0.35,
     textTransform: "uppercase",
   },
   profileWatchCreatorAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -10882,44 +11187,44 @@ heroIdentityEpicDesktop: {
     color: COLORS.textPrimary,
     fontFamily: FONT_OBLIVION,
     fontWeight: "900",
-    fontSize: 13,
-    lineHeight: 16,
+    fontSize: 12.5,
+    lineHeight: 15,
   },
   profileWatchCreatorMeta: {
-    marginTop: 2,
+    marginTop: 1,
     color: "rgba(216,210,200,0.62)",
     fontFamily: FONT_OBLIVION,
     fontWeight: "700",
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 10.5,
+    lineHeight: 13,
   },
   profileWatchCreditsInlineWrap: {
     flex: 1,
-    minWidth: Platform.OS === "web" ? 220 : 150,
+    minWidth: Platform.OS === "web" ? 200 : 150,
     maxWidth: "100%",
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: 7,
+    gap: 10,
   },
   profileWatchCreditPerson: {
-    maxWidth: Platform.OS === "web" ? 220 : 178,
+    maxWidth: Platform.OS === "web" ? 185 : 178,
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 7,
     paddingRight: 4,
   },
   profileWatchCreditAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: "#050505",
   },
   profileWatchCreditAvatarFallback: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(198,166,100,0.14)",
@@ -10930,7 +11235,7 @@ heroIdentityEpicDesktop: {
     color: COLORS.primary,
     fontFamily: FONT_OBLIVION,
     fontWeight: "900",
-    fontSize: 11,
+    fontSize: 10.5,
   },
   profileWatchCreditTextWrap: {
     minWidth: 0,
@@ -10941,36 +11246,38 @@ heroIdentityEpicDesktop: {
     fontFamily: FONT_OBLIVION,
     fontWeight: "900",
     fontSize: 11,
+    lineHeight: 13,
   },
   profileWatchCreditRole: {
-    marginTop: 1,
+    marginTop: 0,
     color: COLORS.primary,
     fontFamily: FONT_OBLIVION,
     fontWeight: "800",
     fontSize: 10,
+    lineHeight: 12,
   },
   profileWatchActionsRow: {
-    marginTop: 12,
+    marginTop: 9,
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: 7,
+    gap: 6,
   },
   profileWatchActionChip: {
-    minHeight: 34,
-    borderRadius: 999,
-    paddingHorizontal: 11,
-    paddingVertical: 7,
+    minHeight: 28,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     backgroundColor: "rgba(255,255,255,0.075)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.10)",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
+    gap: 4,
   },
   profileWatchActionChipIconOnly: {
-    width: 36,
+    width: 30,
     paddingHorizontal: 0,
   },
   profileWatchActionChipActive: {
@@ -10986,13 +11293,13 @@ heroIdentityEpicDesktop: {
     fontFamily: FONT_OBLIVION,
     fontWeight: "900",
     fontSize: 11,
-    letterSpacing: 0.2,
+    letterSpacing: 0,
   },
   profileWatchActionMeta: {
     color: "rgba(216,210,200,0.54)",
     fontFamily: FONT_OBLIVION,
     fontWeight: "800",
-    fontSize: 11,
+    fontSize: 10.5,
   },
   profileWatchDangerText: {
     color: COLORS.danger,
@@ -11003,31 +11310,53 @@ heroIdentityEpicDesktop: {
   },
   profileWatchMoreMenu: {
     alignSelf: "flex-start",
-    marginTop: 8,
-    borderRadius: 14,
+    marginTop: 6,
+    borderRadius: 10,
     borderWidth: 1,
-    paddingVertical: 6,
-    minWidth: 172,
+    paddingVertical: 4,
+    minWidth: 158,
   },
   profileWatchMoreMenuItem: {
-    minHeight: 36,
-    paddingHorizontal: 12,
+    minHeight: 32,
+    paddingHorizontal: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
   profileWatchMoreMenuText: {
     fontFamily: FONT_OBLIVION,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
   },
+  profileWatchDescriptionPanel: {
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  profileWatchDescriptionMeta: {
+    color: COLORS.textPrimary,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "900",
+    fontSize: 11.5,
+    lineHeight: 15,
+  },
+  profileWatchDescriptionText: {
+    marginTop: 4,
+    color: COLORS.textSecondary,
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "600",
+    fontSize: 11.5,
+    lineHeight: 16,
+  },
   profileWatchCommentsPreview: {
-    borderRadius: 14,
+    borderRadius: 8,
     backgroundColor: "#0B0B0B",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
     marginBottom: 10,
   },
   profileWatchCommentsPreviewHeader: {
@@ -11109,33 +11438,37 @@ heroIdentityEpicDesktop: {
     fontSize: 12,
   },
   profileWatchSuggestionsSection: {
-    paddingTop: 14,
+    paddingTop: 0,
     paddingBottom: 4,
   },
   profileWatchSectionTitle: {
     color: COLORS.textPrimary,
     fontFamily: FONT_OBLIVION,
     fontWeight: "900",
-    fontSize: 14,
-    letterSpacing: 0.8,
+    fontSize: 13,
+    letterSpacing: 0.6,
     textTransform: "uppercase",
     marginBottom: 8,
   },
   profileWatchSuggestionsList: {
-    gap: 8,
+    gap: 5,
   },
   profileWatchSuggestionCard: {
     flexDirection: "row",
     gap: 10,
-    borderRadius: 12,
+    borderRadius: 8,
     backgroundColor: "transparent",
-    paddingVertical: 5,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
   },
   profileWatchSuggestionThumb: {
     width: 128,
     aspectRatio: 16 / 9,
-    borderRadius: 9,
+    borderRadius: 7,
     backgroundColor: "#080808",
+  },
+  profileWatchSuggestionThumbDesktop: {
+    width: 168,
   },
   profileWatchSuggestionFallback: {
     alignItems: "center",
@@ -11153,14 +11486,23 @@ heroIdentityEpicDesktop: {
     fontFamily: FONT_OBLIVION,
     fontWeight: "900",
     fontSize: 13,
-    lineHeight: 16,
+    lineHeight: 17,
   },
-  profileWatchSuggestionMeta: {
-    marginTop: 6,
+  profileWatchSuggestionCreator: {
+    marginTop: 4,
     color: "rgba(216,210,200,0.55)",
     fontFamily: FONT_OBLIVION,
     fontWeight: "700",
-    fontSize: 11,
+    fontSize: 11.5,
+    lineHeight: 14,
+  },
+  profileWatchSuggestionMeta: {
+    marginTop: 2,
+    color: "rgba(216,210,200,0.45)",
+    fontFamily: FONT_OBLIVION,
+    fontWeight: "700",
+    fontSize: 10.5,
+    lineHeight: 13,
   },
 
   submissionModalHeader: {
@@ -11199,17 +11541,17 @@ heroIdentityEpicDesktop: {
     marginTop: 12,
   },
   profileCommentsPanel: {
-    marginTop: 14,
-    borderRadius: 18,
+    marginTop: 10,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
     backgroundColor: "#080808",
     overflow: "hidden",
   },
   profileCommentsHeader: {
-    minHeight: 58,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.07)",
     flexDirection: "row",
@@ -11223,9 +11565,9 @@ heroIdentityEpicDesktop: {
     gap: 8,
   },
   profileCommentsCollapseBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.05)",
@@ -11235,16 +11577,16 @@ heroIdentityEpicDesktop: {
   profileCommentsTitle: {
     color: COLORS.textPrimary,
     fontFamily: FONT_OBLIVION,
-    fontSize: 14,
+    fontSize: 12.5,
     fontWeight: "900",
-    letterSpacing: 1.2,
+    letterSpacing: 0.5,
     textTransform: "uppercase",
   },
   profileCommentsSubtitle: {
-    marginTop: 2,
+    marginTop: 1,
     color: COLORS.textSecondary,
     fontFamily: FONT_OBLIVION,
-    fontSize: 11,
+    fontSize: 10.5,
   },
   profileCommentsLoading: {
     minHeight: 86,
@@ -11270,37 +11612,39 @@ heroIdentityEpicDesktop: {
     fontSize: 12,
   },
   profileCommentsList: {
-    maxHeight: 260,
+    maxHeight: 220,
   },
   profileCommentsListContent: {
-    padding: 12,
-    gap: 10,
-    paddingBottom: 14,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 8,
+    gap: 2,
   },
   profileCommentCard: {
     flexDirection: "row",
-    gap: 10,
-    borderRadius: 14,
-    backgroundColor: "#0D0D0D",
-    borderWidth: 1,
+    gap: 9,
+    borderRadius: 0,
+    backgroundColor: "transparent",
+    borderWidth: 0,
     borderColor: "rgba(255,255,255,0.06)",
-    padding: 10,
+    paddingHorizontal: 0,
+    paddingVertical: 7,
   },
   profileCommentAvatarTap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
   },
   profileCommentAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: "#111",
   },
   profileCommentAvatarFallback: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#111",
@@ -11332,71 +11676,71 @@ heroIdentityEpicDesktop: {
     minWidth: 0,
     color: COLORS.textPrimary,
     fontFamily: FONT_OBLIVION,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "900",
   },
   profileCommentText: {
-    marginTop: 4,
+    marginTop: 3,
     color: COLORS.textSecondary,
     fontFamily: FONT_OBLIVION,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12.5,
+    lineHeight: 17,
   },
   profileCommentReport: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.035)",
+    gap: 3,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 0,
+    backgroundColor: "transparent",
   },
   profileCommentReportText: {
     color: COLORS.textSecondary,
     fontFamily: FONT_OBLIVION,
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: "900",
-    letterSpacing: 0.7,
+    letterSpacing: 0.15,
     textTransform: "uppercase",
   },
   profileCommentComposer: {
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.07)",
-    padding: 10,
+    padding: 8,
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: 9,
+    gap: 7,
   },
   profileCommentInput: {
     flex: 1,
-    minHeight: 46,
-    maxHeight: 110,
-    borderRadius: 14,
+    minHeight: 36,
+    maxHeight: 82,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
     backgroundColor: "#0F0F0F",
     color: COLORS.textPrimary,
     fontFamily: FONT_OBLIVION,
-    fontSize: 13,
-    lineHeight: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    fontSize: 12,
+    lineHeight: 17,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
   },
   profileCommentPostBtn: {
-    minHeight: 46,
-    minWidth: 72,
-    borderRadius: 14,
+    minHeight: 36,
+    minWidth: 64,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
   },
   profileCommentPostText: {
     color: "#000",
     fontFamily: FONT_OBLIVION,
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: "900",
-    letterSpacing: 0.8,
+    letterSpacing: 0.45,
     textTransform: "uppercase",
   },
 
@@ -11981,224 +12325,384 @@ const showreelSetup = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 18,
-    paddingVertical: 22,
+    paddingVertical: 18,
   },
   panel: {
     width: '100%',
-    maxWidth: 700,
-    maxHeight: '96%',
-    borderRadius: 18,
+    maxWidth: 900,
+    maxHeight: '92%',
+    borderRadius: 14,
     borderWidth: 1,
-    padding: 20,
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.34,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 18 },
   },
-  eyebrow: {
-    fontFamily: FONT_OBLIVION,
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 2.1,
-    textTransform: 'uppercase',
-    textAlign: 'center',
-    marginBottom: 4,
+  header: {
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(198,166,100,0.14)',
+    backgroundColor: '#0B0907',
   },
   title: {
     fontFamily: FONT_OBLIVION,
-    fontSize: 21,
+    color: '#F7F2E8',
+    fontSize: 18,
     fontWeight: '900',
-    letterSpacing: 2.4,
-    textTransform: 'uppercase',
-    textAlign: 'center',
+    letterSpacing: 0.2,
   },
-  body: {
+  subtitle: {
+    marginTop: 4,
+    fontFamily: FONT_OBLIVION,
+    color: 'rgba(247,242,232,0.58)',
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 17,
+  },
+  bodyScroll: {
+    maxHeight: 580,
+  },
+  bodyContent: {
+    padding: 18,
+    paddingBottom: 16,
+  },
+  uploadGrid: {
+    gap: 16,
+  },
+  uploadGridDesktop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  videoColumn: {
+    flex: 1.5,
+    minWidth: 0,
+  },
+  sideColumn: {
+    flex: 1,
+    minWidth: 270,
+    gap: 13,
+  },
+  fieldLabel: {
+    fontFamily: FONT_OBLIVION,
+    color: '#F7F2E8',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.25,
+    marginBottom: 7,
+  },
+  videoDropzone: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(247,242,232,0.12)',
+    backgroundColor: '#020202',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  thumbDropzone: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(247,242,232,0.12)',
+    backgroundColor: '#11100E',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dropzoneHover: {
+    borderColor: 'rgba(198,166,100,0.58)',
+    backgroundColor: '#15120D',
+  },
+  dropzoneSelected: {
+    borderColor: 'rgba(198,166,100,0.42)',
+  },
+  dropzoneError: {
+    borderColor: 'rgba(255,122,122,0.82)',
+  },
+  dropzoneEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 22,
+    gap: 7,
+  },
+  dropzoneEmptyCompact: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    gap: 5,
+  },
+  dropzoneTitle: {
+    color: '#F7F2E8',
     fontFamily: FONT_OBLIVION,
     fontSize: 13,
-    lineHeight: 19,
+    fontWeight: '800',
     textAlign: 'center',
-    marginTop: 8,
+    lineHeight: 18,
   },
-  previewGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'flex-start',
-    gap: 12,
-    marginTop: 16,
+  dropzoneTitleSmall: {
+    color: '#F7F2E8',
+    fontFamily: FONT_OBLIVION,
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+    lineHeight: 16,
   },
-  videoPreview: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 400,
-    minWidth: 300,
-    aspectRatio: 16 / 9,
-    borderRadius: 14,
-    borderWidth: 1,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  thumbPicker: {
-    flexGrow: 0.68,
-    flexShrink: 1,
-    flexBasis: 270,
-    minWidth: 260,
-    aspectRatio: 16 / 9,
-    borderRadius: 14,
-    borderWidth: 1,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
+  dropzoneHint: {
+    color: 'rgba(247,242,232,0.48)',
+    fontFamily: FONT_OBLIVION,
+    fontSize: 10.5,
+    fontWeight: '600',
   },
   previewMedia: {
     width: '100%',
     height: '100%',
   },
-  progressTitle: {
+  videoChangeBadge: {
+    position: 'absolute',
+    right: 9,
+    bottom: 9,
+    minHeight: 26,
+    borderRadius: 13,
+    paddingHorizontal: 9,
+    backgroundColor: 'rgba(0,0,0,0.66)',
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.32)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  videoChangeBadgeHover: {
+    backgroundColor: 'rgba(20,16,10,0.86)',
+    borderColor: 'rgba(198,166,100,0.58)',
+  },
+  videoChangeText: {
+    color: '#F6E7BD',
     fontFamily: FONT_OBLIVION,
-    fontSize: 18,
+    fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 2.2,
-    lineHeight: 24,
-    textTransform: 'uppercase',
-    textAlign: 'center',
   },
-  progressBody: {
+  helperText: {
+    marginTop: 8,
+    color: 'rgba(247,242,232,0.46)',
     fontFamily: FONT_OBLIVION,
-    fontSize: 13,
-    fontWeight: '500',
-    lineHeight: 20,
-    textAlign: 'center',
-    marginTop: 9,
+    fontSize: 10.5,
+    lineHeight: 15,
   },
-  progressFootnote: {
-    fontFamily: FONT_OBLIVION,
-    fontSize: 12,
-    fontWeight: '500',
-    lineHeight: 18,
-    textAlign: 'center',
-    marginTop: 14,
-  },
-  progressPercent: {
-    fontFamily: FONT_OBLIVION,
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-    textAlign: 'center',
-    marginTop: 13,
-  },
-  thumbText: {
-    fontFamily: FONT_OBLIVION,
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  thumbHint: {
-    fontFamily: FONT_OBLIVION,
-    fontSize: 11,
+  categoryBlock: {
+    marginTop: 2,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
     gap: 10,
-    marginTop: 16,
-    marginBottom: 9,
-  },
-  sectionLabel: {
-    fontFamily: FONT_OBLIVION,
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
+    marginBottom: 8,
   },
   sectionHint: {
+    color: 'rgba(247,242,232,0.44)',
     fontFamily: FONT_OBLIVION,
-    fontSize: 11,
+    fontSize: 10.5,
+    fontWeight: '600',
   },
   categoryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 9,
+    gap: 7,
   },
   categoryCard: {
-    flexBasis: '48%',
-    flexGrow: 1,
-    minWidth: 210,
-    minHeight: 66,
-    borderRadius: 14,
+    minHeight: 42,
+    borderRadius: 9,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: 'rgba(247,242,232,0.10)',
+    backgroundColor: '#11100E',
+    paddingHorizontal: 9,
+    paddingVertical: 7,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
+  },
+  categoryCardHover: {
+    borderColor: 'rgba(247,242,232,0.20)',
+    backgroundColor: '#17140F',
+  },
+  categoryCardSelected: {
+    borderColor: '#C6A664',
+    backgroundColor: 'rgba(198,166,100,0.10)',
   },
   categoryIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     borderWidth: 1,
+    borderColor: 'rgba(247,242,232,0.12)',
+    backgroundColor: '#090806',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  categoryIconSelected: {
+    borderColor: 'rgba(198,166,100,0.58)',
+    backgroundColor: 'rgba(198,166,100,0.12)',
+  },
   categoryTitle: {
+    color: '#F7F2E8',
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11.5,
+    fontWeight: '800',
+  },
+  categoryDetail: {
+    marginTop: 1,
+    color: 'rgba(247,242,232,0.44)',
+    fontFamily: FONT_OBLIVION,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  footer: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(198,166,100,0.14)',
+    backgroundColor: '#0B0907',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  validationWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  validationText: {
+    color: 'rgba(247,242,232,0.50)',
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  validationReady: {
+    color: 'rgba(198,166,100,0.92)',
+  },
+  errorText: {
+    color: '#FF8A8A',
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+    fontWeight: '800',
+    lineHeight: 15,
+  },
+  footerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  footerButton: {
+    minHeight: 34,
+    minWidth: 94,
+    borderRadius: 17,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  footerButtonGhost: {
+    backgroundColor: '#10100E',
+    borderColor: 'rgba(247,242,232,0.14)',
+  },
+  footerButtonGhostHover: {
+    backgroundColor: '#17140F',
+    borderColor: 'rgba(247,242,232,0.24)',
+  },
+  footerButtonPrimary: {
+    backgroundColor: '#C6A664',
+    borderColor: '#C6A664',
+  },
+  footerButtonPrimaryHover: {
+    backgroundColor: '#D3B673',
+    borderColor: '#D3B673',
+  },
+  footerButtonDisabled: {
+    opacity: 0.48,
+  },
+  footerButtonGhostText: {
+    color: '#F7F2E8',
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  footerButtonPrimaryText: {
+    color: '#0A0805',
+    fontFamily: FONT_OBLIVION,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  progressState: {
+    padding: 18,
+    gap: 14,
+  },
+  progressTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  progressIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.35)',
+    backgroundColor: 'rgba(198,166,100,0.10)',
+  },
+  progressTitle: {
+    color: '#F7F2E8',
     fontFamily: FONT_OBLIVION,
     fontSize: 13,
     fontWeight: '900',
   },
-  categoryDetail: {
+  progressBody: {
+    marginTop: 2,
+    color: 'rgba(247,242,232,0.52)',
     fontFamily: FONT_OBLIVION,
     fontSize: 11,
-    marginTop: 2,
+    fontWeight: '600',
+    lineHeight: 15,
   },
-  errorText: {
+  progressPercent: {
+    color: '#C6A664',
     fontFamily: FONT_OBLIVION,
-    fontSize: 12,
-    fontWeight: '800',
-    textAlign: 'center',
-    marginTop: 10,
-  },
-  footnote: {
-    fontFamily: FONT_OBLIVION,
-    fontSize: 12,
-    lineHeight: 18,
-    textAlign: 'center',
-    marginTop: 12,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 16,
-  },
-  progressIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    marginBottom: 14,
+    fontSize: 18,
+    fontWeight: '900',
   },
   progressThumb: {
-    width: 192,
-    height: 108,
-    borderRadius: 12,
-    alignSelf: 'center',
-    marginTop: 16,
+    width: 160,
+    aspectRatio: 16 / 9,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: 'rgba(247,242,232,0.10)',
+    backgroundColor: '#000',
   },
   progressTrack: {
-    height: 7,
+    height: 6,
     borderRadius: 999,
-    borderWidth: 1,
     overflow: 'hidden',
-    marginTop: 18,
+    backgroundColor: '#15130F',
+    borderWidth: 1,
+    borderColor: 'rgba(247,242,232,0.10)',
   },
   progressFill: {
     height: '100%',
     borderRadius: 999,
+    backgroundColor: '#C6A664',
+  },
+  progressFootnote: {
+    color: 'rgba(247,242,232,0.48)',
+    fontFamily: FONT_OBLIVION,
+    fontSize: 10.5,
+    lineHeight: 15,
   },
 });
 

@@ -672,6 +672,23 @@ function formatPlayerTime(seconds?: number | null) {
   return `${mins}:${String(secs).padStart(2, '0')}`;
 }
 
+function formatWatchDateShort(dateString?: string | null) {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  if (!Number.isFinite(date.getTime())) return null;
+
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function formatVoteCount(count?: number | null) {
+  const value = Math.max(0, Math.floor(count ?? 0));
+  return `${value} vote${value === 1 ? '' : 's'}`;
+}
+
 /* ---------------- Reddit-style vote arrow ---------------- */
 const VoteArrow = ({ up = true, active = false, disabled = false }: { up?: boolean; active?: boolean; disabled?: boolean }) => (
   <View
@@ -2700,13 +2717,13 @@ const FeaturedScreen = () => {
     }),
     [colors]
   );
-  const featuredBackground = isLight ? colors.background : '#000000';
-  const featuredBackgroundAlt = isLight ? colors.backgroundAlt : '#050505';
-  const featuredSurface = isLight ? colors.card : '#080808';
-  const featuredSoftSurface = isLight ? colors.backgroundAlt : '#0B0B0B';
-  const featuredBorder = isLight ? colors.border : 'rgba(255,255,255,0.08)';
+  const featuredBackground = isLight ? '#FAF7F1' : '#000000';
+  const featuredBackgroundAlt = isLight ? '#F3ECDF' : '#050505';
+  const featuredSurface = isLight ? '#FFFDF8' : '#090909';
+  const featuredSoftSurface = isLight ? '#F4EBDD' : '#0B0B0B';
+  const featuredBorder = isLight ? 'rgba(93,72,43,0.16)' : 'rgba(255,255,255,0.08)';
   const featuredText = isLight ? colors.textPrimary : '#F4F1EA';
-  const featuredSubText = isLight ? colors.textSecondary : 'rgba(237,235,230,0.62)';
+  const featuredSubText = isLight ? '#62584B' : 'rgba(237,235,230,0.62)';
  const { refreshKey, triggerAppRefresh } = useAppRefresh();
 const isGuest = !userId;
 const openShareSlug = route.params?.openShareSlug ?? null;
@@ -2721,9 +2738,11 @@ const isPhoneLikeWeb = Platform.OS === 'web' && winW <= 820;
 const isMobile = Platform.OS !== 'web' || isPhoneLikeWeb;
 const isWideWeb = Platform.OS === 'web' && !isPhoneLikeWeb && winW >= 980;
 const useDesktopWatch = isWideWeb;
-const watchDesktopPadX = 18;
-const watchDesktopRailW = 360;
-const watchDesktopGap = 22;
+const watchDesktopPadX = 22;
+const watchDesktopRailW = useDesktopWatch
+  ? Math.min(520, Math.max(340, Math.floor(winW * 0.26)))
+  : 0;
+const watchDesktopGap = 20;
 const featuredWatchMainW = useDesktopWatch
   ? Math.max(360, winW - watchDesktopPadX * 2 - watchDesktopGap - watchDesktopRailW)
   : Math.min(Platform.OS === 'web' ? winW - 72 : winW, Platform.OS === 'web' ? 792 : 860);
@@ -6209,7 +6228,7 @@ maxToRenderPerBatch={2}
                   directUri={previewMuxUri}
                   width={featuredWatchMainW}
                   maxHeight={
-                    useDesktopWatch ? Math.min(winH * 0.68, 660) : Math.min(winH * 0.34, 340)
+                    useDesktopWatch ? Math.min(winH * 0.7, 720) : Math.min(winH * 0.34, 340)
                   }
                   autoPlay={previewMediaReady && activeId === `preview-${previewItem.id}`}
                   playRequestKey={previewPlayKey}
@@ -6300,17 +6319,19 @@ maxToRenderPerBatch={2}
                           ? isLight
                             ? 'rgba(198,166,100,0.12)'
                             : 'rgba(198,166,100,0.10)'
+                          : 'transparent',
+                        borderColor: isSupported
+                          ? 'rgba(198,166,100,0.32)'
                           : isLight
-                          ? colors.card
-                          : '#101010',
-                        borderColor: isSupported ? 'rgba(198,166,100,0.32)' : featuredBorder,
+                          ? 'rgba(20,17,13,0.14)'
+                          : 'rgba(255,255,255,0.12)',
                         opacity: busy ? 0.62 : 1,
                       },
                     ]}
                   >
                     <Ionicons
                       name={isSupported ? 'checkmark-circle-outline' : 'star-outline'}
-                      size={13}
+                      size={12}
                       color={isSupported ? colors.primary : featuredText}
                     />
                     <Text
@@ -6420,7 +6441,7 @@ maxToRenderPerBatch={2}
               >
                 <Ionicons
                   name={votedIds.has(previewItem.id) ? 'heart' : 'heart-outline'}
-                  size={18}
+                  size={16}
                   color={votedIds.has(previewItem.id) ? colors.primary : featuredText}
                 />
                 <Text style={[styles.watchActionText, { color: featuredText }]}>
@@ -6445,7 +6466,7 @@ maxToRenderPerBatch={2}
                   },
                 ]}
               >
-                <Ionicons name="chatbubble-ellipses-outline" size={18} color={featuredText} />
+                <Ionicons name="chatbubble-ellipses-outline" size={16} color={featuredText} />
                 <Text style={[styles.watchActionText, { color: featuredText }]}>Comment</Text>
                 <Text style={[styles.watchActionMeta, { color: featuredSubText }]}>
                   {commentCounts[previewItem.id] ?? rootComments.length}
@@ -6466,7 +6487,7 @@ maxToRenderPerBatch={2}
                   },
                 ]}
               >
-                <Ionicons name="arrow-redo-outline" size={18} color={featuredText} />
+                <Ionicons name="arrow-redo-outline" size={16} color={featuredText} />
                 <Text style={[styles.watchActionText, { color: featuredText }]}>Share</Text>
               </TouchableOpacity>
 
@@ -6494,7 +6515,7 @@ maxToRenderPerBatch={2}
                     },
                 ]}
               >
-                <Ionicons name="people-outline" size={17} color={featuredText} />
+                <Ionicons name="people-outline" size={16} color={featuredText} />
                 <Text style={[styles.watchActionText, { color: featuredText }]}>Credits</Text>
                 <Text style={[styles.watchActionMeta, { color: featuredSubText }]}>
                   {((previewItem as any).collaborators || []).length}
@@ -6513,7 +6534,7 @@ maxToRenderPerBatch={2}
                   },
                 ]}
               >
-                <Ionicons name="ellipsis-horizontal" size={18} color={featuredText} />
+                <Ionicons name="ellipsis-horizontal" size={16} color={featuredText} />
               </TouchableOpacity>
             </View>
 
@@ -6705,13 +6726,55 @@ maxToRenderPerBatch={2}
             ) : null}
           </View>
 
+          {(() => {
+            const watchGenre = String(
+              (previewItem as any).film_category || previewItem.category || 'Film'
+            );
+            const watchDuration = (previewItem as any).duration_seconds
+              ? formatPlayerTime((previewItem as any).duration_seconds)
+              : null;
+            const watchDate = formatWatchDateShort((previewItem as any).submitted_at);
+            const watchDescription = String((previewItem as any).description || '').trim();
+            const watchMetaParts = [
+              formatVoteCount(previewItem.votes),
+              watchDuration,
+              watchGenre,
+              watchDate,
+            ].filter(Boolean);
+
+            if (!watchDescription && watchMetaParts.length === 0) return null;
+
+            return (
+              <View
+                style={[
+                  styles.watchDescriptionPanel,
+                  {
+                    backgroundColor: isLight ? 'rgba(255,253,248,0.86)' : 'rgba(255,255,255,0.035)',
+                    borderColor: featuredBorder,
+                  },
+                ]}
+              >
+                {watchMetaParts.length > 0 ? (
+                  <Text style={[styles.watchDescriptionMeta, { color: featuredText }]} numberOfLines={1}>
+                    {watchMetaParts.join(' · ')}
+                  </Text>
+                ) : null}
+                {watchDescription ? (
+                  <Text style={[styles.watchDescriptionText, { color: featuredSubText }]} numberOfLines={4}>
+                    {watchDescription}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })()}
+
           {useDesktopWatch && previewCommentsExpanded ? (
             renderCommentsPanel(
               {
                 width: "100%",
                 maxWidth: "100%",
-                height: Math.max(340, Math.min(winH * 0.42, 520)),
-                borderRadius: 14,
+                height: Math.max(260, Math.min(winH * 0.34, 420)),
+                borderRadius: 10,
                 marginBottom: 12,
                 backgroundColor: featuredSurface,
                 borderColor: featuredBorder,
@@ -6785,7 +6848,13 @@ maxToRenderPerBatch={2}
           )}
             </View>
 
-            <View style={useDesktopWatch ? styles.watchSideColumn : undefined}>
+            <View
+              style={
+                useDesktopWatch
+                  ? [styles.watchSideColumn, { width: watchDesktopRailW }]
+                  : undefined
+              }
+            >
           <View
             style={[
               styles.watchSuggestionsSection,
@@ -6812,20 +6881,32 @@ maxToRenderPerBatch={2}
               showsVerticalScrollIndicator={useDesktopWatch}
             >
               {previewSuggestions.map((item) => {
+                const suggestionGenre = String(
+                  (item as any).film_category || item.category || 'Film'
+                );
+                const suggestionDuration = (item as any).duration_seconds
+                  ? formatPlayerTime((item as any).duration_seconds)
+                  : null;
+                const suggestionMetaParts = [
+                  formatVoteCount(item.votes),
+                  suggestionDuration,
+                  suggestionGenre,
+                ].filter(Boolean);
+
                 return (
-                  <TouchableOpacity
+                  <Pressable
                     key={item.id}
-                    activeOpacity={0.9}
                     onPress={() => openPreview(item as any)}
-                    style={[
+                    style={(state: any) => [
                       styles.watchSuggestionCard,
                       useDesktopWatch && styles.watchSuggestionCardDesktop,
                       {
-                        backgroundColor: isLight ? colors.card : '#0B0B0B',
-                        borderColor: featuredBorder,
-                        borderWidth: StyleSheet.hairlineWidth,
-                        paddingHorizontal: 8,
-                        paddingVertical: 8,
+                        backgroundColor: state.hovered
+                          ? isLight
+                            ? 'rgba(20,17,13,0.055)'
+                            : 'rgba(255,255,255,0.055)'
+                          : 'transparent',
+                        opacity: state.pressed ? 0.86 : 1,
                       },
                     ]}
                   >
@@ -6838,11 +6919,14 @@ maxToRenderPerBatch={2}
                       <Text style={[styles.watchSuggestionTitle, { color: featuredText }]} numberOfLines={2}>
                         {item.title}
                       </Text>
-                      <Text style={[styles.watchSuggestionMeta, { color: featuredSubText }]} numberOfLines={1}>
+                      <Text style={[styles.watchSuggestionCreator, { color: featuredSubText }]} numberOfLines={1}>
                         {item.users?.full_name || 'Unknown'}
                       </Text>
+                      <Text style={[styles.watchSuggestionMeta, { color: featuredSubText }]} numberOfLines={1}>
+                        {suggestionMetaParts.join(' · ')}
+                      </Text>
                     </View>
-                  </TouchableOpacity>
+                  </Pressable>
                 );
               })}
             </ScrollView>
@@ -7813,24 +7897,24 @@ previewActionTextDanger: {
 },
 
 replyDangerBtn: {
-  minHeight: 24,
+  minHeight: 20,
   paddingVertical: 0,
-  paddingHorizontal: 8,
-  borderRadius: 999,
+  paddingHorizontal: 4,
+  borderRadius: 0,
   backgroundColor: 'transparent',
   borderWidth: 0,
-  marginRight: 8,
+  marginRight: 12,
   marginTop: 0,
   alignItems: 'center',
   justifyContent: 'center',
 },
 
 replyDangerBtnText: {
-  color: '#FF8A8A',
+  color: 'rgba(255,138,138,0.72)',
   fontFamily: SYSTEM_SANS,
   fontWeight: '900',
-  fontSize: 10,
-  letterSpacing: 0.5,
+  fontSize: 10.5,
+  letterSpacing: 0.15,
   textTransform: 'uppercase',
 },
 
@@ -8806,15 +8890,15 @@ watchContent: {
 },
 
 watchContentDesktop: {
-  paddingHorizontal: 18,
-  paddingTop: 10,
+  paddingHorizontal: 22,
+  paddingTop: 8,
   paddingBottom: 18,
 },
 
 watchDesktopColumns: {
   flexDirection: 'row',
   alignItems: 'flex-start',
-  gap: 22,
+  gap: 20,
 },
 
 watchMainColumn: {
@@ -8823,16 +8907,16 @@ watchMainColumn: {
 },
 
 watchSideColumn: {
-  width: 360,
   flexShrink: 0,
-  paddingTop: 0,
+  minWidth: 0,
+  paddingTop: 1,
 },
 
 watchTopBar: {
   flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'flex-end',
-  marginBottom: 8,
+  marginBottom: 6,
   zIndex: 30,
   elevation: 30,
 },
@@ -8856,9 +8940,9 @@ watchTopTitle: {
 },
 
 watchCloseCircle: {
-  width: 44,
-  height: 44,
-  borderRadius: 22,
+  width: 36,
+  height: 36,
+  borderRadius: 18,
   alignItems: 'center',
   justifyContent: 'center',
   backgroundColor: 'rgba(255,255,255,0.10)',
@@ -8872,17 +8956,17 @@ watchCloseIcon: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
   fontWeight: '800',
-  fontSize: 29,
-  lineHeight: 32,
+  fontSize: 24,
+  lineHeight: 27,
 },
 
 watchPlayerWrap: {
-  borderRadius: 0,
+  borderRadius: Platform.OS === 'web' ? 10 : 0,
   overflow: 'hidden',
   backgroundColor: '#000',
-  borderWidth: 0,
-  borderColor: 'transparent',
-  marginBottom: 12,
+  borderWidth: Platform.OS === 'web' ? StyleSheet.hairlineWidth : 0,
+  borderColor: 'rgba(255,255,255,0.08)',
+  marginBottom: 10,
   marginHorizontal: Platform.OS === 'web' ? 0 : -10,
 },
 
@@ -8897,58 +8981,58 @@ watchMetaBlock: {
   borderWidth: 0,
   paddingHorizontal: 0,
   paddingTop: 0,
-  paddingBottom: 4,
-  marginBottom: 10,
+  paddingBottom: 0,
+  marginBottom: 8,
 },
 
 watchTitle: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
   fontWeight: '900',
-  fontSize: 18,
-  lineHeight: 22,
+  fontSize: 19,
+  lineHeight: 24,
 },
 
 watchCreatorRow: {
-  marginTop: 10,
+  marginTop: 7,
   flexDirection: 'row',
   alignItems: 'center',
   flexWrap: 'wrap',
-  gap: 8,
+  gap: 10,
 },
 
 watchCreatorTap: {
   flexDirection: 'row',
   alignItems: 'center',
-  gap: 10,
+  gap: 8,
   flexShrink: 0,
-  maxWidth: Platform.OS === 'web' ? 230 : 128,
+  maxWidth: Platform.OS === 'web' ? 250 : 128,
   minWidth: 0,
 },
 
 watchSupportButton: {
-  minHeight: 26,
-  borderRadius: 999,
+  minHeight: 24,
+  borderRadius: 12,
   borderWidth: 1,
   paddingHorizontal: 9,
   flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: 4,
+  gap: 3,
 },
 
 watchSupportText: {
   fontFamily: SYSTEM_SANS,
   fontWeight: '900',
-  fontSize: 9.5,
-  letterSpacing: 0.2,
+  fontSize: 9,
+  letterSpacing: 0.35,
   textTransform: 'uppercase',
 },
 
 watchCreatorAvatar: {
-  width: 34,
-  height: 34,
-  borderRadius: 17,
+  width: 30,
+  height: 30,
+  borderRadius: 15,
   alignItems: 'center',
   justifyContent: 'center',
   backgroundColor: 'rgba(198,166,100,0.16)',
@@ -8966,54 +9050,55 @@ watchCreatorAvatarText: {
   color: GOLD,
   fontFamily: SYSTEM_SANS,
   fontWeight: '900',
-  fontSize: 15,
+  fontSize: 13,
 },
 
 watchCreatorName: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
   fontWeight: '900',
-  fontSize: 12,
+  fontSize: 12.5,
+  lineHeight: 15,
 },
 
 watchCreatorMeta: {
-  marginTop: 2,
+  marginTop: 1,
   color: 'rgba(237,235,230,0.55)',
   fontFamily: SYSTEM_SANS,
   fontWeight: '700',
-  fontSize: 11,
+  fontSize: 10.5,
 },
 
 watchCreditsInlineWrap: {
   flex: 1,
-  minWidth: Platform.OS === 'web' ? 220 : 150,
+  minWidth: Platform.OS === 'web' ? 200 : 150,
   maxWidth: '100%',
   flexDirection: 'row',
   flexWrap: 'wrap',
   alignItems: 'center',
-  gap: 7,
+  gap: 10,
 },
 
 watchCreditPerson: {
-  maxWidth: Platform.OS === 'web' ? 220 : 178,
+  maxWidth: Platform.OS === 'web' ? 185 : 178,
   minWidth: 0,
   flexDirection: 'row',
   alignItems: 'center',
-  gap: 8,
+  gap: 7,
   paddingRight: 4,
 },
 
 watchCreditAvatar: {
-  width: 30,
-  height: 30,
-  borderRadius: 15,
+  width: 28,
+  height: 28,
+  borderRadius: 14,
   backgroundColor: '#050505',
 },
 
 watchCreditAvatarFallback: {
-  width: 30,
-  height: 30,
-  borderRadius: 15,
+  width: 28,
+  height: 28,
+  borderRadius: 14,
   alignItems: 'center',
   justifyContent: 'center',
   backgroundColor: 'rgba(198,166,100,0.14)',
@@ -9025,7 +9110,7 @@ watchCreditAvatarInitial: {
   color: GOLD,
   fontFamily: SYSTEM_SANS,
   fontWeight: '900',
-  fontSize: 11,
+  fontSize: 10.5,
 },
 
 watchCreditTextWrap: {
@@ -9038,14 +9123,16 @@ watchCreditName: {
   fontFamily: SYSTEM_SANS,
   fontWeight: '900',
   fontSize: 11,
+  lineHeight: 13,
 },
 
 watchCreditRole: {
-  marginTop: 1,
+  marginTop: 0,
   color: GOLD,
   fontFamily: SYSTEM_SANS,
   fontWeight: '800',
   fontSize: 10,
+  lineHeight: 12,
 },
 
 watchCollaboratorsInlineScroll: {
@@ -9278,29 +9365,29 @@ watchCollaboratorRemoveBtn: {
 },
 
 watchActionsRow: {
-  marginTop: 12,
+  marginTop: 9,
   flexDirection: 'row',
   flexWrap: 'wrap',
   alignItems: 'center',
-  gap: 7,
+  gap: 6,
 },
 
 watchActionChip: {
-  minHeight: 34,
-  borderRadius: 999,
-  paddingHorizontal: 11,
-  paddingVertical: 7,
+  minHeight: 28,
+  borderRadius: 14,
+  paddingHorizontal: 10,
+  paddingVertical: 4,
   backgroundColor: 'rgba(255,255,255,0.075)',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.10)',
   flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: 5,
+  gap: 4,
 },
 
 watchActionChipIconOnly: {
-  width: 36,
+  width: 30,
   paddingHorizontal: 0,
 },
 
@@ -9321,7 +9408,7 @@ watchActionMeta: {
   color: 'rgba(237,235,230,0.50)',
   fontFamily: SYSTEM_SANS,
   fontWeight: '800',
-  fontSize: 11,
+  fontSize: 10.5,
 },
 
 watchActionDangerChip: {
@@ -9339,16 +9426,16 @@ watchActionDangerText: {
 
 watchMoreMenu: {
   alignSelf: 'flex-start',
-  marginTop: 8,
-  borderRadius: 14,
+  marginTop: 6,
+  borderRadius: 10,
   borderWidth: 1,
-  paddingVertical: 6,
-  minWidth: 172,
+  paddingVertical: 4,
+  minWidth: 158,
 },
 
 watchMoreMenuItem: {
-  minHeight: 36,
-  paddingHorizontal: 12,
+  minHeight: 32,
+  paddingHorizontal: 10,
   flexDirection: 'row',
   alignItems: 'center',
   gap: 8,
@@ -9356,17 +9443,42 @@ watchMoreMenuItem: {
 
 watchMoreMenuText: {
   fontFamily: SYSTEM_SANS,
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: '900',
 },
 
+watchDescriptionPanel: {
+  borderRadius: 8,
+  borderWidth: StyleSheet.hairlineWidth,
+  paddingHorizontal: 10,
+  paddingVertical: 8,
+  marginBottom: 10,
+},
+
+watchDescriptionMeta: {
+  color: '#F4F1EA',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '900',
+  fontSize: 11.5,
+  lineHeight: 15,
+},
+
+watchDescriptionText: {
+  marginTop: 4,
+  color: 'rgba(237,235,230,0.68)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '600',
+  fontSize: 11.5,
+  lineHeight: 16,
+},
+
 watchCommentsPreview: {
-  borderRadius: 14,
+  borderRadius: 8,
   backgroundColor: '#0B0B0B',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.07)',
-  paddingHorizontal: 12,
-  paddingVertical: 11,
+  paddingHorizontal: 10,
+  paddingVertical: 9,
   marginBottom: 10,
 },
 
@@ -9461,18 +9573,18 @@ watchCommentsPreviewInputText: {
 },
 
 watchCommentsSection: {
-  borderRadius: 14,
+  borderRadius: 10,
   backgroundColor: '#090909',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.06)',
   overflow: 'hidden',
-  marginBottom: 12,
+  marginBottom: 10,
 },
 
 watchSectionHeader: {
-  paddingHorizontal: 12,
-  paddingTop: 12,
-  paddingBottom: 10,
+  paddingHorizontal: 11,
+  paddingTop: 10,
+  paddingBottom: 8,
   borderBottomWidth: 1,
   borderBottomColor: 'rgba(255,255,255,0.06)',
   flexDirection: 'row',
@@ -9485,18 +9597,18 @@ watchSectionTitle: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
   fontWeight: '900',
-  fontSize: 14,
-  letterSpacing: 0.7,
+  fontSize: 12.5,
+  letterSpacing: 0.45,
   textTransform: 'uppercase',
 },
 
 watchSectionSub: {
-  marginTop: 3,
+  marginTop: 2,
   color: 'rgba(237,235,230,0.56)',
   fontFamily: SYSTEM_SANS,
   fontWeight: '600',
-  fontSize: 12,
-  lineHeight: 17,
+  fontSize: 11,
+  lineHeight: 15,
 },
 
 watchSectionCompactHeader: {
@@ -9504,15 +9616,15 @@ watchSectionCompactHeader: {
 },
 
 watchComposerWrap: {
-  paddingHorizontal: 10,
-  paddingVertical: 10,
+  paddingHorizontal: 8,
+  paddingVertical: 8,
   borderBottomWidth: 1,
   borderBottomColor: 'rgba(255,255,255,0.06)',
 },
 
 watchCommentsList: {
   paddingHorizontal: 10,
-  paddingTop: 10,
+  paddingTop: 6,
   paddingBottom: 2,
 },
 
@@ -9521,49 +9633,49 @@ watchSuggestionsSection: {
   backgroundColor: 'transparent',
   borderWidth: 0,
   paddingHorizontal: 0,
-  paddingTop: 2,
+  paddingTop: 0,
   paddingBottom: 4,
   marginBottom: 10,
 },
 
 watchSuggestionsSectionDesktop: {
-  paddingTop: 4,
+  paddingTop: 0,
   marginBottom: 0,
 },
 
 watchSuggestionsList: {
-  gap: 8,
+  gap: 5,
 },
 
 watchSuggestionsScroll: {
-  paddingRight: 6,
+  paddingRight: 2,
 },
 
 watchSuggestionCard: {
   flexDirection: 'row',
-  gap: 10,
-  borderRadius: 12,
+  gap: 9,
+  borderRadius: 8,
   backgroundColor: 'transparent',
   borderWidth: 0,
-  paddingVertical: 5,
-  paddingHorizontal: 0,
+  paddingVertical: 4,
+  paddingHorizontal: 4,
 },
 
 watchSuggestionCardDesktop: {
-  gap: 9,
-  paddingVertical: 3,
+  gap: 10,
+  paddingVertical: 4,
 },
 
 watchSuggestionThumb: {
-  width: 128,
+  width: 132,
   aspectRatio: 16 / 9,
-  borderRadius: 9,
+  borderRadius: 7,
   backgroundColor: '#000',
 },
 
 watchSuggestionThumbDesktop: {
-  width: 160,
-  borderRadius: 8,
+  width: 168,
+  borderRadius: 7,
 },
 
 watchSuggestionBody: {
@@ -9577,15 +9689,25 @@ watchSuggestionTitle: {
   fontFamily: SYSTEM_SANS,
   fontWeight: '900',
   fontSize: 13,
-  lineHeight: 16,
+  lineHeight: 17,
 },
 
-watchSuggestionMeta: {
-  marginTop: 6,
+watchSuggestionCreator: {
+  marginTop: 4,
   color: 'rgba(237,235,230,0.55)',
   fontFamily: SYSTEM_SANS,
   fontWeight: '700',
-  fontSize: 11,
+  fontSize: 11.5,
+  lineHeight: 14,
+},
+
+watchSuggestionMeta: {
+  marginTop: 2,
+  color: 'rgba(237,235,230,0.45)',
+  fontFamily: SYSTEM_SANS,
+  fontWeight: '700',
+  fontSize: 10.5,
+  lineHeight: 13,
 },
 
   previewHeader: {
@@ -9838,7 +9960,7 @@ sidePanelSeamless: {
   width: '100%',
   maxWidth: 720,
   backgroundColor: '#080808',
-  borderRadius: Platform.OS === 'web' ? 22 : 18,
+  borderRadius: Platform.OS === 'web' ? 14 : 14,
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.06)',
   overflow: 'hidden',
@@ -9858,9 +9980,9 @@ sidePanelSeamless: {
 },
 
   commentsHeader: {
-  paddingHorizontal: 16,
-  paddingTop: 14,
-  paddingBottom: 12,
+  paddingHorizontal: 12,
+  paddingTop: 11,
+  paddingBottom: 9,
   borderBottomWidth: 1,
   borderBottomColor: 'rgba(255,255,255,0.05)',
   flexDirection: 'row',
@@ -9871,23 +9993,23 @@ sidePanelSeamless: {
     color: '#fff',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    fontSize: 15,
-    letterSpacing: 1,
+    fontSize: 13,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
 
   commentsSubtitle: {
-    marginTop: 4,
+    marginTop: 2,
     color: 'rgba(237,235,230,0.52)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '700',
-    fontSize: 12,
+    fontSize: 11,
   },
 
   commentsCloseBtn: {
-    height: 36,
-    paddingHorizontal: 14,
-    borderRadius: 999,
+    height: 28,
+    paddingHorizontal: 10,
+    borderRadius: 14,
     backgroundColor: '#0D0D0D',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
@@ -9900,8 +10022,8 @@ sidePanelSeamless: {
     color: GOLD,
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    fontSize: 11,
-    letterSpacing: 0.8,
+    fontSize: 10,
+    letterSpacing: 0.35,
     textTransform: 'uppercase',
   },
 
@@ -9911,57 +10033,57 @@ sidePanelSeamless: {
 },
 
   commentsListContent: {
-  paddingHorizontal: 14,
-  paddingTop: 12,
-  paddingBottom: 12,
+  paddingHorizontal: 12,
+  paddingTop: 8,
+  paddingBottom: 8,
 },
 
   commentsEmptyState: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
-    paddingVertical: 40,
+    paddingVertical: 28,
   },
 
   commentsEmptyTitle: {
     color: '#F4F1EA',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    fontSize: 16,
-    marginBottom: 6,
+    fontSize: 14,
+    marginBottom: 4,
   },
 
   commentsEmptyText: {
     color: 'rgba(237,235,230,0.58)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '600',
-    fontSize: 13,
+    fontSize: 12,
     textAlign: 'center',
     lineHeight: 18,
   },
 
   commentThread: {
-    marginBottom: 6,
+    marginBottom: 3,
   },
 
   commentCard: {
     flexDirection: 'row',
     paddingHorizontal: 0,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 0,
     backgroundColor: 'transparent',
     borderWidth: 0,
   },
 
   commentAvatarTap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: '#000',
-    marginRight: 12,
+    marginRight: 10,
   },
 
   commentAvatar: {
@@ -9974,52 +10096,52 @@ sidePanelSeamless: {
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     fontSize: 12,
-    letterSpacing: 0.2,
+    letterSpacing: 0,
   },
 
   commentText: {
-    marginTop: 4,
+    marginTop: 3,
     color: 'rgba(237,235,230,0.78)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '600',
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12.5,
+    lineHeight: 17,
   },
 
   commentActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 7,
+    marginTop: 5,
   },
 
   replyBtn: {
-    minHeight: 24,
-    paddingHorizontal: 8,
-    borderRadius: 999,
+    minHeight: 20,
+    paddingHorizontal: 4,
+    borderRadius: 0,
     backgroundColor: 'transparent',
     borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
+    marginRight: 12,
   },
 
   replyBtnText: {
-    color: GOLD,
+    color: 'rgba(237,235,230,0.52)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    fontSize: 10,
-    letterSpacing: 0.5,
+    fontSize: 10.5,
+    letterSpacing: 0.15,
     textTransform: 'uppercase',
   },
 
   repliesWrap: {
     marginTop: 0,
-    marginLeft: 42,
+    marginLeft: 40,
   },
 
   replyCard: {
     flexDirection: 'row',
-    paddingVertical: 7,
+    paddingVertical: 5,
     paddingHorizontal: 0,
     borderRadius: 0,
     backgroundColor: 'transparent',
@@ -10028,14 +10150,14 @@ sidePanelSeamless: {
   },
 
   replyAvatarTap: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     backgroundColor: '#000',
-    marginRight: 10,
+    marginRight: 8,
   },
 
   replyAvatar: {
@@ -10047,34 +10169,34 @@ sidePanelSeamless: {
     color: '#F4F1EA',
     fontFamily: SYSTEM_SANS,
     fontWeight: '800',
-    fontSize: 11,
+    fontSize: 10.5,
   },
 
   replyText: {
-    marginTop: 4,
+    marginTop: 2,
     color: 'rgba(237,235,230,0.72)',
     fontFamily: SYSTEM_SANS,
     fontWeight: '600',
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 11.5,
+    lineHeight: 16,
   },
 
   commentComposerWrap: {
   borderTopWidth: 1,
   borderTopColor: 'rgba(255,255,255,0.05)',
   backgroundColor: '#090909',
-  paddingHorizontal: 10,
-  paddingTop: 8,
-  paddingBottom: 8,
+  paddingHorizontal: 8,
+  paddingTop: 7,
+  paddingBottom: 7,
 },
 
   replyingBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 14,
+    marginBottom: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
     backgroundColor: 'rgba(198,166,100,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(198,166,100,0.18)',
@@ -10085,7 +10207,7 @@ sidePanelSeamless: {
     color: '#F1EBDD',
     fontFamily: SYSTEM_SANS,
     fontWeight: '700',
-    fontSize: 12,
+    fontSize: 11,
     marginRight: 10,
   },
 
@@ -10093,7 +10215,7 @@ sidePanelSeamless: {
     color: GOLD,
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    fontSize: 11,
+    fontSize: 10,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
@@ -10105,14 +10227,14 @@ sidePanelSeamless: {
 
   commentInput: {
   flex: 1,
-  minHeight: 40,
-  maxHeight: 86,
-  borderRadius: 14,
+  minHeight: 36,
+  maxHeight: 78,
+  borderRadius: 10,
   backgroundColor: '#0B0B0B',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.07)',
-  paddingHorizontal: 12,
-  paddingVertical: 9,
+  paddingHorizontal: 11,
+  paddingVertical: 8,
   color: '#EDEBE6',
   fontFamily: SYSTEM_SANS,
   fontWeight: '700',
@@ -10120,23 +10242,23 @@ sidePanelSeamless: {
 },
 
   commentSendBtn: {
-  height: 42,
-  paddingHorizontal: 14,
-  borderRadius: 14,
+  height: 36,
+  paddingHorizontal: 12,
+  borderRadius: 10,
   backgroundColor: '#131313',
   borderWidth: 1,
   borderColor: 'rgba(198,166,100,0.32)',
   alignItems: 'center',
   justifyContent: 'center',
-  marginLeft: 8,
+  marginLeft: 7,
 },
 
   commentSendText: {
     color: GOLD,
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
-    fontSize: 12,
-    letterSpacing: 0.8,
+    fontSize: 10.5,
+    letterSpacing: 0.45,
     textTransform: 'uppercase',
   },
 });
