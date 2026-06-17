@@ -25,6 +25,7 @@ import {
   SUBSCRIPTION_OFFER_PRICE_AMOUNT,
   SUBSCRIPTION_OFFER_PRICE_FALLBACK,
   SUBSCRIPTION_PRICE_CURRENCY_SYMBOL,
+  SUBSCRIPTION_PRICE_FALLBACK,
   SUBSCRIPTION_TITLE,
   TERMS_OF_USE_URL,
 } from '../app/lib/legal';
@@ -147,12 +148,11 @@ const GENERAL_COMPARISON_ROWS: ComparisonRow[] = [
   { feature: 'Paid job applications', free: '✕', pro: '✓' },
   { feature: 'Filmmaking Bootcamp', free: '✕', pro: '✓' },
   { feature: 'Workshop tools', free: '✕', pro: '✓' },
-  { feature: 'Portfolio link', free: 'Basic', pro: 'Enhanced' },
 ];
 
 const PRO_HIGHLIGHTS = [
   'Unlimited film uploads',
-  '3 profile showreels and enhanced portfolio link',
+  '3 profile showreels',
   'Monthly Film Challenge submissions',
   'Exercises taken directly from film and acting schools',
   'Ever-growing filmmaking tools and resources',
@@ -1005,7 +1005,14 @@ export const UpgradeModal: React.FC<Props> = ({
                     </Text>
                   </View>
                   <Text style={[styles.offerBannerTitle, { color: membershipText }]}>
-                    Get Overlooked Pro for {SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month
+                    Get Overlooked Pro for{' '}
+                    <Text style={[styles.offerPriceWas, { color: membershipMutedText }]}>
+                      {SUBSCRIPTION_PRICE_FALLBACK}
+                    </Text>{' '}
+                    <Text style={[styles.offerPriceNow, { color: membershipText }]}>
+                      {SUBSCRIPTION_OFFER_PRICE_FALLBACK}
+                    </Text>
+                    /month
                   </Text>
                   <Text style={[styles.offerBannerText, { color: membershipSubText }]}>
                     Use code {SUBSCRIPTION_OFFER_CODE} to keep 70% off every month for life while your subscription stays active.
@@ -1242,7 +1249,14 @@ export const UpgradeModal: React.FC<Props> = ({
                       ]}
                     >
                       <Text style={[styles.planKickerHero, { color: proAccentText }]}>MONTHLY</Text>
+                      <Text style={[styles.planWasPrice, { color: membershipMutedText }]}>
+                        Was{' '}
+                        <Text style={styles.planWasPriceStrike}>
+                          {SUBSCRIPTION_PRICE_FALLBACK}
+                        </Text>
+                      </Text>
                       <View style={styles.planPriceRow}>
+                        <Text style={[styles.planNowLabel, { color: proAccentText }]}>Now</Text>
                         <Text style={[styles.planCurrency, { color: membershipText }]}>
                           {SUBSCRIPTION_PRICE_CURRENCY_SYMBOL}
                         </Text>
@@ -1757,8 +1771,8 @@ const styles = StyleSheet.create({
     maxWidth: 560,
     borderWidth: 1,
     borderRadius: 22,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
     marginTop: 18,
     alignItems: 'center',
   },
@@ -1806,6 +1820,16 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontFamily: SYSTEM_SANS,
     textAlign: 'center',
+  },
+
+  offerPriceWas: {
+    textDecorationLine: 'line-through',
+    textDecorationStyle: 'solid',
+    fontWeight: '900',
+  },
+
+  offerPriceNow: {
+    fontWeight: '900',
   },
 
   offerBannerText: {
@@ -1857,6 +1881,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingVertical: 7,
     paddingHorizontal: 10,
+    minHeight: 34,
     backgroundColor: 'rgba(255,255,255,0.045)',
     borderWidth: 1,
     borderColor: HAIRLINE_2,
@@ -2035,6 +2060,7 @@ const styles = StyleSheet.create({
   compactTierLeft: {
     flex: 1,
     paddingRight: 16,
+    minWidth: 0,
   },
 
   compactTierRight: {
@@ -2151,10 +2177,10 @@ const styles = StyleSheet.create({
   },
 
   priceBadge: {
-    minWidth: 122,
+    minWidth: 146,
     borderRadius: 22,
-    paddingVertical: 13,
-    paddingHorizontal: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     backgroundColor: '#211C13',
     borderWidth: 1,
     borderColor: OFFER_TILE_BORDER,
@@ -2163,6 +2189,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
+    flexShrink: 0,
   },
 
   featureGrid: {
@@ -2215,7 +2242,7 @@ const styles = StyleSheet.create({
   },
 
   comparisonColumnHeader: {
-    width: 82,
+    width: 88,
     fontSize: 10.5,
     fontWeight: '900',
     fontFamily: SYSTEM_SANS,
@@ -2239,14 +2266,15 @@ const styles = StyleSheet.create({
   },
 
   comparisonStatusGroup: {
-    width: 172,
+    width: 184,
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: 8,
+    flexShrink: 0,
   },
 
   statusPill: {
-    width: 82,
+    width: 88,
     minHeight: 28,
     borderRadius: 999,
     borderWidth: 1,
@@ -2256,11 +2284,12 @@ const styles = StyleSheet.create({
   },
 
   statusPillPro: {
-    width: 82,
+    width: 88,
   },
 
   statusText: {
-    fontSize: 11,
+    fontSize: 10.8,
+    lineHeight: 13,
     fontWeight: '900',
     fontFamily: SYSTEM_SANS,
     textAlign: 'center',
@@ -2400,8 +2429,31 @@ const styles = StyleSheet.create({
 
   planPriceRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginTop: 1,
+    alignItems: 'baseline',
+    marginTop: 4,
+  },
+
+  planWasPrice: {
+    marginTop: 8,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
+  },
+
+  planWasPriceStrike: {
+    textDecorationLine: 'line-through',
+    textDecorationStyle: 'solid',
+  },
+
+  planNowLabel: {
+    marginRight: 6,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
   },
 
   planCurrency: {
@@ -2417,15 +2469,15 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '900',
     color: TEXT_IVORY,
-    letterSpacing: -0.7,
     fontFamily: SYSTEM_SANS,
   },
 
   planSubHero: {
-    marginTop: 2,
+    marginTop: 4,
     fontSize: 10,
     color: 'rgba(237,235,230,0.70)',
     fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
   },
 
   buttonBase: {

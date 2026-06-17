@@ -36,6 +36,7 @@ import {
   SUBSCRIPTION_OFFER_PRICE_AMOUNT,
   SUBSCRIPTION_OFFER_PRICE_FALLBACK,
   SUBSCRIPTION_PRICE_CURRENCY_SYMBOL,
+  SUBSCRIPTION_PRICE_FALLBACK,
   SUBSCRIPTION_TITLE,
   TERMS_OF_USE_URL,
 } from '../lib/legal';
@@ -217,7 +218,6 @@ const GENERAL_ROWS: ComparisonRow[] = [
   { feature: 'Paid job applications', free: '✕', pro: '✓' },
   { feature: 'Filmmaking Bootcamp', free: '✕', pro: '✓' },
   { feature: 'Workshop tools', free: '✕', pro: '✓' },
-  { feature: 'Portfolio link', free: 'Basic', pro: 'Enhanced' },
 ];
 
 const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
@@ -1012,7 +1012,14 @@ export default function PaywallScreen() {
                 </Text>
               </View>
               <Text style={[styles.offerPanelTitle, { color: colors.textPrimary }]}>
-                Get Overlooked Pro for {SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month
+                Get Overlooked Pro for{' '}
+                <Text style={[styles.offerPriceWas, { color: colors.textMuted }]}>
+                  {SUBSCRIPTION_PRICE_FALLBACK}
+                </Text>{' '}
+                <Text style={[styles.offerPriceNow, { color: colors.textPrimary }]}>
+                  {SUBSCRIPTION_OFFER_PRICE_FALLBACK}
+                </Text>
+                /month
               </Text>
               <Text style={[styles.offerPanelText, { color: colors.textSecondary }]}>
                 Use code {SUBSCRIPTION_OFFER_CODE} to keep 70% off every month for life while your subscription stays active.
@@ -1095,21 +1102,30 @@ export default function PaywallScreen() {
                 </Text>
                 <View style={styles.planFeatureList}>
                   <Text style={[styles.planFeatureItem, mutedTextStyle]}>✓ Unlimited film uploads</Text>
-                  <Text style={[styles.planFeatureItem, mutedTextStyle]}>✓ 3 showreels and enhanced portfolio link</Text>
+                  <Text style={[styles.planFeatureItem, mutedTextStyle]}>✓ 3 showreels</Text>
                   <Text style={[styles.planFeatureItem, mutedTextStyle]}>✓ Exercises taken directly from film and acting schools</Text>
                   <Text style={[styles.planFeatureItem, mutedTextStyle]}>✓ Ever-growing filmmaking tools and resources</Text>
                 </View>
-                <View style={styles.planPriceRow}>
-                  <Text style={[styles.planCurrency, { color: TEXT_IVORY }]}>
-                    {SUBSCRIPTION_PRICE_CURRENCY_SYMBOL}
+                <View style={styles.planPriceStack}>
+                  <Text style={[styles.planWasPrice, { color: TEXT_MUTED_2 }]}>
+                    Was{' '}
+                    <Text style={styles.planWasPriceStrike}>
+                      {SUBSCRIPTION_PRICE_FALLBACK}
+                    </Text>
                   </Text>
-                  <Text style={[styles.planPriceHero, { color: TEXT_IVORY }]}>
-                    {SUBSCRIPTION_OFFER_PRICE_AMOUNT}
+                  <View style={styles.planPriceRow}>
+                    <Text style={[styles.planNowLabel, { color: labelTextColor }]}>Now</Text>
+                    <Text style={[styles.planCurrency, { color: TEXT_IVORY }]}>
+                      {SUBSCRIPTION_PRICE_CURRENCY_SYMBOL}
+                    </Text>
+                    <Text style={[styles.planPriceHero, { color: TEXT_IVORY }]}>
+                      {SUBSCRIPTION_OFFER_PRICE_AMOUNT}
+                    </Text>
+                  </View>
+                  <Text style={[styles.planSubHero, mutedTextStyle]}>
+                    per month with {SUBSCRIPTION_OFFER_CODE}
                   </Text>
                 </View>
-                <Text style={[styles.planSubHero, mutedTextStyle]}>
-                  per month with {SUBSCRIPTION_OFFER_CODE}
-                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1335,15 +1351,17 @@ const styles = StyleSheet.create({
   offerPanel: {
     borderWidth: 1,
     borderRadius: 18,
-    paddingVertical: 13,
-    paddingHorizontal: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
     marginTop: 2,
     marginBottom: 14,
+    alignItems: 'center',
   },
 
   offerPanelTop: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     flexWrap: 'wrap',
     gap: 9,
     marginBottom: 8,
@@ -1375,6 +1393,17 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     fontWeight: '900',
     fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
+  },
+
+  offerPriceWas: {
+    textDecorationLine: 'line-through',
+    textDecorationStyle: 'solid',
+    fontWeight: '900',
+  },
+
+  offerPriceNow: {
+    fontWeight: '900',
   },
 
   offerPanelText: {
@@ -1382,6 +1411,7 @@ const styles = StyleSheet.create({
     fontSize: 12.2,
     lineHeight: 17,
     fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
   },
 
   offerCodePill: {
@@ -1392,7 +1422,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
     gap: 8,
   },
 
@@ -1414,14 +1444,16 @@ const styles = StyleSheet.create({
   plansArea: {
     marginTop: 6,
     borderRadius: 18,
-    padding: 8,
+    padding: 10,
     backgroundColor: 'rgba(255,255,255,0.02)',
+    borderWidth: 1,
+    borderColor: HAIRLINE,
   },
 
   planRow: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    gap: 10,
+    gap: 12,
     flexWrap: 'wrap',
   },
 
@@ -1436,9 +1468,9 @@ const styles = StyleSheet.create({
   planTile: {
     flex: 1,
     minWidth: 200,
-    borderRadius: 16,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: 1,
     borderColor: 'transparent',
@@ -1446,6 +1478,7 @@ const styles = StyleSheet.create({
 
   freePlanTile: {
     borderWidth: 1,
+    justifyContent: 'space-between',
   },
 
   planTileTinyStack: {
@@ -1522,8 +1555,8 @@ const styles = StyleSheet.create({
   },
 
   planFeatureItem: {
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 11.5,
+    lineHeight: 16,
     color: TEXT_MUTED,
     fontFamily: SYSTEM_SANS,
   },
@@ -1550,8 +1583,33 @@ const styles = StyleSheet.create({
 
   planPriceRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'baseline',
     marginTop: 4,
+  },
+
+  planPriceStack: {
+    marginTop: 12,
+  },
+
+  planWasPrice: {
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  planWasPriceStrike: {
+    textDecorationLine: 'line-through',
+    textDecorationStyle: 'solid',
+  },
+
+  planNowLabel: {
+    marginRight: 6,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
   },
 
   planCurrency: {
@@ -1580,6 +1638,7 @@ const styles = StyleSheet.create({
   buttonBase: {
     marginTop: 14,
     paddingVertical: 12,
+    paddingHorizontal: 18,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1605,6 +1664,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontSize: 15,
     letterSpacing: 0.4,
+    lineHeight: 19,
     fontFamily: SYSTEM_SANS,
   },
 
@@ -1640,7 +1700,7 @@ const styles = StyleSheet.create({
   },
 
   comparisonColumnHeader: {
-    width: 76,
+    width: 84,
     fontSize: 10,
     fontWeight: '900',
     fontFamily: SYSTEM_SANS,
@@ -1665,15 +1725,16 @@ const styles = StyleSheet.create({
   },
 
   comparisonStatusGroup: {
-    width: 160,
+    width: 176,
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: 8,
+    flexShrink: 0,
   },
 
   statusPill: {
-    width: 76,
-    minHeight: 25,
+    width: 84,
+    minHeight: 28,
     borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: 7,
@@ -1682,11 +1743,12 @@ const styles = StyleSheet.create({
   },
 
   statusPillPro: {
-    width: 76,
+    width: 84,
   },
 
   statusText: {
     fontSize: 10.5,
+    lineHeight: 13,
     fontWeight: '900',
     fontFamily: SYSTEM_SANS,
     textAlign: 'center',
