@@ -347,6 +347,7 @@ export const UpgradeModal: React.FC<Props> = ({
 
   const isMobile = width < 520;
   const isTiny = width < 360;
+  const isDesktopWeb = Platform.OS === 'web' && !isMobile;
 
   const [selectedTier, setSelectedTier] = useState<UserTier>('pro');
   const [currentTier, setCurrentTier] = useState<UserTier | null>(null);
@@ -861,6 +862,7 @@ export const UpgradeModal: React.FC<Props> = ({
                 borderColor: colors.border,
                 shadowColor: colors.shadow,
               },
+              isDesktopWeb && styles.cardDesktop,
               isMobile && styles.cardMobile,
               downgradeConfirmVisible && styles.cardBehindConfirm,
             ]}
@@ -898,14 +900,31 @@ export const UpgradeModal: React.FC<Props> = ({
                     OVERLOOKED PRO
                   </Text>
                 </View>
-                <Text style={[styles.title, { color: membershipText }]}>{title}</Text>
                 <Text
-                  style={[styles.subtitle, { color: membershipSubText }]}
-                  numberOfLines={isMobile ? 3 : 2}
+                  style={[
+                    styles.title,
+                    { color: membershipText },
+                    isDesktopWeb && styles.titleDesktop,
+                  ]}
+                >
+                  {title}
+                </Text>
+                <Text
+                  style={[
+                    styles.subtitle,
+                    { color: membershipSubText },
+                    isDesktopWeb && styles.subtitleDesktop,
+                  ]}
                 >
                   {subtitle}
                 </Text>
-                <Text style={[styles.emotionalLine, { color: membershipMutedText }]}>
+                <Text
+                  style={[
+                    styles.emotionalLine,
+                    { color: membershipMutedText },
+                    isDesktopWeb && styles.emotionalLineDesktop,
+                  ]}
+                >
                   Built for creators who are ready to stop waiting and start making.
                 </Text>
 
@@ -986,7 +1005,7 @@ export const UpgradeModal: React.FC<Props> = ({
 
               {errorText ? <Text style={[styles.errorText, { color: isLight ? '#9B2C2C' : '#FFB3B3' }]}>{errorText}</Text> : null}
 
-              <View style={styles.tiersStack}>
+              <View style={[styles.tiersStack, isDesktopWeb && styles.tiersStackDesktop]}>
                 <TouchableOpacity
                   activeOpacity={0.9}
                   onPress={handleFreeTierPress}
@@ -999,6 +1018,7 @@ export const UpgradeModal: React.FC<Props> = ({
                       isLight && { borderColor: colors.borderStrong },
                     ],
                     !isActuallyPro && styles.tierCardCurrentFree,
+                    isDesktopWeb && styles.compactTierDesktop,
                   ]}
                 >
                   <View style={styles.compactTierLeft}>
@@ -1044,6 +1064,7 @@ export const UpgradeModal: React.FC<Props> = ({
                         shadowOpacity: 0.16,
                       },
                     ],
+                    isDesktopWeb && styles.proTierDesktop,
                   ]}
                 >
                   <View style={styles.proHeader}>
@@ -1110,9 +1131,13 @@ export const UpgradeModal: React.FC<Props> = ({
               >
                 <View style={styles.comparisonHeader}>
                   <Text style={[styles.comparisonTitle, { color: membershipText }]}>Free vs Pro</Text>
-                  <View style={styles.comparisonLegend}>
-                    <Text style={[styles.comparisonLegendText, { color: membershipMutedText }]}>Free</Text>
-                    <Text style={[styles.comparisonLegendText, { color: colors.primary }]}>Pro</Text>
+                  <View style={styles.comparisonStatusGroup}>
+                    <Text style={[styles.comparisonColumnHeader, { color: membershipMutedText }]}>
+                      Free
+                    </Text>
+                    <Text style={[styles.comparisonColumnHeader, { color: colors.primary }]}>
+                      Pro
+                    </Text>
                   </View>
                 </View>
 
@@ -1127,7 +1152,6 @@ export const UpgradeModal: React.FC<Props> = ({
                     >
                       <Text
                         style={[styles.comparisonFeature, { color: membershipSubText }]}
-                        numberOfLines={2}
                       >
                         {row.feature}
                       </Text>
@@ -1482,6 +1506,12 @@ const styles = StyleSheet.create({
     elevation: 16,
   },
 
+  cardDesktop: {
+    maxWidth: 760,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
+
   cardMobile: {
     maxWidth: 356,
     borderRadius: 26,
@@ -1587,6 +1617,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  titleDesktop: {
+    fontSize: 25,
+    lineHeight: 29,
+  },
+
   subtitle: {
     fontSize: 11.5,
     color: TEXT_MUTED,
@@ -1596,6 +1631,12 @@ const styles = StyleSheet.create({
     maxWidth: 310,
   },
 
+  subtitleDesktop: {
+    maxWidth: 620,
+    fontSize: 12.6,
+    lineHeight: 18,
+  },
+
   emotionalLine: {
     marginTop: 6,
     fontSize: 10.8,
@@ -1603,6 +1644,10 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     textAlign: 'center',
     maxWidth: 310,
+  },
+
+  emotionalLineDesktop: {
+    maxWidth: 620,
   },
 
   metaRow: {
@@ -1780,6 +1825,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
+  tiersStackDesktop: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 12,
+  },
+
   compactTier: {
     borderRadius: 18,
     paddingVertical: 11,
@@ -1790,6 +1841,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+
+  compactTierDesktop: {
+    flex: 0.92,
+    alignSelf: 'stretch',
   },
 
   freeCompact: {
@@ -1869,6 +1925,11 @@ const styles = StyleSheet.create({
     backgroundColor: SURFACE_2,
     borderWidth: 1,
     borderColor: 'rgba(198,166,100,0.22)',
+  },
+
+  proTierDesktop: {
+    flex: 1.35,
+    alignSelf: 'stretch',
   },
 
   proHeader: {
@@ -1986,16 +2047,12 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  comparisonLegend: {
-    flexDirection: 'row',
-    gap: 18,
-    paddingRight: 4,
-  },
-
-  comparisonLegendText: {
+  comparisonColumnHeader: {
+    width: 72,
     fontSize: 10,
     fontWeight: '900',
     fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
   },
 
   comparisonRow: {
@@ -2015,15 +2072,14 @@ const styles = StyleSheet.create({
   },
 
   comparisonStatusGroup: {
-    width: 126,
+    width: 152,
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 7,
+    gap: 8,
   },
 
   statusPill: {
-    minWidth: 42,
-    maxWidth: 68,
+    width: 72,
     minHeight: 24,
     borderRadius: 999,
     borderWidth: 1,
@@ -2033,7 +2089,7 @@ const styles = StyleSheet.create({
   },
 
   statusPillPro: {
-    minWidth: 54,
+    width: 72,
   },
 
   statusText: {

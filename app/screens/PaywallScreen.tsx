@@ -1095,9 +1095,9 @@ export default function PaywallScreen() {
           <View style={[styles.comparisonBox, { backgroundColor: colors.mutedCard, borderColor: HAIRLINE }]}>
             <View style={styles.comparisonHeader}>
               <Text style={[styles.comparisonTitle, primaryTextStyle]}>Free vs Pro</Text>
-              <View style={styles.comparisonLegend}>
-                <Text style={[styles.comparisonLegendText, { color: TEXT_MUTED_2 }]}>Free</Text>
-                <Text style={[styles.comparisonLegendText, { color: GOLD }]}>Pro</Text>
+              <View style={styles.comparisonStatusGroup}>
+                <Text style={[styles.comparisonColumnHeader, { color: TEXT_MUTED_2 }]}>Free</Text>
+                <Text style={[styles.comparisonColumnHeader, { color: GOLD }]}>Pro</Text>
               </View>
             </View>
 
@@ -1110,7 +1110,7 @@ export default function PaywallScreen() {
                   key={row.feature}
                   style={[styles.comparisonRow, { borderTopColor: HAIRLINE }]}
                 >
-                  <Text style={[styles.comparisonFeature, mutedTextStyle]} numberOfLines={2}>
+                  <Text style={[styles.comparisonFeature, mutedTextStyle]}>
                     {row.feature}
                   </Text>
                   <View style={styles.comparisonStatusGroup}>
@@ -1535,16 +1535,12 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
 
-  comparisonLegend: {
-    flexDirection: 'row',
-    gap: 22,
-    paddingRight: 8,
-  },
-
-  comparisonLegendText: {
+  comparisonColumnHeader: {
+    width: 76,
     fontSize: 10,
     fontWeight: '900',
     fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
   },
 
   comparisonRow: {
@@ -1565,15 +1561,14 @@ const styles = StyleSheet.create({
   },
 
   comparisonStatusGroup: {
-    width: 142,
+    width: 160,
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: 8,
   },
 
   statusPill: {
-    minWidth: 46,
-    maxWidth: 74,
+    width: 76,
     minHeight: 25,
     borderRadius: 999,
     borderWidth: 1,
@@ -1583,7 +1578,7 @@ const styles = StyleSheet.create({
   },
 
   statusPillPro: {
-    minWidth: 58,
+    width: 76,
   },
 
   statusText: {
