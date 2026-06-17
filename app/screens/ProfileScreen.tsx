@@ -890,7 +890,7 @@ function ShowreelVideoInline({
     setProgress(0);
     setIsPlaying(false);
     setMediaUnavailable(false);
-    setIsMediaLoading(src ? autoPlay || wantsPlayRef.current : !sourcesResolved);
+    setIsMediaLoading(src ? autoPlay || wantsPlayRef.current : false);
   }, [src]);
 
   // ✅ Still keep this for your fullscreen logic + audio behavior
@@ -906,11 +906,12 @@ function ShowreelVideoInline({
   const elapsedLabel = formatPlayerTime(duration * progress);
   const durationLabel = duration > 0 ? formatPlayerTime(duration) : '0:00';
   const compactControls = playerW < 520;
-  const showUnavailableOverlay = mediaUnavailable || (!src && sourcesResolved);
+  const hasPlaybackIntent = autoPlay || wantsPlayRef.current;
+  const showUnavailableOverlay = hasPlaybackIntent && (mediaUnavailable || (!src && sourcesResolved));
   const showLoadingOverlay =
+    hasPlaybackIntent &&
     !showUnavailableOverlay &&
-    (isMediaLoading ||
-      (!hasLoadedFrame && (autoPlay || wantsPlayRef.current || !sourcesResolved)));
+    (isMediaLoading || (!hasLoadedFrame && !sourcesResolved));
 
   // register in player registry
   useEffect(() => {
@@ -942,7 +943,7 @@ function ShowreelVideoInline({
     let alive = true;
     setSourcesResolved(false);
     setMediaUnavailable(false);
-    setIsMediaLoading(true);
+    setIsMediaLoading(autoPlay || wantsPlayRef.current);
     (async () => {
       try {
         const url = await signShowreelPath(filePathOrUrl);
@@ -1551,8 +1552,12 @@ function ShowreelVideoInline({
               }
             }}
             onTimeUpdate={onWebTimeUpdate}
-            onWaiting={() => setIsMediaLoading(true)}
-            onStalled={() => setIsMediaLoading(true)}
+            onWaiting={() => {
+              if (autoPlay || wantsPlayRef.current) setIsMediaLoading(true);
+            }}
+            onStalled={() => {
+              if (autoPlay || wantsPlayRef.current) setIsMediaLoading(true);
+            }}
             onPlay={() => setIsPlaying(true)}
             onPlaying={() => {
               setIsPlaying(true);
@@ -2345,11 +2350,13 @@ export default function ProfileScreen() {
       textPrimary: themeColors.textPrimary,
       textSecondary: themeColors.textSecondary,
       primary: themeColors.primary,
+      accent: themeColors.accent,
       danger: themeColors.danger,
       input: themeColors.input,
       borderStrong: themeColors.borderStrong,
       textMuted: themeColors.textMuted,
       textOnPrimary: themeColors.textOnPrimary,
+      shadow: themeColors.shadow,
     }),
     [themeColors]
   );
@@ -2358,6 +2365,87 @@ export default function ProfileScreen() {
   const editModalInput = isLight ? COLORS.input : COLORS.input;
   const editModalPill = isLight ? COLORS.card : "#0A0A0A";
   const editModalPillSelected = isLight ? "rgba(198,166,100,0.20)" : "rgba(198,166,100,0.18)";
+  const showreelUploadTheme = useMemo(
+    () =>
+      isLight
+        ? {
+            overlay: "rgba(20,17,13,0.42)",
+            panel: COLORS.card,
+            panelBorder: COLORS.borderStrong,
+            header: COLORS.card,
+            footer: COLORS.card,
+            divider: COLORS.border,
+            title: COLORS.textPrimary,
+            subtitle: COLORS.textSecondary,
+            label: COLORS.textPrimary,
+            muted: COLORS.textMuted,
+            helper: COLORS.textMuted,
+            dropzoneBg: "#FBF7F0",
+            videoDropzoneBg: "#FFFDF8",
+            dropzoneBorder: COLORS.borderStrong,
+            dropzoneHoverBg: "#F5EBDC",
+            dropzoneHoverBorder: COLORS.primary,
+            selectedBorder: COLORS.primary,
+            selectedBg: "rgba(201,164,92,0.13)",
+            categoryBg: "#FBF7F0",
+            categoryHoverBg: "#F5EBDC",
+            categoryBorder: COLORS.border,
+            categoryHoverBorder: COLORS.borderStrong,
+            iconBg: COLORS.card,
+            iconBorder: COLORS.border,
+            iconColor: COLORS.textMuted,
+            ghostBg: COLORS.card,
+            ghostBorder: COLORS.borderStrong,
+            ghostHoverBg: COLORS.backgroundAlt,
+            ghostText: COLORS.textPrimary,
+            primaryBg: COLORS.primary,
+            primaryHoverBg: "#D5B36F",
+            primaryText: COLORS.textOnPrimary,
+            error: COLORS.danger,
+            ready: COLORS.accent ?? COLORS.primary,
+            progressTrack: COLORS.backgroundAlt,
+            shadow: COLORS.shadow,
+          }
+        : {
+            overlay: "rgba(0,0,0,0.72)",
+            panel: "#090806",
+            panelBorder: "rgba(198,166,100,0.22)",
+            header: "#0B0907",
+            footer: "#0B0907",
+            divider: "rgba(198,166,100,0.14)",
+            title: "#F7F2E8",
+            subtitle: "rgba(247,242,232,0.58)",
+            label: "#F7F2E8",
+            muted: "rgba(247,242,232,0.44)",
+            helper: "rgba(247,242,232,0.46)",
+            dropzoneBg: "#11100E",
+            videoDropzoneBg: "#020202",
+            dropzoneBorder: "rgba(247,242,232,0.12)",
+            dropzoneHoverBg: "#15120D",
+            dropzoneHoverBorder: "rgba(198,166,100,0.58)",
+            selectedBorder: "rgba(198,166,100,0.42)",
+            selectedBg: "rgba(198,166,100,0.10)",
+            categoryBg: "#11100E",
+            categoryHoverBg: "#17140F",
+            categoryBorder: "rgba(247,242,232,0.10)",
+            categoryHoverBorder: "rgba(247,242,232,0.20)",
+            iconBg: "#090806",
+            iconBorder: "rgba(247,242,232,0.12)",
+            iconColor: "rgba(247,242,232,0.58)",
+            ghostBg: "#10100E",
+            ghostBorder: "rgba(247,242,232,0.14)",
+            ghostHoverBg: "#17140F",
+            ghostText: "#F7F2E8",
+            primaryBg: "#C6A664",
+            primaryHoverBg: "#D3B673",
+            primaryText: "#0A0805",
+            error: "#FF8A8A",
+            ready: "rgba(198,166,100,0.92)",
+            progressTrack: "#15130F",
+            shadow: "#000",
+          },
+    [COLORS, isLight]
+  );
   const translateRoleLabel = useCallback(
     (value?: string | null) => translateTrustedText(value || '', language),
     [language]
@@ -3326,7 +3414,7 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
     setShowreelCategoryModalVisible(false);
     setShowEditModal(false);
     setTimeout(() => {
-      navigation.navigate('Paywall');
+      navigation.navigate('Paywall', { context: 'showreel' });
     }, 0);
   };
 
@@ -9314,21 +9402,32 @@ return (
           <View
             style={[
               showreelSetup.overlay,
-              { backgroundColor: isLight ? 'rgba(20,17,13,0.46)' : 'rgba(0,0,0,0.72)' },
+              { backgroundColor: showreelUploadTheme.overlay },
             ]}
           >
             <View
               style={[
                 showreelSetup.panel,
                 {
-                  backgroundColor: '#090806',
-                  borderColor: 'rgba(198,166,100,0.22)',
+                  backgroundColor: showreelUploadTheme.panel,
+                  borderColor: showreelUploadTheme.panelBorder,
+                  shadowColor: showreelUploadTheme.shadow,
                 },
               ]}
             >
-              <View style={showreelSetup.header}>
-                <Text style={showreelSetup.title}>Upload showreel</Text>
-                <Text style={showreelSetup.subtitle}>
+              <View
+                style={[
+                  showreelSetup.header,
+                  {
+                    backgroundColor: showreelUploadTheme.header,
+                    borderBottomColor: showreelUploadTheme.divider,
+                  },
+                ]}
+              >
+                <Text style={[showreelSetup.title, { color: showreelUploadTheme.title }]}>
+                  Upload showreel
+                </Text>
+                <Text style={[showreelSetup.subtitle, { color: showreelUploadTheme.subtitle }]}>
                   Add your video, thumbnail, and category before publishing.
                 </Text>
               </View>
@@ -9336,20 +9435,41 @@ return (
               {srUploading ? (
                 <View style={showreelSetup.progressState}>
                   <View style={showreelSetup.progressTopRow}>
-                    <View style={showreelSetup.progressIcon}>
+                    <View
+                      style={[
+                        showreelSetup.progressIcon,
+                        {
+                          borderColor: showreelUploadTheme.selectedBorder,
+                          backgroundColor: showreelUploadTheme.selectedBg,
+                        },
+                      ]}
+                    >
                       {srProgress >= 100 ? (
-                        <Ionicons name="checkmark" size={20} color="#C6A664" />
+                        <Ionicons name="checkmark" size={20} color={COLORS.primary} />
                       ) : (
-                        <ActivityIndicator color="#C6A664" />
+                        <ActivityIndicator color={COLORS.primary} />
                       )}
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={showreelSetup.progressTitle}>Uploading to Overlooked</Text>
-                      <Text style={showreelSetup.progressBody} numberOfLines={2}>
+                      <Text
+                        style={[
+                          showreelSetup.progressTitle,
+                          { color: showreelUploadTheme.title },
+                        ]}
+                      >
+                        Uploading to Overlooked
+                      </Text>
+                      <Text
+                        style={[
+                          showreelSetup.progressBody,
+                          { color: showreelUploadTheme.subtitle },
+                        ]}
+                        numberOfLines={2}
+                      >
                         {srStatus || 'Uploading your showreel...'}
                       </Text>
                     </View>
-                    <Text style={showreelSetup.progressPercent}>
+                    <Text style={[showreelSetup.progressPercent, { color: COLORS.primary }]}>
                       {Math.max(0, Math.min(100, srProgress || 0))}%
                     </Text>
                   </View>
@@ -9357,21 +9477,43 @@ return (
                   {pendingShowreelThumbPreviewUri ? (
                     <Image
                       source={{ uri: pendingShowreelThumbPreviewUri }}
-                      style={showreelSetup.progressThumb as any}
+                      style={[
+                        showreelSetup.progressThumb,
+                        {
+                          borderColor: showreelUploadTheme.dropzoneBorder,
+                          backgroundColor: showreelUploadTheme.videoDropzoneBg,
+                        },
+                      ] as any}
                       resizeMode="cover"
                     />
                   ) : null}
 
-                  <View style={showreelSetup.progressTrack}>
+                  <View
+                    style={[
+                      showreelSetup.progressTrack,
+                      {
+                        backgroundColor: showreelUploadTheme.progressTrack,
+                        borderColor: showreelUploadTheme.dropzoneBorder,
+                      },
+                    ]}
+                  >
                     <View
                       style={[
                         showreelSetup.progressFill,
-                        { width: `${Math.max(0, Math.min(100, srProgress || 0))}%` },
+                        {
+                          width: `${Math.max(0, Math.min(100, srProgress || 0))}%`,
+                          backgroundColor: COLORS.primary,
+                        },
                       ]}
                     />
                   </View>
 
-                  <Text style={showreelSetup.progressFootnote}>
+                  <Text
+                    style={[
+                      showreelSetup.progressFootnote,
+                      { color: showreelUploadTheme.helper },
+                    ]}
+                  >
                     Keep this window open. Processing may continue briefly after upload completes.
                   </Text>
                 </View>
@@ -9390,7 +9532,14 @@ return (
                       ]}
                     >
                       <View style={showreelSetup.videoColumn}>
-                        <Text style={showreelSetup.fieldLabel}>Video file</Text>
+                        <Text
+                          style={[
+                            showreelSetup.fieldLabel,
+                            { color: showreelUploadTheme.label },
+                          ]}
+                        >
+                          Video file
+                        </Text>
                         <Pressable
                           onPress={pendingShowreelPreviewUri ? undefined : choosePendingShowreelVideo}
                           {...(Platform.OS === 'web'
@@ -9401,7 +9550,14 @@ return (
                             : {})}
                           style={(state: any) => [
                             showreelSetup.videoDropzone,
-                            state.hovered && showreelSetup.dropzoneHover,
+                            {
+                              backgroundColor: showreelUploadTheme.videoDropzoneBg,
+                              borderColor: showreelUploadTheme.dropzoneBorder,
+                            },
+                            state.hovered && {
+                              backgroundColor: showreelUploadTheme.dropzoneHoverBg,
+                              borderColor: showreelUploadTheme.dropzoneHoverBorder,
+                            },
                           ]}
                         >
                           {pendingShowreelPreviewUri ? (
@@ -9432,11 +9588,23 @@ return (
                             )
                           ) : (
                             <View style={showreelSetup.dropzoneEmpty}>
-                              <Ionicons name="cloud-upload-outline" size={26} color="#C6A664" />
-                              <Text style={showreelSetup.dropzoneTitle}>
+                              <Ionicons name="cloud-upload-outline" size={26} color={COLORS.primary} />
+                              <Text
+                                style={[
+                                  showreelSetup.dropzoneTitle,
+                                  { color: showreelUploadTheme.title },
+                                ]}
+                              >
                                 Drop your showreel here or choose a video file
                               </Text>
-                              <Text style={showreelSetup.dropzoneHint}>MP4 only · up to 1 GB</Text>
+                              <Text
+                                style={[
+                                  showreelSetup.dropzoneHint,
+                                  { color: showreelUploadTheme.muted },
+                                ]}
+                              >
+                                MP4 only · up to 1 GB
+                              </Text>
                             </View>
                           )}
 
@@ -9445,21 +9613,38 @@ return (
                               onPress={choosePendingShowreelVideo}
                               style={(state: any) => [
                                 showreelSetup.videoChangeBadge,
+                                {
+                                  borderColor: showreelUploadTheme.selectedBorder,
+                                },
                                 state.hovered && showreelSetup.videoChangeBadgeHover,
                               ]}
                             >
                               <Ionicons name="swap-horizontal-outline" size={13} color="#F6E7BD" />
-                              <Text style={showreelSetup.videoChangeText}>Choose different video</Text>
+                              <Text style={showreelSetup.videoChangeText}>
+                                Choose different video
+                              </Text>
                             </Pressable>
                           ) : null}
                         </Pressable>
-                        <Text style={showreelSetup.helperText}>
+                        <Text
+                          style={[
+                            showreelSetup.helperText,
+                            { color: showreelUploadTheme.helper },
+                          ]}
+                        >
                           MP4 only. Large files may take a few minutes to upload.
                         </Text>
                       </View>
 
                       <View style={showreelSetup.sideColumn}>
-                        <Text style={showreelSetup.fieldLabel}>Thumbnail</Text>
+                        <Text
+                          style={[
+                            showreelSetup.fieldLabel,
+                            { color: showreelUploadTheme.label },
+                          ]}
+                        >
+                          Thumbnail
+                        </Text>
                         <Pressable
                           onPress={pickPendingShowreelThumbnail}
                           {...(Platform.OS === 'web'
@@ -9470,11 +9655,20 @@ return (
                             : {})}
                           style={(state: any) => [
                             showreelSetup.thumbDropzone,
+                            {
+                              backgroundColor: showreelUploadTheme.dropzoneBg,
+                              borderColor: showreelUploadTheme.dropzoneBorder,
+                            },
                             pendingShowreelError && !pendingShowreelThumbAsset
                               ? showreelSetup.dropzoneError
                               : null,
-                            pendingShowreelThumbPreviewUri ? showreelSetup.dropzoneSelected : null,
-                            state.hovered && showreelSetup.dropzoneHover,
+                            pendingShowreelThumbPreviewUri
+                              ? { borderColor: showreelUploadTheme.selectedBorder }
+                              : null,
+                            state.hovered && {
+                              backgroundColor: showreelUploadTheme.dropzoneHoverBg,
+                              borderColor: showreelUploadTheme.dropzoneHoverBorder,
+                            },
                           ]}
                         >
                           {pendingShowreelThumbPreviewUri ? (
@@ -9485,19 +9679,45 @@ return (
                             />
                           ) : (
                             <View style={showreelSetup.dropzoneEmptyCompact}>
-                              <Ionicons name="image-outline" size={22} color="#C6A664" />
-                              <Text style={showreelSetup.dropzoneTitleSmall}>
+                              <Ionicons name="image-outline" size={22} color={COLORS.primary} />
+                              <Text
+                                style={[
+                                  showreelSetup.dropzoneTitleSmall,
+                                  { color: showreelUploadTheme.title },
+                                ]}
+                              >
                                 Add thumbnail — required
                               </Text>
-                              <Text style={showreelSetup.dropzoneHint}>16:9 recommended</Text>
+                              <Text
+                                style={[
+                                  showreelSetup.dropzoneHint,
+                                  { color: showreelUploadTheme.muted },
+                                ]}
+                              >
+                                16:9 recommended
+                              </Text>
                             </View>
                           )}
                         </Pressable>
 
                         <View style={showreelSetup.categoryBlock}>
                           <View style={showreelSetup.sectionHeader}>
-                            <Text style={showreelSetup.fieldLabel}>Category</Text>
-                            <Text style={showreelSetup.sectionHint}>Choose one</Text>
+                            <Text
+                              style={[
+                                showreelSetup.fieldLabel,
+                                { color: showreelUploadTheme.label },
+                              ]}
+                            >
+                              Category
+                            </Text>
+                            <Text
+                              style={[
+                                showreelSetup.sectionHint,
+                                { color: showreelUploadTheme.muted },
+                              ]}
+                            >
+                              Choose one
+                            </Text>
                           </View>
 
                           <View style={showreelSetup.categoryGrid}>
@@ -9514,28 +9734,59 @@ return (
                                   }}
                                   style={(state: any) => [
                                     showreelSetup.categoryCard,
-                                    selected && showreelSetup.categoryCardSelected,
-                                    state.hovered && !selected ? showreelSetup.categoryCardHover : null,
+                                    {
+                                      backgroundColor: showreelUploadTheme.categoryBg,
+                                      borderColor: showreelUploadTheme.categoryBorder,
+                                    },
+                                    selected && {
+                                      backgroundColor: showreelUploadTheme.selectedBg,
+                                      borderColor: COLORS.primary,
+                                    },
+                                    state.hovered && !selected
+                                      ? {
+                                          backgroundColor: showreelUploadTheme.categoryHoverBg,
+                                          borderColor: showreelUploadTheme.categoryHoverBorder,
+                                        }
+                                      : null,
                                   ]}
                                 >
                                   <View
                                     style={[
                                       showreelSetup.categoryIcon,
-                                      selected && showreelSetup.categoryIconSelected,
+                                      {
+                                        backgroundColor: showreelUploadTheme.iconBg,
+                                        borderColor: showreelUploadTheme.iconBorder,
+                                      },
+                                      selected && {
+                                        backgroundColor: showreelUploadTheme.selectedBg,
+                                        borderColor: showreelUploadTheme.selectedBorder,
+                                      },
                                     ]}
                                   >
                                     <Ionicons
                                       name={meta.icon as any}
                                       size={14}
-                                      color={selected ? '#C6A664' : 'rgba(247,242,232,0.58)'}
+                                      color={selected ? COLORS.primary : showreelUploadTheme.iconColor}
                                     />
                                   </View>
 
                                   <View style={{ flex: 1, minWidth: 0 }}>
-                                    <Text style={showreelSetup.categoryTitle} numberOfLines={1}>
+                                    <Text
+                                      style={[
+                                        showreelSetup.categoryTitle,
+                                        { color: showreelUploadTheme.title },
+                                      ]}
+                                      numberOfLines={1}
+                                    >
                                       {cat}
                                     </Text>
-                                    <Text style={showreelSetup.categoryDetail} numberOfLines={1}>
+                                    <Text
+                                      style={[
+                                        showreelSetup.categoryDetail,
+                                        { color: showreelUploadTheme.muted },
+                                      ]}
+                                      numberOfLines={1}
+                                    >
                                       {meta.detail}
                                     </Text>
                                   </View>
@@ -9548,16 +9799,32 @@ return (
                     </View>
                   </ScrollView>
 
-                  <View style={showreelSetup.footer}>
+                  <View
+                    style={[
+                      showreelSetup.footer,
+                      {
+                        backgroundColor: showreelUploadTheme.footer,
+                        borderTopColor: showreelUploadTheme.divider,
+                      },
+                    ]}
+                  >
                     <View style={showreelSetup.validationWrap}>
                       {!!pendingShowreelError ? (
-                        <Text style={showreelSetup.errorText}>{pendingShowreelError}</Text>
+                        <Text
+                          style={[
+                            showreelSetup.errorText,
+                            { color: showreelUploadTheme.error },
+                          ]}
+                        >
+                          {pendingShowreelError}
+                        </Text>
                       ) : (
                         <Text
                           style={[
                             showreelSetup.validationText,
+                            { color: showreelUploadTheme.helper },
                             pendingShowreelAsset && pendingShowreelThumbAsset
-                              ? showreelSetup.validationReady
+                              ? { color: showreelUploadTheme.ready }
                               : null,
                           ]}
                         >
@@ -9579,10 +9846,24 @@ return (
                         style={(state: any) => [
                           showreelSetup.footerButton,
                           showreelSetup.footerButtonGhost,
-                          state.hovered && showreelSetup.footerButtonGhostHover,
+                          {
+                            backgroundColor: showreelUploadTheme.ghostBg,
+                            borderColor: showreelUploadTheme.ghostBorder,
+                          },
+                          state.hovered && {
+                            backgroundColor: showreelUploadTheme.ghostHoverBg,
+                            borderColor: showreelUploadTheme.categoryHoverBorder,
+                          },
                         ]}
                       >
-                        <Text style={showreelSetup.footerButtonGhostText}>Cancel</Text>
+                        <Text
+                          style={[
+                            showreelSetup.footerButtonGhostText,
+                            { color: showreelUploadTheme.ghostText },
+                          ]}
+                        >
+                          Cancel
+                        </Text>
                       </Pressable>
 
                       <Pressable
@@ -9591,15 +9872,29 @@ return (
                         style={(state: any) => [
                           showreelSetup.footerButton,
                           showreelSetup.footerButtonPrimary,
+                          {
+                            backgroundColor: showreelUploadTheme.primaryBg,
+                            borderColor: showreelUploadTheme.primaryBg,
+                          },
                           (!pendingShowreelAsset || !pendingShowreelThumbAsset) &&
                             showreelSetup.footerButtonDisabled,
                           state.hovered &&
                             pendingShowreelAsset &&
                             pendingShowreelThumbAsset &&
-                            showreelSetup.footerButtonPrimaryHover,
+                            {
+                              backgroundColor: showreelUploadTheme.primaryHoverBg,
+                              borderColor: showreelUploadTheme.primaryHoverBg,
+                            },
                         ]}
                       >
-                        <Text style={showreelSetup.footerButtonPrimaryText}>Upload</Text>
+                        <Text
+                          style={[
+                            showreelSetup.footerButtonPrimaryText,
+                            { color: showreelUploadTheme.primaryText },
+                          ]}
+                        >
+                          Upload
+                        </Text>
                       </Pressable>
                     </View>
                   </View>

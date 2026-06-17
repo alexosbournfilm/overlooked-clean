@@ -18,6 +18,7 @@ import {
   useFocusEffect,
   useIsFocused,
   useNavigation,
+  useRoute,
   CommonActions,
 } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -187,9 +188,142 @@ const SYSTEM_SANS = Platform.select({
   default: undefined,
 });
 
+type PaywallContext =
+  | 'general'
+  | 'challenge'
+  | 'jobs'
+  | 'showreel'
+  | 'bootcamp'
+  | 'workshop';
+
+type ComparisonRow = {
+  feature: string;
+  free: string;
+  pro: string;
+};
+
+type PaywallCopy = {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  cta: string;
+  rows: ComparisonRow[];
+};
+
+const GENERAL_ROWS: ComparisonRow[] = [
+  { feature: 'Browse creator profiles', free: '✓', pro: '✓' },
+  { feature: 'Watch films on Featured', free: '✓', pro: '✓' },
+  { feature: 'Connect with creatives', free: '✓', pro: '✓' },
+  { feature: 'Submit to Monthly Film Challenge', free: '✕', pro: '✓' },
+  { feature: 'Upload showreels', free: '✕', pro: '✓ up to 3' },
+  { feature: 'Apply for paid jobs', free: '✕', pro: '✓' },
+  { feature: 'Access Filmmaking Bootcamp', free: '✕', pro: '✓' },
+  { feature: 'Use Workshop tools', free: '✕', pro: '✓' },
+  { feature: 'Film planning resources', free: '✕', pro: '✓' },
+  { feature: 'Get featured through challenges', free: '✕', pro: '✓' },
+  { feature: 'Build a stronger portfolio link', free: 'Limited', pro: '✓' },
+];
+
+const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
+  general: {
+    eyebrow: 'OVERLOOKED PRO',
+    title: 'Make films. Build your showreel. Get seen.',
+    subtitle:
+      'Submit to monthly film challenges, upload your best work, apply for paid roles, and use tools designed to help you actually finish films.',
+    cta: 'Unlock Pro — £4.99/month',
+    rows: GENERAL_ROWS,
+  },
+  challenge: {
+    eyebrow: 'This is a Pro creator tool',
+    title: 'Submit your film with Pro',
+    subtitle:
+      'Monthly Film Challenge submissions are part of Overlooked Pro. Upgrade to upload your film, get seen on Featured, and compete for next month’s top spot.',
+    cta: 'Unlock Pro and submit — £4.99/month',
+    rows: [
+      { feature: 'Watch challenge films', free: '✓', pro: '✓' },
+      { feature: 'Vote on submissions', free: '✓', pro: '✓' },
+      { feature: 'Submit your own film', free: '✕', pro: '✓' },
+      { feature: 'Appear on Featured', free: '✕', pro: '✓' },
+      { feature: 'Compete to become next month’s winner', free: '✕', pro: '✓' },
+    ],
+  },
+  jobs: {
+    eyebrow: 'This is a Pro creator tool',
+    title: 'Apply for paid roles with Pro',
+    subtitle:
+      'Paid job applications are reserved for Pro creators, so opportunities stay focused on people actively building their portfolio.',
+    cta: 'Unlock Pro and apply — £4.99/month',
+    rows: [
+      { feature: 'Browse paid jobs', free: '✓', pro: '✓' },
+      { feature: 'Save interesting roles', free: '✓', pro: '✓' },
+      { feature: 'Apply for paid jobs', free: '✕', pro: '✓' },
+      { feature: 'Share portfolio with applications', free: '✕', pro: '✓' },
+      { feature: 'Build a stronger creator profile', free: 'Limited', pro: '✓' },
+    ],
+  },
+  showreel: {
+    eyebrow: 'This is a Pro creator tool',
+    title: 'Build your showreel with Pro',
+    subtitle:
+      'Pro lets you upload up to 3 showreels, strengthen your public profile, and share a better portfolio link.',
+    cta: 'Unlock Pro and upload showreels',
+    rows: [
+      { feature: 'Create a basic profile', free: '✓', pro: '✓' },
+      { feature: 'Add basic profile details', free: '✓', pro: '✓' },
+      { feature: 'Upload showreels', free: '✕', pro: '✓ up to 3' },
+      { feature: 'Share portfolio link', free: 'Limited', pro: '✓' },
+      { feature: 'Stand out to collaborators', free: 'Limited', pro: '✓' },
+    ],
+  },
+  bootcamp: {
+    eyebrow: 'This is a Pro creator tool',
+    title: 'Unlock the Filmmaking Bootcamp',
+    subtitle:
+      'Get guided lessons, exercises, and resources to help you plan, shoot, and finish better films.',
+    cta: 'Unlock Bootcamp with Pro',
+    rows: [
+      { feature: 'Browse Overlooked', free: '✓', pro: '✓' },
+      { feature: 'Watch public films', free: '✓', pro: '✓' },
+      { feature: 'Access Bootcamp lessons', free: '✕', pro: '✓' },
+      { feature: 'Use exercises and prompts', free: '✕', pro: '✓' },
+      { feature: 'Follow guided filmmaking structure', free: '✕', pro: '✓' },
+    ],
+  },
+  workshop: {
+    eyebrow: 'This is a Pro creator tool',
+    title: 'Use Workshop tools with Pro',
+    subtitle:
+      'Unlock planning tools, creative exercises, and film resources built to help you turn ideas into finished films.',
+    cta: 'Unlock Workshop tools',
+    rows: [
+      { feature: 'Browse the community', free: '✓', pro: '✓' },
+      { feature: 'View public content', free: '✓', pro: '✓' },
+      { feature: 'Use Workshop tools', free: '✕', pro: '✓' },
+      { feature: 'Access planning resources', free: '✕', pro: '✓' },
+      { feature: 'Develop film ideas faster', free: '✕', pro: '✓' },
+    ],
+  },
+};
+
+function normalizePaywallContext(value: unknown): PaywallContext {
+  if (value === 'extra_submission') return 'challenge';
+  if (
+    value === 'challenge' ||
+    value === 'jobs' ||
+    value === 'showreel' ||
+    value === 'bootcamp' ||
+    value === 'workshop'
+  ) {
+    return value;
+  }
+
+  return 'general';
+}
+
 export default function PaywallScreen() {
   const { colors } = useAppTheme();
   const nav = useNavigation<any>();
+  const route = useRoute<any>();
   const isFocused = useIsFocused();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -212,6 +346,8 @@ export default function PaywallScreen() {
   };
   const primaryTextStyle = { color: TEXT_IVORY };
   const mutedTextStyle = { color: TEXT_MUTED };
+  const paywallContext = normalizePaywallContext(route.params?.context ?? route.params?.feature);
+  const paywallCopy = PAYWALL_COPY[paywallContext];
 
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -876,11 +1012,9 @@ export default function PaywallScreen() {
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          <Text style={[styles.kicker, { color: GOLD }]}>UPGRADE</Text>
-          <Text style={[styles.title, primaryTextStyle]}>Unlock your full filmmaking access</Text>
-          <Text style={[styles.subtitle, mutedTextStyle]}>
-            Upload your films, add up to 3 showreels, apply for paid jobs, and unlock the full Filmmaking Bootcamp — a premium space to train across every major film discipline through high-level lessons, practical exercises, and powerful Workshop tools built to help you actually make films.
-          </Text>
+          <Text style={[styles.kicker, { color: GOLD }]}>{paywallCopy.eyebrow}</Text>
+          <Text style={[styles.title, primaryTextStyle]}>{paywallCopy.title}</Text>
+          <Text style={[styles.subtitle, mutedTextStyle]}>{paywallCopy.subtitle}</Text>
 
           <View style={styles.plansArea}>
             <View
@@ -890,6 +1024,28 @@ export default function PaywallScreen() {
                 isTiny && styles.planRowTiny,
               ]}
             >
+              <View
+                style={[
+                  styles.planTile,
+                  styles.freePlanTile,
+                  { backgroundColor: colors.mutedCard, borderColor: HAIRLINE },
+                  isTiny ? styles.planTileTinyStack : null,
+                ]}
+              >
+                <Text style={[styles.planKicker, { color: GOLD }]}>FREE</Text>
+                <Text style={[styles.planTitle, primaryTextStyle]}>Explore the community</Text>
+                <Text style={[styles.planBody, mutedTextStyle]}>
+                  Browse creators, watch films, and connect with other creatives.
+                </Text>
+                <Text style={[styles.planLimit, { color: TEXT_MUTED_2 }]}>
+                  Good for discovering Overlooked. Limited for creating.
+                </Text>
+                <View style={styles.freePriceRow}>
+                  <Text style={[styles.freePrice, primaryTextStyle]}>FREE</Text>
+                  <Text style={[styles.freePriceSub, { color: TEXT_MUTED_2 }]}>forever</Text>
+                </View>
+              </View>
+
               <TouchableOpacity
                 activeOpacity={0.92}
                 onPress={() => setSelectedPlan('monthly')}
@@ -901,10 +1057,25 @@ export default function PaywallScreen() {
                   isTiny ? styles.planTileTinyStack : null,
                 ]}
               >
+                <View
+                  style={[
+                    styles.bestForBadge,
+                    { backgroundColor: colors.backgroundAlt, borderColor: colors.borderStrong },
+                  ]}
+                >
+                  <Text style={[styles.bestForText, { color: colors.accent }]}>
+                    Best for serious creators
+                  </Text>
+                </View>
                 <Text style={[styles.planKicker, styles.planKickerHero, { color: colors.accent }]}>
-                  MONTHLY
+                  PRO
                 </Text>
-
+                <Text style={[styles.planTitle, primaryTextStyle]}>
+                  Everything you need to grow as a filmmaker
+                </Text>
+                <Text style={[styles.planBody, mutedTextStyle]}>
+                  Submit films, build your public portfolio, apply for paid roles, and unlock guided filmmaking tools.
+                </Text>
                 <View style={styles.planPriceRow}>
                   <Text style={[styles.planCurrency, { color: TEXT_IVORY }]}>£</Text>
                   <Text style={[styles.planPriceHero, { color: TEXT_IVORY }]}>
@@ -915,14 +1086,95 @@ export default function PaywallScreen() {
                 </View>
 
                 <Text style={[styles.planSubHero, { color: TEXT_MUTED }]}>
-                  {Platform.OS === 'android'
-                    ? 'Google Play subscription'
-                    : Platform.OS === 'ios'
-                    ? 'App Store subscription'
-                    : 'Cancel anytime'}
+                  Less than one coffee a month.
                 </Text>
               </TouchableOpacity>
             </View>
+          </View>
+
+          <View style={[styles.comparisonBox, { backgroundColor: colors.mutedCard, borderColor: HAIRLINE }]}>
+            <View style={styles.comparisonHeader}>
+              <Text style={[styles.comparisonTitle, primaryTextStyle]}>Free vs Pro</Text>
+              <View style={styles.comparisonLegend}>
+                <Text style={[styles.comparisonLegendText, { color: TEXT_MUTED_2 }]}>Free</Text>
+                <Text style={[styles.comparisonLegendText, { color: GOLD }]}>Pro</Text>
+              </View>
+            </View>
+
+            {paywallCopy.rows.map((row) => {
+              const freeLocked = row.free === '✕';
+              const proStrong = row.pro.startsWith('✓');
+
+              return (
+                <View
+                  key={row.feature}
+                  style={[styles.comparisonRow, { borderTopColor: HAIRLINE }]}
+                >
+                  <Text style={[styles.comparisonFeature, mutedTextStyle]} numberOfLines={2}>
+                    {row.feature}
+                  </Text>
+                  <View style={styles.comparisonStatusGroup}>
+                    <View
+                      style={[
+                        styles.statusPill,
+                        {
+                          backgroundColor: freeLocked
+                            ? 'rgba(143,133,120,0.12)'
+                            : 'rgba(72,180,113,0.13)',
+                          borderColor: freeLocked ? HAIRLINE : 'rgba(72,180,113,0.28)',
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusText,
+                          { color: freeLocked ? TEXT_MUTED_2 : colors.success },
+                        ]}
+                      >
+                        {row.free}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.statusPill,
+                        styles.statusPillPro,
+                        {
+                          backgroundColor: proStrong
+                            ? 'rgba(72,180,113,0.13)'
+                            : 'rgba(198,166,100,0.12)',
+                          borderColor: proStrong
+                            ? 'rgba(72,180,113,0.28)'
+                            : colors.borderStrong,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.statusText,
+                          { color: proStrong ? colors.success : GOLD },
+                        ]}
+                      >
+                        {row.pro}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          <View
+            style={[
+              styles.finalCtaBox,
+              { backgroundColor: colors.cardAlt, borderColor: colors.borderStrong },
+            ]}
+          >
+            <Text style={[styles.finalCtaTitle, primaryTextStyle]}>
+              Ready to start making films?
+            </Text>
+            <Text style={[styles.finalCtaSub, mutedTextStyle]}>
+              Unlock the tools, uploads, and opportunities built for serious creators.
+            </Text>
           </View>
 
           <TouchableOpacity
@@ -943,25 +1195,21 @@ export default function PaywallScreen() {
                 </Text>
               </View>
             ) : (
-              <Text style={[styles.buttonText, { color: colors.textOnPrimary }]}>{planLabel}</Text>
+              <Text style={[styles.buttonText, { color: colors.textOnPrimary }]}>
+                {Platform.OS === 'android' || Platform.OS === 'ios' ? planLabel : paywallCopy.cta}
+              </Text>
             )}
           </TouchableOpacity>
 
-          <Text style={[styles.selectedText, { color: TEXT_MUTED }]}>{selectedSubLabel}</Text>
+          <Text style={[styles.selectedText, { color: TEXT_MUTED }]}>
+            Cancel anytime. Auto-renews monthly. {selectedSubLabel}
+          </Text>
 
           <View style={[styles.subscriptionInfoBox, { backgroundColor: colors.mutedCard, borderColor: HAIRLINE }]}>
             <Text style={[styles.subscriptionInfoTitle, primaryTextStyle]}>{SUBSCRIPTION_TITLE}</Text>
 
             <Text style={[styles.subscriptionInfoText, mutedTextStyle]}>
-              Auto-renewable monthly subscription. Price: {rcPriceLabel ?? SUBSCRIPTION_PRICE_FALLBACK} per month. Pro includes up to 3 showreels on your profile.
-            </Text>
-
-            <Text style={[styles.subscriptionInfoText, mutedTextStyle]}>
-              {Platform.OS === 'ios'
-                ? 'If you subscribe on iOS, payment will be charged to your Apple ID account at confirmation of purchase. The subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel your subscription in your App Store account settings.'
-                : Platform.OS === 'android'
-                ? 'If you subscribe on Android, payment will be charged through Google Play at confirmation of purchase. The subscription automatically renews unless cancelled before the end of the current period. You can manage or cancel your subscription in your Google Play account settings.'
-                : 'Payment is handled through the checkout method you choose. The subscription automatically renews unless cancelled before the end of the current period. You can manage or cancel your subscription from this membership screen or your payment provider.'}
+              Auto-renewable monthly subscription. {rcPriceLabel ?? SUBSCRIPTION_PRICE_FALLBACK} per month. Payment is handled through the checkout method you choose. Your subscription renews automatically unless cancelled before the end of the current period. You can manage or cancel anytime from this membership screen or your payment provider.
             </Text>
 
             <View style={styles.legalLinksRow}>
@@ -975,18 +1223,6 @@ export default function PaywallScreen() {
                 <Text style={[styles.legalLinkText, { color: GOLD }]}>Privacy Policy</Text>
               </TouchableOpacity>
             </View>
-          </View>
-
-          <View style={[styles.divider, { backgroundColor: HAIRLINE }]} />
-
-          <View style={styles.benefits}>
-            <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Upload films to the Monthly Film Challenge</Text>
-            <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Upload up to 3 showreels on your profile</Text>
-            <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Apply for paid jobs across Overlooked</Text>
-            <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Unlock the full Filmmaking Bootcamp</Text>
-            <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Learn every major film discipline through focused lessons and exercises</Text>
-            <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Train with practical exercises inspired by academic film and acting courses</Text>
-            <Text style={[styles.benefitItem, mutedTextStyle]}>✓ Use all Workshop tools and resources to help you develop, plan, and make films</Text>
           </View>
 
           {!!message && (
@@ -1116,6 +1352,10 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
 
+  freePlanTile: {
+    borderWidth: 1,
+  },
+
   planTileTinyStack: {
     minWidth: '100%' as any,
   },
@@ -1140,6 +1380,68 @@ const styles = StyleSheet.create({
 
   planKickerHero: {
     color: GOLD,
+  },
+
+  bestForBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    marginBottom: 8,
+  },
+
+  bestForText: {
+    fontSize: 8.5,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  planTitle: {
+    marginTop: 4,
+    fontSize: 16,
+    lineHeight: 19,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  planBody: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 17,
+    color: TEXT_MUTED,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  planLimit: {
+    marginTop: 8,
+    fontSize: 11,
+    lineHeight: 15,
+    color: TEXT_MUTED_2,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  freePriceRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 7,
+  },
+
+  freePrice: {
+    fontSize: 19,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  freePriceSub: {
+    fontSize: 11,
+    color: TEXT_MUTED_2,
+    fontFamily: SYSTEM_SANS,
   },
 
   planPriceRow: {
@@ -1207,6 +1509,112 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 12,
     color: 'rgba(237,235,230,0.60)',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  comparisonBox: {
+    marginTop: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+
+  comparisonHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 4,
+  },
+
+  comparisonTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  comparisonLegend: {
+    flexDirection: 'row',
+    gap: 22,
+    paddingRight: 8,
+  },
+
+  comparisonLegendText: {
+    fontSize: 10,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  comparisonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    borderTopWidth: 1,
+    paddingVertical: 8,
+  },
+
+  comparisonFeature: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
+    color: TEXT_MUTED,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  comparisonStatusGroup: {
+    width: 142,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+
+  statusPill: {
+    minWidth: 46,
+    maxWidth: 74,
+    minHeight: 25,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  statusPillPro: {
+    minWidth: 58,
+  },
+
+  statusText: {
+    fontSize: 10.5,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
+  },
+
+  finalCtaBox: {
+    marginTop: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+  },
+
+  finalCtaTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+    textAlign: 'center',
+    color: TEXT_IVORY,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  finalCtaSub: {
+    marginTop: 5,
+    fontSize: 12.5,
+    lineHeight: 17,
+    textAlign: 'center',
+    color: TEXT_MUTED,
     fontFamily: SYSTEM_SANS,
   },
 

@@ -26,7 +26,12 @@ export type RootStackParamList = {
   NewPassword: undefined;
 
   // PAYFLOW
-  Paywall: undefined;
+  Paywall:
+    | {
+        context?: 'challenge' | 'jobs' | 'showreel' | 'bootcamp' | 'workshop' | 'extra_submission';
+        feature?: 'challenge' | 'jobs' | 'showreel' | 'bootcamp' | 'workshop' | 'extra_submission';
+      }
+    | undefined;
   PaySuccess: undefined;
 
   // ROOT TABS
