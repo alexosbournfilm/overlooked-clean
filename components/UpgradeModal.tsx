@@ -20,6 +20,8 @@ import { getMySubscriptionStatus } from '../app/lib/billing';
 import { supabase } from '../app/lib/supabase';
 import {
   PRIVACY_POLICY_URL,
+  SUBSCRIPTION_PRICE_AMOUNT,
+  SUBSCRIPTION_PRICE_CURRENCY_SYMBOL,
   SUBSCRIPTION_PRICE_FALLBACK,
   SUBSCRIPTION_TITLE,
   TERMS_OF_USE_URL,
@@ -763,7 +765,7 @@ export const UpgradeModal: React.FC<Props> = ({
       ? "You're on Pro"
       : upgrading
       ? 'Opening checkout…'
-      : 'Unlock Pro — £4.99/month';
+      : `Unlock Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`;
 
   const horizontalPad = isMobile ? 10 : 20;
   const verticalPadTop = Math.max(insets.top + 8, 14);
@@ -1091,8 +1093,12 @@ export const UpgradeModal: React.FC<Props> = ({
                     <View style={[styles.priceBadge, { backgroundColor: proBadgeSurface, borderColor: colors.borderStrong }]}>
                       <Text style={[styles.planKickerHero, { color: proAccentText }]}>MONTHLY</Text>
                       <View style={styles.planPriceRow}>
-                        <Text style={[styles.planCurrency, { color: membershipText }]}>£</Text>
-                        <Text style={[styles.planPriceHero, { color: membershipText }]}>4.99</Text>
+                        <Text style={[styles.planCurrency, { color: membershipText }]}>
+                          {SUBSCRIPTION_PRICE_CURRENCY_SYMBOL}
+                        </Text>
+                        <Text style={[styles.planPriceHero, { color: membershipText }]}>
+                          {SUBSCRIPTION_PRICE_AMOUNT}
+                        </Text>
                       </View>
                       <Text style={[styles.planSubHero, { color: membershipSubText }]}>per month</Text>
                     </View>
@@ -1114,7 +1120,7 @@ export const UpgradeModal: React.FC<Props> = ({
 
                   <View style={[styles.proCardCta, { backgroundColor: colors.primary }]}>
                     <Text style={[styles.proCardCtaText, { color: colors.textOnPrimary }]}>
-                      Unlock Pro — £4.99/month
+                      Unlock Pro — {SUBSCRIPTION_PRICE_FALLBACK}/month
                     </Text>
                   </View>
                   <Text style={[styles.cancelAnytimeText, { color: membershipMutedText }]}>

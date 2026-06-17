@@ -4,7 +4,9 @@ export const TERMS_OF_USE_URL =
 
 export const SUBSCRIPTION_TITLE = 'Overlooked Pro Monthly';
 export const SUBSCRIPTION_LENGTH = 'Monthly';
-export const SUBSCRIPTION_PRICE_FALLBACK = '£4.99';
+export const SUBSCRIPTION_PRICE_CURRENCY_SYMBOL = '€';
+export const SUBSCRIPTION_PRICE_AMOUNT = '9.99';
+export const SUBSCRIPTION_PRICE_FALLBACK = `${SUBSCRIPTION_PRICE_CURRENCY_SYMBOL}${SUBSCRIPTION_PRICE_AMOUNT}`;
 
 export const APP_STORE_DESCRIPTION_EULA_LINE =
   'Terms of Use (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';

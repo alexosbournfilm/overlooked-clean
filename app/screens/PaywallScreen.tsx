@@ -31,6 +31,8 @@ import {
 } from '../lib/membership';
 import {
   PRIVACY_POLICY_URL,
+  SUBSCRIPTION_PRICE_AMOUNT,
+  SUBSCRIPTION_PRICE_CURRENCY_SYMBOL,
   SUBSCRIPTION_PRICE_FALLBACK,
   SUBSCRIPTION_TITLE,
   TERMS_OF_USE_URL,
@@ -38,7 +40,7 @@ import {
 import { useAppTheme } from '../context/ThemeContext';
 
 /* -------------------------- Stripe Price IDs -------------------------- */
-const STRIPE_PRICE_MONTHLY = 'price_1S1jLxIaba42c4jIsVBQneb0';
+const STRIPE_PRICE_MONTHLY = 'price_1TjIhmIaba42c4jITdM4RgDL';
 
 /* -------------------------- RevenueCat -------------------------- */
 const REVENUECAT_ANDROID_PUBLIC_SDK_KEY = 'goog_yNsgMdHFvNRzhpfDwICFHbSXuvC';
@@ -230,7 +232,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Make films. Build your showreel. Get seen.',
     subtitle:
       'Submit to monthly film challenges, upload your best work, apply for paid roles, and use tools designed to help you actually finish films.',
-    cta: 'Unlock Pro — £4.99/month',
+    cta: `Unlock Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`,
     rows: GENERAL_ROWS,
   },
   challenge: {
@@ -238,7 +240,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Submit your film with Pro',
     subtitle:
       'Monthly Film Challenge submissions are part of Overlooked Pro. Upgrade to upload your film, get seen on Featured, and compete for next month’s top spot.',
-    cta: 'Unlock Pro and submit — £4.99/month',
+    cta: `Unlock Pro and submit — ${SUBSCRIPTION_PRICE_FALLBACK}/month`,
     rows: [
       { feature: 'Watch challenge films', free: '✓', pro: '✓' },
       { feature: 'Vote on submissions', free: '✓', pro: '✓' },
@@ -252,7 +254,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Apply for paid roles with Pro',
     subtitle:
       'Paid job applications are reserved for Pro creators, so opportunities stay focused on people actively building their portfolio.',
-    cta: 'Unlock Pro and apply — £4.99/month',
+    cta: `Unlock Pro and apply — ${SUBSCRIPTION_PRICE_FALLBACK}/month`,
     rows: [
       { feature: 'Browse paid jobs', free: '✓', pro: '✓' },
       { feature: 'Save interesting roles', free: '✓', pro: '✓' },
@@ -498,7 +500,7 @@ export default function PaywallScreen() {
     if ((Platform.OS === 'android' || Platform.OS === 'ios') && rcPriceLabel) {
       return `Monthly access • ${rcPriceLabel}`;
     }
-    return 'Monthly access • £4.99 / month';
+    return `Monthly access • ${SUBSCRIPTION_PRICE_FALLBACK} / month`;
   }, [rcPriceLabel]);
 
   const selectedPlanPayload = useMemo(() => {
@@ -1077,11 +1079,13 @@ export default function PaywallScreen() {
                   Submit films, build your public portfolio, apply for paid roles, and unlock guided filmmaking tools.
                 </Text>
                 <View style={styles.planPriceRow}>
-                  <Text style={[styles.planCurrency, { color: TEXT_IVORY }]}>£</Text>
+                  <Text style={[styles.planCurrency, { color: TEXT_IVORY }]}>
+                    {SUBSCRIPTION_PRICE_CURRENCY_SYMBOL}
+                  </Text>
                   <Text style={[styles.planPriceHero, { color: TEXT_IVORY }]}>
                     {(Platform.OS === 'android' || Platform.OS === 'ios') && rcPriceLabel
                       ? rcPriceLabel.replace(/[^\d.,]/g, '')
-                      : '4.99'}
+                      : SUBSCRIPTION_PRICE_AMOUNT}
                   </Text>
                 </View>
 
