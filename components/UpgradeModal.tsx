@@ -19,14 +19,19 @@ import { invalidateMembershipCache } from '../app/lib/membership';
 import { getMySubscriptionStatus } from '../app/lib/billing';
 import { supabase } from '../app/lib/supabase';
 import {
-  PRIVACY_POLICY_URL,
-  SUBSCRIPTION_PRICE_AMOUNT,
+  getSubscriptionOfferRemaining,
+  SUBSCRIPTION_OFFER_CODE,
+  SUBSCRIPTION_OFFER_DISCOUNT,
+  SUBSCRIPTION_OFFER_PRICE_AMOUNT,
+  SUBSCRIPTION_OFFER_PRICE_FALLBACK,
   SUBSCRIPTION_PRICE_CURRENCY_SYMBOL,
-  SUBSCRIPTION_PRICE_FALLBACK,
   SUBSCRIPTION_TITLE,
   TERMS_OF_USE_URL,
 } from '../app/lib/legal';
 import { useAppTheme } from '../app/context/ThemeContext';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import PrivacyPolicyModal from './PrivacyPolicyModal';
 
 type UpgradeContext =
   | 'challenge'
@@ -136,37 +141,22 @@ type ComparisonRow = {
 };
 
 const GENERAL_COMPARISON_ROWS: ComparisonRow[] = [
-  { feature: 'Browse creator profiles', free: '✓', pro: '✓' },
-  { feature: 'Watch films on Featured', free: '✓', pro: '✓' },
-  { feature: 'Connect with creatives', free: '✓', pro: '✓' },
-  { feature: 'Submit to Monthly Film Challenge', free: '✕', pro: '✓' },
-  { feature: 'Upload showreels', free: '✕', pro: '✓ up to 3' },
-  { feature: 'Apply for paid jobs', free: '✕', pro: '✓' },
-  { feature: 'Access Filmmaking Bootcamp', free: '✕', pro: '✓' },
-  { feature: 'Use Workshop tools', free: '✕', pro: '✓' },
-  { feature: 'Film planning resources', free: '✕', pro: '✓' },
-  { feature: 'Get featured through challenges', free: '✕', pro: '✓' },
-  { feature: 'Build a stronger portfolio link', free: 'Limited', pro: '✓' },
+  { feature: 'Film uploads', free: '1', pro: 'Unlimited' },
+  { feature: 'Profile showreels', free: '1', pro: '3' },
+  { feature: 'Monthly Film Challenge', free: 'View', pro: 'Submit' },
+  { feature: 'Paid job applications', free: '✕', pro: '✓' },
+  { feature: 'Filmmaking Bootcamp', free: '✕', pro: '✓' },
+  { feature: 'Workshop tools', free: '✕', pro: '✓' },
+  { feature: 'Portfolio link', free: 'Basic', pro: 'Enhanced' },
 ];
 
-function getOfferRemaining() {
-  const end = new Date(2026, 0, 31, 23, 59, 59);
-  const now = new Date();
-  const ms = end.getTime() - now.getTime();
-
-  if (ms <= 0) {
-    return { expired: true, short: 'Offer ended', long: 'Offer ended' };
-  }
-
-  const totalMinutes = Math.floor(ms / (1000 * 60));
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-
-  const short = days > 0 ? `${days}d ${hours}h left` : `${hours}h left`;
-  const long = `Ends Jan 31 • ${short}`;
-
-  return { expired: false, short, long };
-}
+const PRO_HIGHLIGHTS = [
+  'Unlimited film uploads',
+  '3 profile showreels and enhanced portfolio link',
+  'Monthly Film Challenge submissions',
+  'Exercises taken directly from film and acting schools',
+  'Ever-growing filmmaking tools and resources',
+];
 
 function formatEndDate(iso: string) {
   try {
@@ -363,21 +353,28 @@ export const UpgradeModal: React.FC<Props> = ({
 
   const [downgradeConfirmVisible, setDowngradeConfirmVisible] = useState(false);
   const [downgradeConfirmError, setDowngradeConfirmError] = useState<string | null>(null);
+  const [privacyPolicyVisible, setPrivacyPolicyVisible] = useState(false);
 
   const [periodEndIso, setPeriodEndIso] = useState<string | null>(null);
   const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState<boolean>(false);
 
   const [billingState, setBillingState] = useState<BillingSnapshot | null>(null);
 
-  const [offerCountdown, setOfferCountdown] = useState(() => getOfferRemaining());
+  const [offerCountdown, setOfferCountdown] = useState(() =>
+    getSubscriptionOfferRemaining()
+  );
   const [cancelCountdown, setCancelCountdown] = useState(() =>
     getCancellationCountdown(null)
   );
 
   useEffect(() => {
+    if (!visible) setPrivacyPolicyVisible(false);
+  }, [visible]);
+
+  useEffect(() => {
     if (!visible) return;
 
-    const tick = () => setOfferCountdown(getOfferRemaining());
+    const tick = () => setOfferCountdown(getSubscriptionOfferRemaining());
     tick();
 
     const id = setInterval(tick, 60 * 1000);
@@ -415,7 +412,7 @@ export const UpgradeModal: React.FC<Props> = ({
 
         setBillingState(billing);
         setCurrentTier(derivedTier);
-        setSelectedTier(derivedTier);
+        setSelectedTier('pro');
         setPeriodEndIso(
           billing.current_period_end ??
             billing.accessEndsAt ??
@@ -433,9 +430,9 @@ export const UpgradeModal: React.FC<Props> = ({
     };
   }, [visible]);
 
-  const title = 'Make films. Build your showreel. Get seen.';
+  const title = 'Build your portfolio with Pro';
   const subtitle =
-    'Submit to monthly film challenges, upload your best work, apply for paid roles, and use tools designed to help you actually finish films.';
+    'Share unlimited films, build a sharper portfolio, meet collaborators, and train with exercises taken directly from film and acting schools: the practical best parts, without the fluff.';
 
   const isActuallyPro =
     Boolean(billingState?.hasProAccess) ||
@@ -480,7 +477,7 @@ export const UpgradeModal: React.FC<Props> = ({
 
     setBillingState(refreshedBilling);
     setCurrentTier(derivedTier);
-    setSelectedTier(derivedTier);
+    setSelectedTier('pro');
     setPeriodEndIso(
       refreshedBilling.current_period_end ??
         refreshedBilling.accessEndsAt ??
@@ -521,30 +518,17 @@ export const UpgradeModal: React.FC<Props> = ({
     setDowngradeConfirmVisible(true);
   };
 
-  const handleFreeTierPress = async () => {
+  const handleFreeTierPress = () => {
     setErrorText(null);
     setSuccessText(null);
-    setSelectedTier('free');
 
-    if (isActuallyPro) {
-      openDowngradeConfirm();
+    if (!isActuallyPro) {
+      setSelectedTier('pro');
       return;
     }
 
-    if (currentTier === 'free' && billingState) return;
-
-    try {
-      const latestBilling = await refreshBillingState();
-      const latestTier = getDerivedTierFromBilling(latestBilling);
-
-      if (latestTier === 'pro') {
-        setSelectedTier('free');
-        openDowngradeConfirm();
-      }
-    } catch (err: any) {
-      console.log('UpgradeModal free tier check error', err?.message || err);
-      setErrorText('Could not check your membership. Try again.');
-    }
+    setSelectedTier('free');
+    openDowngradeConfirm();
   };
 
   const doDowngradeToFree = async () => {
@@ -765,7 +749,7 @@ export const UpgradeModal: React.FC<Props> = ({
       ? "You're on Pro"
       : upgrading
       ? 'Opening checkout…'
-      : `Unlock Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`;
+      : `Unlock Pro - ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`;
 
   const horizontalPad = isMobile ? 10 : 20;
   const verticalPadTop = Math.max(insets.top + 8, 14);
@@ -773,7 +757,7 @@ export const UpgradeModal: React.FC<Props> = ({
 
   const cardMaxHeight = Math.min(
     height - verticalPadTop - verticalPadBottom,
-    isMobile ? 700 : 820
+    isMobile ? 720 : 880
   );
 
   const confirmIntroText = isGrandfathered
@@ -817,15 +801,76 @@ export const UpgradeModal: React.FC<Props> = ({
     ? 'Manage in Google Play'
     : confirmPrimaryButtonLabel;
 
-  const modalSurface = colors.card;
-  const modalSoftSurface = colors.backgroundAlt;
-  const modalMutedSurface = isLight ? colors.mutedCard : SURFACE;
-  const proSurface = isLight ? '#F6ECD8' : SURFACE_2;
-  const proBadgeSurface = isLight ? '#E7D6B4' : '#211C13';
-  const proAccentText = colors.accent;
-  const membershipText = colors.textPrimary;
-  const membershipSubText = colors.textSecondary;
-  const membershipMutedText = colors.textMuted;
+  const modalSurface = isLight ? '#FFFEFA' : colors.card;
+  const modalSoftSurface = isLight ? '#FAF7F0' : colors.backgroundAlt;
+  const modalMutedSurface = isLight ? '#FFFFFF' : SURFACE;
+  const modalBorder = isLight ? '#EEE3D1' : colors.border;
+  const modalBorderStrong = isLight ? '#D8BF86' : colors.borderStrong;
+  const modalShadow = isLight ? 'rgba(76, 55, 21, 0.22)' : colors.shadow;
+  const premiumGold = isLight ? '#BF9135' : colors.primary;
+  const premiumGoldSoft = isLight ? '#FFF6DF' : GOLD_SOFT;
+  const proSurface = isLight ? '#FFFFFF' : SURFACE_2;
+  const proBadgeSurface = isLight ? '#FFFBF2' : '#211C13';
+  const proAccentText = isLight ? '#17130D' : colors.accent;
+  const membershipText = isLight ? '#17130D' : colors.textPrimary;
+  const membershipSubText = isLight ? '#5E564B' : colors.textSecondary;
+  const membershipMutedText = isLight ? '#918675' : colors.textMuted;
+  const buttonGradientColors = (isLight
+    ? ['#E8C878', '#BE9032']
+    : [colors.primary, '#B68E3E']) as [string, string];
+  const successSurface = isLight ? '#EFF8F1' : SUCCESS_BG;
+  const successBorder = isLight ? '#CFE6D5' : SUCCESS_BORDER;
+  const warningSurface = isLight ? '#FFF8E8' : WARNING_BG;
+
+  const renderStatusValue = (
+    value: string,
+    tone: 'free' | 'pro',
+    locked: boolean,
+    strong: boolean
+  ) => {
+    if (value === '✓') {
+      return (
+        <Ionicons
+          name="checkmark"
+          size={14}
+          color={isLight ? '#2E7A4A' : '#72D188'}
+        />
+      );
+    }
+
+    if (value === '✕') {
+      return (
+        <Text
+          style={[
+            styles.statusText,
+            { color: isLight ? '#B4A895' : membershipMutedText },
+          ]}
+        >
+          -
+        </Text>
+      );
+    }
+
+    return (
+      <Text
+        style={[
+          styles.statusText,
+          {
+            color:
+              tone === 'pro' && !strong
+                ? proAccentText
+                : locked
+                ? membershipMutedText
+                : isLight
+                ? '#2E7A4A'
+                : '#72D188',
+          },
+        ]}
+      >
+        {value}
+      </Text>
+    );
+  };
 
   return (
     <>
@@ -840,7 +885,7 @@ export const UpgradeModal: React.FC<Props> = ({
         <View
           style={[
             styles.backdrop,
-            { backgroundColor: colors.overlay },
+            { backgroundColor: isLight ? 'rgba(26, 22, 16, 0.38)' : colors.overlay },
             {
               paddingTop: verticalPadTop,
               paddingBottom: verticalPadBottom,
@@ -861,8 +906,8 @@ export const UpgradeModal: React.FC<Props> = ({
               { maxHeight: cardMaxHeight },
               {
                 backgroundColor: modalSurface,
-                borderColor: colors.border,
-                shadowColor: colors.shadow,
+                borderColor: modalBorder,
+                shadowColor: modalShadow,
               },
               isDesktopWeb && styles.cardDesktop,
               isMobile && styles.cardMobile,
@@ -876,15 +921,18 @@ export const UpgradeModal: React.FC<Props> = ({
               bounces={false}
             >
               <View style={styles.topBar}>
-                <View style={styles.logoCluster}>
-                  <Text style={[styles.brandText, { color: membershipMutedText }]}>OVERLOOKED PRO</Text>
-                  <Text style={[styles.kicker, { color: colors.primary }]}>CREATOR TOOLKIT</Text>
-                </View>
+                <View style={styles.topBarSpacer} />
 
                 <TouchableOpacity
                   activeOpacity={0.8}
                   onPress={onClose}
-                  style={[styles.closeButton, { backgroundColor: modalSoftSurface, borderColor: colors.border }]}
+                  style={[
+                    styles.closeButton,
+                    {
+                      backgroundColor: isLight ? '#FFFFFF' : modalSoftSurface,
+                      borderColor: modalBorder,
+                    },
+                  ]}
                   disabled={upgrading || downgrading || restoringPro}
                 >
                   <Text style={[styles.closeText, { color: membershipSubText }]}>×</Text>
@@ -895,10 +943,13 @@ export const UpgradeModal: React.FC<Props> = ({
                 <View
                   style={[
                     styles.heroBadge,
-                    { backgroundColor: modalSoftSurface, borderColor: colors.border },
+                    {
+                      backgroundColor: isLight ? '#FFFFFF' : modalSoftSurface,
+                      borderColor: isLight ? '#E3CEA0' : colors.border,
+                    },
                   ]}
                 >
-                  <Text style={[styles.heroBadgeText, { color: colors.primary }]}>
+                  <Text style={[styles.heroBadgeText, { color: proAccentText }]}>
                     OVERLOOKED PRO
                   </Text>
                 </View>
@@ -920,33 +971,104 @@ export const UpgradeModal: React.FC<Props> = ({
                 >
                   {subtitle}
                 </Text>
-                <Text
+
+                <View
                   style={[
-                    styles.emotionalLine,
-                    { color: membershipMutedText },
-                    isDesktopWeb && styles.emotionalLineDesktop,
+                    styles.offerBanner,
+                    {
+                      backgroundColor: isLight ? '#FFF9EA' : 'rgba(198,166,100,0.12)',
+                      borderColor: isLight ? '#E6D2A2' : 'rgba(198,166,100,0.28)',
+                    },
+                    isDesktopWeb && styles.offerBannerDesktop,
                   ]}
                 >
-                  Built for creators who are ready to stop waiting and start making.
-                </Text>
+                  <View style={styles.offerBannerTop}>
+                    <View
+                      style={[
+                        styles.offerBadge,
+                        {
+                          backgroundColor: isLight ? '#17130D' : colors.primary,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.offerBadgeText,
+                          { color: isLight ? '#FFFFFF' : colors.textOnPrimary },
+                        ]}
+                      >
+                        {SUBSCRIPTION_OFFER_DISCOUNT}
+                      </Text>
+                    </View>
+                    <Text style={[styles.offerCountdownText, { color: membershipText }]}>
+                      {offerCountdown.long}
+                    </Text>
+                  </View>
+                  <Text style={[styles.offerBannerTitle, { color: membershipText }]}>
+                    Get Overlooked Pro for {SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month
+                  </Text>
+                  <Text style={[styles.offerBannerText, { color: membershipSubText }]}>
+                    Use code {SUBSCRIPTION_OFFER_CODE} to keep 70% off every month for life while your subscription stays active.
+                  </Text>
+                  <View
+                    style={[
+                      styles.offerCodePill,
+                      {
+                        backgroundColor: isLight ? '#FFFFFF' : 'rgba(255,255,255,0.06)',
+                        borderColor: isLight ? '#E6D2A2' : 'rgba(198,166,100,0.24)',
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.offerCodeLabel, { color: membershipMutedText }]}>
+                      Code
+                    </Text>
+                    <Text style={[styles.offerCodeValue, { color: membershipText }]}>
+                      {SUBSCRIPTION_OFFER_CODE}
+                    </Text>
+                  </View>
+                </View>
 
                 <View style={styles.metaRow}>
                   {currentTier ? (
-                    <View style={[styles.metaPill, { backgroundColor: modalSoftSurface, borderColor: colors.border }]}>
+                    <View
+                      style={[
+                        styles.metaPill,
+                        {
+                          backgroundColor: isLight ? '#FFFFFF' : modalSoftSurface,
+                          borderColor: modalBorder,
+                        },
+                      ]}
+                    >
                       <Text style={[styles.metaLabel, { color: membershipMutedText }]}>Current</Text>
                       <Text style={[styles.metaValue, { color: membershipText }]}>{currentTierLabel}</Text>
                     </View>
                   ) : null}
 
-                  {!offerCountdown.expired ? (
-                    <View style={[styles.metaPill, styles.offerPill, { backgroundColor: isLight ? '#F4E7CB' : GOLD_SOFT, borderColor: colors.borderStrong }]}>
-                      <Text style={[styles.metaLabel, { color: colors.primary }]}>Offer</Text>
-                      <Text style={[styles.metaValue, { color: membershipText }]}>{offerCountdown.short}</Text>
-                    </View>
-                  ) : null}
+                  <View
+                    style={[
+                      styles.metaPill,
+                      styles.offerPill,
+                      { backgroundColor: premiumGoldSoft, borderColor: modalBorderStrong },
+                    ]}
+                  >
+                    <Text style={[styles.metaLabel, { color: membershipMutedText }]}>
+                      Ending soon
+                    </Text>
+                    <Text style={[styles.metaValue, { color: membershipText }]}>
+                      {offerCountdown.short}
+                    </Text>
+                  </View>
 
                   {isActuallyPro && cancelAtPeriodEnd && endDateLabel ? (
-                    <View style={[styles.metaPill, { backgroundColor: modalSoftSurface, borderColor: colors.border }]}>
+                    <View
+                      style={[
+                        styles.metaPill,
+                        {
+                          backgroundColor: isLight ? '#FFFFFF' : modalSoftSurface,
+                          borderColor: modalBorder,
+                        },
+                      ]}
+                    >
                       <Text style={[styles.metaLabel, { color: membershipMutedText }]}>Cancels</Text>
                       <Text style={[styles.metaValue, { color: membershipText }]}>{endDateLabel}</Text>
                     </View>
@@ -955,9 +1077,14 @@ export const UpgradeModal: React.FC<Props> = ({
               </View>
 
               {isActuallyPro && cancelAtPeriodEnd ? (
-                <View style={[styles.countdownBanner, { backgroundColor: isLight ? '#F7EDDC' : WARNING_BG, borderColor: colors.borderStrong }]}>
+                <View
+                  style={[
+                    styles.countdownBanner,
+                    { backgroundColor: warningSurface, borderColor: modalBorderStrong },
+                  ]}
+                >
                   <View style={styles.countdownBannerTopRow}>
-                    <Text style={[styles.countdownPill, { color: colors.primary }]}>CANCELLATION SCHEDULED</Text>
+                    <Text style={[styles.countdownPill, { color: proAccentText }]}>CANCELLATION SCHEDULED</Text>
                     {cancelCountdown.short ? (
                       <Text style={[styles.countdownDays, { color: membershipText }]}>{cancelCountdown.short}</Text>
                     ) : null}
@@ -990,7 +1117,14 @@ export const UpgradeModal: React.FC<Props> = ({
                     <TouchableOpacity
                       activeOpacity={0.92}
                       onPress={() => setDowngradeConfirmVisible(true)}
-                      style={[styles.inlineActionBtn, styles.inlineActionSecondary, { backgroundColor: modalSoftSurface, borderColor: colors.border }]}
+                      style={[
+                        styles.inlineActionBtn,
+                        styles.inlineActionSecondary,
+                        {
+                          backgroundColor: isLight ? '#FFFFFF' : modalSoftSurface,
+                          borderColor: modalBorder,
+                        },
+                      ]}
                       disabled={restoringPro}
                     >
                       <Text style={[styles.inlineActionSecondaryText, { color: membershipText }]}>View cancellation</Text>
@@ -1000,7 +1134,7 @@ export const UpgradeModal: React.FC<Props> = ({
               ) : null}
 
               {successText ? (
-                <View style={[styles.successBanner, { backgroundColor: isLight ? '#EAF7EE' : SUCCESS_BG, borderColor: isLight ? '#BBD7C4' : SUCCESS_BORDER }]}>
+                <View style={[styles.successBanner, { backgroundColor: successSurface, borderColor: successBorder }]}>
                   <Text style={[styles.successBannerText, { color: membershipText }]}>{successText}</Text>
                 </View>
               ) : null}
@@ -1014,31 +1148,31 @@ export const UpgradeModal: React.FC<Props> = ({
                   style={[
                     styles.compactTier,
                     styles.freeCompact,
-                    { backgroundColor: modalMutedSurface, borderColor: colors.border },
+                    { backgroundColor: modalMutedSurface, borderColor: modalBorder },
                     selectedTier === 'free' && [
                       styles.tierCardSelected,
-                      isLight && { borderColor: colors.borderStrong },
+                      isLight && { borderColor: modalBorderStrong },
                     ],
                     !isActuallyPro && styles.tierCardCurrentFree,
                     isDesktopWeb && styles.compactTierDesktop,
                   ]}
                 >
                   <View style={styles.compactTierLeft}>
-                    <Text style={[styles.tierSmallLabel, { color: colors.primary }]}>FREE</Text>
+                    <Text style={[styles.tierSmallLabel, { color: membershipMutedText }]}>FREE</Text>
                     <Text style={[styles.compactTierName, { color: membershipText }]}>
-                      Explore the community
+                      Free account
                     </Text>
                     <Text style={[styles.compactTierSub, { color: membershipSubText }]}>
-                      Browse creators, watch films, and connect with other creatives.
+                      Browse, connect, upload one film, and keep one profile showreel.
                     </Text>
                     <Text style={[styles.compactTierLimit, { color: membershipMutedText }]}>
-                      Good for discovering Overlooked. Limited for creating.
+                      More uploads, challenge submissions, jobs, Bootcamp, and Workshop stay locked.
                     </Text>
                   </View>
 
                   <View style={styles.compactTierRight}>
                     <Text style={[styles.compactPrice, { color: membershipText }]}>FREE</Text>
-                    <Text style={[styles.compactPriceSub, { color: membershipMutedText }]}>forever</Text>
+                    <Text style={[styles.compactPriceSub, { color: membershipMutedText }]}>1 showreel</Text>
                   </View>
                 </TouchableOpacity>
 
@@ -1051,12 +1185,16 @@ export const UpgradeModal: React.FC<Props> = ({
                   }}
                   style={[
                     styles.proTier,
-                    { backgroundColor: proSurface, borderColor: colors.borderStrong },
+                    {
+                      backgroundColor: proSurface,
+                      borderColor: modalBorderStrong,
+                      shadowColor: modalShadow,
+                    },
                     selectedTier === 'pro' && [
                       styles.tierCardSelectedPro,
                       isLight && {
-                        backgroundColor: '#F4E7CB',
-                        borderColor: '#C9A45C',
+                        backgroundColor: '#FFFFFF',
+                        borderColor: premiumGold,
                       },
                     ],
                     isActuallyPro && [
@@ -1075,7 +1213,10 @@ export const UpgradeModal: React.FC<Props> = ({
                       <View
                         style={[
                           styles.bestForBadge,
-                          { backgroundColor: isLight ? '#E8D6B3' : GOLD_SOFT },
+                          {
+                            backgroundColor: premiumGoldSoft,
+                            borderColor: isLight ? '#EBD39B' : 'transparent',
+                          },
                         ]}
                       >
                         <Text style={[styles.bestForText, { color: proAccentText }]}>
@@ -1083,168 +1224,64 @@ export const UpgradeModal: React.FC<Props> = ({
                         </Text>
                       </View>
                       <Text style={[styles.proTitle, { color: membershipText }]}>
-                        Everything you need to grow as a filmmaker
+                        Portfolio, training, and tools
                       </Text>
                       <Text style={[styles.compactTierSub, { color: membershipSubText }]}>
-                        Submit films, build your public portfolio, apply for paid roles, and unlock guided filmmaking tools.
+                        Share unlimited films, build a sharper portfolio, meet collaborators, and train like a focused film or acting school alternative.
                       </Text>
                     </View>
 
-                    <View style={[styles.priceBadge, { backgroundColor: proBadgeSurface, borderColor: colors.borderStrong }]}>
+                    <View
+                      style={[
+                        styles.priceBadge,
+                        {
+                          backgroundColor: proBadgeSurface,
+                          borderColor: isLight ? '#E7D5A8' : colors.borderStrong,
+                          shadowColor: modalShadow,
+                        },
+                      ]}
+                    >
                       <Text style={[styles.planKickerHero, { color: proAccentText }]}>MONTHLY</Text>
                       <View style={styles.planPriceRow}>
                         <Text style={[styles.planCurrency, { color: membershipText }]}>
                           {SUBSCRIPTION_PRICE_CURRENCY_SYMBOL}
                         </Text>
                         <Text style={[styles.planPriceHero, { color: membershipText }]}>
-                          {SUBSCRIPTION_PRICE_AMOUNT}
+                          {SUBSCRIPTION_OFFER_PRICE_AMOUNT}
                         </Text>
                       </View>
-                      <Text style={[styles.planSubHero, { color: membershipSubText }]}>per month</Text>
+                      <Text style={[styles.planSubHero, { color: membershipSubText }]}>
+                        per month with {SUBSCRIPTION_OFFER_CODE}
+                      </Text>
                     </View>
                   </View>
-
-                  <Text style={[styles.valueLine, { color: membershipSubText }]}>
-                    Less than one coffee a month.
-                  </Text>
 
                   <View style={styles.featureGrid}>
-                    <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Monthly Film Challenge uploads</Text>
-                    <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Up to 3 profile showreels</Text>
-                    <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Paid job applications</Text>
-                    <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Full Filmmaking Bootcamp</Text>
-                    <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Workshop tools and film resources</Text>
-                    <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Focused lessons and exercises</Text>
-                    <Text style={[styles.featureItem, { color: membershipSubText }]}>✓ Plan, develop, and make films</Text>
-                  </View>
-
-                  <View style={[styles.proCardCta, { backgroundColor: colors.primary }]}>
-                    <Text style={[styles.proCardCtaText, { color: colors.textOnPrimary }]}>
-                      Unlock Pro — {SUBSCRIPTION_PRICE_FALLBACK}/month
-                    </Text>
-                  </View>
-                  <Text style={[styles.cancelAnytimeText, { color: membershipMutedText }]}>
-                    Cancel anytime.
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              <View
-                style={[
-                  styles.comparisonBox,
-                  { backgroundColor: modalSoftSurface, borderColor: colors.border },
-                ]}
-              >
-                <View style={styles.comparisonHeader}>
-                  <Text style={[styles.comparisonTitle, { color: membershipText }]}>Free vs Pro</Text>
-                  <View style={styles.comparisonStatusGroup}>
-                    <Text style={[styles.comparisonColumnHeader, { color: membershipMutedText }]}>
-                      Free
-                    </Text>
-                    <Text style={[styles.comparisonColumnHeader, { color: colors.primary }]}>
-                      Pro
-                    </Text>
-                  </View>
-                </View>
-
-                {GENERAL_COMPARISON_ROWS.map((row) => {
-                  const freeLocked = row.free === '✕';
-                  const proStrong = row.pro.startsWith('✓');
-
-                  return (
-                    <View
-                      key={row.feature}
-                      style={[styles.comparisonRow, { borderTopColor: colors.border }]}
-                    >
-                      <Text
-                        style={[styles.comparisonFeature, { color: membershipSubText }]}
-                      >
-                        {row.feature}
-                      </Text>
-                      <View style={styles.comparisonStatusGroup}>
+                    {PRO_HIGHLIGHTS.map((item) => (
+                      <View key={item} style={styles.featureItemRow}>
                         <View
                           style={[
-                            styles.statusPill,
+                            styles.featureIcon,
                             {
-                              backgroundColor: freeLocked
-                                ? 'rgba(143,133,120,0.12)'
-                                : isLight
-                                ? '#EAF4EC'
+                              backgroundColor: isLight
+                                ? '#F0F8F2'
                                 : 'rgba(72,180,113,0.13)',
-                              borderColor: freeLocked
-                                ? colors.border
-                                : isLight
-                                ? '#BCD9C2'
-                                : 'rgba(72,180,113,0.28)',
                             },
                           ]}
                         >
-                          <Text
-                            style={[
-                              styles.statusText,
-                              {
-                                color: freeLocked
-                                  ? membershipMutedText
-                                  : isLight
-                                  ? '#2F7A48'
-                                  : '#72D188',
-                              },
-                            ]}
-                          >
-                            {row.free}
-                          </Text>
+                          <Ionicons
+                            name="checkmark"
+                            size={12}
+                            color={isLight ? '#2E7A4A' : '#72D188'}
+                          />
                         </View>
-                        <View
-                          style={[
-                            styles.statusPill,
-                            styles.statusPillPro,
-                            {
-                              backgroundColor: proStrong
-                                ? isLight
-                                  ? '#EAF4EC'
-                                  : 'rgba(72,180,113,0.13)'
-                                : 'rgba(198,166,100,0.12)',
-                              borderColor: proStrong
-                                ? isLight
-                                  ? '#BCD9C2'
-                                  : 'rgba(72,180,113,0.28)'
-                                : colors.borderStrong,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.statusText,
-                              {
-                                color: proStrong
-                                  ? isLight
-                                    ? '#2F7A48'
-                                    : '#72D188'
-                                  : colors.primary,
-                              },
-                            ]}
-                          >
-                            {row.pro}
-                          </Text>
-                        </View>
+                        <Text style={[styles.featureItem, { color: membershipSubText }]}>
+                          {item}
+                        </Text>
                       </View>
-                    </View>
-                  );
-                })}
-              </View>
-
-              <View
-                style={[
-                  styles.finalCtaBox,
-                  { backgroundColor: isLight ? '#F6ECD8' : '#15120D', borderColor: colors.borderStrong },
-                ]}
-              >
-                <Text style={[styles.finalCtaTitle, { color: membershipText }]}>
-                  Ready to start making films?
-                </Text>
-                <Text style={[styles.finalCtaSub, { color: membershipSubText }]}>
-                  Unlock the tools, uploads, and opportunities built for serious creators.
-                </Text>
+                    ))}
+                  </View>
+                </TouchableOpacity>
               </View>
 
               <TouchableOpacity
@@ -1270,36 +1307,134 @@ export const UpgradeModal: React.FC<Props> = ({
                     : 0.92
                 }
               >
-                <Text
-                  style={[
-                    styles.buttonText,
-                    ((selectedTier !== 'pro' && !canKeepPro) ||
-                      (isProDisabled && !canKeepPro) ||
-                      upgrading ||
-                      restoringPro) &&
-                      styles.buttonTextDisabled,
-                  ]}
+                <LinearGradient
+                  colors={buttonGradientColors}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.buttonGradient}
                 >
-                  {ctaLabel}
-                </Text>
+                  <Text
+                    style={[
+                      styles.buttonText,
+                      ((selectedTier !== 'pro' && !canKeepPro) ||
+                        (isProDisabled && !canKeepPro) ||
+                        upgrading ||
+                        restoringPro) &&
+                        styles.buttonTextDisabled,
+                    ]}
+                  >
+                    {ctaLabel}
+                  </Text>
+                </LinearGradient>
               </TouchableOpacity>
 
               <Text style={[styles.reassuranceText, { color: membershipMutedText }]}>
                 Cancel anytime. Auto-renews monthly.
               </Text>
 
-              <View style={[styles.subscriptionInfoBox, { backgroundColor: modalSoftSurface, borderColor: colors.border }]}>
+              <View
+                style={[
+                  styles.comparisonBox,
+                  {
+                    backgroundColor: isLight ? '#FFFFFF' : modalSoftSurface,
+                    borderColor: modalBorder,
+                  },
+                ]}
+              >
+                <View style={styles.comparisonHeader}>
+                  <Text style={[styles.comparisonTitle, { color: membershipText }]}>Free vs Pro</Text>
+                  <View style={styles.comparisonStatusGroup}>
+                    <Text style={[styles.comparisonColumnHeader, { color: membershipMutedText }]}>
+                      Free
+                    </Text>
+                    <Text style={[styles.comparisonColumnHeader, { color: proAccentText }]}>
+                      Pro
+                    </Text>
+                  </View>
+                </View>
+
+                {GENERAL_COMPARISON_ROWS.map((row) => {
+                  const freeLocked = row.free === '✕';
+                  const proStrong = row.pro.startsWith('✓');
+
+                  return (
+                    <View
+                      key={row.feature}
+                      style={[styles.comparisonRow, { borderTopColor: isLight ? '#F0E8DC' : colors.border }]}
+                    >
+                      <Text
+                        style={[styles.comparisonFeature, { color: membershipSubText }]}
+                      >
+                        {row.feature}
+                      </Text>
+                      <View style={styles.comparisonStatusGroup}>
+                        <View
+                          style={[
+                            styles.statusPill,
+                            {
+                              backgroundColor: freeLocked
+                                ? isLight
+                                  ? '#F8F5EF'
+                                  : 'rgba(143,133,120,0.12)'
+                                : isLight
+                                ? '#EFF8F2'
+                                : 'rgba(72,180,113,0.13)',
+                              borderColor: freeLocked
+                                ? modalBorder
+                                : isLight
+                                ? '#D1E7D6'
+                                : 'rgba(72,180,113,0.28)',
+                            },
+                          ]}
+                        >
+                          {renderStatusValue(row.free, 'free', freeLocked, row.free === '✓')}
+                        </View>
+                        <View
+                          style={[
+                            styles.statusPill,
+                            styles.statusPillPro,
+                            {
+                              backgroundColor: proStrong
+                                ? isLight
+                                  ? '#EFF8F2'
+                                  : 'rgba(72,180,113,0.13)'
+                                : premiumGoldSoft,
+                              borderColor: proStrong
+                                ? isLight
+                                  ? '#D1E7D6'
+                                  : 'rgba(72,180,113,0.28)'
+                                : modalBorderStrong,
+                            },
+                          ]}
+                        >
+                          {renderStatusValue(row.pro, 'pro', false, proStrong)}
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+
+              <View
+                style={[
+                  styles.subscriptionInfoBox,
+                  {
+                    backgroundColor: 'transparent',
+                    borderColor: isLight ? '#EEE5D7' : colors.border,
+                  },
+                ]}
+              >
                 <Text style={[styles.subscriptionInfoTitle, { color: membershipText }]}>{SUBSCRIPTION_TITLE}</Text>
                 <Text style={[styles.subscriptionInfoText, { color: membershipSubText }]}>
-                  Auto-renewable monthly subscription. {SUBSCRIPTION_PRICE_FALLBACK} per month. Payment is handled through the checkout method you choose. Your subscription renews automatically unless cancelled before the end of the current period. You can manage or cancel anytime from this membership screen or your payment provider.
+                  {SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with code {SUBSCRIPTION_OFFER_CODE}. Auto-renews monthly. Cancel anytime.
                 </Text>
                 <View style={styles.legalLinksRow}>
                   <TouchableOpacity onPress={() => openLegalUrl(TERMS_OF_USE_URL)}>
-                    <Text style={[styles.legalLinkText, { color: colors.primary }]}>Terms of Use</Text>
+                    <Text style={[styles.legalLinkText, { color: proAccentText }]}>Terms of Use</Text>
                   </TouchableOpacity>
                   <Text style={[styles.legalDivider, { color: membershipMutedText }]}>•</Text>
-                  <TouchableOpacity onPress={() => openLegalUrl(PRIVACY_POLICY_URL)}>
-                    <Text style={[styles.legalLinkText, { color: colors.primary }]}>Privacy Policy</Text>
+                  <TouchableOpacity onPress={() => setPrivacyPolicyVisible(true)}>
+                    <Text style={[styles.legalLinkText, { color: proAccentText }]}>Privacy Policy</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1309,7 +1444,7 @@ export const UpgradeModal: React.FC<Props> = ({
                 style={styles.laterButton}
                 disabled={upgrading || downgrading || restoringPro}
               >
-                <Text style={styles.laterText}>Maybe later</Text>
+                <Text style={[styles.laterText, { color: membershipMutedText }]}>Maybe later</Text>
               </TouchableOpacity>
             </ScrollView>
           </Pressable>
@@ -1361,7 +1496,7 @@ export const UpgradeModal: React.FC<Props> = ({
 
                   {!isGrandfathered && cancelAtPeriodEnd ? (
                     <View style={[styles.confirmStatusCard, { backgroundColor: modalSoftSurface, borderColor: colors.border }]}>
-                      <Text style={[styles.confirmStatusLabel, { color: colors.primary }]}>
+                      <Text style={[styles.confirmStatusLabel, { color: membershipText }]}>
                         {cancelCountdown.short || 'Scheduled'}
                       </Text>
                       <Text style={[styles.confirmStatusBody, { color: membershipSubText }]}>
@@ -1462,6 +1597,10 @@ export const UpgradeModal: React.FC<Props> = ({
           ) : null}
         </View>
       </Modal>
+      <PrivacyPolicyModal
+        visible={privacyPolicyVisible}
+        onClose={() => setPrivacyPolicyVisible(false)}
+      />
     </>
   );
 };
@@ -1496,68 +1635,56 @@ const styles = StyleSheet.create({
 
   card: {
     width: '100%',
-    maxWidth: 460,
+    maxWidth: 520,
     alignSelf: 'center',
-    borderRadius: 28,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
+    borderRadius: 34,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
     backgroundColor: DARK_ELEVATED,
     borderWidth: 1,
     borderColor: HAIRLINE,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOpacity: 0.45,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.26,
+    shadowRadius: 36,
+    shadowOffset: { width: 0, height: 22 },
     elevation: 16,
   },
 
   cardDesktop: {
-    maxWidth: 760,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
+    maxWidth: 900,
+    paddingVertical: 26,
+    paddingHorizontal: 26,
   },
 
   cardMobile: {
-    maxWidth: 356,
-    borderRadius: 26,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+    maxWidth: 390,
+    borderRadius: 28,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
   },
 
   cardScrollContent: {
-    paddingBottom: 4,
+    paddingBottom: 8,
     flexGrow: 1,
   },
 
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    minHeight: 30,
+    justifyContent: 'flex-end',
+    marginBottom: 2,
+    minHeight: 34,
   },
 
-  logoCluster: {
+  topBarSpacer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingLeft: 30,
-  },
-
-  brandText: {
-    color: 'rgba(241,239,232,0.38)',
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 2.4,
-    fontFamily: SYSTEM_SANS,
-    textAlign: 'center',
   },
 
   closeButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: 'rgba(255,255,255,0.05)',
     borderWidth: 1,
     borderColor: HAIRLINE_2,
@@ -1567,101 +1694,160 @@ const styles = StyleSheet.create({
 
   closeText: {
     color: TEXT_MUTED,
-    fontSize: 20,
-    lineHeight: 22,
+    fontSize: 22,
+    lineHeight: 24,
     fontWeight: '700',
     fontFamily: SYSTEM_SANS,
   },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-
   heroBlock: {
-    marginBottom: 9,
+    marginBottom: 22,
     alignItems: 'center',
+    paddingHorizontal: 8,
   },
 
   heroBadge: {
     borderRadius: 999,
-    paddingVertical: 5,
-    paddingHorizontal: 9,
+    paddingVertical: 7,
+    paddingHorizontal: 13,
     borderWidth: 1,
-    marginBottom: 8,
+    marginBottom: 13,
   },
 
   heroBadgeText: {
-    fontSize: 8.5,
+    fontSize: 9.5,
     fontWeight: '900',
-    letterSpacing: 1.3,
+    letterSpacing: 1.6,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
-  },
-
-  kicker: {
-    marginTop: 2,
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-    color: GOLD,
-    textTransform: 'uppercase',
-    fontFamily: SYSTEM_SANS,
-    textAlign: 'center',
   },
 
   title: {
-    fontSize: 21,
-    lineHeight: 23,
+    fontSize: 28,
+    lineHeight: 32,
     fontWeight: '900',
     color: TEXT_IVORY,
-    marginBottom: 6,
-    letterSpacing: -0.45,
+    marginBottom: 10,
     fontFamily: SYSTEM_SANS,
     textAlign: 'center',
   },
 
   titleDesktop: {
-    fontSize: 25,
-    lineHeight: 29,
+    fontSize: 36,
+    lineHeight: 42,
   },
 
   subtitle: {
-    fontSize: 11.5,
+    fontSize: 13.2,
     color: TEXT_MUTED,
-    lineHeight: 15,
+    lineHeight: 19,
     fontFamily: SYSTEM_SANS,
     textAlign: 'center',
-    maxWidth: 310,
+    maxWidth: 520,
   },
 
   subtitleDesktop: {
-    maxWidth: 620,
-    fontSize: 12.6,
-    lineHeight: 18,
+    maxWidth: 720,
+    fontSize: 14.5,
+    lineHeight: 22,
   },
 
-  emotionalLine: {
-    marginTop: 6,
-    fontSize: 10.8,
-    lineHeight: 14,
+  offerBanner: {
+    width: '100%',
+    maxWidth: 560,
+    borderWidth: 1,
+    borderRadius: 22,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    marginTop: 18,
+    alignItems: 'center',
+  },
+
+  offerBannerDesktop: {
+    maxWidth: 640,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+  },
+
+  offerBannerTop: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+    marginBottom: 9,
+  },
+
+  offerBadge: {
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 11,
+  },
+
+  offerBadgeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.9,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  offerCountdownText: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '900',
     fontFamily: SYSTEM_SANS,
     textAlign: 'center',
-    maxWidth: 310,
   },
 
-  emotionalLineDesktop: {
-    maxWidth: 620,
+  offerBannerTitle: {
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
+  },
+
+  offerBannerText: {
+    marginTop: 5,
+    fontSize: 12.6,
+    lineHeight: 18,
+    fontFamily: SYSTEM_SANS,
+    textAlign: 'center',
+  },
+
+  offerCodePill: {
+    marginTop: 11,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  offerCodeLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+  },
+
+  offerCodeValue: {
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 1,
+    fontFamily: SYSTEM_SANS,
   },
 
   metaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 6,
-    marginTop: 9,
+    gap: 8,
+    marginTop: 16,
   },
 
   metaPill: {
@@ -1669,8 +1855,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 5,
     borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
     backgroundColor: 'rgba(255,255,255,0.045)',
     borderWidth: 1,
     borderColor: HAIRLINE_2,
@@ -1683,7 +1869,7 @@ const styles = StyleSheet.create({
 
   metaLabel: {
     color: TEXT_MUTED_2,
-    fontSize: 9,
+    fontSize: 9.5,
     fontWeight: '900',
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
@@ -1691,21 +1877,9 @@ const styles = StyleSheet.create({
 
   metaValue: {
     color: TEXT_IVORY,
-    fontSize: 11,
+    fontSize: 11.5,
     fontWeight: '900',
     fontFamily: SYSTEM_SANS,
-  },
-
-  currentTierText: {
-    fontSize: 12,
-    color: TEXT_MUTED,
-    marginBottom: 14,
-    fontFamily: SYSTEM_SANS,
-  },
-
-  currentTierName: {
-    color: GOLD,
-    fontWeight: '900',
   },
 
   countdownBanner: {
@@ -1827,20 +2001,20 @@ const styles = StyleSheet.create({
   },
 
   tiersStack: {
-    gap: 9,
-    marginBottom: 10,
+    gap: 14,
+    marginBottom: 16,
   },
 
   tiersStackDesktop: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    gap: 12,
+    gap: 16,
   },
 
   compactTier: {
-    borderRadius: 18,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
+    borderRadius: 24,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
     backgroundColor: SURFACE,
     borderWidth: 1,
     borderColor: HAIRLINE_2,
@@ -1850,7 +2024,7 @@ const styles = StyleSheet.create({
   },
 
   compactTierDesktop: {
-    flex: 0.92,
+    flex: 0.9,
     alignSelf: 'stretch',
   },
 
@@ -1860,7 +2034,7 @@ const styles = StyleSheet.create({
 
   compactTierLeft: {
     flex: 1,
-    paddingRight: 10,
+    paddingRight: 16,
   },
 
   compactTierRight: {
@@ -1868,73 +2042,78 @@ const styles = StyleSheet.create({
   },
 
   tierSmallLabel: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '900',
-    letterSpacing: 1,
+    letterSpacing: 1.1,
     textTransform: 'uppercase',
     color: 'rgba(198,166,100,0.62)',
-    marginBottom: 3,
+    marginBottom: 7,
     fontFamily: SYSTEM_SANS,
   },
 
   tierSmallLabelGold: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '900',
-    letterSpacing: 1,
+    letterSpacing: 1.1,
     textTransform: 'uppercase',
     color: GOLD,
-    marginBottom: 3,
+    marginBottom: 7,
     fontFamily: SYSTEM_SANS,
   },
 
   compactTierName: {
-    fontSize: 15,
+    fontSize: 19,
+    lineHeight: 23,
     fontWeight: '900',
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
   },
 
   compactTierSub: {
-    marginTop: 2,
-    fontSize: 11,
+    marginTop: 6,
+    fontSize: 13,
     color: TEXT_MUTED,
     fontFamily: SYSTEM_SANS,
-    lineHeight: 15,
+    lineHeight: 19,
   },
 
   compactTierLimit: {
-    marginTop: 6,
-    fontSize: 10.2,
-    lineHeight: 13,
+    marginTop: 10,
+    fontSize: 12,
+    lineHeight: 17,
     color: TEXT_MUTED_2,
     fontFamily: SYSTEM_SANS,
   },
 
   compactPrice: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: '900',
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
   },
 
   compactPriceSub: {
-    marginTop: 1,
-    fontSize: 10,
+    marginTop: 3,
+    fontSize: 11.5,
     color: TEXT_MUTED_2,
     fontFamily: SYSTEM_SANS,
   },
 
   proTier: {
-    borderRadius: 21,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
+    borderRadius: 28,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
     backgroundColor: SURFACE_2,
     borderWidth: 1,
     borderColor: 'rgba(198,166,100,0.22)',
+    shadowOpacity: 0.14,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 8,
   },
 
   proTierDesktop: {
-    flex: 1.35,
+    flex: 1.45,
     alignSelf: 'stretch',
   },
 
@@ -1942,13 +2121,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
-    marginBottom: 10,
+    gap: 14,
+    marginBottom: 16,
   },
 
   proTitle: {
-    fontSize: 15,
-    lineHeight: 18,
+    fontSize: 20,
+    lineHeight: 24,
     fontWeight: '900',
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
@@ -1957,86 +2136,68 @@ const styles = StyleSheet.create({
   bestForBadge: {
     alignSelf: 'flex-start',
     borderRadius: 999,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    marginBottom: 7,
+    borderWidth: 1,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    marginBottom: 9,
   },
 
   bestForText: {
-    fontSize: 8.5,
+    fontSize: 9,
     fontWeight: '900',
-    letterSpacing: 0.7,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
   },
 
   priceBadge: {
-    minWidth: 104,
-    borderRadius: 16,
-    paddingVertical: 9,
-    paddingHorizontal: 9,
+    minWidth: 122,
+    borderRadius: 22,
+    paddingVertical: 13,
+    paddingHorizontal: 12,
     backgroundColor: '#211C13',
     borderWidth: 1,
     borderColor: OFFER_TILE_BORDER,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
   },
 
   featureGrid: {
-    gap: 4,
+    gap: 9,
   },
 
-  valueLine: {
-    marginTop: -4,
-    marginBottom: 9,
-    fontSize: 11,
-    fontWeight: '800',
-    fontFamily: SYSTEM_SANS,
+  featureItemRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+
+  featureIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -1,
   },
 
   featureItem: {
-    fontSize: 10.4,
-    lineHeight: 13.5,
+    flex: 1,
+    fontSize: 12.5,
+    lineHeight: 18,
     color: TEXT_MUTED,
     fontFamily: SYSTEM_SANS,
   },
 
-  featureItemMuted: {
-    fontSize: 11.5,
-    lineHeight: 18,
-    color: 'rgba(237,235,230,0.45)',
-    fontFamily: SYSTEM_SANS,
-  },
-
-  proCardCta: {
-    marginTop: 10,
-    minHeight: 36,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-
-  proCardCtaText: {
-    fontSize: 12.5,
-    fontWeight: '900',
-    fontFamily: SYSTEM_SANS,
-    textAlign: 'center',
-  },
-
-  cancelAnytimeText: {
-    marginTop: 6,
-    fontSize: 10.5,
-    textAlign: 'center',
-    fontFamily: SYSTEM_SANS,
-  },
-
   comparisonBox: {
-    borderRadius: 18,
+    borderRadius: 24,
     borderWidth: 1,
-    paddingHorizontal: 11,
-    paddingVertical: 10,
-    marginBottom: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 14,
   },
 
   comparisonHeader: {
@@ -2044,18 +2205,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 4,
+    marginBottom: 8,
   },
 
   comparisonTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '900',
     fontFamily: SYSTEM_SANS,
   },
 
   comparisonColumnHeader: {
-    width: 72,
-    fontSize: 10,
+    width: 82,
+    fontSize: 10.5,
     fontWeight: '900',
     fontFamily: SYSTEM_SANS,
     textAlign: 'center',
@@ -2065,28 +2226,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 12,
     borderTopWidth: 1,
-    paddingVertical: 7,
+    paddingVertical: 10,
   },
 
   comparisonFeature: {
     flex: 1,
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 12.5,
+    lineHeight: 17,
     fontFamily: SYSTEM_SANS,
   },
 
   comparisonStatusGroup: {
-    width: 152,
+    width: 172,
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: 8,
   },
 
   statusPill: {
-    width: 72,
-    minHeight: 24,
+    width: 82,
+    minHeight: 28,
     borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: 7,
@@ -2095,74 +2256,51 @@ const styles = StyleSheet.create({
   },
 
   statusPillPro: {
-    width: 72,
+    width: 82,
   },
 
   statusText: {
-    fontSize: 10.2,
+    fontSize: 11,
     fontWeight: '900',
-    fontFamily: SYSTEM_SANS,
-    textAlign: 'center',
-  },
-
-  finalCtaBox: {
-    borderRadius: 18,
-    borderWidth: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    marginBottom: 10,
-  },
-
-  finalCtaTitle: {
-    fontSize: 15,
-    fontWeight: '900',
-    fontFamily: SYSTEM_SANS,
-    textAlign: 'center',
-  },
-
-  finalCtaSub: {
-    marginTop: 4,
-    fontSize: 11.5,
-    lineHeight: 16,
     fontFamily: SYSTEM_SANS,
     textAlign: 'center',
   },
 
   reassuranceText: {
-    marginTop: 7,
-    fontSize: 11,
+    marginTop: 10,
+    marginBottom: 14,
+    fontSize: 12,
     textAlign: 'center',
     fontFamily: SYSTEM_SANS,
   },
 
   subscriptionInfoBox: {
-    borderRadius: 16,
-    borderWidth: 1,
+    borderTopWidth: 1,
     borderColor: HAIRLINE_2,
-    backgroundColor: 'rgba(255,255,255,0.035)',
-    padding: 12,
-    marginTop: 10,
-    marginBottom: 10,
+    backgroundColor: 'transparent',
+    paddingTop: 14,
+    paddingHorizontal: 2,
+    marginTop: 4,
+    marginBottom: 6,
   },
 
   subscriptionInfoTitle: {
-    fontSize: 12.5,
+    fontSize: 12,
     color: TEXT_IVORY,
     fontWeight: '900',
-    letterSpacing: 0.4,
     fontFamily: SYSTEM_SANS,
   },
 
   subscriptionInfoText: {
-    marginTop: 6,
+    marginTop: 5,
     fontSize: 11.5,
-    lineHeight: 16,
+    lineHeight: 17,
     color: TEXT_MUTED,
     fontFamily: SYSTEM_SANS,
   },
 
   legalLinksRow: {
-    marginTop: 10,
+    marginTop: 9,
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
@@ -2171,7 +2309,7 @@ const styles = StyleSheet.create({
 
   legalLinkText: {
     color: GOLD,
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '900',
     fontFamily: SYSTEM_SANS,
   },
@@ -2291,41 +2429,53 @@ const styles = StyleSheet.create({
   },
 
   buttonBase: {
-    marginTop: 0,
-    paddingVertical: 13,
+    marginTop: 2,
     borderRadius: 999,
+    overflow: 'hidden',
+    shadowColor: '#7C5314',
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
   },
 
   proButton: {
-    backgroundColor: GOLD,
+    backgroundColor: 'transparent',
+  },
+
+  buttonGradient: {
+    minHeight: 54,
+    paddingVertical: 15,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   buttonDisabled: {
-    backgroundColor: '#333333',
+    opacity: 0.56,
   },
 
   buttonText: {
     color: '#000000',
     textAlign: 'center',
     fontWeight: '900',
-    fontSize: 14,
-    letterSpacing: 0.2,
+    fontSize: 15,
     fontFamily: SYSTEM_SANS,
   },
 
   buttonTextDisabled: {
-    color: TEXT_MUTED,
+    color: 'rgba(20,17,13,0.56)',
   },
 
   laterButton: {
-    marginTop: 8,
-    paddingVertical: 4,
+    marginTop: 4,
+    paddingVertical: 8,
   },
 
   laterText: {
     textAlign: 'center',
     color: TEXT_MUTED,
-    fontSize: 12,
+    fontSize: 12.5,
     fontFamily: SYSTEM_SANS,
   },
 

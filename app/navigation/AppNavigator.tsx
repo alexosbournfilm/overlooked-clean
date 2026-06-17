@@ -21,6 +21,7 @@ import { getMembershipSnapshot } from "../lib/membership";
 
 import PaywallScreen from "../screens/PaywallScreen";
 import PaySuccessScreen from "../screens/PaySuccessScreen";
+import PrivacyPolicyScreen from "../screens/PrivacyPolicyScreen";
 import NewPassword from "../screens/NewPassword";
 import WorkshopSubmitScreen from "../screens/WorkshopSubmitScreen";
 import PublicProfileScreen from "../screens/PublicProfileScreen";
@@ -500,6 +501,7 @@ export default function AppNavigator({
       >
         <Stack.Screen name="Paywall" component={PaywallScreen} />
         <Stack.Screen name="PaySuccess" component={PaySuccessScreen} />
+        <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
 
         <Stack.Screen
           name="Auth"

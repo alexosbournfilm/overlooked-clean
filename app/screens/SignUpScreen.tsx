@@ -22,6 +22,7 @@ import { useAppTheme } from '../context/ThemeContext';
 import { useAppLanguage } from '../context/LanguageContext';
 import { translateTrustedText } from '../i18n/translations';
 import SmoothModal from '../../components/SmoothModal';
+import PrivacyPolicyModal from '../../components/PrivacyPolicyModal';
 
 // DARK THEME PALETTE (aligned with MainTabs)
 const DARK_BG = '#050505';
@@ -566,77 +567,10 @@ You must not upload or share:
         </View>
       </SmoothModal>
 
-      {/* Privacy Policy */}
-      <SmoothModal
+      <PrivacyPolicyModal
         visible={showPrivacy}
-        transparent
-        onRequestClose={() => setShowPrivacy(false)}
-      >
-        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
-          <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <ScrollView>
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
-                {translateLegalText('Privacy Policy (Overlooked)')}
-              </Text>
-              <Text
-                style={[
-                  styles.modalText,
-                  { color: colors.textSecondary },
-                  Platform.OS === 'web' ? ({ whiteSpace: 'pre-wrap' } as any) : null,
-                ]}
-              >
-                {translateLegalText(`Last updated: ${legalUpdatedAt}
-
-This Privacy Policy explains how Overlooked LTD (“Overlooked”, “we”, “our”) collects and processes your personal data in accordance with UK GDPR.
-
-1. DATA WE COLLECT
-- Account data: email, name, creative roles, city, country, profile image.
-- Content data: videos, portfolio URLs, messages, votes, comments.
-- Device data: IP address, browser/device type.
-- Usage data: interactions, pages viewed, preferences.
-
-2. HOW WE USE DATA
-- Provide and maintain the service.
-- Personalise content and user discovery.
-- Secure the platform and prevent fraud.
-- Communicate with you regarding account actions.
-- Comply with legal obligations.
-
-3. SHARING
-- Public profile information is visible to other users.
-- We share limited data with third-party processors (Supabase, analytics, email delivery).
-- We may share information when legally required.
-
-4. RETENTION
-- Data is retained as long as your account remains active, or longer where legally appropriate.
-
-5. YOUR RIGHTS (UK GDPR)
-- Right of access, rectification, erasure, portability, restriction, and objection.
-- Right to lodge a complaint with the ICO (Information Commissioner’s Office).
-
-6. SAFETY
-- We take platform safety seriously and may take action against harmful or abusive behaviour.
-
-7. SECURITY
-- We use industry-standard security practices but cannot guarantee absolute protection.
-
-8. INTERNATIONAL TRANSFERS
-- Data may be transferred outside the UK using appropriate safeguards.
-
-9. CHANGES
-- We may update this Privacy Policy; material updates will be communicated.`)}
-              </Text>
-            </ScrollView>
-
-            <TouchableOpacity
-              style={[styles.closeButton, { backgroundColor: colors.primary }]}
-              onPress={() => setShowPrivacy(false)}
-            >
-              <Text style={[styles.closeButtonText, { color: colors.textOnPrimary }]}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </SmoothModal>
+        onClose={() => setShowPrivacy(false)}
+      />
 
       {/* Child Safety Policy */}
       <SmoothModal

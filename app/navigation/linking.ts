@@ -51,6 +51,7 @@ export const linking: LinkingOptions<any> = {
 
       Paywall: "paywall",
       PaySuccess: "pay-success",
+      PrivacyPolicy: "privacy",
     },
   },
 };
