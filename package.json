@@ -10,7 +10,8 @@
     "clean": "rm -rf dist .expo node_modules/.cache",
     "build": "expo export --platform web --output-dir dist --clear && node scripts/patch-web-index.js",
     "export:web": "expo export --platform web --output-dir dist --clear && node scripts/patch-web-index.js",
-    "deploy:web": "npm run export:web && vercel deploy --prod dist"
+    "deploy:web": "npm run export:web && vercel deploy --prod dist",
+    "import:cities": "node scripts/import-geonames-cities.js"
   },
   "dependencies": {
     "@expo-google-fonts/cinzel": "^0.4.2",

@@ -35,3 +35,8 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 .vercel
+
+# generated/downloaded city data
+data/geonames/*.zip
+data/geonames/*.txt
+data/geonames/*.csv

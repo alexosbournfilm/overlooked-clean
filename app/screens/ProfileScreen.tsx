@@ -57,6 +57,7 @@ import SmoothModal from '../../components/SmoothModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeyboardLift } from '../utils/useKeyboardLift';
 import { isCurrentUserPro } from '../lib/membership';
+import { getFlag, parseCityQuery, searchCities } from '../lib/citySearch';
 
 /* ---------- Noir palette ---------- */
 const GOLD = '#C6A664';
@@ -2593,6 +2594,7 @@ const [searchingCities, setSearchingCities] = useState(false);
 
 const cityReqIdRef = useRef<number>(0);
 const latestCityTermRef = useRef<string>('');
+const citySearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 const [roleSearchFocused, setRoleSearchFocused] = useState(false);
 const [sideRoleSearchFocused, setSideRoleSearchFocused] = useState(false);
   const [roleSearchModalVisible, setRoleSearchModalVisible] = useState(false);
@@ -4227,98 +4229,9 @@ setAlreadyAppliedJobIds(ids);
 
   /* ---------- City search ---------- */
 
-const getFlag = (countryCode: string) =>
-  countryCode
-    .toUpperCase()
-    .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
-
-const parseCityQuery = (raw: string) => {
-  const s = (raw || '').trim();
-  const cleaned = s.replace(/[()]/g, '').replace(/\s+/g, ' ');
-  const lower = cleaned.toLowerCase();
-
-  const partsComma = lower
-    .split(',')
-    .map((p) => p.trim())
-    .filter(Boolean);
-
-  let cityPart = partsComma[0] || '';
-  let countryPart = partsComma[1] || '';
-
-  if (!countryPart) {
-    const tokens = lower.split(' ').filter(Boolean);
-    if (tokens.length >= 2) {
-      const last = tokens[tokens.length - 1];
-      if (/^[a-z]{2}$/.test(last)) {
-        countryPart = last;
-        cityPart = tokens.slice(0, -1).join(' ');
-      }
-    }
-  }
-
-  const cityQuery = (cityPart || '').trim();
-  const countryCode = (countryPart || '').trim();
-
-  return {
-    cityQuery,
-    countryCode: /^[a-z]{2}$/.test(countryCode) ? countryCode.toUpperCase() : '',
-  };
-};
-
-const prioritizeCityMatches = (
-  list: { id: number; name: string; country_code: string }[],
-  rawTerm: string
-) => {
-  const { cityQuery, countryCode } = parseCityQuery(rawTerm);
-  const q = cityQuery.trim();
-
-  const norm = (s: string) =>
-    s
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .trim();
-
-  const qn = norm(q);
-
-  const score = (row: { name: string; country_code: string }) => {
-    const name = norm(row.name);
-    const cc = (row.country_code || '').toUpperCase();
-
-    const exactCity = name === qn;
-    const starts = name.startsWith(qn);
-    const contains = name.includes(qn);
-
-    if (countryCode && exactCity && cc === countryCode) return 0;
-    if (exactCity) return 1;
-    if (countryCode && starts && cc === countryCode) return 2;
-    if (starts) return 3;
-    if (countryCode && contains && cc === countryCode) return 4;
-    if (contains) return 5;
-    return 6;
-  };
-
-  return list.sort((a, b) => {
-    const sa = score(a);
-    const sb = score(b);
-    if (sa !== sb) return sa - sb;
-
-    if (countryCode) {
-      const ac = (a.country_code || '').toUpperCase() === countryCode ? 0 : 1;
-      const bc = (b.country_code || '').toUpperCase() === countryCode ? 0 : 1;
-      if (ac !== bc) return ac - bc;
-    }
-
-    const an = a.name.toLowerCase();
-    const bn = b.name.toLowerCase();
-    if (an !== bn) return an.localeCompare(bn);
-    return (a.country_code || '').localeCompare(b.country_code || '');
-  });
-};
-
 const fetchCities = async (query: string) => {
   const raw = (query || '').trim();
-  const { cityQuery, countryCode } = parseCityQuery(raw);
+  const { cityQuery } = parseCityQuery(raw);
 
   latestCityTermRef.current = raw;
 
@@ -4332,27 +4245,7 @@ const fetchCities = async (query: string) => {
   setSearchingCities(true);
 
   try {
-    const baseQuery = supabase
-      .from('cities')
-      .select('id, name, country_code')
-      .ilike('name', `%${cityQuery}%`)
-      .limit(120);
-
-    const primary = countryCode ? await baseQuery.eq('country_code', countryCode) : await baseQuery;
-
-    let finalData = primary.data;
-    let finalError = primary.error;
-
-    if (countryCode && (!finalData || finalData.length === 0)) {
-      const fallback = await supabase
-        .from('cities')
-        .select('id, name, country_code')
-        .ilike('name', `%${cityQuery}%`)
-        .limit(120);
-
-      finalData = fallback.data;
-      finalError = fallback.error;
-    }
+    const { data: finalData, error: finalError } = await searchCities(raw, { limit: 120 });
 
     if (myReqId !== cityReqIdRef.current) return;
     if (latestCityTermRef.current !== raw) return;
@@ -4363,9 +4256,7 @@ const fetchCities = async (query: string) => {
       return;
     }
 
-    const ranked = prioritizeCityMatches(finalData || [], raw);
-
-    const formatted = ranked.map((c) => ({
+    const formatted = (finalData || []).map((c) => ({
       label: `${getFlag(c.country_code)} ${c.name}, ${c.country_code}`,
       value: Number(c.id),
       country_code: c.country_code,
@@ -4379,6 +4270,20 @@ const fetchCities = async (query: string) => {
     }
   }
 };
+
+const scheduleCitySearch = (text: string) => {
+  if (citySearchDebounceRef.current) clearTimeout(citySearchDebounceRef.current);
+  citySearchDebounceRef.current = setTimeout(() => {
+    fetchCities(text);
+  }, 180);
+};
+
+useEffect(
+  () => () => {
+    if (citySearchDebounceRef.current) clearTimeout(citySearchDebounceRef.current);
+  },
+  []
+);
 
   /* ---------- Role search ---------- */
 
@@ -9930,7 +9835,7 @@ return (
                   value={citySearch}
                   onChangeText={(text) => {
                     setCitySearch(text);
-                    fetchCities(text);
+                    scheduleCitySearch(text);
                   }}
                   placeholder="Start typing your city..."
                   placeholderTextColor={COLORS.textSecondary}

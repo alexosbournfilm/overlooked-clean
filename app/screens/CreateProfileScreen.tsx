@@ -31,6 +31,7 @@ import { navigationRef } from '../navigation/navigationRef';
 import { useAuth } from '../context/AuthProvider';
 import { useGamification } from '../context/GamificationContext';
 import { useAppTheme } from '../context/ThemeContext';
+import { getFlag, searchCities } from '../lib/citySearch';
 import AvatarCropper from '../../components/AvatarCropper';
 
 // ---------------- THEME ----------------
@@ -560,6 +561,7 @@ const [roleLoadError, setRoleLoadError] = useState<string | null>(null);
   const [citySearchTerm, setCitySearchTerm] = useState('');
   const [cityItems, setCityItems] = useState<DropdownOption[]>([]);
   const [isSearchingCities, setIsSearchingCities] = useState(false);
+  const citySearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<string | null>(null);
@@ -855,12 +857,6 @@ const [roleLoadError, setRoleLoadError] = useState<string | null>(null);
   [roleItems]
 );
 
-  const getFlag = (countryCode: string) => {
-    return countryCode
-      .toUpperCase()
-      .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
-  };
-
   const fetchCities = useCallback(async (text: string) => {
     const q = text.trim();
     const reqId = ++citySearchReq.current;
@@ -874,11 +870,7 @@ const [roleLoadError, setRoleLoadError] = useState<string | null>(null);
     setIsSearchingCities(true);
 
     try {
-      const { data, error } = await supabase
-        .from('cities')
-        .select('id, name, country_code')
-        .ilike('name', `%${q}%`)
-        .limit(100);
+      const { data, error } = await searchCities(q, { limit: 100 });
 
       if (reqId !== citySearchReq.current) return;
 
@@ -892,20 +884,9 @@ const [roleLoadError, setRoleLoadError] = useState<string | null>(null);
         label: `${getFlag(c.country_code)} ${c.name}, ${c.country_code}`,
         value: c.id,
         country: c.country_code,
-        rawName: c.name,
       }));
 
-      const ordered = mapped
-        .sort((a: any, b: any) => {
-          const aRank = rankMatch(a.rawName, q);
-          const bRank = rankMatch(b.rawName, q);
-
-          if (aRank !== bRank) return aRank - bRank;
-          return a.rawName.localeCompare(b.rawName);
-        })
-        .map(({ rawName, ...rest }: any) => rest);
-
-      setCityItems(ordered);
+      setCityItems(mapped);
     } catch (e) {
       console.error('City fetch fatal:', e);
       if (reqId === citySearchReq.current) setCityItems([]);
@@ -913,6 +894,23 @@ const [roleLoadError, setRoleLoadError] = useState<string | null>(null);
       if (reqId === citySearchReq.current) setIsSearchingCities(false);
     }
   }, []);
+
+  const scheduleCitySearch = useCallback(
+    (text: string) => {
+      if (citySearchDebounceRef.current) clearTimeout(citySearchDebounceRef.current);
+      citySearchDebounceRef.current = setTimeout(() => {
+        fetchCities(text);
+      }, 180);
+    },
+    [fetchCities]
+  );
+
+  useEffect(
+    () => () => {
+      if (citySearchDebounceRef.current) clearTimeout(citySearchDebounceRef.current);
+    },
+    []
+  );
 
   const pickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -1796,7 +1794,7 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
               value={citySearchTerm}
               onChangeText={(text) => {
                 setCitySearchTerm(text);
-                fetchCities(text);
+                scheduleCitySearch(text);
               }}
               style={[
                 styles.searchInput,

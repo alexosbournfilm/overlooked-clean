@@ -87,5 +87,12 @@ export type City = {
   id: number;
   name: string;
   country_code: string;
+  geoname_id?: number | null;
+  ascii_name?: string | null;
+  alternate_names?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  population?: number | null;
+  timezone?: string | null;
   city?: string;
 };
