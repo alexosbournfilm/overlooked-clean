@@ -3453,9 +3453,9 @@ const mediaW = isWideWeb
   : Math.min(contentW, 980);
 
   // ✅ Compact grid sizing (wide web)
-const GRID_GAP = isWideWeb ? 30 : 18;
-const MOBILE_GRID_SIDE_PAD = Platform.OS === 'web' ? 10 : 8;
-const MOBILE_CARD_SHRINK = 2;
+const GRID_GAP = isWideWeb ? 64 : 24;
+const MOBILE_GRID_SIDE_PAD = Platform.OS === 'web' ? 14 : 10;
+const MOBILE_CARD_SHRINK = isWideWeb ? 0 : 4;
 const mobileGridW = Platform.OS === 'web' ? pageInnerW : winW;
 
 const gridCardW = isWideWeb
@@ -6091,7 +6091,7 @@ return (
   keyExtractor={(item: any) => item.id}
   ListHeaderComponent={headerElement}
   numColumns={2}
-  columnWrapperStyle={{ justifyContent: 'space-between', marginBottom: 26 }}
+  columnWrapperStyle={{ justifyContent: 'space-between', marginBottom: 34 }}
   contentContainerStyle={[
     styles.listContentWide,
     {
@@ -6203,7 +6203,7 @@ overScrollMode="always"
     ? {
         justifyContent: 'space-between',
         paddingHorizontal: MOBILE_GRID_SIDE_PAD,
-        marginBottom: 22,
+        marginBottom: 28,
       }
     : undefined
 }
