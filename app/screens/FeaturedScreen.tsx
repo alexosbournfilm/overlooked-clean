@@ -2734,7 +2734,11 @@ justifyContent: 'center',
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.mobileChipRow}
+        style={styles.mobileChipScroller}
+        contentContainerStyle={[styles.mobileChipRow, styles.mobileSortChipRow]}
+        nestedScrollEnabled
+        directionalLockEnabled
+        keyboardShouldPersistTaps="handled"
       >
         {filters.map((f) => {
           const active = sort === f.key;
@@ -2826,7 +2830,11 @@ justifyContent: 'center',
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.mobileChipRow}
+        style={styles.mobileChipScroller}
+        contentContainerStyle={[styles.mobileChipRow, styles.mobileCategoryChipRow]}
+        nestedScrollEnabled
+        directionalLockEnabled
+        keyboardShouldPersistTaps="handled"
       >
         {FILM_CATEGORIES.map((c) => {
           const active = filmCategory === c;
@@ -2916,6 +2924,7 @@ const watchDesktopGap = 20;
 const featuredWatchMainW = useDesktopWatch
   ? Math.max(360, winW - watchDesktopPadX * 2 - watchDesktopGap - watchDesktopRailW)
   : Math.min(Platform.OS === 'web' ? winW - 72 : winW, Platform.OS === 'web' ? 792 : 860);
+const featuredWatchPlayerW = useDesktopWatch ? featuredWatchMainW : winW;
 
 const useTwoColumnMobile = isMobile;
 const gridColumns = isWideWeb || useTwoColumnMobile ? 2 : 1;
@@ -3399,9 +3408,12 @@ const lastAppliedFetchKeyRef = useRef<string | null>(null);
   const PAGE_PAD = Platform.OS === 'web' ? 18 : 16;
   const SIDEBAR_W = isWideWeb ? 320 : 0;
   const GUTTER = isWideWeb ? 18 : 0;
+  const WIDE_LAYOUT_PAD = isWideWeb ? 12 : 0;
 
   const pageInnerW = Math.min(1400, Math.max(320, winW - PAGE_PAD * 2));
-  const gridAreaW = isWideWeb ? Math.max(320, pageInnerW - SIDEBAR_W - GUTTER) : pageInnerW;
+  const gridAreaW = isWideWeb
+    ? Math.max(320, pageInnerW - WIDE_LAYOUT_PAD * 2 - SIDEBAR_W - GUTTER)
+    : pageInnerW;
 
   // ✅ Hero/winner must fit INSIDE the grid area on wide web (sidebar layout)
 const cardW = isWideWeb
@@ -3426,7 +3438,7 @@ const fitContain = (maxW: number, maxH: number, aspect = FIT_ASPECT) => {
   const VOTE_COL_W = isNarrow ? 58 : 64;
 const FEED_INNER_PAD = isNarrow ? 12 : 14;
 
-const mobileCardW = winW - 20;
+const mobileCardW = Platform.OS === 'web' ? pageInnerW : winW - 20;
 const mobileMediaW = mobileCardW;
 
 const contentW = Math.max(
@@ -3441,14 +3453,15 @@ const mediaW = isWideWeb
   : Math.min(contentW, 980);
 
   // ✅ Compact grid sizing (wide web)
-  const GRID_GAP = 14;
+const GRID_GAP = 14;
 const MOBILE_GRID_SIDE_PAD = 8;
 const MOBILE_CARD_SHRINK = 2;
+const mobileGridW = Platform.OS === 'web' ? pageInnerW : winW;
 
 const gridCardW = isWideWeb
   ? Math.floor((gridAreaW - GRID_GAP) / 2)
   : isMobile
-  ? Math.floor((winW - MOBILE_GRID_SIDE_PAD * 2 - GRID_GAP) / 2) - MOBILE_CARD_SHRINK
+  ? Math.floor((mobileGridW - MOBILE_GRID_SIDE_PAD * 2 - GRID_GAP) / 2) - MOBILE_CARD_SHRINK
   : cardW;
 const categoryHeaderTopOffset =
   Platform.OS === 'web'
@@ -5292,6 +5305,7 @@ onMouseLeave: () => {
       showProgress={false}
       captureSurfacePress={false}
       transparentUntilReady
+      squareCorners
     />
   </View>
 ) : null}
@@ -6122,7 +6136,7 @@ overScrollMode="always"
   style={[
     styles.subHeaderWrap,
     {
-      width: isMobile ? winW - 20 : cardW,
+      width: isMobile ? mobileCardW : cardW,
       marginTop: categoryHeaderTopOffset,
       alignSelf: 'center',
     },
@@ -6155,7 +6169,7 @@ overScrollMode="always"
       style={[
         styles.subHeaderWrap,
         {
-          width: isMobile ? Math.min(winW - 24, 280) : 240,
+          width: isMobile ? Math.min(mobileCardW, 280) : 240,
           marginTop: -12,
           alignSelf: 'center',
         },
@@ -6352,6 +6366,11 @@ maxToRenderPerBatch={2}
           contentContainerStyle={[
             styles.watchContent,
             useDesktopWatch && styles.watchContentDesktop,
+            !useDesktopWatch &&
+              isMobile && {
+                paddingHorizontal: 10,
+                paddingTop: Platform.OS === 'web' ? 16 : 54,
+              },
             { backgroundColor: featuredBackground },
             commentsKeyboardVisible && !useDesktopWatch
               ? { paddingBottom: commentsKeyboardLift + 36 }
@@ -6389,6 +6408,12 @@ maxToRenderPerBatch={2}
           <View
             style={[
               styles.watchPlayerWrap,
+              !useDesktopWatch &&
+                isMobile && {
+                  borderRadius: 0,
+                  borderWidth: 0,
+                  marginHorizontal: -10,
+                },
               {
                 backgroundColor: '#000',
                 borderColor: isLight ? 'transparent' : 'rgba(255,255,255,0.08)',
@@ -6420,9 +6445,9 @@ maxToRenderPerBatch={2}
                     (previewItem as any).videos?.original_path ?? null,
                   ]}
                   directUri={previewMuxUri}
-                  width={featuredWatchMainW}
+                  width={featuredWatchPlayerW}
                   maxHeight={
-                    useDesktopWatch ? Math.min(winH * 0.7, 720) : Math.min(winH * 0.34, 340)
+                    useDesktopWatch ? Math.min(winH * 0.7, 720) : Math.min(winH * 0.38, 380)
                   }
                   autoPlay={previewMediaReady && activeId === `preview-${previewItem.id}`}
                   playRequestKey={previewPlayKey}
@@ -8020,8 +8045,31 @@ cardHeroFlat: {
   paddingRight: 0,
   paddingLeft: 0,
   alignItems: 'center',
-  justifyContent: 'center',
+  justifyContent: 'flex-start',
   flexWrap: 'nowrap',
+},
+
+mobileChipScroller: {
+  width: '100%',
+  maxWidth: '100%',
+  overflow: 'visible',
+  ...(Platform.OS === 'web'
+    ? ({
+        touchAction: 'pan-x',
+        WebkitOverflowScrolling: 'touch',
+      } as any)
+    : null),
+},
+
+mobileSortChipRow: {
+  justifyContent: 'center',
+  paddingHorizontal: 8,
+},
+
+mobileCategoryChipRow: {
+  justifyContent: 'flex-start',
+  paddingLeft: 12,
+  paddingRight: 56,
 },
 
 mobileChip: {
@@ -8936,7 +8984,7 @@ soundText: {
   backgroundColor: '#080808',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.04)',
-  marginHorizontal: 6,
+  marginHorizontal: 0,
   marginBottom: 0,
   shadowColor: '#000',
   shadowOpacity: 0.16,
