@@ -3453,8 +3453,8 @@ const mediaW = isWideWeb
   : Math.min(contentW, 980);
 
   // ✅ Compact grid sizing (wide web)
-const GRID_GAP = 14;
-const MOBILE_GRID_SIDE_PAD = 8;
+const GRID_GAP = isWideWeb ? 30 : 18;
+const MOBILE_GRID_SIDE_PAD = Platform.OS === 'web' ? 10 : 8;
 const MOBILE_CARD_SHRINK = 2;
 const mobileGridW = Platform.OS === 'web' ? pageInnerW : winW;
 
@@ -6091,7 +6091,7 @@ return (
   keyExtractor={(item: any) => item.id}
   ListHeaderComponent={headerElement}
   numColumns={2}
-  columnWrapperStyle={{ justifyContent: 'space-between' }}
+  columnWrapperStyle={{ justifyContent: 'space-between', marginBottom: 26 }}
   contentContainerStyle={[
     styles.listContentWide,
     {
@@ -6202,8 +6202,8 @@ overScrollMode="always"
   gridColumns > 1
     ? {
         justifyContent: 'space-between',
-        paddingHorizontal: 8,
-        marginBottom: 18,
+        paddingHorizontal: MOBILE_GRID_SIDE_PAD,
+        marginBottom: 22,
       }
     : undefined
 }
