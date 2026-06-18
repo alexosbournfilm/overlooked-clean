@@ -12,6 +12,7 @@ import {
   useWindowDimensions,
   Linking as RNLinking,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
 import {
@@ -220,13 +221,34 @@ const GENERAL_ROWS: ComparisonRow[] = [
   { feature: 'Workshop tools', free: '✕', pro: '✓' },
 ];
 
+const FREE_INCLUDED_FEATURES = [
+  'Browse creators',
+  'Connect with collaborators',
+  'Upload 1 film',
+  '1 profile showreel',
+];
+
+const FREE_LOCKED_FEATURES = [
+  'More film uploads',
+  'Challenge submissions',
+  'Jobs, Bootcamp, and Workshop',
+];
+
+const PRO_HIGHLIGHTS = [
+  'Unlimited film uploads',
+  '3 profile showreels',
+  'Monthly Film Challenge submissions',
+  'Exercises taken directly from film and acting schools',
+  'Ever-growing filmmaking tools and resources',
+];
+
 const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
   general: {
     eyebrow: 'CREATOR TOOLKIT',
     title: 'Build your portfolio with Pro',
     subtitle:
       'Share unlimited films, build a sharper portfolio, meet collaborators, and train with exercises taken directly from film and acting schools: the practical best parts, without the fluff.',
-    cta: `Unlock Pro - ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
+    cta: `Unlock Pro — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
     rows: GENERAL_ROWS,
   },
   challenge: {
@@ -234,7 +256,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Submit your film with Pro',
     subtitle:
       'Monthly Film Challenge submissions are part of Overlooked Pro. Upgrade to upload your film, get seen on Featured, and compete for next month’s top spot.',
-    cta: `Unlock Pro and submit - ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
+    cta: `Unlock Pro and submit — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
     rows: GENERAL_ROWS,
   },
   jobs: {
@@ -242,7 +264,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Apply for paid roles with Pro',
     subtitle:
       'Paid job applications are reserved for Pro creators, so opportunities stay focused on people actively building their portfolio.',
-    cta: `Unlock Pro and apply - ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
+    cta: `Unlock Pro and apply — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
     rows: GENERAL_ROWS,
   },
   showreel: {
@@ -250,7 +272,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Build your showreel with Pro',
     subtitle:
       'Free includes 1 profile showreel. Pro gives you 3 and a stronger portfolio link.',
-    cta: `Unlock Pro - ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
+    cta: `Unlock Pro — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
     rows: GENERAL_ROWS,
   },
   bootcamp: {
@@ -258,7 +280,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Train through Filmmaking Bootcamp',
     subtitle:
       'Train with focused exercises taken directly from film and acting schools: the practical best parts, without the fluff.',
-    cta: `Unlock Bootcamp with Pro - ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
+    cta: `Unlock Bootcamp with Pro — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
     rows: GENERAL_ROWS,
   },
   workshop: {
@@ -266,7 +288,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Unlock the Workshop tool library',
     subtitle:
       'Use an ever-growing library of filmmaking tools alongside school-derived exercises that help turn ideas into finished work.',
-    cta: `Unlock Workshop tools - ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
+    cta: `Unlock Workshop tools — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
     rows: GENERAL_ROWS,
   },
 };
@@ -467,12 +489,12 @@ export default function PaywallScreen() {
 
   const planLabel = useMemo(() => {
     if (Platform.OS === 'android') {
-      return `Google Play - ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`;
+      return `Unlock Pro — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`;
     }
     if (Platform.OS === 'ios') {
-      return `App Store - ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`;
+      return `Unlock Pro — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`;
     }
-    return `Unlock Pro - ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`;
+    return `Unlock Pro — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`;
   }, []);
 
   const enterFeatured = useCallback(() => {
@@ -1056,17 +1078,66 @@ export default function PaywallScreen() {
                   isTiny ? styles.planTileTinyStack : null,
                 ]}
               >
-                <Text style={[styles.planKicker, { color: labelTextColor }]}>FREE</Text>
-                <Text style={[styles.planTitle, primaryTextStyle]}>Free account</Text>
-                <Text style={[styles.planBody, mutedTextStyle]}>
-                  Browse, connect, upload one film, and keep one profile showreel.
-                </Text>
-                <Text style={[styles.planLimit, { color: TEXT_MUTED_2 }]}>
-                  More uploads, challenge submissions, jobs, Bootcamp, and Workshop stay locked.
-                </Text>
-                <View style={styles.freePriceRow}>
-                  <Text style={[styles.freePrice, primaryTextStyle]}>FREE</Text>
-                  <Text style={[styles.freePriceSub, { color: TEXT_MUTED_2 }]}>1 showreel</Text>
+                <View>
+                  <Text style={[styles.planKicker, { color: labelTextColor }]}>FREE</Text>
+                  <Text style={[styles.planTitle, primaryTextStyle]}>Free account</Text>
+                  <Text style={[styles.planBody, mutedTextStyle]}>
+                    Start with the essentials for a simple creator profile.
+                  </Text>
+
+                  <View style={styles.planFeatureList}>
+                    {FREE_INCLUDED_FEATURES.map((item) => (
+                      <View key={item} style={styles.planFeatureRow}>
+                        <View
+                          style={[
+                            styles.planFeatureIcon,
+                            {
+                              backgroundColor: isLight
+                                ? '#EFF8F2'
+                                : 'rgba(72,180,113,0.13)',
+                            },
+                          ]}
+                        >
+                          <Ionicons
+                            name="checkmark"
+                            size={12}
+                            color={isLight ? '#2E7A4A' : '#72D188'}
+                          />
+                        </View>
+                        <Text style={[styles.planFeatureItem, mutedTextStyle]}>{item}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  <View style={[styles.planLockedList, { borderTopColor: HAIRLINE }]}>
+                    {FREE_LOCKED_FEATURES.map((item) => (
+                      <View key={item} style={styles.planFeatureRow}>
+                        <View
+                          style={[
+                            styles.planFeatureIcon,
+                            styles.planFeatureIconLocked,
+                            {
+                              backgroundColor: isLight
+                                ? '#F7F2EA'
+                                : 'rgba(143,133,120,0.12)',
+                            },
+                          ]}
+                        >
+                          <Ionicons name="lock-closed" size={11} color={TEXT_MUTED_2} />
+                        </View>
+                        <Text style={[styles.planFeatureItem, { color: TEXT_MUTED_2 }]}>
+                          {item}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={[styles.freePriceRow, { borderTopColor: HAIRLINE }]}>
+                  <Text style={[styles.freePrice, primaryTextStyle]}>
+                    {SUBSCRIPTION_PRICE_CURRENCY_SYMBOL}0
+                  </Text>
+                  <Text style={[styles.freePriceSub, { color: TEXT_MUTED_2 }]}>/ month</Text>
                 </View>
               </View>
 
@@ -1081,50 +1152,86 @@ export default function PaywallScreen() {
                   isTiny ? styles.planTileTinyStack : null,
                 ]}
               >
-                <View
-                  style={[
-                    styles.bestForBadge,
-                    { backgroundColor: colors.backgroundAlt, borderColor: colors.borderStrong },
-                  ]}
-                >
-                  <Text style={[styles.bestForText, { color: labelTextColor }]}>
-                    Best for serious creators
-                  </Text>
-                </View>
-                <Text style={[styles.planKicker, styles.planKickerHero, { color: labelTextColor }]}>
-                  PRO
-                </Text>
-                <Text style={[styles.planTitle, primaryTextStyle]}>
-                  Portfolio, training, and tools
-                </Text>
-                <Text style={[styles.planBody, mutedTextStyle]}>
-                  Share unlimited films, build a sharper portfolio, meet collaborators, and train like a focused film or acting school alternative.
-                </Text>
-                <View style={styles.planFeatureList}>
-                  <Text style={[styles.planFeatureItem, mutedTextStyle]}>✓ Unlimited film uploads</Text>
-                  <Text style={[styles.planFeatureItem, mutedTextStyle]}>✓ 3 showreels</Text>
-                  <Text style={[styles.planFeatureItem, mutedTextStyle]}>✓ Exercises taken directly from film and acting schools</Text>
-                  <Text style={[styles.planFeatureItem, mutedTextStyle]}>✓ Ever-growing filmmaking tools and resources</Text>
-                </View>
-                <View style={styles.planPriceStack}>
-                  <Text style={[styles.planWasPrice, { color: TEXT_MUTED_2 }]}>
-                    Was{' '}
-                    <Text style={styles.planWasPriceStrike}>
-                      {SUBSCRIPTION_PRICE_FALLBACK}
+                <View style={[styles.proPlanIntro, isMobile && styles.proPlanIntroMobile]}>
+                  <View style={styles.proPlanCopy}>
+                    <View style={styles.planHeaderRow}>
+                      <Text style={[styles.planKicker, styles.planKickerHero, { color: labelTextColor }]}>
+                        PRO
+                      </Text>
+                      <View
+                        style={[
+                          styles.bestForBadge,
+                          { backgroundColor: colors.backgroundAlt, borderColor: colors.borderStrong },
+                        ]}
+                      >
+                        <Text style={[styles.bestForText, { color: labelTextColor }]}>
+                          Best for serious creators
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.planTitle, primaryTextStyle]}>
+                      Portfolio, training, and tools
                     </Text>
-                  </Text>
-                  <View style={styles.planPriceRow}>
-                    <Text style={[styles.planNowLabel, { color: labelTextColor }]}>Now</Text>
-                    <Text style={[styles.planCurrency, { color: TEXT_IVORY }]}>
-                      {SUBSCRIPTION_PRICE_CURRENCY_SYMBOL}
-                    </Text>
-                    <Text style={[styles.planPriceHero, { color: TEXT_IVORY }]}>
-                      {SUBSCRIPTION_OFFER_PRICE_AMOUNT}
+                    <Text style={[styles.planBody, mutedTextStyle]}>
+                      Share unlimited films, build a sharper portfolio, meet collaborators, and train with focused filmmaking exercises.
                     </Text>
                   </View>
-                  <Text style={[styles.planSubHero, mutedTextStyle]}>
-                    per month with {SUBSCRIPTION_OFFER_CODE}
-                  </Text>
+
+                  <View
+                    style={[
+                      styles.planPriceStack,
+                      {
+                        backgroundColor: isLight ? '#FFFBF2' : 'rgba(33,28,19,0.74)',
+                        borderColor: isLight ? '#E7D5A8' : OFFER_TILE_BORDER,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.planKicker, styles.planKickerHero, { color: labelTextColor }]}>
+                      MONTHLY
+                    </Text>
+                    <Text style={[styles.planWasPrice, { color: TEXT_MUTED_2 }]}>
+                      Was{' '}
+                      <Text style={styles.planWasPriceStrike}>
+                        {SUBSCRIPTION_PRICE_FALLBACK}
+                      </Text>
+                    </Text>
+                    <View style={styles.planPriceRow}>
+                      <Text style={[styles.planNowLabel, { color: labelTextColor }]}>Now</Text>
+                      <Text style={[styles.planCurrency, { color: TEXT_IVORY }]}>
+                        {SUBSCRIPTION_PRICE_CURRENCY_SYMBOL}
+                      </Text>
+                      <Text style={[styles.planPriceHero, { color: TEXT_IVORY }]}>
+                        {SUBSCRIPTION_OFFER_PRICE_AMOUNT}
+                      </Text>
+                    </View>
+                    <Text style={[styles.planSubHero, mutedTextStyle]}>
+                      per month with {SUBSCRIPTION_OFFER_CODE}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.planFeatureList}>
+                  {PRO_HIGHLIGHTS.map((item) => (
+                    <View key={item} style={styles.planFeatureRow}>
+                      <View
+                        style={[
+                          styles.planFeatureIcon,
+                          {
+                            backgroundColor: isLight
+                              ? '#EFF8F2'
+                              : 'rgba(72,180,113,0.13)',
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="checkmark"
+                          size={12}
+                          color={isLight ? '#2E7A4A' : '#72D188'}
+                        />
+                      </View>
+                      <Text style={[styles.planFeatureItem, mutedTextStyle]}>{item}</Text>
+                    </View>
+                  ))}
                 </View>
               </TouchableOpacity>
             </View>
@@ -1442,9 +1549,9 @@ const styles = StyleSheet.create({
   },
 
   plansArea: {
-    marginTop: 6,
-    borderRadius: 18,
-    padding: 10,
+    marginTop: 8,
+    borderRadius: 28,
+    padding: 12,
     backgroundColor: 'rgba(255,255,255,0.02)',
     borderWidth: 1,
     borderColor: HAIRLINE,
@@ -1453,7 +1560,7 @@ const styles = StyleSheet.create({
   planRow: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    gap: 12,
+    gap: 14,
     flexWrap: 'wrap',
   },
 
@@ -1467,16 +1574,18 @@ const styles = StyleSheet.create({
 
   planTile: {
     flex: 1,
-    minWidth: 200,
-    borderRadius: 18,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    minWidth: 220,
+    borderRadius: 24,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: 1,
     borderColor: 'transparent',
+    gap: 16,
   },
 
   freePlanTile: {
+    flex: 0.9,
     borderWidth: 1,
     justifyContent: 'space-between',
   },
@@ -1486,8 +1595,13 @@ const styles = StyleSheet.create({
   },
 
   planTileHero: {
+    flex: 1.55,
     backgroundColor: OFFER_TILE_BG,
     borderColor: OFFER_TILE_BORDER,
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 6,
   },
 
   tileSelected: {
@@ -1495,9 +1609,9 @@ const styles = StyleSheet.create({
   },
 
   planKicker: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: '900',
-    letterSpacing: 0.9,
+    letterSpacing: 1,
     textTransform: 'uppercase',
     color: TEXT_MUTED_2,
     fontFamily: SYSTEM_SANS,
@@ -1511,87 +1625,140 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     borderRadius: 999,
     borderWidth: 1,
-    paddingVertical: 4,
+    paddingVertical: 3,
     paddingHorizontal: 8,
-    marginBottom: 8,
   },
 
   bestForText: {
-    fontSize: 8.5,
+    fontSize: 8,
     fontWeight: '900',
-    letterSpacing: 0.7,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
   },
 
+  planHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+
   planTitle: {
-    marginTop: 4,
-    fontSize: 16,
-    lineHeight: 19,
+    marginTop: 8,
+    fontSize: 18,
+    lineHeight: 22,
     fontWeight: '900',
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
   },
 
   planBody: {
-    marginTop: 6,
-    fontSize: 12,
+    marginTop: 7,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: TEXT_MUTED,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  planFeatureList: {
+    marginTop: 14,
+    gap: 9,
+  },
+
+  planFeatureRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
+  },
+
+  planFeatureIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+
+  planFeatureIconLocked: {
+    opacity: 0.92,
+  },
+
+  planFeatureItem: {
+    flex: 1,
+    fontSize: 12.2,
     lineHeight: 17,
     color: TEXT_MUTED,
     fontFamily: SYSTEM_SANS,
   },
 
-  planLimit: {
-    marginTop: 8,
-    fontSize: 11,
-    lineHeight: 15,
-    color: TEXT_MUTED_2,
-    fontFamily: SYSTEM_SANS,
-  },
-
-  planFeatureList: {
-    marginTop: 9,
-    gap: 4,
-  },
-
-  planFeatureItem: {
-    fontSize: 11.5,
-    lineHeight: 16,
-    color: TEXT_MUTED,
-    fontFamily: SYSTEM_SANS,
+  planLockedList: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    gap: 8,
   },
 
   freePriceRow: {
-    marginTop: 12,
+    marginTop: 2,
+    paddingTop: 14,
+    borderTopWidth: 1,
     flexDirection: 'row',
     alignItems: 'baseline',
-    gap: 7,
+    gap: 6,
   },
 
   freePrice: {
-    fontSize: 19,
+    fontSize: 22,
     fontWeight: '900',
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
   },
 
   freePriceSub: {
-    fontSize: 11,
+    fontSize: 12,
     color: TEXT_MUTED_2,
     fontFamily: SYSTEM_SANS,
+  },
+
+  proPlanIntro: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+    gap: 18,
+  },
+
+  proPlanIntroMobile: {
+    flexDirection: 'column',
+    gap: 14,
+  },
+
+  proPlanCopy: {
+    flex: 1,
+    minWidth: 0,
   },
 
   planPriceRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginTop: 4,
+    marginTop: 5,
   },
 
   planPriceStack: {
-    marginTop: 12,
+    minWidth: 158,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
   },
 
   planWasPrice: {
+    marginTop: 10,
     fontSize: 11,
     lineHeight: 15,
     fontWeight: '800',
@@ -1631,6 +1798,8 @@ const styles = StyleSheet.create({
   planSubHero: {
     marginTop: 6,
     fontSize: 11,
+    lineHeight: 15,
+    textAlign: 'center',
     color: TEXT_MUTED,
     fontFamily: SYSTEM_SANS,
   },

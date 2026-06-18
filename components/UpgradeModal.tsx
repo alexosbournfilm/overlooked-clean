@@ -150,6 +150,19 @@ const GENERAL_COMPARISON_ROWS: ComparisonRow[] = [
   { feature: 'Workshop tools', free: '✕', pro: '✓' },
 ];
 
+const FREE_INCLUDED_FEATURES = [
+  'Browse creators',
+  'Connect with collaborators',
+  'Upload 1 film',
+  '1 profile showreel',
+];
+
+const FREE_LOCKED_FEATURES = [
+  'More film uploads',
+  'Challenge submissions',
+  'Jobs, Bootcamp, and Workshop',
+];
+
 const PRO_HIGHLIGHTS = [
   'Unlimited film uploads',
   '3 profile showreels',
@@ -749,7 +762,7 @@ export const UpgradeModal: React.FC<Props> = ({
       ? "You're on Pro"
       : upgrading
       ? 'Opening checkout…'
-      : `Unlock Pro - ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`;
+      : `Unlock Pro — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`;
 
   const horizontalPad = isMobile ? 10 : 20;
   const verticalPadTop = Math.max(insets.top + 8, 14);
@@ -1164,22 +1177,72 @@ export const UpgradeModal: React.FC<Props> = ({
                     isDesktopWeb && styles.compactTierDesktop,
                   ]}
                 >
-                  <View style={styles.compactTierLeft}>
+                  <View>
                     <Text style={[styles.tierSmallLabel, { color: membershipMutedText }]}>FREE</Text>
                     <Text style={[styles.compactTierName, { color: membershipText }]}>
                       Free account
                     </Text>
                     <Text style={[styles.compactTierSub, { color: membershipSubText }]}>
-                      Browse, connect, upload one film, and keep one profile showreel.
+                      Start with the essentials for a simple creator profile.
                     </Text>
-                    <Text style={[styles.compactTierLimit, { color: membershipMutedText }]}>
-                      More uploads, challenge submissions, jobs, Bootcamp, and Workshop stay locked.
-                    </Text>
+
+                    <View style={styles.compactFeatureList}>
+                      {FREE_INCLUDED_FEATURES.map((item) => (
+                        <View key={item} style={styles.featureItemRow}>
+                          <View
+                            style={[
+                              styles.featureIcon,
+                              {
+                                backgroundColor: isLight
+                                  ? '#EFF8F2'
+                                  : 'rgba(72,180,113,0.13)',
+                              },
+                            ]}
+                          >
+                            <Ionicons
+                              name="checkmark"
+                              size={12}
+                              color={isLight ? '#2E7A4A' : '#72D188'}
+                            />
+                          </View>
+                          <Text style={[styles.featureItem, { color: membershipSubText }]}>
+                            {item}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+
+                    <View style={[styles.compactLockedList, { borderTopColor: modalBorder }]}>
+                      {FREE_LOCKED_FEATURES.map((item) => (
+                        <View key={item} style={styles.featureItemRow}>
+                          <View
+                            style={[
+                              styles.featureIcon,
+                              styles.featureIconLocked,
+                              {
+                                backgroundColor: isLight
+                                  ? '#F7F2EA'
+                                  : 'rgba(143,133,120,0.12)',
+                              },
+                            ]}
+                          >
+                            <Ionicons name="lock-closed" size={11} color={membershipMutedText} />
+                          </View>
+                          <Text style={[styles.featureItem, { color: membershipMutedText }]}>
+                            {item}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
                   </View>
 
-                  <View style={styles.compactTierRight}>
-                    <Text style={[styles.compactPrice, { color: membershipText }]}>FREE</Text>
-                    <Text style={[styles.compactPriceSub, { color: membershipMutedText }]}>1 showreel</Text>
+                  <View style={[styles.compactPriceFooter, { borderTopColor: modalBorder }]}>
+                    <Text style={[styles.compactPrice, { color: membershipText }]}>
+                      {SUBSCRIPTION_PRICE_CURRENCY_SYMBOL}0
+                    </Text>
+                    <Text style={[styles.compactPriceSub, { color: membershipMutedText }]}>
+                      / month
+                    </Text>
                   </View>
                 </TouchableOpacity>
 
@@ -1216,25 +1279,27 @@ export const UpgradeModal: React.FC<Props> = ({
                 >
                   <View style={styles.proHeader}>
                     <View style={styles.compactTierLeft}>
-                      <Text style={[styles.tierSmallLabelGold, { color: proAccentText }]}>PRO</Text>
-                      <View
-                        style={[
-                          styles.bestForBadge,
-                          {
-                            backgroundColor: premiumGoldSoft,
-                            borderColor: isLight ? '#EBD39B' : 'transparent',
-                          },
-                        ]}
-                      >
-                        <Text style={[styles.bestForText, { color: proAccentText }]}>
-                          Best for serious creators
-                        </Text>
+                      <View style={styles.proLabelRow}>
+                        <Text style={[styles.tierSmallLabelGold, { color: proAccentText }]}>PRO</Text>
+                        <View
+                          style={[
+                            styles.bestForBadge,
+                            {
+                              backgroundColor: premiumGoldSoft,
+                              borderColor: isLight ? '#EBD39B' : 'transparent',
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.bestForText, { color: proAccentText }]}>
+                            Best for serious creators
+                          </Text>
+                        </View>
                       </View>
                       <Text style={[styles.proTitle, { color: membershipText }]}>
                         Portfolio, training, and tools
                       </Text>
                       <Text style={[styles.compactTierSub, { color: membershipSubText }]}>
-                        Share unlimited films, build a sharper portfolio, meet collaborators, and train like a focused film or acting school alternative.
+                        Share unlimited films, build a sharper portfolio, meet collaborators, and train with focused filmmaking exercises.
                       </Text>
                     </View>
 
@@ -2037,19 +2102,20 @@ const styles = StyleSheet.create({
   },
 
   compactTier: {
-    borderRadius: 24,
-    paddingVertical: 18,
-    paddingHorizontal: 18,
+    borderRadius: 28,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
     backgroundColor: SURFACE,
     borderWidth: 1,
     borderColor: HAIRLINE_2,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'stretch',
     justifyContent: 'space-between',
+    gap: 18,
   },
 
   compactTierDesktop: {
-    flex: 0.9,
+    flex: 0.86,
     alignSelf: 'stretch',
   },
 
@@ -2063,52 +2129,59 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
 
-  compactTierRight: {
-    alignItems: 'flex-end',
-  },
-
   tierSmallLabel: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: '900',
-    letterSpacing: 1.1,
+    letterSpacing: 1,
     textTransform: 'uppercase',
     color: 'rgba(198,166,100,0.62)',
-    marginBottom: 7,
+    marginBottom: 8,
     fontFamily: SYSTEM_SANS,
   },
 
   tierSmallLabelGold: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: '900',
-    letterSpacing: 1.1,
+    letterSpacing: 1,
     textTransform: 'uppercase',
     color: GOLD,
-    marginBottom: 7,
     fontFamily: SYSTEM_SANS,
   },
 
   compactTierName: {
-    fontSize: 19,
-    lineHeight: 23,
+    fontSize: 20,
+    lineHeight: 24,
     fontWeight: '900',
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
   },
 
   compactTierSub: {
-    marginTop: 6,
+    marginTop: 7,
     fontSize: 13,
     color: TEXT_MUTED,
     fontFamily: SYSTEM_SANS,
     lineHeight: 19,
   },
 
-  compactTierLimit: {
-    marginTop: 10,
-    fontSize: 12,
-    lineHeight: 17,
-    color: TEXT_MUTED_2,
-    fontFamily: SYSTEM_SANS,
+  compactFeatureList: {
+    marginTop: 16,
+    gap: 9,
+  },
+
+  compactLockedList: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    gap: 8,
+  },
+
+  compactPriceFooter: {
+    paddingTop: 14,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
   },
 
   compactPrice: {
@@ -2119,16 +2192,15 @@ const styles = StyleSheet.create({
   },
 
   compactPriceSub: {
-    marginTop: 3,
-    fontSize: 11.5,
+    fontSize: 12,
     color: TEXT_MUTED_2,
     fontFamily: SYSTEM_SANS,
   },
 
   proTier: {
     borderRadius: 28,
-    paddingVertical: 20,
-    paddingHorizontal: 20,
+    paddingVertical: 22,
+    paddingHorizontal: 22,
     backgroundColor: SURFACE_2,
     borderWidth: 1,
     borderColor: 'rgba(198,166,100,0.22)',
@@ -2139,21 +2211,30 @@ const styles = StyleSheet.create({
   },
 
   proTierDesktop: {
-    flex: 1.45,
+    flex: 1.48,
     alignSelf: 'stretch',
   },
 
   proHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     justifyContent: 'space-between',
-    gap: 14,
-    marginBottom: 16,
+    gap: 18,
+    marginBottom: 18,
+    flexWrap: 'wrap',
+  },
+
+  proLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+    marginBottom: 9,
   },
 
   proTitle: {
-    fontSize: 20,
-    lineHeight: 24,
+    fontSize: 21,
+    lineHeight: 25,
     fontWeight: '900',
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
@@ -2163,13 +2244,12 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     borderRadius: 999,
     borderWidth: 1,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    marginBottom: 9,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
   },
 
   bestForText: {
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '900',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
@@ -2177,8 +2257,8 @@ const styles = StyleSheet.create({
   },
 
   priceBadge: {
-    minWidth: 146,
-    borderRadius: 22,
+    minWidth: 164,
+    borderRadius: 20,
     paddingVertical: 14,
     paddingHorizontal: 14,
     backgroundColor: '#211C13',
@@ -2186,14 +2266,14 @@ const styles = StyleSheet.create({
     borderColor: OFFER_TILE_BORDER,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
     flexShrink: 0,
   },
 
   featureGrid: {
-    gap: 9,
+    gap: 10,
   },
 
   featureItemRow: {
@@ -2209,6 +2289,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: -1,
+    flexShrink: 0,
+  },
+
+  featureIconLocked: {
+    opacity: 0.92,
   },
 
   featureItem: {

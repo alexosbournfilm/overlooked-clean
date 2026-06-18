@@ -818,6 +818,7 @@ function HostedVideoInline({
 const [videoReady, setVideoReady] = useState(false);
   const [sourcesResolved, setSourcesResolved] = useState(false);
   const [isMediaLoading, setIsMediaLoading] = useState(autoPlay);
+  const [loadingOverlayVisible, setLoadingOverlayVisible] = useState(false);
   const [mediaUnavailable, setMediaUnavailable] = useState(false);
 
 const opacity = useRef(new Animated.Value(0)).current;
@@ -826,6 +827,10 @@ const [aspect, setAspect] = useState<number>(16 / 9);
   const cueOpacity = useRef(new Animated.Value(0)).current;
   const cueScale = useRef(new Animated.Value(0.92)).current;
   const cueTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadingOverlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastWebPlaybackTimeRef = useRef(0);
+  const lastNativePlaybackPositionRef = useRef(0);
+  const lastPlaybackProgressAtRef = useRef(Date.now());
   const wantsPlayRef = useRef(autoPlay);
   const finishedRef = useRef(false);
 
@@ -849,6 +854,17 @@ const [aspect, setAspect] = useState<number>(16 / 9);
   ].join('|');
   const directFirst = isWinnerPlayer || preferDirectUriFirst;
 
+  const clearLoadingOverlayTimer = useCallback(() => {
+    if (loadingOverlayTimerRef.current) {
+      clearTimeout(loadingOverlayTimerRef.current);
+      loadingOverlayTimerRef.current = null;
+    }
+  }, []);
+
+  const hideLoadingOverlay = useCallback(() => {
+    clearLoadingOverlayTimer();
+    setLoadingOverlayVisible(false);
+  }, [clearLoadingOverlayTimer]);
 
   useEffect(() => {
     const handle: PlayerHandle = {
@@ -870,9 +886,10 @@ const [aspect, setAspect] = useState<number>(16 / 9);
       try {
         htmlRef.current?.__ovkHls?.destroy?.();
       } catch {}
+      clearLoadingOverlayTimer();
       playerRegistry.delete(playerId);
     };
-  }, [playerId]);
+  }, [playerId, clearLoadingOverlayTimer]);
 
   useEffect(() => {
   let alive = true;
@@ -967,9 +984,54 @@ const [aspect, setAspect] = useState<number>(16 / 9);
 
   useEffect(() => {
     finishedRef.current = false;
+    lastWebPlaybackTimeRef.current = 0;
+    lastNativePlaybackPositionRef.current = 0;
+    lastPlaybackProgressAtRef.current = Date.now();
+    hideLoadingOverlay();
     setMediaUnavailable(false);
     setIsMediaLoading(src ? autoPlay || wantsPlayRef.current : !sourcesResolved);
-  }, [src, playRequestKey]);
+  }, [src, playRequestKey, autoPlay, sourcesResolved, hideLoadingOverlay]);
+
+  useEffect(() => {
+    if (!isMediaLoading || mediaUnavailable) {
+      hideLoadingOverlay();
+      return;
+    }
+
+    clearLoadingOverlayTimer();
+    setLoadingOverlayVisible(false);
+
+    const delayMs = isWinnerPlayer ? 1600 : 900;
+    loadingOverlayTimerRef.current = setTimeout(() => {
+      const el = htmlRef.current;
+      const progressedRecently = Date.now() - lastPlaybackProgressAtRef.current < delayMs;
+
+      if (Platform.OS === 'web' && el) {
+        const hasFutureData = el.readyState >= 3;
+        const isActivelyPlaying = !el.paused && !el.ended && (hasFutureData || progressedRecently);
+
+        if (isActivelyPlaying) {
+          setIsMediaLoading(false);
+          setLoadingOverlayVisible(false);
+          return;
+        }
+      } else if (isPlaying && videoReady && progressedRecently) {
+        return;
+      }
+
+      setLoadingOverlayVisible(true);
+    }, delayMs);
+
+    return clearLoadingOverlayTimer;
+  }, [
+    clearLoadingOverlayTimer,
+    hideLoadingOverlay,
+    isMediaLoading,
+    isPlaying,
+    isWinnerPlayer,
+    mediaUnavailable,
+    videoReady,
+  ]);
 
   const flashPlaybackCue = (nextCue: 'play' | 'pause') => {
     setPlaybackCue(nextCue);
@@ -1078,6 +1140,7 @@ const [aspect, setAspect] = useState<number>(16 / 9);
         setIsPlaying(playing);
         if (playing) {
           setIsMediaLoading(false);
+          hideLoadingOverlay();
           setVideoReady(true);
           fadeIn();
         }
@@ -1090,6 +1153,7 @@ const [aspect, setAspect] = useState<number>(16 / 9);
         await ref.current?.playAsync();
         setIsPlaying(true);
         setIsMediaLoading(false);
+        hideLoadingOverlay();
         setVideoReady(true);
         fadeIn();
         return true;
@@ -1114,6 +1178,7 @@ const [aspect, setAspect] = useState<number>(16 / 9);
       }
     } catch {}
     setIsMediaLoading(false);
+    hideLoadingOverlay();
   };
 
   useEffect(() => {
@@ -1195,8 +1260,9 @@ const [aspect, setAspect] = useState<number>(16 / 9);
     () => () => {
       if (playerChromeTimerRef.current) clearTimeout(playerChromeTimerRef.current);
       if (cueTimerRef.current) clearTimeout(cueTimerRef.current);
+      clearLoadingOverlayTimer();
     },
-    []
+    [clearLoadingOverlayTimer]
   );
 
   const controlsVisible = (videoReady || isPlaying || seeking) && (playerChromeVisible || !isPlaying || seeking);
@@ -1253,11 +1319,22 @@ const onSurfaceTogglePress = async () => {
       setIsMediaLoading(true);
     } else if ((status as any).isPlaying || videoReady) {
       setIsMediaLoading(false);
+      hideLoadingOverlay();
     }
 
     const dur = (status as any).durationMillis ?? 0;
     const pos = (status as any).positionMillis ?? 0;
     setDuration(dur / 1000);
+
+    const nativeLoopedBack = pos + 250 < lastNativePlaybackPositionRef.current;
+    if (pos > lastNativePlaybackPositionRef.current + 50 || nativeLoopedBack) {
+      lastNativePlaybackPositionRef.current = pos;
+      lastPlaybackProgressAtRef.current = Date.now();
+      if ((status as any).isPlaying) {
+        setIsMediaLoading(false);
+        hideLoadingOverlay();
+      }
+    }
 
     if (dur > 0) {
       setProgress(Math.max(0, Math.min(1, pos / dur)));
@@ -1273,6 +1350,7 @@ const onSurfaceTogglePress = async () => {
     finishedRef.current = true;
     wantsPlayRef.current = false;
     setIsPlaying(false);
+    hideLoadingOverlay();
     onPlaybackEnd?.();
   };
 
@@ -1281,6 +1359,7 @@ const onSurfaceTogglePress = async () => {
     maybeUpdateAspectFromStatus(status);
     setVideoReady(true);
     setIsMediaLoading(false);
+    hideLoadingOverlay();
     fadeIn();
   }
 };
@@ -1292,6 +1371,7 @@ const onSurfaceTogglePress = async () => {
   }
   setVideoReady(true);
   setIsMediaLoading(false);
+  hideLoadingOverlay();
   fadeIn();
 };
 
@@ -1317,6 +1397,7 @@ const onSurfaceTogglePress = async () => {
   el.controls = false;
   setVideoReady(true);
   setIsMediaLoading(false);
+  hideLoadingOverlay();
   fadeIn();
   if (wantsPlayRef.current) {
     const playWithSound = autoPlay ? autoPlayWithSound : true;
@@ -1334,6 +1415,21 @@ const onSurfaceTogglePress = async () => {
     if (d > 0) {
       setProgress(Math.max(0, Math.min(1, p / d)));
     }
+
+    if (!el.paused && !el.ended) {
+      const hasAdvanced = p > lastWebPlaybackTimeRef.current + 0.02;
+      const loopedBack = p + 0.5 < lastWebPlaybackTimeRef.current;
+      if (hasAdvanced || loopedBack || el.readyState >= 3) {
+        if (hasAdvanced || loopedBack) {
+          lastPlaybackProgressAtRef.current = Date.now();
+        }
+        setIsPlaying(true);
+        setIsMediaLoading(false);
+        hideLoadingOverlay();
+      }
+    }
+
+    lastWebPlaybackTimeRef.current = p;
   };
 
   const handleMediaError = () => {
@@ -1348,6 +1444,7 @@ const onSurfaceTogglePress = async () => {
     setVideoReady(true);
     setMediaUnavailable(true);
     setIsMediaLoading(false);
+    hideLoadingOverlay();
     setIsPlaying(false);
   };
 
@@ -1499,6 +1596,7 @@ const onSurfaceTogglePress = async () => {
   const showUnavailableOverlay = mediaUnavailable || (!src && sourcesResolved);
   const showLoadingOverlay =
     !showUnavailableOverlay &&
+    loadingOverlayVisible &&
     (isMediaLoading ||
       (!videoReady && (autoPlay || wantsPlayRef.current || !sourcesResolved)));
 
@@ -1569,12 +1667,14 @@ disablePictureInPicture
 onContextMenu={(e: any) => e.preventDefault()}
 onLoadStart={() => {
   setMediaUnavailable(false);
+  hideLoadingOverlay();
   if (autoPlay || wantsPlayRef.current) setIsMediaLoading(true);
 }}
 onLoadedMetadata={onWebLoadedMeta}
 onCanPlay={() => {
   setVideoReady(true);
   setIsMediaLoading(false);
+  hideLoadingOverlay();
   fadeIn();
   if (wantsPlayRef.current) {
     void play(autoPlay ? autoPlayWithSound : true);
@@ -1583,6 +1683,7 @@ onCanPlay={() => {
 onLoadedData={() => {
   setVideoReady(true);
   setIsMediaLoading(false);
+  hideLoadingOverlay();
   fadeIn();
   if (wantsPlayRef.current) {
     void play(autoPlay ? autoPlayWithSound : true);
@@ -1595,6 +1696,7 @@ onPlay={() => setIsPlaying(true)}
 onPlaying={() => {
   setIsPlaying(true);
   setIsMediaLoading(false);
+  hideLoadingOverlay();
 }}
 onEnded={handlePlaybackEnd}
 onPause={() => setIsPlaying(false)}
