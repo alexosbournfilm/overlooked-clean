@@ -2914,6 +2914,7 @@ const openSearchNonce = route.params?.openSearchNonce ?? null;
 const isPhoneLikeWeb = Platform.OS === 'web' && winW <= 820;
 
 const isMobile = Platform.OS !== 'web' || isPhoneLikeWeb;
+const isMobileWeb = Platform.OS === 'web' && isPhoneLikeWeb;
 const isWideWeb = Platform.OS === 'web' && !isPhoneLikeWeb && winW >= 980;
 const useDesktopWatch = isWideWeb;
 const watchDesktopPadX = 22;
@@ -3438,7 +3439,7 @@ const fitContain = (maxW: number, maxH: number, aspect = FIT_ASPECT) => {
   const VOTE_COL_W = isNarrow ? 58 : 64;
 const FEED_INNER_PAD = isNarrow ? 12 : 14;
 
-const mobileCardW = Platform.OS === 'web' ? pageInnerW : winW - 20;
+const mobileCardW = isMobileWeb ? winW - 20 : Platform.OS === 'web' ? pageInnerW : winW - 20;
 const mobileMediaW = mobileCardW;
 
 const contentW = Math.max(
@@ -3454,9 +3455,9 @@ const mediaW = isWideWeb
 
   // ✅ Compact grid sizing (wide web)
 const GRID_GAP = isWideWeb ? 64 : 24;
-const MOBILE_GRID_SIDE_PAD = Platform.OS === 'web' ? 14 : 10;
+const MOBILE_GRID_SIDE_PAD = isMobileWeb ? 10 : Platform.OS === 'web' ? 14 : 10;
 const MOBILE_CARD_SHRINK = isWideWeb ? 0 : 4;
-const mobileGridW = Platform.OS === 'web' ? pageInnerW : winW;
+const mobileGridW = isMobileWeb ? winW : Platform.OS === 'web' ? pageInnerW : winW;
 
 const gridCardW = isWideWeb
   ? Math.floor((gridAreaW - GRID_GAP) / 2)
@@ -6075,7 +6076,7 @@ return (
       <View
         style={{
           flex: 1,
-          paddingHorizontal: Platform.OS === 'web' ? 18 : 0,
+          paddingHorizontal: Platform.OS === 'web' && !isMobileWeb ? 18 : 0,
           backgroundColor: featuredBackground,
         }}
       >
