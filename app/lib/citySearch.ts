@@ -10,6 +10,8 @@ export type CitySearchRow = {
   name: string;
   country_code: string;
   population?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 type CitySearchResponse = {
@@ -112,16 +114,21 @@ export const prioritizeCityMatches = <T extends { name: string; country_code: st
   });
 };
 
+const toNullableNumber = (value: any) => {
+  if (value == null || Number.isNaN(Number(value))) return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
 const toCityRows = (rows: any[] | null | undefined): CitySearchRow[] =>
   (rows || [])
     .map((row) => ({
       id: Number(row.id),
       name: String(row.name || ''),
       country_code: String(row.country_code || '').toUpperCase(),
-      population:
-        row.population == null || Number.isNaN(Number(row.population))
-          ? null
-          : Number(row.population),
+      population: toNullableNumber(row.population),
+      latitude: toNullableNumber(row.latitude),
+      longitude: toNullableNumber(row.longitude),
     }))
     .filter((row) => Number.isFinite(row.id) && row.name && row.country_code);
 
@@ -166,7 +173,7 @@ const searchCitiesFastName = async (
 ): Promise<CitySearchResponse> => {
   const baseQuery = supabase
     .from('cities')
-    .select('id, name, country_code, population')
+    .select('id, name, country_code, population, latitude, longitude')
     .ilike('name', `${cityQuery}%`)
     .order('population', { ascending: false, nullsFirst: false })
     .limit(limit);
@@ -199,7 +206,7 @@ const searchCitiesTableFallback = async (
 ): Promise<CitySearchResponse> => {
   const baseQuery = supabase
     .from('cities')
-    .select('id, name, country_code, population')
+    .select('id, name, country_code, population, latitude, longitude')
     .ilike('name', `%${cityQuery}%`)
     .order('population', { ascending: false, nullsFirst: false })
     .limit(limit);

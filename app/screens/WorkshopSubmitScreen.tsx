@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Platform,
   Modal,
+  PanResponder,
   Pressable,
   useWindowDimensions,
   Image,
@@ -61,6 +62,12 @@ type WorkshopSubmitRouteParams = {
     lessonDescription?: string;
     lessonPrompt?: string;
     lessonXp?: number;
+    creatorChallengeId?: string;
+    challengeCode?: string;
+    creatorId?: string;
+    creatorChallengeTitle?: string;
+    creatorChallengeRequiredPhrase?: string | null;
+    creatorChallengeEndsAt?: string | null;
   };
 };
 
@@ -99,6 +106,9 @@ const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024; // 5GB
 const STORAGE_BUCKET = "films";
 const THUMB_BUCKET = "thumbnails";
 const MUX_METADATA_TITLE_MAX_CHARS = 16;
+const FREE_UPLOAD_UPGRADE_TITLE = "Upgrade required";
+const FREE_UPLOAD_UPGRADE_MESSAGE =
+  "You've already used your free film upload. Upgrade to Pro to upload more films.";
 
 const FILM_TAGS: string[] = [
   "Drama",
@@ -182,6 +192,39 @@ function formatDur(sec?: number | null) {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function formatPlayerTime(seconds?: number | null) {
+  const total = Math.max(0, Math.floor(Number.isFinite(seconds || 0) ? seconds || 0 : 0));
+  const hrs = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (hrs > 0) {
+    return `${hrs}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  }
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+function lifetimeUploadLocalKey(userId: string) {
+  return `overlooked:lifetime-film-upload-used:${userId}`;
+}
+
+function hasLocalLifetimeUploadMarker(userId: string) {
+  if (Platform.OS !== "web") return false;
+
+  try {
+    return (globalThis as any).localStorage?.getItem(lifetimeUploadLocalKey(userId)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markLocalLifetimeUploadUsed(userId: string) {
+  if (Platform.OS !== "web") return;
+
+  try {
+    (globalThis as any).localStorage?.setItem(lifetimeUploadLocalKey(userId), "1");
+  } catch {}
 }
 
 async function saveSubmissionCollaborators(
@@ -741,6 +784,47 @@ async function canUserSubmitLifetimeFilm(
 
   const tierNorm = String(tier ?? "").toLowerCase().trim();
 
+  try {
+    const statusResult: any = await withTimeout<any>(
+      supabase.rpc("get_lifetime_submission_limit_status", {
+        p_user_id: userId,
+      }) as any,
+      6000,
+      "Upload limit status check"
+    );
+
+    const status = statusResult?.data;
+    const statusError = statusResult?.error;
+
+    if (!statusError && status && typeof status.allowed === "boolean") {
+      const used = Number(status.used ?? 0);
+      const remaining = Number(status.remaining ?? (status.allowed ? 1 : 0));
+      const statusTier = String(status.tier ?? tierNorm).toLowerCase().trim();
+
+      if (status.allowed && statusTier !== "pro" && hasLocalLifetimeUploadMarker(userId)) {
+        return {
+          allowed: false,
+          used: 1,
+          remaining: 0,
+          reason: "no_free_uploads_left",
+        };
+      }
+
+      return {
+        allowed: status.allowed,
+        used: Number.isFinite(used) ? used : status.allowed ? 0 : 1,
+        remaining: Number.isFinite(remaining) ? remaining : status.allowed ? 1 : 0,
+        reason: status.allowed ? null : "no_free_uploads_left",
+      };
+    }
+
+    if (statusError) {
+      console.warn("get_lifetime_submission_limit_status RPC error:", statusError.message);
+    }
+  } catch (e: any) {
+    console.warn("get_lifetime_submission_limit_status timed out or failed:", e?.message ?? e);
+  }
+
   if (tierNorm === "pro") {
     return {
       allowed: true,
@@ -750,34 +834,36 @@ async function canUserSubmitLifetimeFilm(
     };
   }
 
+  if (hasLocalLifetimeUploadMarker(userId)) {
+    return {
+      allowed: false,
+      used: 1,
+      remaining: 0,
+      reason: "no_free_uploads_left",
+    };
+  }
+
   try {
-  const rpcResult: any = await withTimeout<any>(
-    supabase.rpc("can_insert_lifetime_submission", {
-      p_user_id: userId,
-    }) as any,
-    6000,
-    "Upload limit check"
-  );
+    const rpcResult: any = await withTimeout<any>(
+      supabase.rpc("can_insert_lifetime_submission", {
+        p_user_id: userId,
+      }) as any,
+      6000,
+      "Upload limit check"
+    );
 
-  const allowedFromDb = rpcResult?.data;
-  const rpcError = rpcResult?.error;
+    const allowedFromDb = rpcResult?.data;
+    const rpcError = rpcResult?.error;
 
-  if (!rpcError && typeof allowedFromDb === "boolean") {
-      if (allowedFromDb) {
+    if (!rpcError && typeof allowedFromDb === "boolean") {
+      if (!allowedFromDb) {
         return {
-          allowed: true,
-          used: 0,
-          remaining: 1,
-          reason: null,
+          allowed: false,
+          used: 1,
+          remaining: 0,
+          reason: "no_free_uploads_left",
         };
       }
-
-      return {
-        allowed: false,
-        used: 1,
-        remaining: 0,
-        reason: "no_free_uploads_left",
-      };
     }
 
     if (rpcError) {
@@ -787,23 +873,58 @@ async function canUserSubmitLifetimeFilm(
     console.warn("can_insert_lifetime_submission timed out or failed:", e?.message ?? e);
   }
 
-  const countResult: any = await withTimeout<any>(
-  supabase
-    .from("submissions")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId) as any,
-  6000,
-  "Fallback submission count"
-);
+  let used = 0;
+  let checkedUsageHistory = false;
 
-const count = countResult?.count;
-const error = countResult?.error;
+  try {
+    const historyCountResult: any = await withTimeout<any>(
+      supabase
+        .from("user_lifetime_submission_usage")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId) as any,
+      6000,
+      "Fallback lifetime upload count"
+    );
 
-if (error) {
-  throw error;
-}
+    if (historyCountResult?.error) {
+      console.warn("user_lifetime_submission_usage count unavailable:", historyCountResult.error.message);
+    } else {
+      checkedUsageHistory = true;
+      used = Math.max(used, historyCountResult?.count ?? 0);
+    }
+  } catch (e: any) {
+    console.warn("user_lifetime_submission_usage count failed:", e?.message ?? e);
+  }
 
-const used = count ?? 0;
+  try {
+    const legacyHistoryResult: any = await withTimeout<any>(
+      supabase
+        .from("user_submission_history")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId) as any,
+      6000,
+      "Fallback legacy lifetime submission count"
+    );
+
+    if (legacyHistoryResult?.error) {
+      console.warn("user_submission_history count unavailable:", legacyHistoryResult.error.message);
+    } else {
+      checkedUsageHistory = true;
+      used = Math.max(used, legacyHistoryResult?.count ?? 0);
+    }
+  } catch (e: any) {
+    console.warn("user_submission_history count failed:", e?.message ?? e);
+  }
+
+  if (!checkedUsageHistory) {
+    return {
+      allowed: false,
+      used: 1,
+      remaining: 0,
+      reason: "no_free_uploads_left",
+    };
+  }
+
   const remaining = Math.max(0, 1 - used);
 
   if (remaining <= 0) {
@@ -821,6 +942,16 @@ const used = count ?? 0;
     remaining,
     reason: null,
   };
+}
+
+function isLifetimeUploadLimitError(message: string) {
+  const lower = String(message || "").toLowerCase();
+  return (
+    lower.includes("free_lifetime_upload_used") ||
+    lower.includes("lifetime film upload") ||
+    lower.includes("already used your free film upload") ||
+    lower.includes("upgrade to pro to upload more films")
+  );
 }
 
 async function fetchCurrentChallenge(): Promise<MonthlyChallenge> {
@@ -1023,7 +1154,7 @@ export default function WorkshopSubmitScreen() {
   const route = useRoute<RouteProp<WorkshopSubmitRouteParams, "WorkshopSubmit">>();
   const insets = useSafeAreaInsets();
   const { triggerAppRefresh } = useAppRefresh();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isMobileWeb = Platform.OS === "web" && width < 768;
   const isWide = width >= 1100;
   const isDesktopPreview = width >= 900;
@@ -1063,6 +1194,13 @@ export default function WorkshopSubmitScreen() {
   const lessonDescription = route.params?.lessonDescription ?? "";
   const lessonPrompt = route.params?.lessonPrompt ?? "";
   const lessonXp = route.params?.lessonXp ?? 0;
+  const creatorChallengeId = route.params?.creatorChallengeId ?? null;
+  const challengeCode = route.params?.challengeCode ?? null;
+  const creatorId = route.params?.creatorId ?? null;
+  const creatorChallengeTitle = route.params?.creatorChallengeTitle ?? "";
+  const creatorChallengeRequiredPhrase = route.params?.creatorChallengeRequiredPhrase ?? null;
+  const creatorChallengeEndsAt = route.params?.creatorChallengeEndsAt ?? null;
+  const isCreatorChallengeMode = !!creatorChallengeId && !!challengeCode && !!creatorId;
 
   const { refresh: refreshGamification } = useGamification();
   const { refreshStreak } = useMonthlyStreak();
@@ -1106,12 +1244,12 @@ export default function WorkshopSubmitScreen() {
   const [rulesVisible, setRulesVisible] = useState(false);
 
   const [upgradeVisible, setUpgradeVisible] = useState(false);
-const [userTier, setUserTier] = useState<string | null>(null);
+  const [userTier, setUserTier] = useState<string | null>(null);
 
-// Web picker needs this preloaded.
-// Do not run async Supabase checks immediately before opening the web file picker.
-const [uploadAllowed, setUploadAllowed] = useState<boolean | null>(null);
-const [uploadLimitLoading, setUploadLimitLoading] = useState(false);
+  // Web picker needs this preloaded.
+  // Do not run async Supabase checks immediately before opening the web file picker.
+  const [uploadAllowed, setUploadAllowed] = useState<boolean | null>(null);
+  const [uploadLimitLoading, setUploadLimitLoading] = useState(false);
   const [storyModeOpen, setStoryModeOpen] = useState(false);
   const [storyModeItem, setStoryModeItem] = useState<{
     title?: string | null;
@@ -1122,11 +1260,34 @@ const [uploadLimitLoading, setUploadLimitLoading] = useState(false);
   const videoRef = useRef<Video>(null);
   const previewPlayerRef = useRef<Video>(null);
   const webPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const previewShellRef = useRef<any>(null);
   const previewLoadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
+  const [previewMuted, setPreviewMuted] = useState(false);
+  const [previewPositionSec, setPreviewPositionSec] = useState(0);
+  const [previewDurationForPlayerSec, setPreviewDurationForPlayerSec] = useState(0);
+  const [previewTimelineWidth, setPreviewTimelineWidth] = useState(1);
+
+  const showFreeUploadUpgrade = useCallback(() => {
+    setUpgradeVisible(true);
+    notify(FREE_UPLOAD_UPGRADE_TITLE, FREE_UPLOAD_UPGRADE_MESSAGE, setStatus);
+  }, []);
+
+  const uploadButtonLimitText =
+    uploadAllowed === false
+      ? "Upgrade to upload another film"
+      : uploadLimitLoading || uploadAllowed === null
+        ? "Checking upload limit..."
+        : "First upload free · max 5GB";
   const [previewNonce, setPreviewNonce] = useState(0);
+  const previewDurationValue = Math.max(previewDurationForPlayerSec || 0, durationSec || 0);
+  const previewProgressPct =
+    previewDurationValue > 0
+      ? Math.min(100, Math.max(0, (previewPositionSec / previewDurationValue) * 100))
+      : 0;
 
   useEffect(() => {
     const q = collaboratorQuery.trim();
@@ -1188,41 +1349,43 @@ const [uploadLimitLoading, setUploadLimitLoading] = useState(false);
     setCollaborators((prev) => prev.filter((item) => item.user.id !== userIdToRemove));
   };
 
-  const refreshUploadLimit = async () => {
-  try {
-    setUploadLimitLoading(true);
+  const refreshUploadLimit = async (): Promise<boolean | null> => {
+    try {
+      setUploadLimitLoading(true);
 
-    const sessionResult: any = await withTimeout<any>(
-      supabase.auth.getSession() as any,
-      6000,
-      "Session check"
-    );
+      const sessionResult: any = await withTimeout<any>(
+        supabase.auth.getSession() as any,
+        6000,
+        "Session check"
+      );
 
-    const session = sessionResult?.data?.session ?? null;
+      const session = sessionResult?.data?.session ?? null;
 
-    if (!session?.user) {
-      setUserTier(null);
-      setUploadAllowed(false);
-      return;
+      if (!session?.user) {
+        setUserTier(null);
+        setUploadAllowed(false);
+        return false;
+      }
+
+      const tierNorm = await withTimeout(
+        getCurrentUserTierOrFree({ force: true }),
+        6000,
+        "Membership check"
+      );
+
+      setUserTier(tierNorm || null);
+
+      const canUpload = await canUserSubmitLifetimeFilm(session.user.id, tierNorm);
+      setUploadAllowed(canUpload.allowed);
+      return canUpload.allowed;
+    } catch (e: any) {
+      console.warn("refreshUploadLimit failed:", e?.message ?? e);
+      setUploadAllowed(null);
+      return null;
+    } finally {
+      setUploadLimitLoading(false);
     }
-
-    const tierNorm = await withTimeout(
-      getCurrentUserTierOrFree({ force: true }),
-      6000,
-      "Membership check"
-    );
-
-    setUserTier(tierNorm || null);
-
-    const canUpload = await canUserSubmitLifetimeFilm(session.user.id, tierNorm);
-    setUploadAllowed(canUpload.allowed);
-  } catch (e: any) {
-    console.warn("refreshUploadLimit failed:", e?.message ?? e);
-    setUploadAllowed(null);
-  } finally {
-    setUploadLimitLoading(false);
-  }
-};
+  };
 
   useEffect(() => {
     let alive = true;
@@ -1333,6 +1496,140 @@ const [uploadLimitLoading, setUploadLimitLoading] = useState(false);
     } catch {}
   };
 
+  const resetPreviewPlaybackState = () => {
+    setPreviewPlaying(false);
+    setPreviewPositionSec(0);
+    setPreviewDurationForPlayerSec(durationSec || 0);
+  };
+
+  const syncWebPreviewState = () => {
+    const el = webPreviewVideoRef.current;
+    if (!el) return;
+
+    const duration = Number.isFinite(el.duration) ? el.duration : 0;
+    const position = Number.isFinite(el.currentTime) ? el.currentTime : 0;
+
+    setPreviewPlaying(!el.paused && !el.ended);
+    setPreviewPositionSec(position);
+    if (duration > 0) {
+      setPreviewDurationForPlayerSec(duration);
+      setDurationSec(Math.round(duration));
+    }
+  };
+
+  const seekPreviewTo = async (seconds: number) => {
+    const duration = Math.max(previewDurationForPlayerSec || 0, durationSec || 0);
+    const next = Math.max(0, Math.min(duration || seconds, seconds));
+
+    if (Platform.OS === "web") {
+      const el = webPreviewVideoRef.current;
+      if (!el) return;
+      el.currentTime = next;
+      setPreviewPositionSec(next);
+      return;
+    }
+
+    try {
+      await previewPlayerRef.current?.setPositionAsync?.(Math.round(next * 1000));
+      setPreviewPositionSec(next);
+    } catch {}
+  };
+
+  const seekPreviewBy = async (deltaSeconds: number) => {
+    await seekPreviewTo(previewPositionSec + deltaSeconds);
+  };
+
+  const handlePreviewTimelineSeek = useCallback(
+    async (event: any) => {
+      const nativeEvent = event?.nativeEvent ?? {};
+      const rawX = Number(nativeEvent.locationX ?? nativeEvent.offsetX ?? 0);
+      const widthForSeek = Math.max(1, previewTimelineWidth);
+      const x = Math.max(0, Math.min(widthForSeek, Number.isFinite(rawX) ? rawX : 0));
+      const pct = Math.max(0, Math.min(1, x / widthForSeek));
+      await seekPreviewTo(previewDurationValue * pct);
+    },
+    [previewDurationValue, previewTimelineWidth]
+  );
+
+  const previewTimelinePanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (event) => {
+          void handlePreviewTimelineSeek(event);
+        },
+        onPanResponderMove: (event) => {
+          void handlePreviewTimelineSeek(event);
+        },
+        onPanResponderRelease: (event) => {
+          void handlePreviewTimelineSeek(event);
+        },
+        onPanResponderTerminationRequest: () => true,
+      }),
+    [handlePreviewTimelineSeek]
+  );
+
+  const togglePreviewPlayback = async () => {
+    if (Platform.OS === "web") {
+      const el = webPreviewVideoRef.current;
+      if (!el) return;
+
+      try {
+        if (el.paused || el.ended) {
+          await el.play();
+          setPreviewPlaying(true);
+        } else {
+          el.pause();
+          setPreviewPlaying(false);
+        }
+      } catch {}
+      return;
+    }
+
+    try {
+      const status: any = await previewPlayerRef.current?.getStatusAsync?.();
+      if (status?.isLoaded && status.isPlaying) {
+        await previewPlayerRef.current?.pauseAsync?.();
+        setPreviewPlaying(false);
+      } else {
+        await previewPlayerRef.current?.playAsync?.();
+        setPreviewPlaying(true);
+      }
+    } catch {}
+  };
+
+  const togglePreviewMute = async () => {
+    const next = !previewMuted;
+    setPreviewMuted(next);
+
+    if (Platform.OS === "web") {
+      const el = webPreviewVideoRef.current;
+      if (el) el.muted = next;
+      return;
+    }
+
+    try {
+      await previewPlayerRef.current?.setIsMutedAsync?.(next);
+    } catch {}
+  };
+
+  const enterPreviewFullscreen = async () => {
+    if (Platform.OS === "web") {
+      const shell = previewShellRef.current as any;
+      const el = webPreviewVideoRef.current as any;
+      try {
+        if (shell?.requestFullscreen) await shell.requestFullscreen();
+        else if (el?.requestFullscreen) await el.requestFullscreen();
+      } catch {}
+      return;
+    }
+
+    try {
+      await (previewPlayerRef.current as any)?.presentFullscreenPlayer?.();
+    } catch {}
+  };
+
   const revokeCustomThumbObjectUrlIfAny = () => {
     if (customThumbObjectUrlRef.current) {
       try {
@@ -1351,6 +1648,7 @@ const [uploadLimitLoading, setUploadLimitLoading] = useState(false);
     setPreviewVisible(false);
     setPreviewLoading(false);
     setPreviewError(null);
+    resetPreviewPlaybackState();
     clearPreviewTimer();
 
     stopWebPreviewIfAny();
@@ -1494,95 +1792,104 @@ const [uploadLimitLoading, setUploadLimitLoading] = useState(false);
   }
 };
 
- const pickFile = async () => {
+const pickFile = async () => {
   try {
     // WEB: check upload limit BEFORE opening the file picker.
-   if (Platform.OS === "web") {
-  // Important:
-  // The browser file picker must open directly from the click.
-  // So we use the preloaded uploadAllowed state instead of doing async checks here.
+    if (Platform.OS === "web") {
+      // Important:
+      // The browser file picker must open directly from the click.
+      // If the limit is unknown, resolve it first. Allowed users may need to click again
+      // because browsers do not reliably allow file pickers after awaited work.
 
-  if (uploadLimitLoading || uploadAllowed === null) {
-    setStatus("Checking your upload limit…");
-    refreshUploadLimit();
-    return notify(
-      "Please wait",
-      "We’re still checking your upload limit. Try again in a moment.",
-      setStatus
-    );
-  }
+      if (uploadLimitLoading || uploadAllowed === null) {
+        setStatus("Checking your upload limit…");
+        const allowedNow = await refreshUploadLimit();
 
-  if (uploadAllowed === false) {
-    setUpgradeVisible(true);
-    return notify(
-      "Upgrade required",
-      "You’ve already used your free film upload. Upgrade to Pro to upload more films.",
-      setStatus
-    );
-  }
+        if (allowedNow === false) {
+          return showFreeUploadUpgrade();
+        }
 
-  setStatus("Opening file picker…");
+        if (allowedNow === true) {
+          return notify(
+            "Ready to upload",
+            "Your upload limit is clear. Click Choose film file again to open the picker.",
+            setStatus
+          );
+        }
 
-  const file = await pickWebVideoFile();
+        return notify(
+          "Could not verify upload limit",
+          "Check your connection and try again.",
+          setStatus
+        );
+      }
 
-  if (!file) {
-    setStatus("No file selected.");
-    return;
-  }
+      if (uploadAllowed === false) {
+        return showFreeUploadUpgrade();
+      }
 
-  const bytes = typeof file.size === "number" ? file.size : null;
+      setStatus("Opening file picker…");
 
-  if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
-    notify(
-      "File too large",
-      `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
-      setStatus
-    );
-    resetSelectedFile();
-    return;
-  }
+      const file = await pickWebVideoFile();
 
-  setStatus(alreadyCompleted ? "Already completed — You already completed this workshop lesson." : "");
-  setDurationSec(null);
-  setThumbUri(null);
-  setThumbAspect(16 / 9);
-  setThumbLoading(false);
+      if (!file) {
+        setStatus("No file selected.");
+        return;
+      }
 
-  removeCustomThumbnail();
-  closePreview();
+      const bytes = typeof file.size === "number" ? file.size : null;
 
-  setLocalUri(null);
-  setWebFile(null);
-  setProgressPct(0);
+      if (bytes != null && bytes > MAX_UPLOAD_BYTES) {
+        notify(
+          "File too large",
+          `This file is ${formatBytes(bytes)}. Max allowed is ${formatBytes(MAX_UPLOAD_BYTES)}.`,
+          setStatus
+        );
+        resetSelectedFile();
+        return;
+      }
 
-  if (objectUrlRef.current) {
-    try {
-      URL.revokeObjectURL(objectUrlRef.current);
-    } catch {}
-  }
+      setStatus(alreadyCompleted ? "Already completed — You already completed this workshop lesson." : "");
+      setDurationSec(null);
+      setThumbUri(null);
+      setThumbAspect(16 / 9);
+      setThumbLoading(false);
 
-  const objUrl = URL.createObjectURL(file);
-  objectUrlRef.current = objUrl;
+      removeCustomThumbnail();
+      closePreview();
 
-  setWebFile(file);
-  setLocalUri(objUrl);
-  setFileSizeBytes(bytes);
+      setLocalUri(null);
+      setWebFile(null);
+      setProgressPct(0);
 
-  setThumbLoading(true);
+      if (objectUrlRef.current) {
+        try {
+          URL.revokeObjectURL(objectUrlRef.current);
+        } catch {}
+      }
 
-  const thumb = await captureFirstFrameWeb(objUrl);
+      const objUrl = URL.createObjectURL(file);
+      objectUrlRef.current = objUrl;
 
-  if (thumb?.dataUrl) {
-    setThumbUri(thumb.dataUrl);
-    setThumbAspect(thumb.aspect || 16 / 9);
-  } else {
-    setThumbUri(null);
-  }
+      setWebFile(file);
+      setLocalUri(objUrl);
+      setFileSizeBytes(bytes);
 
-  setThumbLoading(false);
-  setStatus(`Loaded file • ${formatBytes(bytes)}`);
-  return;
-}
+      setThumbLoading(true);
+
+      const thumb = await captureFirstFrameWeb(objUrl);
+
+      if (thumb?.dataUrl) {
+        setThumbUri(thumb.dataUrl);
+        setThumbAspect(thumb.aspect || 16 / 9);
+      } else {
+        setThumbUri(null);
+      }
+
+      setThumbLoading(false);
+      setStatus(`Loaded file • ${formatBytes(bytes)}`);
+      return;
+    }
 // MOBILE / NATIVE
 const {
   data: { user },
@@ -1605,12 +1912,7 @@ setUserTier(tierNorm || null);
 const canUpload = await canUserSubmitLifetimeFilm(user.id, tierNorm);
 
 if (!canUpload.allowed) {
-  setUpgradeVisible(true);
-  return notify(
-    "Upgrade required",
-    "You’ve already used your free film upload. Upgrade to Pro to upload more films.",
-    setStatus
-  );
+  return showFreeUploadUpgrade();
 }
 
 setStatus("Opening video picker…");
@@ -1725,6 +2027,7 @@ return;
   const openPreview = () => {
     setPreviewError(null);
     setPreviewLoading(true);
+    resetPreviewPlaybackState();
     setPreviewNonce((n) => n + 1);
     setPreviewVisible(true);
     startPreviewTimer();
@@ -1733,6 +2036,7 @@ return;
   const retryPreview = () => {
     setPreviewError(null);
     setPreviewLoading(true);
+    resetPreviewPlaybackState();
     setPreviewNonce((n) => n + 1);
     startPreviewTimer();
   };
@@ -1760,6 +2064,14 @@ return;
 
     if (!customThumbUri) {
       return notify("Thumbnail required", "Please add a thumbnail image before submitting.", setStatus);
+    }
+
+    if (collaboratorQuery.trim() || collaboratorRole.trim()) {
+      return notify(
+        "Add the credit",
+        "Tap a user result to add this credit before submitting, or clear the collaborator fields.",
+        setStatus
+      );
     }
 
     if (fileSizeBytes != null && fileSizeBytes > MAX_UPLOAD_BYTES) {
@@ -1791,6 +2103,19 @@ return;
       if (userErr) throw userErr;
       if (!user) throw new Error("Not signed in");
 
+      if (
+        isCreatorChallengeMode &&
+        creatorChallengeEndsAt &&
+        new Date(creatorChallengeEndsAt).getTime() <= Date.now()
+      ) {
+        setLoading(false);
+        return notify(
+          "Challenge ended",
+          "This creator challenge has ended and is no longer accepting submissions.",
+          setStatus
+        );
+      }
+
       const tierNorm = await getCurrentUserTierOrFree({ force: true });
       setUserTier(tierNorm || null);
 
@@ -1798,12 +2123,7 @@ return;
 
 if (!canUpload.allowed) {
   setLoading(false);
-  setUpgradeVisible(true);
-  return notify(
-    "Upgrade required",
-    "You’ve already used your free film upload. Upgrade to Pro to upload more films.",
-    setStatus
-  );
+  return showFreeUploadUpgrade();
 }
 
       if (!currentChallenge) {
@@ -1887,7 +2207,11 @@ const submissionInsert = await insertSubmissionRobust(
     mux_playback_id: null,
     mux_status: "waiting",
     collaborator_credits: initialCollaboratorCredits,
-    source: isWorkshopMode ? "workshop" : "monthly_upload",
+    creator_challenge_id: isCreatorChallengeMode ? creatorChallengeId : null,
+    challenge_code: isCreatorChallengeMode ? challengeCode : null,
+    submission_source: isCreatorChallengeMode ? "creator_challenge" : "monthly_challenge",
+    creator_id: isCreatorChallengeMode ? creatorId : null,
+    source: isCreatorChallengeMode ? "creator_challenge" : isWorkshopMode ? "workshop" : "monthly_upload",
     workshop_path: isWorkshopMode ? pathKey ?? null : null,
     workshop_step: isWorkshopMode ? step ?? null : null,
     workshop_lesson_title: isWorkshopMode ? lessonTitle ?? null : null,
@@ -1899,6 +2223,8 @@ const createdSubmission = submissionInsert?.data?.[0];
 if (!createdSubmission?.id) {
   throw new Error("Submission created, but no submission ID was returned.");
 }
+
+markLocalLifetimeUploadUsed(user.id);
 
 await saveSubmissionCollaborators(createdSubmission.id, collaborators);
 
@@ -1994,9 +2320,15 @@ if (isWorkshopMode) {
 setSubmitStatus("Submitted! 🎉");
 await refreshUploadLimit();
 
-      const successTitle = isWorkshopMode ? "Workshop submitted!" : "Film uploaded!";
+      const successTitle = isWorkshopMode
+        ? "Workshop submitted!"
+        : isCreatorChallengeMode
+        ? "Challenge submission uploaded!"
+        : "Film uploaded!";
 const successMessage = isWorkshopMode
   ? "Your film has been uploaded and entered into this month’s challenge, and your workshop lesson is now complete. It may take a little time to process before it appears on Featured."
+  : isCreatorChallengeMode
+  ? `Your film has been uploaded and attached to ${creatorChallengeTitle || "the creator challenge"}. It may take a little time to process before it appears on Featured.`
   : "Your film has been uploaded and entered into this month’s challenge. It may take a little time to process before it appears on Featured.";
 
       const uploadedTitle = createdSubmission.title ?? title.trim();
@@ -2069,6 +2401,12 @@ const successMessage = isWorkshopMode
     } catch (e: any) {
       console.warn("Workshop/monthly submit failed:", e?.message ?? e);
       const errorMessage = e?.message ?? "Please try again.";
+      if (isLifetimeUploadLimitError(errorMessage)) {
+        showFreeUploadUpgrade();
+        setProgressPct(0);
+        return;
+      }
+
       const stepMessage = lastSubmitStep
         ? `Last step: ${lastSubmitStep}\n\n${errorMessage}`
         : errorMessage;
@@ -2084,12 +2422,16 @@ const successMessage = isWorkshopMode
   const headerTitle = isWorkshopMode ? "Workshop submission" : "Upload film";
   const headerSub = isWorkshopMode
     ? `Step ${step ?? "—"} • ${lessonTitle || "Workshop lesson"}`
+    : isCreatorChallengeMode
+    ? `Submitting to ${creatorChallengeTitle || "creator challenge"}`
     : "Upload your film to appear on Featured and enter this month’s challenge.";
 
-  const leftTitle = isWorkshopMode ? "Lesson" : "How it works";
+  const leftTitle = isWorkshopMode ? "Lesson" : isCreatorChallengeMode ? "Challenge" : "How it works";
   const rightTitle = "Upload film";
   const rightSubtitle = isWorkshopMode
     ? "Complete the workshop step and enter this month’s challenge."
+    : isCreatorChallengeMode
+    ? "Upload normally. Overlooked will attach the selected challenge automatically."
     : "Choose a title, category, file, and thumbnail.";
 
   const submitButtonText = isWorkshopMode
@@ -2098,15 +2440,33 @@ const successMessage = isWorkshopMode
       : loading
       ? "Submitting…"
       : "Upload & complete lesson"
+    : isCreatorChallengeMode
+    ? loading
+      ? "Submitting…"
+      : "Submit to Challenge"
     : loading
     ? "Submitting…"
     : "Upload film";
 
   const footnoteText = isWorkshopMode
     ? "This will create a Featured submission, enter the monthly challenge, and complete the workshop step."
+    : isCreatorChallengeMode
+    ? "This will create a Featured submission and automatically attach it to the selected creator challenge."
     : "Your upload will appear on Featured and be entered into this month’s challenge.";
 
   const rulesTitle = isWorkshopMode ? "Workshop Rules & Terms" : "Upload Rules & Terms";
+  const selectedFilmFileName =
+    ((webFile as File | null)?.name && String((webFile as File).name).trim()) ||
+    (localUri && !localUri.startsWith("blob:") ? decodeURIComponent(localUri.split(/[\\/]/).pop()?.split("?")[0] || "") : "") ||
+    "Film selected";
+  const selectedFilmMeta = fileSizeBytes
+    ? `Loaded file · ${formatBytes(fileSizeBytes)}`
+    : durationSec
+    ? `Loaded file · ${formatDur(durationSec)}`
+    : "Loaded file";
+  const previewModalVideoMaxHeight = isDesktopPreview
+    ? Math.min(height * 0.7, 720)
+    : Math.min(height * 0.55, 420);
 return (
   <View style={[styles.container, { backgroundColor: T.bg }]}>
     <LinearGradient
@@ -2217,8 +2577,26 @@ return (
                   <Text style={[styles.infoSectionLabel, { color: T.accent }]}>{tt("How it works")}</Text>
                   <Text style={[styles.infoSectionTitle, { color: T.text }]}>{tt("Quick checklist")}</Text>
                   <Text style={[styles.infoSectionBody, { color: T.sub }]}>
-                    {tt("Add a title, choose a category, upload your film and thumbnail, then submit it to Featured and this month’s challenge.")}
+                    {tt(
+                      isCreatorChallengeMode
+                        ? "Add a title, choose a category, upload your film and thumbnail, then submit it to Featured and the selected creator challenge."
+                        : "Add a title, choose a category, upload your film and thumbnail, then submit it to Featured and this month’s challenge."
+                    )}
                   </Text>
+
+                  {isCreatorChallengeMode ? (
+                    <View style={[styles.creatorChallengeUploadBadge, { backgroundColor: T.surfaceSoft, borderColor: T.line }]}>
+                      <Text style={[styles.creatorChallengeUploadKicker, { color: T.accent }]}>Creator Challenge</Text>
+                      <Text style={[styles.creatorChallengeUploadTitle, { color: T.text }]} numberOfLines={2}>
+                        {creatorChallengeTitle || "Selected challenge"}
+                      </Text>
+                      {creatorChallengeRequiredPhrase ? (
+                        <Text style={[styles.creatorChallengeUploadPhrase, { color: T.sub }]} numberOfLines={2}>
+                          Required: {creatorChallengeRequiredPhrase}
+                        </Text>
+                      ) : null}
+                    </View>
+                  ) : null}
 
                   <View style={[styles.softDivider, { backgroundColor: T.line }]} />
 
@@ -2235,7 +2613,13 @@ return (
 
                   <Text style={[styles.infoMiniTitle, { color: T.accent }]}>{tt("What happens after upload")}</Text>
 <View style={styles.infoList}>
-  <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Your film is uploaded and entered into this month’s challenge")}</Text>
+  <Text style={[styles.infoBullet, { color: T.sub }]}>
+    {tt(
+      isCreatorChallengeMode
+        ? "• Your film is uploaded and attached to the creator challenge"
+        : "• Your film is uploaded and entered into this month’s challenge"
+    )}
+  </Text>
   <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Your lesson is completed straight away after upload")}</Text>
   <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Featured can take a little time to process your film before it appears")}</Text>
   <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Once processing finishes, it will show on Featured and play normally")}</Text>
@@ -2353,146 +2737,215 @@ return (
                           <Text style={[styles.clearChipText, { color: T.sub }]}>Clear</Text>
                         </Pressable>
                       </View>
-                    ) : (
-                      <Text style={[styles.helperText, { color: T.mute }]}>
-                        Pick 1 category so Featured can sort your film.
-                      </Text>
-                    )}
-                  </View>
-
-                  <View style={styles.uploadBox}>
-                    <TouchableOpacity
-                      style={[styles.primaryBtn, { backgroundColor: T.olive, shadowColor: T.shadow }]}
-                      onPress={pickFile}
-                      activeOpacity={0.92}
-                    >
-                      <View style={styles.primaryBtnMainRow}>
-                        <Ionicons
-                          name={localUri ? "swap-horizontal-outline" : "cloud-upload-outline"}
-                          size={18}
-                          color={T.textOnPrimary}
-                        />
-                        <Text style={[styles.primaryBtnText, { color: T.textOnPrimary }]}>
-                          {localUri ? "Change file" : "Choose film file"}
-                        </Text>
-                      </View>
-                      <Text style={[styles.primaryBtnSub, { color: T.textOnPrimary, opacity: 0.72 }]}>
-                        First upload free · max 5GB
-                      </Text>
-                    </TouchableOpacity>
-
-                    {localUri ? (
-                      <View style={[styles.fileActionsRow, isPhone && styles.fileActionsRowPhone]}>
-                        <Pressable
-                          onPress={pickFile}
-                          style={({ pressed }) => [
-                            styles.secondaryBtn,
-                            {
-                              backgroundColor: T.surfaceSoft,
-                              borderColor: T.line,
-                            },
-                            pressed && { opacity: 0.9 },
-                          ]}
-                        >
-                          <Text style={[styles.secondaryBtnText, { color: T.text }]}>Change file</Text>
-                        </Pressable>
-
-                        <Pressable
-                          onPress={resetSelectedFile}
-                          style={({ pressed }) => [
-                            styles.secondaryBtnDanger,
-                            {
-                              backgroundColor: isLight ? '#F8E9E6' : CINEMA.redSoft,
-                              borderColor: isLight ? '#E4B6AF' : CINEMA.redBorder,
-                            },
-                            pressed && { opacity: 0.9 },
-                          ]}
-                        >
-                          <Text style={[styles.secondaryBtnDangerText, { color: colors.danger }]}>Remove</Text>
-                        </Pressable>
-                      </View>
                     ) : null}
+
+                    <Text style={[styles.helperText, { color: T.mute }]}>
+                      Pick 1 category so Featured can sort your film.
+                    </Text>
                   </View>
 
-                  {localUri ? (
-                    <View style={styles.mediaSection}>
-                      <View style={styles.mediaSectionHeader}>
-                        <Text style={[styles.mediaSectionTitle, { color: T.text }]}>Thumbnail</Text>
-                        {!customThumbUri ? (
-                          <Text
-                            style={[
-                              styles.thumbReqBadge,
-                              {
-                                backgroundColor: isLight ? '#F8E9E6' : 'rgba(110,35,35,0.18)',
-                                borderColor: isLight ? '#E4B6AF' : 'rgba(255,120,120,0.28)',
-                                color: colors.danger,
-                              },
-                            ]}
-                          >
-                            Missing
-                          </Text>
-                        ) : (
-                          <Text
-                            style={[
-                              styles.thumbReqBadge,
-                              {
-                                backgroundColor: isLight ? '#E8F2EA' : 'rgba(60,200,120,0.13)',
-                                borderColor: isLight ? '#BBD7C3' : 'rgba(60,200,120,0.35)',
-                                color: colors.success,
-                              },
-                            ]}
-                          >
-                            Added
-                          </Text>
-                        )}
-                      </View>
+                  <View style={[styles.fieldGroup, styles.assetSection]}>
+                    <Text style={[styles.label, { color: T.text }]}>Film file</Text>
 
-                      <View style={[styles.thumbActionsRow, isPhone && styles.thumbActionsRowPhone]}>
-                        <Pressable
-                          onPress={pickThumbnail}
-                          style={({ pressed }) => [
-                            styles.secondaryBtn,
-                            pressed && { opacity: 0.9 },
+                    {!localUri ? (
+                      <TouchableOpacity
+                        style={[styles.primaryBtn, styles.primaryAssetBtn, { backgroundColor: T.olive, shadowColor: T.shadow }]}
+                        onPress={pickFile}
+                        activeOpacity={0.92}
+                      >
+                        <View style={styles.primaryBtnMainRow}>
+                          <Ionicons name="cloud-upload-outline" size={18} color={T.textOnPrimary} />
+                          <Text style={[styles.primaryBtnText, { color: T.textOnPrimary }]}>Upload film</Text>
+                        </View>
+                        <Text style={[styles.primaryBtnSub, { color: T.textOnPrimary, opacity: 0.72 }]}>
+                          {uploadButtonLimitText}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <View
+                        style={[
+                          styles.assetSummaryCard,
+                          {
+                            backgroundColor: T.surfaceSoft,
+                            borderColor: T.line,
+                          },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.assetIconBubble,
                             {
-                              flex: 1,
-                              alignItems: "center",
-                              backgroundColor: T.surfaceSoft,
-                              borderColor: T.line,
+                              backgroundColor: isLight ? '#F6ECD8' : CINEMA.brassSoft,
+                              borderColor: isLight ? colors.borderStrong : CINEMA.brassBorder,
                             },
                           ]}
                         >
-                          <Text style={[styles.secondaryBtnText, { color: T.text }]}>
-                            {customThumbUri ? "Change thumbnail" : "Add thumbnail"}
-                          </Text>
-                        </Pressable>
+                          <Ionicons name="checkmark-circle-outline" size={22} color={T.accent} />
+                        </View>
 
-                        {customThumbUri ? (
+                        <View style={styles.assetSummaryText}>
+                          <Text style={[styles.assetSummaryTitle, { color: T.text }]} numberOfLines={1}>
+                            {selectedFilmFileName}
+                          </Text>
+                          <Text style={[styles.assetSummaryMeta, { color: T.mute }]} numberOfLines={1}>
+                            {selectedFilmMeta}
+                          </Text>
+                        </View>
+
+                        <View style={[styles.assetActions, isPhone && styles.assetActionsPhone]}>
                           <Pressable
-                            onPress={removeCustomThumbnail}
+                            onPress={pickFile}
                             style={({ pressed }) => [
-                              styles.secondaryBtnDanger,
-                              pressed && { opacity: 0.9 },
+                              styles.assetMiniBtn,
                               {
-                                flex: 1,
-                                alignItems: "center",
+                                backgroundColor: T.card,
+                                borderColor: T.line,
+                              },
+                              pressed && { opacity: 0.9 },
+                            ]}
+                          >
+                            <Text style={[styles.assetMiniBtnText, { color: T.text }]}>Change</Text>
+                          </Pressable>
+
+                          <Pressable
+                            onPress={resetSelectedFile}
+                            style={({ pressed }) => [
+                              styles.assetMiniDangerBtn,
+                              {
                                 backgroundColor: isLight ? '#F8E9E6' : CINEMA.redSoft,
                                 borderColor: isLight ? '#E4B6AF' : CINEMA.redBorder,
                               },
+                              pressed && { opacity: 0.9 },
                             ]}
                           >
-                            <Text style={[styles.secondaryBtnDangerText, { color: colors.danger }]}>Remove</Text>
+                            <Text style={[styles.assetMiniDangerText, { color: colors.danger }]}>Remove</Text>
                           </Pressable>
-                        ) : null}
+                        </View>
+                      </View>
+                    )}
+                  </View>
+
+                  {localUri ? (
+                    <View style={[styles.fieldGroup, styles.assetSection]}>
+                      <View style={styles.mediaSectionHeader}>
+                        <Text style={[styles.label, { color: T.text }]}>Thumbnail</Text>
+                        <Text
+                          style={[
+                            styles.thumbReqBadge,
+                            {
+                              backgroundColor: customThumbUri
+                                ? isLight
+                                  ? '#E8F2EA'
+                                  : 'rgba(60,200,120,0.13)'
+                                : isLight
+                                ? '#F8E9E6'
+                                : 'rgba(110,35,35,0.18)',
+                              borderColor: customThumbUri
+                                ? isLight
+                                  ? '#BBD7C3'
+                                  : 'rgba(60,200,120,0.35)'
+                                : isLight
+                                ? '#E4B6AF'
+                                : 'rgba(255,120,120,0.28)',
+                              color: customThumbUri ? colors.success : colors.danger,
+                            },
+                          ]}
+                        >
+                          {customThumbUri ? "Added" : "Required"}
+                        </Text>
                       </View>
 
                       {!customThumbUri ? (
-                        <Text style={[styles.helperText, { color: T.mute }]}>
-                          You must add a thumbnail before submitting.
-                        </Text>
+                        <>
+                          <Pressable
+                            onPress={pickThumbnail}
+                            style={({ pressed }) => [
+                              styles.assetUploadBtn,
+                              {
+                                backgroundColor: T.surfaceSoft,
+                                borderColor: T.line,
+                              },
+                              pressed && { opacity: 0.9 },
+                            ]}
+                          >
+                            <Ionicons name="image-outline" size={18} color={T.accent} />
+                            <Text style={[styles.assetUploadBtnText, { color: T.text }]}>Upload thumbnail</Text>
+                          </Pressable>
+                          <Text style={[styles.helperText, { color: T.mute }]}>
+                            You must add a thumbnail before submitting.
+                          </Text>
+                        </>
                       ) : (
-                        <Text style={[styles.helperText, { color: T.mute }]}>
-                          This is the image that will show on Featured.
-                        </Text>
+                        <>
+                          <View
+                            style={[
+                              styles.assetSummaryCard,
+                              {
+                                backgroundColor: T.surfaceSoft,
+                                borderColor: T.line,
+                              },
+                            ]}
+                          >
+                            {customThumbUri ? (
+                              <Image source={{ uri: customThumbUri }} style={styles.assetThumbPreview} resizeMode="cover" />
+                            ) : (
+                              <View
+                                style={[
+                                  styles.assetIconBubble,
+                                  {
+                                    backgroundColor: isLight ? '#F6ECD8' : CINEMA.brassSoft,
+                                    borderColor: isLight ? colors.borderStrong : CINEMA.brassBorder,
+                                  },
+                                ]}
+                              >
+                                <Ionicons name="image-outline" size={20} color={T.accent} />
+                              </View>
+                            )}
+
+                            <View style={styles.assetSummaryText}>
+                              <Text style={[styles.assetSummaryTitle, { color: T.text }]} numberOfLines={1}>
+                                Thumbnail selected
+                              </Text>
+                              <Text style={[styles.assetSummaryMeta, { color: T.mute }]} numberOfLines={1}>
+                                Ready for Featured
+                              </Text>
+                            </View>
+
+                            <View style={[styles.assetActions, isPhone && styles.assetActionsPhone]}>
+                              <Pressable
+                                onPress={pickThumbnail}
+                                style={({ pressed }) => [
+                                  styles.assetMiniBtn,
+                                  {
+                                    backgroundColor: T.card,
+                                    borderColor: T.line,
+                                  },
+                                  pressed && { opacity: 0.9 },
+                                ]}
+                              >
+                                <Text style={[styles.assetMiniBtnText, { color: T.text }]}>Change</Text>
+                              </Pressable>
+
+                              <Pressable
+                                onPress={removeCustomThumbnail}
+                                style={({ pressed }) => [
+                                  styles.assetMiniDangerBtn,
+                                  {
+                                    backgroundColor: isLight ? '#F8E9E6' : CINEMA.redSoft,
+                                    borderColor: isLight ? '#E4B6AF' : CINEMA.redBorder,
+                                  },
+                                  pressed && { opacity: 0.9 },
+                                ]}
+                              >
+                                <Text style={[styles.assetMiniDangerText, { color: colors.danger }]}>Remove</Text>
+                              </Pressable>
+                            </View>
+                          </View>
+
+                          <Text style={[styles.helperText, { color: T.mute }]}>
+                            This is the image that will show on Featured.
+                          </Text>
+                        </>
                       )}
                     </View>
                   ) : null}
@@ -2515,7 +2968,8 @@ return (
                         <View
                           style={[
                             styles.previewStage,
-                            { aspectRatio: thumbAspect || 16 / 9, backgroundColor: T.surfaceSoft },
+                            isPhone && styles.previewStagePhone,
+                            { backgroundColor: T.surfaceSoft },
                           ]}
                         >
                           {thumbLoading ? (
@@ -2716,7 +3170,7 @@ return (
                   ) : null}
                 </View>
 
-                <View style={[styles.formFooter, { borderTopColor: T.line }]}>
+                <View style={[styles.formFooter, isPhone && styles.formFooterPhone, { borderTopColor: T.line }]}>
                   <View style={styles.agreeBlock}>
                     <Pressable
                       onPress={() => setAgreed(!agreed)}
@@ -2753,29 +3207,29 @@ return (
                   </View>
 
                   <TouchableOpacity
-  style={[
-    styles.submitBtn,
-    {
-      backgroundColor: T.olive,
-      shadowColor: T.shadow,
-    },
-    (loading || (isWorkshopMode && alreadyCompleted)) && {
-      opacity: 0.6,
-    },
-  ]}
-  onPress={handleSubmit}
-  disabled={loading || (isWorkshopMode && alreadyCompleted)}
-  activeOpacity={0.92}
->
-  <Text style={[styles.submitText, { color: T.textOnPrimary }]}>{submitButtonText}</Text>
-</TouchableOpacity>
+                    style={[
+                      styles.submitBtn,
+                      {
+                        backgroundColor: T.olive,
+                        shadowColor: T.shadow,
+                      },
+                      (loading || (isWorkshopMode && alreadyCompleted)) && {
+                        opacity: 0.6,
+                      },
+                    ]}
+                    onPress={handleSubmit}
+                    disabled={loading || (isWorkshopMode && alreadyCompleted)}
+                    activeOpacity={0.92}
+                  >
+                    <Text style={[styles.submitText, { color: T.textOnPrimary }]}>{submitButtonText}</Text>
+                  </TouchableOpacity>
 
                   <View style={styles.formFootnoteWrap}>
-  <Text style={[styles.formFootnote, { color: T.mute }]}>{footnoteText}</Text>
-  <Text style={[styles.processingNote, { color: T.accent }]}>
-    After upload finishes, your film may take a little time to process before it appears on Featured.
-  </Text>
-</View>
+                    <Text style={[styles.formFootnote, { color: T.mute }]}>{footnoteText}</Text>
+                    <Text style={[styles.processingNote, { color: T.accent }]}>
+                      After upload finishes, your film may take a little time to process before it appears on Featured.
+                    </Text>
+                  </View>
                 </View>
               </View>
             </View>
@@ -2953,39 +3407,47 @@ return (
       </View>
     </Modal>
 
-    <Modal visible={previewVisible} animationType="fade" transparent onRequestClose={closePreview}>
-      <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
+    <Modal
+      visible={previewVisible}
+      animationType="fade"
+      transparent
+      presentationStyle={Platform.OS === "web" ? "overFullScreen" : "fullScreen"}
+      onRequestClose={closePreview}
+    >
+      <View style={styles.uploadWatchOverlay}>
         <Pressable style={StyleSheet.absoluteFillObject} onPress={closePreview} />
 
-        <View
-          style={[
-            styles.previewModal,
-            isDesktopPreview ? styles.previewModalDesktop : styles.previewModalMobile,
-            { backgroundColor: T.card, borderColor: T.line, shadowColor: T.shadow },
-          ]}
-        >
-          <View style={styles.previewTopRow}>
-            <Text style={[styles.previewTitle, { color: T.text }]}>Preview</Text>
-            <TouchableOpacity
-              onPress={closePreview}
-              activeOpacity={0.9}
-              style={[styles.previewHeaderCloseBtn, { backgroundColor: T.surfaceSoft, borderColor: T.line }]}
-            >
-              <Text style={[styles.previewHeaderCloseText, { color: T.text }]}>✕</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View
-            style={[
-              styles.previewVideoWrap,
-              isDesktopPreview ? styles.previewVideoWrapDesktop : styles.previewVideoWrapMobile,
-              {
-                backgroundColor: isLight ? T.surfaceSoft : "#0A0A0A",
-                borderColor: T.line,
-              },
-            ]}
+        <View style={[styles.uploadWatchModal, isPhone && styles.uploadWatchModalPhone]}>
+          <TouchableOpacity
+            onPress={closePreview}
+            activeOpacity={0.9}
+            hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+            style={styles.uploadWatchClose}
           >
-            <View style={[styles.previewVideoStage, { backgroundColor: isLight ? T.surfaceSoft : "#0B0B0B" }]}>
+            <Text style={styles.uploadWatchCloseIcon}>×</Text>
+          </TouchableOpacity>
+
+          <ScrollView
+            style={styles.uploadWatchScroll}
+            contentContainerStyle={[
+              styles.uploadWatchContent,
+              isDesktopPreview ? styles.uploadWatchContentDesktop : styles.uploadWatchContentMobile,
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
+            <View
+              ref={previewShellRef}
+              style={[
+                styles.uploadWatchPlayerWrap,
+                {
+                  width: "100%",
+                  maxWidth: isDesktopPreview ? 1100 : "100%",
+                  maxHeight: previewModalVideoMaxHeight,
+                  aspectRatio: 16 / 9,
+                },
+              ]}
+            >
+            <Pressable style={styles.uploadWatchSurface} onPress={togglePreviewPlayback}>
               {localUri ? (
                 Platform.OS === "web" ? (
                   // @ts-ignore
@@ -2996,30 +3458,39 @@ return (
                       webPreviewVideoRef.current = el;
                     }}
                     src={localUri}
-                    controls
                     autoPlay
                     playsInline
+                    muted={previewMuted}
+                    controls={false}
+                    controlsList="nodownload noplaybackrate noremoteplayback nofullscreen"
                     onLoadStart={() => {
                       setPreviewError(null);
                       setPreviewLoading(true);
                       startPreviewTimer();
                     }}
+                    onLoadedMetadata={syncWebPreviewState}
+                    onTimeUpdate={syncWebPreviewState}
+                    onPlay={syncWebPreviewState}
+                    onPause={syncWebPreviewState}
+                    onEnded={syncWebPreviewState}
                     onCanPlay={() => {
                       clearPreviewTimer();
                       setPreviewLoading(false);
+                      syncWebPreviewState();
                     }}
                     onError={() => {
                       clearPreviewTimer();
                       setPreviewLoading(false);
+                      setPreviewPlaying(false);
                       setPreviewError("Could not play this file. Try Retry or close it.");
                     }}
                     style={{
                       width: "100%",
                       height: "100%",
                       objectFit: "contain",
-                      background: isLight ? T.surfaceSoft : "#0B0B0B",
+                      background: "#000",
                       display: "block",
-                      borderRadius: 16,
+                      pointerEvents: "none",
                     }}
                   />
                 ) : (
@@ -3027,10 +3498,11 @@ return (
                     key={`native-preview-${previewNonce}-${localUri}`}
                     ref={previewPlayerRef}
                     source={{ uri: localUri }}
-                    style={[styles.previewVideo, { backgroundColor: isLight ? T.surfaceSoft : "#0B0B0B" }]}
+                    style={styles.previewVideo}
                     resizeMode={ResizeMode.CONTAIN}
-                    useNativeControls
+                    useNativeControls={false}
                     shouldPlay
+                    isMuted={previewMuted}
                     isLooping={false}
                     onLoadStart={() => {
                       setPreviewError(null);
@@ -3041,74 +3513,114 @@ return (
                       clearPreviewTimer();
                       setPreviewLoading(false);
                     }}
-                    onLoad={() => {
+                    onLoad={(s: any) => {
                       clearPreviewTimer();
                       setPreviewLoading(false);
+                      const dSec = Math.max(0, (s?.durationMillis ?? 0) / 1000);
+                      if (dSec > 0) {
+                        setPreviewDurationForPlayerSec(dSec);
+                        setDurationSec(Math.round(dSec));
+                      }
                     }}
                     onPlaybackStatusUpdate={(s: any) => {
                       if (s?.isLoaded) {
                         clearPreviewTimer();
                         setPreviewLoading(false);
+                        const dSec = Math.max(0, (s?.durationMillis ?? 0) / 1000);
+                        const pSec = Math.max(0, (s?.positionMillis ?? 0) / 1000);
+                        if (dSec > 0) setPreviewDurationForPlayerSec(dSec);
+                        setPreviewPositionSec(pSec);
+                        setPreviewPlaying(!!s?.isPlaying);
                       }
                     }}
                     onError={() => {
                       clearPreviewTimer();
                       setPreviewLoading(false);
+                      setPreviewPlaying(false);
                       setPreviewError("Could not play this file. Try Retry or close it.");
                     }}
                   />
                 )
               ) : null}
+            </Pressable>
 
-              {previewLoading ? (
-                <View
-                  style={[
-                    styles.previewLoadingOverlay,
-                    { backgroundColor: isLight ? "rgba(248,243,234,0.72)" : "rgba(0,0,0,0.45)" },
-                  ]}
-                  pointerEvents="none"
-                >
-                  <ActivityIndicator size="large" color={T.olive} />
-                  <Text style={[styles.previewLoadingText, { color: T.text }]}>Loading preview…</Text>
+            {previewLoading ? (
+              <View style={styles.previewLoadingOverlay} pointerEvents="none">
+                <View style={styles.uploadWatchLoadingBubble}>
+                  <ActivityIndicator size="small" color={T.olive} />
                 </View>
-              ) : null}
+              </View>
+            ) : null}
 
-              {previewError ? (
-                <View
-                  style={[
-                    styles.previewErrorOverlay,
-                    { backgroundColor: isLight ? "rgba(248,243,234,0.9)" : "rgba(0,0,0,0.62)" },
-                  ]}
-                >
-                  <Text style={[styles.previewErrorText, { color: T.text }]}>{previewError}</Text>
-                  <View style={styles.previewErrorActions}>
-                    <Pressable style={[styles.previewRetryBtn, { backgroundColor: T.olive }]} onPress={retryPreview}>
-                      <Text style={[styles.previewRetryText, { color: T.textOnPrimary }]}>Retry</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.previewAltBtn, { backgroundColor: T.surfaceSoft, borderColor: T.line }]}
-                      onPress={closePreview}
-                    >
-                      <Text style={[styles.previewAltText, { color: T.text }]}>Close</Text>
-                    </Pressable>
-                  </View>
+            {previewError ? (
+              <View style={styles.previewErrorOverlay}>
+                <Text style={styles.previewErrorText}>{previewError}</Text>
+                <View style={styles.previewErrorActions}>
+                  <Pressable style={styles.previewRetryBtn} onPress={retryPreview}>
+                    <Text style={styles.previewRetryText}>Retry</Text>
+                  </Pressable>
+                  <Pressable style={styles.previewAltBtn} onPress={closePreview}>
+                    <Text style={styles.previewAltText}>Close</Text>
+                  </Pressable>
                 </View>
-              ) : null}
+              </View>
+            ) : null}
+
+            {!previewLoading && !previewError && !previewPlaying ? (
+              <View pointerEvents="none" style={styles.uploadWatchCenterCue}>
+                <Ionicons name="play" size={34} color="#F7F2E8" />
+              </View>
+            ) : null}
+
+            <View style={styles.uploadWatchChromeDock}>
+              <View
+                style={styles.uploadWatchTimeline}
+                onLayout={(event) => setPreviewTimelineWidth(event.nativeEvent.layout.width)}
+                {...previewTimelinePanResponder.panHandlers}
+              >
+                <View style={styles.uploadWatchTimelineTrack}>
+                  <View style={[styles.uploadWatchTimelineFill, { width: `${previewProgressPct}%` }]} />
+                  <View style={[styles.uploadWatchTimelineThumb, { left: `${previewProgressPct}%` }]} />
+                </View>
+              </View>
+
+              <View style={styles.uploadWatchControlRow}>
+                <View style={styles.uploadWatchControlLeft}>
+                  <Pressable style={styles.uploadWatchIconButton} onPress={togglePreviewPlayback}>
+                    <Ionicons name={previewPlaying ? "pause" : "play"} size={22} color="#F7F2E8" />
+                  </Pressable>
+                  <Pressable style={styles.uploadWatchIconButton} onPress={() => seekPreviewBy(-15)}>
+                    <Ionicons name="play-back" size={19} color="#F7F2E8" />
+                  </Pressable>
+                  <Pressable style={styles.uploadWatchIconButton} onPress={() => seekPreviewBy(15)}>
+                    <Ionicons name="play-forward" size={19} color="#F7F2E8" />
+                  </Pressable>
+                  <Text style={styles.uploadWatchTimeText} numberOfLines={1}>
+                    {formatPlayerTime(previewPositionSec)} / {formatPlayerTime(previewDurationValue)}
+                  </Text>
+                </View>
+
+                <View style={styles.uploadWatchControlRight}>
+                  <Pressable style={styles.uploadWatchIconButton} onPress={togglePreviewMute}>
+                    <Ionicons name={previewMuted ? "volume-mute" : "volume-high"} size={21} color="#F7F2E8" />
+                  </Pressable>
+                  <Pressable style={styles.uploadWatchIconButton} onPress={enterPreviewFullscreen}>
+                    <Ionicons name="scan-outline" size={20} color="#F7F2E8" />
+                  </Pressable>
+                </View>
+              </View>
             </View>
           </View>
 
-          <View style={styles.previewMetaRow}>
-            <Text style={[styles.previewMeta, { color: T.sub }]}>
-              Duration: <Text style={[styles.previewMetaStrong, { color: T.text }]}>{formatDur(durationSec)}</Text>
-            </Text>
-            <Text style={[styles.previewMeta, { color: T.sub }]}>
-              Size: <Text style={[styles.previewMetaStrong, { color: T.text }]}>{formatBytes(fileSizeBytes)}</Text>
-            </Text>
-          </View>
-
-          <Pressable style={[styles.modalCloseBtn, { backgroundColor: T.olive }]} onPress={closePreview}>
-            <Text style={[styles.modalCloseText, { color: T.textOnPrimary }]}>Close Preview</Text>
-          </Pressable>
+            <View style={styles.uploadWatchMetaBlock}>
+              <Text style={styles.uploadWatchTitle} numberOfLines={2}>
+                {title.trim() || "Upload preview"}
+              </Text>
+              <Text style={styles.uploadWatchMeta} numberOfLines={1}>
+                {formatBytes(fileSizeBytes)} · {formatDur(durationSec || previewDurationValue)} · Preview before submitting
+              </Text>
+            </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -3540,6 +4052,35 @@ const styles = StyleSheet.create({
     letterSpacing: 0.04,
   },
 
+  creatorChallengeUploadBadge: {
+    marginTop: 14,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+
+  creatorChallengeUploadKicker: {
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
+    marginBottom: 5,
+  },
+
+  creatorChallengeUploadTitle: {
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: "900",
+  },
+
+  creatorChallengeUploadPhrase: {
+    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+
   infoMiniTitle: {
     color: CINEMA.brass,
     fontSize: 12,
@@ -3567,9 +4108,9 @@ const styles = StyleSheet.create({
   },
 
   formHeaderClean: {
-    paddingHorizontal: 22,
-    paddingTop: 20,
-    paddingBottom: 10,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 14,
     backgroundColor: "transparent",
   },
 
@@ -3583,45 +4124,45 @@ const styles = StyleSheet.create({
 
   formSubtitleClean: {
     color: CINEMA.textDim,
-    fontSize: 14,
+    fontSize: 13,
     marginTop: 5,
-    lineHeight: 20,
+    lineHeight: 19,
     letterSpacing: 0.04,
   },
 
   formBodyLite: {
-    gap: 14,
-    paddingHorizontal: 22,
-    paddingTop: 2,
-    paddingBottom: 14,
+    gap: 18,
+    paddingHorizontal: 24,
+    paddingTop: 4,
+    paddingBottom: 18,
   },
 
   formBodyLitePhone: {
-    gap: 13,
+    gap: 16,
     paddingHorizontal: 16,
   },
 
   fieldGroup: {
-    gap: 7,
+    gap: 8,
   },
 
   label: {
     color: CINEMA.text,
-    fontSize: 14,
-    fontWeight: "800",
-    marginBottom: 2,
-    letterSpacing: -0.1,
+    fontSize: 13,
+    fontWeight: "900",
+    marginBottom: 1,
+    letterSpacing: 0.1,
   },
 
   input: {
-    minHeight: 52,
+    minHeight: 54,
     borderWidth: 1,
     borderColor: CINEMA.stroke,
     backgroundColor: "#07080B",
     color: CINEMA.text,
-    borderRadius: 18,
+    borderRadius: 16,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 11,
     fontSize: 15,
     ...(Platform.OS === "web"
       ? ({
@@ -3632,13 +4173,13 @@ const styles = StyleSheet.create({
   },
 
   selectBtn: {
-    minHeight: 62,
+    minHeight: 54,
     borderWidth: 1,
     borderColor: CINEMA.stroke,
     backgroundColor: "#07080B",
-    borderRadius: 18,
+    borderRadius: 16,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
     justifyContent: "center",
   },
 
@@ -3651,13 +4192,14 @@ const styles = StyleSheet.create({
 
   selectBtnHint: {
     color: CINEMA.textDim,
-    fontSize: 13,
-    marginTop: 3,
+    fontSize: 12,
+    marginTop: 2,
     letterSpacing: 0.03,
   },
 
   selectedRow: {
-    marginTop: 10,
+    marginTop: 8,
+    marginBottom: 2,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
@@ -3696,9 +4238,9 @@ const styles = StyleSheet.create({
 
   helperText: {
     color: CINEMA.textDim,
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
     letterSpacing: 0.04,
   },
 
@@ -3866,10 +4408,14 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
+  assetSection: {
+    marginTop: 2,
+  },
+
   primaryBtn: {
-    minHeight: 62,
+    minHeight: 58,
     backgroundColor: CINEMA.brass,
-    borderRadius: 18,
+    borderRadius: 16,
     paddingVertical: 12,
     paddingHorizontal: 16,
     alignItems: "center",
@@ -3879,6 +4425,10 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 7 },
     elevation: 5,
+  },
+
+  primaryAssetBtn: {
+    minHeight: 60,
   },
 
   primaryBtnMainRow: {
@@ -3903,6 +4453,125 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
 
+  assetSummaryCard: {
+    minHeight: 74,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    backgroundColor: CINEMA.panel2,
+    borderColor: CINEMA.stroke,
+    flexWrap: "wrap",
+  },
+
+  assetIconBubble: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    backgroundColor: CINEMA.brassSoft,
+    borderColor: CINEMA.brassBorder,
+  },
+
+  assetThumbPreview: {
+    width: 54,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: "#050506",
+  },
+
+  assetSummaryText: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  assetSummaryTitle: {
+    color: CINEMA.text,
+    fontSize: 14,
+    fontWeight: "900",
+    letterSpacing: -0.05,
+  },
+
+  assetSummaryMeta: {
+    color: CINEMA.textDim,
+    marginTop: 3,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  assetActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginLeft: "auto",
+  },
+
+  assetActionsPhone: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "stretch",
+    marginLeft: 0,
+  },
+
+  assetMiniBtn: {
+    minHeight: 36,
+    minWidth: 74,
+    borderRadius: 13,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    backgroundColor: CINEMA.panel,
+    borderColor: CINEMA.stroke,
+    flexShrink: 0,
+  },
+
+  assetMiniBtnText: {
+    fontSize: 12,
+    fontWeight: "900",
+  },
+
+  assetMiniDangerBtn: {
+    minHeight: 36,
+    minWidth: 74,
+    borderRadius: 13,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    backgroundColor: CINEMA.redSoft,
+    borderColor: CINEMA.redBorder,
+    flexShrink: 0,
+  },
+
+  assetMiniDangerText: {
+    fontSize: 12,
+    fontWeight: "900",
+  },
+
+  assetUploadBtn: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    backgroundColor: CINEMA.panel2,
+    borderColor: CINEMA.stroke,
+  },
+
+  assetUploadBtnText: {
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
   fileActionsRow: {
     flexDirection: "row",
     gap: 12,
@@ -3914,8 +4583,8 @@ const styles = StyleSheet.create({
 
   secondaryBtn: {
     flex: 1,
-    minHeight: 48,
-    borderRadius: 17,
+    minHeight: 44,
+    borderRadius: 15,
     borderWidth: 1,
     borderColor: CINEMA.stroke,
     backgroundColor: CINEMA.panel2,
@@ -3927,14 +4596,14 @@ const styles = StyleSheet.create({
   secondaryBtnText: {
     color: CINEMA.text,
     fontWeight: "800",
-    fontSize: 15,
+    fontSize: 14,
     letterSpacing: -0.1,
   },
 
   secondaryBtnDanger: {
     flex: 1,
-    minHeight: 48,
-    borderRadius: 17,
+    minHeight: 44,
+    borderRadius: 15,
     borderWidth: 1,
     borderColor: CINEMA.redBorder,
     backgroundColor: CINEMA.redSoft,
@@ -3946,13 +4615,13 @@ const styles = StyleSheet.create({
   secondaryBtnDangerText: {
     color: "#F0B2B2",
     fontWeight: "800",
-    fontSize: 15,
+    fontSize: 14,
     letterSpacing: -0.1,
   },
 
   mediaSection: {
-    gap: 8,
-    marginTop: 2,
+    gap: 9,
+    marginTop: 4,
   },
 
   mediaSectionHeader: {
@@ -3964,7 +4633,7 @@ const styles = StyleSheet.create({
   mediaSectionTitle: {
     color: CINEMA.text,
     fontWeight: "900",
-    fontSize: 16,
+    fontSize: 14,
     letterSpacing: -0.15,
   },
 
@@ -3985,11 +4654,11 @@ const styles = StyleSheet.create({
     color: "#EBC3C3",
     borderColor: "rgba(255,120,120,0.28)",
     borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: 999,
-    fontWeight: "800",
-    fontSize: 12,
+    fontWeight: "900",
+    fontSize: 11,
     backgroundColor: "rgba(110,35,35,0.18)",
   },
 
@@ -4003,19 +4672,27 @@ const styles = StyleSheet.create({
   },
 
   previewWrap: {
-    borderRadius: 22,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: CINEMA.strokeSoft,
     backgroundColor: "#07090C",
     overflow: "hidden",
+    maxHeight: 420,
+    alignSelf: "stretch",
   },
 
   previewStage: {
     width: "100%",
+    aspectRatio: 16 / 9,
+    maxHeight: 420,
     backgroundColor: "#07090C",
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
+  },
+
+  previewStagePhone: {
+    maxHeight: 280,
   },
 
   previewImg: {
@@ -4027,14 +4704,14 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: "flex-end",
     alignItems: "center",
-    paddingBottom: 14,
+    paddingBottom: 12,
   },
 
   playPill: {
     backgroundColor: "rgba(0,0,0,0.56)",
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
   },
@@ -4042,7 +4719,7 @@ const styles = StyleSheet.create({
   playPillText: {
     color: CINEMA.text,
     fontWeight: "800",
-    fontSize: 13,
+    fontSize: 12,
     letterSpacing: 0.04,
   },
 
@@ -4117,10 +4794,14 @@ const styles = StyleSheet.create({
   formFooter: {
     borderTopWidth: 1,
     borderTopColor: CINEMA.strokeSoft,
-    paddingHorizontal: 22,
-    paddingTop: 16,
+    paddingHorizontal: 24,
+    paddingTop: 18,
     paddingBottom: 20,
     marginTop: 4,
+  },
+
+  formFooterPhone: {
+    paddingHorizontal: 16,
   },
 
   agreeBlock: {
@@ -4129,19 +4810,20 @@ const styles = StyleSheet.create({
 
   agreeRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+    alignItems: "flex-start",
+    gap: 11,
   },
 
   checkbox: {
-    width: 28,
-    height: 28,
-    borderRadius: 9,
+    width: 24,
+    height: 24,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: CINEMA.stroke,
     backgroundColor: "#101216",
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 1,
   },
 
   checkboxChecked: {
@@ -4152,14 +4834,14 @@ const styles = StyleSheet.create({
   checkGlyph: {
     color: "#0A0A0B",
     fontWeight: "900",
-    fontSize: 15,
+    fontSize: 14,
   },
 
   agreeText: {
     color: CINEMA.textSoft,
     flex: 1,
-    lineHeight: 22,
-    fontSize: 15,
+    lineHeight: 20,
+    fontSize: 14,
   },
 
   termsLink: {
@@ -4168,21 +4850,23 @@ const styles = StyleSheet.create({
   },
 
   termsHintRow: {
-    marginTop: 8,
-    marginLeft: 40,
+    marginTop: 7,
+    marginLeft: 35,
+    alignSelf: "flex-start",
   },
 
   termsHintText: {
     color: CINEMA.textDim,
     textDecorationLine: "underline",
-    fontSize: 13,
+    fontSize: 12,
+    fontWeight: "800",
   },
 
   submitBtn: {
-    marginTop: 14,
-    minHeight: 58,
+    marginTop: 16,
+    minHeight: 56,
     backgroundColor: CINEMA.brass,
-    borderRadius: 18,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
@@ -4200,23 +4884,23 @@ const styles = StyleSheet.create({
   },
 
   formFootnoteWrap: {
-    marginTop: 10,
+    marginTop: 9,
     alignItems: "center",
   },
 
   formFootnote: {
     color: CINEMA.textDim,
-    fontSize: 13,
+    fontSize: 12,
     textAlign: "center",
-    lineHeight: 19,
+    lineHeight: 17,
   },
 
   processingNote: {
     color: CINEMA.brass,
-    fontSize: 13,
+    fontSize: 12,
     textAlign: "center",
-    lineHeight: 19,
-    marginTop: 8,
+    lineHeight: 17,
+    marginTop: 7,
     maxWidth: 520,
   },
 
@@ -4394,6 +5078,251 @@ const styles = StyleSheet.create({
     color: "#0A0A0B",
     fontWeight: "900",
     fontSize: 15,
+  },
+
+  uploadWatchOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.90)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+  },
+
+  uploadWatchTopBar: {
+    position: "absolute",
+    left: 18,
+    right: 18,
+    zIndex: 90,
+    elevation: 90,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
+
+  uploadWatchModal: {
+    width: "94%",
+    maxWidth: 1100,
+    maxHeight: "92%",
+    alignSelf: "center",
+    backgroundColor: "#050505",
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.78)",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.34,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 16,
+  },
+
+  uploadWatchModalPhone: {
+    width: "96%",
+    maxHeight: "90%",
+    borderRadius: 18,
+  },
+
+  uploadWatchScroll: {
+    width: "100%",
+  },
+
+  uploadWatchClose: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    zIndex: 80,
+    elevation: 80,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    shadowColor: "#000",
+    shadowOpacity: 0.34,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+  },
+
+  uploadWatchCloseIcon: {
+    color: "#F4F1EA",
+    fontWeight: "800",
+    fontSize: 25,
+    lineHeight: 28,
+  },
+
+  uploadWatchContent: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 22,
+  },
+
+  uploadWatchContentDesktop: {
+    paddingTop: 26,
+    paddingBottom: 24,
+  },
+
+  uploadWatchContentMobile: {
+    paddingHorizontal: 14,
+    paddingTop: 58,
+    paddingBottom: 16,
+  },
+
+  uploadWatchPlayerWrap: {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: 10,
+    backgroundColor: "#000",
+    borderWidth: 0,
+    borderColor: "transparent",
+    shadowColor: "#000",
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+  },
+
+  uploadWatchSurface: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#000",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  uploadWatchLoadingBubble: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.58)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+  },
+
+  uploadWatchCenterCue: {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: 76,
+    height: 76,
+    marginLeft: -38,
+    marginTop: -38,
+    borderRadius: 38,
+    backgroundColor: "rgba(0,0,0,0.58)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 16,
+  },
+
+  uploadWatchChromeDock: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    bottom: 8,
+    paddingHorizontal: 10,
+    paddingTop: 7,
+    paddingBottom: 7,
+    borderRadius: 10,
+    backgroundColor: "rgba(5,5,5,0.58)",
+    shadowColor: "#000",
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    zIndex: 20,
+    elevation: 20,
+  },
+
+  uploadWatchTimeline: {
+    height: 12,
+    justifyContent: "center",
+    marginBottom: 2,
+  },
+
+  uploadWatchTimelineTrack: {
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.26)",
+  },
+
+  uploadWatchTimelineFill: {
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: CINEMA.brass,
+  },
+
+  uploadWatchTimelineThumb: {
+    position: "absolute",
+    top: -4,
+    width: 10,
+    height: 10,
+    marginLeft: -5,
+    borderRadius: 5,
+    backgroundColor: CINEMA.brass,
+  },
+
+  uploadWatchControlRow: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
+  },
+
+  uploadWatchControlLeft: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+
+  uploadWatchControlRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+
+  uploadWatchIconButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent",
+  },
+
+  uploadWatchTimeText: {
+    flexShrink: 1,
+    color: "#F7F2E8",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+
+  uploadWatchMetaBlock: {
+    width: "100%",
+    maxWidth: 1100,
+    paddingTop: 14,
+    alignSelf: "center",
+  },
+
+  uploadWatchTitle: {
+    color: "#F7F2E8",
+    fontSize: 22,
+    lineHeight: 27,
+    fontWeight: "900",
+  },
+
+  uploadWatchMeta: {
+    marginTop: 3,
+    color: "rgba(247,242,232,0.68)",
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "800",
   },
 
   previewModal: {

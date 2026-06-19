@@ -15,11 +15,38 @@ export type RootStackParamList = {
   MainTabs: undefined;
 
   // Tab Screens
-  Featured: undefined;
+  Featured:
+    | {
+        challengeId?: string;
+        challengeSearch?: string;
+        challengeTitle?: string;
+        challengeSearchNonce?: number;
+        openShareSlug?: string;
+        openSubmissionId?: string;
+        openSearchNonce?: number;
+      }
+    | undefined;
   Jobs: undefined;
   Challenge: undefined;
   Location: undefined;
   Chats: undefined;
+  WorkshopSubmit:
+    | {
+        mode?: 'monthly' | 'workshop';
+        pathKey?: string;
+        step?: number;
+        lessonTitle?: string;
+        lessonDescription?: string;
+        lessonPrompt?: string;
+        lessonXp?: number;
+        creatorChallengeId?: string;
+        challengeCode?: string;
+        creatorId?: string;
+        creatorChallengeTitle?: string;
+        creatorChallengeRequiredPhrase?: string | null;
+        creatorChallengeEndsAt?: string | null;
+      }
+    | undefined;
   Profile: { user?: { id: string; full_name: string } };
 
   // Relaxed params to match actual navigation usage from ChatsScreen
@@ -60,6 +87,21 @@ export type Submission = {
   is_winner: boolean;
   hidden_on_profile?: boolean | null;
   submitted_at: string;
+  creator_challenge_id?: string | null;
+  challenge_code?: string | null;
+  submission_source?: string | null;
+  creator_id?: string | null;
+  creator_challenges?: {
+    id: string;
+    title?: string | null;
+    challenge_code?: string | null;
+    creator_id?: string | null;
+    users?: {
+      id: string;
+      full_name?: string | null;
+      avatar_url?: string | null;
+    } | null;
+  } | null;
 
   // ✅ joined user data
   users?: {

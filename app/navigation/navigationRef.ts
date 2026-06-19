@@ -38,12 +38,39 @@ export type RootStackParamList = {
   MainTabs: undefined;
 
   // TAB SCREENS
-  Featured: undefined;
+  Featured:
+    | {
+        challengeId?: string;
+        challengeSearch?: string;
+        challengeTitle?: string;
+        challengeSearchNonce?: number;
+        openShareSlug?: string;
+        openSubmissionId?: string;
+        openSearchNonce?: number;
+      }
+    | undefined;
   Jobs: undefined;
   Challenge: undefined;
   Workshop: undefined;
   Location: undefined;
   Chats: undefined;
+  WorkshopSubmit:
+    | {
+        mode?: 'monthly' | 'workshop';
+        pathKey?: string;
+        step?: number;
+        lessonTitle?: string;
+        lessonDescription?: string;
+        lessonPrompt?: string;
+        lessonXp?: number;
+        creatorChallengeId?: string;
+        challengeCode?: string;
+        creatorId?: string;
+        creatorChallengeTitle?: string;
+        creatorChallengeRequiredPhrase?: string | null;
+        creatorChallengeEndsAt?: string | null;
+      }
+    | undefined;
 
   // PROFILE
   Profile:

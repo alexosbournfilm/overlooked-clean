@@ -12,5 +12,11 @@ Deno.serve(async () => {
     return new Response("Error: " + error.message, { status: 500 })
   }
 
+  const { error: cleanupError } = await supabase.rpc("delete_expired_creator_challenges")
+
+  if (cleanupError) {
+    return new Response("Error: " + cleanupError.message, { status: 500 })
+  }
+
   return new Response("OK")
 })

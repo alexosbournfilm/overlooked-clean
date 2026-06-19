@@ -25,6 +25,7 @@ import { useAppRefresh } from '../context/AppRefreshContext';
 import { useAppTheme } from '../context/ThemeContext';
 import { getFlag, parseCityQuery, searchCities } from '../lib/citySearch';
 import { isMobileWebViewport } from '../utils/responsive';
+import CityGlobe, { type CityGlobeLocation, type CityGlobeUser } from '../../components/CityGlobe';
 
 const IS_WEB = Platform.OS === 'web';
 
@@ -63,6 +64,10 @@ interface DropdownOption {
   label: string;
   value: number;
   country?: string;
+  name?: string;
+  countryCode?: string;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 type Conversation = {
@@ -74,11 +79,12 @@ type Conversation = {
   last_message_at?: string | null;
 };
 
-type LocatedUser = {
+type LocatedUser = CityGlobeUser & {
   id: string;
   full_name: string;
   avatar_url?: string | null;
   level?: number | null;
+  city_id?: number | string | null;
 };
 
 type JoinedUser =
@@ -145,6 +151,77 @@ const getUserFromJoin = (u: JoinedUser) => getFirst(u);
 const getCityFromJoin = (c: JoinedCity) => getFirst(c);
 const getRoleFromJoin = (r: JoinedRole) => getFirst(r);
 
+const toFiniteNumber = (value: any) => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const cityOptionToGlobeLocation = (option: DropdownOption | null): CityGlobeLocation | null => {
+  if (!option) return null;
+
+  const latitude = toFiniteNumber(option.latitude);
+  const longitude = toFiniteNumber(option.longitude);
+  if (latitude == null || longitude == null) return null;
+
+  return {
+    name: option.name || option.label.replace(/^[^\w]+/, '').split(',')[0]?.trim() || 'City',
+    countryCode: (option.countryCode || option.country || '').toUpperCase(),
+    latitude,
+    longitude,
+  };
+};
+
+const cityRowToGlobeLocation = (row: any): CityGlobeLocation | null => {
+  if (!row) return null;
+
+  const latitude = toFiniteNumber(row.latitude);
+  const longitude = toFiniteNumber(row.longitude);
+  if (latitude == null || longitude == null) return null;
+
+  return {
+    name: String(row.name || 'City'),
+    countryCode: String(row.country_code || '').toUpperCase(),
+    latitude,
+    longitude,
+  };
+};
+
+const userRowToLocatedUser = (row: any, cityLookup: Map<string, CityGlobeLocation>): LocatedUser | null => {
+  const cityId = row?.city_id;
+  if (cityId == null) return null;
+
+  const location = cityLookup.get(String(cityId));
+  if (!location) return null;
+
+  return {
+    id: String(row.id),
+    full_name: String(row.full_name || 'Overlooked member'),
+    avatar_url: row.avatar_url ?? null,
+    level: row.level ?? null,
+    city_id: cityId,
+    cityName: location.name,
+    countryCode: location.countryCode,
+    latitude: location.latitude,
+    longitude: location.longitude,
+  };
+};
+
+const userRowToSelectedCityUser = (
+  row: any,
+  cityId: number | string,
+  location: CityGlobeLocation | null
+): LocatedUser => ({
+  id: String(row.id),
+  full_name: String(row.full_name || 'Overlooked member'),
+  avatar_url: row.avatar_url ?? null,
+  level: row.level ?? null,
+  city_id: row.city_id ?? cityId,
+  cityName: location?.name ?? null,
+  countryCode: location?.countryCode ?? null,
+  latitude: location?.latitude ?? null,
+  longitude: location?.longitude ?? null,
+});
+
 const IconText: React.FC<{
   name: keyof typeof Ionicons.glyphMap;
   text: string;
@@ -184,6 +261,7 @@ export default function LocationScreen() {
   const READABLE_MUTED = isLight ? '#4B4740' : TEXT_TERTIARY;
 
   const [city, setCity] = useState<DropdownOption | null>(null);
+  const [selectedCityLocation, setSelectedCityLocation] = useState<CityGlobeLocation | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [cityItems, setCityItems] = useState<DropdownOption[]>([]);
   const [searchModalVisible, setSearchModalVisible] = useState(false);
@@ -191,6 +269,7 @@ export default function LocationScreen() {
   const [isSearchingCities, setIsSearchingCities] = useState(false);
 
   const [users, setUsers] = useState<LocatedUser[]>([]);
+  const [worldUsers, setWorldUsers] = useState<LocatedUser[]>([]);
   const [jobs, setJobs] = useState<LocatedJobLite[]>([]);
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -246,6 +325,10 @@ export default function LocationScreen() {
             label: `${getFlag(item.country_code)} ${item.name}, ${item.country_code}`,
             value: item.id,
             country: item.country_code,
+            name: item.name,
+            countryCode: item.country_code,
+            latitude: item.latitude ?? null,
+            longitude: item.longitude ?? null,
           }))
         );
       }
@@ -273,26 +356,94 @@ export default function LocationScreen() {
     []
   );
 
+  const fetchWorldwideUsers = useCallback(async () => {
+    const { data: userRows, error: usersError } = await supabase
+      .from('users')
+      .select('id, full_name, avatar_url, level, city_id')
+      .not('city_id', 'is', null)
+      .limit(1000);
+
+    if (usersError) {
+      console.error('Error fetching worldwide users:', usersError.message);
+      setWorldUsers([]);
+      return;
+    }
+
+    const cityIds = Array.from(
+      new Set(
+        ((userRows || []) as LocatedUser[])
+          .map((row) => row.city_id)
+          .filter((id): id is number | string => id != null)
+          .map((id) => String(id))
+      )
+    );
+
+    if (cityIds.length === 0) {
+      setWorldUsers([]);
+      return;
+    }
+
+    const { data: cityRows, error: citiesError } = await supabase
+      .from('cities')
+      .select('id, name, country_code, latitude, longitude')
+      .in('id', cityIds);
+
+    if (citiesError) {
+      console.error('Error fetching worldwide city coordinates:', citiesError.message);
+      setWorldUsers([]);
+      return;
+    }
+
+    const cityLookup = new Map<string, CityGlobeLocation>();
+    (cityRows || []).forEach((row) => {
+      const location = cityRowToGlobeLocation(row);
+      if (location) cityLookup.set(String(row.id), location);
+    });
+
+    setWorldUsers(
+      ((userRows || []) as LocatedUser[])
+        .map((row) => userRowToLocatedUser(row, cityLookup))
+        .filter((row): row is LocatedUser => !!row)
+    );
+  }, []);
+
+  useEffect(() => {
+    void fetchWorldwideUsers();
+  }, [fetchWorldwideUsers]);
+
   const handleSearch = async () => {
     if (!city) return;
 
     setSearching(true);
     setSearched(false);
 
-    const [usersRes, jobsRes] = await Promise.all([
-      supabase.from('users').select('id, full_name, avatar_url, level').eq('city_id', city.value),
+    const [usersRes, jobsRes, cityRes] = await Promise.all([
+      supabase.from('users').select('id, full_name, avatar_url, level, city_id').eq('city_id', city.value),
       supabase
         .from('jobs')
         .select('id, title, is_closed, creative_roles:role_id (name)')
         .eq('city_id', city.value)
         .eq('is_closed', false),
+      supabase
+        .from('cities')
+        .select('id, name, country_code, latitude, longitude')
+        .eq('id', city.value)
+        .maybeSingle(),
     ]);
 
     if (usersRes.error) console.error(usersRes.error.message);
     if (jobsRes.error) console.error(jobsRes.error.message);
+    if (cityRes.error) console.error(cityRes.error.message);
 
-    setUsers((usersRes.data as LocatedUser[]) || []);
+    const selectedLocation = cityRowToGlobeLocation(cityRes.data) ?? cityOptionToGlobeLocation(city);
+
+    setUsers(
+      ((usersRes.data || []) as LocatedUser[]).map((row) =>
+        userRowToSelectedCityUser(row, city.value, selectedLocation)
+      )
+    );
     setJobs((jobsRes.data as LocatedJobLite[]) || []);
+    setSelectedCityLocation(selectedLocation);
     setSearching(false);
     setSearched(true);
     setActiveTab('creatives');
@@ -310,13 +461,16 @@ export default function LocationScreen() {
         await handleSearch();
       } else if (citySearchTerm.trim().length >= 2) {
         await fetchCities(citySearchTerm);
+        await fetchWorldwideUsers();
+      } else {
+        await fetchWorldwideUsers();
       }
     } catch (e: any) {
       console.warn('Location refresh error:', e?.message || e);
     } finally {
       setRefreshing(false);
     }
-  }, [refreshing, triggerAppRefresh, city, citySearchTerm, fetchCities]);
+  }, [refreshing, triggerAppRefresh, city, citySearchTerm, fetchCities, fetchWorldwideUsers]);
 
   const fetchConversationById = async (conversationId: string) => {
     const { data, error } = await supabase
@@ -423,10 +577,10 @@ export default function LocationScreen() {
     }
   };
 
-  const goToProfile = (user?: { id: string; full_name?: string }) => {
+  const goToProfile = useCallback((user?: { id: string; full_name?: string }) => {
     if (!user?.id) return;
     navigation.navigate('Profile', { user });
-  };
+  }, [navigation]);
 
   const fetchJobDetail = useCallback(async (jobId: string) => {
     setLoadingSelectedJob(true);
@@ -543,6 +697,36 @@ export default function LocationScreen() {
   }, [selectedJob, isGuest, navigation]);
 
   const canShowTopActions = !!city;
+  const globeCity = useMemo(
+    () => selectedCityLocation ?? cityOptionToGlobeLocation(city),
+    [city, selectedCityLocation]
+  );
+  const globeUsers = useMemo(() => {
+    if (!city) return worldUsers;
+
+    const byId = new Map<string, LocatedUser>();
+    worldUsers.forEach((user) => byId.set(user.id, user));
+    if (searched) users.forEach((user) => byId.set(user.id, user));
+    return Array.from(byId.values());
+  }, [city, searched, users, worldUsers]);
+
+  const cityGlobeMap = (
+    <View style={[styles.globeSection, searched && styles.globeSectionAfterResults]}>
+      <CityGlobe
+        city={globeCity}
+        users={globeUsers}
+        searched={searched}
+        onUserPress={goToProfile}
+        backgroundColor={DARK_BG}
+        surfaceColor={SURFACE}
+        surfaceAltColor={SURFACE_2}
+        borderColor={BORDER}
+        textColor={TEXT_PRIMARY}
+        mutedTextColor={TEXT_SECONDARY}
+        accentColor={GOLD}
+      />
+    </View>
+  );
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: DARK_BG }]} edges={['top']}>
@@ -570,9 +754,9 @@ export default function LocationScreen() {
         <View style={styles.content}>
           <View style={[styles.heroCard, { backgroundColor: SURFACE, borderColor: BORDER, shadowColor: colors.shadow }]}>
            
-            <Text style={[styles.heroTitle, { color: TEXT_PRIMARY }]}>Find your city</Text>
+            <Text style={[styles.heroTitle, { color: TEXT_PRIMARY }]}>Meet creatives around you</Text>
             <Text style={[styles.heroSub, { color: TEXT_SECONDARY }]}>
-              Search by city to discover creatives, local jobs, and the city group chat.
+              Choose your city to find people, projects, and local group chats.
             </Text>
 
             <TouchableOpacity
@@ -604,7 +788,7 @@ export default function LocationScreen() {
                 {searching ? (
                   <ActivityIndicator color={colors.textOnPrimary} />
                 ) : (
-                  <Text style={[styles.searchButtonText, { color: colors.textOnPrimary }]}>Search</Text>
+                  <Text style={[styles.searchButtonText, { color: colors.textOnPrimary }]}>Find creatives</Text>
                 )}
               </TouchableOpacity>
 
@@ -629,6 +813,8 @@ export default function LocationScreen() {
               ) : null}
             </View>
           </View>
+
+          {!searched ? cityGlobeMap : null}
 
           {searched && (
             <View style={styles.resultsWrap}>
@@ -749,6 +935,8 @@ export default function LocationScreen() {
                   })
                 )}
               </View>
+
+              {cityGlobeMap}
             </View>
           )}
         </View>
@@ -809,6 +997,11 @@ export default function LocationScreen() {
                         ]}
                         onPress={() => {
                           setCity(item);
+                          setSelectedCityLocation(cityOptionToGlobeLocation(item));
+                          setUsers([]);
+                          setJobs([]);
+                          setSearched(false);
+                          setActiveTab('creatives');
                           setSearchModalVisible(false);
                         }}
                         activeOpacity={0.9}
@@ -1035,7 +1228,7 @@ const styles = StyleSheet.create({
 
   content: {
     width: '100%',
-    maxWidth: 760,
+    maxWidth: 960,
     alignSelf: 'center',
   },
 
@@ -1052,6 +1245,9 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
   },
 
   
@@ -1062,7 +1258,7 @@ const styles = StyleSheet.create({
     fontSize: 30,
     fontWeight: '900',
     textAlign: 'center',
-    letterSpacing: -0.5,
+    letterSpacing: 0,
   },
 
   heroSub: {
@@ -1155,6 +1351,20 @@ const styles = StyleSheet.create({
   resultsWrap: {
     marginTop: 14,
     gap: 10,
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+  },
+
+  globeSection: {
+    width: '100%',
+    maxWidth: 940,
+    alignSelf: 'center',
+    marginTop: 18,
+  },
+
+  globeSectionAfterResults: {
+    marginTop: 8,
   },
 
   tabsOuter: {

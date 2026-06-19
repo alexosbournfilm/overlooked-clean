@@ -31,11 +31,7 @@ import {
   getCurrentUserTier,
 } from '../lib/membership';
 import {
-  getSubscriptionOfferRemaining,
-  SUBSCRIPTION_OFFER_CODE,
-  SUBSCRIPTION_OFFER_DISCOUNT,
-  SUBSCRIPTION_OFFER_PRICE_AMOUNT,
-  SUBSCRIPTION_OFFER_PRICE_FALLBACK,
+  SUBSCRIPTION_PRICE_AMOUNT,
   SUBSCRIPTION_PRICE_CURRENCY_SYMBOL,
   SUBSCRIPTION_PRICE_FALLBACK,
   SUBSCRIPTION_TITLE,
@@ -216,6 +212,7 @@ const GENERAL_ROWS: ComparisonRow[] = [
   { feature: 'Film uploads', free: '1', pro: 'Unlimited' },
   { feature: 'Profile showreels', free: '1', pro: '3' },
   { feature: 'Monthly Film Challenge', free: 'View', pro: 'Submit' },
+  { feature: 'Creator Challenge submissions', free: 'View', pro: 'Unlimited' },
   { feature: 'Paid job applications', free: '✕', pro: '✓' },
   { feature: 'Filmmaking Bootcamp', free: '✕', pro: '✓' },
   { feature: 'Workshop tools', free: '✕', pro: '✓' },
@@ -238,6 +235,7 @@ const PRO_HIGHLIGHTS = [
   'Unlimited film uploads',
   '3 profile showreels',
   'Monthly Film Challenge submissions',
+  'Unlimited creator challenge submissions',
   'Exercises taken directly from film and acting schools',
   'Ever-growing filmmaking tools and resources',
 ];
@@ -248,7 +246,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Build your portfolio with Pro',
     subtitle:
       'Share unlimited films, build a sharper portfolio, meet collaborators, and train with exercises taken directly from film and acting schools: the practical best parts, without the fluff.',
-    cta: `Unlock Pro — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
+    cta: `Unlock Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`,
     rows: GENERAL_ROWS,
   },
   challenge: {
@@ -256,7 +254,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Submit your film with Pro',
     subtitle:
       'Monthly Film Challenge submissions are part of Overlooked Pro. Upgrade to upload your film, get seen on Featured, and compete for next month’s top spot.',
-    cta: `Unlock Pro and submit — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
+    cta: `Unlock Pro and submit — ${SUBSCRIPTION_PRICE_FALLBACK}/month`,
     rows: GENERAL_ROWS,
   },
   jobs: {
@@ -264,7 +262,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Apply for paid roles with Pro',
     subtitle:
       'Paid job applications are reserved for Pro creators, so opportunities stay focused on people actively building their portfolio.',
-    cta: `Unlock Pro and apply — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
+    cta: `Unlock Pro and apply — ${SUBSCRIPTION_PRICE_FALLBACK}/month`,
     rows: GENERAL_ROWS,
   },
   showreel: {
@@ -272,7 +270,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Build your showreel with Pro',
     subtitle:
       'Free includes 1 profile showreel. Pro gives you 3 and a stronger portfolio link.',
-    cta: `Unlock Pro — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
+    cta: `Unlock Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`,
     rows: GENERAL_ROWS,
   },
   bootcamp: {
@@ -280,7 +278,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Train through Filmmaking Bootcamp',
     subtitle:
       'Train with focused exercises taken directly from film and acting schools: the practical best parts, without the fluff.',
-    cta: `Unlock Bootcamp with Pro — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
+    cta: `Unlock Bootcamp with Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`,
     rows: GENERAL_ROWS,
   },
   workshop: {
@@ -288,7 +286,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Unlock the Workshop tool library',
     subtitle:
       'Use an ever-growing library of filmmaking tools alongside school-derived exercises that help turn ideas into finished work.',
-    cta: `Unlock Workshop tools — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`,
+    cta: `Unlock Workshop tools — ${SUBSCRIPTION_PRICE_FALLBACK}/month`,
     rows: GENERAL_ROWS,
   },
 };
@@ -341,10 +339,6 @@ export default function PaywallScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [privacyPolicyVisible, setPrivacyPolicyVisible] = useState(false);
-  const [offerCountdown, setOfferCountdown] = useState(() =>
-    getSubscriptionOfferRemaining()
-  );
-
   const [gateChecking, setGateChecking] = useState(true);
 
   const [alreadyPro, setAlreadyPro] = useState(false);
@@ -364,14 +358,6 @@ export default function PaywallScreen() {
       pollTimerRef.current = null;
     }
   };
-
-  useEffect(() => {
-    const tick = () => setOfferCountdown(getSubscriptionOfferRemaining());
-    tick();
-
-    const id = setInterval(tick, 60 * 1000);
-    return () => clearInterval(id);
-  }, []);
 
   const openLegalUrl = useCallback(async (url: string) => {
     try {
@@ -489,12 +475,12 @@ export default function PaywallScreen() {
 
   const planLabel = useMemo(() => {
     if (Platform.OS === 'android') {
-      return `Unlock Pro — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`;
+      return `Unlock Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`;
     }
     if (Platform.OS === 'ios') {
-      return `Unlock Pro — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`;
+      return `Unlock Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`;
     }
-    return `Unlock Pro — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`;
+    return `Unlock Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`;
   }, []);
 
   const enterFeatured = useCallback(() => {
@@ -1004,64 +990,6 @@ export default function PaywallScreen() {
             <Text style={[styles.title, primaryTextStyle]}>{paywallCopy.title}</Text>
             <Text style={[styles.subtitle, mutedTextStyle]}>{paywallCopy.subtitle}</Text>
 
-            <View
-              style={[
-                styles.offerPanel,
-                {
-                  backgroundColor: isLight ? '#FFF9EA' : 'rgba(198,166,100,0.12)',
-                  borderColor: isLight ? '#E6D2A2' : 'rgba(198,166,100,0.28)',
-                },
-              ]}
-            >
-              <View style={styles.offerPanelTop}>
-                <View
-                  style={[
-                    styles.offerBadge,
-                    { backgroundColor: isLight ? colors.textPrimary : colors.primary },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.offerBadgeText,
-                      { color: isLight ? '#FFFFFF' : colors.textOnPrimary },
-                    ]}
-                  >
-                    {SUBSCRIPTION_OFFER_DISCOUNT}
-                  </Text>
-                </View>
-                <Text style={[styles.offerCountdownText, { color: colors.textPrimary }]}>
-                  {offerCountdown.long}
-                </Text>
-              </View>
-              <Text style={[styles.offerPanelTitle, { color: colors.textPrimary }]}>
-                Get Overlooked Pro for{' '}
-                <Text style={[styles.offerPriceWas, { color: colors.textMuted }]}>
-                  {SUBSCRIPTION_PRICE_FALLBACK}
-                </Text>{' '}
-                <Text style={[styles.offerPriceNow, { color: colors.textPrimary }]}>
-                  {SUBSCRIPTION_OFFER_PRICE_FALLBACK}
-                </Text>
-                /month
-              </Text>
-              <Text style={[styles.offerPanelText, { color: colors.textSecondary }]}>
-                Use code {SUBSCRIPTION_OFFER_CODE} to keep 70% off every month for life while your subscription stays active.
-              </Text>
-              <View
-                style={[
-                  styles.offerCodePill,
-                  {
-                    backgroundColor: isLight ? '#FFFFFF' : 'rgba(255,255,255,0.06)',
-                    borderColor: isLight ? '#E6D2A2' : 'rgba(198,166,100,0.24)',
-                  },
-                ]}
-              >
-                <Text style={[styles.offerCodeLabel, { color: colors.textMuted }]}>Code</Text>
-                <Text style={[styles.offerCodeValue, { color: colors.textPrimary }]}>
-                  {SUBSCRIPTION_OFFER_CODE}
-                </Text>
-              </View>
-            </View>
-
             <View style={styles.plansArea}>
               <View
               style={[
@@ -1189,23 +1117,16 @@ export default function PaywallScreen() {
                     <Text style={[styles.planKicker, styles.planKickerHero, { color: labelTextColor }]}>
                       MONTHLY
                     </Text>
-                    <Text style={[styles.planWasPrice, { color: TEXT_MUTED_2 }]}>
-                      Was{' '}
-                      <Text style={styles.planWasPriceStrike}>
-                        {SUBSCRIPTION_PRICE_FALLBACK}
-                      </Text>
-                    </Text>
                     <View style={styles.planPriceRow}>
-                      <Text style={[styles.planNowLabel, { color: labelTextColor }]}>Now</Text>
                       <Text style={[styles.planCurrency, { color: TEXT_IVORY }]}>
                         {SUBSCRIPTION_PRICE_CURRENCY_SYMBOL}
                       </Text>
                       <Text style={[styles.planPriceHero, { color: TEXT_IVORY }]}>
-                        {SUBSCRIPTION_OFFER_PRICE_AMOUNT}
+                        {SUBSCRIPTION_PRICE_AMOUNT}
                       </Text>
                     </View>
                     <Text style={[styles.planSubHero, mutedTextStyle]}>
-                      per month with {SUBSCRIPTION_OFFER_CODE}
+                      per month
                     </Text>
                   </View>
                 </View>
@@ -1340,7 +1261,7 @@ export default function PaywallScreen() {
             <Text style={[styles.subscriptionInfoTitle, primaryTextStyle]}>{SUBSCRIPTION_TITLE}</Text>
 
             <Text style={[styles.subscriptionInfoText, mutedTextStyle]}>
-              {SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with code {SUBSCRIPTION_OFFER_CODE}. Auto-renews monthly. Cancel anytime.
+              {SUBSCRIPTION_PRICE_FALLBACK}/month. Auto-renews monthly. Cancel anytime.
             </Text>
 
             <View style={styles.legalLinksRow}>

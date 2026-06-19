@@ -19,11 +19,7 @@ import { invalidateMembershipCache } from '../app/lib/membership';
 import { getMySubscriptionStatus } from '../app/lib/billing';
 import { supabase } from '../app/lib/supabase';
 import {
-  getSubscriptionOfferRemaining,
-  SUBSCRIPTION_OFFER_CODE,
-  SUBSCRIPTION_OFFER_DISCOUNT,
-  SUBSCRIPTION_OFFER_PRICE_AMOUNT,
-  SUBSCRIPTION_OFFER_PRICE_FALLBACK,
+  SUBSCRIPTION_PRICE_AMOUNT,
   SUBSCRIPTION_PRICE_CURRENCY_SYMBOL,
   SUBSCRIPTION_PRICE_FALLBACK,
   SUBSCRIPTION_TITLE,
@@ -145,6 +141,7 @@ const GENERAL_COMPARISON_ROWS: ComparisonRow[] = [
   { feature: 'Film uploads', free: '1', pro: 'Unlimited' },
   { feature: 'Profile showreels', free: '1', pro: '3' },
   { feature: 'Monthly Film Challenge', free: 'View', pro: 'Submit' },
+  { feature: 'Creator Challenge submissions', free: 'View', pro: 'Unlimited' },
   { feature: 'Paid job applications', free: '✕', pro: '✓' },
   { feature: 'Filmmaking Bootcamp', free: '✕', pro: '✓' },
   { feature: 'Workshop tools', free: '✕', pro: '✓' },
@@ -167,6 +164,7 @@ const PRO_HIGHLIGHTS = [
   'Unlimited film uploads',
   '3 profile showreels',
   'Monthly Film Challenge submissions',
+  'Unlimited creator challenge submissions',
   'Exercises taken directly from film and acting schools',
   'Ever-growing filmmaking tools and resources',
 ];
@@ -373,25 +371,12 @@ export const UpgradeModal: React.FC<Props> = ({
 
   const [billingState, setBillingState] = useState<BillingSnapshot | null>(null);
 
-  const [offerCountdown, setOfferCountdown] = useState(() =>
-    getSubscriptionOfferRemaining()
-  );
   const [cancelCountdown, setCancelCountdown] = useState(() =>
     getCancellationCountdown(null)
   );
 
   useEffect(() => {
     if (!visible) setPrivacyPolicyVisible(false);
-  }, [visible]);
-
-  useEffect(() => {
-    if (!visible) return;
-
-    const tick = () => setOfferCountdown(getSubscriptionOfferRemaining());
-    tick();
-
-    const id = setInterval(tick, 60 * 1000);
-    return () => clearInterval(id);
   }, [visible]);
 
   useEffect(() => {
@@ -762,7 +747,7 @@ export const UpgradeModal: React.FC<Props> = ({
       ? "You're on Pro"
       : upgrading
       ? 'Opening checkout…'
-      : `Unlock Pro — ${SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with ${SUBSCRIPTION_OFFER_CODE}`;
+      : `Unlock Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`;
 
   const horizontalPad = isMobile ? 10 : 20;
   const verticalPadTop = Math.max(insets.top + 8, 14);
@@ -985,69 +970,6 @@ export const UpgradeModal: React.FC<Props> = ({
                   {subtitle}
                 </Text>
 
-                <View
-                  style={[
-                    styles.offerBanner,
-                    {
-                      backgroundColor: isLight ? '#FFF9EA' : 'rgba(198,166,100,0.12)',
-                      borderColor: isLight ? '#E6D2A2' : 'rgba(198,166,100,0.28)',
-                    },
-                    isDesktopWeb && styles.offerBannerDesktop,
-                  ]}
-                >
-                  <View style={styles.offerBannerTop}>
-                    <View
-                      style={[
-                        styles.offerBadge,
-                        {
-                          backgroundColor: isLight ? '#17130D' : colors.primary,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.offerBadgeText,
-                          { color: isLight ? '#FFFFFF' : colors.textOnPrimary },
-                        ]}
-                      >
-                        {SUBSCRIPTION_OFFER_DISCOUNT}
-                      </Text>
-                    </View>
-                    <Text style={[styles.offerCountdownText, { color: membershipText }]}>
-                      {offerCountdown.long}
-                    </Text>
-                  </View>
-                  <Text style={[styles.offerBannerTitle, { color: membershipText }]}>
-                    Get Overlooked Pro for{' '}
-                    <Text style={[styles.offerPriceWas, { color: membershipMutedText }]}>
-                      {SUBSCRIPTION_PRICE_FALLBACK}
-                    </Text>{' '}
-                    <Text style={[styles.offerPriceNow, { color: membershipText }]}>
-                      {SUBSCRIPTION_OFFER_PRICE_FALLBACK}
-                    </Text>
-                    /month
-                  </Text>
-                  <Text style={[styles.offerBannerText, { color: membershipSubText }]}>
-                    Use code {SUBSCRIPTION_OFFER_CODE} to keep 70% off every month for life while your subscription stays active.
-                  </Text>
-                  <View
-                    style={[
-                      styles.offerCodePill,
-                      {
-                        backgroundColor: isLight ? '#FFFFFF' : 'rgba(255,255,255,0.06)',
-                        borderColor: isLight ? '#E6D2A2' : 'rgba(198,166,100,0.24)',
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.offerCodeLabel, { color: membershipMutedText }]}>
-                      Code
-                    </Text>
-                    <Text style={[styles.offerCodeValue, { color: membershipText }]}>
-                      {SUBSCRIPTION_OFFER_CODE}
-                    </Text>
-                  </View>
-                </View>
-
                 <View style={styles.metaRow}>
                   {currentTier ? (
                     <View
@@ -1063,21 +985,6 @@ export const UpgradeModal: React.FC<Props> = ({
                       <Text style={[styles.metaValue, { color: membershipText }]}>{currentTierLabel}</Text>
                     </View>
                   ) : null}
-
-                  <View
-                    style={[
-                      styles.metaPill,
-                      styles.offerPill,
-                      { backgroundColor: premiumGoldSoft, borderColor: modalBorderStrong },
-                    ]}
-                  >
-                    <Text style={[styles.metaLabel, { color: membershipMutedText }]}>
-                      Ending soon
-                    </Text>
-                    <Text style={[styles.metaValue, { color: membershipText }]}>
-                      {offerCountdown.short}
-                    </Text>
-                  </View>
 
                   {isActuallyPro && cancelAtPeriodEnd && endDateLabel ? (
                     <View
@@ -1314,23 +1221,16 @@ export const UpgradeModal: React.FC<Props> = ({
                       ]}
                     >
                       <Text style={[styles.planKickerHero, { color: proAccentText }]}>MONTHLY</Text>
-                      <Text style={[styles.planWasPrice, { color: membershipMutedText }]}>
-                        Was{' '}
-                        <Text style={styles.planWasPriceStrike}>
-                          {SUBSCRIPTION_PRICE_FALLBACK}
-                        </Text>
-                      </Text>
                       <View style={styles.planPriceRow}>
-                        <Text style={[styles.planNowLabel, { color: proAccentText }]}>Now</Text>
                         <Text style={[styles.planCurrency, { color: membershipText }]}>
                           {SUBSCRIPTION_PRICE_CURRENCY_SYMBOL}
                         </Text>
                         <Text style={[styles.planPriceHero, { color: membershipText }]}>
-                          {SUBSCRIPTION_OFFER_PRICE_AMOUNT}
+                          {SUBSCRIPTION_PRICE_AMOUNT}
                         </Text>
                       </View>
                       <Text style={[styles.planSubHero, { color: membershipSubText }]}>
-                        per month with {SUBSCRIPTION_OFFER_CODE}
+                        per month
                       </Text>
                     </View>
                   </View>
@@ -1505,7 +1405,7 @@ export const UpgradeModal: React.FC<Props> = ({
               >
                 <Text style={[styles.subscriptionInfoTitle, { color: membershipText }]}>{SUBSCRIPTION_TITLE}</Text>
                 <Text style={[styles.subscriptionInfoText, { color: membershipSubText }]}>
-                  {SUBSCRIPTION_OFFER_PRICE_FALLBACK}/month with code {SUBSCRIPTION_OFFER_CODE}. Auto-renews monthly. Cancel anytime.
+                  {SUBSCRIPTION_PRICE_FALLBACK}/month. Auto-renews monthly. Cancel anytime.
                 </Text>
                 <View style={styles.legalLinksRow}>
                   <TouchableOpacity onPress={() => openLegalUrl(TERMS_OF_USE_URL)}>

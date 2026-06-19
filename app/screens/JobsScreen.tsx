@@ -23,11 +23,13 @@ import
   Animated,
   Easing,
   FlatList,
+  Image,
   ScrollView,
   Alert,
+  Linking,
   useWindowDimensions,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -79,6 +81,8 @@ const logJobsIssue = (label: string, error?: unknown) => {
 const GOLD = '#C6A664';
 const GOLD_SOFT = 'rgba(198,166,100,0.16)';
 const GOLD_LINE = 'rgba(198,166,100,0.28)';
+const CREATOR_CHALLENGE_MAX_DAYS = 10;
+const CREATOR_CHALLENGE_MAX_MS = CREATOR_CHALLENGE_MAX_DAYS * 24 * 60 * 60 * 1000;
 
 const T = {
   bg: '#050505',
@@ -158,12 +162,162 @@ type MyJob = JobRow & {
   applicants: Applicant[];
 };
 
+type CreatorProfile = {
+  id: string;
+  full_name?: string | null;
+  avatar_url?: string | null;
+  is_creator?: boolean | null;
+  creator_code?: string | null;
+  creator_social_platform?: string | null;
+  creator_social_url?: string | null;
+};
+
+type CreatorChallengeRow = {
+  id: string;
+  creator_id: string;
+  title: string;
+  challenge_code: string;
+  category?: string | null;
+  description?: string | null;
+  rules?: string | null;
+  required_phrase?: string | null;
+  submission_type?: string | null;
+  prize_description?: string | null;
+  reaction_platform?: string | null;
+  reaction_url?: string | null;
+  reaction_description?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  status?: 'draft' | 'active' | 'ended' | 'archived' | string | null;
+  submission_count?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  users?: CreatorProfile | CreatorProfile[] | null;
+};
+
+type ChallengeFormState = {
+  title: string;
+  category: string;
+  description: string;
+  rules: string;
+  required_phrase: string;
+  prize_description: string;
+  reaction_platform: string;
+  reaction_url: string;
+  reaction_description: string;
+  ends_at: string;
+};
+
 type UpgradeContext =
   | 'challenge'
   | 'jobs'
   | 'workshop'
   | 'extra_submission'
   | undefined;
+
+const getCreatorProfile = (challenge: CreatorChallengeRow): CreatorProfile | null => {
+  const maybe = challenge.users;
+  if (!maybe) return null;
+  return Array.isArray(maybe) ? maybe[0] ?? null : maybe;
+};
+
+const initialsForName = (name?: string | null) => {
+  const clean = (name || '').trim();
+  if (!clean) return 'OC';
+  const parts = clean.split(/\s+/).slice(0, 2);
+  return parts.map((part) => part[0]?.toUpperCase() || '').join('') || 'OC';
+};
+
+const makeDefaultDeadlineInput = () => {
+  const date = new Date();
+  date.setDate(date.getDate() + CREATOR_CHALLENGE_MAX_DAYS);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+const buildChallengeCode = (title: string, creatorCode?: string | null) => {
+  const slug = title
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 28);
+  const prefix =
+    creatorCode
+      ?.trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '')
+      .slice(0, 10) || 'OC';
+  return `${prefix}-${slug || 'CHALLENGE'}-${Date.now().toString(36).toUpperCase()}`;
+};
+
+const parseChallengeDeadline = (value: string) => {
+  const raw = value.trim();
+  if (!raw) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T23:59:00` : raw;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+};
+
+const isChallengeEnded = (challenge: CreatorChallengeRow) => {
+  if (challenge.status === 'ended' || challenge.status === 'archived') return true;
+  if (!challenge.ends_at) return false;
+  return new Date(challenge.ends_at).getTime() <= Date.now();
+};
+
+const formatChallengeCountdown = (endsAt?: string | null) => {
+  if (!endsAt) return 'No deadline';
+  const diff = new Date(endsAt).getTime() - Date.now();
+  if (diff <= 0) return 'Ended';
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `${days}d ${hours % 24}h left`;
+  if (hours > 0) return `${hours}h ${minutes % 60}m left`;
+  return `${Math.max(1, minutes)}m left`;
+};
+
+const formatChallengeCountdownCompact = (endsAt?: string | null) =>
+  formatChallengeCountdown(endsAt).replace(/\s+left$/i, '');
+
+const formatChallengeDeadline = (endsAt?: string | null) => {
+  if (!endsAt) return 'Open deadline';
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(new Date(endsAt));
+  } catch {
+    return endsAt;
+  }
+};
+
+const formatChallengeRewardPill = (value?: string | null) => {
+  const text = (value || '').trim();
+  if (!text) return 'Reward TBA';
+  if (/top\s*10|10\s+submissions/i.test(text)) return 'Top 10 reacted';
+  return text;
+};
+
+const formatReactionPill = (platform?: string | null) => {
+  const clean = (platform || 'Creator').trim();
+  return clean;
+};
+
+const createEmptyChallengeForm = (): ChallengeFormState => ({
+  title: '',
+  category: '',
+  description: '',
+  rules: '',
+  required_phrase: '',
+  prize_description: '',
+  reaction_platform: 'Instagram',
+  reaction_url: '',
+  reaction_description: '',
+  ends_at: makeDefaultDeadlineInput(),
+});
 
 /* -------------------------------------------
    Toast (neutral)
@@ -443,6 +597,20 @@ export default function JobsScreen() {
     refresh: refreshGamification,
   } = useGamification();
 
+  const [opportunityTab, setOpportunityTab] = useState<'creator_challenges' | 'jobs'>('creator_challenges');
+  const [challengeView, setChallengeView] = useState<'browse' | 'my'>('browse');
+  const [creatorProfile, setCreatorProfile] = useState<CreatorProfile | null>(null);
+  const [creatorChallenges, setCreatorChallenges] = useState<CreatorChallengeRow[]>([]);
+  const [challengeLoading, setChallengeLoading] = useState<boolean>(true);
+  const [challengeRefreshing, setChallengeRefreshing] = useState<boolean>(false);
+  const [selectedChallenge, setSelectedChallenge] = useState<CreatorChallengeRow | null>(null);
+  const [challengeFormVisible, setChallengeFormVisible] = useState<boolean>(false);
+  const [challengeSubmitting, setChallengeSubmitting] = useState<boolean>(false);
+  const [challengeDeleting, setChallengeDeleting] = useState<Record<string, boolean>>({});
+  const [challengeForm, setChallengeForm] = useState<ChallengeFormState>(() =>
+    createEmptyChallengeForm()
+  );
+
   const [activeTab, setActiveTab] = useState<'paid' | 'free' | 'my'>('free');
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [myJobs, setMyJobs] = useState<MyJob[]>([]);
@@ -589,11 +757,182 @@ const cityFilterSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>
     }
   }, []);
 
+  const fetchCreatorProfile = useCallback(async (uid?: string | null) => {
+    if (!uid) {
+      setCreatorProfile(null);
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, full_name, avatar_url, is_creator, creator_code, creator_social_platform, creator_social_url')
+      .eq('id', uid)
+      .maybeSingle();
+
+    if (error) {
+      logJobsIssue('fetchCreatorProfile unavailable', error);
+      setCreatorProfile(null);
+      return null;
+    }
+
+    const profile = (data as CreatorProfile | null) ?? null;
+    setCreatorProfile(profile);
+    return profile;
+  }, []);
+
+  const sortCreatorChallenges = useCallback((rows: CreatorChallengeRow[]) => {
+    return [...rows].sort((a, b) => {
+      const aEnded = isChallengeEnded(a);
+      const bEnded = isChallengeEnded(b);
+      if (aEnded !== bEnded) return aEnded ? 1 : -1;
+      const aTime = a.ends_at ? new Date(a.ends_at).getTime() : Number.MAX_SAFE_INTEGER;
+      const bTime = b.ends_at ? new Date(b.ends_at).getTime() : Number.MAX_SAFE_INTEGER;
+      return aTime - bTime;
+    });
+  }, []);
+
+  const hydrateCreatorChallengeCounts = useCallback(async (rows: CreatorChallengeRow[]) => {
+    const challengeIds = rows.map((row) => row.id).filter(Boolean);
+    if (!challengeIds.length) return rows;
+
+    const challengeIdSet = new Set(challengeIds);
+    const codeToChallengeId = new Map(
+      rows
+        .map((row) => [row.challenge_code, row.id] as const)
+        .filter(([code]) => Boolean(code))
+    );
+    const submissionIdsByChallenge = new Map<string, Set<string>>(
+      challengeIds.map((id) => [id, new Set<string>()])
+    );
+
+    const addSubmission = (challengeId: string | null | undefined, submissionId: string | null | undefined) => {
+      if (!challengeId || !submissionId || !challengeIdSet.has(challengeId)) return;
+      const bucket = submissionIdsByChallenge.get(challengeId) ?? new Set<string>();
+      bucket.add(submissionId);
+      submissionIdsByChallenge.set(challengeId, bucket);
+    };
+
+    let hadLiveCount = false;
+
+    try {
+      const { data, error } = await supabase
+        .from('submissions')
+        .select('id, creator_challenge_id')
+        .in('creator_challenge_id', challengeIds)
+        .eq('category', 'film')
+        .or('is_removed.eq.false,is_removed.is.null');
+
+      if (error) {
+        logJobsIssue('creator challenge count by id unavailable', error);
+      } else {
+        hadLiveCount = true;
+        ((data || []) as any[]).forEach((row) => {
+          addSubmission(row.creator_challenge_id, row.id);
+        });
+      }
+    } catch (e) {
+      logJobsIssue('creator challenge count by id threw', e);
+    }
+
+    const challengeCodes = Array.from(codeToChallengeId.keys());
+    if (challengeCodes.length > 0) {
+      try {
+        const { data, error } = await supabase
+          .from('submissions')
+          .select('id, challenge_code')
+          .in('challenge_code', challengeCodes)
+          .eq('category', 'film')
+          .or('is_removed.eq.false,is_removed.is.null');
+
+        if (error) {
+          logJobsIssue('creator challenge count by code unavailable', error);
+        } else {
+          hadLiveCount = true;
+          ((data || []) as any[]).forEach((row) => {
+            addSubmission(codeToChallengeId.get(row.challenge_code), row.id);
+          });
+        }
+      } catch (e) {
+        logJobsIssue('creator challenge count by code threw', e);
+      }
+    }
+
+    if (!hadLiveCount) return rows;
+
+    return rows.map((row) => ({
+      ...row,
+      submission_count: submissionIdsByChallenge.get(row.id)?.size ?? 0,
+    }));
+  }, []);
+
+  const fetchCreatorChallenges = useCallback(
+    async (mode: 'init' | 'refresh' | 'silent' = 'silent') => {
+      if (mode === 'init') setChallengeLoading(true);
+      if (mode === 'refresh') setChallengeRefreshing(true);
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const uid = user?.id ?? currentUserId;
+      if (uid && uid !== currentUserId) setCurrentUserId(uid);
+
+      try {
+        const { error: cleanupError } = await supabase.rpc('delete_expired_creator_challenges');
+        if (cleanupError) logJobsIssue('delete_expired_creator_challenges unavailable', cleanupError);
+      } catch (cleanupErr) {
+        logJobsIssue('delete_expired_creator_challenges threw', cleanupErr);
+      }
+
+      let query = supabase
+        .from('creator_challenges')
+        .select(
+          'id, creator_id, title, challenge_code, category, description, rules, required_phrase, submission_type, prize_description, reaction_platform, reaction_url, reaction_description, starts_at, ends_at, status, submission_count, created_at, updated_at, users:creator_id(id, full_name, avatar_url, creator_social_platform, creator_social_url)'
+        )
+        .order('created_at', { ascending: false });
+
+      if (challengeView === 'my') {
+        if (!uid) {
+          setCreatorChallenges([]);
+          setChallengeLoading(false);
+          setChallengeRefreshing(false);
+          return;
+        }
+        query = query.eq('creator_id', uid).neq('status', 'archived');
+      } else {
+        query = query.in('status', ['active', 'ended']);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        logJobsIssue('fetchCreatorChallenges unavailable', error);
+        setCreatorChallenges([]);
+      } else {
+        const countedRows = await hydrateCreatorChallengeCounts((data as CreatorChallengeRow[]) || []);
+        const sortedRows = sortCreatorChallenges(countedRows);
+        setCreatorChallenges(sortedRows);
+        setSelectedChallenge((prev) =>
+          prev ? sortedRows.find((row) => row.id === prev.id) ?? prev : prev
+        );
+      }
+
+      if (mode === 'init') setChallengeLoading(false);
+      if (mode === 'refresh') setChallengeRefreshing(false);
+    },
+    [challengeView, currentUserId, hydrateCreatorChallengeCounts, sortCreatorChallenges]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void fetchCreatorChallenges('silent');
+    }, [fetchCreatorChallenges])
+  );
+
   /* ---------- Navigation header ---------- */
   useLayoutEffect(() => {
     // @ts-ignore
     navigation.setOptions({
-      title: 'Jobs',
+      title: 'Opportunities',
       headerTitleAlign: 'center',
       headerTitleStyle: {
         fontFamily: FONT_CINEMATIC,
@@ -625,7 +964,9 @@ contentStyle: { backgroundColor: T.bg },
       const uid = data.user?.id ?? null;
       setCurrentUserId(uid);
       void fetchBlockedUsers(uid);
+      void fetchCreatorProfile(uid);
     });
+    void fetchCreatorChallenges('init');
   }, []);
 
   // Load current user tier
@@ -858,6 +1199,10 @@ const appsByJob: Record<number, { id: string; full_name?: string | null }[]> = {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    void fetchCreatorChallenges(challengeLoading ? 'init' : 'silent');
+  }, [challengeView, fetchCreatorChallenges]);
+
   // Debounced refetch when filters/tab change for global jobs
   useEffect(() => {
     if (activeTab === 'my') return;
@@ -904,6 +1249,30 @@ const appsByJob: Record<number, { id: string; full_name?: string | null }[]> = {
       }
     };
   }, [fetchJobs]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('creator-challenges-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'creator_challenges' }, () => {
+        void fetchCreatorChallenges('silent');
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, (payload: any) => {
+        const hasChallenge =
+          payload?.new?.creator_challenge_id ||
+          payload?.old?.creator_challenge_id ||
+          payload?.new?.challenge_code ||
+          payload?.old?.challenge_code ||
+          payload?.new?.submission_source === 'creator_challenge';
+        if (hasChallenge) {
+          void fetchCreatorChallenges('silent');
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchCreatorChallenges]);
 
   /* ----------------------------- search helpers ----------------------------- */
   const searchRolesSmooth = useCallback(
@@ -1106,6 +1475,227 @@ const appsByJob: Record<number, { id: string; full_name?: string | null }[]> = {
   );
 
   /* -------------------------------- actions -------------------------------- */
+  const handleSubmitToChallenge = async (challenge: CreatorChallengeRow) => {
+    if (isChallengeEnded(challenge)) {
+      show('This creator challenge has ended.', 'info');
+      return;
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      promptSignIn('Create an account or sign in to submit to this challenge.');
+      return;
+    }
+
+    setSelectedChallenge(null);
+    // @ts-ignore
+    navigation.navigate('WorkshopSubmit', {
+      mode: 'monthly',
+      creatorChallengeId: challenge.id,
+      challengeCode: challenge.challenge_code,
+      creatorId: challenge.creator_id,
+      creatorChallengeTitle: challenge.title,
+      creatorChallengeRequiredPhrase: challenge.required_phrase ?? null,
+      creatorChallengeEndsAt: challenge.ends_at ?? null,
+    });
+  };
+
+  const openChallengeSubmissions = (challenge: CreatorChallengeRow) => {
+    setSelectedChallenge(null);
+    // @ts-ignore
+    navigation.navigate('Featured', {
+      challengeId: challenge.id,
+      challengeSearch: challenge.challenge_code,
+      challengeTitle: challenge.title,
+      challengeSearchNonce: Date.now(),
+    });
+  };
+
+  const openPostChallengeComposer = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      promptSignIn('Create an account or sign in to post a creator challenge.');
+      return;
+    }
+
+    const profile = creatorProfile ?? (await fetchCreatorProfile(user.id));
+    if (!profile?.is_creator) {
+      show('Only approved creators can post creator challenges.', 'info');
+      return;
+    }
+
+    setChallengeForm(createEmptyChallengeForm());
+    setChallengeFormVisible(true);
+  };
+
+  const openReactionUrl = async (rawUrl?: string | null) => {
+    const trimmed = rawUrl?.trim();
+    if (!trimmed) return;
+    const url = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
+    try {
+      await Linking.openURL(url);
+    } catch {
+      show('Could not open that link.', 'error');
+    }
+  };
+
+  const handlePostChallenge = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      promptSignIn('Create an account or sign in to post a creator challenge.');
+      return;
+    }
+
+    const profile = creatorProfile ?? (await fetchCreatorProfile(user.id));
+    if (!profile?.is_creator) {
+      show('Only approved creators can post creator challenges.', 'info');
+      return;
+    }
+
+    const title = challengeForm.title.trim();
+    const description = challengeForm.description.trim();
+    const prize = challengeForm.prize_description.trim();
+    const endsAt = parseChallengeDeadline(challengeForm.ends_at);
+
+    if (!title || !description || !prize || !endsAt) {
+      show('Add a title, prompt, reward, and valid deadline.', 'error');
+      return;
+    }
+
+    if (new Date(endsAt).getTime() <= Date.now()) {
+      show('Choose a future deadline.', 'error');
+      return;
+    }
+
+    if (new Date(endsAt).getTime() > Date.now() + CREATOR_CHALLENGE_MAX_MS) {
+      show(`Creator challenges can run for up to ${CREATOR_CHALLENGE_MAX_DAYS} days.`, 'error');
+      return;
+    }
+
+    const moderation = validateMultipleSafeTexts([
+      { label: 'Challenge title', value: title },
+      { label: 'Description', value: description },
+      { label: 'Rules', value: challengeForm.rules },
+      { label: 'Required phrase', value: challengeForm.required_phrase },
+      { label: 'Reward', value: prize },
+      { label: 'Reaction link', value: challengeForm.reaction_url },
+    ]);
+
+    if (!moderation.safe) {
+      Alert.alert('Content Not Allowed', moderation.message || 'Please edit the challenge before posting.');
+      return;
+    }
+
+    setChallengeSubmitting(true);
+    const challengeCode = buildChallengeCode(title, profile.creator_code);
+    const { error } = await supabase.from('creator_challenges').insert({
+      creator_id: user.id,
+      title,
+      challenge_code: challengeCode,
+      category: challengeForm.category.trim() || null,
+      description,
+      rules: challengeForm.rules.trim() || null,
+      required_phrase: challengeForm.required_phrase.trim() || null,
+      submission_type: 'youtube',
+      prize_description: prize,
+      reaction_platform: challengeForm.reaction_platform.trim() || profile.creator_social_platform || null,
+      reaction_url: challengeForm.reaction_url.trim() || profile.creator_social_url || null,
+      reaction_description: challengeForm.reaction_description.trim() || null,
+      starts_at: new Date().toISOString(),
+      ends_at: endsAt,
+      status: 'active',
+    });
+    setChallengeSubmitting(false);
+
+    if (error) {
+      logJobsIssue('postCreatorChallenge unavailable', error);
+      show('Could not post challenge.', 'error');
+      return;
+    }
+
+    setChallengeFormVisible(false);
+    setChallengeForm(createEmptyChallengeForm());
+    setChallengeView('my');
+    setOpportunityTab('creator_challenges');
+    void fetchCreatorChallenges('refresh');
+    show('Creator challenge posted.', 'success');
+  };
+
+  const handleRemoveChallenge = async (challenge: CreatorChallengeRow) => {
+    if (!challenge?.id || challengeDeleting[challenge.id]) return;
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      promptSignIn('Create an account or sign in to remove this challenge.');
+      return;
+    }
+
+    if (challenge.creator_id !== user.id) {
+      show('Only the creator can remove this challenge.', 'error');
+      return;
+    }
+
+    const removeChallenge = async () => {
+      const previousChallenges = creatorChallenges;
+      setChallengeDeleting((prev) => ({ ...prev, [challenge.id]: true }));
+      setCreatorChallenges((prev) => prev.filter((row) => row.id !== challenge.id));
+      if (selectedChallenge?.id === challenge.id) setSelectedChallenge(null);
+
+      try {
+        const { error } = await supabase
+          .from('creator_challenges')
+          .delete()
+          .eq('id', challenge.id)
+          .eq('creator_id', user.id);
+
+        if (error) throw error;
+
+        triggerAppRefresh();
+        show('Challenge removed.', 'success');
+      } catch (e: any) {
+        setCreatorChallenges(previousChallenges);
+        logJobsIssue('removeCreatorChallenge unavailable', e);
+        show(e?.message || 'Could not remove challenge.', 'error');
+      } finally {
+        setChallengeDeleting((prev) => {
+          const next = { ...prev };
+          delete next[challenge.id];
+          return next;
+        });
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const ok =
+        typeof window !== 'undefined' &&
+        window.confirm('Remove this challenge? Existing submissions will stay on Featured, but the challenge will be removed.');
+      if (ok) void removeChallenge();
+      return;
+    }
+
+    Alert.alert(
+      'Remove challenge?',
+      'Existing submissions will stay on Featured, but the challenge will be removed.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => void removeChallenge() },
+      ]
+    );
+  };
+
   const handlePostJob = async () => {
     const {
   data: { user },
@@ -1371,8 +1961,9 @@ if (!me) {
 
   const goToProfile = (userObj?: { id: string; full_name?: string | null }) => {
     if (!userObj?.id) return;
-    if (selectedJob) {
+    if (selectedJob || selectedChallenge) {
       setSelectedJob(null);
+      setSelectedChallenge(null);
       setTimeout(() => {
         // @ts-ignore
         navigation.navigate('Profile', { user: userObj });
@@ -1381,6 +1972,15 @@ if (!me) {
       // @ts-ignore
       navigation.navigate('Profile', { user: userObj });
     }
+  };
+
+  const goToCreatorProfile = (challenge: CreatorChallengeRow, event?: any) => {
+    event?.stopPropagation?.();
+    const creator = getCreatorProfile(challenge);
+    goToProfile({
+      id: challenge.creator_id,
+      full_name: creator?.full_name || 'Overlooked creator',
+    });
   };
 
   /* ----------------------------- renderers --------------------------------- */
@@ -1403,6 +2003,224 @@ if (!me) {
   
   const roleKey = useCallback((i: RoleOption) => String(i.value), []);
   const cityKey = useCallback((i: CityOption) => String(i.value), []);
+
+  const renderCreatorAvatar = useCallback(
+    (profile?: CreatorProfile | null, size = 42) => {
+      const name = profile?.full_name || 'Overlooked creator';
+      if (profile?.avatar_url) {
+        return (
+          <Image
+            source={{ uri: profile.avatar_url }}
+            style={[
+              styles.creatorAvatar,
+              {
+                width: size,
+                height: size,
+                borderRadius: size / 2,
+                borderColor: GOLD_LINE,
+              },
+            ]}
+          />
+        );
+      }
+
+      return (
+        <View
+          style={[
+            styles.creatorAvatarFallback,
+            {
+              width: size,
+              height: size,
+              borderRadius: size / 2,
+              borderColor: GOLD_LINE,
+              backgroundColor: GOLD_SOFT,
+            },
+          ]}
+        >
+          <Text style={[styles.creatorAvatarInitials, { color: GOLD }]}>
+            {initialsForName(name)}
+          </Text>
+        </View>
+      );
+    },
+    [GOLD, GOLD_LINE, GOLD_SOFT]
+  );
+
+  const renderChallenge = useCallback(
+    ({ item }: { item: CreatorChallengeRow }) => {
+      const challenge = item;
+      const creator = getCreatorProfile(challenge);
+      const ended = isChallengeEnded(challenge);
+      const creatorName = creator?.full_name || 'Overlooked creator';
+      const reactionPlatform =
+        challenge.reaction_platform || creator?.creator_social_platform || 'Creator socials';
+      const stackActions = width < 390 || challengeView === 'my';
+      const deletingChallenge = !!challengeDeleting[challenge.id];
+
+      return (
+        <TouchableOpacity
+          onPress={() => setSelectedChallenge(challenge)}
+          activeOpacity={0.92}
+          style={styles.challengeRow}
+        >
+          <View
+            style={[
+              styles.challengeCard,
+              {
+                backgroundColor: T.surface,
+                borderColor: ended ? T.line : GOLD_LINE,
+                shadowColor: colors.shadow,
+              },
+            ]}
+          >
+            <View style={styles.challengeTopRow}>
+              <TouchableOpacity
+                onPress={(event: any) => goToCreatorProfile(challenge, event)}
+                activeOpacity={0.8}
+                style={styles.creatorAvatarTap}
+              >
+                {renderCreatorAvatar(creator, 44)}
+              </TouchableOpacity>
+              <View style={styles.challengeTitleBlock}>
+                <Text style={[styles.challengeKicker, { color: ended ? T.mute : GOLD }]}>
+                  {ended ? 'ENDED CHALLENGE' : 'CREATOR CHALLENGE'}
+                </Text>
+                <Text style={[styles.challengeTitle, { color: T.text }]} numberOfLines={2}>
+                  {challenge.title}
+                </Text>
+                <View style={styles.challengeCreatorRow}>
+                  <Text style={[styles.challengeCreatorPrefix, { color: T.sub }]}>Hosted by </Text>
+                  <TouchableOpacity
+                    onPress={(event: any) => goToCreatorProfile(challenge, event)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.challengeCreatorLink, { color: GOLD }]} numberOfLines={1}>
+                      {creatorName}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            {challenge.description ? (
+              <Text numberOfLines={2} style={[styles.challengeDescription, { color: T.sub }]}>
+                {challenge.description}
+              </Text>
+            ) : null}
+
+            <View style={styles.challengeMetaGrid}>
+              <View style={[styles.challengeMetaPill, { backgroundColor: T.surface2, borderColor: T.line }]}>
+                <Ionicons name="gift-outline" size={14} color={GOLD} />
+                <Text style={[styles.challengeMetaText, { color: T.text }]} numberOfLines={1}>
+                  {formatChallengeRewardPill(challenge.prize_description)}
+                </Text>
+              </View>
+              <View style={[styles.challengeMetaPill, { backgroundColor: T.surface2, borderColor: T.line }]}>
+                <Ionicons name="timer-outline" size={14} color={ended ? T.mute : GOLD} />
+                <Text style={[styles.challengeMetaText, { color: ended ? T.mute : T.text }]} numberOfLines={1}>
+                  {formatChallengeCountdownCompact(challenge.ends_at)}
+                </Text>
+              </View>
+              <View style={[styles.challengeMetaPill, { backgroundColor: T.surface2, borderColor: T.line }]}>
+                <Ionicons name="film-outline" size={14} color={GOLD} />
+                <Text style={[styles.challengeMetaText, { color: T.text }]} numberOfLines={1}>
+                  {challenge.submission_count ?? 0} entries
+                </Text>
+              </View>
+              <View style={[styles.challengeMetaPill, { backgroundColor: T.surface2, borderColor: T.line }]}>
+                <Ionicons name="at-outline" size={14} color={GOLD} />
+                <Text style={[styles.challengeMetaText, { color: T.text }]} numberOfLines={1}>
+                  {formatReactionPill(reactionPlatform)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={[styles.challengeActionsRow, stackActions && styles.challengeActionsStack]}>
+              <TouchableOpacity
+                onPress={() => setSelectedChallenge(challenge)}
+                activeOpacity={0.9}
+                style={[
+                  styles.challengeSecondaryButton,
+                  !isWebMobile && styles.challengeSecondaryButtonWide,
+                  { backgroundColor: T.surface2, borderColor: T.line },
+                ]}
+              >
+                <Text style={[styles.challengeSecondaryButtonText, { color: T.sub }]}>
+                  View Challenge
+                </Text>
+              </TouchableOpacity>
+
+              {challengeView === 'my' ? (
+                <>
+                  <TouchableOpacity
+                    onPress={() => openChallengeSubmissions(challenge)}
+                    activeOpacity={0.9}
+                    style={[
+                      styles.challengePrimaryButton,
+                      !isWebMobile && styles.challengePrimaryButtonWide,
+                      { backgroundColor: GOLD, borderColor: GOLD_LINE },
+                    ]}
+                  >
+                    <Text style={[styles.challengePrimaryButtonText, { color: colors.textOnPrimary }]}>
+                      View Submissions
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => handleRemoveChallenge(challenge)}
+                    disabled={deletingChallenge}
+                    activeOpacity={0.9}
+                    style={[
+                      styles.challengeDangerButton,
+                      { backgroundColor: T.surface2, borderColor: 'rgba(255,70,70,0.24)' },
+                      deletingChallenge && { opacity: 0.58 },
+                    ]}
+                  >
+                    <Ionicons name="trash-outline" size={14} color="#FF6B6B" />
+                    <Text style={[styles.challengeDangerButtonText, { color: '#FF8A8A' }]}>
+                      {deletingChallenge ? 'Removing' : 'Remove'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => handleSubmitToChallenge(challenge)}
+                  disabled={ended}
+                  activeOpacity={0.9}
+                  style={[
+                    styles.challengePrimaryButton,
+                    !isWebMobile && styles.challengePrimaryButtonWide,
+                    { backgroundColor: ended ? T.surface2 : GOLD, borderColor: ended ? T.line : GOLD_LINE },
+                    ended && { opacity: 0.72 },
+                  ]}
+                >
+                  <Text style={[styles.challengePrimaryButtonText, { color: ended ? T.mute : colors.textOnPrimary }]}>
+                    {ended ? 'Ended' : 'Submit'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </TouchableOpacity>
+      );
+    },
+    [
+      GOLD,
+      GOLD_LINE,
+      T,
+      challengeView,
+      challengeDeleting,
+      colors.shadow,
+      colors.textOnPrimary,
+      goToCreatorProfile,
+      handleSubmitToChallenge,
+      handleRemoveChallenge,
+      isWebMobile,
+      openChallengeSubmissions,
+      renderCreatorAvatar,
+      width,
+    ]
+  );
 
   const renderJob = useCallback(
   ({ item }: { item: JobRow }) => {
@@ -1664,143 +2482,271 @@ if (!me) {
 
   const ListHeader = useMemo(
   () => (
-    <View style={{ paddingTop: HEADER_GAP }}>
-    
+    <View style={styles.listHeaderRoot}>
+      <View style={styles.opportunitiesHeader}>
+        <Text style={[styles.opportunitiesTitle, { color: T.text }]}>Opportunities</Text>
+        <Text style={[styles.opportunitiesSubtitle, { color: T.sub }]}>
+          Creator challenges, jobs, and ways to get seen.
+        </Text>
+      </View>
 
-      <View style={styles.categoryTabsWrap}>
-        <View style={styles.categoryTabsRow}>
-          {(['free', 'paid', 'my'] as const).map((tab) => {
-            const active = activeTab === tab;
-            const label =
-              tab === 'paid'
-                ? 'PAID'
-                : tab === 'free'
-                ? 'FREE'
-                : 'MY JOBS';
+      <View style={styles.opportunityTabsWrap}>
+        <View
+          style={[
+            styles.opportunityTabsShell,
+            {
+              backgroundColor: T.surface2,
+              borderColor: T.line,
+            },
+          ]}
+        >
+          {([
+            { key: 'creator_challenges', label: 'CREATOR CHALLENGES' },
+            { key: 'jobs', label: 'JOBS' },
+          ] as const).map((tab) => {
+            const active = opportunityTab === tab.key;
 
             return (
               <TouchableOpacity
-                key={tab}
+                key={tab.key}
                 style={[
-                  styles.categoryTap,
+                  styles.opportunitySegmentTap,
                   {
-                    backgroundColor: active ? (isLight ? '#FFFFFF' : T.surface2) : T.surface2,
-                    borderColor: active ? GOLD_LINE : T.line,
-                    shadowColor: colors.shadow,
+                    backgroundColor: active ? GOLD : 'transparent',
+                    shadowColor: active ? GOLD : colors.shadow,
                   },
-                  active && styles.categoryTapActive,
+                  active && styles.opportunitySegmentTapActive,
                 ]}
-                onPress={() => setActiveTab(tab)}
+                onPress={() => setOpportunityTab(tab.key)}
                 activeOpacity={0.92}
               >
                 <Text
                   style={[
-                    styles.categoryText,
-                    { color: active ? GOLD : T.sub },
+                    styles.opportunitySegmentText,
+                    { color: active ? colors.textOnPrimary : T.sub },
                   ]}
                 >
-                  {label}
+                  {tab.label}
                 </Text>
-                {active ? <View style={styles.categoryUnderline} /> : null}
               </TouchableOpacity>
             );
           })}
         </View>
       </View>
 
-      {activeTab !== 'my' && (
-        <View style={styles.filtersInline}>
-          <TouchableOpacity
-            onPress={() => setCityFilterModalVisible(true)}
-            style={[
-              styles.filterPill,
-              {
-                backgroundColor: filterCity ? GOLD_SOFT : T.surface2,
-                borderColor: filterCity ? GOLD_LINE : T.line,
-              },
-            ]}
-            activeOpacity={0.9}
-          >
-            <Ionicons
-              name="location-outline"
-              size={15}
-              color={filterCity ? GOLD : T.sub}
-            />
-            <Text
-              style={[
-                styles.filterPillText,
-                { color: filterCity ? GOLD : T.sub },
-              ]}
-            >
-              {filterCity?.label || 'City'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setRoleFilterModalVisible(true)}
-            style={[
-              styles.filterPill,
-              {
-                backgroundColor: filterRole ? GOLD_SOFT : T.surface2,
-                borderColor: filterRole ? GOLD_LINE : T.line,
-              },
-            ]}
-            activeOpacity={0.9}
-          >
-            <Ionicons
-              name="briefcase-outline"
-              size={15}
-              color={filterRole ? GOLD : T.sub}
-            />
-            <Text
-              style={[
-                styles.filterPillText,
-                { color: filterRole ? GOLD : T.sub },
-              ]}
-            >
-              {filterRole?.label || 'Role'}
-            </Text>
-          </TouchableOpacity>
+      {opportunityTab === 'creator_challenges' ? (
+        <>
+          {creatorProfile?.is_creator ? (
+          <View style={styles.filtersInline}>
+            {(['browse', 'my'] as const).map((tab) => {
+              const active = challengeView === tab;
+              return (
+                <TouchableOpacity
+                  key={tab}
+                  onPress={() => setChallengeView(tab)}
+                  style={[
+                    styles.filterPill,
+                    {
+                      backgroundColor: active ? GOLD_SOFT : T.surface2,
+                      borderColor: active ? GOLD_LINE : T.line,
+                    },
+                  ]}
+                  activeOpacity={0.9}
+                >
+                  <Ionicons
+                    name={tab === 'browse' ? 'sparkles-outline' : 'person-circle-outline'}
+                    size={13}
+                    color={active ? GOLD : T.sub}
+                  />
+                  <Text style={[styles.filterPillText, { color: active ? GOLD : T.sub }]}>
+                    {tab === 'browse' ? 'All' : 'Mine'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          ) : null}
 
           <View
             style={[
-              styles.filterPill,
-              styles.remoteFilterPill,
-              {
-                backgroundColor: T.surface2,
-                borderColor: T.line,
-              },
+              styles.creatorSectionHeader,
+              isWebMobile && styles.creatorSectionHeaderStack,
+              !creatorProfile?.is_creator && styles.creatorSectionHeaderNoFilters,
             ]}
           >
-            <Text style={[styles.filterToggleLabel, { color: T.sub }]}>Remote</Text>
-            <CustomToggle
-              value={includeRemote}
-              onChange={(v) => setIncludeRemote(v)}
-              size="sm"
-            />
+            <View style={styles.creatorSectionCopy}>
+              <Text style={[styles.creatorSectionTitle, { color: T.text }]}>Creator Challenges</Text>
+              <Text style={[styles.creatorSectionSubtitle, { color: T.sub }]}>
+                Submit to creator-led prompts and appear on Featured.
+              </Text>
+            </View>
+
+            {creatorProfile?.is_creator ? (
+              <TouchableOpacity
+                onPress={openPostChallengeComposer}
+                activeOpacity={0.9}
+                style={[
+                  styles.sectionPostButton,
+                  isWebMobile && styles.sectionPostButtonFull,
+                  {
+                    backgroundColor: GOLD,
+                    borderColor: GOLD_LINE,
+                  },
+                ]}
+              >
+                <Ionicons name="add" size={15} color={colors.textOnPrimary} />
+                <Text style={[styles.sectionPostButtonText, { color: colors.textOnPrimary }]}>
+                  Post Challenge
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={[styles.creatorApprovalNote, { color: T.mute }]}>
+                Creator accounts are manually approved.
+              </Text>
+            )}
+          </View>
+        </>
+      ) : (
+        <>
+          <View style={styles.categoryTabsWrap}>
+            <View style={styles.categoryTabsRow}>
+              {(['free', 'paid', 'my'] as const).map((tab) => {
+                const active = activeTab === tab;
+                const label =
+                  tab === 'paid'
+                    ? 'PAID'
+                    : tab === 'free'
+                    ? 'FREE'
+                    : 'MY JOBS';
+
+                return (
+                  <TouchableOpacity
+                    key={tab}
+                    style={[
+                      styles.categoryTap,
+                      {
+                        backgroundColor: active ? (isLight ? '#FFFFFF' : T.surface2) : T.surface2,
+                        borderColor: active ? GOLD_LINE : T.line,
+                        shadowColor: colors.shadow,
+                      },
+                      active && styles.categoryTapActive,
+                    ]}
+                    onPress={() => setActiveTab(tab)}
+                    activeOpacity={0.92}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryText,
+                        { color: active ? GOLD : T.sub },
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                    {active ? <View style={styles.categoryUnderline} /> : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
 
-          {anyFilterActive ? (
-            <TouchableOpacity
-              onPress={clearFilters}
-              style={[styles.clearPill, { backgroundColor: T.surface2, borderColor: T.line }]}
-              activeOpacity={0.9}
-            >
-              <Ionicons
-                name="close-circle-outline"
-                size={15}
-                color={T.sub}
-              />
-              <Text style={[styles.clearPillText, { color: T.sub }]}>Clear</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
+          {activeTab !== 'my' && (
+            <View style={styles.filtersInline}>
+              <TouchableOpacity
+                onPress={() => setCityFilterModalVisible(true)}
+                style={[
+                  styles.filterPill,
+                  {
+                    backgroundColor: filterCity ? GOLD_SOFT : T.surface2,
+                    borderColor: filterCity ? GOLD_LINE : T.line,
+                  },
+                ]}
+                activeOpacity={0.9}
+              >
+                <Ionicons
+                  name="location-outline"
+                  size={15}
+                  color={filterCity ? GOLD : T.sub}
+                />
+                <Text
+                  style={[
+                    styles.filterPillText,
+                    { color: filterCity ? GOLD : T.sub },
+                  ]}
+                >
+                  {filterCity?.label || 'City'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setRoleFilterModalVisible(true)}
+                style={[
+                  styles.filterPill,
+                  {
+                    backgroundColor: filterRole ? GOLD_SOFT : T.surface2,
+                    borderColor: filterRole ? GOLD_LINE : T.line,
+                  },
+                ]}
+                activeOpacity={0.9}
+              >
+                <Ionicons
+                  name="briefcase-outline"
+                  size={15}
+                  color={filterRole ? GOLD : T.sub}
+                />
+                <Text
+                  style={[
+                    styles.filterPillText,
+                    { color: filterRole ? GOLD : T.sub },
+                  ]}
+                >
+                  {filterRole?.label || 'Role'}
+                </Text>
+              </TouchableOpacity>
+
+              <View
+                style={[
+                  styles.filterPill,
+                  styles.remoteFilterPill,
+                  {
+                    backgroundColor: T.surface2,
+                    borderColor: T.line,
+                  },
+                ]}
+              >
+                <Text style={[styles.filterToggleLabel, { color: T.sub }]}>Remote</Text>
+                <CustomToggle
+                  value={includeRemote}
+                  onChange={(v) => setIncludeRemote(v)}
+                  size="sm"
+                />
+              </View>
+
+              {anyFilterActive ? (
+                <TouchableOpacity
+                  onPress={clearFilters}
+                  style={[styles.clearPill, { backgroundColor: T.surface2, borderColor: T.line }]}
+                  activeOpacity={0.9}
+                >
+                  <Ionicons
+                    name="close-circle-outline"
+                    size={15}
+                    color={T.sub}
+                  />
+                  <Text style={[styles.clearPillText, { color: T.sub }]}>Clear</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          )}
+        </>
       )}
 
       <View style={styles.sectionSpacer} />
     </View>
   ),
   [
+    opportunityTab,
+    challengeView,
+    creatorProfile?.is_creator,
     activeTab,
     filterCity,
     filterRole,
@@ -1811,7 +2757,10 @@ if (!me) {
     GOLD_LINE,
     GOLD_SOFT,
     colors.shadow,
+    colors.textOnPrimary,
     isLight,
+    isWebMobile,
+    openPostChallengeComposer,
     gamifyLoading,
     jobs.length,
     myJobs.length,
@@ -1819,7 +2768,13 @@ if (!me) {
 );
 
   /* -------------------------------- render --------------------------------- */
-  const listData = activeTab === 'my' ? myJobs : jobs;
+  const listData =
+    opportunityTab === 'creator_challenges'
+      ? creatorChallenges
+      : activeTab === 'my'
+      ? myJobs
+      : jobs;
+  const showPostJobButton = opportunityTab === 'jobs';
 
   return (
   <SafeAreaView style={[styles.safeArea, { backgroundColor: T.bg }]} edges={['top']}>
@@ -1827,18 +2782,36 @@ if (!me) {
       <ToastView />
 
       <Animated.FlatList
-        data={listData}
-        keyExtractor={(j) => String(j.id)}
+        data={listData as any[]}
+        keyExtractor={(item: any) => String(item.id)}
         renderItem={
-          activeTab === 'my'
+          opportunityTab === 'creator_challenges'
+            ? (renderChallenge as any)
+            : activeTab === 'my'
             ? (renderMyJob as any)
             : (renderJob as any)
         }
-        extraData={isLight ? 'light' : 'dark'}
+        extraData={`${isLight ? 'light' : 'dark'}-${opportunityTab}-${activeTab}-${challengeView}`}
         ListHeaderComponent={ListHeader}
         ListEmptyComponent={
   <View style={styles.emptyWrap}>
-    {activeTab === 'my' ? (
+    {opportunityTab === 'creator_challenges' ? (
+      challengeLoading ? (
+        <ActivityIndicator size="large" color={GOLD} />
+      ) : (
+        <View style={[styles.emptyCard, { backgroundColor: T.surface, borderColor: T.line }]}>
+          <Ionicons name="sparkles-outline" size={28} color={GOLD} />
+          <Text style={[styles.emptyTitle, { color: T.text }]}>
+            {challengeView === 'my' ? 'No challenges posted yet' : 'No creator challenges yet'}
+          </Text>
+          <Text style={[styles.emptyText, { color: T.sub }]}>
+            {challengeView === 'my'
+              ? 'Post your first challenge to invite submissions from the Overlooked community.'
+              : 'Approved creators will appear here when they post active challenges.'}
+          </Text>
+        </View>
+      )
+    ) : activeTab === 'my' ? (
       <View style={[styles.emptyCard, { backgroundColor: T.surface, borderColor: T.line }]}>
         <Ionicons name="briefcase-outline" size={28} color={GOLD} />
         <Text style={[styles.emptyTitle, { color: T.text }]}>No jobs posted yet</Text>
@@ -1860,13 +2833,29 @@ if (!me) {
   </View>
 }
         contentContainerStyle={{
-  paddingBottom: Platform.OS === 'web' && !isWebMobile ? 150 : 230,
+  paddingBottom:
+    opportunityTab === 'jobs'
+      ? Platform.OS === 'web' && !isWebMobile
+        ? 150
+        : 230
+      : Platform.OS === 'web' && !isWebMobile
+      ? 96
+      : 132,
 }}
-        refreshing={activeTab === 'my' ? loadingMyJobs : isRefreshing}
+        refreshing={
+          opportunityTab === 'creator_challenges'
+            ? challengeRefreshing
+            : activeTab === 'my'
+            ? loadingMyJobs
+            : isRefreshing
+        }
 onRefresh={() => {
   triggerAppRefresh();
 
-  if (activeTab === 'my') {
+  if (opportunityTab === 'creator_challenges') {
+    void fetchCreatorProfile(currentUserId);
+    void fetchCreatorChallenges('refresh');
+  } else if (activeTab === 'my') {
     void fetchMyJobs();
   } else {
     void fetchJobs('refresh');
@@ -1879,8 +2868,9 @@ onRefresh={() => {
         ItemSeparatorComponent={() => <View style={styles.rowSpacer} />}
       />
 
-      {/* Post a Job */}
-      <TouchableOpacity
+      {/* Post an Opportunity */}
+      {showPostJobButton ? (
+        <TouchableOpacity
   style={[
     styles.postButton,
     {
@@ -1888,6 +2878,9 @@ onRefresh={() => {
       borderColor: GOLD_LINE,
       shadowColor: colors.shadow,
       bottom: Platform.OS === 'web' && !isWebMobile ? 28 : Math.max(tabBarHeight + 14, 84),
+      left: Platform.OS === 'web' && !isWebMobile ? (width - Math.min(width - 32, 1100)) / 2 : 16,
+      right: Platform.OS === 'web' && !isWebMobile ? undefined : 16,
+      width: Platform.OS === 'web' && !isWebMobile ? Math.min(width - 32, 1100) : undefined,
     },
   ]}
   onPress={async () => {
@@ -1915,6 +2908,166 @@ onRefresh={() => {
     </Text>
   </View>
 </TouchableOpacity>
+      ) : null}
+
+      {/* Post Creator Challenge Modal */}
+      <SmoothModal
+        visible={challengeFormVisible}
+        enterOffset={96}
+        frameStyle={{ backgroundColor: T.bg }}
+        onRequestClose={() => setChallengeFormVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={[styles.modalContainer, { backgroundColor: T.bg }]}>
+            <View style={[styles.modalChromeLine, { backgroundColor: GOLD }]} />
+            <Text style={[styles.modalTitle, { color: T.text }]}>Post Creator Challenge</Text>
+
+            <ScrollView
+              contentContainerStyle={{ paddingBottom: Platform.OS === 'ios' ? 190 : 170 }}
+              keyboardShouldPersistTaps="always"
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={[styles.label, { color: T.text }]}>Title</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: T.surface, borderColor: T.line, color: T.text }, WEB_NO_OUTLINE]}
+                placeholder="e.g. Make a 30-second scene with no dialogue"
+                placeholderTextColor={T.mute}
+                value={challengeForm.title}
+                onChangeText={(text) => setChallengeForm((prev) => ({ ...prev, title: text }))}
+              />
+
+              <Text style={[styles.label, { color: T.text }]}>Category</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: T.surface, borderColor: T.line, color: T.text }, WEB_NO_OUTLINE]}
+                placeholder="Acting, editing, directing..."
+                placeholderTextColor={T.mute}
+                value={challengeForm.category}
+                onChangeText={(text) => setChallengeForm((prev) => ({ ...prev, category: text }))}
+              />
+
+              <Text style={[styles.label, { color: T.text }]}>Prompt</Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  styles.textAreaInput,
+                  { backgroundColor: T.surface, borderColor: T.line, color: T.text },
+                  WEB_NO_OUTLINE,
+                ]}
+                placeholder="What should people make?"
+                placeholderTextColor={T.mute}
+                value={challengeForm.description}
+                onChangeText={(text) => setChallengeForm((prev) => ({ ...prev, description: text }))}
+                multiline
+              />
+
+              <Text style={[styles.label, { color: T.text }]}>Rules</Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  styles.textAreaInput,
+                  { backgroundColor: T.surface, borderColor: T.line, color: T.text },
+                  WEB_NO_OUTLINE,
+                ]}
+                placeholder="Length, format, content rules..."
+                placeholderTextColor={T.mute}
+                value={challengeForm.rules}
+                onChangeText={(text) => setChallengeForm((prev) => ({ ...prev, rules: text }))}
+                multiline
+              />
+
+              <Text style={[styles.label, { color: T.text }]}>Required element</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: T.surface, borderColor: T.line, color: T.text }, WEB_NO_OUTLINE]}
+                placeholder="Optional phrase creators must include"
+                placeholderTextColor={T.mute}
+                value={challengeForm.required_phrase}
+                onChangeText={(text) => setChallengeForm((prev) => ({ ...prev, required_phrase: text }))}
+              />
+
+              <Text style={[styles.label, { color: T.text }]}>Reward</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: T.surface, borderColor: T.line, color: T.text }, WEB_NO_OUTLINE]}
+                placeholder="Prize, reaction, shoutout, cash..."
+                placeholderTextColor={T.mute}
+                value={challengeForm.prize_description}
+                onChangeText={(text) => setChallengeForm((prev) => ({ ...prev, prize_description: text }))}
+              />
+
+              <Text style={[styles.label, { color: T.text }]}>Deadline</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: T.surface, borderColor: T.line, color: T.text }, WEB_NO_OUTLINE]}
+                placeholder="YYYY-MM-DD or YYYY-MM-DDTHH:mm"
+                placeholderTextColor={T.mute}
+                value={challengeForm.ends_at}
+                onChangeText={(text) => setChallengeForm((prev) => ({ ...prev, ends_at: text }))}
+              />
+              <Text style={[styles.helperText, { color: T.mute }]}>
+                Challenges can run for up to {CREATOR_CHALLENGE_MAX_DAYS} days.
+              </Text>
+
+              <Text style={[styles.label, { color: T.text }]}>Reaction platform</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: T.surface, borderColor: T.line, color: T.text }, WEB_NO_OUTLINE]}
+                placeholder="Instagram, TikTok, YouTube..."
+                placeholderTextColor={T.mute}
+                value={challengeForm.reaction_platform}
+                onChangeText={(text) => setChallengeForm((prev) => ({ ...prev, reaction_platform: text }))}
+              />
+
+              <Text style={[styles.label, { color: T.text }]}>Creator social link</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: T.surface, borderColor: T.line, color: T.text }, WEB_NO_OUTLINE]}
+                placeholder="https://..."
+                placeholderTextColor={T.mute}
+                value={challengeForm.reaction_url}
+                onChangeText={(text) => setChallengeForm((prev) => ({ ...prev, reaction_url: text }))}
+                autoCapitalize="none"
+              />
+
+              <Text style={[styles.label, { color: T.text }]}>Reaction details</Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  styles.textAreaInput,
+                  { backgroundColor: T.surface, borderColor: T.line, color: T.text },
+                  WEB_NO_OUTLINE,
+                ]}
+                placeholder="Where and how you will react to submissions"
+                placeholderTextColor={T.mute}
+                value={challengeForm.reaction_description}
+                onChangeText={(text) => setChallengeForm((prev) => ({ ...prev, reaction_description: text }))}
+                multiline
+              />
+            </ScrollView>
+
+            <View style={[styles.modalFooter, { backgroundColor: T.bg, borderTopColor: T.line }]}>
+              <TouchableOpacity
+                style={[styles.footerBtn, styles.footerGhost, { backgroundColor: T.surface2, borderColor: T.line }]}
+                onPress={() => setChallengeFormVisible(false)}
+                activeOpacity={0.9}
+              >
+                <Text style={[styles.footerGhostText, { color: T.sub }]}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.footerBtn, styles.footerPrimary, { backgroundColor: GOLD, borderColor: GOLD_LINE }]}
+                onPress={handlePostChallenge}
+                disabled={challengeSubmitting}
+                activeOpacity={0.9}
+              >
+                {challengeSubmitting ? (
+                  <ActivityIndicator color={colors.textOnPrimary} />
+                ) : (
+                  <Text style={[styles.footerPrimaryText, { color: colors.textOnPrimary }]}>Post Challenge</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </SmoothModal>
 
       {/* Post Job Modal */}
       <SmoothModal
@@ -2607,6 +3760,212 @@ onRefresh={() => {
         </View>
       </Modal>
 
+      {/* Creator Challenge Detail */}
+      <SmoothModal
+        visible={!!selectedChallenge}
+        enterOffset={96}
+        frameStyle={{ backgroundColor: T.bg }}
+        onRequestClose={() => setSelectedChallenge(null)}
+      >
+        <SafeAreaView style={[styles.cityModalSafeArea, { backgroundColor: T.bg }]} edges={['top']}>
+          <View style={[styles.challengeDetailShell, { backgroundColor: T.bg }]}>
+            {selectedChallenge ? (
+              <>
+                <View style={[styles.cityModalHeader, styles.challengeDetailTopBar]}>
+                  <TouchableOpacity
+                    onPress={() => setSelectedChallenge(null)}
+                    style={[styles.challengeCloseIcon, { backgroundColor: T.surface, borderColor: T.line }]}
+                    activeOpacity={0.9}
+                  >
+                    <Ionicons name="close" size={18} color={T.text} />
+                  </TouchableOpacity>
+                  <Text style={[styles.challengeDetailHeader, { color: GOLD }]}>Creator Challenge</Text>
+                  <View style={{ width: 44 }} />
+                </View>
+
+                <ScrollView
+                  style={styles.challengeDetailScroll}
+                  contentContainerStyle={styles.challengeDetailContent}
+                  showsVerticalScrollIndicator={false}
+                >
+                  <View style={[styles.challengeDetailHero, { backgroundColor: T.surface, borderColor: GOLD_LINE }]}>
+                    <View style={styles.challengeDetailHeroTopRow}>
+                      <TouchableOpacity
+                        onPress={() => goToCreatorProfile(selectedChallenge)}
+                        activeOpacity={0.8}
+                        style={styles.creatorAvatarTap}
+                      >
+                        {renderCreatorAvatar(getCreatorProfile(selectedChallenge), 52)}
+                      </TouchableOpacity>
+                      <View style={styles.challengeTitleBlock}>
+                        <Text style={[styles.challengeKicker, { color: isChallengeEnded(selectedChallenge) ? T.mute : GOLD }]}>
+                          {isChallengeEnded(selectedChallenge) ? 'ENDED' : formatChallengeCountdown(selectedChallenge.ends_at)}
+                        </Text>
+                        <Text style={[styles.challengeDetailTitle, { color: T.text }]}>
+                          {selectedChallenge.title}
+                        </Text>
+                        <View style={styles.challengeCreatorRow}>
+                          <Text style={[styles.challengeCreatorPrefix, { color: T.sub }]}>Hosted by </Text>
+                          <TouchableOpacity
+                            onPress={() => goToCreatorProfile(selectedChallenge)}
+                            activeOpacity={0.75}
+                          >
+                            <Text style={[styles.challengeCreatorLink, { color: GOLD }]} numberOfLines={1}>
+                              {getCreatorProfile(selectedChallenge)?.full_name || 'Overlooked creator'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+
+                    <View style={[styles.challengeDetailStatsRow, isWebMobile && styles.challengeDetailStatsStack]}>
+                      <View style={[styles.challengeStatBox, { backgroundColor: T.surface2, borderColor: T.line }]}>
+                        <Text style={[styles.challengeStatLabel, { color: GOLD }]}>Deadline</Text>
+                        <Text style={[styles.challengeStatValue, { color: T.text }]}>
+                          {formatChallengeDeadline(selectedChallenge.ends_at)}
+                        </Text>
+                      </View>
+                      <View style={[styles.challengeStatBox, { backgroundColor: T.surface2, borderColor: T.line }]}>
+                        <Text style={[styles.challengeStatLabel, { color: GOLD }]}>Entries</Text>
+                        <Text style={[styles.challengeStatValue, { color: T.text }]}>
+                          {selectedChallenge.submission_count ?? 0}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={[styles.challengeDetailSection, { backgroundColor: T.surface, borderColor: T.line }]}>
+                    <Text style={[styles.challengeDetailSectionTitle, { color: GOLD }]}>Prompt</Text>
+                    <Text style={[styles.challengeDetailBody, { color: T.sub }]}>
+                      {selectedChallenge.description || 'No prompt added yet.'}
+                    </Text>
+                  </View>
+
+                  <View style={[styles.challengeDetailSection, { backgroundColor: T.surface, borderColor: T.line }]}>
+                    <Text style={[styles.challengeDetailSectionTitle, { color: GOLD }]}>Rules</Text>
+                    <Text style={[styles.challengeDetailBody, { color: T.sub }]}>
+                      {selectedChallenge.rules || 'Follow the prompt and submit original work.'}
+                    </Text>
+                  </View>
+
+                  <View style={[styles.challengeDetailSection, { backgroundColor: T.surface, borderColor: T.line }]}>
+                    <Text style={[styles.challengeDetailSectionTitle, { color: GOLD }]}>Required element</Text>
+                    <Text style={[styles.challengeDetailBody, { color: T.sub }]}>
+                      {selectedChallenge.required_phrase || 'No required phrase.'}
+                    </Text>
+                  </View>
+
+                  <View style={[styles.challengeDetailSection, { backgroundColor: T.surface, borderColor: T.line }]}>
+                    <Text style={[styles.challengeDetailSectionTitle, { color: GOLD }]}>Reward</Text>
+                    <Text style={[styles.challengeDetailBody, { color: T.sub }]}>
+                      {selectedChallenge.prize_description || 'Reward TBA.'}
+                    </Text>
+                  </View>
+
+                  <View style={[styles.challengeDetailSection, { backgroundColor: T.surface, borderColor: T.line }]}>
+                    <Text style={[styles.challengeDetailSectionTitle, { color: GOLD }]}>Where reactions happen</Text>
+                    <View style={[styles.challengeReactionPill, { backgroundColor: T.surface2, borderColor: T.line }]}>
+                      <Ionicons name="at-outline" size={15} color={GOLD} />
+                      <Text style={[styles.challengeReactionPillText, { color: T.text }]}>
+                        {formatReactionPill(
+                          selectedChallenge.reaction_platform ||
+                            getCreatorProfile(selectedChallenge)?.creator_social_platform ||
+                            'Creator'
+                        )}
+                      </Text>
+                    </View>
+                    {selectedChallenge.reaction_description ? (
+                      <Text style={[styles.challengeDetailBody, { color: T.sub, marginTop: 10 }]}>
+                        {selectedChallenge.reaction_description}
+                      </Text>
+                    ) : null}
+                    {(selectedChallenge.reaction_url || getCreatorProfile(selectedChallenge)?.creator_social_url) ? (
+                      <TouchableOpacity
+                        activeOpacity={0.75}
+                        onPress={() =>
+                          openReactionUrl(
+                            selectedChallenge.reaction_url ||
+                              getCreatorProfile(selectedChallenge)?.creator_social_url
+                          )
+                        }
+                      >
+                        <Text style={[styles.challengeDetailLink, { color: GOLD }]} numberOfLines={1}>
+                          {selectedChallenge.reaction_url || getCreatorProfile(selectedChallenge)?.creator_social_url}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+
+                </ScrollView>
+
+                <View style={[styles.modalFooter, styles.challengeActionBar, { backgroundColor: T.bg, borderTopColor: T.line }]}>
+                  {selectedChallenge.creator_id === currentUserId ? (
+                    <TouchableOpacity
+                      style={[
+                        styles.footerBtn,
+                        styles.challengeDetailActionButton,
+                        styles.footerDanger,
+                        !isWebMobile && styles.challengeFooterDanger,
+                        { backgroundColor: T.surface2, borderColor: 'rgba(255,70,70,0.24)' },
+                        challengeDeleting[selectedChallenge.id] && { opacity: 0.58 },
+                      ]}
+                      onPress={() => handleRemoveChallenge(selectedChallenge)}
+                      disabled={!!challengeDeleting[selectedChallenge.id]}
+                      activeOpacity={0.9}
+                    >
+                      <Ionicons name="trash-outline" size={14} color="#FF6B6B" />
+                      <Text style={[styles.footerDangerText, { color: '#FF8A8A' }]}>
+                        {challengeDeleting[selectedChallenge.id] ? 'Removing' : 'Remove'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  <TouchableOpacity
+                    style={[
+                      styles.footerBtn,
+                      styles.challengeDetailActionButton,
+                      styles.footerGhost,
+                      !isWebMobile && styles.challengeFooterSecondary,
+                      { backgroundColor: T.surface2, borderColor: T.line },
+                    ]}
+                    onPress={() => openChallengeSubmissions(selectedChallenge)}
+                    activeOpacity={0.9}
+                  >
+                    <Text style={[styles.footerGhostText, { color: T.sub }]}>View Submissions</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.footerBtn,
+                      styles.challengeDetailActionButton,
+                      styles.footerPrimary,
+                      !isWebMobile && styles.challengeFooterPrimary,
+                      {
+                        backgroundColor: isChallengeEnded(selectedChallenge) ? T.surface2 : GOLD,
+                        borderColor: isChallengeEnded(selectedChallenge) ? T.line : GOLD_LINE,
+                      },
+                      isChallengeEnded(selectedChallenge) && { opacity: 0.72 },
+                    ]}
+                    onPress={() => handleSubmitToChallenge(selectedChallenge)}
+                    disabled={isChallengeEnded(selectedChallenge)}
+                    activeOpacity={0.9}
+                  >
+                    <Text
+                      style={[
+                        styles.footerPrimaryText,
+                        { color: isChallengeEnded(selectedChallenge) ? T.mute : colors.textOnPrimary },
+                      ]}
+                    >
+                      {isChallengeEnded(selectedChallenge) ? 'Challenge Ended' : 'Submit to this Challenge'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : null}
+          </View>
+        </SafeAreaView>
+      </SmoothModal>
+
       {/* Job Detail / Apply Modal */}
       <Modal
   visible={!!selectedJob}
@@ -2968,13 +4327,87 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
   sectionSpacer: {
-    height: 18,
+    height: 10,
+  },
+
+  listHeaderRoot: {
+    paddingTop: Platform.OS === 'web' ? 28 : 20,
+    alignItems: 'center',
+  },
+
+  opportunitiesHeader: {
+    width: '100%',
+    maxWidth: 1000,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+
+  opportunitiesTitle: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: Platform.OS === 'web' ? 34 : 28,
+    lineHeight: Platform.OS === 'web' ? 39 : 33,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    textAlign: 'center',
+  },
+
+  opportunitiesSubtitle: {
+    marginTop: 6,
+    maxWidth: 520,
+    fontFamily: SYSTEM_SANS,
+    fontSize: Platform.OS === 'web' ? 15 : 14,
+    lineHeight: 20,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+
+  opportunityTabsWrap: {
+    width: '100%',
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+
+  opportunityTabsShell: {
+    width: '90%',
+    maxWidth: 420,
+    height: 44,
+    padding: 4,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+  },
+
+  opportunitySegmentTap: {
+    flex: 1,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  opportunitySegmentTapActive: {
+    shadowOpacity: Platform.OS === 'web' ? 0.12 : 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+
+  opportunitySegmentText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
 
   /* Category tabs */
   categoryTabsWrap: {
     paddingHorizontal: 16,
-    marginTop: 16,
+    marginTop: 18,
+    width: '100%',
+    alignItems: 'center',
   },
   categoryTabsRow: {
   flexDirection: 'row',
@@ -3049,17 +4482,18 @@ detailModalCard: {
   gap: 8,
   flexWrap: 'wrap',
   paddingHorizontal: 16,
-  paddingTop: 10,
+  paddingTop: 12,
+  paddingBottom: 16,
 },
 filterPill: {
   flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'center',
   gap: 6,
-  minWidth: 86,
+  minHeight: 32,
   paddingHorizontal: 12,
-  paddingVertical: 8,
-  borderRadius: 999,
+  paddingVertical: 6,
+  borderRadius: 10,
   backgroundColor: T.surface2,
   borderWidth: 1,
   borderColor: T.lineSoft,
@@ -3070,7 +4504,7 @@ filterPill: {
   },
   filterPillText: {
     color: T.sub,
-    fontSize: 12.5,
+    fontSize: 12,
     fontFamily: SYSTEM_SANS,
     fontWeight: '700',
   },
@@ -3109,6 +4543,418 @@ filterPill: {
     height: 1,
     backgroundColor: T.line,
     marginTop: 8,
+  },
+
+  opportunityTap: {
+    minWidth: 136,
+  },
+
+  creatorSectionHeader: {
+    width: '100%',
+    maxWidth: 1000,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    flexDirection: Platform.OS === 'web' ? 'row' : 'column',
+    alignItems: Platform.OS === 'web' ? 'center' : 'stretch',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+
+  creatorSectionHeaderStack: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+
+  creatorSectionHeaderNoFilters: {
+    marginTop: 16,
+  },
+
+  creatorSectionCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  creatorSectionTitle: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: Platform.OS === 'web' ? 23 : 21,
+    lineHeight: Platform.OS === 'web' ? 28 : 25,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+
+  creatorSectionSubtitle: {
+    marginTop: 4,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+
+  sectionPostButton: {
+    minHeight: Platform.OS === 'web' ? 40 : 44,
+    borderRadius: Platform.OS === 'web' ? 10 : 12,
+    borderWidth: 1,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    alignSelf: Platform.OS === 'web' ? 'auto' : 'stretch',
+  },
+
+  sectionPostButtonFull: {
+    alignSelf: 'stretch',
+  },
+
+  sectionPostButtonText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+
+  creatorApprovalNote: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+    alignSelf: Platform.OS === 'web' ? 'center' : 'flex-start',
+  },
+
+  /* Creator challenges */
+  challengeRow: {
+    width: '100%',
+    maxWidth: 1000,
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+  },
+
+  challengeCard: {
+    backgroundColor: T.surface2,
+    borderRadius: 16,
+    paddingHorizontal: Platform.OS === 'web' ? 20 : 16,
+    paddingVertical: Platform.OS === 'web' ? 20 : 16,
+    borderWidth: 1,
+    borderColor: GOLD_LINE,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  challengeTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+  },
+  creatorAvatarTap: {
+    flexShrink: 0,
+  },
+  creatorAvatar: {
+    borderWidth: 1,
+    backgroundColor: T.surface3,
+  },
+  creatorAvatarFallback: {
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creatorAvatarInitials: {
+    fontSize: 13,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+    letterSpacing: 0.7,
+  },
+  challengeTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  challengeKicker: {
+    fontSize: 10,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  challengeTitle: {
+    fontSize: Platform.OS === 'web' ? 21 : 19,
+    lineHeight: Platform.OS === 'web' ? 24 : 22,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+    letterSpacing: -0.1,
+  },
+  challengeCreatorRow: {
+    marginTop: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  challengeCreatorPrefix: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '600',
+  },
+  challengeCreatorLink: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
+  },
+  challengeDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 12,
+    fontFamily: SYSTEM_SANS,
+    maxWidth: 750,
+  },
+  challengeMetaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 14,
+  },
+  challengeMetaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 30,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    maxWidth: '100%',
+  },
+  challengeMetaText: {
+    fontSize: 12,
+    fontWeight: '700',
+    fontFamily: SYSTEM_SANS,
+    maxWidth: 190,
+  },
+  challengeActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  challengeActionsStack: {
+    flexDirection: 'column',
+  },
+  challengeSecondaryButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  challengeSecondaryButtonWide: {
+    flex: 0.36,
+  },
+  challengeSecondaryButtonText: {
+    fontSize: 12,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  challengePrimaryButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  challengePrimaryButtonWide: {
+    flex: 0.64,
+  },
+  challengePrimaryButtonText: {
+    fontSize: 12,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  challengeDangerButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  challengeDangerButtonText: {
+    fontSize: 12,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  challengeDetailShell: {
+    flex: 1,
+    paddingHorizontal: Platform.OS === 'web' ? 32 : 16,
+    paddingTop: 8,
+    alignItems: 'center',
+  },
+  challengeDetailHeader: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+    letterSpacing: 1.8,
+    textTransform: 'uppercase',
+  },
+  challengeDetailTopBar: {
+    width: '100%',
+    maxWidth: 1000,
+  },
+  challengeCloseIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: T.surface2,
+    borderWidth: 1,
+    borderColor: T.lineSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  challengeDetailContent: {
+    width: '100%',
+    maxWidth: 1000,
+    alignItems: 'stretch',
+    paddingTop: 20,
+    paddingBottom: 132,
+  },
+  challengeDetailScroll: {
+    width: '100%',
+    maxWidth: 1000,
+  },
+  challengeDetailHero: {
+    borderRadius: 16,
+    padding: Platform.OS === 'web' ? 22 : 18,
+    borderWidth: 1,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOpacity: Platform.OS === 'web' ? 0.04 : 0,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
+  },
+  challengeDetailHeroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  challengeDetailTitle: {
+    fontSize: Platform.OS === 'web' ? 32 : 26,
+    lineHeight: Platform.OS === 'web' ? 35 : 29,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+    letterSpacing: -0.35,
+    marginTop: 4,
+  },
+  challengeDetailStatsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 18,
+  },
+  challengeDetailStatsStack: {
+    flexDirection: 'column',
+  },
+  challengeStatBox: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  challengeStatLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 7,
+  },
+  challengeStatValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
+  },
+  challengeDetailSection: {
+    width: '100%',
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    marginBottom: 10,
+  },
+  challengeDetailSectionTitle: {
+    fontSize: 10,
+    fontWeight: '900',
+    fontFamily: SYSTEM_SANS,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  challengeDetailBody: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '600',
+  },
+  challengeDetailLink: {
+    marginTop: 10,
+    fontSize: 15,
+    fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
+  },
+  challengeReactionPill: {
+    alignSelf: 'flex-start',
+    minHeight: 34,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  challengeReactionPillText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  challengeActionBar: {
+    justifyContent: 'center',
+    paddingHorizontal: Platform.OS === 'web' ? 32 : 16,
+    maxWidth: Platform.OS === 'web' ? 1064 : undefined,
+    alignSelf: 'center',
+  },
+  challengeFooterSecondary: {
+    flex: 0.38,
+  },
+  challengeFooterPrimary: {
+    flex: 0.62,
+  },
+  challengeFooterDanger: {
+    flex: 0.26,
+  },
+  challengeDetailActionButton: {
+    minHeight: Platform.OS === 'web' ? 46 : 48,
+    borderRadius: Platform.OS === 'web' ? 10 : 12,
+    paddingVertical: 12,
   },
 
   /* Jobs list */
@@ -3528,6 +5374,13 @@ filterPill: {
     minHeight: 96,
     textAlignVertical: 'top',
   },
+  helperText: {
+    marginTop: -4,
+    marginBottom: 8,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    lineHeight: 17,
+  },
   searchInput: {
     borderWidth: 1,
     borderColor: T.lineSoft,
@@ -3617,6 +5470,16 @@ filterPill: {
     fontFamily: SYSTEM_SANS,
     fontWeight: '900',
     letterSpacing: 1,
+  },
+  footerDanger: {
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  footerDangerText: {
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    letterSpacing: 0.8,
   },
 
   /* Inline overlays */

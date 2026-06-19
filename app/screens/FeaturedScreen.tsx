@@ -185,6 +185,17 @@ mux_asset_id?: string | null;
   mux_status?: string | null;
   share_slug?: string | null;
   collaborator_credits?: any[] | null;
+  creator_challenge_id?: string | null;
+  challenge_code?: string | null;
+  submission_source?: string | null;
+  creator_id?: string | null;
+  creator_challenges?: {
+    id: string;
+    title?: string | null;
+    challenge_code?: string | null;
+    creator_id?: string | null;
+    users?: { id: string; full_name?: string | null; avatar_url?: string | null } | null;
+  } | null;
   videos?: {
     original_path?: string | null;
     thumbnail_path?: string | null;
@@ -200,6 +211,44 @@ type SubmissionCollaborator = {
   sort_order?: number | null;
   users?: { id: string; full_name?: string | null; avatar_url?: string | null } | null;
 };
+
+function normalizeSubmissionCredits(raw: any, fallbackSubmissionId: string): SubmissionCollaborator[] {
+  const list = Array.isArray(raw) ? raw : [];
+
+  return list
+    .map((row, index) => {
+      const user = row?.users || row?.user || null;
+      const userId = row?.user_id || user?.id || null;
+      const role = String(row?.role || '').trim();
+
+      if (!userId || !role) return null;
+
+      return {
+        id: row?.id || `${fallbackSubmissionId}-${userId}-${role}-${index}`,
+        submission_id: row?.submission_id || fallbackSubmissionId,
+        user_id: userId,
+        role,
+        sort_order: typeof row?.sort_order === 'number' ? row.sort_order : index,
+        users: user
+          ? {
+              id: user.id || userId,
+              full_name: user.full_name ?? null,
+              avatar_url: user.avatar_url ?? null,
+            }
+          : null,
+      } as SubmissionCollaborator;
+    })
+    .filter(Boolean) as SubmissionCollaborator[];
+}
+
+function getSubmissionCredits(item: any): SubmissionCollaborator[] {
+  if (!item?.id) return [];
+
+  const hydrated = normalizeSubmissionCredits(item?.collaborators, item.id);
+  if (hydrated.length > 0) return hydrated;
+
+  return normalizeSubmissionCredits(item?.collaborator_credits, item.id);
+}
 
 type CollaboratorSearchUser = {
   id: string;
@@ -2061,6 +2110,57 @@ function normalizeRow(
   };
 }
 
+async function hydrateSubmissionUsers<T extends { user_id?: string | null; users?: any }>(
+  items: T[]
+): Promise<T[]> {
+  const missingUserIds = Array.from(
+    new Set(
+      items
+        .filter((item) => {
+          const maybe = item?.users;
+          const user = Array.isArray(maybe) ? maybe[0] : maybe;
+          return item?.user_id && !user?.full_name;
+        })
+        .map((item) => item.user_id)
+        .filter(Boolean) as string[]
+    )
+  );
+
+  if (missingUserIds.length === 0) return items;
+
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, full_name, avatar_url')
+      .in('id', missingUserIds);
+
+    if (error) throw error;
+
+    const usersById = new Map<string, { id: string; full_name?: string | null; avatar_url?: string | null }>();
+    ((data || []) as any[]).forEach((user) => {
+      if (user?.id) {
+        usersById.set(user.id, {
+          id: user.id,
+          full_name: user.full_name ?? null,
+          avatar_url: user.avatar_url ?? null,
+        });
+      }
+    });
+
+    return items.map((item) => {
+      const maybe = item?.users;
+      const user = Array.isArray(maybe) ? maybe[0] : maybe;
+      if (user?.full_name || !item?.user_id) return item;
+
+      const hydrated = usersById.get(item.user_id);
+      return hydrated ? ({ ...item, users: hydrated } as T) : item;
+    });
+  } catch (e: any) {
+    console.warn('Featured submission user hydration failed:', e?.message || e);
+    return items;
+  }
+}
+
 async function attachSubmissionCollaborators<T extends { id: string }>(
   items: T[]
 ): Promise<(T & { collaborators?: SubmissionCollaborator[] })[]> {
@@ -2543,6 +2643,9 @@ type HeaderControlsProps = {
   showSearch?: boolean;
   showSort?: boolean;
   showCategory?: boolean;
+  challengeFilterLabel?: string | null;
+  onClearChallengeFilter?: () => void;
+  showChallengeFilterPill?: boolean;
 };
 
 /**
@@ -2571,6 +2674,9 @@ const HeaderControls = React.memo(
     showSearch = true,
     showSort = true,
     showCategory = true,
+    challengeFilterLabel = null,
+    onClearChallengeFilter,
+    showChallengeFilterPill = true,
   }: HeaderControlsProps) => {
     const [focused, setFocused] = useState(false);
     const { colors, isLight } = useAppTheme();
@@ -2681,6 +2787,32 @@ justifyContent: 'center',
 </View>
         ) : null}
 
+        {showChallengeFilterPill && challengeFilterLabel ? (
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={onClearChallengeFilter}
+            style={[
+              styles.challengeFilterPill,
+              isSidebar ? styles.challengeFilterPillSidebar : styles.challengeFilterPillCenter,
+              {
+                borderColor: colors.primary,
+                backgroundColor: isLight ? 'rgba(198,166,100,0.12)' : 'rgba(198,166,100,0.10)',
+              },
+            ]}
+          >
+            <Ionicons name="sparkles-outline" size={14} color={colors.primary} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.challengeFilterKicker, { color: colors.primary }]}>
+                Creator Challenge
+              </Text>
+              <Text style={[styles.challengeFilterText, { color: labelColor }]} numberOfLines={1}>
+                {challengeFilterLabel}
+              </Text>
+            </View>
+            <Text style={[styles.challengeFilterClear, { color: colors.primary }]}>Clear</Text>
+          </TouchableOpacity>
+        ) : null}
+
         {showSort ? (
   <View
     style={[
@@ -2703,7 +2835,12 @@ justifyContent: 'center',
             <TouchableOpacity
               key={f.key}
               activeOpacity={0.9}
-              onPress={() => setSort(f.key)}
+              onPress={() => {
+                if (challengeFilterLabel && f.key === 'foryou') {
+                  onClearChallengeFilter?.();
+                }
+                setSort(f.key);
+              }}
               style={[
                 styles.sideSortItem,
                 {
@@ -2746,7 +2883,12 @@ justifyContent: 'center',
             <TouchableOpacity
               key={f.key}
               activeOpacity={0.9}
-              onPress={() => setSort(f.key)}
+              onPress={() => {
+                if (challengeFilterLabel && f.key === 'foryou') {
+                  onClearChallengeFilter?.();
+                }
+                setSort(f.key);
+              }}
               style={[
                 styles.centerChip,
                 styles.mobileChip,
@@ -2800,7 +2942,12 @@ justifyContent: 'center',
             <TouchableOpacity
               key={c}
               activeOpacity={0.9}
-              onPress={() => setFilmCategory(c)}
+              onPress={() => {
+                if (challengeFilterLabel && c === 'All') {
+                  onClearChallengeFilter?.();
+                }
+                setFilmCategory(c);
+              }}
               style={[
                 styles.sideSortItem,
                 {
@@ -2842,7 +2989,12 @@ justifyContent: 'center',
             <TouchableOpacity
               key={c}
               activeOpacity={0.9}
-              onPress={() => setFilmCategory(c)}
+              onPress={() => {
+                if (challengeFilterLabel && c === 'All') {
+                  onClearChallengeFilter?.();
+                }
+                setFilmCategory(c);
+              }}
               style={[
                 styles.centerChip,
                 styles.mobileChip,
@@ -2907,6 +3059,10 @@ const isGuest = !userId;
 const openShareSlug = route.params?.openShareSlug ?? null;
 const openSubmissionId = route.params?.openSubmissionId ?? null;
 const openSearchNonce = route.params?.openSearchNonce ?? null;
+const challengeIdParam = route.params?.challengeId ?? null;
+const challengeSearchParam = route.params?.challengeSearch ?? null;
+const challengeSearchNonce = route.params?.challengeSearchNonce ?? null;
+const challengeTitleParam = route.params?.challengeTitle ?? null;
   const { width: winW, height: winH } = useWindowDimensions();
   const isNarrow = winW < 480;
 
@@ -2934,6 +3090,11 @@ const gridColumns = isWideWeb || useTwoColumnMobile ? 2 : 1;
 
 // Category filter (matches Challenge categories)
 const [filmCategory, setFilmCategory] = useState<FilmCategory>('All');
+const [creatorChallengeFilter, setCreatorChallengeFilter] = useState<{
+  id?: string | null;
+  code: string;
+  title?: string | null;
+} | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
 const [refreshing, setRefreshing] = useState(false);
   const [winner, setWinner] = useState<
@@ -2988,6 +3149,17 @@ const [refreshing, setRefreshing] = useState(false);
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     };
   }, [searchText, category]);
+
+  useEffect(() => {
+    if (typeof challengeSearchParam !== 'string' || !challengeSearchParam.trim()) return;
+    const code = challengeSearchParam.trim();
+    const id = typeof challengeIdParam === 'string' ? challengeIdParam.trim() : '';
+    const title = typeof challengeTitleParam === 'string' ? challengeTitleParam.trim() : '';
+    setCreatorChallengeFilter({ id: id || null, code, title: title || null });
+    setFilmCategory('All');
+    setSearchText(code);
+    setSearchQ(code);
+  }, [challengeIdParam, challengeSearchParam, challengeTitleParam, challengeSearchNonce]);
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [votedIds, setVotedIds] = useState<Set<string>>(new Set());
@@ -3152,16 +3324,18 @@ const repliesByParent = useMemo(() => {
     submissionId: string,
     collaborators: SubmissionCollaborator[]
   ) => {
+    const patch = { collaborators, collaborator_credits: collaborators };
+
     setPreviewItem((prev) =>
-      prev?.id === submissionId ? ({ ...prev, collaborators } as any) : prev
+      prev?.id === submissionId ? ({ ...prev, ...patch } as any) : prev
     );
     setSubmissions((prev) =>
       prev.map((item) =>
-        item.id === submissionId ? ({ ...item, collaborators } as any) : item
+        item.id === submissionId ? ({ ...item, ...patch } as any) : item
       )
     );
     setWinner((prev) =>
-      prev?.id === submissionId ? ({ ...prev, collaborators } as any) : prev
+      prev?.id === submissionId ? ({ ...prev, ...patch } as any) : prev
     );
   };
 
@@ -3193,7 +3367,7 @@ const repliesByParent = useMemo(() => {
         console.log('Collaborator search error:', error.message);
         setCollaboratorResults([]);
       } else {
-        const currentCredits = ((previewItem as any)?.collaborators || []) as SubmissionCollaborator[];
+        const currentCredits = getSubmissionCredits(previewItem as any);
         const existingIds = new Set([
           (previewItem as any)?.user_id,
           ...currentCredits.map((item) => item.user_id),
@@ -3223,7 +3397,7 @@ const repliesByParent = useMemo(() => {
       return;
     }
 
-    const currentCredits = ((previewItem as any).collaborators || []) as SubmissionCollaborator[];
+    const currentCredits = getSubmissionCredits(previewItem as any);
 
     if (currentCredits.some((item) => item.user_id === user.id)) {
       setCollaboratorQuery('');
@@ -3257,7 +3431,7 @@ const repliesByParent = useMemo(() => {
   const removePreviewCollaborator = (userIdToRemove: string) => {
     if (!previewItem) return;
 
-    const nextCredits = (((previewItem as any).collaborators || []) as SubmissionCollaborator[])
+    const nextCredits = getSubmissionCredits(previewItem as any)
       .filter((item) => item.user_id !== userIdToRemove)
       .map((item, index) => ({ ...item, sort_order: index }));
 
@@ -3269,7 +3443,7 @@ const repliesByParent = useMemo(() => {
     if (collaboratorSaving) return;
 
     const submissionId = previewItem.id;
-    const credits = (((previewItem as any).collaborators || []) as SubmissionCollaborator[])
+    const credits = getSubmissionCredits(previewItem as any)
       .map((item, index) => ({
         submission_id: submissionId,
         user_id: item.user_id,
@@ -3484,7 +3658,7 @@ const categoryHeaderTopOffset =
       await fetchContent(uid, category, searchQ, { silent: true });
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authReady, userId, sort, searchQ, filmCategory]);
+  }, [authReady, userId, sort, searchQ, filmCategory, creatorChallengeFilter?.id]);
 
 useEffect(() => {
   if (initialLoading) return;
@@ -3503,37 +3677,80 @@ useEffect(() => {
   })();
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [refreshKey, userId]);
+}, [refreshKey, userId, creatorChallengeFilter?.id]);
 
 
-  const baseCols =
-  'id, user_id, title, votes, submitted_at, is_winner, share_slug, is_removed, removed_reason, film_category, collaborator_credits, users ( id, full_name, avatar_url ), video_id, storage_path, video_path, thumbnail_url, media_kind, mime_type, duration_seconds, category, mux_upload_id, mux_asset_id, mux_playback_id, mux_status';
+  const legacyBaseCols =
+  'id, user_id, title, votes, submitted_at, is_winner, share_slug, is_removed, removed_reason, film_category, collaborator_credits, users:user_id ( id, full_name, avatar_url ), video_id, storage_path, video_path, thumbnail_url, media_kind, mime_type, duration_seconds, category, mux_upload_id, mux_asset_id, mux_playback_id, mux_status';
+
+  const minimalBaseCols =
+  'id, user_id, title, votes, submitted_at, is_winner, share_slug, is_removed, removed_reason, film_category, collaborator_credits, video_id, storage_path, video_path, thumbnail_url, media_kind, mime_type, duration_seconds, category, mux_upload_id, mux_asset_id, mux_playback_id, mux_status';
+
+  const enhancedBaseCols =
+  `${legacyBaseCols}, creator_challenge_id, challenge_code, submission_source, creator_id, creator_challenges:creator_challenge_id ( id, title, challenge_code, creator_id, users:creator_id ( id, full_name, avatar_url ) )`;
+
+  const submissionSelect = (cols: string, textCol: 'description' | 'word') => `
+    ${cols},
+    videos:video_id ( original_path, thumbnail_path, video_variants ( path, label ) ),
+    ${textCol}
+  `;
+
+  const getMatchingCreatorChallengeIds = async (trimmed: string) => {
+    if (!trimmed) return [];
+
+    try {
+      const [{ data: challengeTitleMatches }, { data: creatorMatches }] = await Promise.all([
+        supabase
+          .from('creator_challenges')
+          .select('id')
+          .or(`title.ilike.%${trimmed}%,challenge_code.ilike.%${trimmed}%`)
+          .limit(50),
+        supabase.from('users').select('id').ilike('full_name', `%${trimmed}%`).limit(25),
+      ]);
+
+      const creatorIds = ((creatorMatches || []) as any[]).map((row) => row.id).filter(Boolean);
+      let creatorChallengeMatches: any[] = [];
+
+      if (creatorIds.length > 0) {
+        const { data } = await supabase
+          .from('creator_challenges')
+          .select('id')
+          .in('creator_id', creatorIds)
+          .limit(50);
+        creatorChallengeMatches = data || [];
+      }
+
+      return Array.from(
+        new Set(
+          [...((challengeTitleMatches || []) as any[]), ...creatorChallengeMatches]
+            .map((row) => row.id)
+            .filter(Boolean)
+        )
+      );
+    } catch {
+      return [];
+    }
+  };
 
   const fetchWinnerSafe = async (id: string, desired: Category) => {
-    const sel = `
-      ${baseCols},
-      videos:video_id ( original_path, thumbnail_path, video_variants ( path, label ) ),
-      description
-    `;
-    let res = await supabase
+    const attempts = [
+      submissionSelect(enhancedBaseCols, 'description'),
+      submissionSelect(enhancedBaseCols, 'word'),
+      submissionSelect(legacyBaseCols, 'description'),
+      submissionSelect(legacyBaseCols, 'word'),
+      minimalBaseCols,
+    ];
+
+    let res: any = null;
+    for (const sel of attempts) {
+      res = await supabase
   .from('submissions')
   .select(sel)
   .eq('id', id)
   .eq('is_removed', false)
   .single();
 
-    if (res.error) {
-      const sel2 = `
-        ${baseCols},
-        videos:video_id ( original_path, thumbnail_path, video_variants ( path, label ) ),
-        word
-      `;
-      res = await supabase
-  .from('submissions')
-  .select(sel2)
-  .eq('id', id)
-  .eq('is_removed', false)
-  .single();
+      if (!res.error) break;
     }
 
     if (res.error) return res;
@@ -3552,19 +3769,45 @@ useEffect(() => {
     return res;
   };
 
+  const fetchSubmissionDirectSafe = async (
+  submissionId: string | null,
+  shareSlug: string | null
+) => {
+    const attempts = [
+      submissionSelect(enhancedBaseCols, 'description'),
+      submissionSelect(enhancedBaseCols, 'word'),
+      submissionSelect(legacyBaseCols, 'description'),
+      submissionSelect(legacyBaseCols, 'word'),
+      minimalBaseCols,
+    ];
+
+    let res: any = { data: null, error: null };
+    for (const sel of attempts) {
+      let query: any = supabase
+        .from('submissions')
+        .select(sel)
+        .eq('category', 'film')
+        .eq('is_removed', false);
+
+      query = submissionId
+        ? query.eq('id', submissionId)
+        : query.eq('share_slug', shareSlug || '');
+
+      res = await query.maybeSingle();
+      if (!res.error) break;
+    }
+
+    return res;
+  };
+
   const fetchSubsSafe = async (
   orderKey: SortKey,
   searchTextQ: string,
   cat: Category,
   filmCat: FilmCategory,
-  blockedIds: Set<string>
+  blockedIds: Set<string>,
+  challengeId?: string | null
 ) => {
-    const sel = `
-      ${baseCols},
-      videos:video_id ( original_path, thumbnail_path, video_variants ( path, label ) ),
-      description
-    `;
-
     const addSort = (q: any) => {
       if (orderKey === 'foryou') return q.order('submitted_at', { ascending: false });
       if (orderKey === 'newest') return q.order('submitted_at', { ascending: false });
@@ -3574,64 +3817,61 @@ useEffect(() => {
       return q;
     };
 
-   let query: any = addSort(
-  supabase.from('submissions').select(sel)
-);
-
-// Always restrict to film type
-query = query.eq('category', 'film');
-query = query.eq('is_removed', false);
-if (blockedIds.size > 0) {
-  query = query.not('user_id', 'in', `(${Array.from(blockedIds).join(',')})`);
-}
-
-// ✅ Apply Film Category filter (genre)
-if (filmCat && filmCat !== 'All') {
-  const dbVal = (FILM_CATEGORY_DB_MAP[filmCat] ?? filmCat).trim();
-query = query.ilike('film_category', `%${dbVal}%`);
-}
-
-
 const trimmed = searchTextQ.trim();
-if (trimmed) {
-  query = query.ilike('title', `%${trimmed}%`);
-}
+const challengeIds = trimmed ? await getMatchingCreatorChallengeIds(trimmed) : [];
 
-let res = await query;
-
-if (res.error) {
-  const sel2 = `
-    ${baseCols},
-    videos:video_id ( original_path, thumbnail_path, video_variants ( path, label ) ),
-    word
-  `;
-
-  let q2: any = addSort(
-    supabase.from('submissions').select(sel2)
+const runQuery = async (
+  selectExpr: string,
+  includeChallengeSearch: boolean
+) => {
+  let query: any = addSort(
+    supabase.from('submissions').select(selectExpr)
   );
 
-  // Always restrict to film type
-  q2 = q2.eq('category', 'film');
-  q2 = q2.eq('is_removed', false);
+  query = query.eq('category', 'film');
+  query = query.eq('is_removed', false);
   if (blockedIds.size > 0) {
-  q2 = q2.not('user_id', 'in', `(${Array.from(blockedIds).join(',')})`);
-}
+    query = query.not('user_id', 'in', `(${Array.from(blockedIds).join(',')})`);
+  }
 
   if (filmCat && filmCat !== 'All') {
-  const dbVal = (FILM_CATEGORY_DB_MAP[filmCat] ?? filmCat).trim();
-q2 = q2.ilike('film_category', `%${dbVal}%`);
+    const dbVal = (FILM_CATEGORY_DB_MAP[filmCat] ?? filmCat).trim();
+    query = query.ilike('film_category', `%${dbVal}%`);
+  }
+
+  if (challengeId) {
+    query = query.eq('creator_challenge_id', challengeId);
+  } else if (trimmed) {
+    if (includeChallengeSearch) {
+      const searchClauses = [`title.ilike.%${trimmed}%`, `challenge_code.ilike.%${trimmed}%`];
+      if (challengeIds.length > 0) {
+        searchClauses.push(`creator_challenge_id.in.(${challengeIds.join(',')})`);
+      }
+      query = query.or(searchClauses.join(','));
+    } else {
+      query = query.ilike('title', `%${trimmed}%`);
+    }
+  }
+
+  return query;
+};
+
+let res: any = null;
+const attempts: Array<[string, boolean]> = [
+  [submissionSelect(enhancedBaseCols, 'description'), true],
+  [submissionSelect(enhancedBaseCols, 'word'), true],
+  [submissionSelect(legacyBaseCols, 'description'), false],
+  [submissionSelect(legacyBaseCols, 'word'), false],
+  [minimalBaseCols, false],
+];
+
+for (const [selectExpr, includeChallengeSearch] of attempts) {
+  res = await runQuery(selectExpr, includeChallengeSearch);
+  if (!res.error) break;
 }
 
-
-  if (searchTextQ.trim()) {
-    q2 = q2.ilike('title', `%${searchTextQ.trim()}%`);
-  }
-
-  res = await q2;
-
-  if (res.error) {
-    return { data: [], error: res.error } as any;
-  }
+if (res?.error) {
+  return { data: [], error: res.error } as any;
 }
 
 const rows = (res.data ?? []) as any[];
@@ -3673,12 +3913,14 @@ const fetchContent = async (
   searchTextQ: string,
   opts?: { force?: boolean; silent?: boolean }
 ) => {
+  const activeChallengeIdForFetch = creatorChallengeFilter?.id?.trim() || '';
   const fetchKey = [
     uid || 'guest',
     cat,
     sort,
     filmCategory,
     searchTextQ.trim(),
+    activeChallengeIdForFetch,
   ].join('|');
 
   if (!opts?.force && inFlightFetchKeyRef.current === fetchKey) {
@@ -3714,14 +3956,23 @@ const fetchContent = async (
     setSupportedUserIds(supportedIds);
 
     let winnerData: any = null;
+    const activeChallengeId = activeChallengeIdForFetch;
+    const activeChallengeCode = creatorChallengeFilter?.code?.trim() || '';
+    const isCreatorChallengeScoped =
+      !!activeChallengeId || (!!activeChallengeCode && searchTextQ.trim() === activeChallengeCode);
 
-    if (challenges.previous?.winner_submission_id) {
+    if (!isCreatorChallengeScoped && challenges.previous?.winner_submission_id) {
       const { data: w } = await fetchWinnerSafe(
         challenges.previous.winner_submission_id,
         cat
       );
 
-      winnerData = w ? normalizeRow(w as RawSubmission) : null;
+      if (w) {
+        const [hydratedWinner] = await hydrateSubmissionUsers([w as RawSubmission]);
+        winnerData = hydratedWinner ? normalizeRow(hydratedWinner as RawSubmission) : null;
+      } else {
+        winnerData = null;
+      }
 
       // ✅ Hide winner if the current user has blocked that creator.
       if (winnerData && blockedIds.has((winnerData as any).user_id)) {
@@ -3750,10 +4001,11 @@ const fetchContent = async (
       searchTextQ,
       cat,
       filmCategory,
-      blockedIds
+      blockedIds,
+      activeChallengeId || null
     );
 
-    const subs = (resp?.data || []) as RawSubmission[];
+    const subs = await hydrateSubmissionUsers((resp?.data || []) as RawSubmission[]);
     const normalized = subs.map(normalizeRow);
 
     const playableOnlyBase = normalized.filter((s: any) => {
@@ -3877,7 +4129,20 @@ const onRefresh = useCallback(async () => {
   } finally {
     setRefreshing(false);
   }
-}, [refreshing, triggerAppRefresh, category, searchQ, sort, filmCategory]);
+}, [refreshing, triggerAppRefresh, category, searchQ, sort, filmCategory, creatorChallengeFilter?.id]);
+
+const clearCreatorChallengeFilter = useCallback(() => {
+  setCreatorChallengeFilter(null);
+  setFilmCategory('All');
+  setSearchText('');
+  setSearchQ('');
+  navigation.setParams?.({
+    challengeSearch: undefined,
+    challengeId: undefined,
+    challengeTitle: undefined,
+    challengeSearchNonce: undefined,
+  });
+}, [navigation]);
 
 const fetchBlockedUsers = async (uid: string | null) => {
   if (!uid) {
@@ -4408,7 +4673,14 @@ const shareSubmissionLink = async (
         prev?.id === s.id
           ? ({
               ...prev,
-              collaborators: (enriched as any)?.collaborators || (prev as any).collaborators || [],
+              collaborator_credits:
+                (enriched as any)?.collaborator_credits ?? (prev as any).collaborator_credits ?? null,
+              collaborators: getSubmissionCredits({
+                ...(prev as any),
+                ...(enriched as any),
+                collaborator_credits:
+                  (enriched as any)?.collaborator_credits ?? (prev as any).collaborator_credits ?? null,
+              }),
             } as any)
           : prev
       );
@@ -4807,24 +5079,13 @@ useEffect(() => {
 
     if (!target && (openSubmissionId || openShareSlug)) {
       try {
-        const sel = `
-          ${baseCols},
-          videos:video_id ( original_path, thumbnail_path, video_variants ( path, label ) ),
-          description
-        `;
-        let query: any = supabase
-          .from('submissions')
-          .select(sel)
-          .eq('category', 'film')
-          .eq('is_removed', false);
-
-        query = openSubmissionId
-          ? query.eq('id', openSubmissionId)
-          : query.eq('share_slug', openShareSlug);
-
-        const { data, error } = await query.maybeSingle();
+        const { data, error } = await fetchSubmissionDirectSafe(
+          openSubmissionId ?? null,
+          openShareSlug ?? null
+        );
         if (!cancelled && !error && data) {
-          const normalized = normalizeRow(data as RawSubmission);
+          const [hydratedSubmission] = await hydrateSubmissionUsers([data as RawSubmission]);
+          const normalized = normalizeRow((hydratedSubmission || data) as RawSubmission);
           const [withCollaborators] = await attachSubmissionCollaborators([normalized as any]);
           if (!cancelled) target = withCollaborators as any;
         }
@@ -4899,6 +5160,27 @@ const onRemoveSubmission = async (s: Submission & { description?: string | null 
     setSubmissions(prevSubs);
     Alert.alert('Remove failed', 'Please try again.');
   }
+};
+
+const getCreatorChallengeLabel = (s: any) => {
+  if (s?.submission_source !== 'creator_challenge' && !s?.creator_challenge_id) return null;
+  const challenge = s?.creator_challenges;
+  const title = challenge?.title || s?.challenge_code;
+  return title ? `Submitted to: ${title}` : 'Creator Challenge';
+};
+
+const renderCreatorChallengeBadge = (s: any, compact = false) => {
+  const label = getCreatorChallengeLabel(s);
+  if (!label) return null;
+
+  return (
+    <View style={[styles.creatorChallengeBadge, compact && styles.creatorChallengeBadgeCompact]}>
+      <Ionicons name="sparkles-outline" size={compact ? 11 : 13} color={GOLD} />
+      <Text style={[styles.creatorChallengeBadgeText, compact && styles.creatorChallengeBadgeTextCompact]} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
 };
 
 const renderMedia = (
@@ -5331,6 +5613,7 @@ onMouseLeave: () => {
                 {s.users.full_name}
               </Text>
             ) : null}
+            {renderCreatorChallengeBadge(s, true)}
           </View>
         </View>
       </Pressable>
@@ -5371,6 +5654,8 @@ const renderMobileYouTubeCard = useCallback(
               </Text>
             </TouchableOpacity>
           ) : null}
+
+          {renderCreatorChallengeBadge(s)}
 
           {!!s.description ? (
             <Text style={styles.mobileDescription} numberOfLines={2}>
@@ -5591,6 +5876,8 @@ const renderCard = useCallback(
                           <Text style={styles.feedByline}>by {s.users.full_name}</Text>
                         </TouchableOpacity>
                       ) : null}
+
+                      {renderCreatorChallengeBadge(s)}
                     </View>
 
                     <View style={{ marginTop: 10 }}>
@@ -5725,6 +6012,9 @@ const headerElement = useMemo(
   [winner, activeId, isNarrow, cardW, availableHForMedia, renderCard, featuredFocusPlayKey]
 );
 
+const creatorChallengeFilterLabel =
+  creatorChallengeFilter?.title || creatorChallengeFilter?.code || null;
+
 const sidebarElement = useMemo(() => {
   if (!isWideWeb) return null;
 
@@ -5768,16 +6058,82 @@ const sidebarElement = useMemo(() => {
           isSearching={isSearching}
           layout="sidebar"
           showSearch={false}
+          challengeFilterLabel={creatorChallengeFilterLabel}
+          onClearChallengeFilter={clearCreatorChallengeFilter}
         />
       </ScrollView>
     </View>
   );
-}, [isWideWeb, category, sort, searchText, isSearching, filmCategory, winH, isLight]);
+}, [
+  isWideWeb,
+  category,
+  sort,
+  searchText,
+  isSearching,
+  filmCategory,
+  winH,
+  isLight,
+  creatorChallengeFilterLabel,
+  clearCreatorChallengeFilter,
+]);
 
 const renderSubmissionItem = ({ item }: any) => {
   if (isWideWeb || isMobile) return renderCompactGridCard(item);
   return renderCard(item.id, item, activeId === item.id, false);
 };
+
+const listEmptyElement = useMemo(() => {
+  if (initialLoading) return null;
+
+  const scopedToChallenge = !!creatorChallengeFilterLabel;
+
+  return (
+    <View style={styles.featuredEmptyWrap}>
+      <View
+        style={[
+          styles.featuredEmptyCard,
+          {
+            backgroundColor: featuredSurface,
+            borderColor: featuredBorder,
+          },
+        ]}
+      >
+        <Ionicons
+          name={scopedToChallenge ? 'sparkles-outline' : 'film-outline'}
+          size={26}
+          color={GOLD}
+        />
+        <Text style={[styles.featuredEmptyTitle, { color: featuredText }]}>
+          {scopedToChallenge ? 'No submissions yet' : 'No films found'}
+        </Text>
+        <Text style={[styles.featuredEmptyText, { color: featuredSubText }]}>
+          {scopedToChallenge
+            ? 'This Creator Challenge does not have any submissions yet.'
+            : 'Try clearing search or filters to see more films.'}
+        </Text>
+
+        {scopedToChallenge ? (
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={clearCreatorChallengeFilter}
+            style={[styles.featuredEmptyButton, { backgroundColor: GOLD, borderColor: GOLD }]}
+          >
+            <Text style={styles.featuredEmptyButtonText}>Show all films</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </View>
+  );
+}, [
+  initialLoading,
+  creatorChallengeFilterLabel,
+  clearCreatorChallengeFilter,
+  featuredSurface,
+  featuredBorder,
+  featuredText,
+  featuredSubText,
+  GOLD,
+]);
 
 const renderCommentsPanel = (
   panelStyle?: any,
@@ -6051,8 +6407,8 @@ const renderCommentsPanel = (
 };
 
 const keyForList = isWideWeb
-  ? `grid-${searchQ}-${sort}-${filmCategory}`
-  : `feed-${searchQ}-${sort}-${filmCategory}`;
+  ? `grid-${creatorChallengeFilter?.id || 'all'}-${searchQ}-${sort}-${filmCategory}`
+  : `feed-${creatorChallengeFilter?.id || 'all'}-${searchQ}-${sort}-${filmCategory}`;
 
 return (
   <View style={[styles.container, { backgroundColor: featuredBackground }]}>
@@ -6081,16 +6437,17 @@ return (
         }}
       >
         {isWideWeb ? (
-          <View style={[styles.wideLayout, { maxWidth: 1400, alignSelf: 'center' }]}>
+          <View style={[styles.wideLayout, { width: '100%', maxWidth: 1400, alignSelf: 'center' }]}>
             {sidebarElement}
 
-            <View style={[styles.gridArea, { flex: 1 }]}>
+            <View style={[styles.gridArea, { flex: 1, minWidth: 0 }]}>
               <FlatList
   key={keyForList}
   data={submissions}
   renderItem={renderSubmissionItem}
   keyExtractor={(item: any) => item.id}
   ListHeaderComponent={headerElement}
+  ListEmptyComponent={listEmptyElement}
   numColumns={2}
   columnWrapperStyle={
     {
@@ -6164,6 +6521,8 @@ overScrollMode="always"
         showCategory={true}
         showSearch={false}
         showSort={false}
+        challengeFilterLabel={creatorChallengeFilterLabel}
+        onClearChallengeFilter={clearCreatorChallengeFilter}
       />
     </View>
 
@@ -6198,6 +6557,9 @@ overScrollMode="always"
           showCategory={false}
           showSearch={false}
           showSort={true}
+          challengeFilterLabel={creatorChallengeFilterLabel}
+          onClearChallengeFilter={clearCreatorChallengeFilter}
+          showChallengeFilterPill={false}
         />
       </View>
     </View>
@@ -6205,6 +6567,7 @@ overScrollMode="always"
     <View style={{ height: 2 }} />
   </View>
 }
+  ListEmptyComponent={listEmptyElement}
   numColumns={gridColumns}
   columnWrapperStyle={
   gridColumns > 1
@@ -6581,9 +6944,9 @@ maxToRenderPerBatch={2}
                 );
               })()}
 
-              {((previewItem as any).collaborators || []).length > 0 ? (
+              {getSubmissionCredits(previewItem as any).length > 0 ? (
                 <View style={styles.watchCreditsInlineWrap}>
-                  {((previewItem as any).collaborators as SubmissionCollaborator[]).map((item) => {
+                  {getSubmissionCredits(previewItem as any).map((item) => {
                     const collaboratorName =
                       item.users?.full_name ||
                       (item.user_id ? "Collaborator" : "Credit");
@@ -6753,7 +7116,7 @@ maxToRenderPerBatch={2}
                 <Ionicons name="people-outline" size={16} color={featuredText} />
                 <Text style={[styles.watchActionText, { color: featuredText }]}>Credits</Text>
                 <Text style={[styles.watchActionMeta, { color: featuredSubText }]}>
-                  {((previewItem as any).collaborators || []).length}
+                  {getSubmissionCredits(previewItem as any).length}
                 </Text>
               </TouchableOpacity>
 
@@ -6934,9 +7297,9 @@ maxToRenderPerBatch={2}
                   </View>
                 ) : null}
 
-                {((previewItem as any).collaborators || []).length > 0 ? (
+                {getSubmissionCredits(previewItem as any).length > 0 ? (
                   <View style={styles.watchCollaboratorEditorChips}>
-                    {(((previewItem as any).collaborators || []) as SubmissionCollaborator[]).map(
+                    {getSubmissionCredits(previewItem as any).map(
                       (item) => (
                         <View
                           key={`edit-${item.user_id}-${item.role || 'role'}`}
@@ -7953,6 +8316,106 @@ storyLink: {
     alignItems: 'center',
   },
 
+  challengeFilterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 10,
+  },
+
+  challengeFilterPillSidebar: {
+    width: '100%',
+    marginBottom: 12,
+  },
+
+  challengeFilterPillCenter: {
+    width: '100%',
+    maxWidth: 520,
+    marginBottom: 8,
+  },
+
+  challengeFilterKicker: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+
+  challengeFilterText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.1,
+  },
+
+  challengeFilterClear: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+  },
+
+  featuredEmptyWrap: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 44,
+  },
+
+  featuredEmptyCard: {
+    width: '100%',
+    maxWidth: 520,
+    borderRadius: 22,
+    borderWidth: 1,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    alignItems: 'center',
+  },
+
+  featuredEmptyTitle: {
+    marginTop: 12,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: 0,
+    textAlign: 'center',
+  },
+
+  featuredEmptyText: {
+    marginTop: 8,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+
+  featuredEmptyButton: {
+    marginTop: 18,
+    minHeight: 44,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  featuredEmptyButtonText: {
+    color: '#070707',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+
   /* ---------------- Cards (full feed) ---------------- */
   cardWrapper: {
     width: '100%',
@@ -8608,6 +9071,39 @@ previewCommentsCard: {
     fontSize: 12,
     letterSpacing: 0.9,
     textTransform: 'uppercase',
+  },
+
+  creatorChallengeBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.34)',
+    backgroundColor: 'rgba(198,166,100,0.14)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    maxWidth: '100%',
+  },
+  creatorChallengeBadgeCompact: {
+    marginTop: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+  },
+  creatorChallengeBadgeText: {
+    color: GOLD,
+    fontFamily: SYSTEM_SANS,
+    fontWeight: '900',
+    fontSize: 11,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    maxWidth: 280,
+  },
+  creatorChallengeBadgeTextCompact: {
+    fontSize: 7.5,
+    maxWidth: 130,
   },
 
   feedDescription: {
