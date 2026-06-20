@@ -81,9 +81,14 @@ const T = {
   heroBurgundy2: '#050505',
 };
 
-const FONT_CINEMATIC =
-  Platform.select({ ios: 'Cinzel', android: 'Cinzel', default: 'Cinzel' }) ||
-  'Cinzel';
+const FONT_CINEMATIC = SYSTEM_SANS;
+const FONT_WINNER_TITLE =
+  Platform.select({
+    ios: 'Avenir Next Condensed',
+    android: 'sans-serif-condensed',
+    web: 'Impact',
+    default: 'Arial Narrow',
+  }) || SYSTEM_SANS;
 
 const FONT_OBLIVION =
   Platform.select({
@@ -460,26 +465,38 @@ async function setWebVideoSource(el: any, src: string) {
 
 function webPreloadHref(href: string) {
   if (Platform.OS !== 'web') return;
-  if (webWarmStore.links.has(href)) return;
+  let hintHref = href;
+  try {
+    hintHref = new URL(href).origin;
+  } catch {}
+  if (webWarmStore.links.has(hintHref)) return;
   const link = document.createElement('link');
-  link.rel = 'preload';
-  link.as = 'video';
-  link.href = href;
+  link.rel = 'preconnect';
+  link.href = hintHref;
+  link.crossOrigin = 'anonymous';
   document.head.appendChild(link);
-  webWarmStore.links.set(href, link);
+  webWarmStore.links.set(hintHref, link);
 }
 function webWarmVideo(href: string) {
   if (Platform.OS !== 'web') return;
   if (webWarmStore.warmVideos.has(href)) return;
   const v = document.createElement('video');
-v.preload = 'auto';
+v.preload = 'metadata';
 v.muted = true;
 v.playsInline = true;
 v.src = href;
-try {
-  v.load();
-} catch {}
 webWarmStore.warmVideos.set(href, v);
+const load = () => {
+  try {
+    v.load();
+  } catch {}
+};
+const idle = (globalThis as any).requestIdleCallback;
+if (typeof idle === 'function') {
+  idle(load, { timeout: 1200 });
+} else {
+  setTimeout(load, 300);
+}
 }
 
 function cleanFilmStoragePath(pathOrUrl: string) {
@@ -2795,21 +2812,20 @@ justifyContent: 'center',
               styles.challengeFilterPill,
               isSidebar ? styles.challengeFilterPillSidebar : styles.challengeFilterPillCenter,
               {
-                borderColor: colors.primary,
-                backgroundColor: isLight ? 'rgba(198,166,100,0.12)' : 'rgba(198,166,100,0.10)',
+                borderColor: isLight ? colors.border : 'rgba(255,255,255,0.14)',
+                backgroundColor: isLight ? colors.card : 'rgba(255,255,255,0.045)',
               },
             ]}
           >
-            <Ionicons name="sparkles-outline" size={14} color={colors.primary} />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[styles.challengeFilterKicker, { color: colors.primary }]}>
+              <Text style={[styles.challengeFilterKicker, { color: subColor }]}>
                 Creator Challenge
               </Text>
               <Text style={[styles.challengeFilterText, { color: labelColor }]} numberOfLines={1}>
                 {challengeFilterLabel}
               </Text>
             </View>
-            <Text style={[styles.challengeFilterClear, { color: colors.primary }]}>Clear</Text>
+            <Text style={[styles.challengeFilterClear, { color: subColor }]}>Clear</Text>
           </TouchableOpacity>
         ) : null}
 
@@ -5166,7 +5182,7 @@ const getCreatorChallengeLabel = (s: any) => {
   if (s?.submission_source !== 'creator_challenge' && !s?.creator_challenge_id) return null;
   const challenge = s?.creator_challenges;
   const title = challenge?.title || s?.challenge_code;
-  return title ? `Submitted to: ${title}` : 'Creator Challenge';
+  return title ? `Challenge: ${title}` : 'Creator Challenge';
 };
 
 const renderCreatorChallengeBadge = (s: any, compact = false) => {
@@ -5175,7 +5191,6 @@ const renderCreatorChallengeBadge = (s: any, compact = false) => {
 
   return (
     <View style={[styles.creatorChallengeBadge, compact && styles.creatorChallengeBadgeCompact]}>
-      <Ionicons name="sparkles-outline" size={compact ? 11 : 13} color={GOLD} />
       <Text style={[styles.creatorChallengeBadgeText, compact && styles.creatorChallengeBadgeTextCompact]} numberOfLines={1}>
         {label}
       </Text>
@@ -5364,10 +5379,10 @@ const renderHeroOverlay = (s: Submission & { users?: { id: string; full_name: st
     const isCompactHero = winW < 520;
   const isTinyHero = winW < 380;
 
-  const heroKickerSize = isCompactHero ? 9 : 14;
-const heroTitleSize = isTinyHero ? 18 : isCompactHero ? 22 : isWideWeb ? 40 : 52;
-const heroTitleLine = isTinyHero ? 22 : isCompactHero ? 26 : isWideWeb ? 44 : 58;
-const heroBylineSize = isTinyHero ? 10 : isCompactHero ? 11 : 16;
+  const heroKickerSize = isTinyHero ? 10 : isCompactHero ? 12 : isWideWeb ? 17 : 18;
+const heroTitleSize = isTinyHero ? 22 : isCompactHero ? 28 : isWideWeb ? 56 : 62;
+const heroTitleLine = isTinyHero ? 25 : isCompactHero ? 31 : isWideWeb ? 60 : 66;
+const heroBylineSize = isTinyHero ? 12 : isCompactHero ? 14 : isWideWeb ? 20 : 22;
 
   return (
     <View style={styles.heroOverlay} pointerEvents="box-none">
@@ -5378,7 +5393,8 @@ const heroBylineSize = isTinyHero ? 10 : isCompactHero ? 11 : 16;
     {
       fontSize: heroKickerSize,
       marginBottom: isCompactHero ? 3 : 6,
-      letterSpacing: isCompactHero ? 0.45 : 0.8,
+      lineHeight: heroKickerSize + 4,
+      letterSpacing: isCompactHero ? 0.7 : 1.1,
     },
   ]}
 >
@@ -5392,7 +5408,7 @@ const heroBylineSize = isTinyHero ? 10 : isCompactHero ? 11 : 16;
       fontSize: heroTitleSize,
       lineHeight: heroTitleLine,
       maxWidth: '100%', // ✅ deterministic, prevents edge clipping
-      letterSpacing: isCompactHero ? 0.3 : 0.9,
+      letterSpacing: isCompactHero ? 0.2 : 0.6,
       paddingBottom: 2,
     },
   ]}
@@ -5415,7 +5431,9 @@ const heroBylineSize = isTinyHero ? 10 : isCompactHero ? 11 : 16;
           styles.heroByline,
           {
             fontSize: heroBylineSize,
+            lineHeight: heroBylineSize + 5,
             marginTop: isCompactHero ? 2 : 4,
+            letterSpacing: isCompactHero ? 0.8 : 1.2,
           },
         ]}
       >
@@ -6099,7 +6117,7 @@ const listEmptyElement = useMemo(() => {
         ]}
       >
         <Ionicons
-          name={scopedToChallenge ? 'sparkles-outline' : 'film-outline'}
+          name="film-outline"
           size={26}
           color={GOLD}
         />
@@ -6468,6 +6486,10 @@ return (
   style={{ backgroundColor: featuredBackground }}
   showsVerticalScrollIndicator={false}
   keyboardShouldPersistTaps="always"
+  initialNumToRender={4}
+  maxToRenderPerBatch={4}
+  windowSize={5}
+  updateCellsBatchingPeriod={80}
   onScroll={onScrollImmediate}
   onMomentumScrollEnd={onMomentumEnd}
   scrollEventThrottle={16}
@@ -8108,7 +8130,7 @@ maxToRenderPerBatch={2}
 // FeaturedScreen.tsx — PART 3 / 3
 // ✅ Styles + export (includes the sidebar/grid/preview/comment styles used above)
 
-const RADIUS_XL = 18;
+const RADIUS_XL = 10;
 
 /* ---------------- styles ---------------- */
 const styles = StyleSheet.create({
@@ -8136,7 +8158,7 @@ storyCloseBtnFloating: {
   right: 16,
   width: 40,
   height: 40,
-  borderRadius: 999,
+  borderRadius: 10,
   backgroundColor: 'rgba(0,0,0,0.55)',
   borderWidth: 0,
   borderColor: 'transparent',
@@ -8148,7 +8170,7 @@ storyCloseBtn: {
   alignSelf: 'flex-end',
   width: 40,
   height: 40,
-  borderRadius: 999,
+  borderRadius: 10,
   backgroundColor: 'rgba(255,255,255,0.06)',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.08)',
@@ -8160,7 +8182,7 @@ storyCloseBtn: {
 storyCloseText: {
   color: '#FFFFFF',
   fontSize: 22,
-  fontWeight: '900',
+  fontWeight: '700',
   lineHeight: 22,
   textAlign: 'center',
 },
@@ -8168,7 +8190,7 @@ storyCloseText: {
 storyPoster: {
   width: '100%',
   aspectRatio: 9 / 16,
-  borderRadius: 28,
+  borderRadius: 14,
   overflow: 'hidden',
   backgroundColor: '#050505',
   borderWidth: 0,
@@ -8188,7 +8210,7 @@ storyCenterPanel: {
   bottom: '14%',
   left: '8%',
   right: '8%',
-  borderRadius: 24,
+  borderRadius: 12,
   backgroundColor: 'transparent',
   borderWidth: 0,
   borderColor: 'transparent',
@@ -8212,9 +8234,9 @@ storyBottomFade: {
 storyBrandText: {
   color: '#FFFFFF',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '800',
   fontSize: 18,
-  letterSpacing: 3,
+  letterSpacing: 1.8,
   textTransform: 'uppercase',
 },
 
@@ -8229,12 +8251,11 @@ storyContent: {
 storyTitle: {
   color: '#FFFFFF',
   fontFamily: FONT_CINEMATIC,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 24,
   lineHeight: 28,
   textAlign: 'center',
-  textTransform: 'uppercase',
-  letterSpacing: 0.8,
+  letterSpacing: 0,
   textShadowColor: 'rgba(0,0,0,0.45)',
   textShadowOffset: { width: 0, height: 2 },
   textShadowRadius: 8,
@@ -8244,9 +8265,9 @@ storyByline: {
   marginTop: 12,
   color: GOLD,
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '800',
   fontSize: 12,
-  letterSpacing: 1.2,
+  letterSpacing: 0.7,
   textTransform: 'uppercase',
   textAlign: 'center',
 },
@@ -8257,7 +8278,7 @@ storyMeta: {
   fontFamily: SYSTEM_SANS,
   fontWeight: '700',
   fontSize: 11,
-  letterSpacing: 1,
+  letterSpacing: 0.6,
   textTransform: 'uppercase',
   textAlign: 'center',
 },
@@ -8280,7 +8301,7 @@ storyLink: {
 
   sidebar: {
   width: '100%',
-  borderRadius: 22,
+  borderRadius: 12,
   borderWidth: 0,
   borderColor: 'transparent',
   backgroundColor: '#000000',
@@ -8319,11 +8340,11 @@ storyLink: {
   challengeFilterPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 18,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    gap: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    gap: 8,
   },
 
   challengeFilterPillSidebar: {
@@ -8340,8 +8361,8 @@ storyLink: {
   challengeFilterKicker: {
     fontFamily: SYSTEM_SANS,
     fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1.1,
+    fontWeight: '700',
+    letterSpacing: 0.2,
     textTransform: 'uppercase',
     marginBottom: 2,
   },
@@ -8349,16 +8370,15 @@ storyLink: {
   challengeFilterText: {
     fontFamily: SYSTEM_SANS,
     fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.1,
+    fontWeight: '700',
+    letterSpacing: 0,
   },
 
   challengeFilterClear: {
     fontFamily: SYSTEM_SANS,
     fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 0.7,
-    textTransform: 'uppercase',
+    fontWeight: '700',
+    letterSpacing: 0,
   },
 
   featuredEmptyWrap: {
@@ -8372,7 +8392,7 @@ storyLink: {
   featuredEmptyCard: {
     width: '100%',
     maxWidth: 520,
-    borderRadius: 22,
+    borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 24,
     paddingVertical: 28,
@@ -8383,7 +8403,7 @@ storyLink: {
     marginTop: 12,
     fontFamily: SYSTEM_SANS,
     fontSize: 20,
-    fontWeight: '900',
+    fontWeight: '800',
     letterSpacing: 0,
     textAlign: 'center',
   },
@@ -8392,7 +8412,7 @@ storyLink: {
     marginTop: 8,
     fontFamily: SYSTEM_SANS,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
     lineHeight: 20,
     textAlign: 'center',
   },
@@ -8400,7 +8420,7 @@ storyLink: {
   featuredEmptyButton: {
     marginTop: 18,
     minHeight: 44,
-    borderRadius: 999,
+    borderRadius: 10,
     borderWidth: 1,
     paddingHorizontal: 24,
     alignItems: 'center',
@@ -8411,8 +8431,8 @@ storyLink: {
     color: '#070707',
     fontFamily: SYSTEM_SANS,
     fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.8,
+    fontWeight: '800',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
 
@@ -8427,25 +8447,25 @@ storyLink: {
   },
 
   cardBorder: {
-    borderRadius: RADIUS_XL + 4,
-    padding: 1,
+    borderRadius: RADIUS_XL + 2,
+    padding: StyleSheet.hairlineWidth,
     width: '100%',
     alignItems: 'center',
-    backgroundColor: 'rgba(212,180,95,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
 
   card: {
     width: '100%',
-    borderRadius: RADIUS_XL + 2,
+    borderRadius: RADIUS_XL,
     backgroundColor: '#070707',
     overflow: 'hidden',
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.05)',
     shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 12,
+    shadowOpacity: 0.10,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
 
   cardHero: {
@@ -8486,8 +8506,8 @@ cardHeroFlat: {
   winnerMetaLabel: {
     color: 'rgba(237,235,230,0.44)',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
-    letterSpacing: 0.8,
+    fontWeight: '700',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
     fontSize: 10,
     marginRight: 12,
@@ -8496,7 +8516,7 @@ cardHeroFlat: {
   winnerMetaValue: {
     color: GOLD,
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '700',
     letterSpacing: 0.4,
     fontSize: 12,
   },
@@ -8560,7 +8580,7 @@ mobileChip: {
 mobilePillDanger: {
   height: 30,
   paddingHorizontal: 10,
-  borderRadius: 999,
+  borderRadius: 8,
   backgroundColor: 'rgba(255,70,70,0.10)',
   borderWidth: 1,
   borderColor: 'rgba(255,90,90,0.26)',
@@ -8573,7 +8593,7 @@ mobilePillDanger: {
 mobilePillDangerText: {
   color: '#FF8A8A',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 11,
 },
 
@@ -8591,16 +8611,16 @@ feedActionBtnDanger: {
 feedActionDangerText: {
   color: '#FF8A8A',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 11,
-  letterSpacing: 0.9,
+  letterSpacing: 0.4,
   textTransform: 'uppercase',
 },
 
 previewActionPillDanger: {
   paddingVertical: 10,
   paddingHorizontal: 14,
-  borderRadius: 999,
+  borderRadius: 9,
   backgroundColor: 'rgba(255,70,70,0.08)',
   borderWidth: 1,
   borderColor: 'rgba(255,90,90,0.24)',
@@ -8611,7 +8631,7 @@ previewActionPillDanger: {
 previewActionTextDanger: {
   color: '#FF8A8A',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 11,
   letterSpacing: 0.7,
   textTransform: 'uppercase',
@@ -8633,7 +8653,7 @@ replyDangerBtn: {
 replyDangerBtnText: {
   color: 'rgba(255,138,138,0.72)',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 10.5,
   letterSpacing: 0.15,
   textTransform: 'uppercase',
@@ -8651,7 +8671,7 @@ reportCard: {
   width: '100%',
   maxWidth: 520,
   maxHeight: '88%',
-  borderRadius: 22,
+  borderRadius: 12,
   backgroundColor: '#080808',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.08)',
@@ -8667,7 +8687,7 @@ reportHeader: {
 reportTitle: {
   color: '#F8F6F1',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '800',
   fontSize: 18,
   letterSpacing: 0.5,
   textTransform: 'uppercase',
@@ -8685,7 +8705,7 @@ reportSubtitle: {
 reportCloseBtn: {
   height: 34,
   paddingHorizontal: 12,
-  borderRadius: 999,
+  borderRadius: 8,
   backgroundColor: 'rgba(255,255,255,0.06)',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.08)',
@@ -8697,7 +8717,7 @@ reportCloseBtn: {
 reportCloseText: {
   color: 'rgba(237,235,230,0.72)',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 11,
   textTransform: 'uppercase',
 },
@@ -8705,9 +8725,9 @@ reportCloseText: {
 reportLabel: {
   color: GOLD,
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '800',
   fontSize: 11,
-  letterSpacing: 1,
+  letterSpacing: 0.6,
   textTransform: 'uppercase',
   marginBottom: 8,
   marginTop: 8,
@@ -8715,7 +8735,7 @@ reportLabel: {
 
 reportReasonItem: {
   minHeight: 42,
-  borderRadius: 14,
+  borderRadius: 9,
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.07)',
   backgroundColor: '#050505',
@@ -8735,7 +8755,7 @@ reportReasonText: {
   flex: 1,
   color: 'rgba(237,235,230,0.78)',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '800',
+  fontWeight: '700',
   fontSize: 12,
 },
 
@@ -8750,7 +8770,7 @@ reportReasonDot: {
 
 reportInput: {
   minHeight: 92,
-  borderRadius: 16,
+  borderRadius: 10,
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.08)',
   backgroundColor: '#050505',
@@ -8766,7 +8786,7 @@ reportInput: {
 
 reportSubmitBtn: {
   height: 46,
-  borderRadius: 999,
+  borderRadius: 10,
   backgroundColor: GOLD,
   alignItems: 'center',
   justifyContent: 'center',
@@ -8776,7 +8796,7 @@ reportSubmitBtn: {
 reportSubmitText: {
   color: '#000000',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '800',
   fontSize: 12,
   letterSpacing: 0.8,
   textTransform: 'uppercase',
@@ -8808,7 +8828,7 @@ mobileMediaWrap: {
   mobileTitle: {
   color: '#F8F6F1',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '800',
   fontSize: 17,   // was 16
   lineHeight: 22, // was 21
   textAlign: 'center',
@@ -8842,7 +8862,7 @@ mobileMediaWrap: {
   mobilePill: {
     height: 32,
     paddingHorizontal: 12,
-    borderRadius: 999,
+    borderRadius: 8,
     backgroundColor: '#101010',
     borderWidth: 1,
     borderColor: 'rgba(212,180,95,0.20)',
@@ -8855,14 +8875,14 @@ mobileMediaWrap: {
   mobilePillText: {
     color: '#F3EFE7',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
+    fontWeight: '700',
     fontSize: 11,
   },
 
   mobilePillGhost: {
     height: 32,
     paddingHorizontal: 12,
-    borderRadius: 999,
+    borderRadius: 8,
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.07)',
@@ -8875,7 +8895,7 @@ mobileMediaWrap: {
   mobilePillGhostText: {
     color: 'rgba(237,235,230,0.72)',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
+    fontWeight: '700',
     fontSize: 11,
   },
 
@@ -8886,28 +8906,28 @@ mobileMediaWrap: {
 
   heroKicker: {
     color: GOLD,
-    fontFamily: SYSTEM_SANS,
+    fontFamily: FONT_WINNER_TITLE,
     fontWeight: '900',
     textTransform: 'uppercase',
     textAlign: 'center',
     fontSize: 13,
-    letterSpacing: 1.6,
+    letterSpacing: 1.1,
     marginBottom: 10,
-    textShadowColor: 'rgba(0,0,0,0.55)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 8,
+    textShadowColor: 'rgba(0,0,0,0.38)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
 
   heroTitle: {
     color: '#F8F6F1',
-    fontFamily: FONT_CINEMATIC,
-    fontWeight: '800',
+    fontFamily: FONT_WINNER_TITLE,
+    fontWeight: '900',
     textTransform: 'uppercase',
     textAlign: 'center',
-    letterSpacing: 1,
-    textShadowColor: 'rgba(0,0,0,0.65)',
-    textShadowOffset: { width: 0, height: 4 },
-    textShadowRadius: 14,
+    letterSpacing: 0.4,
+    textShadowColor: 'rgba(255,255,255,0.28)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 3,
   },
 
   heroBylineBlock: {
@@ -8921,15 +8941,15 @@ mobileMediaWrap: {
   },
 
   heroByline: {
-    color: 'rgba(255,255,255,0.82)',
-    fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
-    letterSpacing: 1,
+    color: 'rgba(248,246,241,0.92)',
+    fontFamily: FONT_WINNER_TITLE,
+    fontWeight: '900',
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
     textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.45)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 6,
+    textShadowColor: 'rgba(255,255,255,0.18)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 2,
   },
 
   /* ---------------- Feed layout ---------------- */
@@ -8947,20 +8967,20 @@ mobileMediaWrap: {
   },
 
   voteTap: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 40,
+    height: 40,
+    borderRadius: 10,
     backgroundColor: '#0A0A0A',
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.07)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
     shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
+    shadowOpacity: 0.14,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
 
   voteArrow: {
@@ -8994,7 +9014,7 @@ previewCommentsCard: {
   height: Platform.OS === 'web' ? '82%' : '78%',
   maxHeight: Platform.OS === 'web' ? 760 : 640,
   backgroundColor: '#080808',
-  borderRadius: 20,
+  borderRadius: 12,
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.06)',
   overflow: 'hidden',
@@ -9014,7 +9034,7 @@ previewCommentsCard: {
   voteCountText: {
     color: '#F2EFE8',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '700',
     fontSize: 13,
     letterSpacing: 0.4,
     marginBottom: 10,
@@ -9039,9 +9059,9 @@ previewCommentsCard: {
   mineMini: {
     color: 'rgba(237,235,230,0.32)',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '700',
     fontSize: 10,
-    letterSpacing: 0.9,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
 
@@ -9057,52 +9077,50 @@ previewCommentsCard: {
   feedTitle: {
     color: '#F8F6F1',
     fontFamily: FONT_CINEMATIC,
-    fontWeight: '800',
-    fontSize: 23,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    fontWeight: '700',
+    fontSize: 22,
+    letterSpacing: 0,
   },
 
   feedByline: {
     marginTop: 7,
     color: GOLD,
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '700',
     fontSize: 12,
-    letterSpacing: 0.9,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
 
   creatorChallengeBadge: {
     alignSelf: 'flex-start',
-    marginTop: 8,
+    marginTop: 7,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(198,166,100,0.34)',
-    backgroundColor: 'rgba(198,166,100,0.14)',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     maxWidth: '100%',
   },
   creatorChallengeBadgeCompact: {
     marginTop: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 4,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
   },
   creatorChallengeBadgeText: {
-    color: GOLD,
+    color: 'rgba(237,235,230,0.70)',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    fontSize: 11,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
+    fontWeight: '600',
+    fontSize: 10.5,
+    letterSpacing: 0,
     maxWidth: 280,
   },
   creatorChallengeBadgeTextCompact: {
-    fontSize: 7.5,
+    fontSize: 8.5,
     maxWidth: 130,
   },
 
@@ -9125,7 +9143,7 @@ previewCommentsCard: {
   feedActionBtn: {
     paddingVertical: 11,
     paddingHorizontal: 15,
-    borderRadius: 14,
+    borderRadius: 8,
     backgroundColor: '#0B0B0B',
     borderWidth: 1,
     borderColor: 'rgba(212,180,95,0.20)',
@@ -9136,16 +9154,16 @@ previewCommentsCard: {
   feedActionText: {
     color: '#F3EFE7',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '700',
     fontSize: 11,
-    letterSpacing: 0.9,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
 
   feedActionBtnGhost: {
     paddingVertical: 11,
     paddingHorizontal: 15,
-    borderRadius: 14,
+    borderRadius: 8,
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
@@ -9156,9 +9174,9 @@ previewCommentsCard: {
   feedActionGhostText: {
     color: 'rgba(237,235,230,0.66)',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '700',
     fontSize: 11,
-    letterSpacing: 0.9,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
 
@@ -9171,10 +9189,10 @@ previewCommentsCard: {
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
     shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   videoOuterHeroFlat: {
   borderWidth: 0,
@@ -9222,7 +9240,7 @@ previewCommentsCard: {
     borderRadius: 5,
     backgroundColor: GOLD,
     shadowColor: '#000',
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.14,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
   },
@@ -9235,14 +9253,14 @@ previewCommentsCard: {
     paddingHorizontal: 10,
     paddingTop: 7,
     paddingBottom: 7,
-    borderRadius: 10,
+    borderRadius: 8,
     backgroundColor: 'rgba(5,5,5,0.58)',
     shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     zIndex: 20,
-    elevation: 20,
+    elevation: 4,
   },
 
   playerTimeline: {
@@ -9317,11 +9335,11 @@ previewCommentsCard: {
     position: 'absolute',
     left: '50%',
     top: '50%',
-    width: 76,
-    height: 76,
-    marginLeft: -38,
-    marginTop: -38,
-    borderRadius: 38,
+    width: 64,
+    height: 64,
+    marginLeft: -32,
+    marginTop: -32,
+    borderRadius: 12,
     backgroundColor: 'rgba(0,0,0,0.58)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
@@ -9381,7 +9399,7 @@ previewCommentsCard: {
   top: 10,
   minHeight: 36,
   paddingHorizontal: 10,
-  borderRadius: 999,
+  borderRadius: 8,
   backgroundColor: 'rgba(0,0,0,0.55)',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.10)',
@@ -9396,7 +9414,7 @@ qualityBtn: {
   top: 10,
   minHeight: 36,
   paddingHorizontal: 10,
-  borderRadius: 999,
+  borderRadius: 8,
   backgroundColor: 'rgba(0,0,0,0.58)',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.12)',
@@ -9409,7 +9427,7 @@ qualityBtn: {
 qualityBtnText: {
   color: '#fff',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 8,
   letterSpacing: 0.3,
   textTransform: 'uppercase',
@@ -9420,7 +9438,7 @@ qualityMenu: {
   right: 10,
   top: 52,
   minWidth: 124,
-  borderRadius: 14,
+  borderRadius: 8,
   backgroundColor: 'rgba(0,0,0,0.82)',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.16)',
@@ -9457,7 +9475,7 @@ qualityMenuTextSelected: {
 soundText: {
   color: '#fff',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 5,
   letterSpacing: 0.2,
   textTransform: 'uppercase',
@@ -9477,13 +9495,13 @@ soundText: {
   audioHint: {
     color: 'rgba(237,235,230,0.72)',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
+    fontWeight: '700',
     letterSpacing: 0.4,
   },
 
     /* ---------------- Compact grid cards ---------------- */
   gridCard: {
-  borderRadius: 18,
+  borderRadius: 10,
   overflow: 'hidden',
   backgroundColor: '#080808',
   borderWidth: 1,
@@ -9494,7 +9512,7 @@ soundText: {
   shadowOpacity: 0.16,
   shadowRadius: 8,
   shadowOffset: { width: 0, height: 4 },
-  elevation: 5,
+  elevation: 2,
 },
 
   gridThumbWrap: {
@@ -9534,7 +9552,7 @@ soundText: {
   gridOverlayTitle: {
     color: '#F8F6F1',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '800',
     fontSize: 11,
     lineHeight: 13,
     textAlign: 'left',
@@ -9652,16 +9670,16 @@ gridMine: {
   previewCard: {
   width: '100%',
   maxWidth: 820,
-  borderRadius: 20,
+  borderRadius: 12,
   overflow: 'hidden',
   backgroundColor: '#000000',
   borderWidth: 0,
   borderColor: 'transparent',
   shadowColor: '#000',
-  shadowOpacity: 0.30,
-  shadowRadius: 18,
-  shadowOffset: { width: 0, height: 10 },
-  elevation: 12,
+  shadowOpacity: 0.12,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 4 },
+  elevation: 3,
 },
 
 watchScroll: {
@@ -9709,9 +9727,9 @@ watchTopBar: {
 watchEyebrow: {
   color: 'rgba(237,235,230,0.50)',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '800',
+  fontWeight: '700',
   fontSize: 10,
-  letterSpacing: 0.9,
+  letterSpacing: 0.5,
   textTransform: 'uppercase',
 },
 
@@ -9719,19 +9737,19 @@ watchTopTitle: {
   marginTop: 2,
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '800',
   fontSize: 18,
   lineHeight: 22,
 },
 
 watchCloseCircle: {
-  width: 36,
-  height: 36,
-  borderRadius: 18,
+  width: 32,
+  height: 32,
+  borderRadius: 8,
   alignItems: 'center',
   justifyContent: 'center',
   backgroundColor: 'rgba(255,255,255,0.10)',
-  borderWidth: 1,
+  borderWidth: StyleSheet.hairlineWidth,
   borderColor: 'rgba(255,255,255,0.14)',
   zIndex: 31,
   elevation: 31,
@@ -9740,13 +9758,13 @@ watchCloseCircle: {
 watchCloseIcon: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '800',
-  fontSize: 24,
-  lineHeight: 27,
+  fontWeight: '600',
+  fontSize: 22,
+  lineHeight: 24,
 },
 
 watchPlayerWrap: {
-  borderRadius: Platform.OS === 'web' ? 10 : 0,
+  borderRadius: Platform.OS === 'web' ? 8 : 0,
   overflow: 'hidden',
   backgroundColor: '#000',
   borderWidth: Platform.OS === 'web' ? StyleSheet.hairlineWidth : 0,
@@ -9773,9 +9791,9 @@ watchMetaBlock: {
 watchTitle: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
-  fontSize: 19,
-  lineHeight: 24,
+  fontWeight: '600',
+  fontSize: 18,
+  lineHeight: 23,
 },
 
 watchCreatorRow: {
@@ -9797,9 +9815,9 @@ watchCreatorTap: {
 
 watchSupportButton: {
   minHeight: 24,
-  borderRadius: 12,
-  borderWidth: 1,
-  paddingHorizontal: 9,
+  borderRadius: 8,
+  borderWidth: StyleSheet.hairlineWidth,
+  paddingHorizontal: 8,
   flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'center',
@@ -9808,10 +9826,9 @@ watchSupportButton: {
 
 watchSupportText: {
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 9,
-  letterSpacing: 0.35,
-  textTransform: 'uppercase',
+  letterSpacing: 0,
 },
 
 watchCreatorAvatar: {
@@ -9820,9 +9837,9 @@ watchCreatorAvatar: {
   borderRadius: 15,
   alignItems: 'center',
   justifyContent: 'center',
-  backgroundColor: 'rgba(198,166,100,0.16)',
-  borderWidth: 1,
-  borderColor: 'rgba(198,166,100,0.28)',
+  backgroundColor: 'rgba(198,166,100,0.10)',
+  borderWidth: StyleSheet.hairlineWidth,
+  borderColor: 'rgba(198,166,100,0.20)',
   overflow: 'hidden',
 },
 
@@ -9834,14 +9851,14 @@ watchCreatorAvatarImage: {
 watchCreatorAvatarText: {
   color: GOLD,
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 13,
 },
 
 watchCreatorName: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 12.5,
   lineHeight: 15,
 },
@@ -9886,15 +9903,15 @@ watchCreditAvatarFallback: {
   borderRadius: 14,
   alignItems: 'center',
   justifyContent: 'center',
-  backgroundColor: 'rgba(198,166,100,0.14)',
-  borderWidth: 1,
-  borderColor: 'rgba(198,166,100,0.22)',
+  backgroundColor: 'rgba(198,166,100,0.10)',
+  borderWidth: StyleSheet.hairlineWidth,
+  borderColor: 'rgba(198,166,100,0.18)',
 },
 
 watchCreditAvatarInitial: {
   color: GOLD,
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 10.5,
 },
 
@@ -9906,7 +9923,7 @@ watchCreditTextWrap: {
 watchCreditName: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 11,
   lineHeight: 13,
 },
@@ -9915,7 +9932,7 @@ watchCreditRole: {
   marginTop: 0,
   color: GOLD,
   fontFamily: SYSTEM_SANS,
-  fontWeight: '800',
+  fontWeight: '600',
   fontSize: 10,
   lineHeight: 12,
 },
@@ -9937,7 +9954,7 @@ watchCollaboratorInlinePill: {
   flexDirection: 'row',
   alignItems: 'center',
   gap: 8,
-  borderRadius: 999,
+  borderRadius: 8,
   borderWidth: 1,
   borderColor: 'rgba(198,166,100,0.24)',
   backgroundColor: 'rgba(198,166,100,0.09)',
@@ -9965,7 +9982,7 @@ watchCollaboratorInlineAvatarFallback: {
 watchCollaboratorInitial: {
   color: GOLD,
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 11,
 },
 
@@ -9977,7 +9994,7 @@ watchCollaboratorTextWrap: {
 watchCollaboratorName: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 11,
 },
 
@@ -9985,13 +10002,13 @@ watchCollaboratorRole: {
   marginTop: 1,
   color: GOLD,
   fontFamily: SYSTEM_SANS,
-  fontWeight: '800',
+  fontWeight: '700',
   fontSize: 10,
 },
 
 watchCollaboratorEditor: {
   marginTop: 12,
-  borderRadius: 18,
+  borderRadius: 10,
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.10)',
   backgroundColor: 'rgba(255,255,255,0.045)',
@@ -10009,15 +10026,15 @@ watchCollaboratorEditorHeader: {
 watchCollaboratorEditorTitle: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '800',
   fontSize: 13,
-  letterSpacing: 0.7,
+  letterSpacing: 0.4,
   textTransform: 'uppercase',
 },
 
 watchCollaboratorSaveBtn: {
   minHeight: 34,
-  borderRadius: 999,
+  borderRadius: 9,
   paddingHorizontal: 14,
   alignItems: 'center',
   justifyContent: 'center',
@@ -10027,7 +10044,7 @@ watchCollaboratorSaveBtn: {
 watchCollaboratorSaveText: {
   color: '#050505',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '800',
   fontSize: 11,
 },
 
@@ -10039,14 +10056,14 @@ watchCollaboratorFormRow: {
 
 watchCollaboratorInput: {
   minHeight: 42,
-  borderRadius: 14,
+  borderRadius: 8,
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.10)',
   backgroundColor: 'rgba(0,0,0,0.36)',
   paddingHorizontal: 12,
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '800',
+  fontWeight: '600',
   fontSize: 13,
 },
 
@@ -10064,7 +10081,7 @@ watchCollaboratorSearchText: {
 },
 
 watchCollaboratorResults: {
-  borderRadius: 16,
+  borderRadius: 10,
   overflow: 'hidden',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.08)',
@@ -10100,7 +10117,7 @@ watchCollaboratorResultAvatarFallback: {
 watchCollaboratorResultName: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 13,
 },
 
@@ -10124,7 +10141,7 @@ watchCollaboratorEditorChip: {
   flexDirection: 'row',
   alignItems: 'center',
   gap: 8,
-  borderRadius: 999,
+  borderRadius: 8,
   borderWidth: 1,
   borderColor: 'rgba(198,166,100,0.22)',
   backgroundColor: 'rgba(198,166,100,0.09)',
@@ -10136,7 +10153,7 @@ watchCollaboratorEditorChipText: {
   maxWidth: 230,
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '800',
+  fontWeight: '700',
   fontSize: 12,
 },
 
@@ -10158,41 +10175,41 @@ watchActionsRow: {
 },
 
 watchActionChip: {
-  minHeight: 28,
-  borderRadius: 14,
-  paddingHorizontal: 10,
-  paddingVertical: 4,
-  backgroundColor: 'rgba(255,255,255,0.075)',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.10)',
+  minHeight: 26,
+  borderRadius: 7,
+  paddingHorizontal: 8,
+  paddingVertical: 3,
+  backgroundColor: 'rgba(255,255,255,0.045)',
+  borderWidth: StyleSheet.hairlineWidth,
+  borderColor: 'rgba(255,255,255,0.12)',
   flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: 4,
+  gap: 3,
 },
 
 watchActionChipIconOnly: {
-  width: 30,
+  width: 28,
   paddingHorizontal: 0,
 },
 
 watchActionChipActive: {
-  backgroundColor: 'rgba(198,166,100,0.12)',
-  borderColor: 'rgba(198,166,100,0.35)',
+  backgroundColor: 'rgba(198,166,100,0.08)',
+  borderColor: 'rgba(198,166,100,0.26)',
 },
 
 watchActionText: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
-  fontSize: 11,
+  fontWeight: '700',
+  fontSize: 10.5,
   letterSpacing: 0,
 },
 
 watchActionMeta: {
   color: 'rgba(237,235,230,0.50)',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '800',
+  fontWeight: '600',
   fontSize: 10.5,
 },
 
@@ -10204,7 +10221,7 @@ watchActionDangerChip: {
 watchActionDangerText: {
   color: '#FF8A8A',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 11,
   letterSpacing: 0,
 },
@@ -10229,7 +10246,7 @@ watchMoreMenuItem: {
 watchMoreMenuText: {
   fontFamily: SYSTEM_SANS,
   fontSize: 11,
-  fontWeight: '900',
+  fontWeight: '700',
 },
 
 watchDescriptionPanel: {
@@ -10243,7 +10260,7 @@ watchDescriptionPanel: {
 watchDescriptionMeta: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 11.5,
   lineHeight: 15,
 },
@@ -10276,14 +10293,14 @@ watchCommentsPreviewHeader: {
 watchCommentsPreviewTitle: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '800',
   fontSize: 13,
 },
 
 watchCommentsPreviewCount: {
   color: 'rgba(237,235,230,0.56)',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '800',
+  fontWeight: '700',
   fontSize: 12,
   flex: 1,
 },
@@ -10314,7 +10331,7 @@ watchCommentsPreviewAvatarFallback: {
 watchCommentsPreviewInitial: {
   color: GOLD,
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 11,
 },
 
@@ -10326,7 +10343,7 @@ watchCommentsPreviewBody: {
 watchCommentsPreviewName: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 11,
 },
 
@@ -10341,7 +10358,7 @@ watchCommentsPreviewText: {
 
 watchCommentsPreviewInput: {
   height: 34,
-  borderRadius: 17,
+  borderRadius: 8,
   backgroundColor: '#111',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.07)',
@@ -10381,9 +10398,9 @@ watchSectionHeader: {
 watchSectionTitle: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '800',
   fontSize: 12.5,
-  letterSpacing: 0.45,
+  letterSpacing: 0.3,
   textTransform: 'uppercase',
 },
 
@@ -10472,7 +10489,7 @@ watchSuggestionBody: {
 watchSuggestionTitle: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '800',
   fontSize: 13,
   lineHeight: 17,
 },
@@ -10509,7 +10526,7 @@ watchSuggestionMeta: {
   previewTitle: {
     color: '#fff',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '800',
     fontSize: 14,
     letterSpacing: 0.25,
   },
@@ -10518,7 +10535,7 @@ watchSuggestionMeta: {
     marginTop: 4,
     color: GOLD,
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '800',
     fontSize: 11,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
@@ -10527,7 +10544,7 @@ watchSuggestionMeta: {
   previewCloseBtn: {
     height: 36,
     paddingHorizontal: 14,
-    borderRadius: 999,
+    borderRadius: 8,
     backgroundColor: '#0B0B0B',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
@@ -10539,7 +10556,7 @@ watchSuggestionMeta: {
   previewCloseText: {
     color: '#EDEBE6',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '700',
     fontSize: 11,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
@@ -10557,7 +10574,7 @@ watchSuggestionMeta: {
   previewActionPill: {
   height: 38,
   paddingHorizontal: 15,
-  borderRadius: 999,
+  borderRadius: 8,
   backgroundColor: '#000000',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.06)',
@@ -10570,16 +10587,16 @@ watchSuggestionMeta: {
   previewActionText: {
     color: '#EDEBE6',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '700',
     fontSize: 11,
-    letterSpacing: 0.8,
+    letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
 
   previewActionPillGhost: {
   height: 38,
   paddingHorizontal: 15,
-  borderRadius: 999,
+  borderRadius: 8,
   backgroundColor: '#000000',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.06)',
@@ -10592,9 +10609,9 @@ watchSuggestionMeta: {
   previewActionTextGhost: {
     color: 'rgba(237,235,230,0.70)',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '700',
     fontSize: 11,
-    letterSpacing: 0.7,
+    letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
 
@@ -10622,7 +10639,7 @@ watchSuggestionMeta: {
 sidePanel: {
   width: '100%',
   height: '100%',
-  borderRadius: 999,
+  borderRadius: 10,
   borderWidth: 0,
   borderColor: 'transparent',
   backgroundColor: '#000000',
@@ -10642,9 +10659,9 @@ sidePanelSeamless: {
   sidePanelTitle: {
   color: 'rgba(237,235,230,0.68)',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 8,
-  letterSpacing: 0.9,
+  letterSpacing: 0.5,
   textTransform: 'uppercase',
   marginBottom: 4,
   textAlign: 'center',
@@ -10653,7 +10670,7 @@ sidePanelSeamless: {
 
   sideSortItem: {
   width: '100%',
-  borderRadius: 14,
+  borderRadius: 9,
   paddingHorizontal: 13,
   paddingVertical: 11,
   backgroundColor: '#000000',
@@ -10677,9 +10694,9 @@ sidePanelSeamless: {
   sideSortLabel: {
     color: '#F1EEE7',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '800',
     fontSize: 12,
-    letterSpacing: 0.5,
+    letterSpacing: 0.35,
     textTransform: 'uppercase',
   },
 
@@ -10712,7 +10729,7 @@ sidePanelSeamless: {
   centerChip: {
   paddingHorizontal: 8,
   height: 24,
-  borderRadius: 999,
+  borderRadius: 8,
   backgroundColor: '#0B0B0B',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.06)',
@@ -10724,9 +10741,9 @@ sidePanelSeamless: {
   centerChipText: {
   color: 'rgba(237,235,230,0.80)',
   fontFamily: SYSTEM_SANS,
-  fontWeight: '900',
+  fontWeight: '700',
   fontSize: 8,
-  letterSpacing: 0.35,
+  letterSpacing: 0.25,
   textTransform: 'uppercase',
 },
 
@@ -10750,10 +10767,10 @@ sidePanelSeamless: {
   borderColor: 'rgba(255,255,255,0.06)',
   overflow: 'hidden',
   shadowColor: '#000',
-  shadowOpacity: 0.30,
-  shadowRadius: 18,
-  shadowOffset: { width: 0, height: 10 },
-  elevation: 14,
+  shadowOpacity: 0.14,
+  shadowRadius: 12,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 4,
 },
 
   commentsEmbeddedCard: {
@@ -10777,7 +10794,7 @@ sidePanelSeamless: {
   commentsTitle: {
     color: '#fff',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '800',
     fontSize: 13,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
@@ -10806,7 +10823,7 @@ sidePanelSeamless: {
   commentsClose: {
     color: GOLD,
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '700',
     fontSize: 10,
     letterSpacing: 0.35,
     textTransform: 'uppercase',
@@ -10833,7 +10850,7 @@ sidePanelSeamless: {
   commentsEmptyTitle: {
     color: '#F4F1EA',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '800',
     fontSize: 14,
     marginBottom: 4,
   },
@@ -10879,7 +10896,7 @@ sidePanelSeamless: {
   commentName: {
     color: '#fff',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '700',
     fontSize: 12,
     letterSpacing: 0,
   },
@@ -10913,7 +10930,7 @@ sidePanelSeamless: {
   replyBtnText: {
     color: 'rgba(237,235,230,0.52)',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '700',
     fontSize: 10.5,
     letterSpacing: 0.15,
     textTransform: 'uppercase',
@@ -10999,7 +11016,7 @@ sidePanelSeamless: {
   replyingBannerCancel: {
     color: GOLD,
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '700',
     fontSize: 10,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -11041,7 +11058,7 @@ sidePanelSeamless: {
   commentSendText: {
     color: GOLD,
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '700',
     fontSize: 10.5,
     letterSpacing: 0.45,
     textTransform: 'uppercase',

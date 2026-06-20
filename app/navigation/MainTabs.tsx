@@ -24,14 +24,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons';
 
 import { supabase } from '../lib/supabase';
-import FeaturedScreen from '../screens/FeaturedScreen';
-import JobsScreen from '../screens/JobsScreen';
-import ChallengeScreen from '../screens/ChallengeScreen';
-import LocationScreen from '../screens/LocationScreen';
 import ChatsStack from './ChatsStack';
-import ProfileScreen from '../screens/ProfileScreen';
-import WorkshopScreen from '../screens/WorkshopScreen';
-import WorkshopSubmitScreen from '../screens/WorkshopSubmitScreen';
 import { useAuth } from '../context/AuthProvider';
 import { subscribeChatBadgeRefresh } from '../lib/chatBadgeEvents';
 import { useAppRefresh } from '../context/AppRefreshContext';
@@ -59,6 +52,8 @@ import {
 
 // NOTE: keeping this import because your file already has it.
 import { useGamification } from '../context/GamificationContext';
+
+declare const require: any;
 
 const Tab = createBottomTabNavigator();
 
@@ -123,6 +118,22 @@ function withLuxuryScreen<P extends object>(ScreenComponent: React.ComponentType
   });
 
   return Wrapped;
+}
+
+function lazyScreen<P extends object>(displayName: string, load: () => React.ComponentType<P>) {
+  let LoadedScreen: React.ComponentType<P> | null = null;
+
+  const LazyScreen = memo(function LazyScreenWrapper(props: P) {
+    if (!LoadedScreen) {
+      LoadedScreen = load();
+    }
+
+    const ScreenComponent = LoadedScreen;
+    return <ScreenComponent {...props} />;
+  });
+
+  LazyScreen.displayName = displayName;
+  return LazyScreen;
 }
 
 const LuxuryTabIcon = memo(function LuxuryTabIcon({
@@ -569,9 +580,10 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
   });
 
   const shimmerX = useRef(new Animated.Value(0)).current;
+  const enableStreakShimmer = false;
 
   useEffect(() => {
-    if (Platform.OS !== 'web') return;
+    if (Platform.OS !== 'web' || !enableStreakShimmer) return;
 
     shimmerX.setValue(0);
 
@@ -606,7 +618,7 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
         loop?.stop();
       } catch {}
     };
-  }, [shimmerX]);
+  }, [enableStreakShimmer, shimmerX]);
 
   const shimmerTranslate = shimmerX.interpolate({
     inputRange: [0, 1],
@@ -638,7 +650,7 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
         />
         <View pointerEvents="none" style={styles.streakGlass} />
 
-        {Platform.OS === 'web' && (
+        {Platform.OS === 'web' && enableStreakShimmer && (
           <Animated.View
             pointerEvents="none"
             style={[
@@ -1683,13 +1695,24 @@ const settingsSize =
 
 /* ---------------------- Screen wrapper --------------------- */
 
-const FeaturedWrapped = withLuxuryScreen(FeaturedScreen);
-const JobsWrapped = withLuxuryScreen(JobsScreen);
-const ChallengeWrapped = withLuxuryScreen(ChallengeScreen);
-const LocationWrapped = withLuxuryScreen(LocationScreen);
-const ProfileWrapped = withLuxuryScreen(ProfileScreen);
-const WorkshopWrapped = withLuxuryScreen(WorkshopScreen);
-const WorkshopSubmitWrapped = withLuxuryScreen(WorkshopSubmitScreen);
+const FeaturedWrapped = withLuxuryScreen(
+  lazyScreen('FeaturedScreen', () => require('../screens/FeaturedScreen').default)
+);
+const JobsWrapped = withLuxuryScreen(
+  lazyScreen('JobsScreen', () => require('../screens/JobsScreen').default)
+);
+const ChallengeWrapped = withLuxuryScreen(
+  lazyScreen('ChallengeScreen', () => require('../screens/ChallengeScreen').default)
+);
+const LocationWrapped = withLuxuryScreen(
+  lazyScreen('LocationScreen', () => require('../screens/LocationScreen').default)
+);
+const ProfileWrapped = withLuxuryScreen(
+  lazyScreen('ProfileScreen', () => require('../screens/ProfileScreen').default)
+);
+const WorkshopWrapped = withLuxuryScreen(
+  lazyScreen('WorkshopScreen', () => require('../screens/WorkshopScreen').default)
+);
 const ChatsWrapped = withLuxuryScreen(ChatsStack);
 
 /* ------------------------ Animated Tab Bar Button --------------------- */
@@ -1844,7 +1867,7 @@ const WebTopBar = memo(function WebTopBar({
                 gap: 6,
                 paddingVertical: 4,
 paddingHorizontal: isPhone ? 7 : 12,
-                borderRadius: 999,
+                borderRadius: 9,
                 backgroundColor: isLight ? 'rgba(201,164,92,0.16)' : 'rgba(198,166,100,0.10)',
                 borderWidth: 1,
                 borderColor: isLight ? 'rgba(154,118,44,0.24)' : 'rgba(198,166,100,0.30)',
@@ -1855,8 +1878,8 @@ paddingHorizontal: isPhone ? 7 : 12,
                 style={{
                   color: colors.primary,
                   fontSize: isPhone ? 6.7 : 9,
-                  fontWeight: '900',
-                  letterSpacing: isPhone ? 0.75 : 1.05,
+                  fontWeight: '800',
+                  letterSpacing: isPhone ? 0.5 : 0.8,
                 }}
               >
                 UPLOAD FILM
@@ -1872,7 +1895,7 @@ paddingHorizontal: isPhone ? 7 : 12,
                 paddingVertical: 4,
 paddingHorizontal: isPhone ? 7 : 12,
 
-                borderRadius: 999,
+                borderRadius: 9,
                 backgroundColor: isLight ? 'rgba(201,164,92,0.16)' : 'rgba(198,166,100,0.10)',
                 borderWidth: 1,
                 borderColor: isLight ? 'rgba(154,118,44,0.24)' : 'rgba(198,166,100,0.30)',
@@ -1883,8 +1906,8 @@ paddingHorizontal: isPhone ? 7 : 12,
                 style={{
                   color: colors.primary,
                   fontSize: isPhone ? 6.7 : 9,
-                  fontWeight: '900',
-                  letterSpacing: isPhone ? 0.75 : 1.05,
+                  fontWeight: '800',
+                  letterSpacing: isPhone ? 0.5 : 0.8,
                 }}
               >
                 LEADERBOARD
@@ -2860,7 +2883,7 @@ settingsTopBadgeText: {
 
   globalSearchBox: {
     height: 34,
-    borderRadius: 999,
+    borderRadius: 11,
     borderWidth: 1,
     paddingHorizontal: 11,
     flexDirection: 'row',
@@ -3024,7 +3047,7 @@ settingsTopBadgeText: {
   flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'center',
-  borderRadius: 999,
+  borderRadius: 9,
   alignSelf: 'center',
   minHeight: 28,
   overflow: 'visible',
@@ -3056,7 +3079,7 @@ settingsTopBadgeText: {
     gap: 8,
     paddingVertical: 7,
     paddingHorizontal: 12,
-    borderRadius: 999,
+    borderRadius: 9,
     backgroundColor: 'rgba(198,166,100,0.10)',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(198,166,100,0.30)',
@@ -3081,8 +3104,8 @@ settingsTopBadgeText: {
 
   uploadBtnText: {
     fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1.15,
+    fontWeight: '800',
+    letterSpacing: 0.85,
     color: GOLD,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
@@ -3101,7 +3124,7 @@ settingsTopBadgeText: {
   gap: 6,
   paddingVertical: 6,
   paddingHorizontal: 12,
-  borderRadius: 999,
+  borderRadius: 9,
   backgroundColor: 'rgba(198,166,100,0.10)',
   borderWidth: 1,
   borderColor: 'rgba(198,166,100,0.30)',
@@ -3126,8 +3149,8 @@ settingsTopBadgeText: {
 
   leaderboardBtnText: {
     fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1.15,
+    fontWeight: '800',
+    letterSpacing: 0.85,
     color: GOLD,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,

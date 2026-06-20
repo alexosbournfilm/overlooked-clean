@@ -28,7 +28,7 @@ function Base({
   storagePath,
   thumbnailUrl,
   youtubeUrl,
-  autoPlay = true,
+  autoPlay = false,
 }: Props) {
   if (storagePath) {
     return (

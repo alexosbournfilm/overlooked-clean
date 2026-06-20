@@ -1616,7 +1616,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 520,
     alignSelf: 'center',
-    borderRadius: 34,
+    borderRadius: 14,
     paddingVertical: 18,
     paddingHorizontal: 18,
     backgroundColor: DARK_ELEVATED,
@@ -1624,10 +1624,10 @@ const styles = StyleSheet.create({
     borderColor: HAIRLINE,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOpacity: 0.26,
-    shadowRadius: 36,
-    shadowOffset: { width: 0, height: 22 },
-    elevation: 16,
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
   },
 
   cardDesktop: {
@@ -1638,7 +1638,7 @@ const styles = StyleSheet.create({
 
   cardMobile: {
     maxWidth: 390,
-    borderRadius: 28,
+    borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 14,
   },
@@ -1686,7 +1686,7 @@ const styles = StyleSheet.create({
   },
 
   heroBadge: {
-    borderRadius: 999,
+    borderRadius: 8,
     paddingVertical: 7,
     paddingHorizontal: 13,
     borderWidth: 1,
@@ -1695,8 +1695,8 @@ const styles = StyleSheet.create({
 
   heroBadgeText: {
     fontSize: 9.5,
-    fontWeight: '900',
-    letterSpacing: 1.6,
+    fontWeight: '700',
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
   },
@@ -1704,7 +1704,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     lineHeight: 32,
-    fontWeight: '900',
+    fontWeight: '800',
     color: TEXT_IVORY,
     marginBottom: 10,
     fontFamily: SYSTEM_SANS,
@@ -1735,7 +1735,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 560,
     borderWidth: 1,
-    borderRadius: 22,
+    borderRadius: 10,
     paddingVertical: 16,
     paddingHorizontal: 18,
     marginTop: 18,
@@ -1758,14 +1758,14 @@ const styles = StyleSheet.create({
   },
 
   offerBadge: {
-    borderRadius: 999,
+    borderRadius: 8,
     paddingVertical: 6,
     paddingHorizontal: 11,
   },
 
   offerBadgeText: {
     fontSize: 11,
-    fontWeight: '900',
+    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.9,
     fontFamily: SYSTEM_SANS,
@@ -1774,7 +1774,7 @@ const styles = StyleSheet.create({
   offerCountdownText: {
     fontSize: 12,
     lineHeight: 17,
-    fontWeight: '900',
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
     textAlign: 'center',
   },
@@ -1782,7 +1782,7 @@ const styles = StyleSheet.create({
   offerBannerTitle: {
     fontSize: 17,
     lineHeight: 22,
-    fontWeight: '900',
+    fontWeight: '800',
     fontFamily: SYSTEM_SANS,
     textAlign: 'center',
   },
@@ -1790,11 +1790,11 @@ const styles = StyleSheet.create({
   offerPriceWas: {
     textDecorationLine: 'line-through',
     textDecorationStyle: 'solid',
-    fontWeight: '900',
+    fontWeight: '700',
   },
 
   offerPriceNow: {
-    fontWeight: '900',
+    fontWeight: '800',
   },
 
   offerBannerText: {
@@ -1808,7 +1808,7 @@ const styles = StyleSheet.create({
   offerCodePill: {
     marginTop: 11,
     borderWidth: 1,
-    borderRadius: 999,
+    borderRadius: 8,
     paddingVertical: 7,
     paddingHorizontal: 13,
     flexDirection: 'row',
@@ -1818,16 +1818,16 @@ const styles = StyleSheet.create({
 
   offerCodeLabel: {
     fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 0.8,
+    fontWeight: '700',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
   },
 
   offerCodeValue: {
     fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: 1,
+    fontWeight: '800',
+    letterSpacing: 0.5,
     fontFamily: SYSTEM_SANS,
   },
 
@@ -2002,7 +2002,7 @@ const styles = StyleSheet.create({
   },
 
   compactTier: {
-    borderRadius: 28,
+    borderRadius: 12,
     paddingVertical: 20,
     paddingHorizontal: 20,
     backgroundColor: SURFACE,
@@ -2031,8 +2031,8 @@ const styles = StyleSheet.create({
 
   tierSmallLabel: {
     fontSize: 10.5,
-    fontWeight: '900',
-    letterSpacing: 1,
+    fontWeight: '700',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
     color: 'rgba(198,166,100,0.62)',
     marginBottom: 8,
@@ -2041,8 +2041,8 @@ const styles = StyleSheet.create({
 
   tierSmallLabelGold: {
     fontSize: 10.5,
-    fontWeight: '900',
-    letterSpacing: 1,
+    fontWeight: '700',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
     color: GOLD,
     fontFamily: SYSTEM_SANS,
@@ -2051,7 +2051,7 @@ const styles = StyleSheet.create({
   compactTierName: {
     fontSize: 20,
     lineHeight: 24,
-    fontWeight: '900',
+    fontWeight: '800',
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
   },
@@ -2086,7 +2086,7 @@ const styles = StyleSheet.create({
 
   compactPrice: {
     fontSize: 24,
-    fontWeight: '900',
+    fontWeight: '800',
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
   },
@@ -2098,16 +2098,16 @@ const styles = StyleSheet.create({
   },
 
   proTier: {
-    borderRadius: 28,
+    borderRadius: 12,
     paddingVertical: 22,
     paddingHorizontal: 22,
     backgroundColor: SURFACE_2,
     borderWidth: 1,
     borderColor: 'rgba(198,166,100,0.22)',
     shadowOpacity: 0.14,
-    shadowRadius: 26,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 8,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
 
   proTierDesktop: {
@@ -2135,14 +2135,14 @@ const styles = StyleSheet.create({
   proTitle: {
     fontSize: 21,
     lineHeight: 25,
-    fontWeight: '900',
+    fontWeight: '800',
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
   },
 
   bestForBadge: {
     alignSelf: 'flex-start',
-    borderRadius: 999,
+    borderRadius: 7,
     borderWidth: 1,
     paddingVertical: 3,
     paddingHorizontal: 8,
@@ -2150,15 +2150,15 @@ const styles = StyleSheet.create({
 
   bestForText: {
     fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 0.8,
+    fontWeight: '700',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
   },
 
   priceBadge: {
     minWidth: 164,
-    borderRadius: 20,
+    borderRadius: 10,
     paddingVertical: 14,
     paddingHorizontal: 14,
     backgroundColor: '#211C13',
@@ -2350,10 +2350,10 @@ const styles = StyleSheet.create({
   tierCardCurrentPro: {
     borderColor: 'rgba(198,166,100,0.46)',
     shadowColor: '#000',
-    shadowOpacity: 0.24,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
 
   plansArea: {
@@ -2396,8 +2396,8 @@ const styles = StyleSheet.create({
 
   planKicker: {
     fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 0.9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
     color: TEXT_MUTED_2,
     fontFamily: SYSTEM_SANS,
@@ -2405,8 +2405,8 @@ const styles = StyleSheet.create({
 
   planKickerHero: {
     fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1,
+    fontWeight: '700',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
     color: GOLD,
     fontFamily: SYSTEM_SANS,
@@ -2435,15 +2435,15 @@ const styles = StyleSheet.create({
   planNowLabel: {
     marginRight: 6,
     fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 0.8,
+    fontWeight: '700',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
   },
 
   planCurrency: {
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: '800',
     color: TEXT_IVORY,
     marginRight: 2,
     marginBottom: 3,
@@ -2452,7 +2452,7 @@ const styles = StyleSheet.create({
 
   planPriceHero: {
     fontSize: 24,
-    fontWeight: '900',
+    fontWeight: '800',
     color: TEXT_IVORY,
     fontFamily: SYSTEM_SANS,
   },
@@ -2467,13 +2467,13 @@ const styles = StyleSheet.create({
 
   buttonBase: {
     marginTop: 2,
-    borderRadius: 999,
+    borderRadius: 10,
     overflow: 'hidden',
     shadowColor: '#7C5314',
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
 
   proButton: {

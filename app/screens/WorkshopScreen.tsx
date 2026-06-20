@@ -9790,23 +9790,23 @@ export default WorkshopScreen;
 
 /* -------------------------------- styles -------------------------------- */
 const CINEMA = {
-  bg: '#050505',
-  panel: '#0D0D0F',
-  panel2: '#111114',
-  card: '#111114',
-  cardSoft: '#16161A',
+  bg: '#030303',
+  panel: '#0B0B0D',
+  panel2: '#101114',
+  card: '#101114',
+  cardSoft: '#15161A',
 
-  stroke: 'rgba(255,255,255,0.10)',
-  strokeSoft: 'rgba(255,255,255,0.06)',
+  stroke: 'rgba(255,255,255,0.075)',
+  strokeSoft: 'rgba(255,255,255,0.05)',
 
-  text: '#F4EFE6',
-  textSoft: '#D8D2C8',
-  textDim: '#9F927F',
+  text: '#F3F0EA',
+  textSoft: '#C8C1B8',
+  textDim: '#8B8378',
 
-  brass: '#C6A664',
-  brassSoft: 'rgba(198,166,100,0.12)',
-  brassBorder: 'rgba(198,166,100,0.28)',
-  glow: 'rgba(198,166,100,0.07)',
+  brass: '#C2A05A',
+  brassSoft: 'rgba(194,160,90,0.10)',
+  brassBorder: 'rgba(194,160,90,0.24)',
+  glow: 'rgba(194,160,90,0.04)',
 
   greenSoft: '#123225',
   greenBorder: 'rgba(104,186,132,0.18)',
@@ -9867,15 +9867,15 @@ const styles = StyleSheet.create({
 
   sidebarItemWrap: {
     overflow: 'hidden',
-    borderRadius: 24,
+    borderRadius: 14,
     backgroundColor: CINEMA.panel,
     borderWidth: 1,
     borderColor: CINEMA.stroke,
     shadowColor: '#000',
-    shadowOpacity: 0.28,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 6,
+    shadowOpacity: 0.14,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
 
   sidebarItem: {
@@ -9888,7 +9888,7 @@ const styles = StyleSheet.create({
   sidebarIcon: {
     width: 40,
     height: 40,
-    borderRadius: 14,
+    borderRadius: 10,
     backgroundColor: CINEMA.panel2,
     alignItems: 'center',
     justifyContent: 'center',
@@ -9969,7 +9969,7 @@ const styles = StyleSheet.create({
     color: CINEMA.brass,
     fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 3,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
     marginBottom: 4,
   },
@@ -9978,8 +9978,8 @@ const styles = StyleSheet.create({
     color: CINEMA.text,
     fontSize: 30,
     lineHeight: 34,
-    fontWeight: '900',
-    letterSpacing: -0.55,
+    fontWeight: '800',
+    letterSpacing: 0,
   },
 
   referenceHeroTop: {
@@ -9992,8 +9992,8 @@ const styles = StyleSheet.create({
     color: CINEMA.text,
     fontSize: 34,
     lineHeight: 39,
-    fontWeight: '900',
-    letterSpacing: -0.7,
+    fontWeight: '800',
+    letterSpacing: 0,
   },
 
   referenceDateLine: {
@@ -10023,9 +10023,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.12)',
     backgroundColor: '#090A0C',
     shadowColor: CINEMA.brass,
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
     zIndex: 2,
   },
 
@@ -10058,8 +10058,8 @@ const styles = StyleSheet.create({
     color: CINEMA.text,
     fontSize: 46,
     lineHeight: 52,
-    fontWeight: '900',
-    letterSpacing: -1.4,
+    fontWeight: '800',
+    letterSpacing: 0,
   },
 
   classIntroRow: {
@@ -10070,7 +10070,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 18,
     backgroundColor: '#0F1014',
-    borderRadius: 30,
+    borderRadius: 14,
     paddingHorizontal: 20,
     paddingVertical: 22,
     marginBottom: 16,
@@ -10078,10 +10078,10 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.085)',
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowRadius: 22,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 4,
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
   },
 
   classIntroCopy: {
@@ -10093,17 +10093,17 @@ const styles = StyleSheet.create({
   classGreeting: {
     color: CINEMA.text,
     fontSize: 32,
-    fontWeight: '900',
+    fontWeight: '800',
     lineHeight: 35,
-    letterSpacing: -0.65,
+    letterSpacing: 0,
   },
 
   classHeadline: {
     color: CINEMA.text,
     fontSize: 32,
-    fontWeight: '900',
+    fontWeight: '800',
     lineHeight: 35,
-    letterSpacing: -0.65,
+    letterSpacing: 0,
   },
 
   classBody: {
@@ -10117,7 +10117,7 @@ const styles = StyleSheet.create({
   classMascotCard: {
     width: 82,
     height: 82,
-    borderRadius: 30,
+    borderRadius: 12,
     backgroundColor: CINEMA.brassSoft,
     alignItems: 'center',
     justifyContent: 'center',
@@ -10145,8 +10145,8 @@ const styles = StyleSheet.create({
   classProgressNumber: {
     color: CINEMA.brass,
     fontSize: 26,
-    fontWeight: '900',
-    letterSpacing: -0.65,
+    fontWeight: '800',
+    letterSpacing: 0,
   },
 
   classProgressLabel: {
@@ -10185,8 +10185,8 @@ const styles = StyleSheet.create({
   subjectTitle: {
     color: CINEMA.text,
     fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: -0.1,
+    fontWeight: '800',
+    letterSpacing: 0,
   },
 
   subjectMeta: {
@@ -10215,7 +10215,7 @@ const styles = StyleSheet.create({
   subjectTile: {
     width: 118,
     minHeight: 48,
-    borderRadius: 999,
+    borderRadius: 14,
     backgroundColor: CINEMA.panel2,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -10287,7 +10287,7 @@ const styles = StyleSheet.create({
   subjectProgressText: {
     color: CINEMA.brass,
     fontSize: 11,
-    fontWeight: '900',
+    fontWeight: '800',
   },
 
   subjectProgressTextActive: {
@@ -10297,7 +10297,7 @@ const styles = StyleSheet.create({
   subjectTileTitle: {
     color: CINEMA.text,
     fontSize: 11,
-    fontWeight: '900',
+    fontWeight: '700',
     textAlign: 'left',
     maxWidth: '100%',
   },
@@ -10342,7 +10342,7 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: 0,
     minHeight: 72,
-    borderRadius: 24,
+    borderRadius: 12,
     backgroundColor: '#121315',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
@@ -10351,16 +10351,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
+    shadowOpacity: 0.10,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
   },
 
   currentLessonIcon: {
     width: 42,
     height: 42,
-    borderRadius: 15,
+    borderRadius: 9,
     backgroundColor: CINEMA.brassSoft,
     borderWidth: 1,
     borderColor: CINEMA.brassBorder,
@@ -10385,8 +10385,8 @@ const styles = StyleSheet.create({
   currentLessonTitle: {
     color: CINEMA.text,
     fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: -0.15,
+    fontWeight: '800',
+    letterSpacing: 0,
   },
 
   currentLessonText: {
@@ -10415,7 +10415,7 @@ const styles = StyleSheet.create({
   classStatPill: {
     flex: 1,
     minHeight: 58,
-    borderRadius: 20,
+    borderRadius: 12,
     backgroundColor: CINEMA.panel2,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.075)',
@@ -10426,8 +10426,8 @@ const styles = StyleSheet.create({
   classStatNumber: {
     color: CINEMA.text,
     fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: -0.1,
+    fontWeight: '800',
+    letterSpacing: 0,
   },
 
   classStatLabel: {
@@ -10450,14 +10450,14 @@ const styles = StyleSheet.create({
     color: CINEMA.text,
     fontSize: 20,
     lineHeight: 24,
-    fontWeight: '900',
-    letterSpacing: -0.35,
+    fontWeight: '800',
+    letterSpacing: 0,
   },
 
   scheduleFilterButton: {
     width: 38,
     height: 38,
-    borderRadius: 999,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.045)',
@@ -10467,7 +10467,7 @@ const styles = StyleSheet.create({
 
   bootcampCard: {
     backgroundColor: CINEMA.panel,
-    borderRadius: 34,
+    borderRadius: 16,
     paddingHorizontal: 18,
     paddingTop: 22,
     paddingBottom: 18,
@@ -10480,10 +10480,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.10,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 5,
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 2,
   },
 
   bootcampCardWebDesktop: {
@@ -10506,8 +10506,8 @@ const styles = StyleSheet.create({
   bootcampTitle: {
     color: CINEMA.text,
     fontSize: 35,
-    fontWeight: '800',
-    letterSpacing: -1,
+    fontWeight: '700',
+    letterSpacing: 0,
     lineHeight: 39,
     textAlign: 'center',
   },
@@ -10550,10 +10550,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
     borderWidth: 1,
     borderColor: CINEMA.stroke,
   },
@@ -10563,10 +10563,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: CINEMA.brassBorder,
     shadowColor: '#000',
-    shadowOpacity: 0.20,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
+    shadowOpacity: 0.10,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
   },
 
   pathCircleLabel: {
@@ -10590,14 +10590,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: CINEMA.panel,
-    borderRadius: 22,
+    borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 12,
     shadowColor: '#000',
-    shadowOpacity: 0.14,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
     borderWidth: 1,
     borderColor: CINEMA.stroke,
   },
@@ -10683,15 +10683,15 @@ const styles = StyleSheet.create({
   featuredCard: {
     minHeight: 274,
     backgroundColor: CINEMA.panel,
-    borderRadius: 30,
+    borderRadius: 14,
     padding: 20,
     marginBottom: 2,
     marginTop: 0,
     shadowColor: '#000',
-    shadowOpacity: 0.32,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
     overflow: 'hidden',
     position: 'relative',
     borderWidth: 1,
@@ -10720,7 +10720,7 @@ const styles = StyleSheet.create({
   featuredIconWrap: {
   width: 48,
   height: 48,
-  borderRadius: 16,
+  borderRadius: 10,
   backgroundColor: 'rgba(0,0,0,0.24)',
   borderWidth: 1,
   borderColor: 'rgba(255,255,255,0.10)',
@@ -10738,7 +10738,7 @@ const styles = StyleSheet.create({
     color: CINEMA.brass,
     fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 3.2,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
     marginBottom: 10,
   },
@@ -10746,9 +10746,9 @@ const styles = StyleSheet.create({
   featuredTitle: {
   color: CINEMA.text,
   fontSize: 18,
-  fontWeight: '800',
+  fontWeight: '700',
   lineHeight: 23,
-  letterSpacing: -0.35,
+  letterSpacing: 0,
 },
 featuredSubtitle: {
   color: CINEMA.textSoft,
@@ -10767,7 +10767,7 @@ featuredSubtitle: {
     gap: 6,
     marginTop: 12,
     backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 999,
+    borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderWidth: 1,
@@ -10794,7 +10794,7 @@ featuredSubtitle: {
     alignItems: 'center',
     gap: 6,
     backgroundColor: '#171A20',
-    borderRadius: 999,
+    borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
@@ -10813,13 +10813,13 @@ featuredCategoryImageBg: {
 },
 
 featuredCategoryImageBgInner: {
-  borderRadius: 34,
+  borderRadius: 14,
 },
 
 featuredImageOverlay: {
   ...StyleSheet.absoluteFillObject,
   backgroundColor: 'rgba(0,0,0,0.62)',
-  borderRadius: 34,
+  borderRadius: 14,
 },
 
 
@@ -10835,7 +10835,7 @@ featuredImageOverlay: {
 featuredStatCard: {
   flex: 1,
   backgroundColor: 'rgba(0,0,0,0.28)',
-  borderRadius: 18,
+  borderRadius: 10,
   paddingHorizontal: 10,
   paddingVertical: 10,
   minHeight: 62,
@@ -10847,8 +10847,8 @@ featuredStatCard: {
 featuredStatNumber: {
   color: CINEMA.text,
   fontSize: 16,
-  fontWeight: '800',
-  letterSpacing: -0.3,
+  fontWeight: '700',
+  letterSpacing: 0,
 },
 
   featuredStatLabel: {
@@ -10876,32 +10876,32 @@ featuredStatNumber: {
   featuredButton: {
   minHeight: 48,
   marginTop: 14,
-  borderRadius: 18,
+  borderRadius: 10,
   backgroundColor: CINEMA.brass,
   alignItems: 'center',
   justifyContent: 'center',
   flexDirection: 'row',
   gap: 8,
   shadowColor: '#000',
-  shadowOpacity: 0.12,
-  shadowRadius: 16,
-  shadowOffset: { width: 0, height: 7 },
-  elevation: 5,
+  shadowOpacity: 0.08,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 4 },
+  elevation: 2,
   zIndex: 2,
 },
 
   featuredButtonText: {
   color: BG,
   fontSize: 13,
-  fontWeight: '800',
-  letterSpacing: 0.25,
+  fontWeight: '700',
+  letterSpacing: 0,
 },
 
   missionBanner: {
     flexDirection: 'row',
     gap: 12,
     backgroundColor: '#101114',
-    borderRadius: 24,
+    borderRadius: 12,
     padding: 16,
     marginBottom: 0,
     borderWidth: 1,
@@ -10911,7 +10911,7 @@ featuredStatNumber: {
   missionBannerIcon: {
     width: 44,
     height: 44,
-    borderRadius: 15,
+    borderRadius: 9,
     backgroundColor: CINEMA.navySoft,
     alignItems: 'center',
     justifyContent: 'center',
@@ -10926,9 +10926,9 @@ featuredStatNumber: {
   missionBannerTitle: {
     color: CINEMA.text,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '700',
     marginBottom: 5,
-    letterSpacing: -0.1,
+    letterSpacing: 0,
   },
 
   missionBannerText: {
@@ -10947,9 +10947,9 @@ featuredStatNumber: {
   sectionTitle: {
     color: CINEMA.text,
     fontSize: 22,
-    fontWeight: '900',
+    fontWeight: '800',
     lineHeight: 26,
-    letterSpacing: -0.45,
+    letterSpacing: 0,
   },
 
   sectionSubtitle: {
@@ -10963,7 +10963,7 @@ featuredStatNumber: {
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: CINEMA.card,
-    borderRadius: 24,
+    borderRadius: 12,
     paddingVertical: 34,
     borderWidth: 1,
     borderColor: CINEMA.stroke,
@@ -10981,13 +10981,13 @@ featuredStatNumber: {
 
   chapterListCard: {
     backgroundColor: '#0F1012',
-    borderRadius: 28,
+    borderRadius: 12,
     padding: 14,
     shadowColor: '#000',
-    shadowOpacity: 0.14,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 3,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 1,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.075)',
   },
@@ -11024,7 +11024,7 @@ featuredStatNumber: {
     color: CINEMA.brass,
     fontSize: 9,
     fontWeight: '700',
-    letterSpacing: 2.4,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
     marginBottom: 5,
   },
@@ -11032,9 +11032,9 @@ featuredStatNumber: {
   chapterListTitle: {
     color: CINEMA.text,
     fontSize: 19,
-    fontWeight: '900',
+    fontWeight: '800',
     lineHeight: 23,
-    letterSpacing: -0.45,
+    letterSpacing: 0,
   },
 
   chapterListSubtitle: {
@@ -11089,7 +11089,7 @@ featuredStatNumber: {
     justifyContent: 'center',
     gap: 10,
     backgroundColor: CINEMA.cardSoft,
-    borderRadius: 18,
+    borderRadius: 10,
     paddingHorizontal: 16,
     borderWidth: 1,
     borderColor: CINEMA.stroke,
@@ -11161,7 +11161,7 @@ featuredStatNumber: {
   lessonPathNodeText: {
     color: CINEMA.brass,
     fontSize: 10,
-    fontWeight: '900',
+    fontWeight: '800',
   },
 
   lessonPathNodeTextCurrent: {
@@ -11177,7 +11177,7 @@ featuredStatNumber: {
     alignItems: 'center',
     gap: 10,
     backgroundColor: '#141518',
-    borderRadius: 22,
+    borderRadius: 10,
     paddingHorizontal: 13,
     paddingVertical: 12,
     borderWidth: 1,
@@ -11276,10 +11276,10 @@ featuredStatNumber: {
   lessonRowTitle: {
     color: CINEMA.text,
     fontSize: 15,
-    fontWeight: '900',
+    fontWeight: '800',
     lineHeight: 19,
     marginTop: 4,
-    letterSpacing: -0.28,
+    letterSpacing: 0,
   },
 
   lessonRowSubtitle: {
@@ -11382,12 +11382,12 @@ featuredStatNumber: {
     maxHeight: '90%',
     overflow: 'hidden',
     backgroundColor: '#0C0E12',
-    borderRadius: 30,
+    borderRadius: 14,
     shadowColor: '#000',
-    shadowOpacity: 0.44,
-    shadowRadius: 30,
-    shadowOffset: { width: 0, height: 18 },
-    elevation: 12,
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
   },
@@ -11414,7 +11414,7 @@ featuredStatNumber: {
   modalIconCircle: {
     width: 46,
     height: 46,
-    borderRadius: 15,
+    borderRadius: 10,
     backgroundColor: 'rgba(198,166,100,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -11433,7 +11433,7 @@ featuredStatNumber: {
   modalEyebrow: {
     color: CINEMA.textDim,
     fontSize: 11,
-    letterSpacing: 1.5,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
     marginBottom: 5,
   },
@@ -11456,7 +11456,7 @@ featuredStatNumber: {
     flex: 1,
     minHeight: 34,
     maxWidth: '24%',
-    borderRadius: 999,
+    borderRadius: 10,
     backgroundColor: CINEMA.panel,
     borderWidth: 1,
     borderColor: CINEMA.strokeSoft,
@@ -11502,7 +11502,7 @@ featuredStatNumber: {
 
   pathPillCinematic: {
     minHeight: 40,
-    borderRadius: 999,
+    borderRadius: 10,
     backgroundColor: '#0C0E12',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.055)',
@@ -11547,7 +11547,7 @@ featuredStatNumber: {
   pathPill: {
     minHeight: 36,
     paddingHorizontal: 14,
-    borderRadius: 999,
+    borderRadius: 10,
     backgroundColor: CINEMA.panel,
     borderWidth: 1,
     borderColor: CINEMA.strokeSoft,
@@ -11601,7 +11601,7 @@ featuredStatNumber: {
     fontSize: 21,
     fontWeight: '800',
     lineHeight: 27,
-    letterSpacing: -0.2,
+    letterSpacing: 0,
   },
 
   modalMini: {
@@ -11614,7 +11614,7 @@ featuredStatNumber: {
   modalClose: {
     width: 34,
     height: 34,
-    borderRadius: 999,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#15181D',
@@ -11657,7 +11657,7 @@ featuredStatNumber: {
     alignItems: 'center',
     gap: 6,
     backgroundColor: '#15181D',
-    borderRadius: 999,
+    borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderWidth: 1,
@@ -11683,7 +11683,7 @@ featuredStatNumber: {
     marginTop: 14,
     gap: 10,
     backgroundColor: '#141820',
-    borderRadius: 20,
+    borderRadius: 10,
     padding: 16,
     borderWidth: 1,
     borderColor: CINEMA.brassBorder,
@@ -11699,7 +11699,7 @@ featuredStatNumber: {
     color: CINEMA.text,
     fontSize: 15,
     fontWeight: '700',
-    letterSpacing: -0.1,
+    letterSpacing: 0,
   },
 
   lockCardText: {
@@ -11715,7 +11715,7 @@ featuredStatNumber: {
     alignItems: 'center',
     gap: 8,
     backgroundColor: '#C6A664',
-    borderRadius: 999,
+    borderRadius: 9,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
@@ -11729,7 +11729,7 @@ featuredStatNumber: {
 
   detailCard: {
     backgroundColor: '#12151A',
-    borderRadius: 18,
+    borderRadius: 10,
     padding: 15,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.045)',
@@ -11761,7 +11761,7 @@ featuredStatNumber: {
 
   rulesCard: {
     backgroundColor: '#12151A',
-    borderRadius: 18,
+    borderRadius: 10,
     padding: 15,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.045)',
@@ -11828,7 +11828,7 @@ featuredStatNumber: {
   surveyFilmCard: {
     gap: 10,
     backgroundColor: '#12151A',
-    borderRadius: 20,
+    borderRadius: 10,
     padding: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.045)',
@@ -11865,7 +11865,7 @@ featuredStatNumber: {
     color: CINEMA.text,
     fontSize: 15,
     fontWeight: '700',
-    letterSpacing: -0.1,
+    letterSpacing: 0,
   },
 
   surveyFilmMeta: {
@@ -11911,7 +11911,7 @@ featuredStatNumber: {
     alignItems: 'center',
     gap: 8,
     backgroundColor: '#15181D',
-    borderRadius: 999,
+    borderRadius: 9,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderWidth: 1,
@@ -11950,7 +11950,7 @@ featuredStatNumber: {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
-    borderRadius: 18,
+    borderRadius: 10,
     paddingHorizontal: 12,
   },
 
@@ -11973,10 +11973,10 @@ featuredStatNumber: {
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 3,
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
 
   modalGoldText: {

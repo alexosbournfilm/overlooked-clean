@@ -142,6 +142,10 @@ function wrapJsxFactory(originalFactory: any) {
   if (originalFactory.__overlookedTranslated) return originalFactory;
 
   const wrappedFactory = (type: any, props: any, ...rest: any[]) => {
+    if (getCurrentAppLanguage() === 'en') {
+      return originalFactory(type, props, ...rest);
+    }
+
     if (type === NativeText) {
       return originalFactory(AutoTranslatedText, props, ...rest);
     }
@@ -180,6 +184,10 @@ export function installAutoTranslate() {
   installJsxRuntimeTranslation();
 
   (React as any).createElement = (type: any, props: any, ...children: any[]) => {
+    if (getCurrentAppLanguage() === 'en') {
+      return originalCreateElement(type, props, ...children);
+    }
+
     if (type === NativeText) {
       return originalCreateElement(AutoTranslatedText, props, ...children);
     }

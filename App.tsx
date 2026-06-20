@@ -29,13 +29,6 @@ import {
   CourierPrime_700Bold,
 } from "@expo-google-fonts/courier-prime";
 
-import {
-  useFonts as useCinzelFonts,
-  Cinzel_400Regular,
-  Cinzel_700Bold,
-  Cinzel_900Black,
-} from "@expo-google-fonts/cinzel";
-
 if (Platform.OS === "web") {
   const originalGetInitialURL = Linking.getInitialURL;
 
@@ -383,13 +376,7 @@ export default function App() {
     CourierPrime_700Bold,
   });
 
-  const [cinzelLoaded] = useCinzelFonts({
-    Cinzel_400Regular,
-    Cinzel_700Bold,
-    Cinzel_900Black,
-  });
-
-  const fontsLoaded = courierLoaded && cinzelLoaded;
+  const fontsLoaded = courierLoaded;
 
   const savePushTokenForUser = useCallback(async (userId: string) => {
     try {

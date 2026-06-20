@@ -79,13 +79,6 @@ const logChatsIssue = (label: string, error?: unknown) => {
   console.log(label, message);
 };
 
-const FONT_CINEMATIC =
-  Platform.select({
-    ios: 'Cinzel',
-    android: 'Cinzel',
-    default: 'Cinzel',
-  }) || 'Cinzel';
-
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
   android: 'Roboto',
@@ -4355,7 +4348,7 @@ const styles = StyleSheet.create({
   desktopSidebarTitle: {
     fontSize: 22,
     lineHeight: 27,
-    fontWeight: '900',
+    fontWeight: '800',
     fontFamily: SYSTEM_SANS,
     letterSpacing: 0,
   },
@@ -4385,7 +4378,7 @@ const styles = StyleSheet.create({
   desktopCancelButtonText: {
     fontSize: 12,
     lineHeight: 15,
-    fontWeight: '900',
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
   },
   desktopSearchWrap: {
@@ -4422,7 +4415,7 @@ const styles = StyleSheet.create({
   desktopFilterPill: {
     minHeight: 28,
     paddingHorizontal: 11,
-    borderRadius: 999,
+    borderRadius: 8,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -4430,7 +4423,7 @@ const styles = StyleSheet.create({
   desktopFilterText: {
     fontSize: 11.5,
     lineHeight: 14,
-    fontWeight: '800',
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
   },
   desktopSidebarLoader: {
@@ -4484,7 +4477,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     fontSize: 13.5,
     lineHeight: 17,
-    fontWeight: '900',
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
   },
   desktopChatPreview: {
@@ -4525,13 +4518,13 @@ const styles = StyleSheet.create({
     color: '#0B0905',
     fontSize: 11,
     lineHeight: 13,
-    fontWeight: '900',
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
   },
   desktopChatMoreButton: {
     width: 28,
     height: 24,
-    borderRadius: 999,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -4591,7 +4584,7 @@ const styles = StyleSheet.create({
   desktopConversationTitle: {
     fontSize: 16,
     lineHeight: 20,
-    fontWeight: '900',
+    fontWeight: '800',
     fontFamily: SYSTEM_SANS,
   },
   desktopConversationStatus: {
@@ -4623,7 +4616,7 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     paddingHorizontal: 12,
     paddingVertical: 5,
-    borderRadius: 999,
+    borderRadius: 8,
     backgroundColor: 'rgba(255,255,255,0.74)',
     borderWidth: 1,
     borderColor: 'rgba(198,166,100,0.14)',
@@ -4631,7 +4624,7 @@ const styles = StyleSheet.create({
   desktopDateSeparatorText: {
     fontSize: 11,
     lineHeight: 14,
-    fontWeight: '900',
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
   },
   desktopSystemMessage: {
@@ -4639,7 +4632,7 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     paddingHorizontal: 12,
     paddingVertical: 7,
-    borderRadius: 999,
+    borderRadius: 8,
     backgroundColor: 'rgba(255,255,255,0.72)',
     borderWidth: 1,
   },
@@ -4677,7 +4670,7 @@ const styles = StyleSheet.create({
     marginBottom: 3,
     fontSize: 11.5,
     lineHeight: 14,
-    fontWeight: '900',
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
   },
   desktopMessageText: {
@@ -4713,7 +4706,7 @@ const styles = StyleSheet.create({
   desktopNoMessagesTitle: {
     fontSize: 17,
     lineHeight: 22,
-    fontWeight: '900',
+    fontWeight: '800',
     fontFamily: SYSTEM_SANS,
   },
   desktopNoMessagesCopy: {
@@ -4737,7 +4730,7 @@ const styles = StyleSheet.create({
   desktopComposerIconButton: {
     width: 34,
     height: 34,
-    borderRadius: 999,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -4745,7 +4738,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 40,
     maxHeight: 82,
-    borderRadius: 999,
+    borderRadius: 10,
     borderWidth: 1,
     paddingLeft: 16,
     paddingRight: 8,
@@ -4772,7 +4765,7 @@ const styles = StyleSheet.create({
   desktopSendButton: {
     width: 36,
     height: 36,
-    borderRadius: 999,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -4788,7 +4781,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 18,
     lineHeight: 24,
-    fontWeight: '900',
+    fontWeight: '800',
     fontFamily: SYSTEM_SANS,
   },
   desktopConversationEmptyCopy: {
@@ -4807,7 +4800,7 @@ optionsModalCard: {
   width: 320,
   transform: [{ translateX: -160 }, { translateY: -120 }],
   backgroundColor: '#050505',
-  borderRadius: 20,
+  borderRadius: 12,
   padding: 18,
   borderWidth: 1,
   borderColor: '#151515',
@@ -4824,7 +4817,7 @@ optionsModalTitle: {
 
 optionsModalButton: {
   backgroundColor: '#111111',
-  borderRadius: 14,
+  borderRadius: 8,
   paddingVertical: 14,
   paddingHorizontal: 14,
   marginBottom: 10,

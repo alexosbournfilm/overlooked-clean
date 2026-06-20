@@ -11,7 +11,6 @@ import {
 } from "@react-navigation/stack";
 import { View, ActivityIndicator, Platform } from "react-native";
 
-import AuthStack from "./AuthStack";
 import MainTabs from "./MainTabs";
 import { navigationRef, setNavigatorReady } from "./navigationRef";
 import { linking } from "./linking";
@@ -19,17 +18,46 @@ import { useAuth } from "../context/AuthProvider";
 import { useAppTheme } from "../context/ThemeContext";
 import { getMembershipSnapshot } from "../lib/membership";
 
-import PaywallScreen from "../screens/PaywallScreen";
-import PaySuccessScreen from "../screens/PaySuccessScreen";
-import PrivacyPolicyScreen from "../screens/PrivacyPolicyScreen";
-import NewPassword from "../screens/NewPassword";
-import WorkshopSubmitScreen from "../screens/WorkshopSubmitScreen";
-import PublicProfileScreen from "../screens/PublicProfileScreen";
-import SharedFilmScreen from "../screens/SharedFilmScreen";
-import CreateProfileScreen from "../screens/CreateProfileScreen";
 import { getOverlookedStackScreenOptions } from "./transitions";
 
+declare const require: any;
+
 const Stack = createStackNavigator();
+
+function lazyStackScreen(displayName: string, load: () => React.ComponentType<any>): React.ComponentType<any> {
+  let LoadedScreen: React.ComponentType<any> | null = null;
+
+  function LazyStackScreen(props: any) {
+    if (!LoadedScreen) {
+      LoadedScreen = load();
+    }
+
+    const ScreenComponent = LoadedScreen;
+    return <ScreenComponent {...props} />;
+  }
+
+  LazyStackScreen.displayName = displayName;
+  return LazyStackScreen;
+}
+
+const AuthStackScreen = lazyStackScreen('AuthStack', () => require('./AuthStack').default);
+const PaywallScreen = lazyStackScreen('PaywallScreen', () => require('../screens/PaywallScreen').default);
+const PaySuccessScreen = lazyStackScreen('PaySuccessScreen', () => require('../screens/PaySuccessScreen').default);
+const PrivacyPolicyScreen = lazyStackScreen('PrivacyPolicyScreen', () => require('../screens/PrivacyPolicyScreen').default);
+const NewPassword = lazyStackScreen('NewPassword', () => require('../screens/NewPassword').default);
+const WorkshopSubmitScreen = lazyStackScreen(
+  'WorkshopSubmitScreen',
+  () => require('../screens/WorkshopSubmitScreen').default
+);
+const PublicProfileScreen = lazyStackScreen(
+  'PublicProfileScreen',
+  () => require('../screens/PublicProfileScreen').default
+);
+const SharedFilmScreen = lazyStackScreen('SharedFilmScreen', () => require('../screens/SharedFilmScreen').default);
+const CreateProfileScreen = lazyStackScreen(
+  'CreateProfileScreen',
+  () => require('../screens/CreateProfileScreen').default
+);
 
 function getAllowCreateProfileFlow() {
   const G = globalThis as any;
@@ -505,7 +533,7 @@ export default function AppNavigator({
 
         <Stack.Screen
           name="Auth"
-          children={() => <AuthStack initialRouteName="SignIn" />}
+          children={() => <AuthStackScreen initialRouteName="SignIn" />}
         />
 
         <Stack.Screen name="CreateProfile" component={CreateProfileScreen} />

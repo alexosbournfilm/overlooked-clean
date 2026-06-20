@@ -83,6 +83,30 @@ const GOLD_SOFT = 'rgba(198,166,100,0.16)';
 const GOLD_LINE = 'rgba(198,166,100,0.28)';
 const CREATOR_CHALLENGE_MAX_DAYS = 10;
 const CREATOR_CHALLENGE_MAX_MS = CREATOR_CHALLENGE_MAX_DAYS * 24 * 60 * 60 * 1000;
+const CREATOR_CHALLENGE_VISIBILITY_GRACE_MS = 48 * 60 * 60 * 1000;
+
+const CHALLENGE_CATEGORY_OPTIONS = [
+  'Acting',
+  'Directing',
+  'Writing',
+  'Cinematography',
+  'Editing',
+  'Sound',
+  'Production Design',
+  'Music',
+  'VFX',
+  'Animation',
+  'Documentary',
+  'Drama',
+  'Comedy',
+  'Horror',
+  'Thriller',
+  'Experimental',
+  'No-Dialogue',
+  'Monologue',
+] as const;
+
+const REACTION_PLATFORM_OPTIONS = ['Instagram', 'TikTok', 'YouTube'] as const;
 
 const T = {
   bg: '#050505',
@@ -98,8 +122,7 @@ const T = {
   glow: 'rgba(198,166,100,0.08)',
 };
 
-const FONT_CINEMATIC =
-  Platform.select({ ios: 'Cinzel', android: 'Cinzel', default: 'Cinzel' }) || 'Cinzel';
+const FONT_CINEMATIC = SYSTEM_SANS;
 
 const FONT_CATEGORY =
   Platform.select({
@@ -231,9 +254,86 @@ const initialsForName = (name?: string | null) => {
 const makeDefaultDeadlineInput = () => {
   const date = new Date();
   date.setDate(date.getDate() + CREATOR_CHALLENGE_MAX_DAYS);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return formatLocalDateTimeInput(date);
 };
+
+const padDatePart = (n: number) => String(n).padStart(2, '0');
+
+function formatLocalDateTimeInput(date: Date) {
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}T${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`;
+}
+
+function parseLocalDeadlineDate(value: string) {
+  const raw = value.trim();
+  if (!raw) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T23:59:00` : raw;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function clampChallengeDeadlineDate(date: Date, now = new Date()) {
+  const min = new Date(now.getTime() + 5 * 60 * 1000);
+  const max = new Date(now.getTime() + CREATOR_CHALLENGE_MAX_MS);
+  if (date.getTime() < min.getTime()) return min;
+  if (date.getTime() > max.getTime()) return max;
+  return date;
+}
+
+function buildCalendarMonthDays(monthDate: Date) {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const first = new Date(year, month, 1);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: Array<Date | null> = [];
+
+  for (let i = 0; i < first.getDay(); i += 1) cells.push(null);
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    cells.push(new Date(year, month, day));
+  }
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  return cells;
+}
+
+function isSameCalendarDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function formatDeadlineInputLabel(value: string) {
+  const parsed = parseLocalDeadlineDate(value);
+  if (!parsed) return 'Select deadline';
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(parsed);
+}
+
+function parseDelimitedList(value?: string | null) {
+  return String(value || '')
+    .split(/[,\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseReactionLinks(value?: string | null) {
+  return parseDelimitedList(value);
+}
+
+function toggleDelimitedValue(value: string, item: string) {
+  const current = parseDelimitedList(value);
+  const exists = current.some((entry) => entry.toLowerCase() === item.toLowerCase());
+  const next = exists
+    ? current.filter((entry) => entry.toLowerCase() !== item.toLowerCase())
+    : [...current, item];
+  return next.join(', ');
+}
 
 const buildChallengeCode = (title: string, creatorCode?: string | null) => {
   const slug = title
@@ -252,17 +352,36 @@ const buildChallengeCode = (title: string, creatorCode?: string | null) => {
 };
 
 const parseChallengeDeadline = (value: string) => {
-  const raw = value.trim();
-  if (!raw) return null;
-  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T23:59:00` : raw;
-  const parsed = new Date(normalized);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  return parseLocalDeadlineDate(value)?.toISOString() ?? null;
 };
 
 const isChallengeEnded = (challenge: CreatorChallengeRow) => {
   if (challenge.status === 'ended' || challenge.status === 'archived') return true;
   if (!challenge.ends_at) return false;
   return new Date(challenge.ends_at).getTime() <= Date.now();
+};
+
+const isCreatorChallengeExpiredForListing = (
+  challenge: CreatorChallengeRow,
+  nowMs = Date.now()
+) => {
+  const endsAtMs = challenge.ends_at ? new Date(challenge.ends_at).getTime() : NaN;
+  if (
+    Number.isFinite(endsAtMs) &&
+    endsAtMs + CREATOR_CHALLENGE_VISIBILITY_GRACE_MS <= nowMs
+  ) {
+    return true;
+  }
+
+  const createdAtMs = challenge.created_at ? new Date(challenge.created_at).getTime() : NaN;
+  if (
+    Number.isFinite(createdAtMs) &&
+    createdAtMs + CREATOR_CHALLENGE_MAX_MS + CREATOR_CHALLENGE_VISIBILITY_GRACE_MS <= nowMs
+  ) {
+    return true;
+  }
+
+  return false;
 };
 
 const formatChallengeCountdown = (endsAt?: string | null) => {
@@ -299,6 +418,12 @@ const formatChallengeRewardPill = (value?: string | null) => {
   if (!text) return 'Reward TBA';
   if (/top\s*10|10\s+submissions/i.test(text)) return 'Top 10 reacted';
   return text;
+};
+
+const formatChallengeEntriesLabel = (count?: number | null) => {
+  const total = count ?? 0;
+  if (total <= 0) return 'Be first to enter';
+  return `${total} ${total === 1 ? 'entry' : 'entries'}`;
 };
 
 const formatReactionPill = (platform?: string | null) => {
@@ -530,6 +655,21 @@ export default function JobsScreen() {
     }),
     [colors, isLight]
   );
+  const challengeTone = useMemo(
+    () => ({
+      bg: isLight ? '#F6EFE3' : '#050505',
+      surface: isLight ? '#FFFFFF' : '#111113',
+      surfaceAlt: isLight ? '#EFE5D5' : '#17171B',
+      border: isLight ? '#E0D2BE' : 'rgba(214,174,96,0.22)',
+      text: isLight ? '#111111' : '#F5F1E8',
+      sub: isLight ? '#5E554B' : '#B8B1A5',
+      gold: isLight ? '#CBA252' : '#D0AA5B',
+      goldSoft: isLight ? '#F1E4CC' : 'rgba(208,170,91,0.14)',
+      danger: isLight ? '#D8505E' : '#FF7676',
+      shadow: isLight ? 'rgba(71,54,28,0.20)' : '#000',
+    }),
+    [isLight]
+  );
   const READABLE_INK = isLight ? '#050505' : T.text;
   const READABLE_MUTED = isLight ? '#4B4740' : T.mute;
   const COLORS = useMemo(
@@ -609,6 +749,80 @@ export default function JobsScreen() {
   const [challengeDeleting, setChallengeDeleting] = useState<Record<string, boolean>>({});
   const [challengeForm, setChallengeForm] = useState<ChallengeFormState>(() =>
     createEmptyChallengeForm()
+  );
+  const [challengeCategoryPickerVisible, setChallengeCategoryPickerVisible] =
+    useState<boolean>(false);
+  const [deadlinePickerVisible, setDeadlinePickerVisible] = useState<boolean>(false);
+  const [deadlinePickerMonth, setDeadlinePickerMonth] = useState<Date>(() => new Date());
+
+  const selectedDeadlineDate = useMemo(() => {
+    const parsed = parseLocalDeadlineDate(challengeForm.ends_at);
+    return clampChallengeDeadlineDate(
+      parsed || new Date(Date.now() + CREATOR_CHALLENGE_MAX_MS)
+    );
+  }, [challengeForm.ends_at]);
+
+  const deadlineCalendarDays = useMemo(
+    () => buildCalendarMonthDays(deadlinePickerMonth),
+    [deadlinePickerMonth]
+  );
+
+  const deadlineMonthLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat(undefined, {
+        month: 'long',
+        year: 'numeric',
+      }).format(deadlinePickerMonth),
+    [deadlinePickerMonth]
+  );
+
+  const selectedReactionPlatforms = useMemo(
+    () => parseDelimitedList(challengeForm.reaction_platform),
+    [challengeForm.reaction_platform]
+  );
+
+  const setChallengeDeadlineDate = useCallback((date: Date) => {
+    const clamped = clampChallengeDeadlineDate(date);
+    setChallengeForm((prev) => ({ ...prev, ends_at: formatLocalDateTimeInput(clamped) }));
+    setDeadlinePickerMonth(new Date(clamped.getFullYear(), clamped.getMonth(), 1));
+  }, []);
+
+  const openDeadlinePicker = useCallback(() => {
+    Keyboard.dismiss();
+    const parsed = parseLocalDeadlineDate(challengeForm.ends_at);
+    const selected = clampChallengeDeadlineDate(
+      parsed || new Date(Date.now() + CREATOR_CHALLENGE_MAX_MS)
+    );
+    setDeadlinePickerMonth(new Date(selected.getFullYear(), selected.getMonth(), 1));
+    setDeadlinePickerVisible(true);
+  }, [challengeForm.ends_at]);
+
+  const selectChallengeDeadlineDay = useCallback(
+    (day: Date) => {
+      const current = parseLocalDeadlineDate(challengeForm.ends_at) || selectedDeadlineDate;
+      const next = new Date(day);
+      next.setHours(current.getHours(), current.getMinutes(), 0, 0);
+      setChallengeDeadlineDate(next);
+    },
+    [challengeForm.ends_at, selectedDeadlineDate, setChallengeDeadlineDate]
+  );
+
+  const adjustChallengeDeadlineMinutes = useCallback(
+    (deltaMinutes: number) => {
+      const current = parseLocalDeadlineDate(challengeForm.ends_at) || selectedDeadlineDate;
+      setChallengeDeadlineDate(new Date(current.getTime() + deltaMinutes * 60 * 1000));
+    },
+    [challengeForm.ends_at, selectedDeadlineDate, setChallengeDeadlineDate]
+  );
+
+  const setChallengeDeadlineTime = useCallback(
+    (hour: number, minute: number) => {
+      const current = parseLocalDeadlineDate(challengeForm.ends_at) || selectedDeadlineDate;
+      const next = new Date(current);
+      next.setHours(hour, minute, 0, 0);
+      setChallengeDeadlineDate(next);
+    },
+    [challengeForm.ends_at, selectedDeadlineDate, setChallengeDeadlineDate]
   );
 
   const [activeTab, setActiveTab] = useState<'paid' | 'free' | 'my'>('free');
@@ -908,18 +1122,26 @@ const cityFilterSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>
         logJobsIssue('fetchCreatorChallenges unavailable', error);
         setCreatorChallenges([]);
       } else {
-        const countedRows = await hydrateCreatorChallengeCounts((data as CreatorChallengeRow[]) || []);
+        const visibleRows = ((data as CreatorChallengeRow[]) || []).filter(
+          (row) => !isCreatorChallengeExpiredForListing(row)
+        );
+        const countedRows = await hydrateCreatorChallengeCounts(visibleRows);
         const sortedRows = sortCreatorChallenges(countedRows);
         setCreatorChallenges(sortedRows);
         setSelectedChallenge((prev) =>
-          prev ? sortedRows.find((row) => row.id === prev.id) ?? prev : prev
+          prev ? sortedRows.find((row) => row.id === prev.id) ?? null : prev
         );
       }
 
       if (mode === 'init') setChallengeLoading(false);
       if (mode === 'refresh') setChallengeRefreshing(false);
     },
-    [challengeView, currentUserId, hydrateCreatorChallengeCounts, sortCreatorChallenges]
+    [
+      challengeView,
+      currentUserId,
+      hydrateCreatorChallengeCounts,
+      sortCreatorChallenges,
+    ]
   );
 
   useFocusEffect(
@@ -937,10 +1159,9 @@ const cityFilterSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>
       headerTitleStyle: {
         fontFamily: FONT_CINEMATIC,
         fontWeight: Platform.OS === 'web' ? ('700' as any) : '700',
-        letterSpacing: 3.8,
+        letterSpacing: 0.2,
         fontSize: 16,
         color: T.text,
-        textTransform: 'uppercase',
       },
       headerRight: () => (
         <TouchableOpacity
@@ -1531,6 +1752,8 @@ const appsByJob: Record<number, { id: string; full_name?: string | null }[]> = {
     }
 
     setChallengeForm(createEmptyChallengeForm());
+    setChallengeCategoryPickerVisible(false);
+    setDeadlinePickerVisible(false);
     setChallengeFormVisible(true);
   };
 
@@ -1563,12 +1786,15 @@ const appsByJob: Record<number, { id: string; full_name?: string | null }[]> = {
     }
 
     const title = challengeForm.title.trim();
+    const category = challengeForm.category.trim();
     const description = challengeForm.description.trim();
     const prize = challengeForm.prize_description.trim();
     const endsAt = parseChallengeDeadline(challengeForm.ends_at);
+    const reactionPlatforms = parseDelimitedList(challengeForm.reaction_platform);
+    const reactionLinks = parseReactionLinks(challengeForm.reaction_url);
 
-    if (!title || !description || !prize || !endsAt) {
-      show('Add a title, prompt, reward, and valid deadline.', 'error');
+    if (!title || !category || !description || !prize || !endsAt) {
+      show('Add a title, category, brief, reward, and valid deadline.', 'error');
       return;
     }
 
@@ -1588,7 +1814,7 @@ const appsByJob: Record<number, { id: string; full_name?: string | null }[]> = {
       { label: 'Rules', value: challengeForm.rules },
       { label: 'Required phrase', value: challengeForm.required_phrase },
       { label: 'Reward', value: prize },
-      { label: 'Reaction link', value: challengeForm.reaction_url },
+      { label: 'Reaction links', value: challengeForm.reaction_url },
     ]);
 
     if (!moderation.safe) {
@@ -1602,14 +1828,14 @@ const appsByJob: Record<number, { id: string; full_name?: string | null }[]> = {
       creator_id: user.id,
       title,
       challenge_code: challengeCode,
-      category: challengeForm.category.trim() || null,
+      category,
       description,
       rules: challengeForm.rules.trim() || null,
       required_phrase: challengeForm.required_phrase.trim() || null,
       submission_type: 'youtube',
       prize_description: prize,
-      reaction_platform: challengeForm.reaction_platform.trim() || profile.creator_social_platform || null,
-      reaction_url: challengeForm.reaction_url.trim() || profile.creator_social_url || null,
+      reaction_platform: reactionPlatforms.join(', ') || profile.creator_social_platform || null,
+      reaction_url: reactionLinks.join('\n') || profile.creator_social_url || null,
       reaction_description: challengeForm.reaction_description.trim() || null,
       starts_at: new Date().toISOString(),
       ends_at: endsAt,
@@ -1624,6 +1850,8 @@ const appsByJob: Record<number, { id: string; full_name?: string | null }[]> = {
     }
 
     setChallengeFormVisible(false);
+    setChallengeCategoryPickerVisible(false);
+    setDeadlinePickerVisible(false);
     setChallengeForm(createEmptyChallengeForm());
     setChallengeView('my');
     setOpportunityTab('creator_challenges');
@@ -2054,6 +2282,8 @@ if (!me) {
       const creatorName = creator?.full_name || 'Overlooked creator';
       const reactionPlatform =
         challenge.reaction_platform || creator?.creator_social_platform || 'Creator socials';
+      const rewardText = challenge.prize_description?.trim() || 'Reward TBA';
+      const entriesLabel = formatChallengeEntriesLabel(challenge.submission_count);
       const stackActions = width < 390 || challengeView === 'my';
       const deletingChallenge = !!challengeDeleting[challenge.id];
 
@@ -2067,34 +2297,61 @@ if (!me) {
             style={[
               styles.challengeCard,
               {
-                backgroundColor: T.surface,
-                borderColor: ended ? T.line : GOLD_LINE,
-                shadowColor: colors.shadow,
+                backgroundColor: challengeTone.surface,
+                borderColor: ended ? T.line : challengeTone.border,
+                shadowColor: challengeTone.shadow,
               },
             ]}
           >
-            <View style={styles.challengeTopRow}>
+            <View style={styles.challengeBadgeRow}>
+              <View
+                style={[
+                  styles.challengeTypeBadge,
+                  {
+                    backgroundColor: ended ? T.surface2 : challengeTone.goldSoft,
+                    borderColor: ended ? T.line : challengeTone.border,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={ended ? 'time-outline' : 'sparkles-outline'}
+                  size={13}
+                  color={ended ? T.mute : challengeTone.gold}
+                />
+                <Text
+                  style={[
+                    styles.challengeTypeBadgeText,
+                    { color: ended ? T.mute : challengeTone.gold },
+                  ]}
+                >
+                  {ended ? 'ENDED CHALLENGE' : 'CREATOR CHALLENGE'}
+                </Text>
+              </View>
+              <Text style={[styles.challengeCountdownText, { color: ended ? T.mute : challengeTone.gold }]}>
+                {formatChallengeCountdownCompact(challenge.ends_at)}
+              </Text>
+            </View>
+
+            <Text style={[styles.challengeTitle, { color: challengeTone.text }]} numberOfLines={2}>
+              {challenge.title}
+            </Text>
+
+            <View style={styles.challengeHostRow}>
               <TouchableOpacity
                 onPress={(event: any) => goToCreatorProfile(challenge, event)}
                 activeOpacity={0.8}
                 style={styles.creatorAvatarTap}
               >
-                {renderCreatorAvatar(creator, 44)}
+                {renderCreatorAvatar(creator, 38)}
               </TouchableOpacity>
               <View style={styles.challengeTitleBlock}>
-                <Text style={[styles.challengeKicker, { color: ended ? T.mute : GOLD }]}>
-                  {ended ? 'ENDED CHALLENGE' : 'CREATOR CHALLENGE'}
-                </Text>
-                <Text style={[styles.challengeTitle, { color: T.text }]} numberOfLines={2}>
-                  {challenge.title}
-                </Text>
                 <View style={styles.challengeCreatorRow}>
-                  <Text style={[styles.challengeCreatorPrefix, { color: T.sub }]}>Hosted by </Text>
+                  <Text style={[styles.challengeCreatorPrefix, { color: challengeTone.sub }]}>Hosted by </Text>
                   <TouchableOpacity
                     onPress={(event: any) => goToCreatorProfile(challenge, event)}
                     activeOpacity={0.75}
                   >
-                    <Text style={[styles.challengeCreatorLink, { color: GOLD }]} numberOfLines={1}>
+                    <Text style={[styles.challengeCreatorLink, { color: challengeTone.gold }]} numberOfLines={1}>
                       {creatorName}
                     </Text>
                   </TouchableOpacity>
@@ -2102,34 +2359,54 @@ if (!me) {
               </View>
             </View>
 
+            <View
+              style={[
+                styles.challengeRewardCallout,
+                { backgroundColor: challengeTone.goldSoft, borderColor: challengeTone.border },
+              ]}
+            >
+              <Ionicons name="gift-outline" size={18} color={challengeTone.gold} />
+              <View style={styles.challengeRewardCopy}>
+                <Text style={[styles.challengeRewardLabel, { color: challengeTone.gold }]}>
+                  What you can win
+                </Text>
+                <Text
+                  style={[styles.challengeRewardText, { color: challengeTone.text }]}
+                  numberOfLines={2}
+                >
+                  {rewardText}
+                </Text>
+              </View>
+            </View>
+
             {challenge.description ? (
-              <Text numberOfLines={2} style={[styles.challengeDescription, { color: T.sub }]}>
+              <Text numberOfLines={2} style={[styles.challengeDescription, { color: challengeTone.sub }]}>
                 {challenge.description}
               </Text>
             ) : null}
 
             <View style={styles.challengeMetaGrid}>
-              <View style={[styles.challengeMetaPill, { backgroundColor: T.surface2, borderColor: T.line }]}>
-                <Ionicons name="gift-outline" size={14} color={GOLD} />
-                <Text style={[styles.challengeMetaText, { color: T.text }]} numberOfLines={1}>
+              <View style={[styles.challengeMetaPill, { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line }]}>
+                <Ionicons name="gift-outline" size={14} color={challengeTone.gold} />
+                <Text style={[styles.challengeMetaText, { color: challengeTone.text }]} numberOfLines={1}>
                   {formatChallengeRewardPill(challenge.prize_description)}
                 </Text>
               </View>
-              <View style={[styles.challengeMetaPill, { backgroundColor: T.surface2, borderColor: T.line }]}>
-                <Ionicons name="timer-outline" size={14} color={ended ? T.mute : GOLD} />
-                <Text style={[styles.challengeMetaText, { color: ended ? T.mute : T.text }]} numberOfLines={1}>
+              <View style={[styles.challengeMetaPill, { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line }]}>
+                <Ionicons name="timer-outline" size={14} color={ended ? T.mute : challengeTone.gold} />
+                <Text style={[styles.challengeMetaText, { color: ended ? T.mute : challengeTone.text }]} numberOfLines={1}>
                   {formatChallengeCountdownCompact(challenge.ends_at)}
                 </Text>
               </View>
-              <View style={[styles.challengeMetaPill, { backgroundColor: T.surface2, borderColor: T.line }]}>
-                <Ionicons name="film-outline" size={14} color={GOLD} />
-                <Text style={[styles.challengeMetaText, { color: T.text }]} numberOfLines={1}>
-                  {challenge.submission_count ?? 0} entries
+              <View style={[styles.challengeMetaPill, { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line }]}>
+                <Ionicons name="film-outline" size={14} color={challengeTone.gold} />
+                <Text style={[styles.challengeMetaText, { color: challengeTone.text }]} numberOfLines={1}>
+                  {entriesLabel}
                 </Text>
               </View>
-              <View style={[styles.challengeMetaPill, { backgroundColor: T.surface2, borderColor: T.line }]}>
-                <Ionicons name="at-outline" size={14} color={GOLD} />
-                <Text style={[styles.challengeMetaText, { color: T.text }]} numberOfLines={1}>
+              <View style={[styles.challengeMetaPill, { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line }]}>
+                <Ionicons name="at-outline" size={14} color={challengeTone.gold} />
+                <Text style={[styles.challengeMetaText, { color: challengeTone.text }]} numberOfLines={1}>
                   {formatReactionPill(reactionPlatform)}
                 </Text>
               </View>
@@ -2142,11 +2419,11 @@ if (!me) {
                 style={[
                   styles.challengeSecondaryButton,
                   !isWebMobile && styles.challengeSecondaryButtonWide,
-                  { backgroundColor: T.surface2, borderColor: T.line },
+                  { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line },
                 ]}
               >
-                <Text style={[styles.challengeSecondaryButtonText, { color: T.sub }]}>
-                  View Challenge
+                <Text style={[styles.challengeSecondaryButtonText, { color: challengeTone.sub }]}>
+                  View Brief
                 </Text>
               </TouchableOpacity>
 
@@ -2158,11 +2435,11 @@ if (!me) {
                     style={[
                       styles.challengePrimaryButton,
                       !isWebMobile && styles.challengePrimaryButtonWide,
-                      { backgroundColor: GOLD, borderColor: GOLD_LINE },
+                      { backgroundColor: challengeTone.gold, borderColor: challengeTone.border },
                     ]}
                   >
                     <Text style={[styles.challengePrimaryButtonText, { color: colors.textOnPrimary }]}>
-                      View Submissions
+                      View Entries
                     </Text>
                   </TouchableOpacity>
 
@@ -2172,30 +2449,33 @@ if (!me) {
                     activeOpacity={0.9}
                     style={[
                       styles.challengeDangerButton,
-                      { backgroundColor: T.surface2, borderColor: 'rgba(255,70,70,0.24)' },
+                      { backgroundColor: challengeTone.surfaceAlt, borderColor: 'rgba(255,70,70,0.24)' },
                       deletingChallenge && { opacity: 0.58 },
                     ]}
                   >
-                    <Ionicons name="trash-outline" size={14} color="#FF6B6B" />
-                    <Text style={[styles.challengeDangerButtonText, { color: '#FF8A8A' }]}>
+                    <Ionicons name="trash-outline" size={14} color={challengeTone.danger} />
+                    <Text style={[styles.challengeDangerButtonText, { color: challengeTone.danger }]}>
                       {deletingChallenge ? 'Removing' : 'Remove'}
                     </Text>
                   </TouchableOpacity>
                 </>
               ) : (
                 <TouchableOpacity
-                  onPress={() => handleSubmitToChallenge(challenge)}
-                  disabled={ended}
+                  onPress={() =>
+                    ended ? openChallengeSubmissions(challenge) : handleSubmitToChallenge(challenge)
+                  }
                   activeOpacity={0.9}
                   style={[
                     styles.challengePrimaryButton,
                     !isWebMobile && styles.challengePrimaryButtonWide,
-                    { backgroundColor: ended ? T.surface2 : GOLD, borderColor: ended ? T.line : GOLD_LINE },
-                    ended && { opacity: 0.72 },
+                    {
+                      backgroundColor: ended ? challengeTone.surfaceAlt : challengeTone.gold,
+                      borderColor: ended ? T.line : challengeTone.border,
+                    },
                   ]}
                 >
                   <Text style={[styles.challengePrimaryButtonText, { color: ended ? T.mute : colors.textOnPrimary }]}>
-                    {ended ? 'Ended' : 'Submit'}
+                    {ended ? 'View Entries' : 'Submit to Challenge'}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -2205,13 +2485,11 @@ if (!me) {
       );
     },
     [
-      GOLD,
-      GOLD_LINE,
       T,
       challengeView,
       challengeDeleting,
-      colors.shadow,
       colors.textOnPrimary,
+      challengeTone,
       goToCreatorProfile,
       handleSubmitToChallenge,
       handleRemoveChallenge,
@@ -2486,7 +2764,7 @@ if (!me) {
       <View style={styles.opportunitiesHeader}>
         <Text style={[styles.opportunitiesTitle, { color: T.text }]}>Opportunities</Text>
         <Text style={[styles.opportunitiesSubtitle, { color: T.sub }]}>
-          Creator challenges, jobs, and ways to get seen.
+          Compete, collaborate, and get your work seen.
         </Text>
       </View>
 
@@ -2577,8 +2855,23 @@ if (!me) {
             <View style={styles.creatorSectionCopy}>
               <Text style={[styles.creatorSectionTitle, { color: T.text }]}>Creator Challenges</Text>
               <Text style={[styles.creatorSectionSubtitle, { color: T.sub }]}>
-                Submit to creator-led prompts and appear on Featured.
+                Enter creator-led briefs, win rewards, and get featured across Overlooked and social media.
               </Text>
+              <View style={styles.creatorValueRow}>
+                {['Win rewards', 'Get featured', 'Build your portfolio'].map((item) => (
+                  <View
+                    key={item}
+                    style={[
+                      styles.creatorValueChip,
+                      { backgroundColor: challengeTone.goldSoft, borderColor: challengeTone.border },
+                    ]}
+                  >
+                    <Text style={[styles.creatorValueChipText, { color: challengeTone.gold }]}>
+                      {item}
+                    </Text>
+                  </View>
+                ))}
+              </View>
             </View>
 
             {creatorProfile?.is_creator ? (
@@ -2756,6 +3049,7 @@ if (!me) {
     GOLD,
     GOLD_LINE,
     GOLD_SOFT,
+    challengeTone,
     colors.shadow,
     colors.textOnPrimary,
     isLight,
@@ -2778,7 +3072,15 @@ if (!me) {
 
   return (
   <SafeAreaView style={[styles.safeArea, { backgroundColor: T.bg }]} edges={['top']}>
-    <View style={[styles.container, { backgroundColor: T.bg, paddingTop: insets.top > 0 ? 6 : 12 }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: T.bg,
+          paddingTop: Platform.OS === 'web' ? 0 : insets.top > 0 ? 4 : 8,
+        },
+      ]}
+    >
       <ToastView />
 
       <Animated.FlatList
@@ -2915,7 +3217,11 @@ onRefresh={() => {
         visible={challengeFormVisible}
         enterOffset={96}
         frameStyle={{ backgroundColor: T.bg }}
-        onRequestClose={() => setChallengeFormVisible(false)}
+        onRequestClose={() => {
+          setChallengeCategoryPickerVisible(false);
+          setDeadlinePickerVisible(false);
+          setChallengeFormVisible(false);
+        }}
       >
         <KeyboardAvoidingView
           style={{ flex: 1 }}
@@ -2940,15 +3246,32 @@ onRefresh={() => {
               />
 
               <Text style={[styles.label, { color: T.text }]}>Category</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: T.surface, borderColor: T.line, color: T.text }, WEB_NO_OUTLINE]}
-                placeholder="Acting, editing, directing..."
-                placeholderTextColor={T.mute}
-                value={challengeForm.category}
-                onChangeText={(text) => setChallengeForm((prev) => ({ ...prev, category: text }))}
-              />
+              <TouchableOpacity
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setDeadlinePickerVisible(false);
+                  setChallengeCategoryPickerVisible(true);
+                }}
+                activeOpacity={0.9}
+                style={[
+                  styles.formPickerButton,
+                  { backgroundColor: T.surface, borderColor: T.line },
+                ]}
+              >
+                <Ionicons name="pricetag-outline" size={17} color={GOLD} />
+                <Text
+                  style={[
+                    styles.formPickerButtonText,
+                    { color: challengeForm.category ? T.text : T.mute },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {challengeForm.category || 'Select a category'}
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={T.mute} />
+              </TouchableOpacity>
 
-              <Text style={[styles.label, { color: T.text }]}>Prompt</Text>
+              <Text style={[styles.label, { color: T.text }]}>Challenge brief</Text>
               <TextInput
                 style={[
                   styles.input,
@@ -2997,34 +3320,206 @@ onRefresh={() => {
               />
 
               <Text style={[styles.label, { color: T.text }]}>Deadline</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: T.surface, borderColor: T.line, color: T.text }, WEB_NO_OUTLINE]}
-                placeholder="YYYY-MM-DD or YYYY-MM-DDTHH:mm"
-                placeholderTextColor={T.mute}
-                value={challengeForm.ends_at}
-                onChangeText={(text) => setChallengeForm((prev) => ({ ...prev, ends_at: text }))}
-              />
+              <TouchableOpacity
+                onPress={openDeadlinePicker}
+                activeOpacity={0.9}
+                style={[
+                  styles.deadlineButton,
+                  { backgroundColor: T.surface, borderColor: T.line },
+                ]}
+              >
+                <Ionicons name="calendar-outline" size={18} color={GOLD} />
+                <Text style={[styles.deadlineButtonText, { color: T.text }]}>
+                  {formatDeadlineInputLabel(challengeForm.ends_at)}
+                </Text>
+                <Ionicons
+                  name={deadlinePickerVisible ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={T.mute}
+                />
+              </TouchableOpacity>
+              {deadlinePickerVisible ? (
+                <View style={[styles.deadlinePanel, { backgroundColor: T.surface, borderColor: T.line }]}>
+                  <View style={styles.deadlinePanelHeader}>
+                    <TouchableOpacity
+                      onPress={() =>
+                        setDeadlinePickerMonth(
+                          (prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1)
+                        )
+                      }
+                      style={[styles.deadlineMonthButton, { borderColor: T.line }]}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="chevron-back" size={18} color={T.sub} />
+                    </TouchableOpacity>
+                    <Text style={[styles.deadlineMonthText, { color: T.text }]}>
+                      {deadlineMonthLabel}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() =>
+                        setDeadlinePickerMonth(
+                          (prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1)
+                        )
+                      }
+                      style={[styles.deadlineMonthButton, { borderColor: T.line }]}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="chevron-forward" size={18} color={T.sub} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.calendarWeekRow}>
+                    {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+                      <Text key={`${day}-${index}`} style={[styles.calendarWeekText, { color: T.mute }]}>
+                        {day}
+                      </Text>
+                    ))}
+                  </View>
+
+                  <View style={styles.calendarGrid}>
+                    {deadlineCalendarDays.map((day, index) => {
+                      if (!day) {
+                        return <View key={`blank-${index}`} style={styles.calendarCell} />;
+                      }
+
+                      const dayStart = new Date(day);
+                      dayStart.setHours(0, 0, 0, 0);
+                      const dayEnd = new Date(day);
+                      dayEnd.setHours(23, 59, 59, 999);
+                      const minDate = new Date(Date.now() + 5 * 60 * 1000);
+                      const maxDate = new Date(Date.now() + CREATOR_CHALLENGE_MAX_MS);
+                      const disabled =
+                        dayEnd.getTime() < minDate.getTime() ||
+                        dayStart.getTime() > maxDate.getTime();
+                      const active = isSameCalendarDay(day, selectedDeadlineDate);
+
+                      return (
+                        <View key={day.toISOString()} style={styles.calendarCell}>
+                          <TouchableOpacity
+                            onPress={() => selectChallengeDeadlineDay(day)}
+                            disabled={disabled}
+                            style={[
+                              styles.calendarDayButton,
+                              {
+                                backgroundColor: active ? GOLD : 'transparent',
+                                borderColor: active ? GOLD_LINE : T.line,
+                              },
+                              disabled && styles.calendarDayDisabled,
+                            ]}
+                            activeOpacity={0.84}
+                          >
+                            <Text
+                              style={[
+                                styles.calendarDayText,
+                                { color: active ? colors.textOnPrimary : disabled ? T.mute : T.text },
+                              ]}
+                            >
+                              {day.getDate()}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })}
+                  </View>
+
+                  <View style={styles.timeStepperRow}>
+                    <TouchableOpacity
+                      onPress={() => adjustChallengeDeadlineMinutes(-60)}
+                      style={[styles.timeStepperButton, { borderColor: T.line }]}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="remove" size={17} color={T.sub} />
+                    </TouchableOpacity>
+                    <Text style={[styles.timeStepperValue, { color: T.text }]}>
+                      {`${padDatePart(selectedDeadlineDate.getHours())}:${padDatePart(
+                        selectedDeadlineDate.getMinutes()
+                      )}`}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => adjustChallengeDeadlineMinutes(60)}
+                      style={[styles.timeStepperButton, { borderColor: T.line }]}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="add" size={17} color={T.sub} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.quickTimeRow}>
+                    {[
+                      { label: '12:00', hour: 12, minute: 0 },
+                      { label: '18:00', hour: 18, minute: 0 },
+                      { label: '23:59', hour: 23, minute: 59 },
+                    ].map((time) => (
+                      <TouchableOpacity
+                        key={time.label}
+                        onPress={() => setChallengeDeadlineTime(time.hour, time.minute)}
+                        style={[styles.quickTimeChip, { backgroundColor: T.surface2, borderColor: T.line }]}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={[styles.quickTimeText, { color: T.sub }]}>{time.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                    <TouchableOpacity
+                      onPress={() => setDeadlinePickerVisible(false)}
+                      style={[styles.quickTimeChip, { backgroundColor: GOLD_SOFT, borderColor: GOLD_LINE }]}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={[styles.quickTimeText, { color: GOLD }]}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
               <Text style={[styles.helperText, { color: T.mute }]}>
-                Challenges can run for up to {CREATOR_CHALLENGE_MAX_DAYS} days.
+                Submissions close at the deadline. The challenge remains visible for 48 hours after.
               </Text>
 
-              <Text style={[styles.label, { color: T.text }]}>Reaction platform</Text>
-              <TextInput
-                style={[styles.input, { backgroundColor: T.surface, borderColor: T.line, color: T.text }, WEB_NO_OUTLINE]}
-                placeholder="Instagram, TikTok, YouTube..."
-                placeholderTextColor={T.mute}
-                value={challengeForm.reaction_platform}
-                onChangeText={(text) => setChallengeForm((prev) => ({ ...prev, reaction_platform: text }))}
-              />
+              <Text style={[styles.label, { color: T.text }]}>Reaction platforms</Text>
+              <View style={styles.selectorWrap}>
+                {REACTION_PLATFORM_OPTIONS.map((platform) => {
+                  const active = selectedReactionPlatforms.some(
+                    (item) => item.toLowerCase() === platform.toLowerCase()
+                  );
+                  return (
+                    <TouchableOpacity
+                      key={platform}
+                      onPress={() =>
+                        setChallengeForm((prev) => ({
+                          ...prev,
+                          reaction_platform: toggleDelimitedValue(prev.reaction_platform, platform),
+                        }))
+                      }
+                      style={[
+                        styles.selectorChip,
+                        {
+                          backgroundColor: active ? GOLD_SOFT : T.surface,
+                          borderColor: active ? GOLD_LINE : T.line,
+                        },
+                      ]}
+                      activeOpacity={0.9}
+                    >
+                      <Text style={[styles.selectorChipText, { color: active ? GOLD : T.sub }]}>
+                        {platform}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
-              <Text style={[styles.label, { color: T.text }]}>Creator social link</Text>
+              <Text style={[styles.label, { color: T.text }]}>Reaction links</Text>
               <TextInput
-                style={[styles.input, { backgroundColor: T.surface, borderColor: T.line, color: T.text }, WEB_NO_OUTLINE]}
-                placeholder="https://..."
+                style={[
+                  styles.input,
+                  styles.linkTextAreaInput,
+                  { backgroundColor: T.surface, borderColor: T.line, color: T.text },
+                  WEB_NO_OUTLINE,
+                ]}
+                placeholder="Add one link per line"
                 placeholderTextColor={T.mute}
                 value={challengeForm.reaction_url}
                 onChangeText={(text) => setChallengeForm((prev) => ({ ...prev, reaction_url: text }))}
                 autoCapitalize="none"
+                autoCorrect={false}
+                multiline
               />
 
               <Text style={[styles.label, { color: T.text }]}>Reaction details</Text>
@@ -3046,7 +3541,11 @@ onRefresh={() => {
             <View style={[styles.modalFooter, { backgroundColor: T.bg, borderTopColor: T.line }]}>
               <TouchableOpacity
                 style={[styles.footerBtn, styles.footerGhost, { backgroundColor: T.surface2, borderColor: T.line }]}
-                onPress={() => setChallengeFormVisible(false)}
+                onPress={() => {
+                  setChallengeCategoryPickerVisible(false);
+                  setDeadlinePickerVisible(false);
+                  setChallengeFormVisible(false);
+                }}
                 activeOpacity={0.9}
               >
                 <Text style={[styles.footerGhostText, { color: T.sub }]}>Cancel</Text>
@@ -3065,6 +3564,80 @@ onRefresh={() => {
                 )}
               </TouchableOpacity>
             </View>
+
+            {challengeCategoryPickerVisible ? (
+              <View style={styles.categoryPickerOverlay}>
+                <TouchableOpacity
+                  style={StyleSheet.absoluteFillObject}
+                  activeOpacity={1}
+                  onPress={() => setChallengeCategoryPickerVisible(false)}
+                />
+                <View
+                  style={[
+                    styles.categoryPickerSheet,
+                    {
+                      backgroundColor: T.surface,
+                      borderColor: T.line,
+                    },
+                  ]}
+                >
+                  <View style={styles.categoryPickerHeader}>
+                    <View>
+                      <Text style={[styles.categoryPickerTitle, { color: T.text }]}>Category</Text>
+                      <Text style={[styles.categoryPickerSubtitle, { color: T.mute }]}>
+                        Choose where this challenge should appear.
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setChallengeCategoryPickerVisible(false)}
+                      style={[
+                        styles.categoryPickerClose,
+                        { backgroundColor: T.surface2, borderColor: T.line },
+                      ]}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="close" size={18} color={T.sub} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.categoryPickerGrid}
+                  >
+                    {CHALLENGE_CATEGORY_OPTIONS.map((category) => {
+                      const active = challengeForm.category === category;
+                      return (
+                        <TouchableOpacity
+                          key={category}
+                          onPress={() => {
+                            setChallengeForm((prev) => ({ ...prev, category }));
+                            setChallengeCategoryPickerVisible(false);
+                          }}
+                          style={[
+                            styles.categoryPickerOption,
+                            {
+                              backgroundColor: active ? GOLD_SOFT : T.surface2,
+                              borderColor: active ? GOLD_LINE : T.line,
+                            },
+                          ]}
+                          activeOpacity={0.88}
+                        >
+                          <Text
+                            style={[
+                              styles.categoryPickerOptionText,
+                              { color: active ? GOLD : T.text },
+                            ]}
+                          >
+                            {category}
+                          </Text>
+                          {active ? <Ionicons name="checkmark" size={17} color={GOLD} /> : null}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              </View>
+            ) : null}
           </View>
         </KeyboardAvoidingView>
       </SmoothModal>
@@ -3672,7 +4245,7 @@ onRefresh={() => {
                           style={[
                             styles.cityPickerText,
                             { color: READABLE_INK },
-                            selected && { color: READABLE_INK, fontWeight: '900' },
+                            selected && { color: READABLE_INK, fontWeight: '800' },
                           ]}
                         >
                           {item.label}
@@ -3779,7 +4352,7 @@ onRefresh={() => {
                   >
                     <Ionicons name="close" size={18} color={T.text} />
                   </TouchableOpacity>
-                  <Text style={[styles.challengeDetailHeader, { color: GOLD }]}>Creator Challenge</Text>
+                  <Text style={[styles.challengeDetailHeader, { color: challengeTone.gold }]}>Creator Challenge</Text>
                   <View style={{ width: 44 }} />
                 </View>
 
@@ -3788,7 +4361,55 @@ onRefresh={() => {
                   contentContainerStyle={styles.challengeDetailContent}
                   showsVerticalScrollIndicator={false}
                 >
-                  <View style={[styles.challengeDetailHero, { backgroundColor: T.surface, borderColor: GOLD_LINE }]}>
+                  <View
+                    style={[
+                      styles.challengeDetailHero,
+                      { backgroundColor: challengeTone.surface, borderColor: challengeTone.border },
+                    ]}
+                  >
+                    <View style={styles.challengeDetailHeroBadgeRow}>
+                      <View
+                        style={[
+                          styles.challengeTypeBadge,
+                          { backgroundColor: challengeTone.goldSoft, borderColor: challengeTone.border },
+                        ]}
+                      >
+                        <Ionicons name="sparkles-outline" size={13} color={challengeTone.gold} />
+                        <Text style={[styles.challengeTypeBadgeText, { color: challengeTone.gold }]}>
+                          CREATOR CHALLENGE
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.challengeCountdownBadge,
+                          {
+                            backgroundColor: isChallengeEnded(selectedChallenge)
+                              ? T.surface2
+                              : challengeTone.goldSoft,
+                            borderColor: isChallengeEnded(selectedChallenge)
+                              ? T.line
+                              : challengeTone.border,
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="timer-outline"
+                          size={13}
+                          color={isChallengeEnded(selectedChallenge) ? T.mute : challengeTone.gold}
+                        />
+                        <Text
+                          style={[
+                            styles.challengeCountdownBadgeText,
+                            { color: isChallengeEnded(selectedChallenge) ? T.mute : challengeTone.gold },
+                          ]}
+                        >
+                          {isChallengeEnded(selectedChallenge)
+                            ? 'ENDED'
+                            : formatChallengeCountdownCompact(selectedChallenge.ends_at).toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+
                     <View style={styles.challengeDetailHeroTopRow}>
                       <TouchableOpacity
                         onPress={() => goToCreatorProfile(selectedChallenge)}
@@ -3798,19 +4419,16 @@ onRefresh={() => {
                         {renderCreatorAvatar(getCreatorProfile(selectedChallenge), 52)}
                       </TouchableOpacity>
                       <View style={styles.challengeTitleBlock}>
-                        <Text style={[styles.challengeKicker, { color: isChallengeEnded(selectedChallenge) ? T.mute : GOLD }]}>
-                          {isChallengeEnded(selectedChallenge) ? 'ENDED' : formatChallengeCountdown(selectedChallenge.ends_at)}
-                        </Text>
-                        <Text style={[styles.challengeDetailTitle, { color: T.text }]}>
+                        <Text style={[styles.challengeDetailTitle, { color: challengeTone.text }]}>
                           {selectedChallenge.title}
                         </Text>
                         <View style={styles.challengeCreatorRow}>
-                          <Text style={[styles.challengeCreatorPrefix, { color: T.sub }]}>Hosted by </Text>
+                          <Text style={[styles.challengeCreatorPrefix, { color: challengeTone.sub }]}>Hosted by </Text>
                           <TouchableOpacity
                             onPress={() => goToCreatorProfile(selectedChallenge)}
                             activeOpacity={0.75}
                           >
-                            <Text style={[styles.challengeCreatorLink, { color: GOLD }]} numberOfLines={1}>
+                            <Text style={[styles.challengeCreatorLink, { color: challengeTone.gold }]} numberOfLines={1}>
                               {getCreatorProfile(selectedChallenge)?.full_name || 'Overlooked creator'}
                             </Text>
                           </TouchableOpacity>
@@ -3819,54 +4437,67 @@ onRefresh={() => {
                     </View>
 
                     <View style={[styles.challengeDetailStatsRow, isWebMobile && styles.challengeDetailStatsStack]}>
-                      <View style={[styles.challengeStatBox, { backgroundColor: T.surface2, borderColor: T.line }]}>
-                        <Text style={[styles.challengeStatLabel, { color: GOLD }]}>Deadline</Text>
-                        <Text style={[styles.challengeStatValue, { color: T.text }]}>
+                      <View style={[styles.challengeStatBox, { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line }]}>
+                        <Text style={[styles.challengeStatLabel, { color: challengeTone.gold }]}>Deadline</Text>
+                        <Text style={[styles.challengeStatValue, { color: challengeTone.text }]}>
                           {formatChallengeDeadline(selectedChallenge.ends_at)}
                         </Text>
                       </View>
-                      <View style={[styles.challengeStatBox, { backgroundColor: T.surface2, borderColor: T.line }]}>
-                        <Text style={[styles.challengeStatLabel, { color: GOLD }]}>Entries</Text>
-                        <Text style={[styles.challengeStatValue, { color: T.text }]}>
-                          {selectedChallenge.submission_count ?? 0}
+                      <View style={[styles.challengeStatBox, { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line }]}>
+                        <Text style={[styles.challengeStatLabel, { color: challengeTone.gold }]}>Entries</Text>
+                        <Text style={[styles.challengeStatValue, { color: challengeTone.text }]}>
+                          {formatChallengeEntriesLabel(selectedChallenge.submission_count)}
                         </Text>
                       </View>
                     </View>
                   </View>
 
-                  <View style={[styles.challengeDetailSection, { backgroundColor: T.surface, borderColor: T.line }]}>
-                    <Text style={[styles.challengeDetailSectionTitle, { color: GOLD }]}>Prompt</Text>
-                    <Text style={[styles.challengeDetailBody, { color: T.sub }]}>
-                      {selectedChallenge.description || 'No prompt added yet.'}
+                  <View style={[styles.challengeDetailSection, { backgroundColor: challengeTone.surface, borderColor: T.line }]}>
+                    <Text style={[styles.challengeDetailSectionTitle, { color: challengeTone.gold }]}>Challenge brief</Text>
+                    <Text style={[styles.challengeDetailBody, { color: challengeTone.sub }]}>
+                      {selectedChallenge.description || 'No challenge brief added yet.'}
                     </Text>
                   </View>
 
-                  <View style={[styles.challengeDetailSection, { backgroundColor: T.surface, borderColor: T.line }]}>
-                    <Text style={[styles.challengeDetailSectionTitle, { color: GOLD }]}>Rules</Text>
-                    <Text style={[styles.challengeDetailBody, { color: T.sub }]}>
-                      {selectedChallenge.rules || 'Follow the prompt and submit original work.'}
+                  <View style={[styles.challengeDetailSection, { backgroundColor: challengeTone.surface, borderColor: T.line }]}>
+                    <Text style={[styles.challengeDetailSectionTitle, { color: challengeTone.gold }]}>Rules</Text>
+                    <Text style={[styles.challengeDetailBody, { color: challengeTone.sub }]}>
+                      {selectedChallenge.rules || 'Follow the brief and submit original work.'}
                     </Text>
                   </View>
 
-                  <View style={[styles.challengeDetailSection, { backgroundColor: T.surface, borderColor: T.line }]}>
-                    <Text style={[styles.challengeDetailSectionTitle, { color: GOLD }]}>Required element</Text>
-                    <Text style={[styles.challengeDetailBody, { color: T.sub }]}>
+                  <View style={[styles.challengeDetailSection, { backgroundColor: challengeTone.surface, borderColor: T.line }]}>
+                    <Text style={[styles.challengeDetailSectionTitle, { color: challengeTone.gold }]}>Required element</Text>
+                    <Text style={[styles.challengeDetailBody, { color: challengeTone.sub }]}>
                       {selectedChallenge.required_phrase || 'No required phrase.'}
                     </Text>
                   </View>
 
-                  <View style={[styles.challengeDetailSection, { backgroundColor: T.surface, borderColor: T.line }]}>
-                    <Text style={[styles.challengeDetailSectionTitle, { color: GOLD }]}>Reward</Text>
-                    <Text style={[styles.challengeDetailBody, { color: T.sub }]}>
+                  <View
+                    style={[
+                      styles.challengeDetailSection,
+                      styles.challengeRewardDetailSection,
+                      { backgroundColor: challengeTone.goldSoft, borderColor: challengeTone.border },
+                    ]}
+                  >
+                    <View style={styles.challengeDetailSectionHeaderRow}>
+                      <Ionicons name="gift-outline" size={17} color={challengeTone.gold} />
+                      <Text style={[styles.challengeDetailSectionTitle, { color: challengeTone.gold, marginBottom: 0 }]}>
+                        What you can win
+                      </Text>
+                    </View>
+                    <Text style={[styles.challengeDetailBody, { color: challengeTone.text }]}>
                       {selectedChallenge.prize_description || 'Reward TBA.'}
                     </Text>
                   </View>
 
-                  <View style={[styles.challengeDetailSection, { backgroundColor: T.surface, borderColor: T.line }]}>
-                    <Text style={[styles.challengeDetailSectionTitle, { color: GOLD }]}>Where reactions happen</Text>
-                    <View style={[styles.challengeReactionPill, { backgroundColor: T.surface2, borderColor: T.line }]}>
-                      <Ionicons name="at-outline" size={15} color={GOLD} />
-                      <Text style={[styles.challengeReactionPillText, { color: T.text }]}>
+                  <View style={[styles.challengeDetailSection, { backgroundColor: challengeTone.surface, borderColor: T.line }]}>
+                    <Text style={[styles.challengeDetailSectionTitle, { color: challengeTone.gold }]}>
+                      Where your work can be seen
+                    </Text>
+                    <View style={[styles.challengeReactionPill, { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line }]}>
+                      <Ionicons name="at-outline" size={15} color={challengeTone.gold} />
+                      <Text style={[styles.challengeReactionPillText, { color: challengeTone.text }]}>
                         {formatReactionPill(
                           selectedChallenge.reaction_platform ||
                             getCreatorProfile(selectedChallenge)?.creator_social_platform ||
@@ -3875,30 +4506,50 @@ onRefresh={() => {
                       </Text>
                     </View>
                     {selectedChallenge.reaction_description ? (
-                      <Text style={[styles.challengeDetailBody, { color: T.sub, marginTop: 10 }]}>
+                      <Text style={[styles.challengeDetailBody, { color: challengeTone.sub, marginTop: 10 }]}>
                         {selectedChallenge.reaction_description}
                       </Text>
                     ) : null}
-                    {(selectedChallenge.reaction_url || getCreatorProfile(selectedChallenge)?.creator_social_url) ? (
-                      <TouchableOpacity
-                        activeOpacity={0.75}
-                        onPress={() =>
-                          openReactionUrl(
-                            selectedChallenge.reaction_url ||
-                              getCreatorProfile(selectedChallenge)?.creator_social_url
-                          )
-                        }
-                      >
-                        <Text style={[styles.challengeDetailLink, { color: GOLD }]} numberOfLines={1}>
-                          {selectedChallenge.reaction_url || getCreatorProfile(selectedChallenge)?.creator_social_url}
-                        </Text>
-                      </TouchableOpacity>
-                    ) : null}
+                    {(() => {
+                      const links = parseReactionLinks(
+                        selectedChallenge.reaction_url ||
+                          getCreatorProfile(selectedChallenge)?.creator_social_url
+                      );
+                      if (!links.length) return null;
+
+                      return (
+                        <View style={styles.challengeLinksList}>
+                          {links.map((link, index) => (
+                            <TouchableOpacity
+                              key={`${link}-${index}`}
+                              activeOpacity={0.75}
+                              onPress={() => openReactionUrl(link)}
+                              style={styles.challengeLinkRow}
+                            >
+                              <Ionicons name="link-outline" size={15} color={challengeTone.gold} />
+                              <Text style={[styles.challengeDetailLink, { color: challengeTone.gold }]} numberOfLines={1}>
+                                {link}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      );
+                    })()}
                   </View>
 
                 </ScrollView>
 
-                <View style={[styles.modalFooter, styles.challengeActionBar, { backgroundColor: T.bg, borderTopColor: T.line }]}>
+                <View
+                  style={[
+                    styles.modalFooter,
+                    styles.challengeActionBar,
+                    {
+                      backgroundColor: T.bg,
+                      borderTopColor: challengeTone.border,
+                      shadowColor: challengeTone.shadow,
+                    },
+                  ]}
+                >
                   {selectedChallenge.creator_id === currentUserId ? (
                     <TouchableOpacity
                       style={[
@@ -3913,8 +4564,8 @@ onRefresh={() => {
                       disabled={!!challengeDeleting[selectedChallenge.id]}
                       activeOpacity={0.9}
                     >
-                      <Ionicons name="trash-outline" size={14} color="#FF6B6B" />
-                      <Text style={[styles.footerDangerText, { color: '#FF8A8A' }]}>
+                      <Ionicons name="trash-outline" size={14} color={challengeTone.danger} />
+                      <Text style={[styles.footerDangerText, { color: challengeTone.danger }]}>
                         {challengeDeleting[selectedChallenge.id] ? 'Removing' : 'Remove'}
                       </Text>
                     </TouchableOpacity>
@@ -3931,7 +4582,7 @@ onRefresh={() => {
                     onPress={() => openChallengeSubmissions(selectedChallenge)}
                     activeOpacity={0.9}
                   >
-                    <Text style={[styles.footerGhostText, { color: T.sub }]}>View Submissions</Text>
+                    <Text style={[styles.footerGhostText, { color: T.sub }]}>View Entries</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -3941,8 +4592,12 @@ onRefresh={() => {
                       styles.footerPrimary,
                       !isWebMobile && styles.challengeFooterPrimary,
                       {
-                        backgroundColor: isChallengeEnded(selectedChallenge) ? T.surface2 : GOLD,
-                        borderColor: isChallengeEnded(selectedChallenge) ? T.line : GOLD_LINE,
+                        backgroundColor: isChallengeEnded(selectedChallenge)
+                          ? T.surface2
+                          : challengeTone.gold,
+                        borderColor: isChallengeEnded(selectedChallenge)
+                          ? T.line
+                          : challengeTone.border,
                       },
                       isChallengeEnded(selectedChallenge) && { opacity: 0.72 },
                     ]}
@@ -4265,16 +4920,16 @@ const styles = StyleSheet.create({
   },
   heroCard: {
     backgroundColor: T.surface2,
-    borderRadius: 24,
+    borderRadius: 12,
     paddingHorizontal: 18,
     paddingVertical: 18,
     borderWidth: 1,
     borderColor: T.lineSoft,
     shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   heroTopRow: {
   flexDirection: 'row',
@@ -4285,7 +4940,7 @@ const styles = StyleSheet.create({
   heroEyebrowPill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 999,
+    borderRadius: 8,
     backgroundColor: '#111111',
     borderWidth: 1,
     borderColor: T.lineSoft,
@@ -4301,7 +4956,7 @@ const styles = StyleSheet.create({
   heroStatsPill: {
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 999,
+    borderRadius: 8,
     backgroundColor: '#101010',
     borderWidth: 1,
     borderColor: T.lineSoft,
@@ -4331,7 +4986,7 @@ const styles = StyleSheet.create({
   },
 
   listHeaderRoot: {
-    paddingTop: Platform.OS === 'web' ? 28 : 20,
+    paddingTop: Platform.OS === 'web' ? 4 : 12,
     alignItems: 'center',
   },
 
@@ -4340,24 +4995,24 @@ const styles = StyleSheet.create({
     maxWidth: 1000,
     paddingHorizontal: 16,
     alignItems: 'center',
-    marginBottom: 18,
+    marginBottom: 16,
   },
 
   opportunitiesTitle: {
     fontFamily: SYSTEM_SANS,
-    fontSize: Platform.OS === 'web' ? 34 : 28,
-    lineHeight: Platform.OS === 'web' ? 39 : 33,
+    fontSize: Platform.OS === 'web' ? 36 : 29,
+    lineHeight: Platform.OS === 'web' ? 41 : 34,
     fontWeight: '800',
-    letterSpacing: -0.4,
+    letterSpacing: 0,
     textAlign: 'center',
   },
 
   opportunitiesSubtitle: {
-    marginTop: 6,
-    maxWidth: 520,
+    marginTop: 7,
+    maxWidth: 600,
     fontFamily: SYSTEM_SANS,
     fontSize: Platform.OS === 'web' ? 15 : 14,
-    lineHeight: 20,
+    lineHeight: 21,
     fontWeight: '600',
     textAlign: 'center',
   },
@@ -4373,7 +5028,7 @@ const styles = StyleSheet.create({
     maxWidth: 420,
     height: 44,
     padding: 4,
-    borderRadius: 14,
+    borderRadius: 10,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 4,
@@ -4388,17 +5043,17 @@ const styles = StyleSheet.create({
   },
 
   opportunitySegmentTapActive: {
-    shadowOpacity: Platform.OS === 'web' ? 0.12 : 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    shadowOpacity: Platform.OS === 'web' ? 0.06 : 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
 
   opportunitySegmentText: {
     fontFamily: SYSTEM_SANS,
     fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.8,
+    fontWeight: '700',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
 
@@ -4422,7 +5077,7 @@ categoryTap: {
   minWidth: 82,
   paddingHorizontal: 12,
   paddingVertical: 8,
-  borderRadius: 999,
+  borderRadius: 8,
   backgroundColor: T.surface2,
   borderWidth: 1,
   borderColor: T.lineSoft,
@@ -4434,10 +5089,10 @@ categoryTap: {
   categoryText: {
     color: '#D0CCC4',
     fontFamily: SYSTEM_SANS,
-    letterSpacing: 1.1,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   categoryTextActive: {
     color: GOLD,
@@ -4462,16 +5117,16 @@ detailModalCard: {
   width: '100%',
   maxWidth: 460,
   backgroundColor: T.surface2,
-  borderRadius: 24,
+  borderRadius: 12,
   paddingHorizontal: 20,
   paddingVertical: 22,
   borderWidth: 1,
   borderColor: T.lineSoft,
   shadowColor: '#000',
-  shadowOpacity: 0.35,
-  shadowRadius: 18,
-  shadowOffset: { width: 0, height: 8 },
-  elevation: 8,
+  shadowOpacity: 0.12,
+  shadowRadius: 12,
+  shadowOffset: { width: 0, height: 5 },
+  elevation: 2,
 },
 
   /* Filters */
@@ -4528,7 +5183,7 @@ filterPill: {
     gap: 7,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 999,
+    borderRadius: 8,
     backgroundColor: '#101010',
     borderWidth: 1,
     borderColor: T.lineSoft,
@@ -4578,8 +5233,8 @@ filterPill: {
     fontFamily: SYSTEM_SANS,
     fontSize: Platform.OS === 'web' ? 23 : 21,
     lineHeight: Platform.OS === 'web' ? 28 : 25,
-    fontWeight: '800',
-    letterSpacing: -0.2,
+    fontWeight: '700',
+    letterSpacing: 0,
   },
 
   creatorSectionSubtitle: {
@@ -4588,6 +5243,27 @@ filterPill: {
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '600',
+  },
+  creatorValueRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  creatorValueChip: {
+    minHeight: 28,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    justifyContent: 'center',
+  },
+  creatorValueChipText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
 
   sectionPostButton: {
@@ -4610,8 +5286,8 @@ filterPill: {
   sectionPostButtonText: {
     fontFamily: SYSTEM_SANS,
     fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.8,
+    fontWeight: '800',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
 
@@ -4633,9 +5309,9 @@ filterPill: {
 
   challengeCard: {
     backgroundColor: T.surface2,
-    borderRadius: 16,
-    paddingHorizontal: Platform.OS === 'web' ? 20 : 16,
-    paddingVertical: Platform.OS === 'web' ? 20 : 16,
+    borderRadius: 10,
+    paddingHorizontal: Platform.OS === 'web' ? 22 : 16,
+    paddingVertical: Platform.OS === 'web' ? 22 : 16,
     borderWidth: 1,
     borderColor: GOLD_LINE,
     shadowColor: '#000',
@@ -4644,10 +5320,46 @@ filterPill: {
     shadowOffset: { width: 0, height: 4 },
     elevation: 1,
   },
-  challengeTopRow: {
+  challengeBadgeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 10,
+  },
+  challengeTypeBadge: {
+    alignSelf: 'flex-start',
+    minHeight: 28,
+    borderRadius: 7,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 11,
+    gap: 6,
+  },
+  challengeTypeBadgeText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  challengeCountdownText: {
+    flexShrink: 0,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  challengeHostRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   creatorAvatarTap: {
     flexShrink: 0,
@@ -4663,7 +5375,7 @@ filterPill: {
   },
   creatorAvatarInitials: {
     fontSize: 13,
-    fontWeight: '900',
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
     letterSpacing: 0.7,
   },
@@ -4671,20 +5383,12 @@ filterPill: {
     flex: 1,
     minWidth: 0,
   },
-  challengeKicker: {
-    fontSize: 10,
-    fontWeight: '900',
-    fontFamily: SYSTEM_SANS,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
   challengeTitle: {
     fontSize: Platform.OS === 'web' ? 21 : 19,
     lineHeight: Platform.OS === 'web' ? 24 : 22,
-    fontWeight: '900',
+    fontWeight: '800',
     fontFamily: SYSTEM_SANS,
-    letterSpacing: -0.1,
+    letterSpacing: 0,
   },
   challengeCreatorRow: {
     marginTop: 5,
@@ -4710,6 +5414,35 @@ filterPill: {
     marginTop: 12,
     fontFamily: SYSTEM_SANS,
     maxWidth: 750,
+  },
+  challengeRewardCallout: {
+    marginTop: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  challengeRewardCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  challengeRewardLabel: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+  challengeRewardText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: '700',
   },
   challengeMetaGrid: {
     flexDirection: 'row',
@@ -4757,9 +5490,9 @@ filterPill: {
   },
   challengeSecondaryButtonText: {
     fontSize: 12,
-    fontWeight: '900',
+    fontWeight: '800',
     fontFamily: SYSTEM_SANS,
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   challengePrimaryButton: {
@@ -4777,9 +5510,9 @@ filterPill: {
   },
   challengePrimaryButtonText: {
     fontSize: 12,
-    fontWeight: '900',
+    fontWeight: '800',
     fontFamily: SYSTEM_SANS,
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   challengeDangerButton: {
@@ -4796,9 +5529,9 @@ filterPill: {
   },
   challengeDangerButtonText: {
     fontSize: 12,
-    fontWeight: '900',
+    fontWeight: '800',
     fontFamily: SYSTEM_SANS,
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   challengeDetailShell: {
@@ -4811,9 +5544,9 @@ filterPill: {
     flex: 1,
     textAlign: 'center',
     fontSize: 12,
-    fontWeight: '900',
+    fontWeight: '800',
     fontFamily: SYSTEM_SANS,
-    letterSpacing: 1.8,
+    letterSpacing: 1,
     textTransform: 'uppercase',
   },
   challengeDetailTopBar: {
@@ -4842,15 +5575,40 @@ filterPill: {
     maxWidth: 1000,
   },
   challengeDetailHero: {
-    borderRadius: 16,
+    borderRadius: 10,
     padding: Platform.OS === 'web' ? 22 : 18,
     borderWidth: 1,
     marginBottom: 10,
     shadowColor: '#000',
-    shadowOpacity: Platform.OS === 'web' ? 0.04 : 0,
+    shadowOpacity: 0,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 1,
+  },
+  challengeDetailHeroBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 16,
+  },
+  challengeCountdownBadge: {
+    minHeight: 28,
+    borderRadius: 7,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  challengeCountdownBadgeText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   challengeDetailHeroTopRow: {
     flexDirection: 'row',
@@ -4860,9 +5618,9 @@ filterPill: {
   challengeDetailTitle: {
     fontSize: Platform.OS === 'web' ? 32 : 26,
     lineHeight: Platform.OS === 'web' ? 35 : 29,
-    fontWeight: '900',
+    fontWeight: '800',
     fontFamily: SYSTEM_SANS,
-    letterSpacing: -0.35,
+    letterSpacing: 0,
     marginTop: 4,
   },
   challengeDetailStatsRow: {
@@ -4882,9 +5640,9 @@ filterPill: {
   },
   challengeStatLabel: {
     fontSize: 10,
-    fontWeight: '900',
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
-    letterSpacing: 1.2,
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
     marginBottom: 7,
   },
@@ -4895,17 +5653,27 @@ filterPill: {
   },
   challengeDetailSection: {
     width: '100%',
-    borderRadius: 14,
+    borderRadius: 10,
     borderWidth: 1,
     paddingHorizontal: 16,
     paddingVertical: 16,
     marginBottom: 10,
   },
+  challengeRewardDetailSection: {
+    borderRadius: 10,
+    paddingVertical: 18,
+  },
+  challengeDetailSectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
   challengeDetailSectionTitle: {
     fontSize: 10,
-    fontWeight: '900',
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
-    letterSpacing: 1.2,
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
     marginBottom: 8,
   },
@@ -4916,10 +5684,20 @@ filterPill: {
     fontWeight: '600',
   },
   challengeDetailLink: {
-    marginTop: 10,
+    flex: 1,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
+  },
+  challengeLinksList: {
+    marginTop: 10,
+    gap: 8,
+  },
+  challengeLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    minHeight: 24,
   },
   challengeReactionPill: {
     alignSelf: 'flex-start',
@@ -4934,13 +5712,17 @@ filterPill: {
   challengeReactionPillText: {
     fontFamily: SYSTEM_SANS,
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   challengeActionBar: {
     justifyContent: 'center',
     paddingHorizontal: Platform.OS === 'web' ? 32 : 16,
     maxWidth: Platform.OS === 'web' ? 1064 : undefined,
     alignSelf: 'center',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 4,
   },
   challengeFooterSecondary: {
     flex: 0.38,
@@ -4971,16 +5753,16 @@ filterPill: {
 
   jobCard: {
     backgroundColor: T.surface2,
-    borderRadius: 22,
+    borderRadius: 10,
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderWidth: 1,
     borderColor: T.lineSoft,
     shadowColor: '#000',
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 3,
+    shadowOpacity: 0.10,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
   },
   jobCardTopRow: {
     flexDirection: 'row',
@@ -4994,8 +5776,8 @@ filterPill: {
   },
   jobTitle: {
     fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 1.2,
+    fontWeight: '800',
+    letterSpacing: 0.5,
     color: T.text,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
@@ -5005,7 +5787,7 @@ filterPill: {
     alignSelf: 'flex-start',
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 999,
+    borderRadius: 8,
     backgroundColor: '#101010',
     borderWidth: 1,
     borderColor: T.lineSoft,
@@ -5013,8 +5795,8 @@ filterPill: {
   typeBadgeText: {
     color: GOLD,
     fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1,
+    fontWeight: '700',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
   },
@@ -5022,7 +5804,7 @@ filterPill: {
     maxWidth: '48%',
     paddingHorizontal: 10,
     paddingVertical: 8,
-    borderRadius: 14,
+    borderRadius: 8,
     backgroundColor: GOLD_SOFT,
     borderWidth: 1,
     borderColor: GOLD_LINE,
@@ -5031,7 +5813,7 @@ filterPill: {
     color: '#E6D6B0',
     fontSize: 11.5,
     lineHeight: 15,
-    fontWeight: '800',
+    fontWeight: '700',
     textAlign: 'right',
     fontFamily: SYSTEM_SANS,
   },
@@ -5088,7 +5870,7 @@ filterPill: {
   posterName: {
     color: GOLD,
     fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
+    fontWeight: '700',
     letterSpacing: 0.3,
   },
 
@@ -5099,7 +5881,7 @@ filterPill: {
   },
   emptyCard: {
     backgroundColor: T.surface2,
-    borderRadius: 22,
+    borderRadius: 10,
     paddingHorizontal: 18,
     paddingVertical: 24,
     borderWidth: 1,
@@ -5127,15 +5909,15 @@ filterPill: {
     position: 'absolute',
     left: 16,
     right: 16,
-    borderRadius: 18,
+    borderRadius: 10,
     backgroundColor: GOLD,
     borderWidth: 1,
     borderColor: '#8F7441',
     shadowColor: '#000',
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
   postButtonInner: {
     paddingVertical: 15,
@@ -5148,9 +5930,9 @@ filterPill: {
   postButtonText: {
     color: '#0B0B0B',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '800',
     fontSize: 15,
-    letterSpacing: 1.2,
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
 
@@ -5179,14 +5961,14 @@ filterPill: {
     color: T.text,
     fontFamily: SYSTEM_SANS,
     fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: -0.3,
+    fontWeight: '800',
+    letterSpacing: 0,
   },
 
   cityModalCloseIcon: {
     width: 34,
     height: 34,
-    borderRadius: 17,
+    borderRadius: 8,
     backgroundColor: T.surface2,
     borderWidth: 1,
     borderColor: T.lineSoft,
@@ -5198,7 +5980,7 @@ filterPill: {
     minHeight: 50,
     borderWidth: 1,
     borderColor: T.lineSoft,
-    borderRadius: 15,
+    borderRadius: 10,
     paddingHorizontal: 14,
     fontSize: 15,
     color: T.text,
@@ -5217,7 +5999,7 @@ filterPill: {
 
   cityPickerItem: {
     minHeight: 58,
-    borderRadius: 16,
+    borderRadius: 10,
     backgroundColor: T.surface2,
     borderWidth: 1,
     borderColor: T.lineSoft,
@@ -5278,7 +6060,7 @@ filterPill: {
   bestMatchBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 999,
+    borderRadius: 8,
     backgroundColor: '#18140B',
     borderWidth: 1,
     borderColor: '#3D3119',
@@ -5288,7 +6070,7 @@ filterPill: {
     fontSize: 10,
     color: GOLD,
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.7,
   },
@@ -5301,7 +6083,7 @@ filterPill: {
   cityModalCancelButton: {
     marginTop: 4,
     minHeight: 50,
-    borderRadius: 15,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: T.surface2,
@@ -5313,11 +6095,88 @@ filterPill: {
     color: T.sub,
     fontFamily: SYSTEM_SANS,
     fontSize: 14,
+    fontWeight: '700',
+  },
+
+  categoryPickerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 30,
+    elevation: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(0,0,0,0.58)',
+  },
+  categoryPickerSheet: {
+    width: '100%',
+    maxWidth: 560,
+    maxHeight: '72%',
+    alignSelf: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  categoryPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 12,
+  },
+  categoryPickerTitle: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 17,
+    lineHeight: 21,
     fontWeight: '800',
+  },
+  categoryPickerSubtitle: {
+    marginTop: 3,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+  },
+  categoryPickerClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryPickerGrid: {
+    gap: 8,
+    paddingBottom: 4,
+  },
+  categoryPickerOption: {
+    minHeight: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  categoryPickerOptionText: {
+    flex: 1,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '700',
   },
 
   /* Modal base */
   modalContainer: {
+  position: 'relative',
   flex: 1,
   backgroundColor: T.bg,
   padding: 20,
@@ -5335,11 +6194,11 @@ filterPill: {
   modalTitle: {
     fontSize: 16,
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '800',
     textAlign: 'center',
     marginBottom: 10,
     color: T.text,
-    letterSpacing: 1.3,
+    letterSpacing: 0.7,
     textTransform: 'uppercase',
   },
   modalTabsRow: {
@@ -5348,18 +6207,18 @@ filterPill: {
   },
   label: {
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '700',
     marginTop: 12,
     marginBottom: 8,
     color: '#EEE4CF',
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
   },
   input: {
     backgroundColor: T.surface3,
     padding: 14,
-    borderRadius: 16,
+    borderRadius: 10,
     marginBottom: 12,
     borderColor: T.lineSoft,
     borderWidth: 1,
@@ -5370,9 +6229,179 @@ filterPill: {
     flexDirection: 'row',
     alignItems: 'center',
   },
+  formPickerButton: {
+    minHeight: 50,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  formPickerButtonText: {
+    flex: 1,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
   textAreaInput: {
     minHeight: 96,
     textAlignVertical: 'top',
+  },
+  linkTextAreaInput: {
+    minHeight: 84,
+    textAlignVertical: 'top',
+  },
+  selectorWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  selectorChip: {
+    minHeight: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectorChipText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '700',
+  },
+  deadlineButton: {
+    minHeight: 50,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  deadlineButtonText: {
+    flex: 1,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+  deadlinePanel: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    marginTop: -4,
+    marginBottom: 12,
+  },
+  deadlinePanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  deadlineMonthButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deadlineMonthText: {
+    flex: 1,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  calendarWeekRow: {
+    flexDirection: 'row',
+    marginBottom: 6,
+  },
+  calendarWeekText: {
+    flex: 1,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: 6,
+  },
+  calendarCell: {
+    width: '14.2857%',
+    alignItems: 'center',
+  },
+  calendarDayButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarDayDisabled: {
+    opacity: 0.36,
+  },
+  calendarDayText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  timeStepperRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  timeStepperButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeStepperValue: {
+    minWidth: 68,
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: '700',
+  },
+  quickTimeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 10,
+  },
+  quickTimeChip: {
+    minHeight: 32,
+    borderRadius: 9,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickTimeText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    fontWeight: '700',
   },
   helperText: {
     marginTop: -4,
@@ -5384,7 +6413,7 @@ filterPill: {
   searchInput: {
     borderWidth: 1,
     borderColor: T.lineSoft,
-    borderRadius: 16,
+    borderRadius: 10,
     padding: 14,
     fontSize: 15,
     color: T.text,
@@ -5396,7 +6425,7 @@ filterPill: {
   submitButton: {
     backgroundColor: GOLD,
     padding: 15,
-    borderRadius: 16,
+    borderRadius: 10,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#8F7441',
@@ -5404,7 +6433,7 @@ filterPill: {
   submitText: {
     color: '#0B0B0B',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '800',
     fontSize: 15,
     letterSpacing: 1,
   },
@@ -5445,7 +6474,7 @@ filterPill: {
   footerBtn: {
     flex: 1,
     padding: 15,
-    borderRadius: 16,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -5457,8 +6486,8 @@ filterPill: {
   footerGhostText: {
     color: T.sub,
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    letterSpacing: 0.8,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   footerPrimary: {
     backgroundColor: GOLD,
@@ -5468,8 +6497,8 @@ filterPill: {
   footerPrimaryText: {
     color: '#0B0B0B',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    letterSpacing: 1,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   footerDanger: {
     borderWidth: 1,
@@ -5478,8 +6507,8 @@ filterPill: {
   },
   footerDangerText: {
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    letterSpacing: 0.8,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
 
   /* Inline overlays */
@@ -5497,7 +6526,7 @@ filterPill: {
   backgroundColor: '#050505',
   padding: 20,
   paddingTop: 28,
-  borderRadius: 22,
+  borderRadius: 12,
   width: '100%',
   maxWidth: 640,
   maxHeight: '72%',
@@ -5507,7 +6536,7 @@ filterPill: {
   closeModalButton: {
     marginTop: 14,
     padding: 14,
-    borderRadius: 16,
+    borderRadius: 10,
     alignItems: 'center',
     backgroundColor: T.surface3,
     borderWidth: 1,
@@ -5530,7 +6559,7 @@ filterPill: {
     paddingHorizontal: 14,
     paddingVertical: 12,
     backgroundColor: T.surface3,
-    borderRadius: 16,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: T.lineSoft,
   },
@@ -5554,7 +6583,7 @@ filterPill: {
   /* Job detail */
   detailHeroCard: {
     backgroundColor: T.surface2,
-    borderRadius: 22,
+    borderRadius: 10,
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderWidth: 1,
@@ -5630,7 +6659,7 @@ filterPill: {
     width: '100%',
     maxWidth: 420,
     backgroundColor: T.surface2,
-    borderRadius: 22,
+    borderRadius: 10,
     padding: 20,
     borderWidth: 1,
     borderColor: T.lineSoft,
@@ -5638,7 +6667,7 @@ filterPill: {
   confirmTitle: {
     fontSize: 16,
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
+    fontWeight: '800',
     color: T.text,
     textAlign: 'center',
     marginBottom: 6,
@@ -5680,7 +6709,7 @@ filterPill: {
     alignItems: 'center',
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 999,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: GOLD_LINE,
     backgroundColor: GOLD_SOFT,
@@ -5711,15 +6740,15 @@ filterPill: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     backgroundColor: GOLD,
-    borderRadius: 999,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#8F7441',
   },
   closeJobButtonText: {
     fontSize: 11.5,
     fontFamily: SYSTEM_SANS,
-    fontWeight: '900',
-    letterSpacing: 0.8,
+    fontWeight: '800',
+    letterSpacing: 0.5,
     color: '#000',
     textTransform: 'uppercase',
   },

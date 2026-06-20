@@ -939,7 +939,6 @@ export const STATIC_UI_PHRASES = new Set<string>([
   "Cinematography Boss 4 — The Lens Distance Test",
   "Cinematography Boss 5 — The Stairwell Descent",
   "Cinematography Proof",
-  "Cinzel",
   "City",
   "City / country",
   "City Collaboration Film",

@@ -29,7 +29,7 @@ type Props = {
   autoPlay?: boolean;
 };
 
-function FeedVideoCardBase({ title, thumbnailUrl, storagePath, autoPlay = true }: Props) {
+function FeedVideoCardBase({ title, thumbnailUrl, storagePath, autoPlay = false }: Props) {
   const ref = useRef<Video>(null);
   const [src, setSrc] = useState<string | null>(null);
 
@@ -47,7 +47,7 @@ function FeedVideoCardBase({ title, thumbnailUrl, storagePath, autoPlay = true }
   }, [storagePath]);
 
   return (
-    <View style={{ marginBottom: 18, borderRadius: 16, overflow: "hidden", backgroundColor: "#000" }}>
+    <View style={{ marginBottom: 16, borderRadius: 10, overflow: "hidden", backgroundColor: "#000" }}>
       {src ? (
         <Video
           ref={ref}
@@ -67,7 +67,7 @@ function FeedVideoCardBase({ title, thumbnailUrl, storagePath, autoPlay = true }
           style={{ width: "100%", height: 320 }}
         />
       )}
-      <Text style={{ padding: 12, fontWeight: "700", fontSize: 16, color: "#1E1E1E", backgroundColor: "#fff" }}>
+      <Text style={{ padding: 11, fontWeight: "600", fontSize: 15, color: "#1E1E1E", backgroundColor: "#fff" }}>
         {title}
       </Text>
     </View>
