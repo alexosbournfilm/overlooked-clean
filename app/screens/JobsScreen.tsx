@@ -637,8 +637,8 @@ export default function JobsScreen() {
   const nativeLikeModalAnimation = Platform.OS === 'web' && !isWebMobile ? 'none' : 'slide';
   const { triggerAppRefresh } = useAppRefresh();
   const GOLD = colors.primary;
-  const GOLD_SOFT = isLight ? 'rgba(158,119,40,0.12)' : 'rgba(198,166,100,0.16)';
-  const GOLD_LINE = isLight ? 'rgba(158,119,40,0.26)' : 'rgba(198,166,100,0.28)';
+  const GOLD_SOFT = isLight ? 'rgba(168,121,34,0.07)' : 'rgba(198,166,100,0.16)';
+  const GOLD_LINE = isLight ? 'rgba(168,121,34,0.18)' : 'rgba(198,166,100,0.28)';
   const T = useMemo(
     () => ({
       bg: colors.background,
@@ -651,27 +651,27 @@ export default function JobsScreen() {
       accent: colors.primary,
       line: colors.border,
       lineSoft: colors.border,
-      glow: isLight ? 'rgba(158,119,40,0.08)' : 'rgba(198,166,100,0.08)',
+      glow: isLight ? 'rgba(168,121,34,0.05)' : 'rgba(198,166,100,0.08)',
     }),
     [colors, isLight]
   );
   const challengeTone = useMemo(
     () => ({
-      bg: isLight ? '#F6EFE3' : '#050505',
+      bg: isLight ? '#FFFFFF' : '#050505',
       surface: isLight ? '#FFFFFF' : '#111113',
-      surfaceAlt: isLight ? '#EFE5D5' : '#17171B',
-      border: isLight ? '#E0D2BE' : 'rgba(214,174,96,0.22)',
+      surfaceAlt: isLight ? '#F7F7F7' : '#17171B',
+      border: isLight ? '#E5E5E5' : 'rgba(214,174,96,0.22)',
       text: isLight ? '#111111' : '#F5F1E8',
-      sub: isLight ? '#5E554B' : '#B8B1A5',
+      sub: isLight ? '#3F3F3F' : '#B8B1A5',
       gold: isLight ? '#CBA252' : '#D0AA5B',
-      goldSoft: isLight ? '#F1E4CC' : 'rgba(208,170,91,0.14)',
+      goldSoft: isLight ? 'rgba(168,121,34,0.07)' : 'rgba(208,170,91,0.14)',
       danger: isLight ? '#D8505E' : '#FF7676',
-      shadow: isLight ? 'rgba(71,54,28,0.20)' : '#000',
+      shadow: isLight ? 'rgba(0,0,0,0.12)' : '#000',
     }),
     [isLight]
   );
   const READABLE_INK = isLight ? '#050505' : T.text;
-  const READABLE_MUTED = isLight ? '#4B4740' : T.mute;
+  const READABLE_MUTED = isLight ? '#555555' : T.mute;
   const COLORS = useMemo(
     () => ({
       ...THEME_COLORS,

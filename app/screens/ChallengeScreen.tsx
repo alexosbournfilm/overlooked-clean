@@ -334,14 +334,14 @@ const WorkshopScreen: React.FC = () => {
   const DARK_SURFACE = colors.card;
   const DARK_ELEVATED = colors.mutedCard;
   const DARK_ELEVATED_2 = colors.cardAlt;
-  const DARK_ELEVATED_3 = isLight ? '#F4EBD8' : '#33281F';
+  const DARK_ELEVATED_3 = isLight ? '#F7F7F7' : '#33281F';
   const TEXT_IVORY = colors.textPrimary;
   const TEXT_MUTED = colors.textMuted;
   const TEXT_SOFT = colors.textSecondary;
   const GOLD = colors.primary;
-  const GOLD_SOFT = isLight ? 'rgba(158,119,40,0.12)' : 'rgba(198,166,100,0.16)';
+  const GOLD_SOFT = isLight ? 'rgba(168,121,34,0.07)' : 'rgba(198,166,100,0.16)';
   const BORDER = colors.border;
-  const BORDER_SOFT = isLight ? 'rgba(158,119,40,0.18)' : 'rgba(198,166,100,0.18)';
+  const BORDER_SOFT = isLight ? 'rgba(168,121,34,0.18)' : 'rgba(198,166,100,0.18)';
 
   const promptSignIn = (message: string) => {
     if (Platform.OS === 'web') {
@@ -1604,7 +1604,7 @@ const isAudioProduct = isMusic || isSound;
             : null)}
         >
           <LinearGradient
-            colors={isLight ? ['#FFFFFF', '#F7F0E2'] : ['#171717', '#0E0E0E']}
+            colors={isLight ? ['#FFFFFF', '#F7F7F7'] : ['#171717', '#0E0E0E']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[
@@ -1623,7 +1623,7 @@ const isAudioProduct = isMusic || isSound;
             <View
               style={[
                 styles.cardGlow,
-                { backgroundColor: isLight ? 'rgba(201,164,92,0.13)' : 'rgba(198,166,100,0.065)' },
+                { backgroundColor: isLight ? 'rgba(168,121,34,0.05)' : 'rgba(198,166,100,0.065)' },
               ]}
             />
             <View style={[styles.cardTopLine, { backgroundColor: BORDER }]} />
@@ -1791,7 +1791,7 @@ const isAudioProduct = isMusic || isSound;
               {!hasAnything && (
                 <View style={styles.emptyState}>
                   <LinearGradient
-                    colors={isLight ? ['#FFFFFF', '#F7F0E2'] : ['#161616', '#0E0E0E']}
+                    colors={isLight ? ['#FFFFFF', '#F7F7F7'] : ['#161616', '#0E0E0E']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={[styles.emptyStateIconWrap, { borderColor: BORDER }]}
@@ -1837,7 +1837,7 @@ const isAudioProduct = isMusic || isSound;
               {hasAnything && filteredItemCount === 0 && (
                 <View style={styles.emptyState}>
                   <LinearGradient
-                    colors={isLight ? ['#FFFFFF', '#F7F0E2'] : ['#161616', '#0E0E0E']}
+                    colors={isLight ? ['#FFFFFF', '#F7F7F7'] : ['#161616', '#0E0E0E']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={[styles.emptyStateIconWrap, { borderColor: BORDER }]}

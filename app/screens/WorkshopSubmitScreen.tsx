@@ -2714,7 +2714,7 @@ return (
                           style={[
                             styles.selectedChip,
                             {
-                              backgroundColor: isLight ? '#F6ECD8' : CINEMA.brassSoft,
+                              backgroundColor: isLight ? 'rgba(168,121,34,0.06)' : CINEMA.brassSoft,
                               borderColor: isLight ? colors.borderStrong : CINEMA.brassBorder,
                             },
                           ]}
@@ -2775,7 +2775,7 @@ return (
                           style={[
                             styles.assetIconBubble,
                             {
-                              backgroundColor: isLight ? '#F6ECD8' : CINEMA.brassSoft,
+                              backgroundColor: isLight ? 'rgba(168,121,34,0.06)' : CINEMA.brassSoft,
                               borderColor: isLight ? colors.borderStrong : CINEMA.brassBorder,
                             },
                           ]}
@@ -2893,7 +2893,7 @@ return (
                                 style={[
                                   styles.assetIconBubble,
                                   {
-                                    backgroundColor: isLight ? '#F6ECD8' : CINEMA.brassSoft,
+                                    backgroundColor: isLight ? 'rgba(168,121,34,0.06)' : CINEMA.brassSoft,
                                     borderColor: isLight ? colors.borderStrong : CINEMA.brassBorder,
                                   },
                                 ]}
@@ -3071,7 +3071,7 @@ return (
                                 style={[
                                   styles.collaboratorAvatarFallback,
                                   {
-                                    backgroundColor: isLight ? '#F6ECD8' : CINEMA.brassSoft,
+                                    backgroundColor: isLight ? 'rgba(168,121,34,0.06)' : CINEMA.brassSoft,
                                     borderColor: isLight ? colors.borderStrong : CINEMA.brassBorder,
                                   },
                                 ]}
@@ -3103,7 +3103,7 @@ return (
                             style={[
                               styles.collaboratorChip,
                               {
-                                backgroundColor: isLight ? '#F6ECD8' : CINEMA.brassSoft,
+                                backgroundColor: isLight ? 'rgba(168,121,34,0.06)' : CINEMA.brassSoft,
                                 borderColor: isLight ? colors.borderStrong : CINEMA.brassBorder,
                               },
                             ]}
@@ -3114,7 +3114,7 @@ return (
                               <View
                                 style={[
                                   styles.collaboratorChipAvatarFallback,
-                                  { backgroundColor: isLight ? '#EAD6A8' : 'rgba(198,166,100,0.20)' },
+                                  { backgroundColor: isLight ? 'rgba(168,121,34,0.12)' : 'rgba(198,166,100,0.20)' },
                                 ]}
                               >
                                 <Text style={[styles.collaboratorChipInitial, { color: T.accent }]}>
@@ -3310,7 +3310,7 @@ return (
                       {
                         backgroundColor: active
                           ? isLight
-                            ? '#F6ECD8'
+                            ? 'rgba(168,121,34,0.06)'
                             : CINEMA.brassSoft
                           : T.surfaceSoft,
                         borderColor: active

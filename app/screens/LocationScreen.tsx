@@ -258,7 +258,7 @@ export default function LocationScreen() {
   const GOLD = colors.primary;
   const GOLD_DARK = isLight ? '#6F531C' : '#8F7A4D';
   const READABLE_INK = isLight ? '#050505' : TEXT_PRIMARY;
-  const READABLE_MUTED = isLight ? '#4B4740' : TEXT_TERTIARY;
+  const READABLE_MUTED = isLight ? '#555555' : TEXT_TERTIARY;
 
   const [city, setCity] = useState<DropdownOption | null>(null);
   const [selectedCityLocation, setSelectedCityLocation] = useState<CityGlobeLocation | null>(null);
@@ -991,7 +991,7 @@ export default function LocationScreen() {
                         style={[
                           styles.cityItem,
                           {
-                            backgroundColor: selected ? (isLight ? '#F6ECD8' : '#0E0D09') : SURFACE,
+                            backgroundColor: selected ? (isLight ? 'rgba(168,121,34,0.06)' : '#0E0D09') : SURFACE,
                             borderColor: selected ? GOLD : BORDER,
                           },
                         ]}
@@ -1027,7 +1027,7 @@ export default function LocationScreen() {
                             style={[
                               styles.bestMatchBadge,
                               {
-                                backgroundColor: isLight ? '#F6ECD8' : '#18140B',
+                                backgroundColor: isLight ? 'rgba(168,121,34,0.06)' : '#18140B',
                                 borderColor: isLight ? GOLD : '#3D3119',
                               },
                             ]}

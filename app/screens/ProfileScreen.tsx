@@ -2386,15 +2386,15 @@ export default function ProfileScreen() {
             label: COLORS.textPrimary,
             muted: COLORS.textMuted,
             helper: COLORS.textMuted,
-            dropzoneBg: "#FBF7F0",
-            videoDropzoneBg: "#FFFDF8",
+            dropzoneBg: "#FFFFFF",
+            videoDropzoneBg: "#FFFFFF",
             dropzoneBorder: COLORS.borderStrong,
-            dropzoneHoverBg: "#F5EBDC",
+            dropzoneHoverBg: "#F7F7F7",
             dropzoneHoverBorder: COLORS.primary,
             selectedBorder: COLORS.primary,
-            selectedBg: "rgba(201,164,92,0.13)",
-            categoryBg: "#FBF7F0",
-            categoryHoverBg: "#F5EBDC",
+            selectedBg: "rgba(168,121,34,0.07)",
+            categoryBg: "#FFFFFF",
+            categoryHoverBg: "#F7F7F7",
             categoryBorder: COLORS.border,
             categoryHoverBorder: COLORS.borderStrong,
             iconBg: COLORS.card,
@@ -7325,7 +7325,7 @@ const renderSubmissionsSection = () => {
   const watchMediaMaxH = Math.floor(
     isMobileLike ? Math.min(windowHeight * 0.38, 360) : watchDesktopMaxH
   );
-  const watchSurface = isLight ? "#FAF7F1" : "#000000";
+  const watchSurface = isLight ? "#FFFFFF" : "#000000";
 
   const renderSubmissionGrid = (
     title: string,
@@ -7442,9 +7442,9 @@ const renderSubmissionsSection = () => {
     const next = profileSubmissionSuggestions[0];
     if (next) void openSubmissionModal(next);
   };
-  const profileSoftSurface = isLight ? "#FFFDF8" : "#0B0B0B";
-  const profileSubText = isLight ? "#62584B" : "rgba(216,210,200,0.62)";
-  const profileWatchBorder = isLight ? "rgba(93,72,43,0.16)" : "rgba(255,255,255,0.08)";
+  const profileSoftSurface = isLight ? "#FAFAFA" : "#0B0B0B";
+  const profileSubText = isLight ? "#3F3F3F" : "rgba(216,210,200,0.62)";
+  const profileWatchBorder = isLight ? "rgba(0,0,0,0.10)" : "rgba(255,255,255,0.08)";
   const scrollSubmissionComposerIntoView = () => {
     if (Platform.OS !== 'android') return;
 
@@ -8301,7 +8301,7 @@ const renderSubmissionsSection = () => {
                         styles.profileWatchDescriptionPanel,
                         {
                           backgroundColor: isLight
-                            ? "rgba(255,253,248,0.86)"
+                            ? "rgba(255,255,255,0.90)"
                             : "rgba(255,255,255,0.035)",
                           borderColor: profileWatchBorder,
                         },

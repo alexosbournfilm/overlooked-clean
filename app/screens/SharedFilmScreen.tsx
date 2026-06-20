@@ -842,7 +842,7 @@ export default function SharedFilmScreen() {
   const TEXT = colors.textPrimary;
   const SUB = colors.textSecondary;
   const MUTE = colors.textMuted;
-  const goldSoft = isLight ? 'rgba(158,119,40,0.10)' : 'rgba(198,166,100,0.12)';
+  const goldSoft = isLight ? 'rgba(168,121,34,0.06)' : 'rgba(198,166,100,0.12)';
 
   const routeShareSlug =
     route.params?.shareSlug ||
@@ -1264,7 +1264,7 @@ export default function SharedFilmScreen() {
 
                   <View style={styles.metaRow}>
                     {film.film_category || film.category ? (
-                      <View style={[styles.metaPill, { backgroundColor: goldSoft, borderColor: isLight ? 'rgba(158,119,40,0.22)' : 'rgba(198,166,100,0.26)' }]}>
+                      <View style={[styles.metaPill, { backgroundColor: goldSoft, borderColor: isLight ? 'rgba(168,121,34,0.18)' : 'rgba(198,166,100,0.26)' }]}>
                         <Text style={[styles.metaPillText, { color: GOLD }]}>
                           {film.film_category || film.category}
                         </Text>

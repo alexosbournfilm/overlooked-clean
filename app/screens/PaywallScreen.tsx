@@ -1046,7 +1046,7 @@ export default function PaywallScreen() {
                             styles.planFeatureIconLocked,
                             {
                               backgroundColor: isLight
-                                ? '#F7F2EA'
+                                ? '#F7F7F7'
                                 : 'rgba(143,133,120,0.12)',
                             },
                           ]}
@@ -1109,8 +1109,8 @@ export default function PaywallScreen() {
                     style={[
                       styles.planPriceStack,
                       {
-                        backgroundColor: isLight ? '#FFFBF2' : 'rgba(33,28,19,0.74)',
-                        borderColor: isLight ? '#E7D5A8' : OFFER_TILE_BORDER,
+                        backgroundColor: isLight ? '#FFFFFF' : 'rgba(33,28,19,0.74)',
+                        borderColor: isLight ? 'rgba(168,121,34,0.22)' : OFFER_TILE_BORDER,
                       },
                     ]}
                   >

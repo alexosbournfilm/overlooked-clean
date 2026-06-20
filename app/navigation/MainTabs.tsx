@@ -165,24 +165,25 @@ const LuxuryTabIcon = memo(function LuxuryTabIcon({
 
   const scale = focus.interpolate({
     inputRange: [0, 1],
-    outputRange: [1, 1.1],
+    outputRange: [1, 1.04],
   });
 
   const translateY = focus.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, -2],
+    outputRange: [0, -1],
   });
 
   return (
     <Animated.View
       style={[
         styles.tabIconOnly,
+        focused && styles.tabIconOnlyFocused,
         {
           transform: [{ translateY }, { scale }],
         },
       ]}
     >
-      <Ionicons name={icon} size={isTiny ? 20 : 22} color={color} />
+      <Ionicons name={icon} size={isTiny ? 19 : 21} color={color} />
 
       {showBadge && (
         <View style={styles.chatBadge}>
@@ -947,7 +948,7 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
 
   const renderRow = (item: LeaderboardEntry) => {
     const isTop3 = item.rank <= 3;
-    const rowBackground = isTop3 ? (isLight ? '#F6ECD8' : '#141414') : colors.card;
+    const rowBackground = isTop3 ? (isLight ? '#F7F7F7' : '#141414') : colors.card;
     const rowBorder = isTop3 ? colors.primary : colors.border;
 
     let primaryValue = 0;
@@ -1565,8 +1566,8 @@ const settingsSize =
       compactUI && styles.topActionBtnCompact,
       compactMobileActions && styles.topActionBtnPhone,
       isLight && {
-        backgroundColor: 'rgba(201,164,92,0.16)',
-        borderColor: 'rgba(154,118,44,0.24)',
+        backgroundColor: 'rgba(168,121,34,0.06)',
+        borderColor: 'rgba(168,121,34,0.18)',
       },
 ]}
 >
@@ -1594,8 +1595,8 @@ const settingsSize =
       compactUI && styles.topActionBtnCompact,
       compactMobileActions && styles.topActionBtnPhone,
       isLight && {
-        backgroundColor: 'rgba(201,164,92,0.16)',
-        borderColor: 'rgba(154,118,44,0.24)',
+        backgroundColor: 'rgba(168,121,34,0.06)',
+        borderColor: 'rgba(168,121,34,0.18)',
       },
     ]}
   >
@@ -1823,21 +1824,21 @@ const WebTopBar = memo(function WebTopBar({
   right: 0,
   zIndex: 9999,
   backgroundColor: colors.background,
-  paddingTop: topInset + 8,
+  paddingTop: topInset + 9,
 }}
     >
       <View
         style={{
           width: '100%',
-          maxWidth: 1200,
+          maxWidth: 1240,
           alignSelf: 'center',
-          paddingHorizontal: isPhone ? 8 : 14,
-          paddingBottom: isWide ? 0 : 6,
+          paddingHorizontal: isPhone ? 10 : 20,
+          paddingBottom: isWide ? 4 : 7,
         }}
       >
         <View
           style={{
-            minHeight: 34,
+            minHeight: 38,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -1846,9 +1847,9 @@ const WebTopBar = memo(function WebTopBar({
           <Text
             style={{
               color: colors.textPrimary,
-              fontSize: isPhone ? 11.5 : 18,
+              fontSize: isPhone ? 11.5 : 17,
               fontWeight: '900',
-              letterSpacing: isPhone ? 1.15 : 2.2,
+              letterSpacing: isPhone ? 1.15 : 2.4,
             }}
           >
             OVERLOOKED
@@ -1858,26 +1859,26 @@ const WebTopBar = memo(function WebTopBar({
             <GlobalFilmSearch compact={isPhone} onSelectFilm={onSelectFilm} />
           </View>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: isPhone ? 5 : 10}}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: isPhone ? 5 : 8}}>
             <Pressable
               onPress={onOpenUpload}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 6,
+                gap: 5,
                 paddingVertical: 4,
-paddingHorizontal: isPhone ? 7 : 12,
-                borderRadius: 9,
-                backgroundColor: isLight ? 'rgba(201,164,92,0.16)' : 'rgba(198,166,100,0.10)',
+paddingHorizontal: isPhone ? 7 : 10,
+                borderRadius: 10,
+                backgroundColor: isLight ? 'rgba(168,121,34,0.06)' : 'rgba(198,166,100,0.055)',
                 borderWidth: 1,
-                borderColor: isLight ? 'rgba(154,118,44,0.24)' : 'rgba(198,166,100,0.30)',
+                borderColor: isLight ? 'rgba(168,121,34,0.18)' : 'rgba(198,166,100,0.22)',
               }}
             >
-              <Ionicons name="cloud-upload-outline" size={isPhone ? 13 : 16}color={colors.primary} />
+              <Ionicons name="cloud-upload-outline" size={isPhone ? 13 : 15} color={colors.primary} />
               <Text
                 style={{
                   color: colors.primary,
-                  fontSize: isPhone ? 6.7 : 9,
+                  fontSize: isPhone ? 6.7 : 8.5,
                   fontWeight: '800',
                   letterSpacing: isPhone ? 0.5 : 0.8,
                 }}
@@ -1891,21 +1892,21 @@ paddingHorizontal: isPhone ? 7 : 12,
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 6,
+                gap: 5,
                 paddingVertical: 4,
-paddingHorizontal: isPhone ? 7 : 12,
+paddingHorizontal: isPhone ? 7 : 10,
 
-                borderRadius: 9,
-                backgroundColor: isLight ? 'rgba(201,164,92,0.16)' : 'rgba(198,166,100,0.10)',
+                borderRadius: 10,
+                backgroundColor: isLight ? 'rgba(168,121,34,0.06)' : 'rgba(198,166,100,0.055)',
                 borderWidth: 1,
-                borderColor: isLight ? 'rgba(154,118,44,0.24)' : 'rgba(198,166,100,0.30)',
+                borderColor: isLight ? 'rgba(168,121,34,0.18)' : 'rgba(198,166,100,0.22)',
               }}
             >
-              <Ionicons name="trophy-outline" size={isPhone ? 13 : 16}color={colors.primary} />
+              <Ionicons name="trophy-outline" size={isPhone ? 13 : 15} color={colors.primary} />
               <Text
                 style={{
                   color: colors.primary,
-                  fontSize: isPhone ? 6.7 : 9,
+                  fontSize: isPhone ? 6.7 : 8.5,
                   fontWeight: '800',
                   letterSpacing: isPhone ? 0.5 : 0.8,
                 }}
@@ -1916,12 +1917,12 @@ paddingHorizontal: isPhone ? 7 : 12,
 
             <View
               style={{
-                width: isPhone ? 26 : 30,
-height: isPhone ? 26 : 30,
-borderRadius: isPhone ? 13 : 15,
-                backgroundColor: isLight ? colors.card : '#151515',
+                width: isPhone ? 26 : 28,
+height: isPhone ? 26 : 28,
+borderRadius: isPhone ? 13 : 14,
+                backgroundColor: isLight ? colors.card : '#111111',
                 borderWidth: 1,
-                borderColor: isLight ? colors.border : 'rgba(255,255,255,0.10)',
+                borderColor: isLight ? colors.border : 'rgba(255,255,255,0.08)',
                 alignItems: 'center',
                 justifyContent: 'center',
                 overflow: 'visible',
@@ -2460,7 +2461,7 @@ const contentTopPadding =
     ? NAV_HEIGHT + TOPBAR_EXTRA_ROW + 10
     : NAV_HEIGHT + TOPBAR_EXTRA_ROW;
 
-const TABBAR_HEIGHT = isPhone ? 54 : 56;
+const TABBAR_HEIGHT = isPhone ? 50 : 52;
 
 const topBarTranslateY = useRef(new Animated.Value(0)).current;
 
@@ -2538,12 +2539,12 @@ const tabPanResponder = useMemo(
     freezeOnBlur: false,
     tabBarStyle: {
       backgroundColor: colors.background,
-      borderTopWidth: 0,
-      borderTopColor: 'transparent',
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: isLight ? colors.border : 'rgba(255,255,255,0.06)',
       height: TABBAR_HEIGHT,
       display: isChatRoomRoute ? 'none' : 'flex',
-      paddingTop: isTiny ? 5 : 6,
-      paddingBottom: Platform.OS === 'ios' || isWebMobile ? (isPhone ? 10 : 12) : 8,
+      paddingTop: isTiny ? 4 : 5,
+      paddingBottom: Platform.OS === 'ios' || isWebMobile ? (isPhone ? 8 : 9) : 7,
       elevation: 0,
       shadowColor: colors.shadow,
       shadowOpacity: 0,
@@ -2760,9 +2761,14 @@ const styles = StyleSheet.create({
   alignItems: 'center',
   justifyContent: 'center',
   position: 'relative',
-  width: 42,
-  height: 34,
+  width: 38,
+  height: 30,
+  borderRadius: 999,
 },
+
+  tabIconOnlyFocused: {
+    backgroundColor: 'rgba(198,166,100,0.10)',
+  },
 
 chatBadge: {
   position: 'absolute',
@@ -2861,8 +2867,8 @@ settingsTopBadgeText: {
   webTopBarSearchSlot: {
     flex: 1,
     minWidth: 140,
-    maxWidth: 430,
-    marginHorizontal: 12,
+    maxWidth: 390,
+    marginHorizontal: 22,
     zIndex: 100000,
     elevation: 100000,
   },
@@ -2882,10 +2888,10 @@ settingsTopBadgeText: {
   },
 
   globalSearchBox: {
-    height: 34,
-    borderRadius: 11,
+    height: 32,
+    borderRadius: 12,
     borderWidth: 1,
-    paddingHorizontal: 11,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
@@ -2906,8 +2912,8 @@ settingsTopBadgeText: {
   globalSearchInput: {
     flex: 1,
     minWidth: 0,
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 11.5,
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
     paddingVertical: 0,
     outlineStyle: 'none' as any,

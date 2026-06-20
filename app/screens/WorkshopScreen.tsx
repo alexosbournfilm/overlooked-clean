@@ -17,6 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { giveXp, supabase, type UserTier } from '../lib/supabase';
 import { useGamification } from '../context/GamificationContext';
@@ -50,7 +51,6 @@ const PURPLE = '#B48CFF';
 const PURPLE_SOFT = 'rgba(180,140,255,0.12)';
 const RED = '#FF7E7E';
 const RED_SOFT = 'rgba(255,126,126,0.12)';
-const LINE = '#2A2B31';
 const LOCKED = '#30323A';
 
 const SYSTEM_SANS = Platform.select({
@@ -140,7 +140,7 @@ type Mission = {
   id: number;
   title: string;
   description: string;
-  reward: string;
+  optional?: boolean;
   type: MissionType;
   icon: keyof typeof Ionicons.glyphMap;
 };
@@ -150,6 +150,21 @@ type UserProfile = {
   tier: UserTier;
   full_name?: string | null;
 };
+
+type RoadmapCheckpoint = {
+  id: string;
+  lesson?: Lesson;
+  title: string;
+  subtitle?: string;
+  xp?: number;
+  stepLabel?: string;
+  state: NodeState;
+  statusLabel: string;
+  isBoss?: boolean;
+  isFinal?: boolean;
+};
+
+type RoadmapTrackState = 'complete' | 'active' | 'locked';
 
 /* -------------------------------- paths -------------------------------- */
 const PATHS: PathMeta[] = [
@@ -218,6 +233,341 @@ const PATHS: PathMeta[] = [
   },
 
 ];
+
+type ProgressStoryBank = {
+  stories: string[];
+  tips: string[];
+};
+
+const PROGRESS_STORY_BANKS: Record<WorkshopPathKey, ProgressStoryBank> = {
+  acting: {
+    stories: [
+      'Christoph Waltz worked for decades in European theatre and television before his international breakthrough arrived in his early 50s.',
+      'Alan Rickman was 42 when Die Hard made him a screen name after years of serious stage work.',
+      'Bryan Cranston spent years in guest roles before Breaking Bad turned all that quiet craft into a defining performance.',
+      'Samuel L. Jackson was deep into his 40s before Pulp Fiction made the wider industry catch up to him.',
+      'Morgan Freeman was already in his 50s when Driving Miss Daisy and Glory made him feel suddenly inevitable.',
+      'Viola Davis built her authority through theatre, training, and smaller screen parts before the industry fully widened around her.',
+      'Steve Carell spent years in improv and supporting work before The Office made his stillness and discomfort iconic.',
+      'Pedro Pascal kept auditioning through long stretches of almosts before later roles made him look overnight.',
+      'Margo Martindale became a beloved screen force after decades of theatre, television, and patient character work.',
+      'Octavia Spencer worked for years in small parts before The Help gave the world a fuller look at her precision.',
+      'JK Simmons built a long working life in commercials, theatre, and supporting roles before Whiplash crowned the patience.',
+      'Michelle Yeoh kept evolving across decades of action, drama, and international work before Everything Everywhere arrived.',
+      'Ke Huy Quan stepped away for years before returning with a performance that proved timing can be brutally late and still perfect.',
+    ],
+    tips: [
+      'Use today to make one objective readable without pushing emotion.',
+      'Let the camera catch thought before speech.',
+      'Do less with the face and more with the need.',
+      'Build the private history, then play the simple action.',
+      'Listen longer than feels comfortable.',
+      'Let restraint be the evidence of pressure.',
+      'Make the other person more important than your line.',
+      'Choose one behavior you can repeat cleanly on camera.',
+      'Treat the pause as active, not empty.',
+      'Let the scene change you before you change the scene.',
+      'Keep one secret alive under the whole take.',
+    ],
+  },
+  selftape: {
+    stories: [
+      'Pedro Pascal lived through years of auditions before the right tapes and rooms finally stacked into momentum.',
+      'Uzo Aduba nearly quit acting before Orange Is the New Black turned one audition into a career-changing door.',
+      'Bryan Cranston treated small rooms and tiny parts seriously long before the industry trusted him with the big one.',
+      'Taraji P. Henson built her screen life through persistence, preparation, and roles that kept sharpening her presence.',
+      'Michaela Coel made her own proof when the usual doors were too narrow, then the industry had to pay attention.',
+      'John Krasinski was close to quitting acting before The Office became the audition that changed everything.',
+      'Awkwafina moved from scrappy online work to film roles by making the specific version only she could make.',
+      'Simu Liu was still pushing through open calls and smaller jobs before a superhero tape changed the scale.',
+      'America Ferrera built trust one truthful, specific performance at a time before larger roles followed.',
+      'Daniel Kaluuya moved from British television and theatre into worldwide attention because the camera believed his listening.',
+      'Ayo Edebiri turned years of writing, rooms, and small performances into screen work that felt ready when the door opened.',
+      'Andrew Scott worked steadily for years before wider audiences suddenly understood the voltage he had been carrying.',
+      'Lupita Nyong’o was prepared when one role demanded everything; the breakthrough looked fast because the training was not.',
+    ],
+    tips: [
+      'Frame simply, then make the inner event complicated.',
+      'Your reader matters less than your listening.',
+      'Keep the eyeline clean and the behavior alive.',
+      'Make the first second already in progress.',
+      'Do one technical pass before the emotional pass.',
+      'Let the slate be calm, not apologetic.',
+      'Choose a background that disappears behind the work.',
+      'Hold still when the scene needs power.',
+      'Make the tape easy to watch and hard to forget.',
+      'Trust one strong take over five decorated ones.',
+      'Submit the clearest version of the choice.',
+    ],
+  },
+  editing: {
+    stories: [
+      'Thelma Schoonmaker spent a lifetime proving that editing is performance, rhythm, and moral pressure, not just assembly.',
+      'Walter Murch built legendary sequences by listening for emotion first and technique second.',
+      'Dede Allen helped make the cut feel modern by trusting interruption, energy, and risk.',
+      'Anne V. Coates found the famous Lawrence of Arabia match cut by understanding feeling before mechanics.',
+      'Margaret Sixel shaped Mad Max: Fury Road from enormous chaos into clean, propulsive geography.',
+      'Verna Fields became known as Mother Cutter because she could find story clarity inside pressure.',
+      'Joe Walker often talks about rhythm as thought; the cut lands when the mind moves.',
+      'Claire Simpson shaped Platoon and The Constant Gardener with cuts that protect character under tension.',
+      'Pietro Scalia built muscular, readable momentum across action and drama by keeping causality clean.',
+      'Lisa Lassek moved between comedy, action, and character by protecting timing above decoration.',
+      'Sally Menke helped Tarantino scenes breathe because the cut knew when not to interrupt.',
+      'Tom Cross made Whiplash feel like percussion because discipline was baked into every cut.',
+      'Jennifer Lame keeps many scenes alive by letting awkward human timing survive the polish.',
+    ],
+    tips: [
+      'Cut on the thought, not just the movement.',
+      'Protect the reaction that changes the scene.',
+      'Remove the clever cut if it weakens clarity.',
+      'Let rhythm serve pressure before style.',
+      'Use silence as a structural beat.',
+      'Ask what the audience needs one second before the cut.',
+      'Keep geography clean so emotion can get messy.',
+      'Try the earlier cut, then the later cut, then choose the braver one.',
+      'Let one image carry what three lines explain.',
+      'Make every return to a face mean something new.',
+      'Keep the scene alive after the obvious ending.',
+    ],
+  },
+  cinematography: {
+    stories: [
+      'Roger Deakins spent years in documentaries before his feature work became the gold standard for invisible control.',
+      'Rachel Morrison built a long camera career before Mudbound made history and widened the frame for others.',
+      'Bradford Young developed a visual language of softness, darkness, and dignity long before Arrival reached huge audiences.',
+      'Emmanuel Lubezki kept refining movement and natural light until his images felt both planned and alive.',
+      'Ellen Kuras moved through documentary and narrative work by making the camera feel emotionally accountable.',
+      'Hoyte van Hoytema built trust across smaller and international work before large-format spectacle became his arena.',
+      'Reed Morano carried operator instincts into cinematography and directing by staying close to emotional point of view.',
+      'Gordon Willis was called the Prince of Darkness because he made restraint feel like authorship.',
+      'Maryse Alberti crossed documentary, drama, and sport by making texture feel honest instead of ornamental.',
+      'Matthew Libatique built a career on bold visual commitment, from tiny intensity to studio scale.',
+      'Ari Wegner shaped patient, controlled images for years before The Power of the Dog brought wider recognition.',
+      'Darius Khondji kept proving that shadow can be expressive without becoming vague.',
+      'Greig Fraser made large worlds feel tactile by grounding spectacle in one readable source of feeling.',
+    ],
+    tips: [
+      'Choose one motivated source and obey it.',
+      'Frame the pressure, not just the person.',
+      'Let darkness reveal what matters.',
+      'Move only when the scene earns movement.',
+      'Protect the face if the face is the story.',
+      'Use distance as emotion.',
+      'Make the background carry one piece of meaning.',
+      'Keep contrast intentional, not accidental.',
+      'Let the lens choice change the relationship.',
+      'Simplify the setup until the image has a point of view.',
+      'Ask what the shot knows that the character does not.',
+    ],
+  },
+  directing: {
+    stories: [
+      'Ava DuVernay directed her first narrative feature after years in publicity, then turned lived patience into authorship.',
+      'Ridley Scott was nearly 40 when his first feature announced the precision he had built in commercials.',
+      'Claire Denis made her first feature in her 40s after years learning from sets, directors, and the world around her.',
+      'Michael Haneke reached feature directing later than many, and his command came from years of exacting observation.',
+      'Kathryn Bigelow kept moving through genre until craft, force, and discipline made the industry catch up.',
+      'Bong Joon Ho sharpened tone across smaller Korean films before worldwide audiences understood the full design.',
+      'David Lynch spent years wrestling Eraserhead into existence, proving that a strange vision can survive slowly.',
+      'Chloé Zhao built patient films from attention to real people before Nomadland became a global signal.',
+      'Sian Heder spent years writing and directing before CODA turned intimate craft into a major moment.',
+      'Jordan Peele studied comedy, timing, and audience expectation before using that control to direct horror.',
+      'Greta Gerwig absorbed years of acting and writing before her directing voice arrived fully formed to audiences.',
+      'Sean Baker kept making resourceful films on the margins until the style itself became the signature.',
+      'Debra Granik built quiet, grounded films that show how deep observation can be more powerful than scale.',
+    ],
+    tips: [
+      'Give actors playable actions, not moods.',
+      'Block the power shift before decorating the frame.',
+      'Let one prop or doorway tell the truth.',
+      'Direct the silence as specifically as the line.',
+      'Use camera distance to declare allegiance.',
+      'Make every entrance change the room.',
+      'Rehearse the objective, then shoot the behavior.',
+      'Keep the scene’s question visible.',
+      'Do not explain what blocking can reveal.',
+      'Let the cut point influence the staging.',
+      'Protect one bold choice all the way through.',
+    ],
+  },
+  sound: {
+    stories: [
+      'Ben Burtt made Star Wars feel alive by collecting strange real sounds and transforming them with patience.',
+      'Walter Murch helped prove that sound can carry memory, psychology, and structure, not just realism.',
+      'Gary Rydstrom built emotion into massive films by making tiny sonic details feel human.',
+      'Randy Thom has long argued that sound should be designed from the script stage, not rescued at the end.',
+      'Ren Klyce shaped Fincher worlds with controlled, uneasy detail that keeps the audience leaning forward.',
+      'Leslie Shatz built expressive soundscapes by treating atmosphere as drama.',
+      'Ai-Ling Lee moved between musical clarity and tension by making every layer serve the scene.',
+      'Skip Lievsay made quiet menace feel physical through tone, room, and restraint.',
+      'Evelyn Glennie built a life in sound by listening through the whole body, not only the ear.',
+      'Richard King turned large-scale spectacle into readable sonic geography by organizing impact.',
+      'Nina Hartstone helped make dialogue and silence feel intimate by respecting clarity first.',
+      'Midge Costin spent years teaching filmmakers that sound is half the image when used with intention.',
+      'Cecilia Hall built creature, action, and atmosphere work by making invented sounds feel motivated.',
+    ],
+    tips: [
+      'Choose one sound that tells the audience where to listen.',
+      'Let room tone protect the edit.',
+      'Use silence as pressure, not absence.',
+      'Make off-screen space feel alive.',
+      'Keep dialogue clear before adding style.',
+      'Build tension with repetition and variation.',
+      'Let a tiny detail carry the emotional clue.',
+      'Remove one layer and see if the scene gets stronger.',
+      'Make the sound world obey point of view.',
+      'Design the transition before designing the hit.',
+      'Give every noise a reason to be there.',
+    ],
+  },
+  filmmaker: {
+    stories: [
+      'Robert Rodriguez made El Mariachi with extreme limits, proving constraints can become a style if the choices are clear.',
+      'Greta Gerwig carried acting, writing, and collaboration into directing, then turned accumulated craft into authorship.',
+      'Jordan Peele moved from comedy into filmmaking by understanding audience timing better than most horror directors.',
+      'Chloé Zhao built intimate, hybrid work before larger films proved that patience and scale can coexist.',
+      'Sean Baker kept making resourceful independent films until the method became inseparable from the voice.',
+      'Michaela Coel made her own path by writing, performing, and protecting the shape of the work.',
+      'John Cassavetes built films from performance, friendship, pressure, and stubborn independence.',
+      'Agnès Varda kept reinventing form across decades because curiosity stayed stronger than category.',
+      'Ryan Coogler moved from a deeply observed first feature to larger canvases without losing human stakes.',
+      'Sofia Coppola found power in tone, silence, and perspective after growing up around film but earning her own language.',
+      'Barry Jenkins spent years between features before Moonlight arrived with quiet certainty.',
+      'Celine Song turned personal memory, restraint, and structure into a first feature that felt fully authored.',
+      'Bong Joon Ho built complete films by making writing, blocking, tone, camera, and edit obey the same idea.',
+    ],
+    tips: [
+      'Let one core idea guide every department.',
+      'Use the limitation as a design rule.',
+      'Write only what you can make specific.',
+      'Plan the edit while you plan the shot.',
+      'Give performance and camera the same objective.',
+      'Make sound extend the world beyond the frame.',
+      'Protect the emotional spine from clever additions.',
+      'Build the scene around one irreversible change.',
+      'Keep production simple enough to finish.',
+      'Let collaboration sharpen the idea, not dilute it.',
+      'Make the final image answer the first question.',
+    ],
+  },
+};
+
+const DETAILED_PROGRESS_STORIES: Record<WorkshopPathKey, string[]> = {
+  acting: [
+    'Christoph Waltz was 52 when Inglourious Basterds made him internationally famous, after roughly 30 years of stage and German-language TV work.',
+    'Alan Rickman made his feature-film debut as Hans Gruber at 41, after about 14 years of theatre and television work.',
+    'Samuel L. Jackson was 45 when Pulp Fiction, his 30th film, finally made him internationally unmistakable.',
+    'Morgan Freeman was 52 in 1989 when Glory and Driving Miss Daisy turned decades of theatre and screen work into movie-star momentum.',
+    'Bryan Cranston was 51 when Breaking Bad started, after more than 25 years of commercials, guest roles, comedy, and supporting parts.',
+    'Octavia Spencer was 39 when The Help broke wide, after years of one-scene parts, day-player jobs, and small film roles.',
+    'JK Simmons was 59 when Whiplash won him the Oscar, after decades of commercials, theatre, TV, and supporting screen work.',
+    'Margo Martindale was 59 when Justified made her a wider name, after more than 80 screen credits and a long theatre career.',
+    'Viola Davis was 43 when Doubt brought her first Oscar nomination from one short scene, after years of stage mastery.',
+    'Pedro Pascal was 39 when Game of Thrones widened his career and 44 when The Mandalorian made him global, after years of TV guest work.',
+    'Ke Huy Quan was 51 when Everything Everywhere All at Once revived his acting career, after roughly two decades away from regular screen acting.',
+    'Michelle Yeoh was 60 when Everything Everywhere All at Once won her the Oscar, after nearly 40 years of international action and drama work.',
+    'Steve Carell was 42 when The Office began, after years in improv, writing rooms, supporting parts, and small TV roles.',
+  ],
+  selftape: [
+    'Uzo Aduba was 32 when Orange Is the New Black landed, after she had reportedly been close to quitting acting the same day she got the call.',
+    'John Krasinski was 25 when The Office changed everything, after several years of auditions, tiny parts, and near-misses.',
+    'Pedro Pascal was almost 40 before a breakthrough TV role stuck; every tape before that was still building camera trust.',
+    'Lupita Nyong\'o was 30 when 12 Years a Slave became her first major feature breakthrough, after training and a precise audition process.',
+    'Daniel Kaluuya was 27 when Get Out made him globally visible, after years of British television, theatre, and smaller screen work.',
+    'Simu Liu was 32 when Shang-Chi opened, after years of open calls, TV work, and pushing through uncertain auditions.',
+    'America Ferrera was 22 when Ugly Betty hit, but she had already spent years turning specific, truthful auditions into trust.',
+    'Andrew Scott was 35 when Sherlock made him internationally known, after more than 15 years of theatre, TV, and film work.',
+    'Taraji P. Henson was 34 when Hustle & Flow made the industry look harder, after years of auditions and supporting roles.',
+    'Ayo Edebiri was 26 when The Bear broke wide, after years of stand-up, writing, voice work, and smaller performances.',
+    'Michaela Coel was 28 when Chewing Gum transferred from stage to TV, because she built proof instead of waiting for permission.',
+    'Awkwafina was 29 when Crazy Rich Asians and The Farewell changed her screen career, after years of self-made online work.',
+    'Bryan Cranston treated small auditions seriously for decades before one role at 51 showed how much invisible preparation had accumulated.',
+  ],
+  editing: [
+    'Thelma Schoonmaker was 40 when Raging Bull won her first Oscar, after nearly 20 years of cutting, assisting, and building trust with Scorsese.',
+    'Walter Murch was 36 when Apocalypse Now won him Oscars for sound and editing, after years of shaping films from the inside out.',
+    'Anne V. Coates was 36 when Lawrence of Arabia made one cut legendary, after more than a decade in editing rooms.',
+    'Margaret Sixel was around 60 when Mad Max: Fury Road won the editing Oscar, after shaping hundreds of hours of material into clear motion.',
+    'Tom Cross was 37 when Whiplash won him the Oscar, after years cutting shorts, TV, and smaller features.',
+    'Dede Allen was 43 when Bonnie and Clyde helped rewrite American film rhythm, after years in studios and cutting rooms.',
+    'Verna Fields was 56 when Jaws won the editing Oscar, after decades of work in TV, education, and features.',
+    'Joe Walker was 53 when Dune won the editing Oscar, after years moving between music, television, documentaries, and features.',
+    'Sally Menke was 38 when Reservoir Dogs began her long Tarantino collaboration, after years cutting documentaries and indie work.',
+    'Pietro Scalia was 31 when JFK won him an Oscar, after apprenticing inside intense, politically complex material.',
+    'Jennifer Lame was 36 when Manchester by the Sea showed her restraint to a wide audience, after years of indie features.',
+    'Claire Simpson was 31 when Platoon won the Oscar for editing, after learning to protect emotion inside pressure.',
+    'Lisa Lassek built years of genre range before Marvel-scale work; the invisible skill was timing, not flash.',
+  ],
+  cinematography: [
+    'Roger Deakins was 68 when he won his first Oscar for Blade Runner 2049, after 13 previous nominations and decades of world-class work.',
+    'Rachel Morrison was 39 when Mudbound made her the first woman nominated for the cinematography Oscar.',
+    'Bradford Young was 39 when Arrival earned him an Oscar nomination, after years building a language of soft light and deep shadow.',
+    'Emmanuel Lubezki was 49 when Gravity won him his first Oscar, after multiple nominations and decades refining natural light and movement.',
+    'Gordon Willis was 40 when The Godfather changed American cinematography, after years learning restraint in commercials and features.',
+    'Ellen Kuras was in her late 30s when her documentary and narrative work began defining a tactile, intimate camera style.',
+    'Hoyte van Hoytema was 43 when Interstellar brought his large-format discipline to a global audience, after years of European features.',
+    'Reed Morano was 40 when The Handmaid\'s Tale made her visual control unmistakable, after years as an operator and cinematographer.',
+    'Ari Wegner was 37 when The Power of the Dog brought her Oscar recognition, after more than a decade of patient feature work.',
+    'Matthew Libatique was 30 when Pi announced a bold visual voice, after years of music videos, shorts, and low-budget problem solving.',
+    'Darius Khondji was 40 when Seven made his shadow-heavy style globally influential, after years shooting features and commercials.',
+    'Greig Fraser was 45 when Dune won him the Oscar, after years balancing spectacle with tactile, motivated light.',
+    'Maryse Alberti spent decades moving between documentaries, drama, and sport; the range came from repetition, not one perfect break.',
+  ],
+  directing: [
+    'Ridley Scott was 39 when The Duellists became his first feature, after years directing commercials and obsessing over visual control.',
+    'Claire Denis was 42 when Chocolat became her first feature, after years working as an assistant director and watching sets closely.',
+    'Michael Haneke was 47 when The Seventh Continent began his feature career, after years writing and directing for television.',
+    'Ava DuVernay was 38 when I Will Follow became her first narrative feature, after building a career outside directing first.',
+    'Kathryn Bigelow was 58 when The Hurt Locker won Best Picture and Best Director, after nearly 30 years directing features.',
+    'David Lynch was 31 when Eraserhead finally released, after about five years of difficult, stop-start production.',
+    'Jordan Peele was 38 when Get Out arrived, after years studying audience timing through sketch comedy.',
+    'Barry Jenkins was 36 when Moonlight broke through, eight years after his first feature Medicine for Melancholy.',
+    'Greta Gerwig was 34 when Lady Bird made her solo directing voice undeniable, after years acting, writing, and collaborating.',
+    'Bong Joon Ho was 33 when Memories of Murder announced his command, after shorts, writing, and assistant-director work.',
+    'Sean Baker was 44 when Tangerine became a major indie signal, after several features and years of resourceful production.',
+    'Sian Heder was 44 when CODA won Best Picture, after years writing, directing episodes, and developing intimate character work.',
+    'Chloe Zhao was 38 when Nomadland won Best Picture, after patient features built around real people and nontraditional process.',
+  ],
+  sound: [
+    'Ben Burtt was 29 when Star Wars made his sound work famous, after building hundreds of original sounds from field recordings and experiments.',
+    'Walter Murch was 36 when Apocalypse Now won Oscars for sound and editing, after years treating sound as psychology.',
+    'Gary Rydstrom was 32 when Terminator 2 won sound Oscars, after years learning how impact and clarity can coexist.',
+    'Randy Thom was in his early 30s when Return of the Jedi brought major-feature sound responsibility, after apprenticing inside high-pressure rooms.',
+    'Ren Klyce was 33 when Se7en made his tense sonic precision widely felt, after years composing and designing for image.',
+    'Skip Lievsay spent decades shaping films before No Country for Old Men and Gravity made his restraint and scale impossible to miss.',
+    'Ai-Ling Lee was in her late 30s when La La Land brought Oscar recognition, after years balancing music, dialogue, and design.',
+    'Richard King was 53 when The Dark Knight won the sound editing Oscar, after decades making spectacle readable.',
+    'Nina Hartstone was in her 50s when Bohemian Rhapsody won the sound Oscar, after years of dialogue and ADR precision.',
+    'Midge Costin spent decades in editing rooms and classrooms proving that sound is not polish at the end but story from the start.',
+    'Leslie Shatz built decades of atmospheric sound work by making rooms, weather, and silence carry drama.',
+    'Evelyn Glennie was 24 when she became a full-time solo percussionist, after being told a deaf musician could not build that career.',
+    'Cecilia Hall spent years designing creatures, vehicles, and atmospheres before blockbuster sound made her craft widely heard.',
+  ],
+  filmmaker: [
+    'Robert Rodriguez was 23 when El Mariachi broke through, made for about $7,000 after he built the film around every limitation.',
+    'Barry Jenkins was 36 when Moonlight changed his career, after an eight-year gap between features that could have looked like silence.',
+    'Jordan Peele was 38 when Get Out became a phenomenon, after years learning timing, tension, and audience misdirection in comedy.',
+    'Greta Gerwig was 34 when Lady Bird arrived, after years acting in, co-writing, and absorbing the mechanics of indie films.',
+    'Sean Baker was 44 when Tangerine broke out, after multiple features and a willingness to use phones, friends, and real locations.',
+    'Michaela Coel was 28 when Chewing Gum reached TV, after turning a one-woman stage piece into proof of voice.',
+    'John Cassavetes was 29 when Shadows announced his independent method, after acting jobs helped fund the work.',
+    'Agnes Varda was 26 when La Pointe Courte began her feature career, made outside normal industry pathways.',
+    'Ryan Coogler was 27 when Fruitvale Station broke through, after short films and focused, emotionally exact preparation.',
+    'Sofia Coppola was 32 when Lost in Translation won her the screenplay Oscar, after criticism, recalibration, and a smaller personal film.',
+    'Celine Song was 35 when Past Lives became a major debut feature, after years writing plays and sharpening structure.',
+    'Chloe Zhao was 38 when Nomadland won Best Picture, after small-scale films taught her how to merge real life and fiction.',
+    'Bong Joon Ho was 50 when Parasite won Best Picture, after roughly two decades of features refining tone, blocking, and social pressure.',
+  ],
+};
+
+function getProgressStory(path: WorkshopPathKey, completedCount: number) {
+  const bank = PROGRESS_STORY_BANKS[path] || PROGRESS_STORY_BANKS.acting;
+  const stories = DETAILED_PROGRESS_STORIES[path] || bank.stories;
+  const index = Math.max(0, completedCount);
+  const story = stories[index % stories.length];
+  const tip = bank.tips[index % bank.tips.length];
+  return `${story} ${tip}`;
+}
 
 /* ---------------------------- lesson banks ---------------------------- */
 const makeSeed = (
@@ -7876,7 +8226,7 @@ function missionForStep(step: number): Mission | null {
       title: 'Remote Collaboration Mission',
       description:
         'Collaborate with someone outside your city. Trade an idea, performance, sound bed, edit, or footage and build something together.',
-      reward: '+50 Mission XP',
+      optional: true,
       type: 'remote',
       icon: 'globe-outline',
     };
@@ -7888,7 +8238,7 @@ function missionForStep(step: number): Mission | null {
       title: 'City Group Meet Mission',
       description:
         'Connect with someone from your city group chat and create a tiny scene, visual exercise, or micro-film together.',
-      reward: '+40 Mission XP',
+      optional: true,
       type: 'city',
       icon: 'people-outline',
     };
@@ -7900,7 +8250,7 @@ function missionForStep(step: number): Mission | null {
       title: 'Crew-Up Mission',
       description:
         'Find another user with a different discipline than yours and make a short piece together this week.',
-      reward: '+35 Mission XP',
+      optional: true,
       type: 'crew-up',
       icon: 'sparkles-outline',
     };
@@ -8231,6 +8581,30 @@ function missionIcon(type?: MissionType | null): keyof typeof Ionicons.glyphMap 
   }
 }
 
+function missionDetailsForType(type: MissionType) {
+  switch (type) {
+    case 'city':
+      return [
+        'Find one person in your city group and choose a tiny creative task you can finish in a day.',
+        'Keep the scope small: one scene, one location, one clear exchange.',
+        'Post the result or a behind-the-scenes still so the collaboration is visible.',
+      ];
+    case 'remote':
+      return [
+        'Trade one useful piece with someone outside your city: footage, a sound bed, a performance, notes, or an edit.',
+        'Agree on a single deadline and one deliverable before you start.',
+        'Credit each other clearly when you upload the finished piece.',
+      ];
+    case 'crew-up':
+    default:
+      return [
+        'Pair with someone from a different discipline so the work has more than one point of view.',
+        'Define roles before you begin: performer, director, editor, camera, sound, or producer.',
+        'Keep it short enough to finish this week and learn from the handoff.',
+      ];
+  }
+}
+
 function getSurgeryFilmsForStep(step: number) {
   const first = COMMUNITY_FILMS[(step * 2) % COMMUNITY_FILMS.length];
   const second = COMMUNITY_FILMS[(step * 2 + 3) % COMMUNITY_FILMS.length];
@@ -8490,7 +8864,7 @@ function SidebarPathItem({
 
   const backgroundColor = glow.interpolate({
     inputRange: [0, 1],
-    outputRange: [colors.card, isLight ? '#F7F0E2' : '#13110D'],
+    outputRange: [colors.card, isLight ? '#F7F7F7' : '#13110D'],
   });
 
   return (
@@ -8523,7 +8897,7 @@ function SidebarPathItem({
           </Text>
         </View>
 
-        <View style={[styles.sidebarProgressPill, { backgroundColor: isLight ? 'rgba(158,119,40,0.10)' : 'rgba(198,166,100,0.12)', borderColor: isLight ? 'rgba(158,119,40,0.28)' : 'rgba(198,166,100,0.28)' }]}>
+        <View style={[styles.sidebarProgressPill, { backgroundColor: isLight ? 'rgba(168,121,34,0.07)' : 'rgba(198,166,100,0.12)', borderColor: isLight ? 'rgba(168,121,34,0.22)' : 'rgba(198,166,100,0.28)' }]}>
           <Text style={[styles.sidebarProgressText, { color: colors.primary }]}>{progress}</Text>
         </View>
       </Pressable>
@@ -8618,7 +8992,7 @@ function LessonRowCard({
           },
           current && styles.lessonRowCardCurrent,
           current && {
-            backgroundColor: isLight ? '#F6ECD8' : 'rgba(198,166,100,0.11)',
+            backgroundColor: isLight ? '#F7F7F7' : 'rgba(198,166,100,0.11)',
             borderColor: colors.primary,
           },
           locked && styles.lessonRowCardLocked,
@@ -8631,7 +9005,7 @@ function LessonRowCard({
             </Text>
 
             <View style={styles.lessonRowBadgeWrap}>
-              <View style={[styles.lessonRowKindPill, { backgroundColor: isLight ? 'rgba(158,119,40,0.10)' : 'rgba(198,166,100,0.12)', borderColor: isLight ? 'rgba(158,119,40,0.24)' : 'rgba(198,166,100,0.24)' }]}>
+              <View style={[styles.lessonRowKindPill, { backgroundColor: isLight ? 'rgba(168,121,34,0.07)' : 'rgba(198,166,100,0.12)', borderColor: isLight ? 'rgba(168,121,34,0.20)' : 'rgba(198,166,100,0.24)' }]}>
                 <Text style={[styles.lessonRowKindText, { color: colors.primary }]}>{kindLabel(lesson.kind)}</Text>
               </View>
 
@@ -8677,6 +9051,280 @@ function LessonRowCard({
         />
       </Pressable>
     </Animated.View>
+  );
+}
+
+function getRoadmapTrackState(node?: RoadmapCheckpoint): RoadmapTrackState {
+  if (!node) return 'locked';
+  if (node.state === 'completed') return 'complete';
+  if (node.state === 'locked') return 'locked';
+  return 'active';
+}
+
+function roadmapTrackStyle(state: RoadmapTrackState) {
+  switch (state) {
+    case 'complete':
+      return styles.roadmapTrackComplete;
+    case 'active':
+      return styles.roadmapTrackActive;
+    case 'locked':
+    default:
+      return styles.roadmapTrackLocked;
+  }
+}
+
+function RoadmapStartMarker({
+  width,
+  chapterTitle,
+  trackAfterState,
+}: {
+  width: number;
+  chapterTitle: string;
+  trackAfterState: RoadmapTrackState;
+}) {
+  const startTrackLength = Math.max(0, width / 2 - 38);
+
+  return (
+    <View style={[styles.roadmapStartMarker, { width }]}>
+      <View pointerEvents="none" style={styles.roadmapTrackLayer}>
+        <View
+          style={[
+            styles.roadmapTrackSegment,
+            styles.roadmapTrackAfter,
+            { width: startTrackLength },
+            roadmapTrackStyle(trackAfterState),
+          ]}
+        />
+      </View>
+
+      <View style={styles.roadmapStartNodeWrap}>
+        <View style={styles.roadmapStartGlow} />
+        <View style={styles.roadmapStartNode}>
+          <View style={styles.roadmapStartCoreDot} />
+        </View>
+      </View>
+      <Text style={styles.roadmapChapterLabel}>Chapter 1</Text>
+      <Text style={styles.roadmapChapterTitle} numberOfLines={2}>
+        {chapterTitle}
+      </Text>
+    </View>
+  );
+}
+
+function RoadmapChapterMarker({
+  width,
+  chapterIndex,
+  chapterTitle,
+  trackState,
+}: {
+  width: number;
+  chapterIndex: number;
+  chapterTitle: string;
+  trackState: RoadmapTrackState;
+}) {
+  const gateTrackLength = Math.max(0, width / 2 - 24);
+
+  return (
+    <View style={[styles.roadmapChapterDivider, { width }]}>
+      <View pointerEvents="none" style={styles.roadmapTrackLayer}>
+        <View
+          style={[
+            styles.roadmapTrackSegment,
+            styles.roadmapTrackBefore,
+            { width: gateTrackLength },
+            roadmapTrackStyle(trackState),
+          ]}
+        />
+        <View
+          style={[
+            styles.roadmapTrackSegment,
+            styles.roadmapTrackAfter,
+            { width: gateTrackLength },
+            roadmapTrackStyle(trackState),
+          ]}
+        />
+      </View>
+      <View style={styles.roadmapChapterGate}>
+        <View style={styles.roadmapChapterGateLine} />
+      </View>
+      <Text style={styles.roadmapChapterLabel}>Chapter {chapterIndex + 1}</Text>
+      <Text style={styles.roadmapChapterTitle} numberOfLines={2}>
+        {chapterTitle}
+      </Text>
+    </View>
+  );
+}
+
+function RoadmapCheckpointButton({
+  node,
+  onPress,
+  width,
+  trackBeforeState,
+  trackAfterState,
+  showTrackAfter,
+}: {
+  node: RoadmapCheckpoint;
+  onPress: (node: RoadmapCheckpoint) => void;
+  width: number;
+  trackBeforeState: RoadmapTrackState;
+  trackAfterState?: RoadmapTrackState;
+  showTrackAfter: boolean;
+}) {
+  const { colors } = useAppTheme();
+  const { language } = useAppLanguage();
+  const locked = node.state === 'locked';
+  const completed = node.state === 'completed';
+  const current = node.state === 'current';
+  const upcoming = node.state === 'unlocked';
+  const final = !!node.isFinal;
+  const translateLessonCopy = useCallback(
+    (value?: string | null) => translateTrustedText(value || '', language),
+    [language]
+  );
+  const nodeTrackClearance = current ? 56 : 40;
+  const trackSegmentLength = Math.max(0, width / 2 - nodeTrackClearance);
+
+  return (
+    <Pressable
+      onPress={() => onPress(node)}
+      disabled={locked}
+      style={[
+        styles.roadmapCheckpoint,
+        { width },
+        current && styles.roadmapCheckpointCurrent,
+        locked && styles.roadmapCheckpointMuted,
+      ]}
+    >
+      <View pointerEvents="none" style={styles.roadmapTrackLayer}>
+        <View
+          style={[
+            styles.roadmapTrackSegment,
+            styles.roadmapTrackBefore,
+            { width: trackSegmentLength },
+            roadmapTrackStyle(trackBeforeState),
+          ]}
+        />
+        {showTrackAfter && trackAfterState ? (
+          <View
+            style={[
+              styles.roadmapTrackSegment,
+              styles.roadmapTrackAfter,
+              { width: trackSegmentLength },
+              roadmapTrackStyle(trackAfterState),
+            ]}
+          />
+        ) : null}
+      </View>
+
+      <View style={styles.roadmapNodeWrap}>
+        <View
+          pointerEvents="none"
+          style={[
+            styles.roadmapNodeGlow,
+            current && styles.roadmapNodeGlowActive,
+            final && styles.roadmapNodeGlowFinal,
+          ]}
+        />
+        <View
+          style={[
+            styles.roadmapNodeCircle,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.borderStrong,
+              shadowColor: colors.primary,
+            },
+            completed && {
+              backgroundColor: 'rgba(71,214,111,0.10)',
+              borderColor: GREEN,
+            },
+            current && {
+              backgroundColor: 'rgba(198,166,100,0.15)',
+              borderColor: colors.primary,
+            },
+            upcoming && {
+              backgroundColor: colors.card,
+              borderColor: 'rgba(198,166,100,0.56)',
+            },
+            locked && {
+              backgroundColor: colors.backgroundAlt,
+              borderColor: colors.textMuted,
+            },
+            current && styles.roadmapNodeCircleCurrent,
+            locked && styles.roadmapNodeCircleLocked,
+            final && styles.roadmapNodeCircleFinal,
+          ]}
+        >
+          {completed ? (
+            <Ionicons name="checkmark-outline" size={34} color={GREEN} />
+          ) : (
+            <Text
+              style={[
+                styles.roadmapNodeGlyph,
+                {
+                  color: locked ? colors.textMuted : colors.primary,
+                },
+                current && styles.roadmapNodeGlyphCurrent,
+              ]}
+            >
+              {node.lesson?.step || ''}
+            </Text>
+          )}
+        </View>
+      </View>
+
+      {node.xp ? (
+        <View
+          style={[
+            styles.roadmapXpPill,
+            {
+              backgroundColor: locked ? colors.backgroundAlt : 'rgba(0,0,0,0.34)',
+              borderColor: locked ? colors.border : colors.borderStrong,
+            },
+            current && {
+              backgroundColor: 'rgba(198,166,100,0.12)',
+              borderColor: colors.primary,
+            },
+          ]}
+        >
+          <Text style={[styles.roadmapXpText, { color: locked ? colors.textMuted : colors.primary }]}>
+            {node.xp} XP
+          </Text>
+        </View>
+      ) : null}
+
+      {node.stepLabel ? (
+        <Text
+          style={[
+            styles.roadmapStepLabel,
+            { color: current ? colors.primary : colors.textMuted },
+          ]}
+        >
+          {node.stepLabel}
+        </Text>
+      ) : null}
+
+      <Text
+        style={[
+          styles.roadmapNodeTitle,
+          { color: locked ? colors.textMuted : colors.textPrimary },
+          current && styles.roadmapNodeTitleCurrent,
+        ]}
+        numberOfLines={2}
+      >
+        {node.lesson ? translateLessonCopy(node.title) : node.title}
+      </Text>
+
+      <Text
+        style={[
+          styles.roadmapNodeStatus,
+          { color: current ? colors.primary : colors.textMuted },
+          completed && { color: colors.textMuted },
+          locked && { color: colors.textMuted },
+        ]}
+      >
+        {node.statusLabel}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -8743,6 +9391,7 @@ const WorkshopScreen: React.FC = () => {
   const [lastPathLoaded, setLastPathLoaded] = useState(false);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const [surgeryLesson, setSurgeryLesson] = useState<Lesson | null>(null);
+  const [selectedMission, setSelectedMission] = useState<Mission | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [upgradeVisible, setUpgradeVisible] = useState(false);
 
@@ -8771,7 +9420,9 @@ filmmaker: [],
   const [workshopLoading, setWorkshopLoading] = useState(true);
 const [refreshing, setRefreshing] = useState(false);
 const [surgeryFeedbackState, setSurgeryFeedbackState] = useState<Record<number, boolean>>({});
-const [expandedChapters, setExpandedChapters] = useState<Record<string, boolean>>({});
+const [selectedChapterInsightIndex, setSelectedChapterInsightIndex] = useState<number | null>(null);
+const [dismissedMissionKeys, setDismissedMissionKeys] = useState<string[]>([]);
+const roadmapScrollRef = useRef<ScrollView | null>(null);
 const wheelProgressAnim = useRef(new Animated.Value(0)).current;
 const wheelEntranceAnim = useRef(new Animated.Value(1)).current;
 const [animatedCompletionPercent, setAnimatedCompletionPercent] = useState(0);
@@ -9011,8 +9662,11 @@ filmmaker: [],
   const currentLesson = lessons.find((l) => l.step === currentStep) || lessons[0];
 
   const currentMission = useMemo(() => {
-    return missionForStep(currentStep) || missionForStep(currentStep + 1) || null;
-  }, [currentStep]);
+    const mission = missionForStep(currentStep) || missionForStep(currentStep + 1) || null;
+    if (!mission) return null;
+
+    return dismissedMissionKeys.includes(`${selectedPath}-${mission.id}`) ? null : mission;
+  }, [currentStep, dismissedMissionKeys, selectedPath]);
 
   const workshopSessionXp = completedSteps.reduce((sum, step) => {
     const lesson = lessons.find((l) => l.step === step);
@@ -9097,9 +9751,75 @@ filmmaker: [],
     });
   }, [chapterMeta, lessons, completedSteps]);
 
-  const nodeSize = isDesktop ? 82 : 70;
-  const offsetAmount = isDesktop ? 92 : 42;
-  const offsets = [-0.45, 0.55, -0.25, 0.38, -0.5, 0.22, -0.12, 0];
+  const roadmapNodes = useMemo<RoadmapCheckpoint[]>(() => {
+    return lessons.map((lesson) => {
+      const state = nodeState(lesson.step, completedSteps);
+      const locked = state === 'locked';
+      const completed = state === 'completed';
+      const current = state === 'current';
+
+      return {
+        id: `step-${lesson.step}`,
+        lesson,
+        title: lesson.title,
+        subtitle: lesson.subtitle,
+        xp: lesson.xp,
+        stepLabel: `Step ${lesson.step}`,
+        state,
+        statusLabel: completed
+          ? 'Completed'
+          : current
+            ? 'Current'
+            : locked
+              ? lesson.step === lessons.length
+                ? 'Final Exercise'
+                : lesson.isBoss
+                ? 'Boss Challenge'
+                : 'Locked'
+              : lesson.step === lessons.length
+                ? 'Final Exercise'
+                : 'Upcoming',
+        isBoss: !!lesson.isBoss,
+        isFinal: lesson.step === lessons.length,
+      };
+    });
+  }, [completedSteps, lessons]);
+
+  const roadmapCurrentNodeIndex = roadmapNodes.findIndex((node) => node.state === 'current');
+  const roadmapCurrentIndex =
+    roadmapCurrentNodeIndex >= 0 ? roadmapCurrentNodeIndex : Math.max(0, roadmapNodes.length - 1);
+  const roadmapStepWidth = isDesktop ? 258 : 220;
+  const roadmapChapterDividerWidth = isDesktop ? 136 : 118;
+  const roadmapStartMarkerWidth = isDesktop ? 170 : 148;
+  const roadmapSideInset = isDesktop ? 118 : 92;
+  const roadmapDividerCount = Math.max(0, chapters.length - 1);
+  const roadmapStageWidth = Math.max(
+    980,
+    roadmapStartMarkerWidth +
+      roadmapNodes.length * roadmapStepWidth +
+      roadmapDividerCount * roadmapChapterDividerWidth +
+      roadmapSideInset * 2
+  );
+  const roadmapCurrentChapterIndex = Math.max(0, Math.floor((currentStep - 1) / 10));
+  const roadmapDividersBeforeCurrent = roadmapCurrentChapterIndex;
+  const roadmapCurrentCenter =
+    roadmapSideInset +
+    roadmapStartMarkerWidth +
+    roadmapDividersBeforeCurrent * roadmapChapterDividerWidth +
+    roadmapCurrentIndex * roadmapStepWidth +
+    roadmapStepWidth / 2;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const targetX = Math.max(
+        0,
+        roadmapCurrentCenter - width * 0.42
+      );
+      roadmapScrollRef.current?.scrollTo({ x: targetX, y: 0, animated: false });
+    }, 80);
+
+    return () => clearTimeout(timer);
+  }, [roadmapCurrentCenter, selectedPath, width]);
 
   const activeSurgeryFilms = useMemo(() => {
     if (!surgeryLesson) return [];
@@ -9125,6 +9845,25 @@ filmmaker: [],
     }
 
     setSelectedLesson(lesson);
+  };
+
+  const handleOpenRoadmapNode = (node: RoadmapCheckpoint) => {
+    if (!node.lesson || node.state === 'locked') return;
+
+    const state = nodeState(node.lesson.step, completedSteps);
+    if (state === 'locked') return;
+
+    if (isGuest) {
+      promptSignIn('Create an account or sign in to open workshop challenges.');
+      return;
+    }
+
+    if (!hasProAccess) {
+      setUpgradeVisible(true);
+      return;
+    }
+
+    setSelectedLesson(node.lesson);
   };
 
   const handleOpenSurgeryGate = (lesson: Lesson) => {
@@ -9222,14 +9961,6 @@ filmmaker: [],
   const lessonNeedsSurgery =
     !!selectedLesson?.requiresSurgery && !surgerySet.has(selectedLesson.step);
 
-  const toggleChapter = (chapterIndex: number) => {
-    const key = `${selectedPath}-${chapterIndex}`;
-    setExpandedChapters((prev) => ({
-      ...prev,
-      [key]: !(prev[key] ?? chapterIndex === currentChapterIndex),
-    }));
-  };
-
   const BG = colors.background;
   const PANEL = colors.card;
   const PANEL_2 = colors.mutedCard;
@@ -9237,9 +9968,9 @@ filmmaker: [],
   const BORDER = colors.border;
   const BORDER_SOFT = colors.border;
   const GOLD = colors.primary;
-  const GOLD_SOFT = isLight ? 'rgba(158,119,40,0.10)' : 'rgba(198,166,100,0.10)';
-  const GOLD_SOFT_2 = isLight ? 'rgba(158,119,40,0.16)' : 'rgba(198,166,100,0.16)';
-  const GOLD_BORDER = isLight ? 'rgba(158,119,40,0.28)' : 'rgba(198,166,100,0.30)';
+  const GOLD_SOFT = isLight ? 'rgba(168,121,34,0.07)' : 'rgba(198,166,100,0.10)';
+  const GOLD_SOFT_2 = isLight ? 'rgba(168,121,34,0.10)' : 'rgba(198,166,100,0.16)';
+  const GOLD_BORDER = isLight ? 'rgba(168,121,34,0.24)' : 'rgba(198,166,100,0.30)';
   const IVORY = colors.textPrimary;
   const MUTED = colors.textMuted;
   const MUTED_2 = colors.navInactive;
@@ -9248,6 +9979,16 @@ filmmaker: [],
   const softSurfaceStyle = { backgroundColor: PANEL_2, borderColor: BORDER_SOFT };
   const mutedTextStyle = { color: MUTED };
   const primaryTextStyle = { color: IVORY };
+  const progressStory = getProgressStory(selectedPath, completedSteps.length);
+  const selectedChapterInsight =
+    selectedChapterInsightIndex === null
+      ? null
+      : chapters.find((chapter) => chapter.chapterIndex === selectedChapterInsightIndex) || null;
+  const selectedChapterPercent = selectedChapterInsight
+    ? Math.round((selectedChapterInsight.progress / 10) * 100)
+    : 0;
+  const selectedChapterNextLesson =
+    selectedChapterInsight?.lessons.find((lesson) => !completedSet.has(lesson.step)) || null;
 
   return (
     <View style={[styles.container, { backgroundColor: BG }]}>
@@ -9271,54 +10012,140 @@ filmmaker: [],
           <View style={[styles.mainLayout, !isDesktop && styles.mainLayoutMobile]}>
           <View style={[styles.centerPanel, isDesktop && styles.centerPanelDesktop, isWebDesktop && styles.centerPanelWebDesktop]}>
   <View style={[styles.bootcampCard, surfaceStyle, { shadowColor: colors.shadow }, isWebDesktop && styles.bootcampCardWebDesktop]}>
-    <View style={styles.referenceHeroTop}>
-      <Text style={[styles.referenceGreeting, primaryTextStyle]}>Hello, {firstName}</Text>
-      <Text style={[styles.referenceDateLine, mutedTextStyle]}>{activePath.label}</Text>
-    </View>
-
-    <View style={styles.bigProgressWrap}>
-      <Animated.View
-        style={[
-          styles.bigProgressOrbit,
-          { backgroundColor: PANEL_2, borderColor: BORDER, shadowColor: GOLD },
-          {
-            opacity: wheelOpacity,
-            transform: [{ scale: wheelScale }],
-          },
-        ]}
-      >
-        {Array.from({ length: 56 }).map((_, index) => {
-          const filled = index / 56 <= wheelDisplayPercent / 100;
-          return (
-            <View
-              key={`progress-tick-${index}`}
-              style={[
-                styles.bigProgressTick,
-                filled && styles.bigProgressTickActive,
-                { backgroundColor: filled ? GOLD : LINE },
-                {
-                  transform: [
-                    { rotate: `${index * (360 / 56)}deg` },
-                    { translateY: -86 },
-                  ],
-                },
-              ]}
-            />
-          );
-        })}
-        <View style={[styles.bigProgressInner, { backgroundColor: BG, borderColor: BORDER }]}>
-          <Text style={[styles.bigProgressNumber, primaryTextStyle]}>{wheelDisplayPercent}%</Text>
-        </View>
-      </Animated.View>
-    </View>
-
-	    <ScrollView
-	      horizontal
-	      showsHorizontalScrollIndicator={false}
-	      contentContainerStyle={[styles.subjectTilesRow, isWebDesktop && styles.subjectTilesRowWebDesktop]}
-	      style={styles.subjectTilesScroll}
+    <LinearGradient
+      colors={
+        isLight
+          ? (['#FFFFFF', '#F7F7F7'] as const)
+          : (['#111113', '#090A0C'] as const)
+      }
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[styles.skillHeroCard, { borderColor: GOLD_BORDER }]}
     >
-      {PATHS.map((path, index) => {
+      <View style={styles.skillHeroLeft}>
+        <Text style={[styles.referenceGreeting, primaryTextStyle]}>Hello, {firstName}</Text>
+        <Text style={[styles.referenceDateLine, { color: GOLD }]}>{activePath.label}</Text>
+        <Text style={[styles.skillHeroStoryKicker, { color: GOLD }]}>
+          Progress Story
+        </Text>
+        <Text style={[styles.skillHeroQuote, mutedTextStyle]} numberOfLines={5}>
+          {progressStory}
+        </Text>
+      </View>
+
+      <View style={styles.heroProgressColumn}>
+        <Animated.View
+          style={[
+            styles.bigProgressOrbit,
+            { backgroundColor: PANEL_2, borderColor: BORDER, shadowColor: GOLD },
+            {
+              opacity: wheelOpacity,
+              transform: [{ scale: wheelScale }],
+            },
+          ]}
+        >
+          {Array.from({ length: 56 }).map((_, index) => {
+            const filled = index / 56 <= wheelDisplayPercent / 100;
+            return (
+              <View
+                key={`progress-tick-${index}`}
+                style={[
+                  styles.bigProgressTick,
+                  filled && styles.bigProgressTickActive,
+                  { backgroundColor: filled ? GOLD : LINE },
+                  {
+                    transform: [
+                      { rotate: `${index * (360 / 56)}deg` },
+                      { translateY: -70 },
+                    ],
+                  },
+                ]}
+              />
+            );
+          })}
+          <View style={[styles.bigProgressInner, { backgroundColor: BG, borderColor: BORDER }]}>
+            <Text style={[styles.progressDialKicker, mutedTextStyle]}>Progress</Text>
+            <Text style={[styles.bigProgressNumber, primaryTextStyle]}>{wheelDisplayPercent}%</Text>
+          </View>
+        </Animated.View>
+        <View style={[styles.heroLevelPill, { backgroundColor: GOLD_SOFT, borderColor: GOLD_BORDER }]}>
+          <Text style={[styles.heroLevelText, { color: GOLD }]}>Level {level || 1}</Text>
+        </View>
+      </View>
+
+      <View style={styles.heroActionStack}>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => handleOpenLesson(currentLesson)}
+          style={[styles.heroLessonCard, { backgroundColor: colors.card, borderColor: BORDER }]}
+        >
+          <View style={styles.heroCardTitleRow}>
+            <Ionicons name={activePath.icon} size={16} color={GOLD} />
+            <Text style={[styles.heroCardTitle, primaryTextStyle]}>Today's Exercise</Text>
+          </View>
+          <View style={styles.heroLessonBody}>
+            <View style={[styles.currentLessonIcon, { backgroundColor: GOLD }]}>
+              <Ionicons name={activePath.icon} size={17} color={colors.textOnPrimary} />
+            </View>
+            <View style={styles.currentLessonCopy}>
+              <Text style={[styles.currentLessonEyebrow, { color: GOLD }]}>
+                {activePath.shortLabel} • Step {currentLesson.step}
+              </Text>
+              <Text style={[styles.currentLessonTitle, primaryTextStyle]} numberOfLines={1}>
+                {currentLesson.title}
+              </Text>
+              <Text style={[styles.currentLessonText, mutedTextStyle]} numberOfLines={1}>
+                {currentLesson.description}
+              </Text>
+            </View>
+            <View style={[styles.currentLessonAction, { backgroundColor: GOLD }]}>
+              <Ionicons name="play-outline" size={14} color={colors.textOnPrimary} />
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {currentMission ? (
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => setSelectedMission(currentMission)}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${currentMission.title} details`}
+            hitSlop={6}
+            style={[styles.heroMissionCard, { backgroundColor: colors.card, borderColor: BORDER }]}
+          >
+            <View style={styles.heroCardTitleRow}>
+              <Ionicons name="globe-outline" size={16} color={BLUE} />
+              <Text style={[styles.heroCardTitle, primaryTextStyle]}>Optional Collaboration</Text>
+            </View>
+            <View style={styles.heroLessonBody}>
+              <View style={styles.missionBannerIcon}>
+                <Ionicons name={currentMission.icon} size={16} color={BLUE} />
+              </View>
+              <View style={styles.missionBannerTextWrap}>
+                <Text style={[styles.missionBannerTitle, primaryTextStyle]} numberOfLines={1}>
+                  {currentMission.title}
+                </Text>
+                <Text style={[styles.missionBannerText, mutedTextStyle]} numberOfLines={1}>
+                  {currentMission.description}
+                </Text>
+              </View>
+              <View style={[styles.missionBannerAction, { borderColor: GOLD_BORDER, backgroundColor: GOLD_SOFT }]}>
+                <Text style={[styles.missionBannerActionText, { color: GOLD }]}>Optional</Text>
+                <Ionicons name="chevron-forward" size={13} color={GOLD} />
+              </View>
+            </View>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </LinearGradient>
+
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.treePathTabsContent}
+      style={styles.treePathTabsScroll}
+    >
+      {PATHS.map((path) => {
         const active = selectedPath === path.key;
         const progress = (progressByPath[path.key] || []).length;
 
@@ -9327,75 +10154,176 @@ filmmaker: [],
             key={path.key}
             onPress={() => setSelectedPath(path.key)}
             style={[
-              styles.subjectTile,
-              index % 3 === 1 && styles.subjectTileAlt,
-              index % 3 === 2 && styles.subjectTileCool,
-              softSurfaceStyle,
-              active && styles.subjectTileActive,
-              active && { backgroundColor: GOLD_SOFT_2, borderColor: GOLD_BORDER },
-              isWebDesktop && styles.subjectTileWebDesktop,
+              styles.treePathTab,
+              {
+                backgroundColor: active ? GOLD_SOFT : colors.cardAlt,
+                borderColor: active ? GOLD : BORDER,
+              },
             ]}
           >
-            <View style={[styles.subjectTileIcon, { backgroundColor: PANEL_3, borderColor: BORDER }, active && styles.subjectTileIconActive, active && { backgroundColor: GOLD, borderColor: GOLD }]}>
-              <Ionicons name={path.icon} size={14} color={active ? colors.textOnPrimary : GOLD} />
-            </View>
-
-            <View style={styles.subjectTileTextWrap}>
-              <Text
-                style={[styles.subjectTileTitle, primaryTextStyle, active && styles.subjectTileTitleActive, active && { color: GOLD }]}
-                numberOfLines={1}
-              >
-                {path.shortLabel}
-              </Text>
-
-              <Text style={[styles.subjectTileMeta, mutedTextStyle, active && styles.subjectTileMetaActive, active && { color: GOLD }]}>
-                {progress}/40
-              </Text>
-            </View>
+            <Text style={[styles.treePathTabText, { color: active ? GOLD : MUTED }]}>
+              {path.shortLabel}
+            </Text>
+            <Text style={[styles.treePathTabCount, { color: active ? GOLD : MUTED_2 }]}>
+              {progress}/40
+            </Text>
           </Pressable>
-	        );
-	      })}
-	    </ScrollView>
+        );
+      })}
+    </ScrollView>
 
-		    <View style={styles.scheduleHeaderRow}>
-		      <Text style={[styles.scheduleTitle, primaryTextStyle]}>Today's Exercise</Text>
-		    </View>
+    <View style={styles.skillTreeShell}>
+      <ScrollView
+        ref={roadmapScrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.skillTreeScrollContent}
+      >
+        <View
+          style={[
+            styles.skillTreeStage,
+            {
+              width: roadmapStageWidth,
+              paddingHorizontal: roadmapSideInset,
+            },
+            { backgroundColor: colors.card, borderColor: BORDER },
+          ]}
+        >
+          <View style={styles.roadmapNodesRow}>
+            <RoadmapStartMarker
+              width={roadmapStartMarkerWidth}
+              chapterTitle={chapters[0]?.title.replace(/^Chapter\s+\d+\s+—\s+/, '') || 'Begins'}
+              trackAfterState={getRoadmapTrackState(roadmapNodes[0])}
+            />
 
-		    <TouchableOpacity
-	      activeOpacity={0.9}
-	      onPress={() => handleOpenLesson(currentLesson)}
-      style={[styles.currentLessonStrip, softSurfaceStyle]}
-    >
-      <View style={[styles.currentLessonIcon, { backgroundColor: GOLD }]}>
-        <Ionicons name={activePath.icon} size={17} color={colors.textOnPrimary} />
-      </View>
+          {roadmapNodes.map((node, index) => {
+            const step = node.lesson?.step || 0;
+            const chapterIndex = step > 0 ? getChapterIndexFromStep(step) : 0;
+            const chapter = chapters[chapterIndex];
+            const showChapterDivider = step > 1 && (step - 1) % 10 === 0;
+            const chapterName = chapter?.title.replace(/^Chapter\s+\d+\s+—\s+/, '') || '';
+            const nextNode = roadmapNodes[index + 1];
+            const trackBeforeState = getRoadmapTrackState(node);
+            const trackAfterState = getRoadmapTrackState(nextNode);
 
-      <View style={styles.currentLessonCopy}>
-        <Text style={[styles.currentLessonEyebrow, { color: GOLD }]}>{activePath.shortLabel} • Step {currentLesson.step}</Text>
-        <Text style={[styles.currentLessonTitle, primaryTextStyle]} numberOfLines={1}>{currentLesson.title}</Text>
-        <Text style={[styles.currentLessonText, mutedTextStyle]} numberOfLines={1}>{currentLesson.description}</Text>
-      </View>
+            return (
+              <React.Fragment key={node.id}>
+                {showChapterDivider ? (
+                  <RoadmapChapterMarker
+                    width={roadmapChapterDividerWidth}
+                    chapterIndex={chapterIndex}
+                    chapterTitle={chapterName}
+                    trackState={trackBeforeState}
+                  />
+                ) : null}
 
-      <View style={[styles.currentLessonAction, { backgroundColor: GOLD }]}>
-        <Ionicons name="play-outline" size={14} color={colors.textOnPrimary} />
-      </View>
-    </TouchableOpacity>
-  </View>
-
-  {currentMission ? (
-    <View style={[styles.missionBanner, softSurfaceStyle]}>
-      <View style={styles.missionBannerIcon}>
-        <Ionicons name={currentMission.icon} size={16} color={BLUE} />
-      </View>
-
-      <View style={styles.missionBannerTextWrap}>
-        <Text style={[styles.missionBannerTitle, primaryTextStyle]}>{currentMission.title}</Text>
-        <Text style={[styles.missionBannerText, mutedTextStyle]}>
-          {currentMission.description}
-        </Text>
-      </View>
+                <RoadmapCheckpointButton
+                  node={node}
+                  onPress={handleOpenRoadmapNode}
+                  width={roadmapStepWidth}
+                  trackBeforeState={trackBeforeState}
+                  trackAfterState={trackAfterState}
+                  showTrackAfter={!!nextNode}
+                />
+              </React.Fragment>
+            );
+          })}
+          </View>
+        </View>
+      </ScrollView>
     </View>
-  ) : null}
+
+    {!workshopLoading ? (
+      <View style={styles.chapterProgressDock}>
+        <Text style={[styles.chapterDockEyebrow, { color: GOLD }]}>Chapter Progress</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chapterDockScrollContent}
+        >
+          {chapters.map((chapter) => {
+            const selected = selectedChapterInsightIndex === chapter.chapterIndex;
+            const chapterStatus = chapter.completed
+              ? 'Completed'
+              : chapter.unlocked
+                ? 'In Progress'
+                : 'Locked';
+
+            return (
+              <Pressable
+                key={`dock-${chapter.chapterIndex}`}
+                onPress={() => setSelectedChapterInsightIndex(chapter.chapterIndex)}
+                style={[
+                  styles.chapterDockCard,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: selected || chapter.isCurrent ? GOLD_BORDER : BORDER,
+                  },
+                  chapter.completed && { backgroundColor: isLight ? '#F6FBF7' : '#0D1913' },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.chapterDockIcon,
+                    {
+                      backgroundColor: chapter.completed ? GOLD_SOFT : colors.backgroundAlt,
+                      borderColor: chapter.completed || chapter.isCurrent ? GOLD : BORDER,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name={
+                      chapter.completed
+                        ? 'checkmark'
+                        : chapter.unlocked
+                          ? 'ellipse'
+                          : 'lock-closed-outline'
+                    }
+                    size={chapter.completed ? 19 : 16}
+                    color={chapter.unlocked || chapter.completed ? GOLD : MUTED_2}
+                  />
+                </View>
+
+                <View style={styles.chapterDockCopy}>
+                <View style={styles.chapterDockTopRow}>
+                  <Text style={[styles.chapterDockTitle, primaryTextStyle]} numberOfLines={1}>
+                    {chapter.title}
+                  </Text>
+                  <View
+                    style={[
+                      styles.chapterDockCount,
+                      {
+                        backgroundColor: chapter.unlocked ? GOLD_SOFT : colors.backgroundAlt,
+                        borderColor: chapter.unlocked ? GOLD_BORDER : BORDER,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.chapterDockCountText, { color: chapter.unlocked ? GOLD : MUTED_2 }]}>
+                      {chapterStatus}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={[styles.chapterDockSubtitle, mutedTextStyle]} numberOfLines={1}>
+                  {chapter.unlocked
+                    ? `${chapter.progress}/10 steps completed`
+                    : `Complete Chapter ${chapter.chapterIndex} to unlock.`}
+                </Text>
+                <View style={[styles.chapterDockTrack, { backgroundColor: LINE }]}>
+                  <View
+                    style={[
+                      styles.chapterDockFill,
+                      { backgroundColor: GOLD, width: `${(chapter.progress / 10) * 100}%` },
+                    ]}
+                  />
+                </View>
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+    ) : null}
+  </View>
 
   {workshopLoading ? (
     <View style={[styles.loadingCard, surfaceStyle]}>
@@ -9403,137 +10331,7 @@ filmmaker: [],
         Loading workshop progress…
       </Text>
     </View>
-  ) : (
-    <View style={styles.lessonSectionsWrap}>
-      {chapters.map((chapter) => {
-        const expandedKey = `${selectedPath}-${chapter.chapterIndex}`;
-        const expanded = expandedChapters[expandedKey] ?? chapter.chapterIndex === currentChapterIndex;
-
-        return (
-          <View
-            key={chapter.chapterIndex}
-            style={[
-              styles.chapterListCard,
-              expanded && styles.chapterListCardExpanded,
-              chapter.completed && styles.chapterListCardCompleted,
-              !chapter.unlocked && styles.chapterListCardLocked,
-              surfaceStyle,
-              expanded && { borderColor: GOLD_BORDER },
-              chapter.completed && { backgroundColor: isLight ? '#F3FAF5' : '#0D1913' },
-              !chapter.unlocked && { opacity: 0.74 },
-            ]}
-          >
-            <Pressable
-              onPress={() => toggleChapter(chapter.chapterIndex)}
-              style={styles.chapterToggle}
-            >
-              <View style={styles.chapterListHeader}>
-                <View style={styles.chapterListHeaderText}>
-                  <Text style={[styles.chapterListEyebrow, { color: GOLD }]}>
-                    {chapter.completed
-                      ? 'Completed'
-                      : chapter.unlocked
-                        ? 'In Progress'
-                        : 'Locked'}
-                  </Text>
-
-                  <Text style={[styles.chapterListTitle, primaryTextStyle]}>{chapter.title}</Text>
-
-                  <Text style={[styles.chapterListSubtitle, mutedTextStyle]} numberOfLines={expanded ? 2 : 1}>
-                    {chapter.subtitle}
-                  </Text>
-                </View>
-
-                <View style={styles.chapterRightStack}>
-                  <View style={[styles.chapterListCountPill, { backgroundColor: GOLD_SOFT, borderColor: GOLD_BORDER }]}>
-                    <Text style={[styles.chapterListCountText, { color: GOLD }]}>
-                      {chapter.progress}/10
-                    </Text>
-                  </View>
-
-                  <Ionicons
-                    name={expanded ? 'chevron-up' : 'chevron-down'}
-                    size={18}
-                    color={GOLD}
-                  />
-                </View>
-              </View>
-
-              <View style={[styles.chapterListProgressTrack, { backgroundColor: LINE }]}>
-                <View
-                  style={[
-                    styles.chapterListProgressFill,
-                    { backgroundColor: GOLD },
-                    { width: `${(chapter.progress / 10) * 100}%` },
-                  ]}
-                />
-              </View>
-            </Pressable>
-
-            {expanded ? (
-              !chapter.unlocked ? (
-                <View style={[styles.chapterLockedBox, softSurfaceStyle]}>
-                  <Ionicons
-                    name="lock-closed-outline"
-                    size={16}
-                    color={MUTED_2}
-                  />
-                  <Text style={[styles.chapterLockedText, mutedTextStyle]}>
-                    Complete the previous chapter to unlock this one.
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.lessonPathWrap}>
-                  <View pointerEvents="none" style={[styles.lessonPathRail, { backgroundColor: LINE }]} />
-                  {chapter.lessons.map((lesson, lessonIndex) => {
-                    const state = nodeState(lesson.step, completedSteps);
-                    const lessonCompleted = state === 'completed';
-                    const lessonCurrent = state === 'current';
-                    const lessonLocked = state === 'locked';
-
-                    return (
-                      <View key={lesson.id} style={styles.lessonPathItem}>
-                        <View
-                          style={[
-                            styles.lessonPathNode,
-                            { backgroundColor: PANEL_2, borderColor: BORDER },
-                            lessonCompleted && styles.lessonPathNodeCompleted,
-                            lessonCompleted && { backgroundColor: GOLD, borderColor: GOLD },
-                            lessonCurrent && styles.lessonPathNodeCurrent,
-                            lessonCurrent && { borderColor: GOLD },
-                            lessonLocked && styles.lessonPathNodeLocked,
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.lessonPathNodeText,
-                              { color: IVORY },
-                              lessonCurrent && styles.lessonPathNodeTextCurrent,
-                              lessonCurrent && { color: GOLD },
-                              lessonLocked && styles.lessonPathNodeTextLocked,
-                              lessonLocked && { color: MUTED_2 },
-                            ]}
-                          >
-                            {lessonIndex + 1}
-                          </Text>
-                        </View>
-
-                        <LessonRowCard
-                          lesson={lesson}
-                          state={state}
-                          onPress={() => handleOpenLesson(lesson)}
-                        />
-                      </View>
-                    );
-                  })}
-                </View>
-              )
-            ) : null}
-          </View>
-        );
-      })}
-    </View>
-  )}
+  ) : null}
 </View>
           </View>
         </View>
@@ -9550,7 +10348,7 @@ filmmaker: [],
           onPress={() => setSelectedLesson(null)}
         />
 
-        <View style={styles.modalCenter}>
+        <View pointerEvents="box-none" style={styles.modalCenter}>
           {selectedLesson ? (
             <View style={[styles.modalCard, surfaceStyle, { shadowColor: colors.shadow }]}>
               <View style={[styles.modalHeader, { borderBottomColor: BORDER }]}>
@@ -9773,6 +10571,297 @@ filmmaker: [],
         </View>
       </Modal>
 
+      <Modal
+        visible={!!selectedMission}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedMission(null)}
+      >
+        <Pressable
+          style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}
+          onPress={() => setSelectedMission(null)}
+        />
+
+        <View pointerEvents="box-none" style={styles.modalCenter}>
+          {selectedMission ? (
+            <View style={[styles.missionDetailCard, surfaceStyle, { shadowColor: colors.shadow }]}>
+              <View style={[styles.missionDetailHeader, { borderBottomColor: BORDER }]}>
+                <View style={[styles.missionDetailIcon, { borderColor: BORDER }]}>
+                  <Ionicons name={selectedMission.icon} size={24} color={BLUE} />
+                </View>
+                <View style={styles.missionDetailHeaderText}>
+                  <Text style={[styles.missionDetailEyebrow, { color: BLUE }]}>
+                    Optional Collaboration
+                  </Text>
+                  <Text style={[styles.missionDetailTitle, primaryTextStyle]}>
+                    {selectedMission.title}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setSelectedMission(null)}
+                  style={styles.modalClose}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="close" size={18} color={MUTED} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.missionDetailBody}>
+                <Text style={[styles.missionDetailDescription, mutedTextStyle]}>
+                  {selectedMission.description}
+                </Text>
+                <Text style={[styles.missionDetailOptionalNote, mutedTextStyle]}>
+                  A creative side quest you can skip, dismiss, or come back to later.
+                </Text>
+
+                <View style={[styles.missionDetailChecklist, { borderColor: BORDER, backgroundColor: PANEL_2 }]}>
+                  {missionDetailsForType(selectedMission.type).map((item, index) => (
+                    <View key={`mission-detail-${selectedMission.id}-${index}`} style={styles.missionDetailStep}>
+                      <View style={[styles.missionDetailStepNumber, { borderColor: GOLD_BORDER, backgroundColor: GOLD_SOFT }]}>
+                        <Text style={[styles.missionDetailStepNumberText, { color: GOLD }]}>
+                          {index + 1}
+                        </Text>
+                      </View>
+                      <Text style={[styles.missionDetailStepText, primaryTextStyle]}>
+                        {item}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+
+                <View style={styles.missionDetailActions}>
+                  <TouchableOpacity
+                    activeOpacity={0.88}
+                    style={[styles.missionDetailGhostButton, { borderColor: BORDER, backgroundColor: PANEL_2 }]}
+                    onPress={() => {
+                      setDismissedMissionKeys((prev) => {
+                        const key = `${selectedPath}-${selectedMission.id}`;
+                        return prev.includes(key) ? prev : [...prev, key];
+                      });
+                      setSelectedMission(null);
+                    }}
+                  >
+                    <Ionicons name="eye-off-outline" size={16} color={MUTED} />
+                    <Text style={[styles.missionDetailGhostText, mutedTextStyle]}>
+                      Remove from page
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    style={[styles.missionDetailPrimaryButton, { backgroundColor: GOLD }]}
+                    onPress={() => setSelectedMission(null)}
+                  >
+                    <Text style={[styles.missionDetailPrimaryText, { color: colors.textOnPrimary }]}>
+                      Got it
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          ) : null}
+        </View>
+      </Modal>
+
+      <Modal
+        visible={!!selectedChapterInsight}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedChapterInsightIndex(null)}
+      >
+        <Pressable
+          style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}
+          onPress={() => setSelectedChapterInsightIndex(null)}
+        />
+
+        <View pointerEvents="box-none" style={styles.modalCenter}>
+          {selectedChapterInsight ? (
+            <View style={[styles.chapterInsightCard, surfaceStyle, { shadowColor: colors.shadow }]}>
+              <View style={[styles.chapterInsightHeader, { borderBottomColor: BORDER }]}>
+                <View>
+                  <Text style={[styles.chapterInsightEyebrow, { color: GOLD }]}>
+                    Chapter {selectedChapterInsight.chapterIndex + 1} Progress
+                  </Text>
+                  <Text style={[styles.chapterInsightTitle, primaryTextStyle]} numberOfLines={2}>
+                    {selectedChapterInsight.title}
+                  </Text>
+                  <Text style={[styles.chapterInsightSubtitle, mutedTextStyle]}>
+                    {selectedChapterInsight.progress}/10 exercises completed
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => setSelectedChapterInsightIndex(null)}
+                  style={styles.modalClose}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="close" size={18} color={MUTED} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.chapterInsightBody}>
+                <View style={[styles.chapterInsightProgressPanel, { borderColor: GOLD_BORDER, backgroundColor: GOLD_SOFT }]}>
+                  <View style={styles.chapterInsightProgressTop}>
+                    <Text style={[styles.chapterInsightProgressLabel, { color: GOLD }]}>
+                      Completion
+                    </Text>
+                    <Text style={[styles.chapterInsightProgressValue, primaryTextStyle]}>
+                      {selectedChapterPercent}%
+                    </Text>
+                  </View>
+                  <View style={[styles.chapterInsightProgressTrack, { backgroundColor: LINE }]}>
+                    <View
+                      style={[
+                        styles.chapterInsightProgressFill,
+                        {
+                          backgroundColor: selectedChapterInsight.completed ? GREEN : GOLD,
+                          width: `${selectedChapterPercent}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={[styles.chapterInsightProgressNote, mutedTextStyle]}>
+                    {selectedChapterNextLesson
+                      ? `Next: Step ${selectedChapterNextLesson.step} — ${selectedChapterNextLesson.title}`
+                      : 'Chapter complete. Every exercise in this chapter is cleared.'}
+                  </Text>
+                </View>
+
+                <View style={styles.chapterInsightStatsRow}>
+                  <View style={[styles.chapterInsightStat, { borderColor: GOLD_BORDER, backgroundColor: GOLD_SOFT }]}>
+                    <Text style={[styles.chapterInsightStatValue, { color: GOLD }]}>
+                      {selectedChapterInsight.progress}
+                    </Text>
+                    <Text style={[styles.chapterInsightStatLabel, mutedTextStyle]}>Completed</Text>
+                  </View>
+                  <View style={[styles.chapterInsightStat, { borderColor: BORDER, backgroundColor: PANEL_2 }]}>
+                    <Text style={[styles.chapterInsightStatValue, primaryTextStyle]}>
+                      {Math.max(0, 10 - selectedChapterInsight.progress)}
+                    </Text>
+                    <Text style={[styles.chapterInsightStatLabel, mutedTextStyle]}>Remaining</Text>
+                  </View>
+                  <View style={[styles.chapterInsightStat, { borderColor: BORDER, backgroundColor: PANEL_2 }]}>
+                    <Text style={[styles.chapterInsightStatValue, primaryTextStyle]}>
+                      {selectedChapterInsight.completed
+                        ? 'Done'
+                        : selectedChapterInsight.unlocked
+                          ? 'Live'
+                          : 'Locked'}
+                    </Text>
+                    <Text style={[styles.chapterInsightStatLabel, mutedTextStyle]}>Status</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.chapterInsightChartPanel, { borderColor: BORDER, backgroundColor: PANEL_2 }]}>
+                  <View style={styles.chapterInsightChartHeader}>
+                    <View>
+                      <Text style={[styles.chapterInsightSectionTitle, primaryTextStyle]}>
+                        Progress Curve
+                      </Text>
+                      <Text style={[styles.chapterInsightChartSubtitle, mutedTextStyle]}>
+                        Chapter exercise momentum
+                      </Text>
+                    </View>
+                    <Text style={[styles.chapterInsightChartMeta, { color: GOLD }]}>
+                      10 steps
+                    </Text>
+                  </View>
+
+                  <View style={[styles.chapterInsightGraph, { borderColor: BORDER, backgroundColor: 'rgba(255,255,255,0.018)' }]}>
+                    <View pointerEvents="none" style={[styles.chapterInsightGraphFloor, { backgroundColor: LINE }]} />
+                    <View pointerEvents="none" style={styles.chapterInsightGraphGrid}>
+                      {[0, 1, 2].map((line) => (
+                        <View
+                          key={`chapter-grid-${line}`}
+                          style={[styles.chapterInsightGridLine, { backgroundColor: LINE }]}
+                        />
+                      ))}
+                    </View>
+
+                    <View style={styles.chapterInsightBars}>
+                      {selectedChapterInsight.lessons.map((lesson, index) => {
+                        const state = nodeState(lesson.step, completedSteps);
+                        const done = state === 'completed';
+                        const current = state === 'current';
+                        const locked = state === 'locked';
+                        const upcoming = state === 'unlocked';
+                        const barHeight = done
+                          ? 24 + Math.min(index, 8) * 4
+                          : current
+                            ? 54
+                            : locked
+                              ? 8
+                              : 22;
+                        const barColors: [string, string] = done
+                          ? ['rgba(93,232,130,0.92)', 'rgba(28,151,76,0.72)']
+                          : current
+                            ? ['rgba(244,204,103,0.92)', 'rgba(155,113,42,0.68)']
+                            : upcoming
+                              ? ['rgba(198,166,100,0.30)', 'rgba(198,166,100,0.12)']
+                              : ['rgba(255,255,255,0.13)', 'rgba(255,255,255,0.05)'];
+                        const stateColor = done ? GREEN : current ? GOLD : upcoming ? GOLD : MUTED_2;
+
+                        return (
+                          <View key={`chapter-bar-${lesson.step}`} style={styles.chapterInsightBarSlot}>
+                            <View style={styles.chapterInsightBarStack}>
+                              <View
+                                style={[
+                                  styles.chapterInsightBarDot,
+                                  {
+                                    backgroundColor: stateColor,
+                                    opacity: locked ? 0.42 : 1,
+                                  },
+                                ]}
+                              />
+                              <LinearGradient
+                                colors={barColors}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 0, y: 1 }}
+                                style={[
+                                  styles.chapterInsightBar,
+                                  {
+                                    height: barHeight,
+                                    opacity: locked ? 0.42 : 1,
+                                  },
+                                  current && styles.chapterInsightBarCurrent,
+                                ]}
+                              />
+                            </View>
+                            <Text
+                              style={[
+                                styles.chapterInsightBarLabel,
+                                { color: current ? GOLD : done ? GREEN : MUTED_2 },
+                              ]}
+                            >
+                              {index + 1}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  <View style={styles.chapterInsightLegend}>
+                    <View style={styles.chapterInsightLegendItem}>
+                      <View style={[styles.chapterInsightLegendDot, { backgroundColor: GREEN }]} />
+                      <Text style={[styles.chapterInsightLegendText, mutedTextStyle]}>Completed</Text>
+                    </View>
+                    <View style={styles.chapterInsightLegendItem}>
+                      <View style={[styles.chapterInsightLegendDot, { backgroundColor: GOLD }]} />
+                      <Text style={[styles.chapterInsightLegendText, mutedTextStyle]}>Current</Text>
+                    </View>
+                    <View style={styles.chapterInsightLegendItem}>
+                      <View style={[styles.chapterInsightLegendDot, { backgroundColor: MUTED_2 }]} />
+                      <Text style={[styles.chapterInsightLegendText, mutedTextStyle]}>Locked</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </View>
+          ) : null}
+        </View>
+      </Modal>
+
       <UpgradeModal
         visible={upgradeVisible}
         onClose={() => setUpgradeVisible(false)}
@@ -9835,14 +10924,14 @@ const styles = StyleSheet.create({
   },
 
   scrollContent: {
-    paddingBottom: 120,
+    paddingBottom: 96,
   },
 
   pageWrap: {
     width: '100%',
     maxWidth: '100%',
     alignSelf: 'stretch',
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     paddingTop: -4,
     backgroundColor: CINEMA.bg,
   },
@@ -9851,8 +10940,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'center',
-    gap: 18,
-    marginTop: -6,
+    gap: 16,
+    marginTop: 0,
   },
 
   mainLayoutMobile: {
@@ -9943,7 +11032,7 @@ const styles = StyleSheet.create({
   centerPanel: {
     flex: 1,
     minWidth: 0,
-    gap: 14,
+    gap: 12,
     width: '100%',
     alignSelf: 'stretch',
   },
@@ -9954,7 +11043,7 @@ const styles = StyleSheet.create({
   },
 
   centerPanelWebDesktop: {
-    maxWidth: 1180,
+    maxWidth: 1380,
   },
 
   classTopBar: {
@@ -9990,17 +11079,17 @@ const styles = StyleSheet.create({
 
   referenceGreeting: {
     color: CINEMA.text,
-    fontSize: 34,
-    lineHeight: 39,
+    fontSize: 30,
+    lineHeight: 34,
     fontWeight: '800',
     letterSpacing: 0,
   },
 
   referenceDateLine: {
     color: CINEMA.textDim,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 6,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
     fontWeight: '700',
   },
 
@@ -10013,8 +11102,8 @@ const styles = StyleSheet.create({
   },
 
   bigProgressOrbit: {
-    width: 210,
-    height: 210,
+    width: 170,
+    height: 170,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
@@ -10023,18 +11112,18 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.12)',
     backgroundColor: '#090A0C',
     shadowColor: CINEMA.brass,
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.10,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
     zIndex: 2,
   },
 
   bigProgressTick: {
     position: 'absolute',
-    left: 104,
-    top: 97,
+    left: 84,
+    top: 78,
     width: 2,
-    height: 16,
+    height: 12,
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.12)',
   },
@@ -10044,8 +11133,8 @@ const styles = StyleSheet.create({
   },
 
   bigProgressInner: {
-    width: 132,
-    height: 132,
+    width: 104,
+    height: 104,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
@@ -10056,8 +11145,8 @@ const styles = StyleSheet.create({
 
   bigProgressNumber: {
     color: CINEMA.text,
-    fontSize: 46,
-    lineHeight: 52,
+    fontSize: 36,
+    lineHeight: 40,
     fontWeight: '800',
     letterSpacing: 0,
   },
@@ -10358,9 +11447,9 @@ const styles = StyleSheet.create({
   },
 
   currentLessonIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 9,
+    width: 36,
+    height: 36,
+    borderRadius: 8,
     backgroundColor: CINEMA.brassSoft,
     borderWidth: 1,
     borderColor: CINEMA.brassBorder,
@@ -10397,8 +11486,8 @@ const styles = StyleSheet.create({
   },
 
   currentLessonAction: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: 999,
     backgroundColor: CINEMA.brass,
     alignItems: 'center',
@@ -10469,29 +11558,1097 @@ const styles = StyleSheet.create({
     backgroundColor: CINEMA.panel,
     borderRadius: 16,
     paddingHorizontal: 18,
-    paddingTop: 22,
+    paddingTop: 14,
     paddingBottom: 18,
-    marginTop: -10,
+    marginTop: 0,
     marginBottom: 0,
     width: '100%',
-    maxWidth: 720,
+    maxWidth: 1160,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.055)',
     alignItems: 'center',
     alignSelf: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
     shadowOffset: { width: 0, height: 7 },
     elevation: 2,
   },
 
   bootcampCardWebDesktop: {
-    maxWidth: 1120,
-    minHeight: 640,
-    paddingHorizontal: 34,
-    paddingTop: 34,
-    paddingBottom: 30,
+    maxWidth: 1320,
+    minHeight: 700,
+    paddingHorizontal: 24,
+    paddingTop: 18,
+    paddingBottom: 22,
+  },
+
+  skillHeroCard: {
+    width: '100%',
+    minHeight: 176,
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
+    position: 'relative',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 18,
+    paddingHorizontal: 30,
+    paddingVertical: 18,
+  },
+
+  skillHeroLeft: {
+    flex: 1,
+    minWidth: 260,
+    maxWidth: 400,
+    zIndex: 2,
+  },
+
+  skillHeroStoryKicker: {
+    color: CINEMA.brass,
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginTop: 15,
+    marginBottom: 7,
+  },
+
+  skillHeroQuote: {
+    color: CINEMA.textSoft,
+    fontSize: 12,
+    lineHeight: 17,
+    maxWidth: 380,
+    fontStyle: 'normal',
+  },
+
+  heroProgressColumn: {
+    width: 196,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+
+  progressDialKicker: {
+    color: CINEMA.textDim,
+    fontSize: 8,
+    lineHeight: 12,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+
+  progressDialMeta: {
+    color: CINEMA.textDim,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '800',
+    marginTop: 0,
+  },
+
+  heroLevelPill: {
+    marginTop: 8,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderWidth: 1,
+    zIndex: 3,
+  },
+
+  heroLevelText: {
+    color: CINEMA.brass,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  heroActionStack: {
+    width: 390,
+    maxWidth: '100%',
+    gap: 10,
+    zIndex: 2,
+  },
+
+  heroLessonCard: {
+    minHeight: 82,
+    borderRadius: 11,
+    padding: 11,
+    borderWidth: 1,
+    backgroundColor: CINEMA.card,
+    justifyContent: 'center',
+  },
+
+  heroCardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 7,
+  },
+
+  heroCardTitle: {
+    color: CINEMA.text,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '800',
+  },
+
+  heroLessonBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+  },
+
+  heroMissionCard: {
+    minHeight: 82,
+    borderRadius: 11,
+    padding: 11,
+    borderWidth: 1,
+    backgroundColor: CINEMA.card,
+    justifyContent: 'center',
+  },
+
+  treePathTabsScroll: {
+    width: '100%',
+    marginTop: 12,
+  },
+
+  treePathTabsContent: {
+    minWidth: '100%',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 0,
+    paddingRight: 0,
+    paddingBottom: 2,
+  },
+
+  treePathTab: {
+    minHeight: 34,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  treePathTabText: {
+    color: CINEMA.textSoft,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+
+  treePathTabCount: {
+    color: CINEMA.textDim,
+    fontSize: 9,
+    fontWeight: '800',
+  },
+
+  skillTreeShell: {
+    width: '100%',
+    marginTop: 14,
+  },
+
+  skillTreeScrollContent: {
+    paddingHorizontal: 0,
+    paddingRight: 0,
+  },
+
+  skillTreeStage: {
+    minWidth: 980,
+    minHeight: 258,
+    position: 'relative',
+    overflow: 'hidden',
+    alignSelf: 'stretch',
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 64,
+    paddingTop: 32,
+    paddingBottom: 28,
+    backgroundColor: CINEMA.panel,
+  },
+
+  roadmapTrackLayer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 55,
+    height: 4,
+    zIndex: 0,
+  },
+
+  roadmapTrackSegment: {
+    position: 'absolute',
+    top: 1,
+    height: 2,
+    borderRadius: 999,
+  },
+
+  roadmapTrackBefore: {
+    left: 0,
+    width: '50%',
+  },
+
+  roadmapTrackAfter: {
+    right: 0,
+    width: '50%',
+  },
+
+  roadmapTrackFull: {
+    left: 0,
+    right: 0,
+  },
+
+  roadmapTrackComplete: {
+    backgroundColor: GREEN,
+    shadowColor: GREEN,
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
+  },
+
+  roadmapTrackActive: {
+    backgroundColor: CINEMA.brass,
+    opacity: 0.72,
+    shadowColor: CINEMA.brass,
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+  },
+
+  roadmapTrackLocked: {
+    backgroundColor: 'rgba(255,255,255,0.13)',
+    opacity: 0.78,
+  },
+
+  roadmapStartMarker: {
+    minHeight: 196,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+
+  roadmapStartNodeWrap: {
+    width: 112,
+    height: 112,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    zIndex: 2,
+  },
+
+  roadmapStartGlow: {
+    position: 'absolute',
+    width: 74,
+    height: 74,
+    borderRadius: 999,
+    backgroundColor: 'rgba(71,214,111,0.13)',
+    shadowColor: GREEN,
+    shadowOpacity: 0.26,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 0 },
+  },
+
+  roadmapStartNode: {
+    width: 54,
+    height: 54,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(71,214,111,0.64)',
+    backgroundColor: 'rgba(71,214,111,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  roadmapStartCoreDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: GREEN,
+    shadowColor: GREEN,
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+  },
+
+  roadmapNodesRow: {
+    width: '100%',
+    minHeight: 196,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    zIndex: 2,
+  },
+
+  roadmapChapterDivider: {
+    minHeight: 196,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 118,
+    paddingHorizontal: 10,
+  },
+
+  roadmapChapterDividerLine: {
+    width: 1,
+    height: 58,
+    opacity: 0.85,
+    marginBottom: 11,
+    backgroundColor: 'rgba(198,166,100,0.28)',
+  },
+
+  roadmapChapterGate: {
+    position: 'absolute',
+    top: 10,
+    width: 42,
+    height: 94,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+
+  roadmapChapterGateLine: {
+    position: 'absolute',
+    width: 1,
+    height: 90,
+    borderRadius: 999,
+    backgroundColor: 'rgba(198,166,100,0.48)',
+  },
+
+  roadmapChapterLabel: {
+    color: CINEMA.brass,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+
+  roadmapChapterTitle: {
+    color: CINEMA.textDim,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 5,
+  },
+
+  roadmapCheckpoint: {
+    width: 172,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+
+  roadmapCheckpointCurrent: {
+    marginTop: 0,
+  },
+
+  roadmapCheckpointMuted: {
+    opacity: 0.78,
+  },
+
+  roadmapNodeWrap: {
+    width: 112,
+    height: 112,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    zIndex: 2,
+  },
+
+  roadmapNodeGlow: {
+    position: 'absolute',
+    width: 92,
+    height: 92,
+    borderRadius: 999,
+    backgroundColor: 'transparent',
+  },
+
+  roadmapNodeGlowActive: {
+    width: 130,
+    height: 130,
+    backgroundColor: 'rgba(198,166,100,0.16)',
+    shadowColor: CINEMA.brass,
+    shadowOpacity: 0.36,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 0 },
+  },
+
+  roadmapNodeGlowFinal: {
+    width: 108,
+    height: 108,
+    backgroundColor: 'rgba(198,166,100,0.08)',
+    shadowColor: CINEMA.brass,
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 0 },
+  },
+
+  roadmapNodeCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOpacity: 0.10,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
+  },
+
+  roadmapNodeCircleCurrent: {
+    width: 96,
+    height: 96,
+    borderWidth: 2,
+    shadowOpacity: 0.38,
+    shadowRadius: 20,
+  },
+
+  roadmapNodeCircleLocked: {
+    borderStyle: 'dashed',
+  },
+
+  roadmapNodeCircleFinal: {
+    borderWidth: 1.5,
+  },
+
+  roadmapNodeGlyph: {
+    color: CINEMA.brass,
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: '800',
+  },
+
+  roadmapNodeGlyphCurrent: {
+    fontSize: 31,
+    lineHeight: 38,
+    fontWeight: '800',
+  },
+
+  roadmapXpPill: {
+    marginTop: -7,
+    minWidth: 50,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+
+  roadmapXpText: {
+    color: CINEMA.brass,
+    fontSize: 9,
+    fontWeight: '800',
+  },
+
+  roadmapStepLabel: {
+    color: CINEMA.textDim,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginTop: 7,
+    marginBottom: -2,
+  },
+
+  roadmapNodeTitle: {
+    color: CINEMA.text,
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '800',
+    textAlign: 'center',
+    width: '100%',
+    marginTop: 10,
+  },
+
+  roadmapNodeTitleCurrent: {
+    fontSize: 16,
+    lineHeight: 21,
+  },
+
+  roadmapNodeStatus: {
+    color: CINEMA.textDim,
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 6,
+    textAlign: 'center',
+  },
+
+  chapterProgressDock: {
+    width: '100%',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(198,166,100,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.025)',
+    padding: 12,
+    marginTop: 14,
+  },
+
+  chapterDockEyebrow: {
+    color: CINEMA.brass,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    marginBottom: 10,
+  },
+
+  chapterDockScrollContent: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingRight: 12,
+  },
+
+  chapterDockCard: {
+    width: 330,
+    minHeight: 88,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 13,
+  },
+
+  chapterDockIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  chapterDockCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  chapterDockTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+
+  chapterDockTitle: {
+    flex: 1,
+    color: CINEMA.text,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+
+  chapterDockCount: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+
+  chapterDockCountText: {
+    color: CINEMA.brass,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+
+  chapterDockSubtitle: {
+    color: CINEMA.textDim,
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 5,
+  },
+
+  chapterDockTrack: {
+    height: 6,
+    borderRadius: 999,
+    overflow: 'hidden',
+    marginTop: 11,
+  },
+
+  chapterDockFill: {
+    height: 6,
+    borderRadius: 999,
+  },
+
+  chapterInsightCard: {
+    width: '100%',
+    maxWidth: 560,
+    maxHeight: '82%',
+    overflow: 'hidden',
+    backgroundColor: '#0C0E12',
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+
+  chapterInsightHeader: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+
+  chapterInsightEyebrow: {
+    color: CINEMA.brass,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.3,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+
+  chapterInsightTitle: {
+    color: CINEMA.text,
+    fontSize: 19,
+    lineHeight: 23,
+    fontWeight: '900',
+  },
+
+  chapterInsightSubtitle: {
+    color: CINEMA.textDim,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 6,
+  },
+
+  chapterInsightBody: {
+    padding: 16,
+    gap: 12,
+  },
+
+  chapterInsightProgressPanel: {
+    borderRadius: 13,
+    borderWidth: 1,
+    padding: 13,
+    gap: 9,
+  },
+
+  chapterInsightProgressTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+
+  chapterInsightProgressLabel: {
+    color: CINEMA.brass,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+
+  chapterInsightProgressValue: {
+    color: CINEMA.text,
+    fontSize: 22,
+    lineHeight: 26,
+    fontWeight: '900',
+  },
+
+  chapterInsightProgressTrack: {
+    height: 7,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+
+  chapterInsightProgressFill: {
+    height: 7,
+    borderRadius: 999,
+  },
+
+  chapterInsightProgressNote: {
+    color: CINEMA.textDim,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+
+  chapterInsightStatsRow: {
+    flexDirection: 'row',
+    gap: 9,
+  },
+
+  chapterInsightStat: {
+    flex: 1,
+    minHeight: 62,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 11,
+    justifyContent: 'center',
+  },
+
+  chapterInsightStatValue: {
+    color: CINEMA.text,
+    fontSize: 17,
+    fontWeight: '900',
+  },
+
+  chapterInsightStatLabel: {
+    color: CINEMA.textDim,
+    fontSize: 10,
+    fontWeight: '800',
+    marginTop: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+
+  chapterInsightChartPanel: {
+    borderRadius: 13,
+    borderWidth: 1,
+    padding: 13,
+    gap: 11,
+  },
+
+  chapterInsightChartHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+
+  chapterInsightStepPanel: {
+    borderRadius: 13,
+    borderWidth: 1,
+    padding: 14,
+    gap: 12,
+  },
+
+  chapterInsightSectionTitle: {
+    color: CINEMA.text,
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '900',
+  },
+
+  chapterInsightChartSubtitle: {
+    color: CINEMA.textDim,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+
+  chapterInsightChartMeta: {
+    color: CINEMA.brass,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+  },
+
+  chapterInsightStepGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 9,
+  },
+
+  chapterInsightStepCell: {
+    width: 108,
+    minHeight: 110,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 10,
+    justifyContent: 'space-between',
+  },
+
+  chapterInsightStepNode: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  chapterInsightStepNodeText: {
+    color: CINEMA.textDim,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+
+  chapterInsightStepTitle: {
+    color: CINEMA.text,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '800',
+    marginTop: 8,
+  },
+
+  chapterInsightStepState: {
+    color: CINEMA.textDim,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginTop: 8,
+  },
+
+  chapterInsightGraph: {
+    height: 116,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 18,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+
+  chapterInsightGraphFloor: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 31,
+    height: 1,
+    opacity: 0.36,
+  },
+
+  chapterInsightGraphGrid: {
+    ...StyleSheet.absoluteFillObject,
+    paddingVertical: 23,
+    justifyContent: 'space-between',
+  },
+
+  chapterInsightGridLine: {
+    height: 1,
+    opacity: 0.22,
+  },
+
+  chapterInsightBars: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 10,
+    zIndex: 2,
+  },
+
+  chapterInsightBarSlot: {
+    flex: 1,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    position: 'relative',
+  },
+
+  chapterInsightBarStack: {
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 4,
+  },
+
+  chapterInsightBarDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+  },
+
+  chapterInsightBar: {
+    width: 3,
+    minHeight: 8,
+    borderRadius: 999,
+    borderWidth: 0,
+    overflow: 'hidden',
+    alignItems: 'center',
+  },
+
+  chapterInsightBarCurrent: {
+    shadowColor: CINEMA.brass,
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+  },
+
+  chapterInsightBarLabel: {
+    color: CINEMA.textDim,
+    fontSize: 9,
+    fontWeight: '800',
+    marginTop: 5,
+  },
+
+  chapterInsightLegend: {
+    flexDirection: 'row',
+    gap: 14,
+    flexWrap: 'wrap',
+  },
+
+  chapterInsightLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+
+  chapterInsightLegendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+  },
+
+  chapterInsightLegendText: {
+    color: CINEMA.textDim,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  missionDetailCard: {
+    width: '100%',
+    maxWidth: 560,
+    overflow: 'hidden',
+    backgroundColor: '#0C0E12',
+    borderRadius: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 9 },
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+
+  missionDetailHeader: {
+    padding: 18,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
+  },
+
+  missionDetailIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(94,157,255,0.10)',
+  },
+
+  missionDetailHeaderText: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  missionDetailEyebrow: {
+    color: BLUE,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+
+  missionDetailTitle: {
+    color: CINEMA.text,
+    fontSize: 21,
+    lineHeight: 25,
+    fontWeight: '900',
+  },
+
+  missionDetailBody: {
+    padding: 18,
+    gap: 14,
+  },
+
+  missionDetailDescription: {
+    color: CINEMA.textDim,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
+  },
+
+  missionDetailOptionalNote: {
+    color: CINEMA.textDim,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+
+  missionDetailChecklist: {
+    borderRadius: 13,
+    borderWidth: 1,
+    padding: 14,
+    gap: 12,
+  },
+
+  missionDetailStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+
+  missionDetailStepNumber: {
+    width: 26,
+    height: 26,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  missionDetailStepNumberText: {
+    color: CINEMA.brass,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+
+  missionDetailStepText: {
+    flex: 1,
+    color: CINEMA.text,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+
+  missionDetailActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+
+  missionDetailGhostButton: {
+    minHeight: 40,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+
+  missionDetailGhostText: {
+    color: CINEMA.textDim,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  missionDetailPrimaryButton: {
+    minHeight: 40,
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  missionDetailPrimaryText: {
+    color: '#080808',
+    fontSize: 12,
+    fontWeight: '900',
   },
 
   bootcampHeader: {
@@ -10909,8 +13066,8 @@ featuredStatNumber: {
   },
 
   missionBannerIcon: {
-    width: 44,
-    height: 44,
+    width: 38,
+    height: 38,
     borderRadius: 9,
     backgroundColor: CINEMA.navySoft,
     alignItems: 'center',
@@ -10921,21 +13078,39 @@ featuredStatNumber: {
 
   missionBannerTextWrap: {
     flex: 1,
+    minWidth: 0,
   },
 
   missionBannerTitle: {
     color: CINEMA.text,
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 5,
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 3,
     letterSpacing: 0,
   },
 
   missionBannerText: {
     color: CINEMA.textSoft,
-    fontSize: 13,
-    lineHeight: 21,
-    letterSpacing: 0.04,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+
+  missionBannerAction: {
+    minHeight: 30,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+
+  missionBannerActionText: {
+    color: CINEMA.brass,
+    fontSize: 10,
+    fontWeight: '900',
   },
 
   sectionHeader: {

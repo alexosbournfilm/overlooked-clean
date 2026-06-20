@@ -2126,7 +2126,7 @@ const isDirectBlocked =
   blockedUserIds.has(item.peerUser.id);
     return (
       <Pressable
-  android_ripple={{ color: isLight ? '#EFE2CB' : '#1A1A1A' }}
+  android_ripple={{ color: isLight ? 'rgba(0,0,0,0.06)' : '#1A1A1A' }}
   style={({ pressed }) => [
     styles.chatCard,
     {
@@ -2839,7 +2839,7 @@ const sendDesktopAttachment = useCallback(async () => {
 
     return (
       <Pressable
-  android_ripple={{ color: isLight ? '#EFE2CB' : '#1A1A1A' }}
+  android_ripple={{ color: isLight ? 'rgba(0,0,0,0.06)' : '#1A1A1A' }}
   style={({ pressed }) => [
     styles.userCard,
     {
@@ -2964,7 +2964,7 @@ const sendDesktopAttachment = useCallback(async () => {
           {
             backgroundColor: isSelected
               ? isLight
-                ? '#F3E8D2'
+                ? 'rgba(168,121,34,0.06)'
                 : '#17130A'
               : 'transparent',
             borderColor: isSelected
@@ -2972,11 +2972,11 @@ const sendDesktopAttachment = useCallback(async () => {
                 ? 'rgba(198,166,100,0.34)'
                 : 'rgba(198,166,100,0.28)'
               : isLight
-              ? '#E7DDCC'
+              ? '#E5E5E5'
               : '#242424',
           },
           pressed && {
-            backgroundColor: isLight ? '#F7EFDF' : '#121212',
+            backgroundColor: isLight ? '#F7F7F7' : '#121212',
           },
           isDeleting && { opacity: 0.55 },
         ]}
@@ -3213,7 +3213,7 @@ const sendDesktopAttachment = useCallback(async () => {
           style={[
             styles.desktopSidebar,
             {
-              backgroundColor: isLight ? '#F7F0E5' : T.card,
+              backgroundColor: isLight ? '#F7F7F7' : T.card,
               borderColor: T.border,
             },
           ]}
@@ -3410,7 +3410,7 @@ const sendDesktopAttachment = useCallback(async () => {
           style={[
             styles.desktopConversationPanel,
             {
-              backgroundColor: isLight ? '#F4EEE4' : '#050505',
+              backgroundColor: isLight ? '#FFFFFF' : '#050505',
               borderColor: T.border,
             },
           ]}
@@ -3425,7 +3425,7 @@ const sendDesktopAttachment = useCallback(async () => {
                 style={[
                   styles.desktopConversationHeader,
                   {
-                    backgroundColor: isLight ? '#FFFCF7' : '#101010',
+                    backgroundColor: isLight ? '#FFFFFF' : '#101010',
                     borderColor: T.border,
                   },
                 ]}
@@ -3526,7 +3526,7 @@ const sendDesktopAttachment = useCallback(async () => {
                 style={[
                   styles.desktopComposer,
                   {
-                    backgroundColor: isLight ? '#FFFCF7' : '#101010',
+                    backgroundColor: isLight ? '#FFFFFF' : '#101010',
                     borderColor: T.border,
                   },
                 ]}
@@ -3757,7 +3757,7 @@ const sendDesktopAttachment = useCallback(async () => {
         <View
           style={[
             styles.loadingOverlay,
-            { backgroundColor: isLight ? 'rgba(248,243,234,0.72)' : '#000000cc' },
+            { backgroundColor: isLight ? 'rgba(255,255,255,0.82)' : '#000000cc' },
           ]}
         >
           <ActivityIndicator
@@ -4257,7 +4257,7 @@ const sendDesktopAttachment = useCallback(async () => {
                   style={[
                     styles.memberPickRow,
                     { backgroundColor: colors.input, borderColor: T.border },
-                    selected && { borderColor: T.olive, backgroundColor: isLight ? '#F6ECD8' : colors.cardAlt },
+                    selected && { borderColor: T.olive, backgroundColor: isLight ? 'rgba(168,121,34,0.06)' : colors.cardAlt },
                   ]}
                 >
                   {u.avatar_url ? (

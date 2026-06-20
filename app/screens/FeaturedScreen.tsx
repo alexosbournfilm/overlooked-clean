@@ -3063,13 +3063,13 @@ const FeaturedScreen = () => {
     }),
     [colors]
   );
-  const featuredBackground = isLight ? '#FAF7F1' : '#000000';
-  const featuredBackgroundAlt = isLight ? '#F3ECDF' : '#050505';
-  const featuredSurface = isLight ? '#FFFDF8' : '#090909';
-  const featuredSoftSurface = isLight ? '#F4EBDD' : '#0B0B0B';
-  const featuredBorder = isLight ? 'rgba(93,72,43,0.16)' : 'rgba(255,255,255,0.08)';
+  const featuredBackground = isLight ? '#FFFFFF' : '#000000';
+  const featuredBackgroundAlt = isLight ? '#F7F7F7' : '#050505';
+  const featuredSurface = isLight ? '#FFFFFF' : '#090909';
+  const featuredSoftSurface = isLight ? '#FAFAFA' : '#0B0B0B';
+  const featuredBorder = isLight ? 'rgba(0,0,0,0.10)' : 'rgba(255,255,255,0.08)';
   const featuredText = isLight ? colors.textPrimary : '#F4F1EA';
-  const featuredSubText = isLight ? '#62584B' : 'rgba(237,235,230,0.62)';
+  const featuredSubText = isLight ? '#3F3F3F' : 'rgba(237,235,230,0.62)';
  const { refreshKey, triggerAppRefresh } = useAppRefresh();
 const isGuest = !userId;
 const openShareSlug = route.params?.openShareSlug ?? null;

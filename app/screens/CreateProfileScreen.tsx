@@ -508,8 +508,8 @@ export default function CreateProfileScreen() {
       border: colors.border,
       borderStrong: colors.borderStrong,
       accent: colors.primary,
-      accentSoft: isLight ? 'rgba(158,119,40,0.10)' : 'rgba(198,166,100,0.12)',
-      accentBorder: isLight ? 'rgba(158,119,40,0.26)' : 'rgba(198,166,100,0.30)',
+      accentSoft: isLight ? 'rgba(168,121,34,0.06)' : 'rgba(198,166,100,0.12)',
+      accentBorder: isLight ? 'rgba(168,121,34,0.18)' : 'rgba(198,166,100,0.30)',
       textOnAccent: colors.textOnPrimary,
       shadow: colors.shadow,
     }),
@@ -2379,10 +2379,10 @@ submitStatusText: {
     height: 22,
     borderRadius: 7,
     borderWidth: 1,
-    borderColor: 'rgba(125,74,63,0.25)',
+    borderColor: 'rgba(0,0,0,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFDF8',
+    backgroundColor: '#FFFFFF',
   },
 
   checkboxSelected: {
@@ -2450,7 +2450,7 @@ submitStatusText: {
   marginBottom: 18,
   borderWidth: 1.5,
   borderColor: CORAL,
-  backgroundColor: '#F8E7DF',
+  backgroundColor: '#FFFFFF',
   position: 'relative',
 },
   reviewAvatar: {

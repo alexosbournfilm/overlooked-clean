@@ -31,7 +31,6 @@
   "workspace": {
     "packageJson": {
       "dependencies": [
-        "npm:@expo-google-fonts/cinzel@~0.4.2",
         "npm:@expo-google-fonts/courier-prime@0.4",
         "npm:@expo/metro-runtime@~6.1.2",
         "npm:@expo/vector-icons@^15.0.3",
