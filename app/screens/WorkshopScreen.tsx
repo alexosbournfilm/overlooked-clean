@@ -91,6 +91,9 @@ type LessonSeed = {
   challenge: string;
   objective: string;
   deliverable: string;
+  trainingSource?: string;
+  cta?: string;
+  simpleSteps?: string[];
   bonusNote?: string;
   constraints: string[];
   kind: LessonKind;
@@ -106,6 +109,9 @@ type Lesson = {
   challenge: string;
   objective: string;
   deliverable: string;
+  trainingSource?: string;
+  cta?: string;
+  simpleSteps?: string[];
   bonusNote?: string;
   kind: LessonKind;
   constraints: string[];
@@ -683,7 +689,7 @@ const DIVERSITY_STRUCTURES = [
   'a cutaway, sound, or pause that exposes what the character hides',
   'a social ritual that breaks one beat too early',
   'one ordinary sound that becomes evidence',
-  'a location rule the character breaks only once',
+  'a setup rule the character breaks only once',
   'a reversal caused by what is not said',
   'a character entering with the wrong objective and leaving with the right one',
   'a visible plan failing in real time',
@@ -698,26 +704,26 @@ const DIVERSITY_STRUCTURES = [
 ];
 
 const DIVERSITY_SPACES = [
-  'a stairwell with one unreliable light',
-  'the edge of a closed shopfront',
-  'a bedroom doorway at night',
-  'a kitchen table after everyone else has left',
-  'the back seat of a parked car',
-  'a rehearsal room with taped marks still on the floor',
-  'a laundry room during a spin cycle',
-  'a balcony just before rain',
-  'an empty classroom after an exam',
-  'a hallway outside a locked office',
-  'a bathroom mirror with harsh light',
-  'a train platform after the last announcement',
-  'a storage cupboard that is too small for comfort',
-  'a rooftop where sound carries badly',
-  'a living room during a power cut',
-  'a cafe table beside the exit',
-  'a loading bay before sunrise',
-  'a church or town hall corridor',
-  'a car park with bad echo',
-  'a motel room with one practical lamp',
+  'a plain wall with one chair',
+  'a blank wall near a window',
+  'a doorway at home',
+  'a kitchen table, if available',
+  'a bed, sofa, or simple chair',
+  'a taped mark on the floor',
+  'a desk with one practical object',
+  'a neutral corner of the room',
+  'a bathroom mirror, if it is safe and practical',
+  'a hallway wall',
+  'a table beside an exit, if available',
+  'a single lamp beside a wall',
+  'a quiet room with no special dressing',
+  'a phone propped on books',
+  'a plain wall plus one handheld object',
+  'a bedroom doorway or any simple threshold',
+  'a chair facing slightly off camera',
+  'a floor mark and a blank background',
+  'a wall, curtain, or uncluttered backdrop',
+  'any safe quiet spot with clean sound',
 ];
 
 const SELF_TAPE_CASTING_SCENARIOS = [
@@ -762,6 +768,402 @@ const SELF_TAPE_CASTING_SCENARIOS = [
   'Tape for a dancer learning the role was offered out of pity, not talent.',
   'Tape for a filmmaker pitching a happy ending they know they cannot shoot.',
 ];
+
+const ACTING_TEXT_EXERCISES = [
+  {
+    label: 'Same text, three as-ifs',
+    prompt:
+      'Say this exact line three times in one video: "I kept it because I thought you were coming back." Take 1: as if you are confessing to an ex. Take 2: as if you are warning a rival. Take 3: as if you are speaking to a parent who never arrived. Keep the words identical; let the circumstance, listener, and objective change the behavior.',
+    constraints: [
+      'Use the exact same line in all three passes.',
+      'Label each pass with its as-if in the caption or on-screen title.',
+      'Change objective and listener, not volume or facial expression alone.',
+    ],
+  },
+  {
+    label: 'Different circumstances, same need',
+    prompt:
+      'Use these three lines: "Wait. I need you to hear this. If you leave now, I cannot fix it." Play one continuous 45-75 second take where the need is to stop someone leaving. Choose one circumstance: a friend ending the friendship, a director cutting you from a film, or a sibling leaving before a family secret is spoken.',
+    constraints: [
+      'Use all three provided lines in order.',
+      'Choose one specific circumstance before recording.',
+      'The listener must matter even if they are off camera.',
+    ],
+  },
+  {
+    label: 'Two-line listener drill',
+    prompt:
+      'Use only these two lines: "Do not say it like that." / "Then tell me how to say it." Record a 45-75 second scene where the second line changes meaning because of what you hear before speaking. The acting test is the listening beat between the lines.',
+    constraints: [
+      'Use only the two provided lines.',
+      'Hold a real listening beat before the second line.',
+      'Do not add explanation after the second line.',
+    ],
+  },
+  {
+    label: 'Private trigger into one line',
+    prompt:
+      'Start with 8-12 seconds of silent behavior, then say: "You left this where I would find it." Play it as one of these as-ifs: you found proof of betrayal, you found a goodbye gift, or you found evidence that someone protected you. Let the private trigger land before the words.',
+    constraints: [
+      'Begin with 8-12 seconds of silence before the line.',
+      'Use exactly one of the listed as-ifs.',
+      'The object or trigger may be imagined; it does not need to be shown.',
+    ],
+  },
+  {
+    label: 'Tactic ladder',
+    prompt:
+      'Use these three short lines in one take: "Look at me." / "Tell me the truth." / "No, the real truth." Each line must use a different tactic: invite, corner, then release. The scene should feel like one objective changing tactics, not three separate moods.',
+    constraints: [
+      'Use the three provided lines in order.',
+      'Make each line a different playable tactic.',
+      'Do not shout; let pressure come from the tactic change.',
+    ],
+  },
+  {
+    label: 'Same line, opposite action',
+    prompt:
+      'Say the same line twice in one video: "I am happy for you." First, play it as a genuine gift. Second, play it as a graceful lie that protects your pride. Keep the text identical and change only the inner action.',
+    constraints: [
+      'Use the exact same line twice.',
+      'The first pass must give something; the second must hide something.',
+      'Keep the framing and setup the same for both passes.',
+    ],
+  },
+];
+
+const SELF_TAPE_SIDE_EXERCISES = [
+  {
+    role: 'junior doctor',
+    lines:
+      '"I read the message three times. Then I deleted it. That was wrong. But if I had sent it, someone else would be standing here explaining why a child did not make it through the night."',
+  },
+  {
+    role: 'hotel clerk',
+    lines:
+      '"You asked if I recognized him. I said no because he looked tired, and tired people deserve one quiet minute before the world starts asking questions."',
+  },
+  {
+    role: 'political aide',
+    lines:
+      '"I can give you the timeline. I can give you the emails. I cannot give you her name, because the second I do, this stops being justice and becomes a hunt."',
+  },
+  {
+    role: 'runaway bride',
+    lines:
+      '"This was supposed to be a thank-you speech. So thank you. For showing me exactly how small my life was going to become if I smiled through one more beautiful lie."',
+  },
+  {
+    role: 'museum guard',
+    lines:
+      '"Every night I moved it two inches to the left. Nobody noticed. That is how I knew the painting was safer with someone who loved it than with people paid to protect it."',
+  },
+];
+
+const SCHOOL_METHOD_BANKS: Record<WorkshopPathKey, string[]> = {
+  acting: [
+    'Meisner / Neighborhood Playhouse repetition: put attention on the partner and let behavior change the words.',
+    'Uta Hagen / HB Studio object work: endow an ordinary object with private life and let attention reveal history.',
+    'Stella Adler action work: play a strong verb under imagined circumstances instead of performing a mood.',
+    'Michael Chekhov psychophysical work: let a clear gesture, rhythm, or atmosphere generate inner life.',
+    'Alexander Technique actor-readiness: release excess tension so thought, breath, and listening can stay available.',
+  ],
+  selftape: [
+    'Drama-school camera audition lab: clean frame, clear eyeline, audible sound, and one selected take.',
+    'Casting-room self-tape practice: answer the brief exactly, then make the imaginary circumstances specific.',
+    'Conservatory scene-to-camera work: keep the acting intimate enough for close-up and active enough to read.',
+    'Professional audition discipline: slate calmly, enter the scene already in progress, and submit the clearest take.',
+    'Camera acting fundamentals: let thought, listening, and adjustment do more work than volume or decoration.',
+  ],
+  editing: [
+    'Kuleshov / VGIK montage principle: meaning changes when one shot is placed beside another.',
+    'Continuity-editing lab: protect geography, eyeline, cause, and effect before adding style.',
+    'Reaction-timing exercise: choose when the audience sees the face that understands the event.',
+    'Performance-editing practice: cut to preserve truthful behavior, not just clean line delivery.',
+    'Rhythm-and-omission study: decide what the audience should feel by what you remove, delay, or repeat.',
+  ],
+  cinematography: [
+    'Film-school motivated-light lab: make the source believable and the emotional emphasis intentional.',
+    'Composition and blocking study: use frame position, distance, and negative space to show pressure.',
+    'Lens psychology exercise: change intimacy, threat, or isolation through camera distance and focal length.',
+    'Visual withholding drill: control what the audience can know by what the frame refuses to show.',
+    'Movement-motivation lab: move the camera only when the scene’s power or point of view changes.',
+  ],
+  directing: [
+    'Directing-for-actors lab: give playable actions, obstacles, and circumstances instead of result notes.',
+    'Blocking-as-writing exercise: restage the scene until power, access, and objective are physically clear.',
+    'Table-read diagnosis: listen for unclear stakes, repeated beats, and lines that can become behavior.',
+    'Rehearsal-room beat work: mark the moment a tactic fails and direct the next tactic precisely.',
+    'Coverage-with-purpose lab: plan shots around the scene turn, not around generic angles.',
+  ],
+  sound: [
+    'Film-school soundscape study: build offscreen space with room tone, distance, texture, and recurrence.',
+    'Dialogue-clarity lab: keep the words intelligible while preserving breath, body, and room life.',
+    'Sonic motif exercise: repeat one sound so its meaning changes with context.',
+    'Silence and drop-out drill: use absence as pressure, not as empty space.',
+    'Point-of-audition exercise: make the mix reveal whose experience the audience is inside.',
+  ],
+  filmmaker: [
+    'First-year film-school constraint: one simple setup, one object, one irreversible change, and a finished upload.',
+    'Integrated craft lab: acting, camera, sound, and edit must all serve the same dramatic question.',
+    'Micro-production exercise: design the piece around what you can actually shoot well today.',
+    'Auteur-study assignment: make one formal rule and obey it across performance, image, sound, and cut.',
+    'Collaboration-ready brief: submit something specific enough that another creator could understand your intention.',
+  ],
+};
+
+function schoolMethodForLesson(pathKey: WorkshopPathKey, step: number, isBoss: boolean) {
+  const bank = SCHOOL_METHOD_BANKS[pathKey] || SCHOOL_METHOD_BANKS.acting;
+  const method = bank[(Math.max(step, 1) - 1) % bank.length];
+  return `${isBoss ? 'Boss integration' : 'Training source'}: adapted from ${method}`;
+}
+
+function ctaForLesson(pathKey: WorkshopPathKey, step: number, isBoss: boolean) {
+  const prefix = isBoss ? 'Boss action' : 'Action';
+
+  switch (pathKey) {
+    case 'acting':
+      return `${prefix}: record and post one ${isBoss ? '3-8 minute' : '45-75 second'} acting video. Start already inside the circumstance, include the required object or trigger in frame, show one clear behavior change, and caption it with Objective + Obstacle.`;
+    case 'selftape':
+      return `${prefix}: record and post one clean self-tape video: 5-second slate, then one ${isBoss ? '60-120 second' : '45-90 second'} final take. Check frame, sound, light, and eyeline before posting. No apology notes, no extra versions.`;
+    case 'editing':
+      return `${prefix}: export and post one ${isBoss ? '60-120 second' : '30-60 second'} edited video. It must contain visible picture, finished timing, and a caption naming the cut, reaction, omission, or rhythm choice that changed meaning.`;
+    case 'cinematography':
+      return `${prefix}: record and post one ${isBoss ? '60-120 second' : '20-45 second'} cinematography video. Use no more than 3 shots, make the visual anchor readable, and caption the light, lens, framing, or movement rule you used.`;
+    case 'directing':
+      return `${prefix}: record and post one ${isBoss ? '2-5 minute' : '45-90 second'} directed scene video. It must show the blocking change, the actor tactic, and the moment the power shifts. Caption the one playable note you gave.`;
+    case 'sound':
+      return `${prefix}: export and post one ${isBoss ? '60-120 second' : '30-60 second'} video with your sound design attached. Use picture, a black title card, or simple stills if needed, but the final post must be a video file. Caption the motif, silence, or perspective rule.`;
+    case 'filmmaker':
+      return `${prefix}: record, finish, and post one ${isBoss ? '2-6 minute' : '45-90 second'} micro-film video. It must include a beginning image, a visible turn, and an ending image. Caption how at least two departments support the same idea.`;
+    default:
+      return `${prefix}: record and post one clear video of the exercise, then caption the specific craft choice you made.`;
+  }
+}
+
+function videoPostConstraintForLesson(pathKey: WorkshopPathKey, isBoss: boolean) {
+  switch (pathKey) {
+    case 'sound':
+      return `Final submission must be a postable video file, even if the image is a black card or still frame under the sound design.`;
+    case 'editing':
+      return `Final submission must be an exported video, not screenshots, notes, or a project file.`;
+    case 'selftape':
+      return `Final submission must be one selected self-tape video with slate included.`;
+    case 'cinematography':
+      return `Final submission must be one recorded visual video, not only a still frame.`;
+    case 'directing':
+      return `Final submission must be one recorded scene video showing the staged action.`;
+    case 'filmmaker':
+      return `Final submission must be one finished micro-film video ready to post.`;
+    case 'acting':
+    default:
+      return `Final submission must be one recordable, postable performance video${isBoss ? ' with a complete scene arc' : ''}.`;
+  }
+}
+
+function optionalSetupPrompt(space: string) {
+  return `Optional setup inspiration: ${space}. This is not a location requirement; a plain wall, quiet room, table, chair, or any safe simple setup is completely fine.`;
+}
+
+function optionalLocationConstraint() {
+  return 'Any suggested location is optional; film safely in front of a plain wall, in a quiet room, or wherever you can record clearly.';
+}
+
+function normalizeLocationConstraint(rule: string) {
+  if (/^The scene must be filmed in a kitchen\.$/i.test(rule)) {
+    return 'A kitchen is optional; any plain wall, table, or quiet room is acceptable if the practical task reads.';
+  }
+
+  if (/^(Use )?one location only\.$/i.test(rule)) {
+    return 'Use one simple setup only; a plain wall, chair, table, or quiet room counts.';
+  }
+
+  if (/must be filmed in|must be set at|must be set in/i.test(rule)) {
+    return 'Any named location is optional; choose a safe, simple recording setup where the action reads.';
+  }
+
+  return rule;
+}
+
+function withOptionalLocationNote(text: string) {
+  const note = optionalLocationConstraint();
+  return text.includes(note) ? text : `${text.trim()}\n\nSetup note: ${note}`;
+}
+
+function actingTextExerciseForStep(step: number) {
+  return diversityPick(ACTING_TEXT_EXERCISES, step);
+}
+
+function selfTapeSideForStep(step: number) {
+  return diversityPick(SELF_TAPE_SIDE_EXERCISES, step, 2);
+}
+
+function simpleStepsForLesson(
+  pathKey: WorkshopPathKey,
+  step: number,
+  isBoss: boolean,
+  lessonTitle: string
+): string[] {
+  const length = {
+    acting: isBoss ? '3-8 minutes' : '45-75 seconds',
+    selftape: isBoss ? '60-120 seconds' : '45-90 seconds',
+    editing: isBoss ? '60-120 seconds' : '30-60 seconds',
+    cinematography: isBoss ? '60-120 seconds' : '20-45 seconds',
+    directing: isBoss ? '2-5 minutes' : '45-90 seconds',
+    sound: isBoss ? '60-120 seconds' : '30-60 seconds',
+    filmmaker: isBoss ? '2-6 minutes' : '45-90 seconds',
+  }[pathKey];
+
+  const variant = (Math.max(step, 1) - 1) % 6;
+  const anchor = diversityPick(DIVERSITY_ANCHORS, step);
+  const structure = diversityPick(DIVERSITY_STRUCTURES, step, 7);
+  const actingExercise = actingTextExerciseForStep(step);
+  const side = selfTapeSideForStep(step);
+  const setupOptions = [
+    'Put your phone somewhere steady. A plain wall, chair, table, or quiet room is enough.',
+    'Choose the quietest simple place you have. Face a window or lamp if you need light.',
+    'Clear one small area before you film. You only need space for your face, hands, or one object.',
+    'Prop the phone on books, a shelf, or a tripod. Do a 5-second test so the frame is steady.',
+    'Pick a setup where your sound is clean. If the room is noisy, move closer to the phone.',
+    'Keep the background simple. The exercise matters more than the location.',
+  ];
+  const setupStep = setupOptions[variant];
+  const titleStep = `For "${lessonTitle}", do only this lesson's task. Do not reuse an old take from another step.`;
+
+  if (isBoss) {
+    switch (pathKey) {
+      case 'acting':
+        return [
+          setupStep,
+          `Plan the boss scene in 3 parts: how it starts, what changes at the middle, and what can never go back by the end.`,
+          `Use ${anchor} as the thing that forces the change. It can be real, imagined, or off camera.`,
+          'Write the want, obstacle, listener, and secret for the character before you rehearse.',
+          `Record one complete acting video, about ${length}. Make the change visible through behavior, not explanation.`,
+          'Post the video with a caption naming the start want, the turning point, and the final choice.',
+        ];
+      case 'selftape':
+        return [
+          setupStep,
+          `Read the full boss casting brief for "${lessonTitle}" and underline the role, format, and exact tape rules.`,
+          'Record a calm slate first. Then record one final audition take that follows the brief exactly.',
+          `Use ${anchor} as the private story trigger, but do not stop to explain it.`,
+          `Build one complete self-tape package, about ${length}, with clean frame, sound, light, and eyeline.`,
+          'Post only the finished package and caption the role plus the strongest casting choice you made.',
+        ];
+      case 'editing':
+        return [
+          'Gather the source footage before you open the edit. Put every useful clip in one folder or timeline.',
+          `Make ${anchor} the evidence the audience slowly understands.`,
+          'Build a rough cut first, then make a second pass for reaction timing, missing information, and sound bridges.',
+          `Export one boss edit, about ${length}. The order of shots must make the story stronger than the raw footage.`,
+          'Post the finished video and caption the one editing decision that changed the meaning most.',
+        ];
+      case 'cinematography':
+        return [
+          setupStep,
+          `Choose the visual rule for "${lessonTitle}": distance, light, frame, lens, or movement.`,
+          `Place ${anchor} where the audience can understand it without spoken explanation.`,
+          'Shoot the planned number of shots. Check that each shot tells new information.',
+          `Post one finished visual sequence, about ${length}, with no extra explanation inside the video.`,
+          'Caption the visual rule and the shot where the meaning changes.',
+        ];
+      case 'directing':
+        return [
+          setupStep,
+          'Divide the scene into beats: first tactic, failed tactic, new tactic, final choice.',
+          `Use ${anchor} to force one clear blocking change. Someone should move, stop, enter, leave, sit, stand, or turn away.`,
+          'Give the actor playable actions only, such as persuade, protect, trap, comfort, avoid, or confess.',
+          `Record one complete directed scene, about ${length}. The power change must be visible.`,
+          'Post the scene with a caption naming the actor note and the blocking change.',
+        ];
+      case 'sound':
+        return [
+          'Choose simple picture first: a shot, still image, black card, or tiny scene.',
+          `Make ${anchor} the main sound clue. It can be heard directly, suggested offscreen, or transformed.`,
+          'Build the mix in layers: room tone, body sound, key cue, repeated motif, then one silence or drop-out.',
+          `Export one video with finished sound, about ${length}. Audio-only does not count.`,
+          'Post the video and caption which sound tells the story that the image cannot tell alone.',
+        ];
+      case 'filmmaker':
+      default:
+        return [
+          setupStep,
+          `Write the film in 3 beats: first image, irreversible change, final image.`,
+          `Make ${anchor} matter in at least two departments, such as acting and sound, or camera and edit.`,
+          'Film only what the story needs. Cut anything that does not help the change read clearly.',
+          `Finish one complete micro-film, about ${length}, with picture, sound, and edit all serving one idea.`,
+          'Post the film with one caption sentence explaining the idea behind the whole piece.',
+        ];
+    }
+  }
+
+  switch (pathKey) {
+    case 'acting':
+      return [
+        setupStep,
+        titleStep,
+        `Use the "${actingExercise.label}" drill. Follow the exact line instructions in the challenge.`,
+        `Make ${anchor} your private trigger. It can be real, imagined, or just something you know about.`,
+        `Record about ${length}. The visible change should come from ${structure}.`,
+        'Post the video and caption: listener, want, obstacle, and as-if.',
+      ];
+    case 'selftape':
+      return [
+        setupStep,
+        `Treat this as an audition for the ${side.role}. Read the side text once out loud before recording.`,
+        'Start with: "Hi, I am [your name], reading for this role." You can leave out your location.',
+        `Use ${anchor} as the private reason the scene matters, but keep the acting simple and close to camera.`,
+        `Record one clean take, about ${length}. Eyes visible, words clear, no music, no filters.`,
+        'Post only the selected self-tape and caption the role plus the private trigger.',
+      ];
+    case 'editing':
+      return [
+        `For "${lessonTitle}", shoot or choose footage where ${anchor} can become story evidence.`,
+        'Make a rough cut that is easy to understand before you try to make it stylish.',
+        `Shape the edit around this problem: ${structure}.`,
+        'Use the required editing move: a cut, a reaction, a missing moment, a delay, or a rhythm change.',
+        `Export one finished video, about ${length}.`,
+        'Post the video and caption the exact editing move that changed the story.',
+      ];
+    case 'cinematography':
+      return [
+        setupStep,
+        `Choose one subject, object, or action. Include ${anchor} only if it helps the picture tell the story.`,
+        `Make the image show this idea: ${structure}.`,
+        'Use only the number of shots in the challenge. Each shot needs a different job.',
+        `Record one visual video, about ${length}. Use frame, light, distance, or movement to make the meaning clear.`,
+        'Post the video and caption the visual rule you followed.',
+      ];
+    case 'directing':
+      return [
+        setupStep,
+        `For "${lessonTitle}", choose one tiny scene where ${anchor} causes the turn.`,
+        'Write one playable note for the actor, like persuade, hide, corner, comfort, escape, or confess.',
+        `Stage the scene so ${structure}. The audience should see the power change without needing an explanation.`,
+        `Record one directed scene video, about ${length}. Include one clear movement or position change.`,
+        'Post the video and caption the actor note plus the blocking change.',
+      ];
+    case 'sound':
+      return [
+        `For "${lessonTitle}", choose a simple picture: a shot, still image, black card, or tiny scene.`,
+        `Turn ${anchor} into the main sound clue. It can be a real noise, an offscreen noise, or a repeated motif.`,
+        'Add the sound layers the challenge asks for, like room tone, breath, footsteps, phone buzz, door sound, or silence.',
+        `Make the sound explain ${structure} by changing timing, distance, loudness, or silence.`,
+        `Export one video file, about ${length}. Audio-only is not enough.`,
+        'Post the video and caption the sound rule you used.',
+      ];
+    case 'filmmaker':
+    default:
+      return [
+        setupStep,
+        `For "${lessonTitle}", choose one object, one simple action, and one clear change.`,
+        `Use ${anchor} or another simple object as the thing the audience can track.`,
+        `Record three parts: a beginning image, a middle moment where ${structure}, and an ending image.`,
+        `Finish one micro-film video, about ${length}, with picture, sound, and edit working together.`,
+        'Post the video and caption the main idea of the film in one sentence.',
+      ];
+  }
+}
 
 const SPECIFIC_LESSON_REWRITES: Partial<Record<WorkshopPathKey, Record<string, SeedRewrite>>> = {
   acting: {
@@ -919,7 +1321,7 @@ const BOSS_REWRITES: Partial<Record<WorkshopPathKey, Record<number, BossRewrite>
       description:
         'Play one complete final scene where the objective changes forever instead of repeating the same breakup text.',
       challenge:
-        'Create a 6-8 minute final acting scene set during one last visit to a place both characters know. One character arrives to ask for another chance, then discovers a fact that makes asking impossible. The scene must include one practical task, one failed joke, one almost-confession, and one final choice to leave something behind.',
+        'Create a 6-8 minute final acting scene built around one last visit between two people. The setting can be a plain wall, chair, table, or any simple setup. One character arrives to ask for another chance, then discovers a fact that makes asking impossible. The scene must include one practical task, one failed joke, one almost-confession, and one final choice to leave something behind.',
       objective:
         'Prove total control of action, subtext, adjustment, and emotional reversal without duplicate text.',
       deliverable:
@@ -1138,7 +1540,7 @@ const BOSS_REWRITES: Partial<Record<WorkshopPathKey, Record<number, BossRewrite>
   },
 };
 
-function diversityPick(items: string[], step: number, salt = 0) {
+function diversityPick<T>(items: T[], step: number, salt = 0): T {
   return items[(Math.max(step, 1) - 1 + salt) % items.length];
 }
 
@@ -1199,80 +1601,102 @@ function lessonDiversityCopy(pathKey: WorkshopPathKey, step: number): DiversityC
 
   switch (pathKey) {
     case 'acting':
+      const actingExercise = actingTextExerciseForStep(step);
       return {
-        challenge: `Acting lock for this exact step: build the playable need around ${anchor}. The beat must pass through ${structure}, and it must happen in or just outside ${space}.`,
+        challenge: `Conservatory acting video brief: ${actingExercise.prompt} Use ${anchor} as the private trigger and make the beat pass through ${structure}. ${optionalSetupPrompt(space)} The test is not the location; it is whether the given text changes because the as-if, circumstance, listener, and objective are specific.`,
         deliverable:
-          'Distinct proof: add one sentence naming the need, the obstacle, and why this acting setup cannot be swapped with another step.',
+          `Postable video proof: one performance video plus one caption naming the drill type (${actingExercise.label}), the need, the obstacle, and the as-if or circumstance you chose.`,
         constraints: [
+          ...actingExercise.constraints,
           `Use ${anchor} as the private trigger.`,
+          `The finished video should run 45-75 seconds unless the drill asks for short labeled passes.`,
           'Do not reuse a line, premise, relationship, or private circumstance from another acting exercise.',
         ],
       };
     case 'selftape':
+      const side = selfTapeSideForStep(step);
       return {
-        challenge: `Casting format for this exact step: ${diversityPick(SELF_TAPE_CASTING_SCENARIOS, step)} Use ${anchor} as the private trigger, but keep the tape clean and castable.`,
+        challenge: `Casting-school self-tape video brief: ${diversityPick(SELF_TAPE_CASTING_SCENARIOS, step)} Use ${anchor} as the private trigger. Record a 5-second slate, then perform this ${side.role} side in one 45-90 second close-frame take: ${side.lines} ${optionalSetupPrompt(space)} Keep the tape technically clean, specific to the role, and easy for casting to watch.`,
         deliverable:
-          'Distinct proof: submit one selected audition take plus a one-sentence casting note for this role only.',
+          'Postable video proof: one selected self-tape video plus a one-sentence casting note for this role only.',
         constraints: [
           'No repeated monologue, no numbered as-if list, and no reused audition setup.',
+          `Use the provided ${side.role} side text.`,
+          'Include a slate and one final take in the same video file.',
+          'Frame from head to mid-chest with clean sound and visible eyes.',
           `The private trigger for this step is ${anchor}.`,
         ],
       };
     case 'editing':
       return {
-        challenge: `Editing lock for this exact step: design the cut around ${structure}. The key piece of story evidence is ${anchor}, and the scene world is ${space}.`,
+        challenge: `Film-school editing video brief: export a 30-60 second edited scene built around ${structure}. Let ${anchor} become the story evidence. ${optionalSetupPrompt(space)} Use at least 5 cuts, one reaction choice, and one intentional omission. The test is whether order, timing, reaction, and omission change meaning.`,
         deliverable:
-          'Distinct proof: include a one-sentence edit note naming the single timing choice that makes this cut different.',
+          'Postable video proof: one exported edit plus a one-sentence note naming the single timing choice that makes this cut different.',
         constraints: [
           `Use ${anchor} as the edit's story clue.`,
+          'Final export must be 30-60 seconds.',
+          'Use at least 5 visible cuts.',
+          'Include one reaction cut and one deliberate omission.',
           'Do not reuse footage structure, reaction timing, or sound/edit pattern from another editing exercise.',
         ],
       };
     case 'cinematography':
       return {
-        challenge: `Cinematography lock for this exact step: make the image answer ${structure}. The visual anchor is ${anchor}, and the space is ${space}.`,
+        challenge: `Cinematography school video brief: record a 20-45 second visual sequence with 1-3 shots. Make the image answer ${structure}. Use ${anchor} as the visual anchor. ${optionalSetupPrompt(space)} The test is whether frame, light, lens, or movement can tell the audience what matters before dialogue does.`,
         deliverable:
-          'Distinct proof: add one sentence naming the frame, light, or movement choice that makes this setup unique.',
+          'Postable video proof: one visual video plus one caption naming the frame, light, or movement choice that makes this setup unique.',
         constraints: [
           `Feature ${anchor} as a visual anchor or motivated detail.`,
-          'Do not reuse the same lighting setup, location logic, blocking, or frame progression from another cinematography exercise.',
+          'Use 1-3 shots only.',
+          'No explanatory dialogue.',
+          'One lighting, framing, lens, or movement rule must be obvious.',
+          'Do not reuse the same lighting setup, simple setup logic, blocking, or frame progression from another cinematography exercise.',
         ],
       };
     case 'directing':
       return {
-        challenge: `Directing lock for this exact step: stage the scene around ${structure}. The scene must turn because of ${anchor}, and the pressure should be shaped by ${space}.`,
+        challenge: `Directing-lab video brief: record a 45-90 second staged scene. The scene must turn because of ${anchor} and pass through ${structure}. Give the actor one playable note before filming, then make the blocking visibly change when the power shifts. ${optionalSetupPrompt(space)} The test is whether blocking, actor notes, and beat changes make the story playable.`,
         deliverable:
-          'Distinct proof: include a one-sentence director note naming the actor behavior or blocking choice that belongs only to this step.',
+          'Postable video proof: one directed scene video plus a one-sentence director note naming the actor behavior or blocking choice that belongs only to this step.',
         constraints: [
           `Build the turn around ${anchor}.`,
+          'Video must run 45-90 seconds.',
+          'Include one visible blocking change.',
+          'Use one playable actor note, not a mood note.',
           'Do not reuse a script, actor note, blocking pattern, or power dynamic from another directing exercise.',
         ],
       };
     case 'sound':
       return {
-        challenge: `Sound lock for this exact step: make the audience understand ${structure} through sound. The key sonic clue is ${anchor}, and the acoustic world is ${space}.`,
+        challenge: `Sound-school video brief: export a 30-60 second video where the sound makes the audience understand ${structure}. Turn ${anchor} into the key sonic clue. ${optionalSetupPrompt(space)} Use at least 3 sound layers: room tone, one specific cue, and one change in distance or perspective. The test is whether sound creates space, pressure, and point of view without explaining itself.`,
         deliverable:
-          'Distinct proof: include a one-sentence sound note naming the motif, silence, or perspective shift that makes this piece unique.',
+          'Postable video proof: one video with the finished sound design attached plus a one-sentence note naming the motif, silence, or perspective shift that makes this piece unique.',
         constraints: [
           `Turn ${anchor} into a sound cue, texture, or implied offscreen detail.`,
+          'Final export must be a video file, even if the image is simple.',
+          'Use at least 3 sound layers.',
+          'Include one change in distance, perspective, volume, or silence.',
           'Do not reuse a motif, silence trick, ambience plan, or mix structure from another sound exercise.',
         ],
       };
     case 'filmmaker':
       return {
-        challenge: `Filmmaker lock for this exact step: build the whole mini-piece around ${structure}. The production anchor is ${anchor}, and the location pressure is ${space}.`,
+        challenge: `Film-school production video brief: record and finish a 45-90 second micro-film around ${structure}. Use ${anchor} as the production anchor. ${optionalSetupPrompt(space)} Include a beginning image, one visible turn, one designed sound cue, and one ending image. The test is whether writing, performance, image, sound, and edit all serve the same idea.`,
         deliverable:
-          'Distinct proof: include one sentence naming how acting, image, sound, and edit each support this one specific setup.',
+          'Postable video proof: one finished micro-film plus one caption naming how acting, image, sound, and edit each support this one specific setup.',
         constraints: [
           `Make ${anchor} matter across at least two departments.`,
-          'Do not reuse a premise, object, location, sound idea, edit rhythm, or final image from another filmmaker exercise.',
+          'Video must run 45-90 seconds.',
+          'Include a beginning image, a visible turn, and an ending image.',
+          'Include at least one intentional sound cue.',
+          'Do not reuse a premise, object, setup, sound idea, edit rhythm, or final image from another filmmaker exercise.',
         ],
       };
     default:
       return {
-        challenge: `Unique step lock: use ${anchor} and ${structure} inside ${space}.`,
-        deliverable: 'Distinct proof: explain why this setup belongs only to this step.',
-        constraints: ['Do not reuse this setup elsewhere.'],
+        challenge: `Workshop video brief: record a clear 30-60 second exercise using ${anchor} and ${structure}. ${optionalSetupPrompt(space)} Make the craft choice readable in the finished upload.`,
+        deliverable: 'Postable video proof: explain why this setup belongs only to this step.',
+        constraints: ['Do not reuse this setup elsewhere.', 'Final submission must be a video.'],
       };
   }
 }
@@ -1285,79 +1709,97 @@ function bossDiversityCopy(pathKey: WorkshopPathKey, step: number): DiversityCop
   switch (pathKey) {
     case 'acting':
       return {
-        challenge: `Boss signature: this must feel like a milestone scene, not a longer drill. The boss-specific engine is ${structure}; ${anchor} must change power inside ${space}.`,
+        challenge: `Boss acting video brief: record a 3-8 minute scene. The engine is ${structure}; ${anchor} must change power by the midpoint. Include a practical task, one failed tactic, one silent decision, and an ending where the objective cannot return to what it was. ${optionalSetupPrompt(space)}`,
         deliverable:
-          'Boss proof: submit a finished scene plus one short note naming the irreversible acting turn.',
+          'Boss video proof: post one finished scene video plus one short note naming the irreversible acting turn.',
         constraints: [
           'This boss may not repeat a previous line, monologue, relationship, or as-if setup.',
+          'Video must run 3-8 minutes.',
+          'Include one practical task, one failed tactic, and one silent decision.',
           `The irreversible turn must involve ${anchor}.`,
         ],
       };
     case 'selftape':
       return {
-        challenge: `Boss signature: answer one professional casting package built around ${structure}. The role-specific private trigger is ${anchor}.`,
+        challenge: `Boss self-tape video brief: answer one professional casting package built around ${structure}. The role-specific private trigger is ${anchor}. Record one slate, one 60-120 second audition take, and one 20-second silent reaction button. The test is whether the tape feels precise, castable, technically clean, and imaginatively alive.`,
         deliverable:
-          'Boss proof: submit only the chosen professional tape or package requested by this boss.',
+          'Boss video proof: post one complete self-tape package video with slate, final take, and silent reaction button.',
         constraints: [
           'No repeated monologue, no repeated as-if list, and no five moods of the same words.',
+          'The final post must be one video file.',
+          'Include slate, final take, and silent reaction button.',
           `The casting package must include ${anchor} as a story trigger.`,
         ],
       };
     case 'editing':
       return {
-        challenge: `Boss signature: make the edit solve ${structure}. The footage must turn around ${anchor}, and the world should feel like ${space}.`,
+        challenge: `Boss editing video brief: export a 60-120 second edit that solves ${structure}. The footage must turn around ${anchor}. ${optionalSetupPrompt(space)} Use at least 10 cuts, one reaction delay, one omission, and one sound bridge. The test is whether the cut creates a stronger story than the raw footage did.`,
         deliverable:
-          'Boss proof: submit the final edit package plus a note naming the structural editing decision.',
+          'Boss video proof: post one final edited video plus a note naming the structural editing decision.',
         constraints: [
           'Do not reuse source footage, scene premise, or timing pattern from an earlier editing boss.',
+          'Video must run 60-120 seconds.',
+          'Use at least 10 cuts.',
+          'Include one reaction delay, one omission, and one sound bridge.',
           `Make ${anchor} the editorial hinge.`,
         ],
       };
     case 'cinematography':
       return {
-        challenge: `Boss signature: create a portfolio-level visual sequence around ${structure}. ${anchor} must become a visible story force inside ${space}.`,
+        challenge: `Boss cinematography video brief: record a 60-120 second portfolio-level visual sequence around ${structure}. ${anchor} must become a visible story force. ${optionalSetupPrompt(space)} Use 3-6 shots, one motivated light source, one deliberate distance change, and one final frame that changes the meaning of the first frame.`,
         deliverable:
-          'Boss proof: submit a finished visual sequence plus a note naming the lens, light, or movement decision that carries the boss.',
+          'Boss video proof: post one finished visual sequence plus a note naming the lens, light, or movement decision that carries the boss.',
         constraints: [
-          'Do not repeat a location, lighting scheme, lens exercise, or frame progression from an earlier cinematography boss.',
+          'Do not repeat a setup, lighting scheme, lens exercise, or frame progression from an earlier cinematography boss.',
+          'Video must run 60-120 seconds.',
+          'Use 3-6 shots.',
+          'Include one motivated light source and one deliberate distance change.',
           `Make ${anchor} visible without turning it into decoration.`,
         ],
       };
     case 'directing':
       return {
-        challenge: `Boss signature: direct a complete scene where ${structure}. ${anchor} must force a blocking or performance change inside ${space}.`,
+        challenge: `Boss directing video brief: record a 2-5 minute complete scene where ${structure}. ${anchor} must force a blocking or performance change. ${optionalSetupPrompt(space)} Include two actor tactics, one changed entrance or exit, and one moment where the actor's objective visibly fails.`,
         deliverable:
-          'Boss proof: submit the finished scene plus one director note naming the decisive rehearsal or blocking choice.',
+          'Boss video proof: post one finished directed scene plus one director note naming the decisive rehearsal or blocking choice.',
         constraints: [
           'Do not reuse a script, table setup, power dynamic, or actor note from an earlier directing boss.',
+          'Video must run 2-5 minutes.',
+          'Include two actor tactics and one changed entrance or exit.',
+          'The scene must turn because of staging, not exposition.',
           `Make ${anchor} alter the staging.`,
         ],
       };
     case 'sound':
       return {
-        challenge: `Boss signature: make sound carry ${structure}. ${anchor} must be heard, implied, or transformed inside ${space}.`,
+        challenge: `Boss sound video brief: export a 60-120 second video where sound carries ${structure}. ${anchor} must be heard, implied, or transformed. ${optionalSetupPrompt(space)} Use at least 5 layers: room tone, body sound, offscreen cue, motif return, and one silence/drop-out. The test is whether the mix creates story information the image alone cannot carry.`,
         deliverable:
-          'Boss proof: submit the finished mix plus one sound note naming the motif, silence, or perspective rule.',
+          'Boss video proof: post one finished video with the sound mix attached plus one sound note naming the motif, silence, or perspective rule.',
         constraints: [
           'Do not reuse a sonic motif, offscreen threat, silence drop, or repair problem from an earlier sound boss.',
+          'Final submission must be a video file.',
+          'Use at least 5 sound layers.',
+          'Include one silence, drop-out, or perspective shift.',
           `Make ${anchor} part of the sound logic.`,
         ],
       };
     case 'filmmaker':
       return {
-        challenge: `Boss signature: build a complete short where ${structure}. ${anchor} must matter across acting, image, sound, and edit inside ${space}.`,
+        challenge: `Boss filmmaker video brief: record and finish a 2-6 minute short where ${structure}. ${anchor} must matter across acting, image, sound, and edit. ${optionalSetupPrompt(space)} Include one practical action, one visual reveal, one sound cue that changes meaning, one edit that withholds information, and one final image that answers the first image.`,
         deliverable:
-          'Boss proof: submit a finished film plus one sentence naming the cross-department idea that makes this boss unique.',
+          'Boss video proof: post one finished short film plus one sentence naming the cross-department idea that makes this boss unique.',
         constraints: [
-          'Do not reuse a boss premise, final image, main object, or location engine from another filmmaker boss.',
+          'Do not reuse a boss premise, final image, main object, or setup engine from another filmmaker boss.',
+          'Video must run 2-6 minutes.',
+          'Include one practical action, one visual reveal, one sound cue, and one withholding edit.',
           `Make ${anchor} affect at least three departments.`,
         ],
       };
     default:
       return {
-        challenge: `Boss signature: use ${anchor}, ${structure}, and ${space} as the unique boss engine.`,
-        deliverable: 'Boss proof: explain why this boss cannot be confused with another one.',
-        constraints: ['Do not reuse this boss setup elsewhere.'],
+        challenge: `Boss workshop video brief: record a finished video using ${anchor} and ${structure} as the unique boss engine. ${optionalSetupPrompt(space)}`,
+        deliverable: 'Boss video proof: explain why this boss cannot be confused with another one.',
+        constraints: ['Do not reuse this boss setup elsewhere.', 'Final submission must be a video.'],
       };
   }
 }
@@ -1389,18 +1831,37 @@ function diversifyWorkshopSeed(
   const objective = bossRewrite?.objective || rewritten.objective;
   const learning = bossRewrite?.learning || rewritten.learning;
   const kind = bossRewrite?.kind || rewritten.kind;
+  const trainingSource =
+    bossRewrite?.trainingSource ||
+    rewritten.trainingSource ||
+    schoolMethodForLesson(pathKey, step, isBoss);
+  const cta = bossRewrite?.cta || rewritten.cta || ctaForLesson(pathKey, step, isBoss);
+  const simpleSteps =
+    bossRewrite?.simpleSteps ||
+    rewritten.simpleSteps ||
+    simpleStepsForLesson(pathKey, step, isBoss, title);
   const bonusNote = [rewritten.bonusNote, bossRewrite?.bonusNote]
     .filter(Boolean)
     .join(' ');
-  const challenge = bossRewrite?.replaceChallenge
+  const rawChallenge = bossRewrite?.replaceChallenge
     ? (bossRewrite.challenge || rewritten.challenge).trim()
     : `${copy.challenge}\n\nBase craft task:\n${baseChallenge}`;
+  const challenge = withOptionalLocationNote(rawChallenge);
   const deliverable = bossRewrite?.replaceDeliverable
     ? (bossRewrite.deliverable || rewritten.deliverable).trim()
     : `${baseDeliverable}\n\n${copy.deliverable}`;
-  const constraints = bossRewrite?.replaceConstraints
+  const baseFinalConstraints = bossRewrite?.replaceConstraints
     ? bossRewrite.constraints || rewritten.constraints
     : [...baseConstraints, ...copy.constraints, ...(bossRewrite?.constraints || [])];
+  const videoPostConstraint = videoPostConstraintForLesson(pathKey, isBoss);
+  const locationConstraint = optionalLocationConstraint();
+  const normalizedConstraints = baseFinalConstraints.map(normalizeLocationConstraint);
+  const constraintsWithVideo = normalizedConstraints.includes(videoPostConstraint)
+    ? normalizedConstraints
+    : [...normalizedConstraints, videoPostConstraint];
+  const constraints = constraintsWithVideo.includes(locationConstraint)
+    ? constraintsWithVideo
+    : [...constraintsWithVideo, locationConstraint];
 
   return {
     ...rewritten,
@@ -1409,6 +1870,9 @@ function diversifyWorkshopSeed(
     challenge,
     objective,
     deliverable,
+    trainingSource,
+    cta,
+    simpleSteps,
     bonusNote: bonusNote || undefined,
     constraints,
     kind,
@@ -1845,7 +2309,7 @@ You’re a terrible liar.`,
     'Public Mask',
     'Constraint',
     'Hide a private emergency in public.',
-    'Play a private emotional crisis while trapped in a public place where you must appear normal.',
+    'Play a private emotional crisis while someone else is present and you must appear normal.',
     'Train split behavior and social masking.',
     'A performance with concealed panic, grief, or humiliation.',
     [
@@ -4260,7 +4724,7 @@ const EDITING_INTERMEDIATE: LessonSeed[] = [
     'Parallel Pressure',
     'Structure',
     'Intercut two threads so they charge each other with meaning.',
-    'Shoot or collect 2 simultaneous mini-actions: one person getting dressed to leave and another person waiting outside a door or at a bus stop. Intercut them so pressure rises with each return.',
+    'Shoot or collect 2 simultaneous mini-actions: one person getting ready to leave and another person waiting offscreen, near a door, or against a plain wall. Intercut them so pressure rises with each return.',
     'Train cross-cutting logic and escalation.',
     'A sequence where intercutting creates tension or dramatic irony.',
     [
@@ -4356,7 +4820,7 @@ const EDITING_INTERMEDIATE: LessonSeed[] = [
     'Montage to the Beat',
     'Montage',
     'Cut a sequence entirely to the pulse of music.',
-    'Shoot or collect 12–20 shots of one person getting ready to leave the house: shoes, keys, jacket, mirror, door, stairs, street, bus stop, train, etc. Choose one song and cut the montage so the major visual changes land on the beat or on deliberate off-beat accents.',
+    'Shoot or collect 12-20 shots of one person getting ready to leave: shoes, keys, jacket, mirror, door, bag, hand on handle, phone check, final look back. Choose one song and cut the montage so the major visual changes land on the beat or on deliberate off-beat accents.',
     'Train rhythmic montage and beat-based timing.',
     'A montage with clear musical structure.',
     [
@@ -4391,7 +4855,7 @@ const EDITING_ADVANCED: LessonSeed[] = [
     'Documentary Truth Pass',
     'Nonfiction',
     'Find shape inside messy real material.',
-    'Shoot or use observational footage of one real process: a market stall opening, a friend preparing food, someone setting up camera gear, a train platform, or a bus stop wait. Shape it into a short truthful scene.',
+    'Shoot or use observational footage of one real process: preparing food, setting up camera gear, packing a bag, cleaning a table, folding clothes, or waiting in a chair. Shape it into a short truthful scene.',
     'Train nonfiction story instincts and structural judgment.',
     'A documentary-style scene with a clear emotional centre.',
     [
@@ -5197,7 +5661,7 @@ const CINEMATOGRAPHY_BASE: LessonSeed[] = [
     'Compression and Isolation',
     'Lens Choice',
     'Use optics to isolate the character from the world.',
-    'Shoot a scene where focal length and background compression intensify loneliness, scrutiny, or pressure. Example: bus stop, pavement, park bench, train platform, or long corridor.',
+    'Shoot a scene where focal length and background compression intensify loneliness, scrutiny, or pressure. A plain wall, chair, table, doorway, or simple corridor is enough.',
     'Train emotional use of compression.',
     'A scene where lensing creates isolation.',
     [
@@ -5900,7 +6364,7 @@ Version B: direct it as two people hiding from something outside.`,
     'Public Mask / Private Emergency',
     'Behavior',
     'Direct the split between social behavior and inner collapse.',
-    'Create a scene in a public place — hallway, café, street corner, shop, train platform — where one character must appear normal while privately falling apart.',
+    'Create a scene where one character must appear normal while privately falling apart. Use any simple setup: a wall, chair, table, doorway, or quiet room.',
     'Train social masking on screen.',
     'A scene where public behavior and private truth coexist.',
     [
@@ -6008,7 +6472,7 @@ const SOUND_BASE: LessonSeed[] = [
     'Train one of the most basic professional habits in post: using room tone to hide cuts and preserve continuity.',
     'A dialogue scene with smooth, invisible background continuity.',
     [
-      'Use one location only.',
+      'Use one simple recording setup only.',
       'The background sound must not disappear between lines.',
       'No music allowed.'
     ],
@@ -6308,7 +6772,7 @@ const SOUND_BASE: LessonSeed[] = [
     'Crowd Isolation',
     'Focus',
     'Find one human thread inside chaos.',
-    'Take a crowded scene — canteen, corridor, train platform, pub, house party — and shape the mix so one voice, laugh, breath, chant, or phrase rises above everything else at exactly the right emotional moment.',
+    'Take a crowded or layered scene, real or built from sound library layers, and shape the mix so one voice, laugh, breath, chant, or phrase rises above everything else at exactly the right emotional moment.',
     'Train selective focus inside layered ambience.',
     'A crowd scene with one clearly dominant emotional detail.',
     [
@@ -7155,11 +7619,11 @@ That’s not the same thing.`,
     'Constraint Film: One Location, One Prop',
     'Constraint',
     'Sharpen invention through harsh limitation.',
-    'Build a short using one location only and one central prop only. Example: corridor + envelope, bathroom + ring, bus stop + backpack, stairwell + flowers.',
+    'Build a short using one simple setup and one central prop. A plain wall, chair, table, doorway, or quiet room is enough if the prop and action are specific.',
     'Train economy and concentration.',
     'A finished short whose limitation improves the film rather than shrinking it.',
     [
-      'One location only.',
+      'Use one simple setup only.',
       'One central prop only.',
       'The limitation must shape the film language.'
     ],
@@ -7288,7 +7752,7 @@ const ACTING_BOSSES: Record<number, LessonSeed> = {
     'Acting Boss 1 — The Train Station Return',
     'Boss',
     'Play a reunion scene where too much history is already in the air before the first line.',
-    'Create a 4–6 minute scene set at a train platform or station bench. Two former lovers have not seen each other in 3 years. One of them already knows the other is leaving the country tonight, but does not reveal that immediately. The scene must begin with at least 20 seconds of behavior before the first line. Use the line: “You shouldn’t have come yourself.”',
+    'Create a 4-6 minute departure scene. You can suggest leaving with a chair, bag, wall, or eyeline; you do not need a real station. Two former lovers have not seen each other in 3 years. One of them already knows the other is leaving the country tonight, but does not reveal that immediately. The scene must begin with at least 20 seconds of behavior before the first line. Use the line: “You shouldn’t have come yourself.”',
     'Prove you can play previous circumstances, restraint, listening, and subtext inside a complete dramatic scene.',
     'A finished reunion scene where history is readable from behavior, silence, and shifting emotional temperature.',
     [
@@ -7306,11 +7770,11 @@ const ACTING_BOSSES: Record<number, LessonSeed> = {
     'Acting Boss 2 — The Kitchen Confession',
     'Boss',
     'Play a confession scene where a practical task keeps colliding with unbearable truth.',
-    'Create a 4–6 minute scene in a kitchen. One character has come to ask for help, but halfway through reveals they were directly responsible for a family betrayal. One actor must continue a practical task such as washing dishes, chopping food, making tea, or cleaning while the scene escalates. Use the line: “I was going to tell you.”',
+    'Create a 4-6 minute confession scene around a practical task. A kitchen is optional; you can use any safe table, chair, sink, notebook, folded clothes, or small object. One character has come to ask for help, but halfway through reveals they were directly responsible for a family betrayal. One actor must continue the practical task while the scene escalates. Use the line: “I was going to tell you.”',
     'Prove you can combine independent activity, objective, emotional leakage, and tactical change under pressure.',
     'A finished kitchen confrontation where the practical task deepens the tension instead of distracting from it.',
     [
-      'The scene must be filmed in a kitchen.',
+      'A kitchen is optional; any simple setup is fine if the practical task reads.',
       'One actor must continue a real task for at least half the scene.',
       'Use the line: “I was going to tell you.”',
       'Include one silence longer than 8 seconds.',
@@ -7341,8 +7805,8 @@ const ACTING_BOSSES: Record<number, LessonSeed> = {
   32: makeSeed(
     'Acting Boss 4 — The Waiting Room Secret',
     'Boss',
-    'Play a family waiting-room scene where one person is carrying the unforgivable truth.',
-    'Create a 5–8 minute hospital or clinic waiting-room scene between 2 siblings. They are waiting for news about a parent. One of them secretly signed the DNR papers without telling the other. For the first half, that character must try to keep the scene socially normal. The scene must include one failed apology and one moment where a memory almost comes out but is stopped.',
+    'Play a family waiting scene where one person is carrying the unforgivable truth.',
+    'Create a 5-8 minute waiting scene between 2 siblings. Use any simple setup: two chairs, a wall, a table, or a quiet room. They are waiting for news about a parent. One of them secretly signed the DNR papers without telling the other. For the first half, that character must try to keep the scene socially normal. The scene must include one failed apology and one moment where a memory almost comes out but is stopped.',
     'Prove you can play shame, suppression, contradiction, and emotional collapse with precision rather than melodrama.',
     'A finished dramatic scene where guilt and restraint carry more weight than overt breakdown.',
     [
@@ -8066,7 +8530,7 @@ const EDITING_BOSSES: Record<number, LessonSeed> = {
     'Editing Boss 4 — Pack the Bag / Miss the Bus',
     'Boss',
     'Control time by turning the same practical sequence into compression and suspense.',
-    'Shoot this exact action: open drawer, grab passport, miss one item, zip bag, check phone, sprint out, arrive too late at bus stop. Build 2 edits from that same material: a 25-second compressed version and a 75-second suspense version.',
+    'Shoot this exact action: open drawer, grab passport, miss one item, zip bag, check phone, rush to the door, arrive too late. Build 2 edits from that same material: a 25-second compressed version and a 75-second suspense version.',
     'Prove you can shape time, clarity, and emotional experience through editorial structure.',
     'Two finished edits of the same sequence with radically different temporal feeling.',
     [
@@ -8105,11 +8569,11 @@ const FILMMAKER_BOSSES: Record<number, LessonSeed> = {
     'Filmmaker Boss 1 — The Bus Stop Film',
     'Boss',
     'Build a complete short around one meeting, one withheld truth, and one irreversible ending.',
-    'Make a 5–7 minute short film set at one bus stop, train stop, or roadside bench. One person is waiting for someone who is not coming. Another person arrives with information they should not have. The film must include one silent opening stretch, one reveal at minute 3 or later, and one final image that changes how we read the scene.',
+    'Make a 5-7 minute short film built around one waiting spot. You can suggest the wait with a chair, wall, bag, sound cue, or eyeline; you do not need a real public location. One person is waiting for someone who is not coming. Another person arrives with information they should not have. The film must include one silent opening stretch, one reveal at minute 3 or later, and one final image that changes how we read the scene.',
     'Prove you can combine performance, directing, image, sound, and editing into one complete dramatic engine.',
     'A finished one-location short film with a clear reveal structure and a strong final image.',
     [
-      'One location only.',
+      'Use one simple setup only.',
       'Two actors only.',
       '5–7 minutes.',
       'Include one silent opening stretch.',
@@ -8289,6 +8753,9 @@ function buildLessonsFromBase(
         challenge: boss.challenge,
         objective: boss.objective,
         deliverable: boss.deliverable,
+        trainingSource: boss.trainingSource,
+        cta: boss.cta,
+        simpleSteps: boss.simpleSteps,
         bonusNote: boss.bonusNote,
         kind: 'boss',
         constraints: boss.constraints,
@@ -8320,6 +8787,9 @@ function buildLessonsFromBase(
         challenge: item.challenge,
         objective: item.objective,
         deliverable: item.deliverable,
+        trainingSource: item.trainingSource,
+        cta: item.cta,
+        simpleSteps: item.simpleSteps,
         bonusNote: item.bonusNote,
         kind: item.kind,
         constraints: item.constraints,
@@ -8360,6 +8830,9 @@ function buildEditingLessons(total = 40): Lesson[] {
         challenge: boss.challenge,
         objective: boss.objective,
         deliverable: boss.deliverable,
+        trainingSource: boss.trainingSource,
+        cta: boss.cta,
+        simpleSteps: boss.simpleSteps,
         bonusNote: boss.bonusNote,
         kind: 'boss',
         constraints: boss.constraints,
@@ -8393,6 +8866,9 @@ function buildEditingLessons(total = 40): Lesson[] {
         challenge: item.challenge,
         objective: item.objective,
         deliverable: item.deliverable,
+        trainingSource: item.trainingSource,
+        cta: item.cta,
+        simpleSteps: item.simpleSteps,
         bonusNote: item.bonusNote,
         kind: item.kind,
         constraints: item.constraints,
@@ -8433,6 +8909,9 @@ function buildFilmmakerLessons(total = 40): Lesson[] {
         challenge: boss.challenge,
         objective: boss.objective,
         deliverable: boss.deliverable,
+        trainingSource: boss.trainingSource,
+        cta: boss.cta,
+        simpleSteps: boss.simpleSteps,
         bonusNote: boss.bonusNote,
         kind: 'boss',
         constraints: boss.constraints,
@@ -8457,6 +8936,9 @@ function buildFilmmakerLessons(total = 40): Lesson[] {
         challenge: item.challenge,
         objective: item.objective,
         deliverable: item.deliverable,
+        trainingSource: item.trainingSource,
+        cta: item.cta,
+        simpleSteps: item.simpleSteps,
         bonusNote: item.bonusNote,
         kind: item.kind,
         constraints: [
@@ -9077,16 +9559,18 @@ function RoadmapStartMarker({
   width,
   chapterTitle,
   trackAfterState,
+  compact = false,
 }: {
   width: number;
   chapterTitle: string;
   trackAfterState: RoadmapTrackState;
+  compact?: boolean;
 }) {
-  const startTrackLength = Math.max(0, width / 2 - 38);
+  const startTrackLength = Math.max(0, width / 2 - (compact ? 28 : 38));
 
   return (
-    <View style={[styles.roadmapStartMarker, { width }]}>
-      <View pointerEvents="none" style={styles.roadmapTrackLayer}>
+    <View style={[styles.roadmapStartMarker, compact && styles.roadmapStartMarkerCompact, { width }]}>
+      <View pointerEvents="none" style={[styles.roadmapTrackLayer, compact && styles.roadmapTrackLayerCompact]}>
         <View
           style={[
             styles.roadmapTrackSegment,
@@ -9097,14 +9581,14 @@ function RoadmapStartMarker({
         />
       </View>
 
-      <View style={styles.roadmapStartNodeWrap}>
-        <View style={styles.roadmapStartGlow} />
-        <View style={styles.roadmapStartNode}>
-          <View style={styles.roadmapStartCoreDot} />
+      <View style={[styles.roadmapStartNodeWrap, compact && styles.roadmapStartNodeWrapCompact]}>
+        <View style={[styles.roadmapStartGlow, compact && styles.roadmapStartGlowCompact]} />
+        <View style={[styles.roadmapStartNode, compact && styles.roadmapStartNodeCompact]}>
+          <View style={[styles.roadmapStartCoreDot, compact && styles.roadmapStartCoreDotCompact]} />
         </View>
       </View>
-      <Text style={styles.roadmapChapterLabel}>Chapter 1</Text>
-      <Text style={styles.roadmapChapterTitle} numberOfLines={2}>
+      <Text style={[styles.roadmapChapterLabel, compact && styles.roadmapChapterLabelCompact]}>Chapter 1</Text>
+      <Text style={[styles.roadmapChapterTitle, compact && styles.roadmapChapterTitleCompact]} numberOfLines={2}>
         {chapterTitle}
       </Text>
     </View>
@@ -9116,17 +9600,19 @@ function RoadmapChapterMarker({
   chapterIndex,
   chapterTitle,
   trackState,
+  compact = false,
 }: {
   width: number;
   chapterIndex: number;
   chapterTitle: string;
   trackState: RoadmapTrackState;
+  compact?: boolean;
 }) {
-  const gateTrackLength = Math.max(0, width / 2 - 24);
+  const gateTrackLength = Math.max(0, width / 2 - (compact ? 18 : 24));
 
   return (
-    <View style={[styles.roadmapChapterDivider, { width }]}>
-      <View pointerEvents="none" style={styles.roadmapTrackLayer}>
+    <View style={[styles.roadmapChapterDivider, compact && styles.roadmapChapterDividerCompact, { width }]}>
+      <View pointerEvents="none" style={[styles.roadmapTrackLayer, compact && styles.roadmapTrackLayerCompact]}>
         <View
           style={[
             styles.roadmapTrackSegment,
@@ -9144,11 +9630,13 @@ function RoadmapChapterMarker({
           ]}
         />
       </View>
-      <View style={styles.roadmapChapterGate}>
-        <View style={styles.roadmapChapterGateLine} />
+      <View style={[styles.roadmapChapterGate, compact && styles.roadmapChapterGateCompact]}>
+        <View style={[styles.roadmapChapterGateLine, compact && styles.roadmapChapterGateLineCompact]} />
       </View>
-      <Text style={styles.roadmapChapterLabel}>Chapter {chapterIndex + 1}</Text>
-      <Text style={styles.roadmapChapterTitle} numberOfLines={2}>
+      <Text style={[styles.roadmapChapterLabel, compact && styles.roadmapChapterLabelCompact]}>
+        Chapter {chapterIndex + 1}
+      </Text>
+      <Text style={[styles.roadmapChapterTitle, compact && styles.roadmapChapterTitleCompact]} numberOfLines={2}>
         {chapterTitle}
       </Text>
     </View>
@@ -9162,6 +9650,7 @@ function RoadmapCheckpointButton({
   trackBeforeState,
   trackAfterState,
   showTrackAfter,
+  compact = false,
 }: {
   node: RoadmapCheckpoint;
   onPress: (node: RoadmapCheckpoint) => void;
@@ -9169,6 +9658,7 @@ function RoadmapCheckpointButton({
   trackBeforeState: RoadmapTrackState;
   trackAfterState?: RoadmapTrackState;
   showTrackAfter: boolean;
+  compact?: boolean;
 }) {
   const { colors } = useAppTheme();
   const { language } = useAppLanguage();
@@ -9181,7 +9671,7 @@ function RoadmapCheckpointButton({
     (value?: string | null) => translateTrustedText(value || '', language),
     [language]
   );
-  const nodeTrackClearance = current ? 56 : 40;
+  const nodeTrackClearance = current ? (compact ? 43 : 56) : compact ? 30 : 40;
   const trackSegmentLength = Math.max(0, width / 2 - nodeTrackClearance);
 
   return (
@@ -9190,12 +9680,13 @@ function RoadmapCheckpointButton({
       disabled={locked}
       style={[
         styles.roadmapCheckpoint,
+        compact && styles.roadmapCheckpointCompact,
         { width },
         current && styles.roadmapCheckpointCurrent,
         locked && styles.roadmapCheckpointMuted,
       ]}
     >
-      <View pointerEvents="none" style={styles.roadmapTrackLayer}>
+      <View pointerEvents="none" style={[styles.roadmapTrackLayer, compact && styles.roadmapTrackLayerCompact]}>
         <View
           style={[
             styles.roadmapTrackSegment,
@@ -9216,18 +9707,22 @@ function RoadmapCheckpointButton({
         ) : null}
       </View>
 
-      <View style={styles.roadmapNodeWrap}>
+      <View style={[styles.roadmapNodeWrap, compact && styles.roadmapNodeWrapCompact]}>
         <View
           pointerEvents="none"
           style={[
             styles.roadmapNodeGlow,
+            compact && styles.roadmapNodeGlowCompact,
             current && styles.roadmapNodeGlowActive,
+            current && compact && styles.roadmapNodeGlowActiveCompact,
             final && styles.roadmapNodeGlowFinal,
+            final && compact && styles.roadmapNodeGlowFinalCompact,
           ]}
         />
         <View
           style={[
             styles.roadmapNodeCircle,
+            compact && styles.roadmapNodeCircleCompact,
             {
               backgroundColor: colors.card,
               borderColor: colors.borderStrong,
@@ -9250,20 +9745,23 @@ function RoadmapCheckpointButton({
               borderColor: colors.textMuted,
             },
             current && styles.roadmapNodeCircleCurrent,
+            current && compact && styles.roadmapNodeCircleCurrentCompact,
             locked && styles.roadmapNodeCircleLocked,
             final && styles.roadmapNodeCircleFinal,
           ]}
         >
           {completed ? (
-            <Ionicons name="checkmark-outline" size={34} color={GREEN} />
+            <Ionicons name="checkmark-outline" size={compact ? 24 : 34} color={GREEN} />
           ) : (
             <Text
               style={[
                 styles.roadmapNodeGlyph,
+                compact && styles.roadmapNodeGlyphCompact,
                 {
                   color: locked ? colors.textMuted : colors.primary,
                 },
                 current && styles.roadmapNodeGlyphCurrent,
+                current && compact && styles.roadmapNodeGlyphCurrentCompact,
               ]}
             >
               {node.lesson?.step || ''}
@@ -9276,6 +9774,7 @@ function RoadmapCheckpointButton({
         <View
           style={[
             styles.roadmapXpPill,
+            compact && styles.roadmapXpPillCompact,
             {
               backgroundColor: locked ? colors.backgroundAlt : 'rgba(0,0,0,0.34)',
               borderColor: locked ? colors.border : colors.borderStrong,
@@ -9286,7 +9785,7 @@ function RoadmapCheckpointButton({
             },
           ]}
         >
-          <Text style={[styles.roadmapXpText, { color: locked ? colors.textMuted : colors.primary }]}>
+          <Text style={[styles.roadmapXpText, compact && styles.roadmapXpTextCompact, { color: locked ? colors.textMuted : colors.primary }]}>
             {node.xp} XP
           </Text>
         </View>
@@ -9296,6 +9795,7 @@ function RoadmapCheckpointButton({
         <Text
           style={[
             styles.roadmapStepLabel,
+            compact && styles.roadmapStepLabelCompact,
             { color: current ? colors.primary : colors.textMuted },
           ]}
         >
@@ -9306,8 +9806,10 @@ function RoadmapCheckpointButton({
       <Text
         style={[
           styles.roadmapNodeTitle,
+          compact && styles.roadmapNodeTitleCompact,
           { color: locked ? colors.textMuted : colors.textPrimary },
           current && styles.roadmapNodeTitleCurrent,
+          current && compact && styles.roadmapNodeTitleCurrentCompact,
         ]}
         numberOfLines={2}
       >
@@ -9317,6 +9819,7 @@ function RoadmapCheckpointButton({
       <Text
         style={[
           styles.roadmapNodeStatus,
+          compact && styles.roadmapNodeStatusCompact,
           { color: current ? colors.primary : colors.textMuted },
           completed && { color: colors.textMuted },
           locked && { color: colors.textMuted },
@@ -9332,10 +9835,13 @@ function RoadmapCheckpointButton({
 const WorkshopScreen: React.FC = () => {
   const { colors, isLight } = useAppTheme();
   const { language } = useAppLanguage();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isDesktop = width >= 960;
   const isWebDesktop = Platform.OS === 'web' && width >= 960;
+  const isMobile = width < 760;
+  const isCompact = width < 520;
+  const isVeryCompact = width < 380;
   const navigation = useNavigation<any>();
   const { refreshKey, triggerAppRefresh } = useAppRefresh();
   const isFocused = useIsFocused();
@@ -9685,6 +10191,13 @@ filmmaker: [],
   const surgeryClears = surgeryClearedSteps.length;
   const chapterMeta = PATH_STAGE_META[selectedPath];
   const wheelDisplayPercent = isFocused ? animatedCompletionPercent : completionPercent;
+  const progressDialSize = isCompact ? 132 : isMobile ? 150 : 170;
+  const progressDialInnerSize = isCompact ? 82 : isMobile ? 92 : 104;
+  const progressDialFontSize = isCompact ? 26 : isMobile ? 30 : 36;
+  const progressTickLeft = progressDialSize / 2 - 1;
+  const progressTickTop = progressDialSize / 2 - (isCompact ? 5 : 6);
+  const progressTickHeight = isCompact ? 9 : isMobile ? 10 : 12;
+  const progressTickDistance = -(progressDialSize / 2 - (isCompact ? 12 : 15));
   const wheelScale = wheelEntranceAnim.interpolate({
     inputRange: [0, 1],
     outputRange: [0.975, 1],
@@ -9788,13 +10301,22 @@ filmmaker: [],
   const roadmapCurrentNodeIndex = roadmapNodes.findIndex((node) => node.state === 'current');
   const roadmapCurrentIndex =
     roadmapCurrentNodeIndex >= 0 ? roadmapCurrentNodeIndex : Math.max(0, roadmapNodes.length - 1);
-  const roadmapStepWidth = isDesktop ? 258 : 220;
-  const roadmapChapterDividerWidth = isDesktop ? 136 : 118;
-  const roadmapStartMarkerWidth = isDesktop ? 170 : 148;
-  const roadmapSideInset = isDesktop ? 118 : 92;
+  const roadmapCompact = !isDesktop;
+  const roadmapStepWidth = isDesktop ? 258 : isCompact ? 154 : 182;
+  const roadmapChapterDividerWidth = isDesktop ? 136 : isCompact ? 74 : 92;
+  const roadmapStartMarkerWidth = isDesktop ? 170 : isCompact ? 112 : 126;
+  const roadmapSideInset = isDesktop ? 118 : isCompact ? 24 : 42;
+  const mobileShellWidth = Math.max(0, width - (isCompact ? 20 : 28));
+  const roadmapMinStageWidth = isDesktop ? 980 : mobileShellWidth;
+  const chapterDockCardWidth = isDesktop
+    ? 330
+    : Math.max(236, Math.min(304, width - (isCompact ? 40 : 54)));
+  const modalBodyMaxHeight = isDesktop
+    ? 470
+    : Math.max(260, height - insets.top - insets.bottom - (isCompact ? 244 : 268));
   const roadmapDividerCount = Math.max(0, chapters.length - 1);
   const roadmapStageWidth = Math.max(
-    980,
+    roadmapMinStageWidth,
     roadmapStartMarkerWidth +
       roadmapNodes.length * roadmapStepWidth +
       roadmapDividerCount * roadmapChapterDividerWidth +
@@ -9994,7 +10516,10 @@ filmmaker: [],
     <View style={[styles.container, { backgroundColor: BG }]}>
       <ScrollView
   style={[styles.scroll, { backgroundColor: BG }]}
-  contentContainerStyle={styles.scrollContent}
+  contentContainerStyle={[
+    styles.scrollContent,
+    !isDesktop && { paddingBottom: insets.bottom + 86 },
+  ]}
   showsVerticalScrollIndicator={false}
   refreshControl={
     Platform.OS !== 'web' ? (
@@ -10008,13 +10533,29 @@ filmmaker: [],
     ) : undefined
   }
 >
-        <View style={[styles.pageWrap, { paddingTop: insets.top + 40, backgroundColor: BG }]}>
+        <View
+          style={[
+            styles.pageWrap,
+            !isDesktop && styles.pageWrapMobile,
+            isCompact && styles.pageWrapCompact,
+            { paddingTop: (isDesktop ? insets.top + 40 : insets.top + 18), backgroundColor: BG },
+          ]}
+        >
           <View style={[styles.mainLayout, !isDesktop && styles.mainLayoutMobile]}>
           <View style={[styles.centerPanel, isDesktop && styles.centerPanelDesktop, isWebDesktop && styles.centerPanelWebDesktop]}>
-  <Text style={[styles.workshopTopLine, primaryTextStyle]}>
+  <Text style={[styles.workshopTopLine, !isDesktop && styles.workshopTopLineMobile, isCompact && styles.workshopTopLineCompact, primaryTextStyle]}>
     {translateLessonCopy('Train your craft using exercises taken from real film and acting schools.')}
   </Text>
-  <View style={[styles.bootcampCard, surfaceStyle, { shadowColor: colors.shadow }, isWebDesktop && styles.bootcampCardWebDesktop]}>
+  <View
+    style={[
+      styles.bootcampCard,
+      !isDesktop && styles.bootcampCardMobile,
+      isCompact && styles.bootcampCardCompact,
+      surfaceStyle,
+      { shadowColor: colors.shadow },
+      isWebDesktop && styles.bootcampCardWebDesktop,
+    ]}
+  >
     <LinearGradient
       colors={
         isLight
@@ -10023,23 +10564,28 @@ filmmaker: [],
       }
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={[styles.skillHeroCard, { borderColor: GOLD_BORDER }]}
+      style={[styles.skillHeroCard, !isDesktop && styles.skillHeroCardMobile, isCompact && styles.skillHeroCardCompact, { borderColor: GOLD_BORDER }]}
     >
-      <View style={styles.skillHeroLeft}>
-        <Text style={[styles.referenceGreeting, primaryTextStyle]}>Hello, {firstName}</Text>
+      <View style={[styles.skillHeroLeft, !isDesktop && styles.skillHeroLeftMobile]}>
+        <Text style={[styles.referenceGreeting, !isDesktop && styles.referenceGreetingMobile, primaryTextStyle]}>Hello, {firstName}</Text>
         <Text style={[styles.referenceDateLine, { color: GOLD }]}>{activePath.label}</Text>
         <Text style={[styles.skillHeroStoryKicker, { color: GOLD }]}>
           Progress Story
         </Text>
-        <Text style={[styles.skillHeroQuote, mutedTextStyle]} numberOfLines={5}>
+        <Text style={[styles.skillHeroQuote, !isDesktop && styles.skillHeroQuoteMobile, mutedTextStyle]} numberOfLines={isCompact ? 3 : 5}>
           {progressStory}
         </Text>
       </View>
 
-      <View style={styles.heroProgressColumn}>
+      <View style={[styles.heroProgressColumn, !isDesktop && styles.heroProgressColumnMobile]}>
         <Animated.View
           style={[
             styles.bigProgressOrbit,
+            {
+              width: progressDialSize,
+              height: progressDialSize,
+              borderRadius: progressDialSize / 2,
+            },
             { backgroundColor: PANEL_2, borderColor: BORDER, shadowColor: GOLD },
             {
               opacity: wheelOpacity,
@@ -10054,21 +10600,36 @@ filmmaker: [],
                 key={`progress-tick-${index}`}
                 style={[
                   styles.bigProgressTick,
+                  {
+                    left: progressTickLeft,
+                    top: progressTickTop,
+                    height: progressTickHeight,
+                  },
                   filled && styles.bigProgressTickActive,
                   { backgroundColor: filled ? GOLD : LINE },
                   {
                     transform: [
                       { rotate: `${index * (360 / 56)}deg` },
-                      { translateY: -70 },
+                      { translateY: progressTickDistance },
                     ],
                   },
                 ]}
               />
             );
           })}
-          <View style={[styles.bigProgressInner, { backgroundColor: BG, borderColor: BORDER }]}>
+          <View
+            style={[
+              styles.bigProgressInner,
+              {
+                width: progressDialInnerSize,
+                height: progressDialInnerSize,
+                borderRadius: progressDialInnerSize / 2,
+              },
+              { backgroundColor: BG, borderColor: BORDER },
+            ]}
+          >
             <Text style={[styles.progressDialKicker, mutedTextStyle]}>Progress</Text>
-            <Text style={[styles.bigProgressNumber, primaryTextStyle]}>{wheelDisplayPercent}%</Text>
+            <Text style={[styles.bigProgressNumber, { fontSize: progressDialFontSize, lineHeight: progressDialFontSize + 4 }, primaryTextStyle]}>{wheelDisplayPercent}%</Text>
           </View>
         </Animated.View>
         <View style={[styles.heroLevelPill, { backgroundColor: GOLD_SOFT, borderColor: GOLD_BORDER }]}>
@@ -10076,17 +10637,17 @@ filmmaker: [],
         </View>
       </View>
 
-      <View style={styles.heroActionStack}>
+      <View style={[styles.heroActionStack, !isDesktop && styles.heroActionStackMobile]}>
         <TouchableOpacity
           activeOpacity={0.9}
           onPress={() => handleOpenLesson(currentLesson)}
-          style={[styles.heroLessonCard, { backgroundColor: colors.card, borderColor: BORDER }]}
+          style={[styles.heroLessonCard, !isDesktop && styles.heroLessonCardMobile, { backgroundColor: colors.card, borderColor: BORDER }]}
         >
           <View style={styles.heroCardTitleRow}>
             <Ionicons name={activePath.icon} size={16} color={GOLD} />
             <Text style={[styles.heroCardTitle, primaryTextStyle]}>Today's Exercise</Text>
           </View>
-          <View style={styles.heroLessonBody}>
+          <View style={[styles.heroLessonBody, !isDesktop && styles.heroLessonBodyMobile]}>
             <View style={[styles.currentLessonIcon, { backgroundColor: GOLD }]}>
               <Ionicons name={activePath.icon} size={17} color={colors.textOnPrimary} />
             </View>
@@ -10094,14 +10655,14 @@ filmmaker: [],
               <Text style={[styles.currentLessonEyebrow, { color: GOLD }]}>
                 {activePath.shortLabel} • Step {currentLesson.step}
               </Text>
-              <Text style={[styles.currentLessonTitle, primaryTextStyle]} numberOfLines={1}>
+              <Text style={[styles.currentLessonTitle, primaryTextStyle]} numberOfLines={isCompact ? 2 : 1}>
                 {currentLesson.title}
               </Text>
-              <Text style={[styles.currentLessonText, mutedTextStyle]} numberOfLines={1}>
+              <Text style={[styles.currentLessonText, mutedTextStyle]} numberOfLines={isCompact ? 2 : 1}>
                 {currentLesson.description}
               </Text>
             </View>
-            <View style={[styles.currentLessonAction, { backgroundColor: GOLD }]}>
+            <View style={[styles.currentLessonAction, isVeryCompact && styles.currentLessonActionHidden, { backgroundColor: GOLD }]}>
               <Ionicons name="play-outline" size={14} color={colors.textOnPrimary} />
             </View>
           </View>
@@ -10114,13 +10675,13 @@ filmmaker: [],
             accessibilityRole="button"
             accessibilityLabel={`Open ${currentMission.title} details`}
             hitSlop={6}
-            style={[styles.heroMissionCard, { backgroundColor: colors.card, borderColor: BORDER }]}
+            style={[styles.heroMissionCard, !isDesktop && styles.heroLessonCardMobile, { backgroundColor: colors.card, borderColor: BORDER }]}
           >
             <View style={styles.heroCardTitleRow}>
               <Ionicons name="globe-outline" size={16} color={BLUE} />
               <Text style={[styles.heroCardTitle, primaryTextStyle]}>Optional Collaboration</Text>
             </View>
-            <View style={styles.heroLessonBody}>
+            <View style={[styles.heroLessonBody, !isDesktop && styles.heroLessonBodyMobile]}>
               <View style={styles.missionBannerIcon}>
                 <Ionicons name={currentMission.icon} size={16} color={BLUE} />
               </View>
@@ -10128,11 +10689,11 @@ filmmaker: [],
                 <Text style={[styles.missionBannerTitle, primaryTextStyle]} numberOfLines={1}>
                   {currentMission.title}
                 </Text>
-                <Text style={[styles.missionBannerText, mutedTextStyle]} numberOfLines={1}>
+                <Text style={[styles.missionBannerText, mutedTextStyle]} numberOfLines={isCompact ? 2 : 1}>
                   {currentMission.description}
                 </Text>
               </View>
-              <View style={[styles.missionBannerAction, { borderColor: GOLD_BORDER, backgroundColor: GOLD_SOFT }]}>
+              <View style={[styles.missionBannerAction, isVeryCompact && styles.missionBannerActionCompact, { borderColor: GOLD_BORDER, backgroundColor: GOLD_SOFT }]}>
                 <Text style={[styles.missionBannerActionText, { color: GOLD }]}>Optional</Text>
                 <Ionicons name="chevron-forward" size={13} color={GOLD} />
               </View>
@@ -10145,7 +10706,7 @@ filmmaker: [],
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.treePathTabsContent}
+      contentContainerStyle={[styles.treePathTabsContent, !isDesktop && styles.treePathTabsContentMobile]}
       style={styles.treePathTabsScroll}
     >
       {PATHS.map((path) => {
@@ -10158,6 +10719,7 @@ filmmaker: [],
             onPress={() => setSelectedPath(path.key)}
             style={[
               styles.treePathTab,
+              !isDesktop && styles.treePathTabMobile,
               {
                 backgroundColor: active ? GOLD_SOFT : colors.cardAlt,
                 borderColor: active ? GOLD : BORDER,
@@ -10185,18 +10747,21 @@ filmmaker: [],
         <View
           style={[
             styles.skillTreeStage,
+            !isDesktop && styles.skillTreeStageMobile,
             {
               width: roadmapStageWidth,
+              minWidth: roadmapMinStageWidth,
               paddingHorizontal: roadmapSideInset,
             },
             { backgroundColor: colors.card, borderColor: BORDER },
           ]}
         >
-          <View style={styles.roadmapNodesRow}>
+          <View style={[styles.roadmapNodesRow, roadmapCompact && styles.roadmapNodesRowCompact]}>
             <RoadmapStartMarker
               width={roadmapStartMarkerWidth}
               chapterTitle={chapters[0]?.title.replace(/^Chapter\s+\d+\s+—\s+/, '') || 'Begins'}
               trackAfterState={getRoadmapTrackState(roadmapNodes[0])}
+              compact={roadmapCompact}
             />
 
           {roadmapNodes.map((node, index) => {
@@ -10217,6 +10782,7 @@ filmmaker: [],
                     chapterIndex={chapterIndex}
                     chapterTitle={chapterName}
                     trackState={trackBeforeState}
+                    compact={roadmapCompact}
                   />
                 ) : null}
 
@@ -10227,6 +10793,7 @@ filmmaker: [],
                   trackBeforeState={trackBeforeState}
                   trackAfterState={trackAfterState}
                   showTrackAfter={!!nextNode}
+                  compact={roadmapCompact}
                 />
               </React.Fragment>
             );
@@ -10258,6 +10825,8 @@ filmmaker: [],
                 onPress={() => setSelectedChapterInsightIndex(chapter.chapterIndex)}
                 style={[
                   styles.chapterDockCard,
+                  !isDesktop && styles.chapterDockCardMobile,
+                  { width: chapterDockCardWidth },
                   {
                     backgroundColor: colors.card,
                     borderColor: selected || chapter.isCurrent ? GOLD_BORDER : BORDER,
@@ -10351,12 +10920,12 @@ filmmaker: [],
           onPress={() => setSelectedLesson(null)}
         />
 
-        <View pointerEvents="box-none" style={styles.modalCenter}>
+        <View pointerEvents="box-none" style={[styles.modalCenter, !isDesktop && styles.modalCenterMobile, isCompact && styles.modalCenterCompact]}>
           {selectedLesson ? (
-            <View style={[styles.modalCard, surfaceStyle, { shadowColor: colors.shadow }]}>
-              <View style={[styles.modalHeader, { borderBottomColor: BORDER }]}>
-                <View style={styles.modalHeaderLeft}>
-                  <View style={[styles.modalIconCircle, { backgroundColor: GOLD_SOFT, borderColor: GOLD_BORDER }]}>
+            <View style={[styles.modalCard, !isDesktop && styles.modalCardMobile, surfaceStyle, { shadowColor: colors.shadow }]}>
+              <View style={[styles.modalHeader, !isDesktop && styles.modalHeaderMobile, { borderBottomColor: BORDER }]}>
+                <View style={[styles.modalHeaderLeft, !isDesktop && styles.modalHeaderLeftMobile]}>
+                  <View style={[styles.modalIconCircle, !isDesktop && styles.modalIconCircleMobile, { backgroundColor: GOLD_SOFT, borderColor: GOLD_BORDER }]}>
                     <Ionicons
                       name={
                         selectedLesson.requiresSurgery &&
@@ -10366,7 +10935,7 @@ filmmaker: [],
                             ? 'trophy-outline'
                             : kindIcon(selectedLesson.kind)
                       }
-                      size={22}
+                      size={isCompact ? 18 : 22}
                       color={GOLD}
                     />
                   </View>
@@ -10375,7 +10944,7 @@ filmmaker: [],
                     <Text style={[styles.modalEyebrow, { color: GOLD }]}>
                       {activePath.label} • Step {selectedLesson.step}
                     </Text>
-                    <Text style={[styles.modalTitle, primaryTextStyle]}>
+                    <Text style={[styles.modalTitle, !isDesktop && styles.modalTitleMobile, primaryTextStyle]}>
                       {translateLessonCopy(selectedLesson.title)}
                     </Text>
                     <Text style={[styles.modalMini, mutedTextStyle]}>
@@ -10405,44 +10974,78 @@ filmmaker: [],
               </View>
 
               <ScrollView
-                style={styles.modalScroll}
-                contentContainerStyle={styles.modalScrollContent}
+                style={[styles.modalScroll, { maxHeight: modalBodyMaxHeight }]}
+                contentContainerStyle={[styles.modalScrollContent, !isDesktop && styles.modalScrollContentMobile]}
                 showsVerticalScrollIndicator={false}
               >
-                <Text style={[styles.modalDescription, { color: colors.textSecondary }]}>
+                <Text style={[styles.modalDescription, !isDesktop && styles.modalDescriptionMobile, { color: colors.textSecondary }]}>
                   {translateLessonCopy(selectedLesson.description)}
                 </Text>
 
-                <View style={styles.modalMetaRow}>
-                  <View style={[styles.modalMetaPill, { backgroundColor: GOLD_SOFT, borderColor: GOLD_BORDER }]}>
-                    <Ionicons name="flash-outline" size={12} color={GOLD} />
-                    <Text style={[styles.modalMetaText, { color: GOLD }]}>{selectedLesson.xp} XP</Text>
-                  </View>
-                </View>
+	                <View style={[styles.modalMetaRow, !isDesktop && styles.modalMetaRowMobile]}>
+	                  <View style={[styles.modalMetaPill, { backgroundColor: GOLD_SOFT, borderColor: GOLD_BORDER }]}>
+	                    <Ionicons name="flash-outline" size={12} color={GOLD} />
+	                    <Text style={[styles.modalMetaText, { color: GOLD }]}>{selectedLesson.xp} XP</Text>
+	                  </View>
+	                </View>
 
-                <View style={[styles.detailCard, softSurfaceStyle]}>
-                  <Text style={[styles.detailLabel, { color: GOLD }]}>Challenge</Text>
-                  <Text style={[styles.detailText, { color: colors.textSecondary }]}>
-                    {translateLessonCopy(selectedLesson.challenge)}
+	                {selectedLesson.simpleSteps?.length ? (
+	                  <View style={[styles.detailCard, !isDesktop && styles.detailCardMobile, styles.detailCardSoft, softSurfaceStyle]}>
+	                    <Text style={[styles.detailLabel, { color: GOLD }]}>What To Do</Text>
+	                    {selectedLesson.simpleSteps.map((stepText, i) => (
+	                      <View key={`${selectedLesson.id}-simple-${i}`} style={[styles.simpleStepRow, !isDesktop && styles.simpleStepRowMobile]}>
+	                        <View style={[styles.simpleStepNumber, !isDesktop && styles.simpleStepNumberMobile, { backgroundColor: GOLD_SOFT, borderColor: GOLD_BORDER }]}>
+	                          <Text style={[styles.simpleStepNumberText, { color: GOLD }]}>{i + 1}</Text>
+	                        </View>
+	                        <Text style={[styles.simpleStepText, !isDesktop && styles.simpleStepTextMobile, { color: colors.textSecondary }]}>
+	                          {translateLessonCopy(stepText)}
+	                        </Text>
+	                      </View>
+	                    ))}
+	                  </View>
+	                ) : null}
+
+	                <View style={[styles.detailCard, !isDesktop && styles.detailCardMobile, softSurfaceStyle]}>
+	                  <Text style={[styles.detailLabel, { color: GOLD }]}>Challenge</Text>
+	                  <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+	                    {translateLessonCopy(selectedLesson.challenge)}
                   </Text>
                 </View>
 
-                <View style={[styles.detailCard, softSurfaceStyle]}>
+                {selectedLesson.trainingSource ? (
+                  <View style={[styles.detailCard, !isDesktop && styles.detailCardMobile, softSurfaceStyle]}>
+                    <Text style={[styles.detailLabel, { color: GOLD }]}>Training Source</Text>
+                    <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+                      {translateLessonCopy(selectedLesson.trainingSource)}
+                    </Text>
+                  </View>
+                ) : null}
+
+                <View style={[styles.detailCard, !isDesktop && styles.detailCardMobile, softSurfaceStyle]}>
                   <Text style={[styles.detailLabel, { color: GOLD }]}>Objective</Text>
                   <Text style={[styles.detailText, { color: colors.textSecondary }]}>
                     {translateLessonCopy(selectedLesson.objective)}
                   </Text>
                 </View>
 
-                <View style={[styles.detailCard, softSurfaceStyle]}>
+                <View style={[styles.detailCard, !isDesktop && styles.detailCardMobile, softSurfaceStyle]}>
                   <Text style={[styles.detailLabel, { color: GOLD }]}>Deliverable</Text>
                   <Text style={[styles.detailText, { color: colors.textSecondary }]}>
                     {translateLessonCopy(selectedLesson.deliverable)}
                   </Text>
                 </View>
 
+                {selectedLesson.cta ? (
+                  <View style={[styles.detailCard, !isDesktop && styles.detailCardMobile, styles.detailCardSoft, softSurfaceStyle]}>
+                    <Text style={[styles.detailLabel, { color: GOLD }]}>Record & Post Video</Text>
+                    <Text style={[styles.detailText, { color: colors.textSecondary }]}>
+                      {translateLessonCopy(selectedLesson.cta)}
+                    </Text>
+                  </View>
+                ) : null}
+
                 {selectedLesson.learning ? (
-                  <View style={[styles.detailCard, softSurfaceStyle]}>
+                  <View style={[styles.detailCard, !isDesktop && styles.detailCardMobile, softSurfaceStyle]}>
                     <Text style={[styles.detailLabel, { color: GOLD }]}>Learning</Text>
                     <Text style={[styles.detailText, { color: colors.textSecondary }]}>
                       {translateLessonCopy(selectedLesson.learning)}
@@ -10451,7 +11054,7 @@ filmmaker: [],
                 ) : null}
 
                 {selectedLesson.bonusNote ? (
-                  <View style={[styles.detailCard, styles.detailCardSoft, softSurfaceStyle]}>
+                  <View style={[styles.detailCard, !isDesktop && styles.detailCardMobile, styles.detailCardSoft, softSurfaceStyle]}>
                     <Text style={[styles.detailLabel, { color: GOLD }]}>Bonus Note</Text>
                     <Text style={[styles.detailText, { color: colors.textSecondary }]}>
                       {translateLessonCopy(selectedLesson.bonusNote)}
@@ -10460,7 +11063,7 @@ filmmaker: [],
                 ) : null}
 
                 {selectedLesson.missionType ? (
-                  <View style={[styles.detailCard, styles.detailCardBlue, softSurfaceStyle]}>
+                  <View style={[styles.detailCard, !isDesktop && styles.detailCardMobile, styles.detailCardBlue, softSurfaceStyle]}>
                     <Text style={[styles.detailLabel, { color: GOLD }]}>
                       {missionLabel(selectedLesson.missionType)}
                     </Text>
@@ -10473,7 +11076,7 @@ filmmaker: [],
                   </View>
                 ) : null}
 
-                <View style={[styles.rulesCard, softSurfaceStyle]}>
+                <View style={[styles.rulesCard, !isDesktop && styles.detailCardMobile, softSurfaceStyle]}>
                   <Text style={[styles.rulesTitle, primaryTextStyle]}>Rules</Text>
 
                   {selectedLesson.constraints.map((rule, i) => (
@@ -10490,12 +11093,16 @@ filmmaker: [],
               <View
                 style={[
                   styles.modalActions,
+                  !isDesktop && styles.modalActionsMobile,
+                  isVeryCompact && styles.modalActionsStacked,
                   { backgroundColor: colors.card, borderTopColor: colors.border },
                 ]}
               >
                 <TouchableOpacity
                   style={[
                     styles.modalButton,
+                    !isDesktop && styles.modalButtonMobile,
+                    isVeryCompact && styles.modalButtonStacked,
                     styles.modalGhostButton,
                     { backgroundColor: colors.backgroundAlt, borderColor: colors.border },
                   ]}
@@ -10506,7 +11113,13 @@ filmmaker: [],
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.modalButton, styles.modalGoldButton, { backgroundColor: GOLD }]}
+                  style={[
+                    styles.modalButton,
+                    !isDesktop && styles.modalButtonMobile,
+                    isVeryCompact && styles.modalButtonStacked,
+                    styles.modalGoldButton,
+                    { backgroundColor: GOLD },
+                  ]}
                   onPress={() => {
                     if (!selectedLesson) return;
 
@@ -10517,7 +11130,7 @@ filmmaker: [],
 
                     if (isGuest) {
                       setSelectedLesson(null);
-                      promptSignIn('Create an account or sign in to submit workshop challenges.');
+                      promptSignIn('Create an account or sign in to post workshop exercise videos.');
                       return;
                     }
 
@@ -10565,7 +11178,7 @@ filmmaker: [],
                         ? 'Unlock with Pro'
                         : lessonNeedsSurgery
                           ? 'Unlock'
-                          : 'Upload'}
+                          : 'Post Video'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -10939,6 +11552,14 @@ const styles = StyleSheet.create({
     backgroundColor: CINEMA.bg,
   },
 
+  pageWrapMobile: {
+    paddingHorizontal: 14,
+  },
+
+  pageWrapCompact: {
+    paddingHorizontal: 10,
+  },
+
   mainLayout: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -11063,6 +11684,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
 
+  workshopTopLineMobile: {
+    fontSize: 17,
+    lineHeight: 23,
+    marginBottom: 0,
+    paddingHorizontal: 4,
+  },
+
+  workshopTopLineCompact: {
+    fontSize: 15,
+    lineHeight: 21,
+  },
+
   classTopBar: {
     width: '100%',
     flexDirection: 'row',
@@ -11100,6 +11733,11 @@ const styles = StyleSheet.create({
     lineHeight: 34,
     fontWeight: '800',
     letterSpacing: 0,
+  },
+
+  referenceGreetingMobile: {
+    fontSize: 24,
+    lineHeight: 28,
   },
 
   referenceDateLine: {
@@ -11511,6 +12149,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
+  currentLessonActionHidden: {
+    display: 'none',
+  },
+
   classStatsRow: {
     width: '100%',
     flexDirection: 'row',
@@ -11592,6 +12234,19 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
 
+  bootcampCardMobile: {
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 14,
+  },
+
+  bootcampCardCompact: {
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 10,
+  },
+
   bootcampCardWebDesktop: {
     maxWidth: 1320,
     minHeight: 700,
@@ -11616,11 +12271,33 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
   },
 
+  skillHeroCardMobile: {
+    minHeight: 0,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    justifyContent: 'flex-start',
+    gap: 13,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+
+  skillHeroCardCompact: {
+    gap: 10,
+    paddingHorizontal: 11,
+    paddingVertical: 12,
+  },
+
   skillHeroLeft: {
     flex: 1,
     minWidth: 260,
     maxWidth: 400,
     zIndex: 2,
+  },
+
+  skillHeroLeftMobile: {
+    width: '100%',
+    minWidth: 0,
+    maxWidth: '100%',
   },
 
   skillHeroStoryKicker: {
@@ -11642,11 +12319,22 @@ const styles = StyleSheet.create({
     fontStyle: 'normal',
   },
 
+  skillHeroQuoteMobile: {
+    maxWidth: '100%',
+  },
+
   heroProgressColumn: {
     width: 196,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 2,
+  },
+
+  heroProgressColumnMobile: {
+    width: '100%',
+    minHeight: 0,
+    alignItems: 'center',
+    paddingVertical: 0,
   },
 
   progressDialKicker: {
@@ -11689,6 +12377,11 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
 
+  heroActionStackMobile: {
+    width: '100%',
+    gap: 8,
+  },
+
   heroLessonCard: {
     minHeight: 82,
     borderRadius: 11,
@@ -11696,6 +12389,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     backgroundColor: CINEMA.card,
     justifyContent: 'center',
+  },
+
+  heroLessonCardMobile: {
+    minHeight: 74,
+    padding: 10,
   },
 
   heroCardTitleRow: {
@@ -11716,6 +12414,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 11,
+  },
+
+  heroLessonBodyMobile: {
+    gap: 9,
   },
 
   heroMissionCard: {
@@ -11743,6 +12445,11 @@ const styles = StyleSheet.create({
     paddingBottom: 2,
   },
 
+  treePathTabsContentMobile: {
+    justifyContent: 'flex-start',
+    paddingRight: 8,
+  },
+
   treePathTab: {
     minHeight: 34,
     borderRadius: 999,
@@ -11752,6 +12459,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+
+  treePathTabMobile: {
+    minHeight: 32,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    gap: 6,
   },
 
   treePathTabText: {
@@ -11790,6 +12504,13 @@ const styles = StyleSheet.create({
     backgroundColor: CINEMA.panel,
   },
 
+  skillTreeStageMobile: {
+    minHeight: 218,
+    borderRadius: 12,
+    paddingTop: 24,
+    paddingBottom: 20,
+  },
+
   roadmapTrackLayer: {
     position: 'absolute',
     left: 0,
@@ -11797,6 +12518,10 @@ const styles = StyleSheet.create({
     top: 55,
     height: 4,
     zIndex: 0,
+  },
+
+  roadmapTrackLayerCompact: {
+    top: 42,
   },
 
   roadmapTrackSegment: {
@@ -11850,6 +12575,10 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
 
+  roadmapStartMarkerCompact: {
+    minHeight: 160,
+  },
+
   roadmapStartNodeWrap: {
     width: 112,
     height: 112,
@@ -11857,6 +12586,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
     zIndex: 2,
+  },
+
+  roadmapStartNodeWrapCompact: {
+    width: 82,
+    height: 82,
   },
 
   roadmapStartGlow: {
@@ -11871,6 +12605,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
   },
 
+  roadmapStartGlowCompact: {
+    width: 54,
+    height: 54,
+    shadowRadius: 10,
+  },
+
   roadmapStartNode: {
     width: 54,
     height: 54,
@@ -11880,6 +12620,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(71,214,111,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  roadmapStartNodeCompact: {
+    width: 42,
+    height: 42,
   },
 
   roadmapStartCoreDot: {
@@ -11893,6 +12638,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
   },
 
+  roadmapStartCoreDotCompact: {
+    width: 8,
+    height: 8,
+  },
+
   roadmapNodesRow: {
     width: '100%',
     minHeight: 196,
@@ -11902,6 +12652,10 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
 
+  roadmapNodesRowCompact: {
+    minHeight: 160,
+  },
+
   roadmapChapterDivider: {
     minHeight: 196,
     position: 'relative',
@@ -11909,6 +12663,12 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     paddingTop: 118,
     paddingHorizontal: 10,
+  },
+
+  roadmapChapterDividerCompact: {
+    minHeight: 160,
+    paddingTop: 88,
+    paddingHorizontal: 5,
   },
 
   roadmapChapterDividerLine: {
@@ -11929,12 +12689,22 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
 
+  roadmapChapterGateCompact: {
+    top: 8,
+    width: 32,
+    height: 72,
+  },
+
   roadmapChapterGateLine: {
     position: 'absolute',
     width: 1,
     height: 90,
     borderRadius: 999,
     backgroundColor: 'rgba(198,166,100,0.48)',
+  },
+
+  roadmapChapterGateLineCompact: {
+    height: 68,
   },
 
   roadmapChapterLabel: {
@@ -11946,6 +12716,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  roadmapChapterLabelCompact: {
+    fontSize: 8,
+    letterSpacing: 0.7,
+  },
+
   roadmapChapterTitle: {
     color: CINEMA.textDim,
     fontSize: 11,
@@ -11955,11 +12730,21 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
 
+  roadmapChapterTitleCompact: {
+    fontSize: 9,
+    lineHeight: 12,
+    marginTop: 3,
+  },
+
   roadmapCheckpoint: {
     width: 172,
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'flex-start',
+  },
+
+  roadmapCheckpointCompact: {
+    minHeight: 160,
   },
 
   roadmapCheckpointCurrent: {
@@ -11979,12 +12764,22 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
 
+  roadmapNodeWrapCompact: {
+    width: 82,
+    height: 82,
+  },
+
   roadmapNodeGlow: {
     position: 'absolute',
     width: 92,
     height: 92,
     borderRadius: 999,
     backgroundColor: 'transparent',
+  },
+
+  roadmapNodeGlowCompact: {
+    width: 66,
+    height: 66,
   },
 
   roadmapNodeGlowActive: {
@@ -11997,6 +12792,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
   },
 
+  roadmapNodeGlowActiveCompact: {
+    width: 92,
+    height: 92,
+    shadowRadius: 14,
+  },
+
   roadmapNodeGlowFinal: {
     width: 108,
     height: 108,
@@ -12005,6 +12806,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.16,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 0 },
+  },
+
+  roadmapNodeGlowFinalCompact: {
+    width: 76,
+    height: 76,
+    shadowRadius: 12,
   },
 
   roadmapNodeCircle: {
@@ -12019,12 +12826,23 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
   },
 
+  roadmapNodeCircleCompact: {
+    width: 48,
+    height: 48,
+  },
+
   roadmapNodeCircleCurrent: {
     width: 96,
     height: 96,
     borderWidth: 2,
     shadowOpacity: 0.38,
     shadowRadius: 20,
+  },
+
+  roadmapNodeCircleCurrentCompact: {
+    width: 70,
+    height: 70,
+    shadowRadius: 13,
   },
 
   roadmapNodeCircleLocked: {
@@ -12042,10 +12860,20 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
+  roadmapNodeGlyphCompact: {
+    fontSize: 16,
+    lineHeight: 21,
+  },
+
   roadmapNodeGlyphCurrent: {
     fontSize: 31,
     lineHeight: 38,
     fontWeight: '800',
+  },
+
+  roadmapNodeGlyphCurrentCompact: {
+    fontSize: 23,
+    lineHeight: 29,
   },
 
   roadmapXpPill: {
@@ -12058,10 +12886,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  roadmapXpPillCompact: {
+    marginTop: -4,
+    minWidth: 42,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+
   roadmapXpText: {
     color: CINEMA.brass,
     fontSize: 9,
     fontWeight: '800',
+  },
+
+  roadmapXpTextCompact: {
+    fontSize: 8,
   },
 
   roadmapStepLabel: {
@@ -12074,6 +12913,12 @@ const styles = StyleSheet.create({
     marginBottom: -2,
   },
 
+  roadmapStepLabelCompact: {
+    fontSize: 8,
+    letterSpacing: 0.55,
+    marginTop: 5,
+  },
+
   roadmapNodeTitle: {
     color: CINEMA.text,
     fontSize: 13,
@@ -12084,9 +12929,20 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
 
+  roadmapNodeTitleCompact: {
+    fontSize: 10,
+    lineHeight: 13,
+    marginTop: 7,
+  },
+
   roadmapNodeTitleCurrent: {
     fontSize: 16,
     lineHeight: 21,
+  },
+
+  roadmapNodeTitleCurrentCompact: {
+    fontSize: 12,
+    lineHeight: 15,
   },
 
   roadmapNodeStatus: {
@@ -12095,6 +12951,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 6,
     textAlign: 'center',
+  },
+
+  roadmapNodeStatusCompact: {
+    fontSize: 9,
+    marginTop: 4,
   },
 
   chapterProgressDock: {
@@ -12130,6 +12991,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 13,
+  },
+
+  chapterDockCardMobile: {
+    minHeight: 82,
+    padding: 10,
+    gap: 10,
   },
 
   chapterDockIcon: {
@@ -13124,6 +13991,10 @@ featuredStatNumber: {
     gap: 4,
   },
 
+  missionBannerActionCompact: {
+    display: 'none',
+  },
+
   missionBannerActionText: {
     color: CINEMA.brass,
     fontSize: 10,
@@ -13568,6 +14439,14 @@ featuredStatNumber: {
     padding: 18,
   },
 
+  modalCenterMobile: {
+    padding: 12,
+  },
+
+  modalCenterCompact: {
+    padding: 8,
+  },
+
   modalCard: {
     width: '100%',
     maxWidth: 680,
@@ -13584,6 +14463,11 @@ featuredStatNumber: {
     borderColor: 'rgba(255,255,255,0.06)',
   },
 
+  modalCardMobile: {
+    maxHeight: '94%',
+    borderRadius: 12,
+  },
+
   surveyModalCard: {
     maxWidth: 700,
   },
@@ -13597,10 +14481,20 @@ featuredStatNumber: {
     borderColor: 'rgba(255,255,255,0.05)',
   },
 
+  modalHeaderMobile: {
+    gap: 10,
+    padding: 14,
+  },
+
   modalHeaderLeft: {
     flexDirection: 'row',
     gap: 14,
     flex: 1,
+  },
+
+  modalHeaderLeftMobile: {
+    gap: 10,
+    minWidth: 0,
   },
 
   modalIconCircle: {
@@ -13612,6 +14506,12 @@ featuredStatNumber: {
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(198,166,100,0.24)',
+  },
+
+  modalIconCircleMobile: {
+    width: 38,
+    height: 38,
+    borderRadius: 9,
   },
 
   surveyModalIconCircle: {
@@ -13796,6 +14696,11 @@ featuredStatNumber: {
     letterSpacing: 0,
   },
 
+  modalTitleMobile: {
+    fontSize: 18,
+    lineHeight: 23,
+  },
+
   modalMini: {
     color: CINEMA.textDim,
     fontSize: 12,
@@ -13823,6 +14728,11 @@ featuredStatNumber: {
     gap: 14,
   },
 
+  modalScrollContentMobile: {
+    padding: 12,
+    gap: 10,
+  },
+
   modalDescription: {
     color: CINEMA.textSoft,
     fontSize: 14,
@@ -13830,6 +14740,13 @@ featuredStatNumber: {
     paddingHorizontal: 20,
     paddingTop: 18,
     letterSpacing: 0.08,
+  },
+
+  modalDescriptionMobile: {
+    fontSize: 13,
+    lineHeight: 20,
+    paddingHorizontal: 0,
+    paddingTop: 0,
   },
 
   surgeryIntroText: {
@@ -13842,6 +14759,11 @@ featuredStatNumber: {
     gap: 10,
     paddingHorizontal: 20,
     paddingTop: 14,
+  },
+
+  modalMetaRowMobile: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
   },
 
   modalMetaPill: {
@@ -13927,6 +14849,10 @@ featuredStatNumber: {
     borderColor: 'rgba(255,255,255,0.045)',
   },
 
+  detailCardMobile: {
+    padding: 12,
+  },
+
   detailCardSoft: {
     backgroundColor: '#17131B',
   },
@@ -13949,6 +14875,52 @@ featuredStatNumber: {
     fontSize: 13,
     lineHeight: 21,
     letterSpacing: 0.05,
+  },
+
+  simpleStepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 10,
+  },
+
+  simpleStepRowMobile: {
+    gap: 8,
+    marginTop: 9,
+  },
+
+  simpleStepNumber: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+
+  simpleStepNumberMobile: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+  },
+
+  simpleStepNumberText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+
+  simpleStepText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 21,
+    letterSpacing: 0.02,
+  },
+
+  simpleStepTextMobile: {
+    fontSize: 12.5,
+    lineHeight: 19,
   },
 
   rulesCard: {
@@ -14135,6 +15107,16 @@ featuredStatNumber: {
     backgroundColor: '#0C0E12',
   },
 
+  modalActionsMobile: {
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+
+  modalActionsStacked: {
+    flexDirection: 'column',
+  },
+
   modalButton: {
     flex: 1,
     minHeight: 46,
@@ -14144,6 +15126,16 @@ featuredStatNumber: {
     gap: 7,
     borderRadius: 10,
     paddingHorizontal: 12,
+  },
+
+  modalButtonMobile: {
+    minHeight: 44,
+    paddingHorizontal: 9,
+  },
+
+  modalButtonStacked: {
+    width: '100%',
+    flex: 0,
   },
 
   modalGhostButton: {

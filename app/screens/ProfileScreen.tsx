@@ -2366,11 +2366,11 @@ export default function ProfileScreen() {
     }),
     [themeColors]
   );
-  const editModalBackground = isLight ? COLORS.backgroundAlt : COLORS.cardAlt;
-  const editModalCard = isLight ? COLORS.card : COLORS.card;
-  const editModalInput = isLight ? COLORS.input : COLORS.input;
-  const editModalPill = isLight ? COLORS.card : "#0A0A0A";
-  const editModalPillSelected = isLight ? "rgba(198,166,100,0.20)" : "rgba(198,166,100,0.18)";
+  const editModalBackground = isLight ? "#F5F5F7" : "#111114";
+  const editModalCard = isLight ? "#FFFFFF" : "#151518";
+  const editModalInput = isLight ? "#FFFFFF" : "#101013";
+  const editModalPill = isLight ? "#FFFFFF" : "#141417";
+  const editModalPillSelected = isLight ? "rgba(168,121,34,0.08)" : "rgba(198,166,100,0.10)";
   const showreelUploadTheme = useMemo(
     () =>
       isLight
@@ -2456,7 +2456,7 @@ export default function ProfileScreen() {
     (value?: string | null) => translateTrustedText(value || '', language),
     [language]
   );
-  const editModalDangerBg = isLight ? "rgba(255,107,107,0.10)" : "rgba(255,107,107,0.12)";
+  const editModalDangerBg = "transparent";
   const { triggerAppRefresh } = useAppRefresh();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -8683,36 +8683,44 @@ return (
         setShowEditModal(false);
       }}
     >
-      <KeyboardAvoidingView
-  style={[
-    styles.modalOverlay,
-    { backgroundColor: isLight ? "rgba(20,17,13,0.26)" : "#000000CC" },
-  ]}
-  behavior={Platform.OS === "ios" ? "height" : undefined}
->
-        <View
-          style={[
-            styles.modalContainer,
-            { backgroundColor: editModalBackground, borderColor: COLORS.border },
-          ]}
-        >
-          <View style={[styles.modalHandle, { backgroundColor: isLight ? COLORS.borderStrong : "rgba(255,255,255,0.18)" }]} />
-          <Text style={[styles.modalTitle, { color: COLORS.textPrimary }]}>Edit Profile</Text>
+	      <KeyboardAvoidingView
+	        style={[
+	          styles.modalOverlay,
+	          styles.editProfileModalOverlay,
+	          { backgroundColor: isLight ? "rgba(20,17,13,0.22)" : "rgba(0,0,0,0.66)" },
+	        ]}
+	        behavior={Platform.OS === "ios" ? "height" : undefined}
+	      >
+	        <View
+	          style={[
+	            styles.modalContainer,
+	            styles.editProfileModalContainer,
+	            { backgroundColor: editModalBackground, borderColor: COLORS.border },
+	          ]}
+	        >
+	          <View
+	            style={[
+	              styles.modalHandle,
+	              styles.editProfileHandle,
+	              { backgroundColor: isLight ? COLORS.borderStrong : "rgba(255,255,255,0.24)" },
+	            ]}
+	          />
+	          <Text style={[styles.editProfileTitle, { color: COLORS.textPrimary }]}>Edit profile</Text>
 
-          <ScrollView
-  style={{ flex: 1, width: "100%", backgroundColor: editModalBackground }}
-  contentContainerStyle={{
-  paddingBottom: Math.max(insets.bottom + 36, 56),
-  paddingTop: 4,
-  backgroundColor: editModalBackground,
-}}
-  showsVerticalScrollIndicator={false}
-  keyboardShouldPersistTaps="handled"
->
+	          <ScrollView
+	            style={{ flex: 1, width: "100%", backgroundColor: editModalBackground }}
+	            contentContainerStyle={{
+	              paddingBottom: Math.max(insets.bottom + 28, 44),
+	              paddingTop: 2,
+	              backgroundColor: editModalBackground,
+	            }}
+	            showsVerticalScrollIndicator={false}
+	            keyboardShouldPersistTaps="handled"
+	          >
             {/* Profile picture (own profile only) */}
             {isOwnProfile && (
-              <View style={[styles.field, { marginTop: 8 }]}>
-                <Text style={[styles.fieldLabel, { color: COLORS.textSecondary }]}>Profile picture</Text>
+	              <View style={[styles.field, styles.editProfileField, { marginTop: 8 }]}>
+	                <Text style={[styles.editProfileLabel, { color: COLORS.textSecondary }]}>Profile picture</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 2 }}>
                   {image || profile.avatar_url ? (
                     <Image
@@ -8744,26 +8752,30 @@ return (
                   )}
 
                   <TouchableOpacity
-                    style={[styles.pillBtn, { backgroundColor: editModalPill, borderColor: COLORS.border }]}
+	                    style={[
+	                      styles.editProfilePill,
+	                      { backgroundColor: editModalPill, borderColor: COLORS.border },
+	                    ]}
                     onPress={pickImage}
                     disabled={uploading}
                   >
-                    <Text style={[styles.pillText, { color: COLORS.textPrimary }]}>
-                      {uploading ? "Uploading..." : "Change profile picture"}
-                    </Text>
+	                    <Text style={[styles.editProfilePillText, { color: COLORS.textPrimary }]}>
+	                      {uploading ? "Uploading..." : "Change photo"}
+	                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
             )}
 
             {/* Full name */}
-            <View style={styles.field}>
-              <Text style={[styles.fieldLabel, { color: COLORS.textSecondary }]}>Name</Text>
+	            <View style={[styles.field, styles.editProfileField]}>
+	              <Text style={[styles.editProfileLabel, { color: COLORS.textSecondary }]}>Name</Text>
               <TextInput
                 value={fullName}
                 onChangeText={setFullName}
                 style={[
-                  styles.input,
+	                  styles.input,
+	                  styles.editProfileInput,
                   {
                     backgroundColor: editModalInput,
                     borderColor: COLORS.border,
@@ -8777,10 +8789,14 @@ return (
             </View>
 
             {/* City */}
-            <View style={styles.field}>
-              <Text style={[styles.fieldLabel, { color: COLORS.textSecondary }]}>City</Text>
-              <TouchableOpacity
-                style={[styles.pickerBtn, { backgroundColor: editModalInput, borderColor: COLORS.border }]}
+	            <View style={[styles.field, styles.editProfileField]}>
+	              <Text style={[styles.editProfileLabel, { color: COLORS.textSecondary }]}>City</Text>
+	              <TouchableOpacity
+	                style={[
+	                  styles.pickerBtn,
+	                  styles.editProfilePicker,
+	                  { backgroundColor: editModalInput, borderColor: COLORS.border },
+	                ]}
                 onPress={() => {
                   setCitySearch('');
                   setCityItems([]);
@@ -8788,7 +8804,12 @@ return (
                   setCityOpen(true);
                 }}
               >
-                <Text style={[styles.pickerBtnText, { color: cityName ? COLORS.textPrimary : COLORS.textSecondary }]}>
+	                <Text
+	                  style={[
+	                    styles.editProfilePickerText,
+	                    { color: cityName ? COLORS.textPrimary : COLORS.textSecondary },
+	                  ]}
+	                >
                   {cityName || "Search city"}
                 </Text>
                 <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
@@ -8796,10 +8817,14 @@ return (
             </View>
 
             {/* Main role */}
-            <View style={styles.field}>
-              <Text style={[styles.fieldLabel, { color: COLORS.textSecondary }]}>Main role</Text>
-              <TouchableOpacity
-                style={[styles.pickerBtn, { backgroundColor: editModalInput, borderColor: COLORS.border }]}
+	            <View style={[styles.field, styles.editProfileField]}>
+	              <Text style={[styles.editProfileLabel, { color: COLORS.textSecondary }]}>Main role</Text>
+	              <TouchableOpacity
+	                style={[
+	                  styles.pickerBtn,
+	                  styles.editProfilePicker,
+	                  { backgroundColor: editModalInput, borderColor: COLORS.border },
+	                ]}
                 onPress={() => {
                   setRoleSearchModalVisible(true);
                   setRoleSearchTerm("");
@@ -8807,7 +8832,12 @@ return (
                   setSearchingRoles(false);
                 }}
               >
-                <Text style={[styles.pickerBtnText, { color: mainRoleName ? COLORS.textPrimary : COLORS.textSecondary }]}>
+	                <Text
+	                  style={[
+	                    styles.editProfilePickerText,
+	                    { color: mainRoleName ? COLORS.textPrimary : COLORS.textSecondary },
+	                  ]}
+	                >
                   {mainRoleName ? translateRoleLabel(mainRoleName) : "Search role"}
                 </Text>
                 <Ionicons name="search" size={16} color={COLORS.textSecondary} />
@@ -8815,10 +8845,14 @@ return (
             </View>
 
             {/* Side roles */}
-            <View style={styles.field}>
-              <Text style={[styles.fieldLabel, { color: COLORS.textSecondary }]}>Side roles</Text>
-              <TouchableOpacity
-                style={[styles.pickerBtn, { backgroundColor: editModalInput, borderColor: COLORS.border }]}
+	            <View style={[styles.field, styles.editProfileField]}>
+	              <Text style={[styles.editProfileLabel, { color: COLORS.textSecondary }]}>Side roles</Text>
+	              <TouchableOpacity
+	                style={[
+	                  styles.pickerBtn,
+	                  styles.editProfilePicker,
+	                  { backgroundColor: editModalInput, borderColor: COLORS.border },
+	                ]}
                 onPress={() => {
                   setSideRoleModalVisible(true);
                   setRoleSearchTerm("");
@@ -8826,7 +8860,12 @@ return (
                   setSearchingRoles(false);
                 }}
               >
-                <Text style={[styles.pickerBtnText, { color: sideRoles.length ? COLORS.textPrimary : COLORS.textSecondary }]}>
+	                <Text
+	                  style={[
+	                    styles.editProfilePickerText,
+	                    { color: sideRoles.length ? COLORS.textPrimary : COLORS.textSecondary },
+	                  ]}
+	                >
                   {sideRoles.length ? sideRoles.map((role) => translateRoleLabel(role)).join(", ") : "Add side roles"}
                 </Text>
                 <Ionicons name="add" size={16} color={COLORS.textSecondary} />
@@ -8834,14 +8873,16 @@ return (
             </View>
 
             {/* Bio */}
-            <View style={styles.field}>
-              <Text style={[styles.fieldLabel, { color: COLORS.textSecondary }]}>About</Text>
+	            <View style={[styles.field, styles.editProfileField]}>
+	              <Text style={[styles.editProfileLabel, { color: COLORS.textSecondary }]}>About</Text>
               <TextInput
                 value={bio}
                 onChangeText={setBio}
                 style={[
-                  styles.input,
-                  styles.multiline,
+	                  styles.input,
+	                  styles.editProfileInput,
+	                  styles.multiline,
+	                  styles.editProfileMultiline,
                   {
                     backgroundColor: editModalInput,
                     borderColor: COLORS.border,
@@ -8856,8 +8897,8 @@ return (
             </View>
 
             {isOwnProfile && hiddenProfileSubmissions.length > 0 && (
-              <View style={styles.field}>
-                <Text style={[styles.fieldLabel, { color: COLORS.textSecondary }]}>Hidden submissions</Text>
+	              <View style={[styles.field, styles.editProfileField]}>
+	                <Text style={[styles.editProfileLabel, { color: COLORS.textSecondary }]}>Hidden submissions</Text>
                 <View style={styles.hiddenSubmissionList}>
                   {hiddenProfileSubmissions.map((submission) => {
                     const thumb = submission.youtube_url
@@ -8906,14 +8947,14 @@ return (
                           }}
                           style={[
                             styles.hiddenSubmissionAction,
-                            {
-                              backgroundColor: editModalPillSelected,
-                              borderColor: COLORS.primary,
-                            },
+	                            {
+	                              backgroundColor: editModalPill,
+	                              borderColor: COLORS.border,
+	                            },
                           ]}
                           activeOpacity={0.86}
                         >
-                          <Text style={[styles.hiddenSubmissionActionText, { color: COLORS.primary }]}>Unhide</Text>
+	                          <Text style={[styles.hiddenSubmissionActionText, { color: COLORS.textPrimary }]}>Unhide</Text>
                         </TouchableOpacity>
                       </View>
                     );
@@ -8923,13 +8964,15 @@ return (
             )}
 
             {/* Featured Showreel (MP4 only) */}
-            <View style={styles.field}>
-              <Text style={[styles.fieldLabel, { color: COLORS.textSecondary }]}>Showreels</Text>
+	            <View style={[styles.field, styles.editProfileField]}>
+	              <Text style={[styles.editProfileLabel, { color: COLORS.textSecondary }]}>Showreels</Text>
 
               <View style={{ marginTop: 8 }}>
                 {showreels.length > 0 ? (
                   <>
-                    <Text style={[styles.fieldLabel, { color: COLORS.textSecondary, marginBottom: 8 }]}>Current showreels</Text>
+	                    <Text style={[styles.editProfileLabel, { color: COLORS.textSecondary, marginBottom: 8 }]}>
+	                      Current showreels
+	                    </Text>
 
                     <View style={{ gap: 10 }}>
                       {showreels.map((r, index) => {
@@ -8954,16 +8997,16 @@ return (
                           <View
                             key={r.id}
                             style={{
-                              borderWidth: 1,
-                              borderColor: isMain ? COLORS.primary : COLORS.border,
-                              borderRadius: 10,
-                              padding: 10,
-                              backgroundColor: isLight ? COLORS.card : editModalCard,
-                              shadowColor: isLight ? "rgba(0,0,0,0.18)" : "#000",
-                              shadowOpacity: isLight ? 0.04 : 0,
-                              shadowRadius: isLight ? 8 : 0,
-                              shadowOffset: { width: 0, height: 3 },
-                            }}
+	                              borderWidth: StyleSheet.hairlineWidth,
+	                              borderColor: isMain ? COLORS.borderStrong : COLORS.border,
+	                              borderRadius: 16,
+	                              padding: 14,
+	                              backgroundColor: isLight ? COLORS.card : editModalCard,
+	                              shadowColor: isLight ? "rgba(0,0,0,0.16)" : "#000",
+	                              shadowOpacity: isLight ? 0.03 : 0,
+	                              shadowRadius: isLight ? 10 : 0,
+	                              shadowOffset: { width: 0, height: 4 },
+	                            }}
                           >
                             <View
                               style={{
@@ -8974,12 +9017,12 @@ return (
                             >
                               <View
                                 style={{
-                                  width: 86,
-                                  height: 54,
-                                  borderRadius: 8,
+	                                  width: 88,
+	                                  height: 56,
+	                                  borderRadius: 10,
                                   overflow: "hidden",
                                   backgroundColor: COLORS.backgroundAlt,
-                                  borderWidth: 1,
+	                                  borderWidth: StyleSheet.hairlineWidth,
                                   borderColor: COLORS.border,
                                   alignItems: "center",
                                   justifyContent: "center",
@@ -9001,9 +9044,11 @@ return (
                                   <Text
                                     style={{
                                       color: COLORS.textPrimary,
-                                      fontFamily: FONT_OBLIVION,
-                                      fontSize: 14,
-                                      fontWeight: "800",
+	                                      fontFamily: SYSTEM_SANS,
+	                                      fontSize: 15,
+	                                      lineHeight: 20,
+	                                      fontWeight: "600",
+	                                      letterSpacing: 0,
                                       flex: 1,
                                     }}
                                     numberOfLines={1}
@@ -9016,19 +9061,21 @@ return (
                                       style={{
                                         paddingHorizontal: 8,
                                         paddingVertical: 4,
-                                        borderRadius: 6,
-                                        backgroundColor: editModalPillSelected,
-                                        borderWidth: 1,
-                                        borderColor: COLORS.primary,
+	                                        borderRadius: 999,
+	                                        backgroundColor: editModalPill,
+	                                        borderWidth: StyleSheet.hairlineWidth,
+	                                        borderColor: COLORS.border,
                                       }}
                                     >
                                       <Text
                                         style={{
-                                          color: COLORS.primary,
-                                          fontFamily: FONT_OBLIVION,
-                                          fontSize: 9,
-                                          fontWeight: "800",
-                                          textTransform: "uppercase",
+	                                          color: COLORS.textSecondary,
+	                                          fontFamily: SYSTEM_SANS,
+	                                          fontSize: 12,
+	                                          lineHeight: 15,
+	                                          fontWeight: "500",
+	                                          letterSpacing: 0,
+	                                          textTransform: "none",
                                         }}
                                       >
                                         Main
@@ -9040,9 +9087,11 @@ return (
                                 <Text
                                   style={{
                                     color: COLORS.textSecondary,
-                                    fontFamily: FONT_OBLIVION,
-                                    fontSize: 12,
-                                    marginTop: 4,
+	                                    fontFamily: SYSTEM_SANS,
+	                                    fontSize: 13,
+	                                    lineHeight: 18,
+	                                    fontWeight: "400",
+	                                    marginTop: 4,
                                   }}
                                   numberOfLines={1}
                                 >
@@ -9056,13 +9105,13 @@ return (
                                 <TouchableOpacity
                                   onPress={() => setPrimaryShowreel(r)}
                                   style={[
-                                    styles.pillBtn,
-                                    { backgroundColor: COLORS.backgroundAlt, borderColor: COLORS.border },
+	                                    styles.editProfilePill,
+	                                    { backgroundColor: COLORS.backgroundAlt, borderColor: COLORS.border },
                                     isUnavailable ? { opacity: 0.55 } : null,
                                   ]}
                                   disabled={isUnavailable}
                                 >
-                                  <Text style={[styles.pillText, { color: COLORS.textPrimary }]}>Make Main</Text>
+	                                  <Text style={[styles.editProfilePillText, { color: COLORS.textPrimary }]}>Make main</Text>
                                 </TouchableOpacity>
                               )}
                             </View>
@@ -9071,9 +9120,11 @@ return (
                               <Text
                                 style={{
                                   color: COLORS.textSecondary,
-                                  fontSize: 11,
-                                  fontFamily: FONT_OBLIVION,
-                                  marginBottom: 6,
+	                                  fontSize: 13,
+	                                  lineHeight: 18,
+	                                  fontFamily: SYSTEM_SANS,
+	                                  fontWeight: "500",
+	                                  marginBottom: 6,
                                 }}
                               >
                                 Category
@@ -9091,20 +9142,22 @@ return (
                                       key={`${r.id}_edit_${cat}`}
                                       onPress={() => updateShowreelCategory(r, cat)}
                                       style={{
-                                        paddingHorizontal: 10,
-                                        paddingVertical: 6,
-                                        borderRadius: 7,
-                                        backgroundColor: selected ? editModalPillSelected : COLORS.backgroundAlt,
-                                        borderWidth: 1,
-                                        borderColor: selected ? COLORS.primary : COLORS.border,
+	                                        paddingHorizontal: 12,
+	                                        paddingVertical: 7,
+	                                        borderRadius: 999,
+	                                        backgroundColor: selected ? editModalPillSelected : COLORS.backgroundAlt,
+	                                        borderWidth: StyleSheet.hairlineWidth,
+	                                        borderColor: selected ? COLORS.borderStrong : COLORS.border,
                                       }}
                                     >
                                       <Text
                                         style={{
-                                          color: selected ? COLORS.primary : COLORS.textSecondary,
-                                          fontSize: 11,
-                                          fontFamily: FONT_OBLIVION,
-                                          fontWeight: selected ? "800" : "600",
+	                                          color: selected ? COLORS.textPrimary : COLORS.textSecondary,
+	                                          fontSize: 13,
+	                                          lineHeight: 17,
+	                                          fontFamily: SYSTEM_SANS,
+	                                          fontWeight: "500",
+	                                          letterSpacing: 0,
                                         }}
                                       >
                                         {cat}
@@ -9115,34 +9168,34 @@ return (
                               </ScrollView>
                             </View>
 
-                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                              <TouchableOpacity
-  style={[
-    styles.pillBtn,
-    { backgroundColor: COLORS.backgroundAlt, borderColor: COLORS.border },
-    showreelThumbUploadingId === r.id ? { opacity: 0.7 } : null,
-  ]}
-  onPress={() => changeShowreelThumbnail(r)}
-  disabled={showreelThumbUploadingId === r.id}
->
-  {showreelThumbUploadingId === r.id ? (
-    <ActivityIndicator color={COLORS.textPrimary} />
-  ) : (
-    <Text style={[styles.pillText, { color: COLORS.textPrimary }]}>
-  {pendingShowreelThumbs[r.id] || r.thumbnail_url ? "Change Thumbnail" : "Add Thumbnail"}
-</Text>
-  )}
-</TouchableOpacity>
+	                            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+	                              <TouchableOpacity
+	                                style={[
+	                                  styles.editProfilePill,
+	                                  { backgroundColor: COLORS.backgroundAlt, borderColor: COLORS.border },
+	                                  showreelThumbUploadingId === r.id ? { opacity: 0.7 } : null,
+	                                ]}
+	                                onPress={() => changeShowreelThumbnail(r)}
+	                                disabled={showreelThumbUploadingId === r.id}
+	                              >
+	                                {showreelThumbUploadingId === r.id ? (
+	                                  <ActivityIndicator color={COLORS.textPrimary} />
+	                                ) : (
+	                                  <Text style={[styles.editProfilePillText, { color: COLORS.textPrimary }]}>
+	                                    {pendingShowreelThumbs[r.id] || r.thumbnail_url ? "Change thumbnail" : "Add thumbnail"}
+	                                  </Text>
+	                                )}
+	                              </TouchableOpacity>
 
-                              <TouchableOpacity
-                                style={[
-                                  styles.pillBtn,
-                                  { backgroundColor: editModalDangerBg, borderColor: COLORS.danger },
-                                ]}
-                                onPress={() => deleteShowreel(r)}
-                              >
-                                <Text style={[styles.pillText, { color: COLORS.danger }]}>Delete</Text>
-                              </TouchableOpacity>
+	                              <TouchableOpacity
+	                                style={[
+	                                  styles.editProfilePill,
+	                                  { backgroundColor: editModalDangerBg, borderColor: COLORS.border },
+	                                ]}
+	                                onPress={() => deleteShowreel(r)}
+	                              >
+	                                <Text style={[styles.editProfileDangerText, { color: COLORS.textSecondary }]}>Remove</Text>
+	                              </TouchableOpacity>
                             </View>
                           </View>
                         );
@@ -9150,31 +9203,38 @@ return (
                     </View>
                   </>
                 ) : (
-                  <Text style={[block.muted, { color: COLORS.textSecondary, marginBottom: 6 }]}>
-                    Free includes 1 showreel. Pro lets you upload up to 3 showreels and choose your main featured reel.
-                  </Text>
+	                  <Text style={[styles.editProfileNoticeText, { color: COLORS.textSecondary, marginBottom: 6, textAlign: "left" }]}>
+	                    Free includes 1 showreel. Pro lets you upload up to 3 showreels and choose your main featured reel.
+	                  </Text>
                 )}
 
-                <TouchableOpacity
-                  style={[
-                    styles.primaryBtn,
-                    {
-                      marginTop: 10,
-                      opacity: mp4MainUploading || srUploading || showreels.length >= 3 ? 0.7 : 1,
-                    },
-                  ]}
+	                <TouchableOpacity
+	                  style={[
+	                    styles.editProfileActionButton,
+	                    {
+	                      marginTop: 10,
+	                      opacity: mp4MainUploading || srUploading || showreels.length >= 3 ? 0.7 : 1,
+	                      backgroundColor: showreels.length >= 3 ? editModalPill : COLORS.primary,
+	                      borderColor: showreels.length >= 3 ? COLORS.border : COLORS.primary,
+	                    },
+	                  ]}
                   onPress={uploadMainMP4}
                   disabled={mp4MainUploading || srUploading || showreels.length >= 3}
                 >
                   {mp4MainUploading || srUploading ? (
                     <ActivityIndicator color={COLORS.textOnPrimary} />
                   ) : (
-                    <Text style={[styles.primaryBtnText, { color: COLORS.textOnPrimary }]}>
-                      {showreels.length >= 3
-                        ? "Maximum of 3 showreels reached"
-                        : showreels.length === 0
-                        ? "Upload First Showreel"
-                        : "Upload Another Showreel"}
+	                    <Text
+	                      style={[
+	                        styles.editProfileActionText,
+	                        { color: showreels.length >= 3 ? COLORS.textSecondary : COLORS.textOnPrimary },
+	                      ]}
+	                    >
+	                      {showreels.length >= 3
+	                        ? "Maximum of 3 showreels reached"
+	                        : showreels.length === 0
+	                        ? "Upload first showreel"
+	                        : "Upload another showreel"}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -9183,21 +9243,23 @@ return (
                   <View
                     style={{
                       marginTop: 10,
-                      borderWidth: 1,
-                      borderColor: COLORS.primary,
-                      backgroundColor: editModalPillSelected,
-                      borderRadius: 9,
+	                      borderWidth: StyleSheet.hairlineWidth,
+	                      borderColor: COLORS.border,
+	                      backgroundColor: editModalPill,
+	                      borderRadius: 12,
                       paddingHorizontal: 12,
                       paddingVertical: 10,
                     }}
                   >
                     <Text
                       style={{
-                        color: COLORS.textPrimary,
-                        fontFamily: FONT_OBLIVION,
-                        fontSize: 12,
-                        lineHeight: 17,
-                        textAlign: 'center',
+	                        color: COLORS.textSecondary,
+	                        fontFamily: SYSTEM_SANS,
+	                        fontSize: 13,
+	                        lineHeight: 18,
+	                        fontWeight: "400",
+	                        letterSpacing: 0,
+	                        textAlign: 'center',
                       }}
                     >
                       {showreelUploadNotice}
@@ -9234,76 +9296,72 @@ return (
             </View>
 
             {/* Extra portfolio uploads */}
-            <View style={styles.field}>
-              <Text style={[styles.fieldLabel, { color: COLORS.textSecondary }]}>Add supporting work</Text>
-              <View style={styles.uploadRow}>
-                <TouchableOpacity
-                  style={[styles.pillBtn, { backgroundColor: editModalPill, borderColor: COLORS.border }]}
-                  onPress={uploadPortfolioImage}
-                >
-                  <Text style={[styles.pillText, { color: COLORS.textPrimary }]}>+ Image</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.pillBtn, { backgroundColor: editModalPill, borderColor: COLORS.border }]}
-                  onPress={uploadPortfolioPDF}
-                >
-                  <Text style={[styles.pillText, { color: COLORS.textPrimary }]}>+ PDF</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.pillBtn, { backgroundColor: editModalPill, borderColor: COLORS.border }]}
-                  onPress={uploadPortfolioMP3}
-                >
-                  <Text style={[styles.pillText, { color: COLORS.textPrimary }]}>+ Audio</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+	            <View style={[styles.field, styles.editProfileField]}>
+	              <Text style={[styles.editProfileLabel, { color: COLORS.textSecondary }]}>Add supporting work</Text>
+	              <View style={styles.uploadRow}>
+	                <TouchableOpacity
+	                  style={[styles.editProfilePill, { backgroundColor: editModalPill, borderColor: COLORS.border }]}
+	                  onPress={uploadPortfolioImage}
+	                >
+	                  <Text style={[styles.editProfilePillText, { color: COLORS.textPrimary }]}>+ Image</Text>
+	                </TouchableOpacity>
+	                <TouchableOpacity
+	                  style={[styles.editProfilePill, { backgroundColor: editModalPill, borderColor: COLORS.border }]}
+	                  onPress={uploadPortfolioPDF}
+	                >
+	                  <Text style={[styles.editProfilePillText, { color: COLORS.textPrimary }]}>+ PDF</Text>
+	                </TouchableOpacity>
+	                <TouchableOpacity
+	                  style={[styles.editProfilePill, { backgroundColor: editModalPill, borderColor: COLORS.border }]}
+	                  onPress={uploadPortfolioMP3}
+	                >
+	                  <Text style={[styles.editProfilePillText, { color: COLORS.textPrimary }]}>+ Audio</Text>
+	                </TouchableOpacity>
+	              </View>
+	            </View>
 
             {/* Actions */}
-            <View
-  style={{
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 18,
-    marginBottom: Math.max(insets.bottom, 8),
-  }}
->
-              <TouchableOpacity
-                style={[
-                  styles.ghostBtn,
-                  {
-                    flex: 1,
-                    backgroundColor: editModalPill,
-                    borderColor: COLORS.border,
-                  },
-                ]}
-                onPress={() => {
-                  if (srUploading || mp4MainUploading) return;
-                  setShowEditModal(false);
-                }}
-                disabled={uploading || srUploading || mp4MainUploading}
-              >
-                <Text style={[styles.ghostBtnText, { color: COLORS.textPrimary }]}>Cancel</Text>
-              </TouchableOpacity>
+	            <View
+	              style={[
+	                styles.editProfileActions,
+	                { marginBottom: Math.max(insets.bottom, 8) },
+	              ]}
+	            >
+	              <TouchableOpacity
+	                style={[
+	                  styles.editProfileActionButton,
+	                  {
+	                    backgroundColor: editModalPill,
+	                    borderColor: COLORS.border,
+	                  },
+	                ]}
+	                onPress={() => {
+	                  if (srUploading || mp4MainUploading) return;
+	                  setShowEditModal(false);
+	                }}
+	                disabled={uploading || srUploading || mp4MainUploading}
+	              >
+	                <Text style={[styles.editProfileActionText, { color: COLORS.textPrimary }]}>Cancel</Text>
+	              </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[
-                  styles.primaryBtn,
-                  {
-                    flex: 1,
-                    opacity: !isDirty || uploading || srUploading || mp4MainUploading ? 0.72 : 1,
-                    backgroundColor: COLORS.primary,
-                    borderColor: COLORS.primary,
-                  },
-                ]}
-                disabled={!isDirty || uploading || srUploading || mp4MainUploading}
-                onPress={saveProfile}
-              >
-                {uploading ? (
-                  <ActivityIndicator color={COLORS.textOnPrimary} />
-                ) : (
-                  <Text style={[styles.primaryBtnText, { color: COLORS.textOnPrimary }]}>Save</Text>
-                )}
-              </TouchableOpacity>
+	              <TouchableOpacity
+	                style={[
+	                  styles.editProfileActionButton,
+	                  {
+	                    opacity: !isDirty || uploading || srUploading || mp4MainUploading ? 0.72 : 1,
+	                    backgroundColor: COLORS.primary,
+	                    borderColor: COLORS.primary,
+	                  },
+	                ]}
+	                disabled={!isDirty || uploading || srUploading || mp4MainUploading}
+	                onPress={saveProfile}
+	              >
+	                {uploading ? (
+	                  <ActivityIndicator color={COLORS.textOnPrimary} />
+	                ) : (
+	                  <Text style={[styles.editProfileActionText, { color: COLORS.textOnPrimary }]}>Save</Text>
+	                )}
+	              </TouchableOpacity>
             </View>
           </ScrollView>
         </View>
@@ -11199,8 +11257,8 @@ heroIdentityEpicDesktop: {
     gap: 10,
   },
   hiddenSubmissionRow: {
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: COLORS.border,
     backgroundColor: COLORS.card,
     padding: 8,
@@ -11211,10 +11269,10 @@ heroIdentityEpicDesktop: {
   hiddenSubmissionThumb: {
     width: 64,
     aspectRatio: 16 / 9,
-    borderRadius: 8,
+    borderRadius: 9,
     overflow: 'hidden',
     backgroundColor: COLORS.cardAlt,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
@@ -11225,32 +11283,35 @@ heroIdentityEpicDesktop: {
   },
   hiddenSubmissionTitle: {
     color: COLORS.textPrimary,
-    fontFamily: FONT_OBLIVION,
-    fontSize: 13,
-    fontWeight: '800',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '600',
   },
   hiddenSubmissionMeta: {
     marginTop: 2,
     color: COLORS.textSecondary,
-    fontFamily: FONT_OBLIVION,
-    fontSize: 11,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    lineHeight: 16,
   },
   hiddenSubmissionAction: {
-    minHeight: 34,
+    minHeight: 36,
     paddingHorizontal: 12,
-    borderRadius: 8,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(198,166,100,0.12)',
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(198,166,100,0.35)',
   },
   hiddenSubmissionActionText: {
     color: COLORS.primary,
-    fontFamily: FONT_OBLIVION,
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '500',
+    textTransform: 'none',
   },
 
   profileWatchOverlay: {
@@ -12213,6 +12274,199 @@ heroIdentityEpicDesktop: {
     fontFamily: FONT_OBLIVION,
     textTransform: "uppercase",
     marginBottom: 6,
+  },
+  editProfileModalOverlay: {
+    justifyContent: "center",
+    paddingHorizontal: Platform.OS === "web" ? 24 : 12,
+    paddingVertical: Platform.OS === "web" ? 28 : 12,
+  },
+  editProfileModalContainer: {
+    height: Platform.OS === "web" ? "86%" : "92%",
+    maxHeight: Platform.OS === "web" ? 780 : undefined,
+    maxWidth: Platform.OS === "web" ? 900 : "100%",
+    borderRadius: 22,
+    paddingHorizontal: Platform.OS === "web" ? 28 : 18,
+    paddingTop: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowOpacity: Platform.OS === "web" ? 0.26 : 0.2,
+    shadowRadius: 26,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 10,
+    marginTop: 0,
+  },
+  editProfileHandle: {
+    width: 46,
+    height: 4,
+    marginBottom: 18,
+    opacity: 0.45,
+  },
+  editProfileTitle: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: "600",
+    letterSpacing: 0,
+    textTransform: "none",
+    marginBottom: 10,
+  },
+  editProfileField: {
+    marginTop: 16,
+  },
+  editProfileLabel: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "500",
+    letterSpacing: 0,
+    textTransform: "none",
+    marginLeft: 0,
+    marginBottom: 7,
+    opacity: 0.78,
+  },
+  editProfileInput: {
+    minHeight: 46,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 15,
+    lineHeight: 20,
+    letterSpacing: 0,
+    fontWeight: "400",
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  editProfileMultiline: {
+    minHeight: 112,
+    textAlignVertical: "top",
+  },
+  editProfilePicker: {
+    minHeight: 46,
+    borderRadius: 12,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  editProfilePickerText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 15,
+    lineHeight: 20,
+    letterSpacing: 0,
+    fontWeight: "400",
+    flex: 1,
+  },
+  editProfilePill: {
+    minHeight: 40,
+    borderRadius: 12,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editProfilePillText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "500",
+    letterSpacing: 0,
+    textTransform: "none",
+  },
+  editProfileDangerText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "500",
+    letterSpacing: 0,
+    textTransform: "none",
+  },
+  editProfileShowreelCard: {
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  editProfileShowreelThumb: {
+    width: 88,
+    height: 56,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  editProfileShowreelTitle: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "600",
+    letterSpacing: 0,
+  },
+  editProfileShowreelMeta: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "400",
+    letterSpacing: 0,
+    marginTop: 3,
+  },
+  editProfileMainBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  editProfileMainBadgeText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: "500",
+    letterSpacing: 0,
+    textTransform: "none",
+  },
+  editProfileChip: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  editProfileChipText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: "500",
+    letterSpacing: 0,
+  },
+  editProfileNotice: {
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  editProfileNoticeText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "400",
+    letterSpacing: 0,
+    textAlign: "center",
+  },
+  editProfileActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 20,
+  },
+  editProfileActionButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  editProfileActionText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "600",
+    letterSpacing: 0,
+    textTransform: "none",
   },
 
   field: { marginTop: 18 },

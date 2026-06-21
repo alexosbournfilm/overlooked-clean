@@ -2419,7 +2419,7 @@ const successMessage = isWorkshopMode
 
   const previewThumbToShow = customThumbUri || thumbUri;
 
-  const headerTitle = isWorkshopMode ? "Workshop submission" : "Upload film";
+  const headerTitle = isWorkshopMode ? "Workshop video post" : "Upload film";
   const headerSub = isWorkshopMode
     ? `Step ${step ?? "—"} • ${lessonTitle || "Workshop lesson"}`
     : isCreatorChallengeMode
@@ -2427,9 +2427,9 @@ const successMessage = isWorkshopMode
     : "Upload your film to appear on Featured and enter this month’s challenge.";
 
   const leftTitle = isWorkshopMode ? "Lesson" : isCreatorChallengeMode ? "Challenge" : "How it works";
-  const rightTitle = "Upload film";
+  const rightTitle = isWorkshopMode ? "Post exercise video" : "Upload film";
   const rightSubtitle = isWorkshopMode
-    ? "Complete the workshop step and enter this month’s challenge."
+    ? "Upload the specific recordable video requested by this workshop exercise."
     : isCreatorChallengeMode
     ? "Upload normally. Overlooked will attach the selected challenge automatically."
     : "Choose a title, category, file, and thumbnail.";
@@ -2439,7 +2439,7 @@ const successMessage = isWorkshopMode
       ? "Lesson already completed"
       : loading
       ? "Submitting…"
-      : "Upload & complete lesson"
+      : "Post video & complete lesson"
     : isCreatorChallengeMode
     ? loading
       ? "Submitting…"
@@ -2449,7 +2449,7 @@ const successMessage = isWorkshopMode
     : "Upload film";
 
   const footnoteText = isWorkshopMode
-    ? "This will create a Featured submission, enter the monthly challenge, and complete the workshop step."
+    ? "This will post your exercise video, enter the monthly challenge, and complete the workshop step."
     : isCreatorChallengeMode
     ? "This will create a Featured submission and automatically attach it to the selected creator challenge."
     : "Your upload will appear on Featured and be entered into this month’s challenge.";
@@ -2604,30 +2604,48 @@ return (
                   <View style={styles.infoList}>
                     <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Add a title")}</Text>
                     <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Choose 1 category")}</Text>
-                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Upload your film + thumbnail")}</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>
+                      {tt(isWorkshopMode ? "• Upload your exercise video + thumbnail" : "• Upload your film + thumbnail")}
+                    </Text>
                     <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Agree to the rules")}</Text>
-                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Submit your upload")}</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>
+                      {tt(isWorkshopMode ? "• Post your exercise video" : "• Submit your upload")}
+                    </Text>
                   </View>
 
                   <View style={[styles.softDivider, { backgroundColor: T.line }]} />
 
                   <Text style={[styles.infoMiniTitle, { color: T.accent }]}>{tt("What happens after upload")}</Text>
-<View style={styles.infoList}>
-  <Text style={[styles.infoBullet, { color: T.sub }]}>
-    {tt(
-      isCreatorChallengeMode
-        ? "• Your film is uploaded and attached to the creator challenge"
-        : "• Your film is uploaded and entered into this month’s challenge"
-    )}
-  </Text>
-  <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Your lesson is completed straight away after upload")}</Text>
-  <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Featured can take a little time to process your film before it appears")}</Text>
-  <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Once processing finishes, it will show on Featured and play normally")}</Text>
-  <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Other users can then watch and vote on it")}</Text>
-  {isWorkshopMode ? (
-    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• This lesson is marked complete automatically")}</Text>
-  ) : null}
-</View>
+                  <View style={styles.infoList}>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>
+                      {tt(
+                        isWorkshopMode
+                          ? "• Your exercise video is posted and entered into this month’s challenge"
+                          : isCreatorChallengeMode
+                          ? "• Your film is uploaded and attached to the creator challenge"
+                          : "• Your film is uploaded and entered into this month’s challenge"
+                      )}
+                    </Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>
+                      {tt(
+                        isWorkshopMode
+                          ? "• Your workshop step is completed straight away after posting"
+                          : "• Your lesson is completed straight away after upload"
+                      )}
+                    </Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>
+                      {tt(
+                        isWorkshopMode
+                          ? "• Featured can take a little time to process your video before it appears"
+                          : "• Featured can take a little time to process your film before it appears"
+                      )}
+                    </Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Once processing finishes, it will show on Featured and play normally")}</Text>
+                    <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• Other users can then watch and vote on it")}</Text>
+                    {isWorkshopMode ? (
+                      <Text style={[styles.infoBullet, { color: T.sub }]}>{tt("• This lesson is marked complete automatically")}</Text>
+                    ) : null}
+                  </View>
 
                   <View style={[styles.softDivider, { backgroundColor: T.line }]} />
 
@@ -2740,12 +2758,16 @@ return (
                     ) : null}
 
                     <Text style={[styles.helperText, { color: T.mute }]}>
-                      Pick 1 category so Featured can sort your film.
+                      {isWorkshopMode
+                        ? "Pick 1 category so Featured can sort your exercise video."
+                        : "Pick 1 category so Featured can sort your film."}
                     </Text>
                   </View>
 
                   <View style={[styles.fieldGroup, styles.assetSection]}>
-                    <Text style={[styles.label, { color: T.text }]}>Film file</Text>
+                    <Text style={[styles.label, { color: T.text }]}>
+                      {isWorkshopMode ? "Exercise video file" : "Film file"}
+                    </Text>
 
                     {!localUri ? (
                       <TouchableOpacity
@@ -2755,7 +2777,9 @@ return (
                       >
                         <View style={styles.primaryBtnMainRow}>
                           <Ionicons name="cloud-upload-outline" size={18} color={T.textOnPrimary} />
-                          <Text style={[styles.primaryBtnText, { color: T.textOnPrimary }]}>Upload film</Text>
+                          <Text style={[styles.primaryBtnText, { color: T.textOnPrimary }]}>
+                            {isWorkshopMode ? "Upload exercise video" : "Upload film"}
+                          </Text>
                         </View>
                         <Text style={[styles.primaryBtnSub, { color: T.textOnPrimary, opacity: 0.72 }]}>
                           {uploadButtonLimitText}
