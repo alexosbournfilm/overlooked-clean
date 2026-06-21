@@ -634,6 +634,8 @@ export default function JobsScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const insets = useSafeAreaInsets();
   const isWebMobile = isMobileWebViewport(width);
+  const isPhoneLayout = width < 520;
+  const isTinyPhoneLayout = width < 380;
   const nativeLikeModalAnimation = Platform.OS === 'web' && !isWebMobile ? 'none' : 'slide';
   const { triggerAppRefresh } = useAppRefresh();
   const GOLD = colors.primary;
@@ -2289,11 +2291,12 @@ if (!me) {
         <TouchableOpacity
           onPress={() => setSelectedChallenge(challenge)}
           activeOpacity={0.92}
-          style={styles.challengeRow}
+          style={[styles.challengeRow, isPhoneLayout && styles.challengeRowPhone]}
         >
           <View
             style={[
               styles.challengeCard,
+              isPhoneLayout && styles.challengeCardPhone,
               {
                 backgroundColor: challengeTone.surface,
                 borderColor: ended ? T.line : challengeTone.border,
@@ -2301,10 +2304,11 @@ if (!me) {
               },
             ]}
           >
-            <View style={styles.challengeBadgeRow}>
+            <View style={[styles.challengeBadgeRow, isPhoneLayout && styles.challengeBadgeRowPhone]}>
               <View
                 style={[
                   styles.challengeTypeBadge,
+                  isPhoneLayout && styles.challengeTypeBadgePhone,
                   {
                     backgroundColor: ended ? challengeTone.surfaceAlt : challengeTone.goldSoft,
                     borderColor: ended ? T.line : GOLD_LINE,
@@ -2330,17 +2334,24 @@ if (!me) {
               </Text>
             </View>
 
-            <Text style={[styles.challengeTitle, { color: challengeTone.text }]} numberOfLines={2}>
+            <Text
+              style={[
+                styles.challengeTitle,
+                isPhoneLayout && styles.challengeTitlePhone,
+                { color: challengeTone.text },
+              ]}
+              numberOfLines={2}
+            >
               {challenge.title}
             </Text>
 
-            <View style={styles.challengeHostRow}>
+            <View style={[styles.challengeHostRow, isPhoneLayout && styles.challengeHostRowPhone]}>
               <TouchableOpacity
                 onPress={(event: any) => goToCreatorProfile(challenge, event)}
                 activeOpacity={0.8}
                 style={styles.creatorAvatarTap}
               >
-                {renderCreatorAvatar(creator, 38)}
+                {renderCreatorAvatar(creator, isPhoneLayout ? 34 : 38)}
               </TouchableOpacity>
               <View style={styles.challengeTitleBlock}>
                 <View style={styles.challengeCreatorRow}>
@@ -2358,49 +2369,64 @@ if (!me) {
             </View>
 
             {challenge.description ? (
-              <Text numberOfLines={2} style={[styles.challengeDescription, { color: challengeTone.sub }]}>
+              <Text
+                numberOfLines={isPhoneLayout ? 3 : 2}
+                style={[
+                  styles.challengeDescription,
+                  isPhoneLayout && styles.challengeDescriptionPhone,
+                  { color: challengeTone.sub },
+                ]}
+              >
                 {challenge.description}
               </Text>
             ) : null}
 
-            <Text style={[styles.challengePrizeLine, { color: challengeTone.text }]} numberOfLines={1}>
+            <Text
+              style={[
+                styles.challengePrizeLine,
+                isPhoneLayout && styles.challengePrizeLinePhone,
+                { color: challengeTone.text },
+              ]}
+              numberOfLines={2}
+            >
               <Text style={{ color: challengeTone.sub }}>Prize: </Text>
               {rewardText}
             </Text>
 
-            <View style={styles.challengeMetaGrid}>
-              <View style={[styles.challengeMetaPill, { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line }]}>
+            <View style={[styles.challengeMetaGrid, isPhoneLayout && styles.challengeMetaGridPhone]}>
+              <View style={[styles.challengeMetaPill, isPhoneLayout && styles.challengeMetaPillPhone, { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line }]}>
                 <Ionicons name="gift-outline" size={14} color={challengeTone.gold} />
-                <Text style={[styles.challengeMetaText, { color: challengeTone.text }]} numberOfLines={1}>
+                <Text style={[styles.challengeMetaText, isPhoneLayout && styles.challengeMetaTextPhone, { color: challengeTone.text }]} numberOfLines={1}>
                   {formatChallengeRewardPill(challenge.prize_description)}
                 </Text>
               </View>
-              <View style={[styles.challengeMetaPill, { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line }]}>
+              <View style={[styles.challengeMetaPill, isPhoneLayout && styles.challengeMetaPillPhone, { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line }]}>
                 <Ionicons name="timer-outline" size={14} color={ended ? T.mute : challengeTone.gold} />
-                <Text style={[styles.challengeMetaText, { color: ended ? T.mute : challengeTone.text }]} numberOfLines={1}>
+                <Text style={[styles.challengeMetaText, isPhoneLayout && styles.challengeMetaTextPhone, { color: ended ? T.mute : challengeTone.text }]} numberOfLines={1}>
                   {formatChallengeCountdownCompact(challenge.ends_at)}
                 </Text>
               </View>
-              <View style={[styles.challengeMetaPill, { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line }]}>
+              <View style={[styles.challengeMetaPill, isPhoneLayout && styles.challengeMetaPillPhone, { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line }]}>
                 <Ionicons name="film-outline" size={14} color={challengeTone.gold} />
-                <Text style={[styles.challengeMetaText, { color: challengeTone.text }]} numberOfLines={1}>
+                <Text style={[styles.challengeMetaText, isPhoneLayout && styles.challengeMetaTextPhone, { color: challengeTone.text }]} numberOfLines={1}>
                   {entriesLabel}
                 </Text>
               </View>
-              <View style={[styles.challengeMetaPill, { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line }]}>
+              <View style={[styles.challengeMetaPill, isPhoneLayout && styles.challengeMetaPillPhone, { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line }]}>
                 <Ionicons name="at-outline" size={14} color={challengeTone.gold} />
-                <Text style={[styles.challengeMetaText, { color: challengeTone.text }]} numberOfLines={1}>
+                <Text style={[styles.challengeMetaText, isPhoneLayout && styles.challengeMetaTextPhone, { color: challengeTone.text }]} numberOfLines={1}>
                   {formatReactionPill(reactionPlatform)}
                 </Text>
               </View>
             </View>
 
-            <View style={styles.challengeActionsRow}>
+            <View style={[styles.challengeActionsRow, isPhoneLayout && styles.challengeActionsRowPhone]}>
               <TouchableOpacity
                 onPress={() => setSelectedChallenge(challenge)}
                 activeOpacity={0.9}
                 style={[
                   styles.challengeSecondaryButton,
+                  isPhoneLayout && styles.challengeSecondaryButtonPhone,
                   !isWebMobile && styles.challengeSecondaryButtonWide,
                   { backgroundColor: 'transparent', borderColor: T.line },
                 ]}
@@ -2422,6 +2448,7 @@ if (!me) {
       challengeTone,
       goToCreatorProfile,
       isWebMobile,
+      isPhoneLayout,
       renderCreatorAvatar,
     ]
   );
@@ -2439,11 +2466,12 @@ if (!me) {
       <TouchableOpacity
         onPress={() => setSelectedJob(job)}
         activeOpacity={0.9}
-        style={styles.jobRow}
+        style={[styles.jobRow, isPhoneLayout && styles.jobRowPhone]}
       >
         <View
           style={[
             styles.jobCard,
+            isPhoneLayout && styles.jobCardPhone,
             {
               backgroundColor: T.surface,
               borderColor: T.line,
@@ -2451,7 +2479,7 @@ if (!me) {
             },
           ]}
         >
-          <View style={styles.jobCardTopRow}>
+          <View style={[styles.jobCardTopRow, isPhoneLayout && styles.jobCardTopRowPhone]}>
             <View style={styles.jobCardHeaderLeft}>
               <Text style={[styles.jobTitle, { color: T.text }]}>
                 {decode(job.creative_roles?.name || 'Job')}
@@ -2464,7 +2492,7 @@ if (!me) {
               </View>
             </View>
 
-            <View style={[styles.rateBadge, { backgroundColor: T.surface2, borderColor: T.line }]}>
+            <View style={[styles.rateBadge, isPhoneLayout && styles.rateBadgePhone, { backgroundColor: T.surface2, borderColor: T.line }]}>
               <Text style={[styles.rateBadgeText, { color: T.text }]}>{rateText}</Text>
             </View>
           </View>
@@ -2523,7 +2551,7 @@ if (!me) {
       </TouchableOpacity>
     );
   },
-  [GOLD, GOLD_LINE, GOLD_SOFT, T, colors.shadow, goToProfile]
+  [GOLD, GOLD_LINE, GOLD_SOFT, T, colors.shadow, goToProfile, isPhoneLayout]
 );
   const renderMyJob = useCallback(
   ({ item }: { item: MyJob }) => {
@@ -2536,10 +2564,11 @@ if (!me) {
     const hasApplicants = job.applicants && job.applicants.length > 0;
 
     return (
-      <View style={styles.jobRow}>
+      <View style={[styles.jobRow, isPhoneLayout && styles.jobRowPhone]}>
         <View
           style={[
             styles.jobCard,
+            isPhoneLayout && styles.jobCardPhone,
             {
               backgroundColor: T.surface,
               borderColor: T.line,
@@ -2547,7 +2576,7 @@ if (!me) {
             },
           ]}
         >
-          <View style={styles.jobCardTopRow}>
+          <View style={[styles.jobCardTopRow, isPhoneLayout && styles.jobCardTopRowPhone]}>
             <View style={styles.jobCardHeaderLeft}>
               <Text style={[styles.jobTitle, { color: T.text }]}>
                 {decode(job.creative_roles?.name || 'Job')}
@@ -2558,7 +2587,7 @@ if (!me) {
               </View>
             </View>
 
-            <View style={[styles.rateBadge, { backgroundColor: T.surface2, borderColor: T.line }]}>
+            <View style={[styles.rateBadge, isPhoneLayout && styles.rateBadgePhone, { backgroundColor: T.surface2, borderColor: T.line }]}>
               <Text style={[styles.rateBadgeText, { color: T.text }]}>{rateText}</Text>
             </View>
           </View>
@@ -2670,7 +2699,7 @@ if (!me) {
       </View>
     );
   },
-  [GOLD, GOLD_LINE, GOLD_SOFT, T, colors.shadow, colors.textOnPrimary, handleCloseJob, navigation]
+  [GOLD, GOLD_LINE, GOLD_SOFT, T, colors.shadow, colors.textOnPrimary, handleCloseJob, isPhoneLayout, navigation]
 );
 
   const anyFilterActive = useMemo(
@@ -2686,18 +2715,37 @@ if (!me) {
 
   const ListHeader = useMemo(
   () => (
-    <View style={styles.listHeaderRoot}>
-      <View style={styles.opportunitiesHeader}>
-        <Text style={[styles.opportunitiesTitle, { color: T.text }]}>Opportunities</Text>
-        <Text style={[styles.opportunitiesSubtitle, { color: T.sub }]}>
+    <View style={[styles.listHeaderRoot, isPhoneLayout && styles.listHeaderRootPhone]}>
+      <View style={[styles.opportunitiesHeader, isPhoneLayout && styles.opportunitiesHeaderPhone]}>
+        <Text
+          style={[
+            styles.opportunitiesTitle,
+            isPhoneLayout && styles.opportunitiesTitlePhone,
+            isTinyPhoneLayout && styles.opportunitiesTitleTiny,
+            { color: T.text },
+          ]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.72}
+        >
+          Opportunities
+        </Text>
+        <Text
+          style={[
+            styles.opportunitiesSubtitle,
+            isPhoneLayout && styles.opportunitiesSubtitlePhone,
+            { color: T.sub },
+          ]}
+        >
           Challenges and jobs for filmmakers building real work.
         </Text>
       </View>
 
-      <View style={styles.opportunityTabsWrap}>
+      <View style={[styles.opportunityTabsWrap, isPhoneLayout && styles.opportunityTabsWrapPhone]}>
         <View
           style={[
             styles.opportunityTabsShell,
+            isPhoneLayout && styles.opportunityTabsShellPhone,
             {
               backgroundColor: T.surface2,
               borderColor: T.line,
@@ -2715,6 +2763,7 @@ if (!me) {
                 key={tab.key}
                 style={[
                   styles.opportunitySegmentTap,
+                  isPhoneLayout && styles.opportunitySegmentTapPhone,
                   {
                     backgroundColor: active ? GOLD : 'transparent',
                     shadowColor: active ? GOLD : colors.shadow,
@@ -2727,8 +2776,12 @@ if (!me) {
                 <Text
                   style={[
                     styles.opportunitySegmentText,
+                    isPhoneLayout && styles.opportunitySegmentTextPhone,
                     { color: active ? colors.textOnPrimary : T.sub },
                   ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
                 >
                   {tab.label}
                 </Text>
@@ -2741,7 +2794,7 @@ if (!me) {
       {opportunityTab === 'creator_challenges' ? (
         <>
           {creatorProfile?.is_creator ? (
-          <View style={styles.filtersInline}>
+          <View style={[styles.filtersInline, isPhoneLayout && styles.filtersInlinePhone]}>
             {(['browse', 'my'] as const).map((tab) => {
               const active = challengeView === tab;
               return (
@@ -2774,13 +2827,28 @@ if (!me) {
           <View
             style={[
               styles.creatorSectionHeader,
+              isPhoneLayout && styles.creatorSectionHeaderPhone,
               isWebMobile && styles.creatorSectionHeaderStack,
               !creatorProfile?.is_creator && styles.creatorSectionHeaderNoFilters,
             ]}
           >
             <View style={styles.creatorSectionCopy}>
-              <Text style={[styles.creatorSectionTitle, { color: T.text }]}>Creator Challenges</Text>
-              <Text style={[styles.creatorSectionSubtitle, { color: T.sub }]}>
+              <Text
+                style={[
+                  styles.creatorSectionTitle,
+                  isPhoneLayout && styles.creatorSectionTitlePhone,
+                  { color: T.text },
+                ]}
+              >
+                Creator Challenges
+              </Text>
+              <Text
+                style={[
+                  styles.creatorSectionSubtitle,
+                  isPhoneLayout && styles.creatorSectionSubtitlePhone,
+                  { color: T.sub },
+                ]}
+              >
                 Enter creator-led briefs, win rewards, and get featured across Overlooked and social media.
               </Text>
             </View>
@@ -2812,7 +2880,7 @@ if (!me) {
         </>
       ) : (
         <>
-          <View style={styles.categoryTabsWrap}>
+          <View style={[styles.categoryTabsWrap, isPhoneLayout && styles.categoryTabsWrapPhone]}>
             <View style={styles.categoryTabsRow}>
               {(['free', 'paid', 'my'] as const).map((tab) => {
                 const active = activeTab === tab;
@@ -2854,7 +2922,7 @@ if (!me) {
           </View>
 
           {activeTab !== 'my' && (
-            <View style={styles.filtersInline}>
+            <View style={[styles.filtersInline, isPhoneLayout && styles.filtersInlinePhone]}>
               <TouchableOpacity
                 onPress={() => setCityFilterModalVisible(true)}
                 style={[
@@ -2965,6 +3033,8 @@ if (!me) {
     colors.textOnPrimary,
     isLight,
     isWebMobile,
+    isPhoneLayout,
+    isTinyPhoneLayout,
     openPostChallengeComposer,
     gamifyLoading,
     jobs.length,
@@ -4907,12 +4977,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  listHeaderRootPhone: {
+    paddingTop: 10,
+    overflow: 'hidden',
+  },
+
   opportunitiesHeader: {
     width: '100%',
     maxWidth: 1200,
     paddingHorizontal: Platform.OS === 'web' ? 72 : 22,
     alignItems: 'center',
     marginBottom: Platform.OS === 'web' ? 18 : 14,
+  },
+
+  opportunitiesHeaderPhone: {
+    paddingHorizontal: 16,
+    marginBottom: 14,
   },
 
   opportunitiesTitle: {
@@ -4922,6 +5002,17 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0,
     textAlign: 'center',
+  },
+
+  opportunitiesTitlePhone: {
+    fontSize: 38,
+    lineHeight: 43,
+    width: '100%',
+  },
+
+  opportunitiesTitleTiny: {
+    fontSize: 34,
+    lineHeight: 39,
   },
 
   opportunitiesSubtitle: {
@@ -4934,11 +5025,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  opportunitiesSubtitlePhone: {
+    maxWidth: 310,
+    fontSize: 16,
+    lineHeight: 23,
+    paddingHorizontal: 6,
+  },
+
   opportunityTabsWrap: {
     width: '100%',
     paddingHorizontal: Platform.OS === 'web' ? 72 : 22,
     alignItems: 'center',
     marginBottom: Platform.OS === 'web' ? 22 : 18,
+  },
+
+  opportunityTabsWrapPhone: {
+    paddingHorizontal: 16,
+    marginBottom: 18,
   },
 
   opportunityTabsShell: {
@@ -4952,12 +5055,25 @@ const styles = StyleSheet.create({
     gap: 4,
   },
 
+  opportunityTabsShellPhone: {
+    maxWidth: 430,
+    height: 46,
+    padding: 5,
+    borderRadius: 18,
+  },
+
   opportunitySegmentTap: {
     flex: 1,
     height: 32,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  opportunitySegmentTapPhone: {
+    height: 34,
+    borderRadius: 13,
+    paddingHorizontal: 4,
   },
 
   opportunitySegmentTapActive: {
@@ -4972,6 +5088,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0,
+    textAlign: 'center',
+  },
+
+  opportunitySegmentTextPhone: {
+    fontSize: 11,
+    lineHeight: 14,
   },
 
   /* Category tabs */
@@ -4981,6 +5103,11 @@ const styles = StyleSheet.create({
     marginBottom: Platform.OS === 'web' ? 16 : 14,
     width: '100%',
     alignItems: 'center',
+  },
+
+  categoryTabsWrapPhone: {
+    paddingHorizontal: 16,
+    marginBottom: 12,
   },
   categoryTabsRow: {
   flexDirection: 'row',
@@ -5053,6 +5180,11 @@ detailModalCard: {
   paddingHorizontal: Platform.OS === 'web' ? 72 : 22,
   paddingTop: 0,
   paddingBottom: Platform.OS === 'web' ? 18 : 14,
+},
+filtersInlinePhone: {
+  paddingHorizontal: 16,
+  paddingBottom: 14,
+  gap: 8,
 },
 filterPill: {
   flexDirection: 'row',
@@ -5130,6 +5262,12 @@ filterPill: {
     gap: 12,
   },
 
+  creatorSectionHeaderPhone: {
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    gap: 14,
+  },
+
   creatorSectionHeaderStack: {
     flexDirection: 'column',
     alignItems: 'stretch',
@@ -5152,6 +5290,11 @@ filterPill: {
     letterSpacing: 0,
   },
 
+  creatorSectionTitlePhone: {
+    fontSize: 31,
+    lineHeight: 36,
+  },
+
   creatorSectionSubtitle: {
     marginTop: 4,
     fontFamily: SYSTEM_SANS,
@@ -5159,6 +5302,12 @@ filterPill: {
     lineHeight: 19,
     fontWeight: '600',
     maxWidth: 620,
+  },
+
+  creatorSectionSubtitlePhone: {
+    fontSize: 16,
+    lineHeight: 23,
+    maxWidth: 330,
   },
   creatorValueRow: {
     flexDirection: 'row',
@@ -5222,6 +5371,11 @@ filterPill: {
     paddingHorizontal: Platform.OS === 'web' ? 72 : 22,
   },
 
+  challengeRowPhone: {
+    paddingHorizontal: 16,
+    maxWidth: 520,
+  },
+
   challengeCard: {
     backgroundColor: T.surface2,
     borderRadius: Platform.OS === 'web' ? 22 : 20,
@@ -5235,12 +5389,23 @@ filterPill: {
     shadowOffset: { width: 0, height: 10 },
     elevation: 1,
   },
+
+  challengeCardPhone: {
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+  },
   challengeBadgeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 10,
     marginBottom: 8,
+  },
+
+  challengeBadgeRowPhone: {
+    alignItems: 'flex-start',
+    gap: 8,
   },
   challengeTypeBadge: {
     alignSelf: 'flex-start',
@@ -5252,6 +5417,11 @@ filterPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+
+  challengeTypeBadgePhone: {
+    maxWidth: 210,
+    paddingHorizontal: 9,
   },
   challengeTypeBadgeText: {
     fontFamily: SYSTEM_SANS,
@@ -5273,6 +5443,11 @@ filterPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+
+  challengeHostRowPhone: {
+    marginTop: 11,
+    gap: 9,
   },
   creatorAvatarTap: {
     flexShrink: 0,
@@ -5303,6 +5478,11 @@ filterPill: {
     fontFamily: SYSTEM_SANS,
     letterSpacing: 0,
   },
+
+  challengeTitlePhone: {
+    fontSize: 27,
+    lineHeight: 32,
+  },
   challengeCreatorRow: {
     marginTop: 5,
     flexDirection: 'row',
@@ -5328,6 +5508,12 @@ filterPill: {
     fontFamily: SYSTEM_SANS,
     maxWidth: 780,
   },
+
+  challengeDescriptionPhone: {
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 13,
+  },
   challengePrizeLine: {
     marginTop: 12,
     fontFamily: SYSTEM_SANS,
@@ -5335,6 +5521,11 @@ filterPill: {
     lineHeight: 20,
     fontWeight: '700',
     maxWidth: 780,
+  },
+
+  challengePrizeLinePhone: {
+    fontSize: 15,
+    lineHeight: 21,
   },
   challengeRewardCallout: {
     marginTop: 14,
@@ -5371,6 +5562,11 @@ filterPill: {
     gap: 8,
     marginTop: 14,
   },
+
+  challengeMetaGridPhone: {
+    gap: 7,
+    marginTop: 15,
+  },
   challengeMetaPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -5382,11 +5578,22 @@ filterPill: {
     paddingVertical: 6,
     maxWidth: '100%',
   },
+
+  challengeMetaPillPhone: {
+    minHeight: 29,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
   challengeMetaText: {
     fontSize: 12,
     fontWeight: '700',
     fontFamily: SYSTEM_SANS,
     maxWidth: 170,
+  },
+
+  challengeMetaTextPhone: {
+    maxWidth: 124,
+    fontSize: 11,
   },
   challengeActionsRow: {
     flexDirection: 'row',
@@ -5395,6 +5602,12 @@ filterPill: {
     justifyContent: 'flex-end',
     alignItems: 'center',
     flexWrap: 'wrap',
+  },
+
+  challengeActionsRowPhone: {
+    justifyContent: 'flex-start',
+    alignItems: 'stretch',
+    marginTop: 18,
   },
   challengeActionsStack: {
     flexDirection: 'column',
@@ -5410,6 +5623,12 @@ filterPill: {
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  challengeSecondaryButtonPhone: {
+    flexGrow: 1,
+    width: '100%',
+    minHeight: 42,
   },
   challengeSecondaryButtonWide: {
     flexGrow: 0,
@@ -5675,6 +5894,11 @@ filterPill: {
     alignSelf: 'center',
     paddingHorizontal: Platform.OS === 'web' ? 72 : 22,
   },
+
+  jobRowPhone: {
+    paddingHorizontal: 16,
+    maxWidth: 520,
+  },
   rowSpacer: {
     height: 16,
   },
@@ -5696,11 +5920,23 @@ filterPill: {
     shadowOffset: { width: 0, height: 10 },
     elevation: 1,
   },
+
+  jobCardPhone: {
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+  },
   jobCardTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: 10,
+  },
+
+  jobCardTopRowPhone: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 8,
   },
   jobCardHeaderLeft: {
     flex: 1,
@@ -5739,6 +5975,11 @@ filterPill: {
     backgroundColor: 'rgba(255,255,255,0.05)',
     borderWidth: 1,
     borderColor: T.lineSoft,
+  },
+
+  rateBadgePhone: {
+    maxWidth: '100%',
+    alignSelf: 'flex-start',
   },
   rateBadgeText: {
     color: T.text,

@@ -9671,7 +9671,7 @@ function RoadmapCheckpointButton({
     (value?: string | null) => translateTrustedText(value || '', language),
     [language]
   );
-  const nodeTrackClearance = current ? (compact ? 43 : 56) : compact ? 30 : 40;
+  const nodeTrackClearance = current ? (compact ? 36 : 56) : compact ? 27 : 40;
   const trackSegmentLength = Math.max(0, width / 2 - nodeTrackClearance);
 
   return (
@@ -9751,7 +9751,7 @@ function RoadmapCheckpointButton({
           ]}
         >
           {completed ? (
-            <Ionicons name="checkmark-outline" size={compact ? 24 : 34} color={GREEN} />
+            <Ionicons name="checkmark-outline" size={compact ? 22 : 34} color={GREEN} />
           ) : (
             <Text
               style={[
@@ -10191,9 +10191,9 @@ filmmaker: [],
   const surgeryClears = surgeryClearedSteps.length;
   const chapterMeta = PATH_STAGE_META[selectedPath];
   const wheelDisplayPercent = isFocused ? animatedCompletionPercent : completionPercent;
-  const progressDialSize = isCompact ? 132 : isMobile ? 150 : 170;
-  const progressDialInnerSize = isCompact ? 82 : isMobile ? 92 : 104;
-  const progressDialFontSize = isCompact ? 26 : isMobile ? 30 : 36;
+  const progressDialSize = isVeryCompact ? 112 : isCompact ? 122 : isMobile ? 142 : 170;
+  const progressDialInnerSize = isVeryCompact ? 70 : isCompact ? 76 : isMobile ? 88 : 104;
+  const progressDialFontSize = isVeryCompact ? 23 : isCompact ? 25 : isMobile ? 29 : 36;
   const progressTickLeft = progressDialSize / 2 - 1;
   const progressTickTop = progressDialSize / 2 - (isCompact ? 5 : 6);
   const progressTickHeight = isCompact ? 9 : isMobile ? 10 : 12;
@@ -10302,11 +10302,11 @@ filmmaker: [],
   const roadmapCurrentIndex =
     roadmapCurrentNodeIndex >= 0 ? roadmapCurrentNodeIndex : Math.max(0, roadmapNodes.length - 1);
   const roadmapCompact = !isDesktop;
-  const roadmapStepWidth = isDesktop ? 258 : isCompact ? 154 : 182;
-  const roadmapChapterDividerWidth = isDesktop ? 136 : isCompact ? 74 : 92;
-  const roadmapStartMarkerWidth = isDesktop ? 170 : isCompact ? 112 : 126;
-  const roadmapSideInset = isDesktop ? 118 : isCompact ? 24 : 42;
-  const mobileShellWidth = Math.max(0, width - (isCompact ? 20 : 28));
+  const roadmapStepWidth = isDesktop ? 258 : isVeryCompact ? 118 : isCompact ? 128 : 170;
+  const roadmapChapterDividerWidth = isDesktop ? 136 : isVeryCompact ? 44 : isCompact ? 56 : 84;
+  const roadmapStartMarkerWidth = isDesktop ? 170 : isVeryCompact ? 78 : isCompact ? 90 : 118;
+  const roadmapSideInset = isDesktop ? 118 : isVeryCompact ? 10 : isCompact ? 14 : 36;
+  const mobileShellWidth = Math.max(0, width - (isVeryCompact ? 12 : isCompact ? 16 : 28));
   const roadmapMinStageWidth = isDesktop ? 980 : mobileShellWidth;
   const chapterDockCardWidth = isDesktop
     ? 330
@@ -10726,10 +10726,26 @@ filmmaker: [],
               },
             ]}
           >
-            <Text style={[styles.treePathTabText, { color: active ? GOLD : MUTED }]}>
+            <Text
+              style={[
+                styles.treePathTabText,
+                !isDesktop && styles.treePathTabTextMobile,
+                isVeryCompact && styles.treePathTabTextTiny,
+                { color: active ? GOLD : MUTED },
+              ]}
+              numberOfLines={1}
+            >
               {path.shortLabel}
             </Text>
-            <Text style={[styles.treePathTabCount, { color: active ? GOLD : MUTED_2 }]}>
+            <Text
+              style={[
+                styles.treePathTabCount,
+                !isDesktop && styles.treePathTabCountMobile,
+                isVeryCompact && styles.treePathTabCountTiny,
+                { color: active ? GOLD : MUTED_2 },
+              ]}
+              numberOfLines={1}
+            >
               {progress}/40
             </Text>
           </Pressable>
@@ -10748,6 +10764,7 @@ filmmaker: [],
           style={[
             styles.skillTreeStage,
             !isDesktop && styles.skillTreeStageMobile,
+            isCompact && styles.skillTreeStageCompact,
             {
               width: roadmapStageWidth,
               minWidth: roadmapMinStageWidth,
@@ -12463,9 +12480,9 @@ const styles = StyleSheet.create({
 
   treePathTabMobile: {
     minHeight: 32,
-    paddingHorizontal: 11,
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    gap: 6,
+    gap: 5,
   },
 
   treePathTabText: {
@@ -12474,10 +12491,26 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
+  treePathTabTextMobile: {
+    fontSize: 9,
+  },
+
+  treePathTabTextTiny: {
+    fontSize: 8,
+  },
+
   treePathTabCount: {
     color: CINEMA.textDim,
     fontSize: 9,
     fontWeight: '800',
+  },
+
+  treePathTabCountMobile: {
+    fontSize: 8,
+  },
+
+  treePathTabCountTiny: {
+    display: 'none',
   },
 
   skillTreeShell: {
@@ -12505,10 +12538,16 @@ const styles = StyleSheet.create({
   },
 
   skillTreeStageMobile: {
-    minHeight: 218,
+    minHeight: 190,
     borderRadius: 12,
-    paddingTop: 24,
-    paddingBottom: 20,
+    paddingTop: 18,
+    paddingBottom: 16,
+  },
+
+  skillTreeStageCompact: {
+    minHeight: 176,
+    paddingTop: 15,
+    paddingBottom: 13,
   },
 
   roadmapTrackLayer: {
@@ -12521,7 +12560,7 @@ const styles = StyleSheet.create({
   },
 
   roadmapTrackLayerCompact: {
-    top: 42,
+    top: 35,
   },
 
   roadmapTrackSegment: {
@@ -12576,7 +12615,7 @@ const styles = StyleSheet.create({
   },
 
   roadmapStartMarkerCompact: {
-    minHeight: 160,
+    minHeight: 140,
   },
 
   roadmapStartNodeWrap: {
@@ -12589,8 +12628,8 @@ const styles = StyleSheet.create({
   },
 
   roadmapStartNodeWrapCompact: {
-    width: 82,
-    height: 82,
+    width: 72,
+    height: 72,
   },
 
   roadmapStartGlow: {
@@ -12606,9 +12645,9 @@ const styles = StyleSheet.create({
   },
 
   roadmapStartGlowCompact: {
-    width: 54,
-    height: 54,
-    shadowRadius: 10,
+    width: 48,
+    height: 48,
+    shadowRadius: 8,
   },
 
   roadmapStartNode: {
@@ -12623,8 +12662,8 @@ const styles = StyleSheet.create({
   },
 
   roadmapStartNodeCompact: {
-    width: 42,
-    height: 42,
+    width: 38,
+    height: 38,
   },
 
   roadmapStartCoreDot: {
@@ -12653,7 +12692,7 @@ const styles = StyleSheet.create({
   },
 
   roadmapNodesRowCompact: {
-    minHeight: 160,
+    minHeight: 140,
   },
 
   roadmapChapterDivider: {
@@ -12666,9 +12705,9 @@ const styles = StyleSheet.create({
   },
 
   roadmapChapterDividerCompact: {
-    minHeight: 160,
-    paddingTop: 88,
-    paddingHorizontal: 5,
+    minHeight: 140,
+    paddingTop: 76,
+    paddingHorizontal: 4,
   },
 
   roadmapChapterDividerLine: {
@@ -12690,9 +12729,9 @@ const styles = StyleSheet.create({
   },
 
   roadmapChapterGateCompact: {
-    top: 8,
-    width: 32,
-    height: 72,
+    top: 6,
+    width: 28,
+    height: 62,
   },
 
   roadmapChapterGateLine: {
@@ -12704,7 +12743,7 @@ const styles = StyleSheet.create({
   },
 
   roadmapChapterGateLineCompact: {
-    height: 68,
+    height: 58,
   },
 
   roadmapChapterLabel: {
@@ -12717,8 +12756,8 @@ const styles = StyleSheet.create({
   },
 
   roadmapChapterLabelCompact: {
-    fontSize: 8,
-    letterSpacing: 0.7,
+    fontSize: 7,
+    letterSpacing: 0.5,
   },
 
   roadmapChapterTitle: {
@@ -12731,8 +12770,8 @@ const styles = StyleSheet.create({
   },
 
   roadmapChapterTitleCompact: {
-    fontSize: 9,
-    lineHeight: 12,
+    fontSize: 8,
+    lineHeight: 11,
     marginTop: 3,
   },
 
@@ -12744,7 +12783,7 @@ const styles = StyleSheet.create({
   },
 
   roadmapCheckpointCompact: {
-    minHeight: 160,
+    minHeight: 140,
   },
 
   roadmapCheckpointCurrent: {
@@ -12765,8 +12804,8 @@ const styles = StyleSheet.create({
   },
 
   roadmapNodeWrapCompact: {
-    width: 82,
-    height: 82,
+    width: 72,
+    height: 72,
   },
 
   roadmapNodeGlow: {
@@ -12778,8 +12817,8 @@ const styles = StyleSheet.create({
   },
 
   roadmapNodeGlowCompact: {
-    width: 66,
-    height: 66,
+    width: 58,
+    height: 58,
   },
 
   roadmapNodeGlowActive: {
@@ -12793,9 +12832,9 @@ const styles = StyleSheet.create({
   },
 
   roadmapNodeGlowActiveCompact: {
-    width: 92,
-    height: 92,
-    shadowRadius: 14,
+    width: 78,
+    height: 78,
+    shadowRadius: 11,
   },
 
   roadmapNodeGlowFinal: {
@@ -12809,9 +12848,9 @@ const styles = StyleSheet.create({
   },
 
   roadmapNodeGlowFinalCompact: {
-    width: 76,
-    height: 76,
-    shadowRadius: 12,
+    width: 66,
+    height: 66,
+    shadowRadius: 10,
   },
 
   roadmapNodeCircle: {
@@ -12827,8 +12866,8 @@ const styles = StyleSheet.create({
   },
 
   roadmapNodeCircleCompact: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
   },
 
   roadmapNodeCircleCurrent: {
@@ -12840,9 +12879,9 @@ const styles = StyleSheet.create({
   },
 
   roadmapNodeCircleCurrentCompact: {
-    width: 70,
-    height: 70,
-    shadowRadius: 13,
+    width: 62,
+    height: 62,
+    shadowRadius: 10,
   },
 
   roadmapNodeCircleLocked: {
@@ -12861,8 +12900,8 @@ const styles = StyleSheet.create({
   },
 
   roadmapNodeGlyphCompact: {
-    fontSize: 16,
-    lineHeight: 21,
+    fontSize: 15,
+    lineHeight: 19,
   },
 
   roadmapNodeGlyphCurrent: {
@@ -12872,8 +12911,8 @@ const styles = StyleSheet.create({
   },
 
   roadmapNodeGlyphCurrentCompact: {
-    fontSize: 23,
-    lineHeight: 29,
+    fontSize: 21,
+    lineHeight: 26,
   },
 
   roadmapXpPill: {
@@ -12887,8 +12926,8 @@ const styles = StyleSheet.create({
   },
 
   roadmapXpPillCompact: {
-    marginTop: -4,
-    minWidth: 42,
+    marginTop: -5,
+    minWidth: 38,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
@@ -12914,9 +12953,9 @@ const styles = StyleSheet.create({
   },
 
   roadmapStepLabelCompact: {
-    fontSize: 8,
+    fontSize: 7,
     letterSpacing: 0.55,
-    marginTop: 5,
+    marginTop: 4,
   },
 
   roadmapNodeTitle: {
@@ -12930,9 +12969,9 @@ const styles = StyleSheet.create({
   },
 
   roadmapNodeTitleCompact: {
-    fontSize: 10,
-    lineHeight: 13,
-    marginTop: 7,
+    fontSize: 9,
+    lineHeight: 12,
+    marginTop: 6,
   },
 
   roadmapNodeTitleCurrent: {
@@ -12941,8 +12980,8 @@ const styles = StyleSheet.create({
   },
 
   roadmapNodeTitleCurrentCompact: {
-    fontSize: 12,
-    lineHeight: 15,
+    fontSize: 11,
+    lineHeight: 14,
   },
 
   roadmapNodeStatus: {
@@ -12954,8 +12993,8 @@ const styles = StyleSheet.create({
   },
 
   roadmapNodeStatusCompact: {
-    fontSize: 9,
-    marginTop: 4,
+    fontSize: 8,
+    marginTop: 3,
   },
 
   chapterProgressDock: {
