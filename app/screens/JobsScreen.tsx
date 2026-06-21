@@ -51,8 +51,8 @@ import { getFlag, parseCityQuery, searchCities } from '../lib/citySearch';
 
 const SYSTEM_SANS = Platform.select({
   ios: 'System',
-  android: 'Roboto',
-  web: undefined,
+  android: 'Inter',
+  web: '-apple-system, BlinkMacSystemFont, "Inter", "SF Pro Display", sans-serif',
   default: undefined,
 });
 const WEB_NO_OUTLINE =
@@ -76,7 +76,7 @@ const logJobsIssue = (label: string, error?: unknown) => {
 
 
 /* ────────────────────────────────────────────────────────────
-   Cinematic noir base (gold accents, fewer cards)
+   Minimal premium noir palette
    ──────────────────────────────────────────────────────────── */
 const GOLD = '#C6A664';
 const GOLD_SOFT = 'rgba(198,166,100,0.16)';
@@ -641,34 +641,34 @@ export default function JobsScreen() {
   const GOLD_LINE = isLight ? 'rgba(168,121,34,0.18)' : 'rgba(198,166,100,0.28)';
   const T = useMemo(
     () => ({
-      bg: colors.background,
+      bg: isLight ? colors.backgroundAlt : colors.background,
       surface: colors.card,
       surface2: colors.mutedCard,
       surface3: colors.cardAlt,
       text: colors.textPrimary,
       sub: colors.textSecondary,
       mute: colors.textMuted,
-      accent: colors.primary,
+      accent: GOLD,
       line: colors.border,
       lineSoft: colors.border,
       glow: isLight ? 'rgba(168,121,34,0.05)' : 'rgba(198,166,100,0.08)',
     }),
-    [colors, isLight]
+    [GOLD, colors, isLight]
   );
   const challengeTone = useMemo(
     () => ({
-      bg: isLight ? '#FFFFFF' : '#050505',
-      surface: isLight ? '#FFFFFF' : '#111113',
-      surfaceAlt: isLight ? '#F7F7F7' : '#17171B',
-      border: isLight ? '#E5E5E5' : 'rgba(214,174,96,0.22)',
-      text: isLight ? '#111111' : '#F5F1E8',
-      sub: isLight ? '#3F3F3F' : '#B8B1A5',
-      gold: isLight ? '#CBA252' : '#D0AA5B',
-      goldSoft: isLight ? 'rgba(168,121,34,0.07)' : 'rgba(208,170,91,0.14)',
-      danger: isLight ? '#D8505E' : '#FF7676',
-      shadow: isLight ? 'rgba(0,0,0,0.12)' : '#000',
+      bg: isLight ? colors.backgroundAlt : colors.background,
+      surface: colors.card,
+      surfaceAlt: isLight ? colors.backgroundAlt : '#17171B',
+      border: isLight ? colors.border : 'rgba(214,174,96,0.22)',
+      text: colors.textPrimary,
+      sub: colors.textSecondary,
+      gold: GOLD,
+      goldSoft: GOLD_SOFT,
+      danger: colors.danger,
+      shadow: colors.shadow,
     }),
-    [isLight]
+    [GOLD, GOLD_SOFT, colors, isLight]
   );
   const READABLE_INK = isLight ? '#050505' : T.text;
   const READABLE_MUTED = isLight ? '#555555' : T.mute;
@@ -2284,8 +2284,6 @@ if (!me) {
         challenge.reaction_platform || creator?.creator_social_platform || 'Creator socials';
       const rewardText = challenge.prize_description?.trim() || 'Reward TBA';
       const entriesLabel = formatChallengeEntriesLabel(challenge.submission_count);
-      const stackActions = width < 390 || challengeView === 'my';
-      const deletingChallenge = !!challengeDeleting[challenge.id];
 
       return (
         <TouchableOpacity
@@ -2308,8 +2306,8 @@ if (!me) {
                 style={[
                   styles.challengeTypeBadge,
                   {
-                    backgroundColor: ended ? T.surface2 : challengeTone.goldSoft,
-                    borderColor: ended ? T.line : challengeTone.border,
+                    backgroundColor: ended ? challengeTone.surfaceAlt : challengeTone.goldSoft,
+                    borderColor: ended ? T.line : GOLD_LINE,
                   },
                 ]}
               >
@@ -2324,7 +2322,7 @@ if (!me) {
                     { color: ended ? T.mute : challengeTone.gold },
                   ]}
                 >
-                  {ended ? 'ENDED CHALLENGE' : 'CREATOR CHALLENGE'}
+                  {ended ? 'Ended challenge' : 'Creator challenge'}
                 </Text>
               </View>
               <Text style={[styles.challengeCountdownText, { color: ended ? T.mute : challengeTone.gold }]}>
@@ -2359,31 +2357,16 @@ if (!me) {
               </View>
             </View>
 
-            <View
-              style={[
-                styles.challengeRewardCallout,
-                { backgroundColor: challengeTone.goldSoft, borderColor: challengeTone.border },
-              ]}
-            >
-              <Ionicons name="gift-outline" size={18} color={challengeTone.gold} />
-              <View style={styles.challengeRewardCopy}>
-                <Text style={[styles.challengeRewardLabel, { color: challengeTone.gold }]}>
-                  What you can win
-                </Text>
-                <Text
-                  style={[styles.challengeRewardText, { color: challengeTone.text }]}
-                  numberOfLines={2}
-                >
-                  {rewardText}
-                </Text>
-              </View>
-            </View>
-
             {challenge.description ? (
               <Text numberOfLines={2} style={[styles.challengeDescription, { color: challengeTone.sub }]}>
                 {challenge.description}
               </Text>
             ) : null}
+
+            <Text style={[styles.challengePrizeLine, { color: challengeTone.text }]} numberOfLines={1}>
+              <Text style={{ color: challengeTone.sub }}>Prize: </Text>
+              {rewardText}
+            </Text>
 
             <View style={styles.challengeMetaGrid}>
               <View style={[styles.challengeMetaPill, { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line }]}>
@@ -2412,73 +2395,23 @@ if (!me) {
               </View>
             </View>
 
-            <View style={[styles.challengeActionsRow, stackActions && styles.challengeActionsStack]}>
+            <View style={styles.challengeActionsRow}>
               <TouchableOpacity
                 onPress={() => setSelectedChallenge(challenge)}
                 activeOpacity={0.9}
                 style={[
                   styles.challengeSecondaryButton,
                   !isWebMobile && styles.challengeSecondaryButtonWide,
-                  { backgroundColor: challengeTone.surfaceAlt, borderColor: T.line },
+                  { backgroundColor: 'transparent', borderColor: T.line },
                 ]}
               >
-                <Text style={[styles.challengeSecondaryButtonText, { color: challengeTone.sub }]}>
-                  View Brief
+                <Text
+                  style={[styles.challengeSecondaryButtonText, { color: challengeTone.sub }]}
+                  numberOfLines={1}
+                >
+                  View brief
                 </Text>
               </TouchableOpacity>
-
-              {challengeView === 'my' ? (
-                <>
-                  <TouchableOpacity
-                    onPress={() => openChallengeSubmissions(challenge)}
-                    activeOpacity={0.9}
-                    style={[
-                      styles.challengePrimaryButton,
-                      !isWebMobile && styles.challengePrimaryButtonWide,
-                      { backgroundColor: challengeTone.gold, borderColor: challengeTone.border },
-                    ]}
-                  >
-                    <Text style={[styles.challengePrimaryButtonText, { color: colors.textOnPrimary }]}>
-                      View Entries
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => handleRemoveChallenge(challenge)}
-                    disabled={deletingChallenge}
-                    activeOpacity={0.9}
-                    style={[
-                      styles.challengeDangerButton,
-                      { backgroundColor: challengeTone.surfaceAlt, borderColor: 'rgba(255,70,70,0.24)' },
-                      deletingChallenge && { opacity: 0.58 },
-                    ]}
-                  >
-                    <Ionicons name="trash-outline" size={14} color={challengeTone.danger} />
-                    <Text style={[styles.challengeDangerButtonText, { color: challengeTone.danger }]}>
-                      {deletingChallenge ? 'Removing' : 'Remove'}
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <TouchableOpacity
-                  onPress={() =>
-                    ended ? openChallengeSubmissions(challenge) : handleSubmitToChallenge(challenge)
-                  }
-                  activeOpacity={0.9}
-                  style={[
-                    styles.challengePrimaryButton,
-                    !isWebMobile && styles.challengePrimaryButtonWide,
-                    {
-                      backgroundColor: ended ? challengeTone.surfaceAlt : challengeTone.gold,
-                      borderColor: ended ? T.line : challengeTone.border,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.challengePrimaryButtonText, { color: ended ? T.mute : colors.textOnPrimary }]}>
-                    {ended ? 'View Entries' : 'Submit to Challenge'}
-                  </Text>
-                </TouchableOpacity>
-              )}
             </View>
           </View>
         </TouchableOpacity>
@@ -2486,17 +2419,10 @@ if (!me) {
     },
     [
       T,
-      challengeView,
-      challengeDeleting,
-      colors.textOnPrimary,
       challengeTone,
       goToCreatorProfile,
-      handleSubmitToChallenge,
-      handleRemoveChallenge,
       isWebMobile,
-      openChallengeSubmissions,
       renderCreatorAvatar,
-      width,
     ]
   );
 
@@ -2533,7 +2459,7 @@ if (!me) {
 
               <View style={[styles.typeBadge, { backgroundColor: GOLD_SOFT, borderColor: GOLD_LINE }]}>
                 <Text style={[styles.typeBadgeText, { color: GOLD }]}>
-                  {job.type === 'Paid' ? 'PAID ROLE' : 'FREE / COLLAB'}
+                  {job.type === 'Paid' ? 'Paid role' : 'Free / collab'}
                 </Text>
               </View>
             </View>
@@ -2628,7 +2554,7 @@ if (!me) {
               </Text>
 
               <View style={[styles.typeBadge, { backgroundColor: GOLD_SOFT, borderColor: GOLD_LINE }]}>
-                <Text style={[styles.typeBadgeText, { color: GOLD }]}>MY LISTING</Text>
+                <Text style={[styles.typeBadgeText, { color: GOLD }]}>My listing</Text>
               </View>
             </View>
 
@@ -2764,7 +2690,7 @@ if (!me) {
       <View style={styles.opportunitiesHeader}>
         <Text style={[styles.opportunitiesTitle, { color: T.text }]}>Opportunities</Text>
         <Text style={[styles.opportunitiesSubtitle, { color: T.sub }]}>
-          Compete, collaborate, and get your work seen.
+          Challenges and jobs for filmmakers building real work.
         </Text>
       </View>
 
@@ -2779,8 +2705,8 @@ if (!me) {
           ]}
         >
           {([
-            { key: 'creator_challenges', label: 'CREATOR CHALLENGES' },
-            { key: 'jobs', label: 'JOBS' },
+            { key: 'creator_challenges', label: 'Creator Challenges' },
+            { key: 'jobs', label: 'Jobs' },
           ] as const).map((tab) => {
             const active = opportunityTab === tab.key;
 
@@ -2826,7 +2752,7 @@ if (!me) {
                     styles.filterPill,
                     {
                       backgroundColor: active ? GOLD_SOFT : T.surface2,
-                      borderColor: active ? GOLD_LINE : T.line,
+                      borderColor: active ? GOLD_LINE : 'transparent',
                     },
                   ]}
                   activeOpacity={0.9}
@@ -2834,7 +2760,7 @@ if (!me) {
                   <Ionicons
                     name={tab === 'browse' ? 'sparkles-outline' : 'person-circle-outline'}
                     size={13}
-                    color={active ? GOLD : T.sub}
+                    color={active ? GOLD : T.mute}
                   />
                   <Text style={[styles.filterPillText, { color: active ? GOLD : T.sub }]}>
                     {tab === 'browse' ? 'All' : 'Mine'}
@@ -2857,21 +2783,6 @@ if (!me) {
               <Text style={[styles.creatorSectionSubtitle, { color: T.sub }]}>
                 Enter creator-led briefs, win rewards, and get featured across Overlooked and social media.
               </Text>
-              <View style={styles.creatorValueRow}>
-                {['Win rewards', 'Get featured', 'Build your portfolio'].map((item) => (
-                  <View
-                    key={item}
-                    style={[
-                      styles.creatorValueChip,
-                      { backgroundColor: challengeTone.goldSoft, borderColor: challengeTone.border },
-                    ]}
-                  >
-                    <Text style={[styles.creatorValueChipText, { color: challengeTone.gold }]}>
-                      {item}
-                    </Text>
-                  </View>
-                ))}
-              </View>
             </View>
 
             {creatorProfile?.is_creator ? (
@@ -2889,7 +2800,7 @@ if (!me) {
               >
                 <Ionicons name="add" size={15} color={colors.textOnPrimary} />
                 <Text style={[styles.sectionPostButtonText, { color: colors.textOnPrimary }]}>
-                  Post Challenge
+                  Post challenge
                 </Text>
               </TouchableOpacity>
             ) : (
@@ -2907,10 +2818,10 @@ if (!me) {
                 const active = activeTab === tab;
                 const label =
                   tab === 'paid'
-                    ? 'PAID'
+                    ? 'Paid'
                     : tab === 'free'
-                    ? 'FREE'
-                    : 'MY JOBS';
+                    ? 'Free'
+                    : 'My Jobs';
 
                 return (
                   <TouchableOpacity
@@ -2918,8 +2829,8 @@ if (!me) {
                     style={[
                       styles.categoryTap,
                       {
-                        backgroundColor: active ? (isLight ? '#FFFFFF' : T.surface2) : T.surface2,
-                        borderColor: active ? GOLD_LINE : T.line,
+                        backgroundColor: active ? GOLD : 'transparent',
+                        borderColor: active ? GOLD_LINE : 'transparent',
                         shadowColor: colors.shadow,
                       },
                       active && styles.categoryTapActive,
@@ -2930,7 +2841,7 @@ if (!me) {
                     <Text
                       style={[
                         styles.categoryText,
-                        { color: active ? GOLD : T.sub },
+                        { color: active ? colors.textOnPrimary : T.sub },
                       ]}
                     >
                       {label}
@@ -2949,8 +2860,8 @@ if (!me) {
                 style={[
                   styles.filterPill,
                   {
-                    backgroundColor: filterCity ? GOLD_SOFT : T.surface2,
-                    borderColor: filterCity ? GOLD_LINE : T.line,
+                    backgroundColor: filterCity ? GOLD_SOFT : 'transparent',
+                    borderColor: filterCity ? GOLD_LINE : T.lineSoft,
                   },
                 ]}
                 activeOpacity={0.9}
@@ -2958,7 +2869,7 @@ if (!me) {
                 <Ionicons
                   name="location-outline"
                   size={15}
-                  color={filterCity ? GOLD : T.sub}
+                  color={filterCity ? GOLD : T.mute}
                 />
                 <Text
                   style={[
@@ -2975,8 +2886,8 @@ if (!me) {
                 style={[
                   styles.filterPill,
                   {
-                    backgroundColor: filterRole ? GOLD_SOFT : T.surface2,
-                    borderColor: filterRole ? GOLD_LINE : T.line,
+                    backgroundColor: filterRole ? GOLD_SOFT : 'transparent',
+                    borderColor: filterRole ? GOLD_LINE : T.lineSoft,
                   },
                 ]}
                 activeOpacity={0.9}
@@ -2984,7 +2895,7 @@ if (!me) {
                 <Ionicons
                   name="briefcase-outline"
                   size={15}
-                  color={filterRole ? GOLD : T.sub}
+                  color={filterRole ? GOLD : T.mute}
                 />
                 <Text
                   style={[
@@ -3001,8 +2912,8 @@ if (!me) {
                   styles.filterPill,
                   styles.remoteFilterPill,
                   {
-                    backgroundColor: T.surface2,
-                    borderColor: T.line,
+                    backgroundColor: 'transparent',
+                    borderColor: T.lineSoft,
                   },
                 ]}
               >
@@ -3017,7 +2928,7 @@ if (!me) {
               {anyFilterActive ? (
                 <TouchableOpacity
                   onPress={clearFilters}
-                  style={[styles.clearPill, { backgroundColor: T.surface2, borderColor: T.line }]}
+                  style={[styles.clearPill, { backgroundColor: 'transparent', borderColor: T.lineSoft }]}
                   activeOpacity={0.9}
                 >
                   <Ionicons
@@ -4376,7 +4287,7 @@ onRefresh={() => {
                       >
                         <Ionicons name="sparkles-outline" size={13} color={challengeTone.gold} />
                         <Text style={[styles.challengeTypeBadgeText, { color: challengeTone.gold }]}>
-                          CREATOR CHALLENGE
+                          Creator challenge
                         </Text>
                       </View>
                       <View
@@ -4404,8 +4315,8 @@ onRefresh={() => {
                           ]}
                         >
                           {isChallengeEnded(selectedChallenge)
-                            ? 'ENDED'
-                            : formatChallengeCountdownCompact(selectedChallenge.ends_at).toUpperCase()}
+                            ? 'Ended'
+                            : formatChallengeCountdownCompact(selectedChallenge.ends_at)}
                         </Text>
                       </View>
                     </View>
@@ -4477,7 +4388,7 @@ onRefresh={() => {
                     style={[
                       styles.challengeDetailSection,
                       styles.challengeRewardDetailSection,
-                      { backgroundColor: challengeTone.goldSoft, borderColor: challengeTone.border },
+                      { backgroundColor: challengeTone.surface, borderColor: T.line },
                     ]}
                   >
                     <View style={styles.challengeDetailSectionHeaderRow}>
@@ -4582,7 +4493,7 @@ onRefresh={() => {
                     onPress={() => openChallengeSubmissions(selectedChallenge)}
                     activeOpacity={0.9}
                   >
-                    <Text style={[styles.footerGhostText, { color: T.sub }]}>View Entries</Text>
+                    <Text style={[styles.footerGhostText, { color: T.sub }]}>View entries</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -4593,7 +4504,7 @@ onRefresh={() => {
                       !isWebMobile && styles.challengeFooterPrimary,
                       {
                         backgroundColor: isChallengeEnded(selectedChallenge)
-                          ? T.surface2
+                          ? 'transparent'
                           : challengeTone.gold,
                         borderColor: isChallengeEnded(selectedChallenge)
                           ? T.line
@@ -4611,7 +4522,7 @@ onRefresh={() => {
                         { color: isChallengeEnded(selectedChallenge) ? T.mute : colors.textOnPrimary },
                       ]}
                     >
-                      {isChallengeEnded(selectedChallenge) ? 'Challenge Ended' : 'Submit to this Challenge'}
+                      {isChallengeEnded(selectedChallenge) ? 'Challenge ended' : 'Enter challenge'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -4628,19 +4539,19 @@ onRefresh={() => {
   animationType="fade"
   onRequestClose={() => setSelectedJob(null)}
 >
-        <View style={styles.detailModalOverlay}>
-  <View style={styles.detailModalCard}>
+        <View style={[styles.detailModalOverlay, { backgroundColor: colors.overlay }]}>
+  <View style={[styles.detailModalCard, { backgroundColor: T.surface, borderColor: T.line, shadowColor: colors.shadow }]}>
     {selectedJob && (
       <>
               <Text
-                style={[styles.modalTitle, { marginBottom: 4 }]}
+                style={[styles.modalTitle, { color: T.text, marginBottom: 4 }]}
               >
                 {decode(selectedJob.creative_roles?.name || 'Job')}
               </Text>
 
-              <Text style={styles.keyValue}>
-                <Text style={styles.keyLabel}>Pay: </Text>
-                <Text style={styles.keyValueText}>
+              <Text style={[styles.keyValue, { color: T.sub }]}>
+                <Text style={[styles.keyLabel, { color: T.sub }]}>Pay: </Text>
+                <Text style={[styles.keyValueText, { color: T.text }]}>
                   {selectedJob.type === 'Paid'
                     ? `${selectedJob.currency ?? ''}${selectedJob.amount ?? ''}${
                         selectedJob.rate ? ` • ${selectedJob.rate}` : ''
@@ -4649,9 +4560,9 @@ onRefresh={() => {
                 </Text>
               </Text>
 
-              <Text style={styles.keyValue}>
-                <Text style={styles.keyLabel}>Location: </Text>
-                <Text style={styles.keyValueText}>
+              <Text style={[styles.keyValue, { color: T.sub }]}>
+                <Text style={[styles.keyLabel, { color: T.sub }]}>Location: </Text>
+                <Text style={[styles.keyValueText, { color: T.text }]}>
                   {selectedJob.remote
                     ? 'Remote'
                     : selectedJob.cities?.name || 'Unknown'}
@@ -4662,7 +4573,7 @@ onRefresh={() => {
                 <Text
                   style={[
                     styles.jobDescription,
-                    { marginTop: 8 },
+                    { color: T.sub, marginTop: 8 },
                   ]}
                 >
                   {decode(selectedJob.description)}
@@ -4690,7 +4601,7 @@ onRefresh={() => {
                   }}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.posterName}>
+                  <Text style={[styles.posterName, { color: GOLD }]}>
                     {selectedJob.users?.full_name || 'View Profile'}
                   </Text>
                 </TouchableOpacity>
@@ -4727,17 +4638,21 @@ onRefresh={() => {
 
               <View style={styles.safetyActionsRow}>
                 <TouchableOpacity
-                  style={styles.safetyActionButton}
+                  style={[styles.safetyActionButton, { backgroundColor: T.surface2, borderColor: T.line }]}
                   onPress={() => openJobReport(selectedJob)}
                   activeOpacity={0.85}
                 >
                   <Ionicons name="flag-outline" size={15} color={T.sub} />
-                  <Text style={styles.safetyActionText}>Report</Text>
+                  <Text style={[styles.safetyActionText, { color: T.sub }]}>Report</Text>
                 </TouchableOpacity>
 
                 {selectedJob.user_id !== currentUserId ? (
                   <TouchableOpacity
-                    style={[styles.safetyActionButton, styles.safetyDangerButton]}
+                    style={[
+                      styles.safetyActionButton,
+                      styles.safetyDangerButton,
+                      { backgroundColor: T.surface2 },
+                    ]}
                     onPress={() => blockJobPoster(selectedJob)}
                     activeOpacity={0.85}
                   >
@@ -4747,7 +4662,7 @@ onRefresh={() => {
                 ) : null}
               </View>
 
-              <Text style={styles.safetyCopy}>
+              <Text style={[styles.safetyCopy, { color: T.mute }]}>
                 We review objectionable content reports within 24 hours.
               </Text>
 
@@ -4755,6 +4670,8 @@ onRefresh={() => {
                 style={[
                   styles.submitButton,
                   {
+                    backgroundColor: GOLD,
+                    borderColor: GOLD_LINE,
                     marginTop: 16,
                     opacity:
                       checkingApplied || alreadyApplied
@@ -4787,7 +4704,7 @@ onRefresh={() => {
                 onPress={() => setSelectedJob(null)}
                 style={{ marginTop: 12 }}
               >
-                <Text style={styles.cancelText}>Close</Text>
+                <Text style={[styles.cancelText, { color: T.sub }]}>Close</Text>
               </TouchableOpacity>
                   </>
     )}
@@ -4802,8 +4719,8 @@ onRefresh={() => {
         animationType="fade"
         onRequestClose={() => setConfirmVisible(false)}
       >
-        <View style={styles.confirmOverlay}>
-          <View style={styles.confirmCard}>
+        <View style={[styles.confirmOverlay, { backgroundColor: colors.overlay }]}>
+          <View style={[styles.confirmCard, { backgroundColor: T.surface, borderColor: T.line }]}>
             <Ionicons
               name="checkmark-circle"
               size={48}
@@ -4813,20 +4730,20 @@ onRefresh={() => {
                 marginBottom: 8,
               }}
             />
-            <Text style={styles.confirmTitle}>
+            <Text style={[styles.confirmTitle, { color: T.text }]}>
               Success
             </Text>
-            <Text style={styles.confirmText}>
+            <Text style={[styles.confirmText, { color: T.sub }]}>
               Application sent. Your profile was shared with the poster.
             </Text>
 
             <View style={styles.confirmButtons}>
               <TouchableOpacity
-                style={[styles.footerBtn, styles.footerPrimary]}
+                style={[styles.footerBtn, styles.footerPrimary, { backgroundColor: GOLD, borderColor: GOLD_LINE }]}
                 onPress={() => setConfirmVisible(false)}
                 activeOpacity={0.92}
               >
-                <Text style={styles.footerPrimaryText}>
+                <Text style={[styles.footerPrimaryText, { color: colors.textOnPrimary }]}>
                   OK
                 </Text>
               </TouchableOpacity>
@@ -4982,53 +4899,54 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
   },
   sectionSpacer: {
-    height: 10,
+    height: Platform.OS === 'web' ? 8 : 6,
   },
 
   listHeaderRoot: {
-    paddingTop: Platform.OS === 'web' ? 4 : 12,
+    paddingTop: Platform.OS === 'web' ? 18 : 12,
     alignItems: 'center',
   },
 
   opportunitiesHeader: {
     width: '100%',
-    maxWidth: 1000,
-    paddingHorizontal: 16,
+    maxWidth: 1200,
+    paddingHorizontal: Platform.OS === 'web' ? 72 : 22,
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: Platform.OS === 'web' ? 18 : 14,
   },
 
   opportunitiesTitle: {
     fontFamily: SYSTEM_SANS,
-    fontSize: Platform.OS === 'web' ? 36 : 29,
-    lineHeight: Platform.OS === 'web' ? 41 : 34,
+    fontSize: Platform.OS === 'web' ? 46 : 32,
+    lineHeight: Platform.OS === 'web' ? 52 : 38,
     fontWeight: '800',
     letterSpacing: 0,
     textAlign: 'center',
   },
 
   opportunitiesSubtitle: {
-    marginTop: 7,
-    maxWidth: 600,
+    marginTop: 6,
+    maxWidth: 520,
     fontFamily: SYSTEM_SANS,
     fontSize: Platform.OS === 'web' ? 15 : 14,
-    lineHeight: 21,
+    lineHeight: Platform.OS === 'web' ? 22 : 20,
     fontWeight: '600',
     textAlign: 'center',
   },
 
   opportunityTabsWrap: {
     width: '100%',
-    paddingHorizontal: 16,
+    paddingHorizontal: Platform.OS === 'web' ? 72 : 22,
     alignItems: 'center',
+    marginBottom: Platform.OS === 'web' ? 22 : 18,
   },
 
   opportunityTabsShell: {
-    width: '90%',
-    maxWidth: 420,
-    height: 44,
+    width: '100%',
+    maxWidth: 460,
+    height: 42,
     padding: 4,
-    borderRadius: 10,
+    borderRadius: 15,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 4,
@@ -5036,8 +4954,8 @@ const styles = StyleSheet.create({
 
   opportunitySegmentTap: {
     flex: 1,
-    height: 36,
-    borderRadius: 10,
+    height: 32,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -5053,14 +4971,14 @@ const styles = StyleSheet.create({
     fontFamily: SYSTEM_SANS,
     fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    letterSpacing: 0,
   },
 
   /* Category tabs */
   categoryTabsWrap: {
-    paddingHorizontal: 16,
-    marginTop: 18,
+    paddingHorizontal: Platform.OS === 'web' ? 72 : 22,
+    marginTop: 0,
+    marginBottom: Platform.OS === 'web' ? 16 : 14,
     width: '100%',
     alignItems: 'center',
   },
@@ -5074,23 +4992,23 @@ const styles = StyleSheet.create({
 categoryTap: {
   alignItems: 'center',
   justifyContent: 'center',
-  minWidth: 82,
+  minWidth: 76,
+  minHeight: 30,
   paddingHorizontal: 12,
-  paddingVertical: 8,
-  borderRadius: 8,
+  paddingVertical: 6,
+  borderRadius: 999,
   backgroundColor: T.surface2,
   borderWidth: 1,
   borderColor: T.lineSoft,
 },
   categoryTapActive: {
-    backgroundColor: GOLD_SOFT,
+    backgroundColor: GOLD,
     borderColor: GOLD_LINE,
   },
   categoryText: {
     color: '#D0CCC4',
     fontFamily: SYSTEM_SANS,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    letterSpacing: 0,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -5099,11 +5017,7 @@ categoryTap: {
   },
   
   categoryUnderline: {
-    marginTop: 6,
-    height: 2,
-    width: 26,
-    backgroundColor: GOLD,
-    borderRadius: 999,
+    display: 'none',
   },
   detailModalOverlay: {
   flex: 1,
@@ -5134,21 +5048,21 @@ detailModalCard: {
   flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: 8,
+  gap: 10,
   flexWrap: 'wrap',
-  paddingHorizontal: 16,
-  paddingTop: 12,
-  paddingBottom: 16,
+  paddingHorizontal: Platform.OS === 'web' ? 72 : 22,
+  paddingTop: 0,
+  paddingBottom: Platform.OS === 'web' ? 18 : 14,
 },
 filterPill: {
   flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: 6,
-  minHeight: 32,
-  paddingHorizontal: 12,
+  gap: 5,
+  minHeight: 30,
+  paddingHorizontal: 11,
   paddingVertical: 6,
-  borderRadius: 10,
+  borderRadius: 999,
   backgroundColor: T.surface2,
   borderWidth: 1,
   borderColor: T.lineSoft,
@@ -5167,8 +5081,8 @@ filterPill: {
     color: GOLD,
   },
   remoteFilterPill: {
-  minWidth: 108,
-  paddingHorizontal: 12,
+  minWidth: 96,
+  paddingHorizontal: 10,
 },
   filterToggleLabel: {
     color: T.sub,
@@ -5180,10 +5094,11 @@ filterPill: {
   clearPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
+    gap: 6,
+    minHeight: 30,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 999,
     backgroundColor: '#101010',
     borderWidth: 1,
     borderColor: T.lineSoft,
@@ -5206,11 +5121,11 @@ filterPill: {
 
   creatorSectionHeader: {
     width: '100%',
-    maxWidth: 1000,
-    paddingHorizontal: 16,
-    marginBottom: 16,
+    maxWidth: 1200,
+    paddingHorizontal: Platform.OS === 'web' ? 72 : 22,
+    marginBottom: 14,
     flexDirection: Platform.OS === 'web' ? 'row' : 'column',
-    alignItems: Platform.OS === 'web' ? 'center' : 'stretch',
+    alignItems: Platform.OS === 'web' ? 'flex-end' : 'stretch',
     justifyContent: 'space-between',
     gap: 12,
   },
@@ -5221,7 +5136,7 @@ filterPill: {
   },
 
   creatorSectionHeaderNoFilters: {
-    marginTop: 16,
+    marginTop: 0,
   },
 
   creatorSectionCopy: {
@@ -5231,8 +5146,8 @@ filterPill: {
 
   creatorSectionTitle: {
     fontFamily: SYSTEM_SANS,
-    fontSize: Platform.OS === 'web' ? 23 : 21,
-    lineHeight: Platform.OS === 'web' ? 28 : 25,
+    fontSize: Platform.OS === 'web' ? 24 : 22,
+    lineHeight: Platform.OS === 'web' ? 30 : 27,
     fontWeight: '700',
     letterSpacing: 0,
   },
@@ -5240,9 +5155,10 @@ filterPill: {
   creatorSectionSubtitle: {
     marginTop: 4,
     fontFamily: SYSTEM_SANS,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 19,
     fontWeight: '600',
+    maxWidth: 620,
   },
   creatorValueRow: {
     flexDirection: 'row',
@@ -5267,11 +5183,11 @@ filterPill: {
   },
 
   sectionPostButton: {
-    minHeight: Platform.OS === 'web' ? 40 : 44,
-    borderRadius: Platform.OS === 'web' ? 10 : 12,
+    minHeight: Platform.OS === 'web' ? 38 : 40,
+    borderRadius: 999,
     borderWidth: 1,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -5285,10 +5201,9 @@ filterPill: {
 
   sectionPostButtonText: {
     fontFamily: SYSTEM_SANS,
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0,
   },
 
   creatorApprovalNote: {
@@ -5302,22 +5217,22 @@ filterPill: {
   /* Creator challenges */
   challengeRow: {
     width: '100%',
-    maxWidth: 1000,
+    maxWidth: 1200,
     alignSelf: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: Platform.OS === 'web' ? 72 : 22,
   },
 
   challengeCard: {
     backgroundColor: T.surface2,
-    borderRadius: 10,
-    paddingHorizontal: Platform.OS === 'web' ? 22 : 16,
-    paddingVertical: Platform.OS === 'web' ? 22 : 16,
+    borderRadius: Platform.OS === 'web' ? 22 : 20,
+    paddingHorizontal: Platform.OS === 'web' ? 28 : 20,
+    paddingVertical: Platform.OS === 'web' ? 24 : 20,
     borderWidth: 1,
-    borderColor: GOLD_LINE,
+    borderColor: T.lineSoft,
     shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
     elevation: 1,
   },
   challengeBadgeRow: {
@@ -5325,15 +5240,15 @@ filterPill: {
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   challengeTypeBadge: {
     alignSelf: 'flex-start',
-    minHeight: 28,
-    borderRadius: 7,
+    minHeight: 26,
+    borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -5341,19 +5256,17 @@ filterPill: {
   challengeTypeBadgeText: {
     fontFamily: SYSTEM_SANS,
     fontSize: 10,
-    lineHeight: 12,
+    lineHeight: 13,
     fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    letterSpacing: 0,
   },
   challengeCountdownText: {
     flexShrink: 0,
     fontFamily: SYSTEM_SANS,
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    letterSpacing: 0,
   },
   challengeHostRow: {
     marginTop: 12,
@@ -5365,11 +5278,11 @@ filterPill: {
     flexShrink: 0,
   },
   creatorAvatar: {
-    borderWidth: 1,
+    borderWidth: 0,
     backgroundColor: T.surface3,
   },
   creatorAvatarFallback: {
-    borderWidth: 1,
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -5384,9 +5297,9 @@ filterPill: {
     minWidth: 0,
   },
   challengeTitle: {
-    fontSize: Platform.OS === 'web' ? 21 : 19,
-    lineHeight: Platform.OS === 'web' ? 24 : 22,
-    fontWeight: '800',
+    fontSize: Platform.OS === 'web' ? 24 : 21,
+    lineHeight: Platform.OS === 'web' ? 30 : 26,
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
     letterSpacing: 0,
   },
@@ -5410,10 +5323,18 @@ filterPill: {
   },
   challengeDescription: {
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 21,
     marginTop: 12,
     fontFamily: SYSTEM_SANS,
-    maxWidth: 750,
+    maxWidth: 780,
+  },
+  challengePrizeLine: {
+    marginTop: 12,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
+    maxWidth: 780,
   },
   challengeRewardCallout: {
     marginTop: 14,
@@ -5453,9 +5374,9 @@ filterPill: {
   challengeMetaPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     minHeight: 30,
-    borderRadius: 8,
+    borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -5465,55 +5386,63 @@ filterPill: {
     fontSize: 12,
     fontWeight: '700',
     fontFamily: SYSTEM_SANS,
-    maxWidth: 190,
+    maxWidth: 170,
   },
   challengeActionsRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 16,
+    gap: 8,
+    marginTop: 18,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    flexWrap: 'wrap',
   },
   challengeActionsStack: {
     flexDirection: 'column',
+    alignItems: 'stretch',
   },
   challengeSecondaryButton: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: 10,
+    flexShrink: 0,
+    minWidth: 116,
+    minHeight: 38,
+    borderRadius: 999,
     borderWidth: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   challengeSecondaryButtonWide: {
-    flex: 0.36,
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
   },
   challengeSecondaryButtonText: {
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    letterSpacing: 0,
   },
   challengePrimaryButton: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: 10,
+    flexShrink: 0,
+    minWidth: 176,
+    minHeight: 44,
+    borderRadius: 999,
     borderWidth: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
   challengePrimaryButtonWide: {
-    flex: 0.64,
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
   },
   challengePrimaryButtonText: {
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    letterSpacing: 0,
   },
   challengeDangerButton: {
     flex: 1,
@@ -5741,10 +5670,13 @@ filterPill: {
 
   /* Jobs list */
   jobRow: {
-    paddingHorizontal: 16,
+    width: '100%',
+    maxWidth: 1200,
+    alignSelf: 'center',
+    paddingHorizontal: Platform.OS === 'web' ? 72 : 22,
   },
   rowSpacer: {
-    height: 12,
+    height: 16,
   },
   rowDivider: {
     height: 12,
@@ -5753,15 +5685,15 @@ filterPill: {
 
   jobCard: {
     backgroundColor: T.surface2,
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    borderRadius: Platform.OS === 'web' ? 22 : 20,
+    paddingHorizontal: Platform.OS === 'web' ? 28 : 20,
+    paddingVertical: Platform.OS === 'web' ? 24 : 20,
     borderWidth: 1,
     borderColor: T.lineSoft,
     shadowColor: '#000',
     shadowOpacity: 0.10,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
     elevation: 1,
   },
   jobCardTopRow: {
@@ -5775,11 +5707,11 @@ filterPill: {
     paddingRight: 4,
   },
   jobTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    fontSize: Platform.OS === 'web' ? 21 : 19,
+    lineHeight: Platform.OS === 'web' ? 26 : 24,
+    fontWeight: '700',
+    letterSpacing: 0,
     color: T.text,
-    textTransform: 'uppercase',
     fontFamily: SYSTEM_SANS,
     marginBottom: 8,
   },
@@ -5787,32 +5719,31 @@ filterPill: {
     alignSelf: 'flex-start',
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 8,
-    backgroundColor: '#101010',
-    borderWidth: 1,
-    borderColor: T.lineSoft,
-  },
-  typeBadgeText: {
-    color: GOLD,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    fontFamily: SYSTEM_SANS,
-  },
-  rateBadge: {
-    maxWidth: '48%',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 8,
+    borderRadius: 999,
     backgroundColor: GOLD_SOFT,
     borderWidth: 1,
     borderColor: GOLD_LINE,
   },
+  typeBadgeText: {
+    color: GOLD,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0,
+    fontFamily: SYSTEM_SANS,
+  },
+  rateBadge: {
+    maxWidth: '48%',
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: T.lineSoft,
+  },
   rateBadgeText: {
-    color: '#E6D6B0',
-    fontSize: 11.5,
-    lineHeight: 15,
+    color: T.text,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: '700',
     textAlign: 'right',
     fontFamily: SYSTEM_SANS,
@@ -5825,10 +5756,10 @@ filterPill: {
     fontWeight: '600',
   },
   jobDescription: {
-    fontSize: 13,
+    fontSize: 14,
     color: T.sub,
     marginTop: 12,
-    lineHeight: 20,
+    lineHeight: 21,
     fontFamily: SYSTEM_SANS,
   },
 
@@ -5863,7 +5794,7 @@ filterPill: {
     backgroundColor: 'rgba(255,255,255,0.16)',
   },
   jobMeta: {
-    fontSize: 12.5,
+    fontSize: 13,
     color: T.sub,
     fontFamily: SYSTEM_SANS,
   },
@@ -5876,30 +5807,33 @@ filterPill: {
 
   /* Empty state */
   emptyWrap: {
-    paddingHorizontal: 16,
-    paddingVertical: 24,
+    width: '100%',
+    maxWidth: 1200,
+    alignSelf: 'center',
+    paddingHorizontal: Platform.OS === 'web' ? 72 : 22,
+    paddingVertical: 32,
   },
   emptyCard: {
     backgroundColor: T.surface2,
-    borderRadius: 10,
-    paddingHorizontal: 18,
-    paddingVertical: 24,
+    borderRadius: 28,
+    paddingHorizontal: 28,
+    paddingVertical: 34,
     borderWidth: 1,
     borderColor: T.lineSoft,
     alignItems: 'center',
   },
   emptyTitle: {
     color: T.text,
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 18,
+    fontWeight: '700',
     fontFamily: SYSTEM_SANS,
     marginTop: 10,
     marginBottom: 6,
   },
   emptyText: {
     color: T.sub,
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: 15,
+    lineHeight: 23,
     textAlign: 'center',
     fontFamily: SYSTEM_SANS,
   },
@@ -5909,7 +5843,7 @@ filterPill: {
     position: 'absolute',
     left: 16,
     right: 16,
-    borderRadius: 10,
+    borderRadius: 999,
     backgroundColor: GOLD,
     borderWidth: 1,
     borderColor: '#8F7441',
@@ -5930,10 +5864,9 @@ filterPill: {
   postButtonText: {
     color: '#0B0B0B',
     fontFamily: SYSTEM_SANS,
-    fontWeight: '800',
+    fontWeight: '700',
     fontSize: 15,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
+    letterSpacing: 0,
   },
 
     cityModalSafeArea: {

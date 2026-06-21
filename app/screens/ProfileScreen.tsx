@@ -7024,15 +7024,15 @@ const secondaryTileW = Math.floor((availableWidth - secondaryGap) / 2) - (isMobi
                   }}
                 >
                   <Text
-                    style={{
-                      color: COLORS.textPrimary,
-                      fontSize: isMobileLike ? 10 : 12,
-                      fontFamily: FONT_OBLIVION,
-                      fontWeight: "900",
-                      letterSpacing: isMobileLike ? 0.5 : 0.8,
-                      textTransform: "uppercase",
-                      marginBottom: 7,
-                    }}
+                    style={[
+                      block.sectionTitleCentered,
+                      { color: COLORS.textPrimary, width: "100%" },
+                      isMobileLike && {
+                        fontSize: 12,
+                        letterSpacing: 2.2,
+                        marginBottom: 12,
+                      },
+                    ]}
                     numberOfLines={1}
                     adjustsFontSizeToFit
                     minimumFontScale={0.82}

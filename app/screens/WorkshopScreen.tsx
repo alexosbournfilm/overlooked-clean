@@ -10011,6 +10011,9 @@ filmmaker: [],
         <View style={[styles.pageWrap, { paddingTop: insets.top + 40, backgroundColor: BG }]}>
           <View style={[styles.mainLayout, !isDesktop && styles.mainLayoutMobile]}>
           <View style={[styles.centerPanel, isDesktop && styles.centerPanelDesktop, isWebDesktop && styles.centerPanelWebDesktop]}>
+  <Text style={[styles.workshopTopLine, primaryTextStyle]}>
+    {translateLessonCopy('Train your craft using exercises taken from real film and acting schools.')}
+  </Text>
   <View style={[styles.bootcampCard, surfaceStyle, { shadowColor: colors.shadow }, isWebDesktop && styles.bootcampCardWebDesktop]}>
     <LinearGradient
       colors={
@@ -11044,6 +11047,20 @@ const styles = StyleSheet.create({
 
   centerPanelWebDesktop: {
     maxWidth: 1380,
+  },
+
+  workshopTopLine: {
+    width: '100%',
+    maxWidth: 1320,
+    alignSelf: 'center',
+    color: CINEMA.text,
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '800',
+    letterSpacing: 0,
+    textAlign: 'center',
+    marginBottom: 2,
+    paddingHorizontal: 2,
   },
 
   classTopBar: {
