@@ -40,22 +40,83 @@ export type CityGlobeProps = {
 };
 
 const clampLatitude = (latitude: number) => Math.max(-84, Math.min(84, latitude));
+const normalizeLongitude = (longitude: number) => ((((longitude + 180) % 360) + 360) % 360) - 180;
+const MAX_CITY_PROFILE_PINS = 18;
+const MAX_WORLD_PROFILE_PINS = 48;
+
+type UserPlot = {
+  user: CityGlobeUser;
+  coordinate: {
+    latitude: number;
+    longitude: number;
+  };
+};
 
 const getCoordinate = (user: CityGlobeUser, fallbackCity: CityGlobeLocation | null) => {
   if (user.latitude != null && user.longitude != null) {
     const latitude = Number(user.latitude);
     const longitude = Number(user.longitude);
-    if (Number.isFinite(latitude) && Number.isFinite(longitude)) return { latitude, longitude };
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      return { latitude: clampLatitude(latitude), longitude: normalizeLongitude(longitude) };
+    }
   }
 
-  if (fallbackCity) return fallbackCity;
+  if (fallbackCity && Number.isFinite(fallbackCity.latitude) && Number.isFinite(fallbackCity.longitude)) {
+    return {
+      latitude: clampLatitude(fallbackCity.latitude),
+      longitude: normalizeLongitude(fallbackCity.longitude),
+    };
+  }
+
   return null;
 };
 
 const projectCoordinate = (coordinate: Pick<CityGlobeLocation, 'latitude' | 'longitude'>) => ({
-  left: `${((coordinate.longitude + 180) / 360) * 100}%` as any,
+  left: `${((normalizeLongitude(coordinate.longitude) + 180) / 360) * 100}%` as any,
   top: `${((90 - clampLatitude(coordinate.latitude)) / 180) * 100}%` as any,
 });
+
+const coordinateKey = (coordinate: Pick<CityGlobeLocation, 'latitude' | 'longitude'>) =>
+  `${coordinate.latitude.toFixed(3)}:${coordinate.longitude.toFixed(3)}`;
+
+const isNearCity = (
+  coordinate: Pick<CityGlobeLocation, 'latitude' | 'longitude'>,
+  city: CityGlobeLocation | null
+) => {
+  if (!city) return false;
+  const latitudeDelta = Math.abs(coordinate.latitude - city.latitude);
+  const longitudeDelta = Math.abs(coordinate.longitude - city.longitude);
+  return latitudeDelta <= 0.08 && longitudeDelta <= 0.08;
+};
+
+const scatterCoordinate = (
+  coordinate: Pick<CityGlobeLocation, 'latitude' | 'longitude'>,
+  index: number,
+  total: number,
+  mode: 'city' | 'world'
+) => {
+  if (total <= 1) {
+    return {
+      latitude: clampLatitude(coordinate.latitude),
+      longitude: normalizeLongitude(coordinate.longitude),
+    };
+  }
+
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const angle = mode === 'city' ? index * goldenAngle : (index / Math.max(total, 1)) * Math.PI * 2;
+  const baseRing = mode === 'city' ? 0.46 : 0.42;
+  const ringStep = mode === 'city' ? 0.24 : 0.18;
+  const ringSize = mode === 'city' ? 8 : 12;
+  const ring = baseRing + Math.floor(index / ringSize) * ringStep;
+  const latOffset = Math.sin(angle) * ring;
+  const lonScale = Math.max(0.35, Math.cos((coordinate.latitude * Math.PI) / 180));
+  const lonOffset = (Math.cos(angle) * ring) / lonScale;
+
+  return {
+    latitude: clampLatitude(coordinate.latitude + latOffset),
+    longitude: normalizeLongitude(coordinate.longitude + lonOffset),
+  };
+};
 
 const getInitials = (name: string) => {
   const parts = (name || '')
@@ -79,20 +140,114 @@ export default function CityGlobe({
   mutedTextColor,
   accentColor,
 }: CityGlobeProps) {
-  const visibleUsers = useMemo(
+  const plottedUsers = useMemo(
     () =>
       users
         .map((user) => {
           const coordinate = getCoordinate(user, city);
-          return coordinate ? { user, position: projectCoordinate(coordinate) } : null;
+          return coordinate ? { user, coordinate } : null;
         })
-        .filter((item): item is { user: CityGlobeUser; position: ReturnType<typeof projectCoordinate> } => !!item)
-        .slice(0, 40),
+        .filter((item): item is UserPlot => !!item),
     [city, users]
   );
+
+  const cityUsers = useMemo(
+    () => (city ? plottedUsers.filter(({ coordinate }) => isNearCity(coordinate, city)) : []),
+    [city, plottedUsers]
+  );
+
+  const visibleCityUsers = useMemo(
+    () =>
+      cityUsers
+        .slice()
+        .sort((a, b) => Number(Boolean(b.user.avatar_url)) - Number(Boolean(a.user.avatar_url)))
+        .slice(0, MAX_CITY_PROFILE_PINS),
+    [cityUsers]
+  );
+
+  const worldProfilePins = useMemo(() => {
+    const locationMap = new Map<string, UserPlot[]>();
+
+    plottedUsers.forEach(({ user, coordinate }) => {
+      if (city && isNearCity(coordinate, city)) return;
+
+      const key = coordinateKey(coordinate);
+      const existing = locationMap.get(key);
+      if (existing) existing.push({ user, coordinate });
+      else locationMap.set(key, [{ user, coordinate }]);
+    });
+
+    const pins: UserPlot[] = [];
+    const locationGroups = Array.from(locationMap.values())
+      .map((locationUsers) =>
+        locationUsers
+          .slice()
+          .sort((a, b) => Number(Boolean(b.user.avatar_url)) - Number(Boolean(a.user.avatar_url)))
+      )
+      .sort((a, b) => {
+        const aCoordinate = a[0]?.coordinate;
+        const bCoordinate = b[0]?.coordinate;
+        if (!aCoordinate || !bCoordinate) return 0;
+        const aSpread = ((aCoordinate.longitude + 180) / 360 + 0.61803398875) % 1;
+        const bSpread = ((bCoordinate.longitude + 180) / 360 + 0.61803398875) % 1;
+        return aSpread - bSpread || aCoordinate.latitude - bCoordinate.latitude;
+      });
+
+    for (let pass = 0; pins.length < MAX_WORLD_PROFILE_PINS; pass += 1) {
+      let added = false;
+
+      locationGroups.forEach((locationUsers) => {
+        if (pins.length >= MAX_WORLD_PROFILE_PINS) return;
+        const plot = locationUsers[pass];
+        if (!plot) return;
+
+        pins.push({
+          user: plot.user,
+          coordinate: scatterCoordinate(plot.coordinate, pass, locationUsers.length, 'world'),
+        });
+        added = true;
+      });
+
+      if (!added) break;
+    }
+
+    return pins;
+  }, [city, plottedUsers]);
+
+  const visiblePins = useMemo(() => {
+    const locationCounts = new Map<string, number>();
+    visibleCityUsers.forEach(({ coordinate }) => {
+      const key = coordinateKey(coordinate);
+      locationCounts.set(key, (locationCounts.get(key) ?? 0) + 1);
+    });
+
+    const locationIndexes = new Map<string, number>();
+    const cityPins = visibleCityUsers.map(({ user, coordinate }) => {
+      const key = coordinateKey(coordinate);
+      const index = locationIndexes.get(key) ?? 0;
+      const total = locationCounts.get(key) ?? 1;
+      locationIndexes.set(key, index + 1);
+
+      return {
+        user,
+        mode: 'city' as const,
+        position: projectCoordinate(scatterCoordinate(coordinate, index, total, city ? 'city' : 'world')),
+      };
+    });
+
+    const worldPins = worldProfilePins.map(({ user, coordinate }) => ({
+      user,
+      mode: 'world' as const,
+      position: projectCoordinate(coordinate),
+    }));
+
+    return [...cityPins, ...worldPins];
+  }, [city, visibleCityUsers, worldProfilePins]);
+
+  const profileCount = city && searched ? cityUsers.length : users.length;
   const statusText = city
     ? searched
-      ? `${users.length} ${users.length === 1 ? 'profile' : 'profiles'}`
+      ? `${profileCount} ${profileCount === 1 ? 'profile' : 'profiles'}`
       : 'City selected'
     : `${users.length} located ${users.length === 1 ? 'profile' : 'profiles'}`;
 
@@ -114,7 +269,7 @@ export default function CityGlobe({
         <View style={[styles.landMass, styles.landMassTwo, { backgroundColor: accentColor }]} />
         <View style={[styles.landMass, styles.landMassThree, { backgroundColor: accentColor }]} />
 
-        {city ? (
+        {city && visibleCityUsers.length === 0 ? (
           <View
             style={[
               styles.cityDot,
@@ -128,25 +283,38 @@ export default function CityGlobe({
           </View>
         ) : null}
 
-        {visibleUsers.map(({ user, position }) => {
+        {visiblePins.map(({ user, position, mode }, index) => {
           return (
             <TouchableOpacity
-              key={user.id}
+              key={`${mode}-${user.id}-${index}`}
               activeOpacity={0.84}
               onPress={() => onUserPress(user)}
               style={[
                 styles.profilePin,
+                mode === 'city' ? styles.profilePinCity : styles.profilePinWorld,
                 position,
                 {
                   borderColor: accentColor,
                   backgroundColor: surfaceAltColor,
+                  zIndex: mode === 'city' ? 20 + index : 10 + index,
                 },
               ]}
             >
               {user.avatar_url ? (
-                <Image source={{ uri: user.avatar_url }} style={styles.avatar} />
+                <Image
+                  source={{ uri: user.avatar_url }}
+                  style={[styles.avatar, mode === 'city' ? styles.avatarCity : styles.avatarWorld]}
+                />
               ) : (
-                <Text style={[styles.initials, { color: textColor }]}>{getInitials(user.full_name)}</Text>
+                <Text
+                  style={[
+                    styles.initials,
+                    mode === 'city' ? styles.initialsCity : styles.initialsWorld,
+                    { color: textColor },
+                  ]}
+                >
+                  {getInitials(user.full_name)}
+                </Text>
               )}
             </TouchableOpacity>
           );
@@ -255,14 +423,45 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  profilePinCity: {
+    width: 36,
+    height: 36,
+    marginLeft: -18,
+    marginTop: -18,
+    borderRadius: 18,
+  },
+  profilePinWorld: {
+    width: 30,
+    height: 30,
+    marginLeft: -15,
+    marginTop: -15,
+    borderRadius: 15,
+    borderWidth: 1.5,
+  },
   avatar: {
     width: 38,
     height: 38,
     borderRadius: 19,
   },
+  avatarCity: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  avatarWorld: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+  },
   initials: {
     fontSize: 12,
     fontWeight: '900',
+  },
+  initialsCity: {
+    fontSize: 11,
+  },
+  initialsWorld: {
+    fontSize: 8,
   },
   hud: {
     minWidth: 190,

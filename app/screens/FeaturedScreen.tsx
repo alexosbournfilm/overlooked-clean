@@ -3089,6 +3089,7 @@ const isMobile = Platform.OS !== 'web' || isPhoneLikeWeb;
 const isMobileWeb = Platform.OS === 'web' && isPhoneLikeWeb;
 const isWideWeb = Platform.OS === 'web' && !isPhoneLikeWeb && winW >= 980;
 const useDesktopWatch = isWideWeb;
+const isNativeIOSWatch = Platform.OS === 'ios' && !useDesktopWatch;
 const watchDesktopPadX = 22;
 const watchDesktopRailW = useDesktopWatch
   ? Math.min(520, Math.max(340, Math.floor(winW * 0.26)))
@@ -3644,7 +3645,7 @@ const mediaW = isWideWeb
   : Math.min(contentW, 980);
 
   // ✅ Compact grid sizing (wide web)
-const GRID_GAP = isWideWeb ? 12 : 24;
+const GRID_GAP = isWideWeb ? 12 : Platform.OS === 'ios' ? 30 : 24;
 const MOBILE_GRID_SIDE_PAD = isMobileWeb ? 10 : Platform.OS === 'web' ? 14 : 10;
 const MOBILE_CARD_SHRINK = isWideWeb ? 0 : 4;
 const mobileGridW = isMobileWeb ? winW : Platform.OS === 'web' ? pageInnerW : winW;
@@ -6596,7 +6597,7 @@ overScrollMode="always"
     ? {
         justifyContent: 'space-between',
         paddingHorizontal: MOBILE_GRID_SIDE_PAD,
-        marginBottom: 28,
+        marginBottom: Platform.OS === 'ios' ? 42 : 28,
       }
     : undefined
 }
@@ -6877,19 +6878,27 @@ maxToRenderPerBatch={2}
           </View>
 
           <View style={[styles.watchMetaBlock, { backgroundColor: featuredBackground }]}>
-            <Text style={[styles.watchTitle, { color: featuredText }]} numberOfLines={2}>
+            <Text
+              style={[
+                styles.watchTitle,
+                isNativeIOSWatch && styles.watchTitleIOS,
+                { color: featuredText },
+              ]}
+              numberOfLines={2}
+            >
               {previewItem.title}
             </Text>
 
-            <View style={styles.watchCreatorRow}>
+            <View style={[styles.watchCreatorRow, isNativeIOSWatch && styles.watchCreatorRowIOS]}>
               <TouchableOpacity
                 onPress={() => previewItem.users && goToProfile(previewItem.users)}
                 activeOpacity={0.85}
-                style={styles.watchCreatorTap}
+                style={[styles.watchCreatorTap, isNativeIOSWatch && styles.watchCreatorTapIOS]}
               >
                 <View
                   style={[
                     styles.watchCreatorAvatar,
+                    isNativeIOSWatch && styles.watchCreatorAvatarIOS,
                     {
                       backgroundColor: isLight ? colors.cardAlt : 'rgba(198,166,100,0.16)',
                       borderColor: isLight ? colors.borderStrong : 'rgba(198,166,100,0.28)',
@@ -6902,16 +6911,36 @@ maxToRenderPerBatch={2}
                       style={styles.watchCreatorAvatarImage}
                     />
                   ) : (
-                    <Text style={[styles.watchCreatorAvatarText, { color: colors.primary }]}>
+                    <Text
+                      style={[
+                        styles.watchCreatorAvatarText,
+                        isNativeIOSWatch && styles.watchCreatorAvatarTextIOS,
+                        { color: colors.primary },
+                      ]}
+                    >
                       {(previewItem.users?.full_name || 'O').slice(0, 1).toUpperCase()}
                     </Text>
                   )}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={[styles.watchCreatorName, { color: featuredText }]} numberOfLines={1}>
+                  <Text
+                    style={[
+                      styles.watchCreatorName,
+                      isNativeIOSWatch && styles.watchCreatorNameIOS,
+                      { color: featuredText },
+                    ]}
+                    numberOfLines={1}
+                  >
                     {previewItem.users?.full_name || 'Unknown creator'}
                   </Text>
-                  <Text style={[styles.watchCreatorMeta, { color: featuredSubText }]} numberOfLines={1}>
+                  <Text
+                    style={[
+                      styles.watchCreatorMeta,
+                      isNativeIOSWatch && styles.watchCreatorMetaIOS,
+                      { color: featuredSubText },
+                    ]}
+                    numberOfLines={1}
+                  >
                     {((previewItem as any).film_category || previewItem.category || 'Film').toString()}
                   </Text>
                 </View>
@@ -6934,6 +6963,7 @@ maxToRenderPerBatch={2}
                     disabled={busy}
                     style={[
                       styles.watchSupportButton,
+                      isNativeIOSWatch && styles.watchSupportButtonIOS,
                       {
                         backgroundColor: isSupported
                           ? isLight
@@ -6951,12 +6981,13 @@ maxToRenderPerBatch={2}
                   >
                     <Ionicons
                       name={isSupported ? 'checkmark-circle-outline' : 'star-outline'}
-                      size={12}
+                      size={isNativeIOSWatch ? 10 : 12}
                       color={isSupported ? colors.primary : featuredText}
                     />
                     <Text
                       style={[
                         styles.watchSupportText,
+                        isNativeIOSWatch && styles.watchSupportTextIOS,
                         { color: isSupported ? colors.primary : featuredText },
                       ]}
                     >
@@ -6967,7 +6998,12 @@ maxToRenderPerBatch={2}
               })()}
 
               {getSubmissionCredits(previewItem as any).length > 0 ? (
-                <View style={styles.watchCreditsInlineWrap}>
+                <View
+                  style={[
+                    styles.watchCreditsInlineWrap,
+                    isNativeIOSWatch && styles.watchCreditsInlineWrapIOS,
+                  ]}
+                >
                   {getSubmissionCredits(previewItem as any).map((item) => {
                     const collaboratorName =
                       item.users?.full_name ||
@@ -6986,34 +7022,66 @@ maxToRenderPerBatch={2}
                           })
                         }
                         disabled={!canOpenProfile}
-                        style={styles.watchCreditPerson}
+                        style={[
+                          styles.watchCreditPerson,
+                          isNativeIOSWatch && styles.watchCreditPersonIOS,
+                        ]}
                       >
                         {item.users?.avatar_url ? (
                           <Image
                             source={{ uri: item.users.avatar_url }}
-                            style={styles.watchCreditAvatar}
+                            style={[
+                              styles.watchCreditAvatar,
+                              isNativeIOSWatch && styles.watchCreditAvatarIOS,
+                            ]}
                           />
                         ) : (
                           <View
                             style={[
                               styles.watchCreditAvatarFallback,
+                              isNativeIOSWatch && styles.watchCreditAvatarIOS,
                               {
                                 backgroundColor: isLight ? colors.cardAlt : 'rgba(198,166,100,0.14)',
                                 borderColor: isLight ? colors.borderStrong : 'rgba(198,166,100,0.22)',
                               },
                             ]}
                           >
-                            <Text style={[styles.watchCreditAvatarInitial, { color: colors.primary }]}>
+                            <Text
+                              style={[
+                                styles.watchCreditAvatarInitial,
+                                isNativeIOSWatch && styles.watchCreditAvatarInitialIOS,
+                                { color: colors.primary },
+                              ]}
+                            >
                               {collaboratorName.slice(0, 1).toUpperCase()}
                             </Text>
                           </View>
                         )}
 
-                        <View style={styles.watchCreditTextWrap}>
-                          <Text style={[styles.watchCreditName, { color: featuredText }]} numberOfLines={1}>
+                        <View
+                          style={[
+                            styles.watchCreditTextWrap,
+                            isNativeIOSWatch && styles.watchCreditTextWrapIOS,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.watchCreditName,
+                              isNativeIOSWatch && styles.watchCreditNameIOS,
+                              { color: featuredText },
+                            ]}
+                            numberOfLines={1}
+                          >
                             {collaboratorName}
                           </Text>
-                          <Text style={[styles.watchCreditRole, { color: colors.primary }]} numberOfLines={1}>
+                          <Text
+                            style={[
+                              styles.watchCreditRole,
+                              isNativeIOSWatch && styles.watchCreditRoleIOS,
+                              { color: colors.primary },
+                            ]}
+                            numberOfLines={1}
+                          >
                             {item.role || "Collaborator"}
                           </Text>
                         </View>
@@ -9796,12 +9864,23 @@ watchTitle: {
   lineHeight: 23,
 },
 
+watchTitleIOS: {
+  fontSize: 16,
+  lineHeight: 20,
+},
+
 watchCreatorRow: {
   marginTop: 7,
   flexDirection: 'row',
   alignItems: 'center',
   flexWrap: 'wrap',
   gap: 10,
+},
+
+watchCreatorRowIOS: {
+  marginTop: 6,
+  flexWrap: 'nowrap',
+  gap: 6,
 },
 
 watchCreatorTap: {
@@ -9811,6 +9890,11 @@ watchCreatorTap: {
   flexShrink: 0,
   maxWidth: Platform.OS === 'web' ? 250 : 128,
   minWidth: 0,
+},
+
+watchCreatorTapIOS: {
+  gap: 5,
+  maxWidth: 104,
 },
 
 watchSupportButton: {
@@ -9824,11 +9908,22 @@ watchSupportButton: {
   gap: 3,
 },
 
+watchSupportButtonIOS: {
+  minHeight: 22,
+  borderRadius: 7,
+  paddingHorizontal: 6,
+  gap: 2,
+},
+
 watchSupportText: {
   fontFamily: SYSTEM_SANS,
   fontWeight: '700',
   fontSize: 9,
   letterSpacing: 0,
+},
+
+watchSupportTextIOS: {
+  fontSize: 8.5,
 },
 
 watchCreatorAvatar: {
@@ -9843,6 +9938,12 @@ watchCreatorAvatar: {
   overflow: 'hidden',
 },
 
+watchCreatorAvatarIOS: {
+  width: 24,
+  height: 24,
+  borderRadius: 12,
+},
+
 watchCreatorAvatarImage: {
   width: '100%',
   height: '100%',
@@ -9855,6 +9956,10 @@ watchCreatorAvatarText: {
   fontSize: 13,
 },
 
+watchCreatorAvatarTextIOS: {
+  fontSize: 10.5,
+},
+
 watchCreatorName: {
   color: '#F4F1EA',
   fontFamily: SYSTEM_SANS,
@@ -9863,12 +9968,23 @@ watchCreatorName: {
   lineHeight: 15,
 },
 
+watchCreatorNameIOS: {
+  fontSize: 10.5,
+  lineHeight: 12,
+},
+
 watchCreatorMeta: {
   marginTop: 1,
   color: 'rgba(237,235,230,0.55)',
   fontFamily: SYSTEM_SANS,
   fontWeight: '700',
   fontSize: 10.5,
+},
+
+watchCreatorMetaIOS: {
+  marginTop: 0,
+  fontSize: 8.5,
+  lineHeight: 10,
 },
 
 watchCreditsInlineWrap: {
@@ -9881,6 +9997,14 @@ watchCreditsInlineWrap: {
   gap: 10,
 },
 
+watchCreditsInlineWrapIOS: {
+  minWidth: 0,
+  flexShrink: 1,
+  flexWrap: 'nowrap',
+  gap: 5,
+  overflow: 'hidden',
+},
+
 watchCreditPerson: {
   maxWidth: Platform.OS === 'web' ? 185 : 178,
   minWidth: 0,
@@ -9890,11 +10014,24 @@ watchCreditPerson: {
   paddingRight: 4,
 },
 
+watchCreditPersonIOS: {
+  maxWidth: 82,
+  gap: 4,
+  paddingRight: 0,
+  flexShrink: 1,
+},
+
 watchCreditAvatar: {
   width: 28,
   height: 28,
   borderRadius: 14,
   backgroundColor: '#050505',
+},
+
+watchCreditAvatarIOS: {
+  width: 22,
+  height: 22,
+  borderRadius: 11,
 },
 
 watchCreditAvatarFallback: {
@@ -9915,9 +10052,20 @@ watchCreditAvatarInitial: {
   fontSize: 10.5,
 },
 
+watchCreditAvatarInitialIOS: {
+  fontSize: 8.5,
+},
+
 watchCreditTextWrap: {
   minWidth: 0,
   flexShrink: 1,
+},
+
+watchCreditTextWrapIOS: {
+  flexDirection: 'row',
+  alignItems: 'baseline',
+  gap: 3,
+  maxWidth: 56,
 },
 
 watchCreditName: {
@@ -9928,6 +10076,13 @@ watchCreditName: {
   lineHeight: 13,
 },
 
+watchCreditNameIOS: {
+  flexShrink: 1,
+  maxWidth: 30,
+  fontSize: 9.5,
+  lineHeight: 11,
+},
+
 watchCreditRole: {
   marginTop: 0,
   color: GOLD,
@@ -9935,6 +10090,12 @@ watchCreditRole: {
   fontWeight: '600',
   fontSize: 10,
   lineHeight: 12,
+},
+
+watchCreditRoleIOS: {
+  flexShrink: 0,
+  fontSize: 8.5,
+  lineHeight: 10,
 },
 
 watchCollaboratorsInlineScroll: {

@@ -7,11 +7,14 @@ import React, {
   useState,
 } from "react";
 import { Platform, AppState, Linking } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
 import { navigationRef } from "../navigation/navigationRef";
 import { CommonActions } from "@react-navigation/native";
 import { registerAndSavePushToken } from "../lib/registerAndSavePushToken";
+import {
+  clearPersistedAuthSession,
+  isInvalidRefreshTokenError,
+} from "../lib/authSession";
 
 type MinimalProfile = {
   id: string;
@@ -74,8 +77,6 @@ if (typeof G.__OVERLOOKED_MANUAL_SIGN_IN__ === "undefined") {
 if (typeof G.__OVERLOOKED_SIGNING_OUT__ === "undefined") {
   G.__OVERLOOKED_SIGNING_OUT__ = false;
 }
-
-const NATIVE_AUTH_STORAGE_KEY = "overlooked.supabase.auth";
 
 /* =====================================================
    URL HELPERS
@@ -279,16 +280,6 @@ function isEmailConfirmationUrl(url?: string | null): boolean {
   return isWebEmailConfirmationUrl() || isNativeEmailConfirmationUrl(url);
 }
 
-function isInvalidRefreshTokenError(error: any): boolean {
-  const message = String(error?.message || error || "").toLowerCase();
-
-  return (
-    message.includes("invalid refresh token") ||
-    message.includes("refresh token not found") ||
-    message.includes("refresh_token_not_found")
-  );
-}
-
 function isPasswordResetFlowActive() {
   return Boolean(
     G.__OVERLOOKED_RECOVERY__ ||
@@ -339,41 +330,6 @@ function withTimeout<T = any>(promise: PromiseLike<T>, ms = 8000): Promise<any> 
         reject(error);
       });
   });
-}
-
-async function clearPersistedAuthSession() {
-  try {
-    if (Platform.OS === "web") {
-      if (typeof window !== "undefined" && window.localStorage) {
-        const keysToRemove: string[] = [];
-
-        for (let i = 0; i < window.localStorage.length; i += 1) {
-          const key = window.localStorage.key(i);
-          if (!key) continue;
-
-          if (
-            key === NATIVE_AUTH_STORAGE_KEY ||
-            key.startsWith("sb-") ||
-            key.includes("supabase") ||
-            key.includes("overlooked.supabase.auth")
-          ) {
-            keysToRemove.push(key);
-          }
-        }
-
-        keysToRemove.forEach((key) => window.localStorage.removeItem(key));
-      }
-
-      return;
-    }
-
-    await AsyncStorage.removeItem(NATIVE_AUTH_STORAGE_KEY);
-  } catch (e: any) {
-    console.warn(
-      "AuthProvider clearPersistedAuthSession error:",
-      e?.message || String(e)
-    );
-  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

@@ -17,6 +17,7 @@ import { useNavigation, CommonActions } from "@react-navigation/native";
 import { supabase } from "../lib/supabase";
 import { navigationRef } from "../navigation/navigationRef";
 import { useAppTheme } from "../context/ThemeContext";
+import { clearPersistedAuthSession } from "../lib/authSession";
 
 const BG = "#050505";
 const CARD = "#111114";
@@ -165,39 +166,6 @@ export default function NewPassword() {
     }
   };
 
-  const clearSupabaseAuthStorage = async () => {
-    try {
-      if (Platform.OS === "web" && typeof window !== "undefined") {
-        const keysToRemove: string[] = [];
-
-        for (let i = 0; i < window.localStorage.length; i += 1) {
-          const key = window.localStorage.key(i);
-          if (!key) continue;
-
-          if (
-            key.startsWith("sb-") ||
-            key.includes("supabase") ||
-            key.includes("overlooked.supabase.auth")
-          ) {
-            keysToRemove.push(key);
-          }
-        }
-
-        keysToRemove.forEach((key) => window.localStorage.removeItem(key));
-
-        window.sessionStorage.removeItem("overlooked.allowCreateProfile");
-        window.sessionStorage.setItem("overlooked.justResetPassword", "true");
-        return;
-      }
-
-      const AsyncStorage =
-        require("@react-native-async-storage/async-storage").default;
-      await AsyncStorage.removeItem("overlooked.supabase.auth");
-    } catch (e) {
-      console.log("clearSupabaseAuthStorage error:", e);
-    }
-  };
-
   const goToSignIn = async () => {
     if (signingOut || hasLeftScreenRef.current) return;
 
@@ -219,7 +187,7 @@ export default function NewPassword() {
         console.log("Supabase signOut failed, clearing local auth anyway:", e);
       }
 
-      await clearSupabaseAuthStorage();
+      await clearPersistedAuthSession();
 
       if (Platform.OS === "web") {
         if (typeof window !== "undefined") {
@@ -240,7 +208,7 @@ export default function NewPassword() {
 
       (globalThis as any).__OVERLOOKED_RESET_URL__ = null;
 
-      await clearSupabaseAuthStorage();
+      await clearPersistedAuthSession();
 
       if (Platform.OS === "web" && typeof window !== "undefined") {
         window.sessionStorage.removeItem("overlooked.allowCreateProfile");

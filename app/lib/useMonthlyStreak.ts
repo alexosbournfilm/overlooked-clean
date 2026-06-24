@@ -1,10 +1,15 @@
 // app/lib/useMonthlyStreak.ts
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "./supabase";
+import { useAuth } from "../context/AuthProvider";
+import {
+  clearPersistedAuthSessionIfInvalidRefreshToken,
+  isInvalidRefreshTokenError,
+} from "./authSession";
 
 /**
  * Instant streak rendering:
- * - Use supabase.auth.getSession() first (fast/local) to get uid immediately.
+ * - Use AuthProvider first to get uid without triggering auth recovery.
  * - Show cached value instantly (module cache) while fetching a fresh value.
  */
 
@@ -13,40 +18,67 @@ const STREAK_CACHE: Record<string, { streak: number; ts: number }> = {};
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes (adjust if you want)
 
 export function useMonthlyStreak(targetUserId?: string) {
+  const { ready: authReady, userId: signedInUserId } = useAuth();
+
   const [streak, setStreak] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const lastUserIdRef = useRef<string>("");
 
-  const resolveUserId = useCallback(async () => {
+  const resolveUserId = useCallback(async (): Promise<string | null> => {
     // ✅ Use the target user if provided (Profile viewing someone else)
     let userId = (targetUserId ?? "").trim();
     if (userId) return userId;
 
-    // ✅ Fast path: getSession() reads local state quickly (no network call)
+    // Prefer AuthProvider's already-recovered user id so this hook does not
+    // trigger Supabase auth recovery while app startup is still settling.
+    userId = (signedInUserId ?? "").trim();
+    if (userId) return userId;
+
+    if (!authReady) return null;
+
+    // Fallback for unusual call sites where AuthProvider has no user yet.
     try {
-      const { data } = await supabase.auth.getSession();
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        await clearPersistedAuthSessionIfInvalidRefreshToken(error);
+        return "";
+      }
+
       const uid = data?.session?.user?.id ?? "";
       if (uid) return uid;
-    } catch {
+    } catch (e) {
+      await clearPersistedAuthSessionIfInvalidRefreshToken(e);
       // ignore, fallback below
     }
 
     // ✅ Fallback: getUser() can be slower because it may hit the network
     try {
-      const { data: authData } = await supabase.auth.getUser();
+      const { data: authData, error } = await supabase.auth.getUser();
+      if (error) {
+        await clearPersistedAuthSessionIfInvalidRefreshToken(error);
+        return "";
+      }
+
       return authData?.user?.id ?? "";
-    } catch {
+    } catch (e) {
+      await clearPersistedAuthSessionIfInvalidRefreshToken(e);
       return "";
     }
-  }, [targetUserId]);
+  }, [authReady, signedInUserId, targetUserId]);
 
   const fetchStreak = useCallback(async () => {
     setErrorMsg(null);
 
     // Resolve uid early
     const userId = await resolveUserId();
+
+    if (userId === null) {
+      setLoading(true);
+      return;
+    }
+
     lastUserIdRef.current = userId;
 
     if (!userId) {
@@ -113,6 +145,12 @@ export function useMonthlyStreak(targetUserId?: string) {
       STREAK_CACHE[userId] = { streak: next, ts: Date.now() };
       setStreak(next);
     } catch (e: any) {
+      if (isInvalidRefreshTokenError(e)) {
+        await clearPersistedAuthSessionIfInvalidRefreshToken(e);
+        if (!STREAK_CACHE[userId]) setStreak(0);
+        return;
+      }
+
       // Don’t overwrite a visible cached streak with 0 unless we truly have nothing
       if (!STREAK_CACHE[userId]) setStreak(0);
       setErrorMsg(e?.message ?? "Failed to load consistency");

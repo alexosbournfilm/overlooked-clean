@@ -22,6 +22,7 @@ import { AppThemeProvider, useAppTheme } from "./app/context/ThemeContext";
 import { navigate, openChat } from "./app/navigation/navigationRef";
 import { registerAndSavePushToken } from "./app/lib/registerAndSavePushToken";
 import { openSettingsModal } from "./app/context/SettingsModalContext";
+import { clearPersistedAuthSessionIfInvalidRefreshToken } from "./app/lib/authSession";
 
 import {
   useFonts as useCourierFonts,
@@ -173,6 +174,10 @@ async function waitForRealSession(maxAttempts = 10, delayMs = 400) {
     const { data, error } = await supabase.auth.getSession();
 
     if (error) {
+      if (await clearPersistedAuthSessionIfInvalidRefreshToken(error)) {
+        return null;
+      }
+
       console.log("waitForRealSession getSession error:", error.message);
     }
 
@@ -550,7 +555,15 @@ const isSignupLikeConfirmation =
 
     const waitForRestoredSession = async () => {
       for (let attempt = 0; attempt < 8; attempt += 1) {
-        const { data } = await supabase.auth.getSession();
+        const { data, error } = await supabase.auth.getSession();
+        if (error) {
+          if (await clearPersistedAuthSessionIfInvalidRefreshToken(error)) {
+            return false;
+          }
+
+          console.log("waitForRestoredSession getSession error:", error.message);
+        }
+
         if (data?.session?.user?.id) return true;
         await sleep(220);
       }
@@ -723,8 +736,18 @@ if (handledEarlySignupHash) {
           await handleDeepLink(initialUrl);
         }
 
-        const { data: sessionData } = await supabase.auth.getSession();
-        const session = sessionData?.session ?? null;
+        const { data: sessionData, error: sessionError } =
+          await supabase.auth.getSession();
+
+        if (sessionError) {
+          if (await clearPersistedAuthSessionIfInvalidRefreshToken(sessionError)) {
+            setInitialAuthRouteName("SignIn");
+          } else {
+            console.log("Initial getSession error:", sessionError.message);
+          }
+        }
+
+        const session = sessionError ? null : sessionData?.session ?? null;
 
         /**
          * Do not treat a recovery session as a normal logged-in session here.
