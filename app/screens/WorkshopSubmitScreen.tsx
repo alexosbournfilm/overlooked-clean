@@ -51,7 +51,7 @@ type WorkshopPathKey =
   | "sound"
   | "filmmaker";
 
-type SubmitMode = "monthly" | "workshop";
+type SubmitMode = "monthly" | "weekly" | "workshop";
 
 type WorkshopSubmitRouteParams = {
   WorkshopSubmit: {
@@ -62,6 +62,10 @@ type WorkshopSubmitRouteParams = {
     lessonDescription?: string;
     lessonPrompt?: string;
     lessonXp?: number;
+    weeklyChallengeId?: string;
+    weeklyChallengeTitle?: string;
+    weeklyChallengeType?: "acting" | "short_film" | string;
+    weeklyChallengeEndsAt?: string | null;
     creatorChallengeId?: string;
     challengeCode?: string;
     creatorId?: string;
@@ -73,8 +77,12 @@ type WorkshopSubmitRouteParams = {
 
 type MonthlyChallenge = {
   id: string | number;
-  month_start: string;
-  month_end: string;
+  title?: string | null;
+  challenge_type?: string | null;
+  month_start?: string;
+  month_end?: string;
+  starts_at?: string;
+  ends_at?: string;
   theme_word?: string | null;
 };
 
@@ -954,19 +962,68 @@ function isLifetimeUploadLimitError(message: string) {
   );
 }
 
-async function fetchCurrentChallenge(): Promise<MonthlyChallenge> {
+async function fetchCurrentChallenge(
+  preferredWeeklyChallengeId?: string | null,
+  preferredWeeklyChallengeType?: string | null
+): Promise<MonthlyChallenge> {
+  try {
+    const { error } = await supabase.rpc("finalize_last_week_winner_if_needed");
+    if (error) console.warn("[workshop-submit] finalize_last_week_winner_if_needed:", error.message);
+  } catch (e: any) {
+    console.warn("[workshop-submit] weekly finalize rpc threw:", e?.message || e);
+  }
+
+  try {
+    const { error } = await supabase.rpc("create_weekly_challenges_if_missing", {
+      p_weeks_ahead: 4,
+    });
+    if (error) console.warn("[workshop-submit] create_weekly_challenges_if_missing:", error.message);
+  } catch (e: any) {
+    console.warn("[workshop-submit] weekly insert rpc threw:", e?.message || e);
+  }
+
+  if (preferredWeeklyChallengeId) {
+    const preferred = await supabase
+      .from("weekly_challenges")
+      .select("id, title, challenge_type, starts_at, ends_at, theme_word")
+      .eq("id", preferredWeeklyChallengeId)
+      .limit(1)
+      .single();
+
+    if (!preferred.error && preferred.data) return preferred.data as MonthlyChallenge;
+  }
+
+  const nowIso = new Date().toISOString();
+
+  let weeklyQuery = supabase
+    .from("weekly_challenges")
+    .select("id, title, challenge_type, starts_at, ends_at, theme_word")
+    .lte("starts_at", nowIso)
+    .gt("ends_at", nowIso);
+
+  if (preferredWeeklyChallengeType) {
+    weeklyQuery = weeklyQuery.eq("challenge_type", preferredWeeklyChallengeType);
+  }
+
+  const weekly = await weeklyQuery
+    .order("starts_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!weekly.error && weekly.data) return weekly.data as MonthlyChallenge;
+
   try {
     const { error } = await supabase.rpc("finalize_last_month_winner_if_needed");
     if (error) console.warn("[workshop-submit] finalize_last_month_winner_if_needed:", error.message);
   } catch (e: any) {
-    console.warn("[workshop-submit] finalize rpc threw:", e?.message || e);
+    console.warn("[workshop-submit] legacy finalize rpc threw:", e?.message || e);
   }
 
   try {
     const { error } = await supabase.rpc("insert_monthly_challenge_if_not_exists");
     if (error) console.warn("[workshop-submit] insert_monthly_challenge_if_not_exists:", error.message);
   } catch (e: any) {
-    console.warn("[workshop-submit] insert rpc threw:", e?.message || e);
+    console.warn("[workshop-submit] legacy insert rpc threw:", e?.message || e);
   }
 
   const start = dayjs().startOf("month");
@@ -985,7 +1042,6 @@ async function fetchCurrentChallenge(): Promise<MonthlyChallenge> {
 
   if (!exact.error && exact.data) return exact.data as MonthlyChallenge;
 
-  const nowIso = new Date().toISOString();
   const range = await supabase
     .from("monthly_challenges")
     .select("id, month_start, month_end, theme_word")
@@ -1194,6 +1250,10 @@ export default function WorkshopSubmitScreen() {
   const lessonDescription = route.params?.lessonDescription ?? "";
   const lessonPrompt = route.params?.lessonPrompt ?? "";
   const lessonXp = route.params?.lessonXp ?? 0;
+  const weeklyChallengeId = route.params?.weeklyChallengeId ?? null;
+  const weeklyChallengeTitle = route.params?.weeklyChallengeTitle ?? "";
+  const weeklyChallengeType = route.params?.weeklyChallengeType ?? null;
+  const weeklyChallengeEndsAt = route.params?.weeklyChallengeEndsAt ?? null;
   const creatorChallengeId = route.params?.creatorChallengeId ?? null;
   const challengeCode = route.params?.challengeCode ?? null;
   const creatorId = route.params?.creatorId ?? null;
@@ -1392,10 +1452,10 @@ export default function WorkshopSubmitScreen() {
 
     (async () => {
       try {
-        const challenge = await fetchCurrentChallenge();
+        const challenge = await fetchCurrentChallenge(weeklyChallengeId, weeklyChallengeType);
         if (alive) setCurrentChallenge(challenge);
       } catch (e: any) {
-        console.warn("Failed to fetch current monthly challenge:", e?.message || e);
+        console.warn("Failed to fetch current weekly challenge:", e?.message || e);
       }
 
       try {
@@ -1420,7 +1480,7 @@ export default function WorkshopSubmitScreen() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [weeklyChallengeId, weeklyChallengeType]);
 
   useEffect(() => {
   refreshUploadLimit();
@@ -2083,8 +2143,8 @@ return;
     }
 
     let lastSubmitStep = isWorkshopMode
-      ? "Checking workshop + monthly eligibility…"
-      : "Checking monthly eligibility…";
+      ? "Checking workshop + weekly eligibility..."
+      : "Checking weekly eligibility...";
     const setSubmitStatus = (next: string) => {
       lastSubmitStep = next;
       setStatus(next);
@@ -2116,6 +2176,19 @@ return;
         );
       }
 
+      if (
+        !isCreatorChallengeMode &&
+        weeklyChallengeEndsAt &&
+        new Date(weeklyChallengeEndsAt).getTime() <= Date.now()
+      ) {
+        setLoading(false);
+        return notify(
+          "Challenge ended",
+          "This week's Overlooked challenge has ended and is no longer accepting submissions.",
+          setStatus
+        );
+      }
+
       const tierNorm = await getCurrentUserTierOrFree({ force: true });
       setUserTier(tierNorm || null);
 
@@ -2127,15 +2200,18 @@ if (!canUpload.allowed) {
 }
 
       if (!currentChallenge) {
-        const fresh = await fetchCurrentChallenge();
+        const fresh = await fetchCurrentChallenge(weeklyChallengeId, weeklyChallengeType);
         setCurrentChallenge(fresh);
       }
 
-      const challengeToUse = currentChallenge ?? (await fetchCurrentChallenge());
+      const challengeToUse =
+        currentChallenge ?? (await fetchCurrentChallenge(weeklyChallengeId, weeklyChallengeType));
 
       if (!challengeToUse?.id) {
-        throw new Error("Could not find the current monthly challenge.");
+        throw new Error("Could not find the current weekly challenge.");
       }
+
+      const isLegacyMonthlyChallenge = !!challengeToUse.month_start || !!challengeToUse.month_end;
 
       
 
@@ -2159,7 +2235,7 @@ if (!canUpload.allowed) {
 
       setSubmitStatus("Preparing upload…");
 
-const uploadPrefix = isWorkshopMode ? `workshop/${user.id}` : `monthly/${user.id}`;
+const uploadPrefix = isWorkshopMode ? `workshop/${user.id}` : `weekly/${user.id}`;
 
 const contentType =
   Platform.OS === "web"
@@ -2193,7 +2269,10 @@ const submissionInsert = await insertSubmissionRobust(
     description: description.trim() || null,
     submitted_at: new Date().toISOString(),
     word: null,
-    monthly_challenge_id: challengeToUse.id,
+    weekly_challenge_id:
+      isCreatorChallengeMode || isLegacyMonthlyChallenge ? null : challengeToUse.id,
+    monthly_challenge_id:
+      isCreatorChallengeMode || !isLegacyMonthlyChallenge ? null : challengeToUse.id,
     storage_path: null,
     video_path: null,
     mime_type: contentType,
@@ -2209,9 +2288,9 @@ const submissionInsert = await insertSubmissionRobust(
     collaborator_credits: initialCollaboratorCredits,
     creator_challenge_id: isCreatorChallengeMode ? creatorChallengeId : null,
     challenge_code: isCreatorChallengeMode ? challengeCode : null,
-    submission_source: isCreatorChallengeMode ? "creator_challenge" : "monthly_challenge",
+    submission_source: isCreatorChallengeMode ? "creator_challenge" : "weekly_challenge",
     creator_id: isCreatorChallengeMode ? creatorId : null,
-    source: isCreatorChallengeMode ? "creator_challenge" : isWorkshopMode ? "workshop" : "monthly_upload",
+    source: isCreatorChallengeMode ? "creator_challenge" : isWorkshopMode ? "workshop" : "weekly_upload",
     workshop_path: isWorkshopMode ? pathKey ?? null : null,
     workshop_step: isWorkshopMode ? step ?? null : null,
     workshop_lesson_title: isWorkshopMode ? lessonTitle ?? null : null,
@@ -2326,10 +2405,10 @@ await refreshUploadLimit();
         ? "Challenge submission uploaded!"
         : "Film uploaded!";
 const successMessage = isWorkshopMode
-  ? "Your film has been uploaded and entered into this month’s challenge, and your workshop lesson is now complete. It may take a little time to process before it appears on Featured."
+  ? "Your film has been uploaded and entered into this week's challenge, and your workshop lesson is now complete. It may take a little time to process before it appears on Featured."
   : isCreatorChallengeMode
   ? `Your film has been uploaded and attached to ${creatorChallengeTitle || "the creator challenge"}. It may take a little time to process before it appears on Featured.`
-  : "Your film has been uploaded and entered into this month’s challenge. It may take a little time to process before it appears on Featured.";
+  : "Your film has been uploaded and entered into this week's challenge. It may take a little time to process before it appears on Featured.";
 
       const uploadedTitle = createdSubmission.title ?? title.trim();
       const uploadedThumb = thumbRes.publicUrl;
@@ -2424,7 +2503,7 @@ const successMessage = isWorkshopMode
     ? `Step ${step ?? "—"} • ${lessonTitle || "Workshop lesson"}`
     : isCreatorChallengeMode
     ? `Submitting to ${creatorChallengeTitle || "creator challenge"}`
-    : "Upload your film to appear on Featured and enter this month’s challenge.";
+    : `Submit to ${weeklyChallengeTitle || currentChallenge?.title || "this week's challenge"}.`;
 
   const leftTitle = isWorkshopMode ? "Lesson" : isCreatorChallengeMode ? "Challenge" : "How it works";
   const rightTitle = isWorkshopMode ? "Post exercise video" : "Upload film";
@@ -2449,10 +2528,10 @@ const successMessage = isWorkshopMode
     : "Upload film";
 
   const footnoteText = isWorkshopMode
-    ? "This will post your exercise video, enter the monthly challenge, and complete the workshop step."
+    ? "This will post your exercise video, enter the weekly challenge, and complete the workshop step."
     : isCreatorChallengeMode
     ? "This will create a Featured submission and automatically attach it to the selected creator challenge."
-    : "Your upload will appear on Featured and be entered into this month’s challenge.";
+    : "Your upload will appear on Featured and be entered into this week's challenge.";
 
   const rulesTitle = isWorkshopMode ? "Workshop Rules & Terms" : "Upload Rules & Terms";
   const selectedFilmFileName =
@@ -2580,7 +2659,7 @@ return (
                     {tt(
                       isCreatorChallengeMode
                         ? "Add a title, choose a category, upload your film and thumbnail, then submit it to Featured and the selected creator challenge."
-                        : "Add a title, choose a category, upload your film and thumbnail, then submit it to Featured and this month’s challenge."
+                        : "Add a title, choose a category, upload your film and thumbnail, then submit it to Featured and this week's challenge."
                     )}
                   </Text>
 
@@ -2620,10 +2699,10 @@ return (
                     <Text style={[styles.infoBullet, { color: T.sub }]}>
                       {tt(
                         isWorkshopMode
-                          ? "• Your exercise video is posted and entered into this month’s challenge"
+                          ? "• Your exercise video is posted and entered into this week's challenge"
                           : isCreatorChallengeMode
                           ? "• Your film is uploaded and attached to the creator challenge"
-                          : "• Your film is uploaded and entered into this month’s challenge"
+                          : "• Your film is uploaded and entered into this week's challenge"
                       )}
                     </Text>
                     <Text style={[styles.infoBullet, { color: T.sub }]}>
@@ -3415,7 +3494,7 @@ return (
             <Text style={[styles.modalText, { color: T.sub }]}>{tt("• Thumbnail is required.")}</Text>
             <Text style={[styles.modalText, { color: T.sub }]}>{tt("• You must choose a category.")}</Text>
             <Text style={[styles.modalText, { color: T.sub }]}>{tt("• This upload will become a Featured submission.")}</Text>
-            <Text style={[styles.modalText, { color: T.sub }]}>{tt("• This upload will be entered into the current monthly challenge.")}</Text>
+            <Text style={[styles.modalText, { color: T.sub }]}>{tt("• This upload will be entered into the current weekly challenge.")}</Text>
             {isWorkshopMode ? (
               <Text style={[styles.modalText, { color: T.sub }]}>{tt("• In workshop mode, this also marks your lesson complete.")}</Text>
             ) : null}

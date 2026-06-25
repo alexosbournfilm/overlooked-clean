@@ -91,7 +91,16 @@ function resolveActivityType(body: WebhookBody) {
   if (type === "insert" && table === "jobs") return "job_created";
   if (type === "insert" && table === "applications") return "job_application_created";
   if (type === "insert" && table === "users") return "city_creative_created";
+  if (type === "insert" && table === "weekly_challenges") return "weekly_challenge_started";
   if (type === "insert" && table === "monthly_challenges") return "monthly_challenge_started";
+  if (
+    type === "update" &&
+    table === "weekly_challenges" &&
+    body.record?.winner_submission_id &&
+    body.record?.winner_submission_id !== body.old_record?.winner_submission_id
+  ) {
+    return "weekly_challenge_result";
+  }
   if (
     type === "update" &&
     table === "monthly_challenges" &&
@@ -474,23 +483,42 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     if (
+      activityType === "weekly_challenge_started" ||
+      activityType === "weekly_challenge_ending" ||
       activityType === "monthly_challenge_started" ||
       activityType === "monthly_challenge_ending"
     ) {
       const { data: users } = await supabase.from("users").select("id");
-      const isEnding = activityType === "monthly_challenge_ending";
+      const isWeekly = activityType.startsWith("weekly_");
+      const isEnding =
+        activityType === "weekly_challenge_ending" ||
+        activityType === "monthly_challenge_ending";
+      const challengeType = text(record.challenge_type, "");
+      const challengeLabel =
+        challengeType === "acting"
+          ? "acting challenge"
+          : challengeType === "short_film"
+          ? "short film challenge"
+          : isWeekly
+          ? "weekly challenge"
+          : "monthly challenge";
+
       for (const user of users ?? []) {
         targets.push({
           userId: user.id,
           preferenceKey: "challenge_reminders",
-          title: isEnding ? "Monthly challenge is almost over" : "New monthly challenge",
+          title: isEnding
+            ? `${isWeekly ? "This week's" : "Monthly"} challenge is almost over`
+            : isWeekly
+            ? `This week's ${challengeLabel} is live`
+            : "New monthly challenge",
           body: text(record.title, isEnding ? "Submit before the deadline" : "A new prompt is live"),
           data: screenData("Challenge", { challengeId: record.id }),
         });
       }
     }
 
-    if (activityType === "monthly_challenge_result") {
+    if (activityType === "weekly_challenge_result" || activityType === "monthly_challenge_result") {
       const winnerSubmission = record.winner_submission_id
         ? await fetchSubmission(supabase, { submission_id: record.winner_submission_id })
         : null;
@@ -500,7 +528,10 @@ serve(async (req: Request): Promise<Response> => {
         targets.push({
           userId: winnerId,
           preferenceKey: "challenge_results",
-          title: "You placed in the monthly challenge",
+          title:
+            activityType === "weekly_challenge_result"
+              ? "You won this week's challenge"
+              : "You placed in the monthly challenge",
           body: text(record.title, "Open Overlooked to see your result"),
           data: screenData("Challenge", {
             challengeId: record.id,

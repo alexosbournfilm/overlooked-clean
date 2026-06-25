@@ -17,7 +17,7 @@ import {
 const STREAK_CACHE: Record<string, { streak: number; ts: number }> = {};
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes (adjust if you want)
 
-export function useMonthlyStreak(targetUserId?: string) {
+export function useCreativeStreak(targetUserId?: string) {
   const { ready: authReady, userId: signedInUserId } = useAuth();
 
   const [streak, setStreak] = useState<number>(0);
@@ -153,7 +153,7 @@ export function useMonthlyStreak(targetUserId?: string) {
 
       // Don’t overwrite a visible cached streak with 0 unless we truly have nothing
       if (!STREAK_CACHE[userId]) setStreak(0);
-      setErrorMsg(e?.message ?? "Failed to load consistency");
+      setErrorMsg(e?.message ?? "Failed to load streak");
     }
   }, [resolveUserId]);
 
@@ -163,3 +163,5 @@ export function useMonthlyStreak(targetUserId?: string) {
 
   return { streak, loading, errorMsg, refreshStreak: fetchStreak };
 }
+
+export const useMonthlyStreak = useCreativeStreak;

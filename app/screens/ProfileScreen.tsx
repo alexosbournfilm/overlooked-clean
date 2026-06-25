@@ -210,6 +210,8 @@ const GRID_GAP = 14;
 // ✅ Cap widths remain the same (but you’ll use responsive maxW later)
 const SHOWREEL_MAX_W = 760;
 const SHOWREEL_MAX_W_MOBILE = 600;
+const PROFILE_SUBMISSION_PREVIEW_LIMIT = 24;
+const PROFILE_COLLABORATION_PREVIEW_LIMIT = 12;
 
 const SHOWREEL_CATEGORIES = [
   'Acting',
@@ -563,6 +565,42 @@ injectWebVideoCSS();
 /* Signed URL cache just for showreels */
 const showreelSignedUrlCache = new Map<string, { url: string; exp: number }>();
 const showreelInflight = new Map<string, Promise<string>>();
+const profileSubmissionSignedUrlCache = new Map<string, { url: string; exp: number }>();
+const profileSubmissionInflight = new Map<string, Promise<string | null>>();
+
+async function signProfileSubmissionStoragePath(
+  bucket: string,
+  rawPath: string,
+  expiresInSec = 3600
+) {
+  const path = String(rawPath || '').split('?')[0].trim();
+  if (!bucket || !path) return null;
+
+  const key = `${bucket}:${path}`;
+  const now = Date.now();
+  const cached = profileSubmissionSignedUrlCache.get(key);
+  if (cached && now < cached.exp - 30_000) return cached.url;
+  if (profileSubmissionInflight.has(key)) return profileSubmissionInflight.get(key)!;
+
+  const promise = supabase.storage
+    .from(bucket)
+    .createSignedUrl(path, expiresInSec)
+    .then(({ data, error }) => {
+      if (error || !data?.signedUrl) return null;
+
+      profileSubmissionSignedUrlCache.set(key, {
+        url: data.signedUrl,
+        exp: now + expiresInSec * 1000,
+      });
+      return data.signedUrl;
+    })
+    .finally(() => {
+      profileSubmissionInflight.delete(key);
+    });
+
+  profileSubmissionInflight.set(key, promise);
+  return promise;
+}
 
 function formatPlayerTime(seconds?: number | null) {
   const total = Math.max(0, Math.floor(Number.isFinite(seconds || 0) ? seconds || 0 : 0));
@@ -1733,6 +1771,11 @@ interface ProfileData {
   stripe_customer_id?: string | null;
   xp?: number | null;
   monthly_xp?: number | null;
+  creative_momentum_score?: number | null;
+  creative_momentum_level?: string | null;
+  current_creative_streak?: number | null;
+  best_creative_streak?: number | null;
+  active_creative_weeks?: number | null;
   level?: number | null;
   title?: string | null;
   banner_color?: string | null;
@@ -1776,6 +1819,8 @@ interface SubmissionRow {
   mux_playback_id?: string | null;
   mux_status?: string | null;
   hidden_on_profile?: boolean | null;
+  weekly_challenge_id?: string | null;
+  creator_challenge_status?: string | null;
   profile_hidden?: boolean | null;
   is_hidden_from_profile?: boolean | null;
   collaboration_role?: string | null;
@@ -2543,7 +2588,13 @@ const contentMaxWidth = isTabletNative
   // ✅ 3) refresh when screen focuses (like Challenge)
   useFocusEffect(
     React.useCallback(() => {
-      refreshStreak?.();
+      const task = InteractionManager.runAfterInteractions(() => {
+        refreshStreak?.();
+      });
+
+      return () => {
+        task?.cancel?.();
+      };
     }, [refreshStreak])
   );
 
@@ -2561,6 +2612,8 @@ const isViewingExternalProfile = !!targetIdParam;
   const [cityName, setCityName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
+  const profileLoadSeqRef = useRef(0);
+  const activeProfileIdRef = useRef<string | null>(null);
 
   // Jobs
   const [myJobs, setMyJobs] = useState<MyJob[]>([]);
@@ -2956,7 +3009,11 @@ if (data) row = data as LevelRow;
   const fetchProfile = useCallback(async () => {
     if (savingRef.current) return;
 
-    setIsLoading(true);
+    const loadSeq = profileLoadSeqRef.current + 1;
+    profileLoadSeqRef.current = loadSeq;
+    const isCurrentLoad = () => profileLoadSeqRef.current === loadSeq;
+    let profileShown = false;
+
 try {
   if (!authReady) return;
 
@@ -2966,6 +3023,7 @@ try {
   const targetId = isViewingExternalProfile ? targetIdParam : authUserIdLocal ?? null;
 
   if (!targetId) {
+    activeProfileIdRef.current = null;
     setProfile(null);
     setWorkshopAchievement(null);
     setIsOwnProfile(false);
@@ -2976,181 +3034,214 @@ try {
     return;
   }
 
+  setIsLoading(activeProfileIdRef.current !== targetId);
+
   const own = !!authUserIdLocal && targetId === authUserIdLocal;
   setIsOwnProfile(own);
   if (own) {
     isCurrentUserPro({ force: true })
-      .then(setCurrentUserHasProAccess)
+      .then((value) => {
+        if (isCurrentLoad()) setCurrentUserHasProAccess(value);
+      })
       .catch((e) => {
         console.warn('profile pro status unavailable:', e?.message ?? e);
-        setCurrentUserHasProAccess(null);
+        if (isCurrentLoad()) setCurrentUserHasProAccess(null);
       });
   } else {
     setCurrentUserHasProAccess(null);
   }
-  setHasBlockedProfile(false);
-  let blockedByMe = false;
 
-  if (!own && authUserIdLocal) {
-    const { data: blockRows } = await supabase
-      .from('user_blocks')
-      .select('blocked_id')
-      .eq('blocker_id', authUserIdLocal)
-      .eq('blocked_id', targetId)
-      .limit(1);
+  const profilePromise = supabase
+    .from("users")
+    .select("*")
+    .eq("id", targetId)
+    .maybeSingle();
 
-    if ((blockRows || []).length > 0) {
-      blockedByMe = true;
-      setHasBlockedProfile(true);
-    }
+  const blockPromise =
+    !own && authUserIdLocal
+      ? supabase
+          .from('user_blocks')
+          .select('blocked_id')
+          .eq('blocker_id', authUserIdLocal)
+          .eq('blocked_id', targetId)
+          .limit(1)
+      : Promise.resolve({ data: [] as any[], error: null });
+
+  const [profileResult, blockResult] = await Promise.all([profilePromise, blockPromise]);
+
+  if (!isCurrentLoad()) return;
+
+  const { data, error: userError } = profileResult;
+
+  if (userError || !data) {
+    Alert.alert("Error loading profile");
+    return;
   }
 
-      // 2) LOAD PROFILE DATA
-      const { data, error: userError } = await supabase
-        .from("users")
-        .select("*")
-        .eq("id", targetId)
-        .maybeSingle();
+  const pd = data as ProfileData;
+  const blockedByMe = ((blockResult as any)?.data || []).length > 0;
 
-      if (userError || !data) {
-        Alert.alert("Error loading profile");
-        return;
-      }
+  activeProfileIdRef.current = targetId;
+  setHasBlockedProfile(blockedByMe);
+  setProfile(pd);
+  setFullName(pd.full_name || "");
+  setMainRole(
+    typeof pd.main_role_id === "number"
+      ? pd.main_role_id
+      : pd.main_role_id != null
+      ? Number(pd.main_role_id) || null
+      : null
+  );
+  setSideRoles(Array.isArray(pd.side_roles) ? (pd.side_roles as string[]).filter(Boolean) : []);
+  setCityId(
+    typeof pd.city_id === "number"
+      ? pd.city_id
+      : pd.city_id != null
+      ? Number(pd.city_id) || null
+      : null
+  );
+  setImage(pd.avatar_url || null);
+  setBio(pd.bio ?? "");
+  setMainRoleName("");
+  setCityName("");
 
-      const pd = data as ProfileData;
-      setProfile(pd);
+  const existing = (pd.portfolio_url || "").trim();
 
-      if (!own && pd.is_banned) {
-        Alert.alert('Profile unavailable', 'This profile is currently unavailable.');
-      }
+  const looksLikeMuxPlayback = (u: string) => {
+    const s = (u || "").toLowerCase();
+    return s.includes("stream.mux.com/") || s.endsWith(".m3u8") || s.includes(".m3u8?");
+  };
 
-      // 3) SUPPORT SYSTEM (only run when authUser.id EXISTS)
-      try {
-        const { count: supportersRaw } = await supabase
+  if (existing && (looksLikeVideo(existing) || looksLikeMuxPlayback(existing))) {
+    setMp4MainUrl(existing);
+    setMp4MainName(existing.split("/").pop() || "Showreel");
+  } else {
+    setMp4MainUrl("");
+    setMp4MainName("");
+  }
+
+  setIsLoading(false);
+  profileShown = true;
+
+  if (!own && pd.is_banned) {
+    Alert.alert('Profile unavailable', 'This profile is currently unavailable.');
+  }
+
+  if (blockedByMe || (!own && pd.is_banned)) {
+    setPortfolioItems([]);
+    setShowreels([]);
+    setSubmissions([]);
+    setLoadingPortfolio(false);
+    setLoadingSubmissions(false);
+    setMyJobs([]);
+    setUserJobs([]);
+    setAlreadyAppliedJobIds([]);
+    return;
+  }
+
+  const loadSupportData = async () => {
+    try {
+      const supportCheckPromise =
+        !own && authUserIdLocal
+          ? supabase
+              .from("user_supports")
+              .select("supported_id", { count: "exact", head: true })
+              .eq("supporter_id", authUserIdLocal)
+              .eq("supported_id", targetId)
+          : Promise.resolve({ count: 0, error: null });
+
+      const [supportersResult, supportingResult, supportCheckResult] = await Promise.all([
+        supabase
           .from("user_supports")
           .select("supported_id", { count: "exact", head: true })
-          .eq("supported_id", targetId);
-
-        setSupportersCount(supportersRaw ?? 0);
-
-        const { count: supportingRaw } = await supabase
+          .eq("supported_id", targetId),
+        supabase
           .from("user_supports")
           .select("supporter_id", { count: "exact", head: true })
-          .eq("supporter_id", targetId);
+          .eq("supporter_id", targetId),
+        supportCheckPromise,
+      ]);
 
-        setSupportingCount(supportingRaw ?? 0);
+      if (!isCurrentLoad()) return;
 
-        if (!own && authUserIdLocal) {
-  const { count: supportCheck } = await supabase
-    .from("user_supports")
-    .select("supported_id", { count: "exact", head: true })
-    .eq("supporter_id", authUserIdLocal)
-    .eq("supported_id", targetId);
+      setSupportersCount(supportersResult.count ?? 0);
+      setSupportingCount(supportingResult.count ?? 0);
+      setIsSupporting(!own && authUserIdLocal ? (supportCheckResult.count ?? 0) > 0 : false);
+    } catch (e) {
+      console.log("Support load error:", e);
+    }
+  };
 
-  setIsSupporting((supportCheck ?? 0) > 0);
-} else {
-  setIsSupporting(false);
-}
-      } catch (e) {
-        console.log("Support load error:", e);
-      }
+  const loadProfileLabels = async () => {
+    const roleId = pd.main_role_id != null ? Number(pd.main_role_id) : null;
+    const cityIdValue = pd.city_id != null ? Number(pd.city_id) : null;
 
-      // 4) REMAINING PROFILE LOGIC (unchanged)
-      setFullName(pd.full_name || "");
-      setMainRole(
-        typeof pd.main_role_id === "number"
-          ? pd.main_role_id
-          : pd.main_role_id != null
-          ? Number(pd.main_role_id) || null
-          : null
-      );
-      setSideRoles(Array.isArray(pd.side_roles) ? (pd.side_roles as string[]).filter(Boolean) : []);
-      setCityId(
-        typeof pd.city_id === "number"
-          ? pd.city_id
-          : pd.city_id != null
-          ? Number(pd.city_id) || null
-          : null
-      );
-      setImage(pd.avatar_url || null);
-      setBio(pd.bio ?? "");
+    try {
+      const [roleResult, cityResult] = await Promise.all([
+        roleId
+          ? supabase.from("creative_roles").select("name").eq("id", roleId).maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+        cityIdValue
+          ? supabase.from("cities").select("name, country_code").eq("id", cityIdValue).maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+      ]);
 
-      const existing = (pd.portfolio_url || "").trim();
+      if (!isCurrentLoad()) return;
 
-const looksLikeMuxPlayback = (u: string) => {
-  const s = (u || "").toLowerCase();
-  return s.includes("stream.mux.com/") || s.endsWith(".m3u8") || s.includes(".m3u8?");
-};
+      setMainRoleName(((roleResult as any).data as { name?: string } | null)?.name ?? "");
 
-if (existing && (looksLikeVideo(existing) || looksLikeMuxPlayback(existing))) {
-  setMp4MainUrl(existing);
-  setMp4MainName(existing.split("/").pop() || "Showreel");
-} else {
-  setMp4MainUrl("");
-  setMp4MainName("");
-}
+      const city = ((cityResult as any).data as { name?: string; country_code?: string } | null);
+      const label = city?.name ?? "";
+      setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : label) : "");
+    } catch (e: any) {
+      console.log("Profile label load error:", e?.message || e);
+    }
+  };
 
-      if (pd.main_role_id != null) {
-        const { data: roleData } = await supabase
-  .from("creative_roles")
-  .select("name")
-  .eq("id", Number(pd.main_role_id))
-  .maybeSingle();
+  const loadProfileContent = async () => {
+    await Promise.allSettled([
+      fetchPortfolioItems(targetId),
+      fetchShowreelList(targetId),
+      fetchUserSubmissions(targetId),
+    ]);
+  };
 
-setMainRoleName((roleData as { name?: string } | null)?.name ?? "");
-      } else {
-        setMainRoleName("");
-      }
+  const loadProfileJobs = async () => {
+    if (own && authUserIdLocal) {
+      await fetchMyJobsWithApplicants(authUserIdLocal);
+      if (!isCurrentLoad()) return;
+      setUserJobs([]);
+      setLoadingUserJobs(false);
+      setAlreadyAppliedJobIds([]);
+    } else {
+      if (!isCurrentLoad()) return;
+      setMyJobs([]);
+      await fetchUserJobs(targetId, authUserIdLocal ?? "");
+    }
+  };
 
-      if (pd.city_id != null) {
-        const { data: cityData } = await supabase
-  .from("cities")
-  .select("name, country_code")
-  .eq("id", Number(pd.city_id))
-  .maybeSingle();
+  const loadSecondaryProfileData = async () => {
+    await Promise.allSettled([
+      loadSupportData(),
+      loadProfileLabels(),
+      loadGamificationMeta(pd),
+      loadWorkshopAchievement(targetId),
+      loadProfileContent(),
+      loadProfileJobs(),
+    ]);
+  };
 
-const city = cityData as { name?: string; country_code?: string } | null;
-const label = city?.name ?? "";
-
-setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : label) : "");
-      } else {
-        setCityName("");
-      }
-
-      await loadGamificationMeta(pd);
-      await loadWorkshopAchievement(targetId);
-
-      if (blockedByMe || (!own && pd.is_banned)) {
-        setPortfolioItems([]);
-        setShowreels([]);
-        setSubmissions([]);
-        setMyJobs([]);
-        setUserJobs([]);
-        setAlreadyAppliedJobIds([]);
-        return;
-      }
-
-      if (targetId) {
-        await Promise.all([
-          fetchPortfolioItems(targetId),
-          fetchShowreelList(targetId),
-          fetchUserSubmissions(targetId),
-        ]);
-      }
-
-      if (own && authUserIdLocal) {
-  await fetchMyJobsWithApplicants(authUserIdLocal);
-  setUserJobs([]);
-  setLoadingUserJobs(false);
-  setAlreadyAppliedJobIds([]);
-} else {
-  setMyJobs([]);
-  await fetchUserJobs(targetId, authUserIdLocal ?? "");
-}
+  InteractionManager.runAfterInteractions(() => {
+    if (isCurrentLoad()) {
+      void loadSecondaryProfileData();
+    }
+  });
     } catch (e) {
       console.log("fetchProfile fatal:", e);
     } finally {
-      setIsLoading(false);
+      if (!profileShown && isCurrentLoad()) {
+        setIsLoading(false);
+      }
     }
  }, [targetIdParam, loadGamificationMeta, loadWorkshopAchievement, authUserId, authReady]);
 
@@ -3179,8 +3270,6 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: false });
 
-  console.log('[SHOWREEL] fetchShowreelList result:', { data, error });
-
   if (error) {
     console.warn('fetchShowreelList error:', error.message);
     setShowreels([]);
@@ -3206,8 +3295,6 @@ setCityName(label ? (city?.country_code ? `${label}, ${city.country_code}` : lab
     url: storageUrl || '',
   };
 });
-
-  console.log('[SHOWREEL] mapped showreels:', rows);
 
   setShowreels(rows.slice(0, 3));
 };
@@ -3843,7 +3930,8 @@ setMp4MainUrl(fallbackUrl ? `${fallbackUrl}${ts()}` : '');
         .from("submissions")
         .select("*") // <-- STOP GUESSING. PULL EVERYTHING.
         .eq("user_id", targetUserId)
-        .order("submitted_at", { ascending: false });
+        .order("submitted_at", { ascending: false })
+        .limit(PROFILE_SUBMISSION_PREVIEW_LIMIT);
 
       if (error) {
         console.warn("fetchUserSubmissions error:", error.message);
@@ -3858,7 +3946,8 @@ setMp4MainUrl(fallbackUrl ? `${fallbackUrl}${ts()}` : '');
           .from("submission_collaborators")
           .select("role, submission_id, submissions:submission_id(*)")
           .eq("user_id", targetUserId)
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .limit(PROFILE_COLLABORATION_PREVIEW_LIMIT);
 
         if (collaborationError) {
           console.log("Collaborated submissions unavailable:", collaborationError.message);
@@ -3884,6 +3973,14 @@ setMp4MainUrl(fallbackUrl ? `${fallbackUrl}${ts()}` : '');
       } catch (collabErr: any) {
         console.log("Collaborated submissions fetch unavailable:", collabErr?.message || collabErr);
       }
+
+      rows = rows
+        .sort((a, b) => {
+          const bTime = Date.parse(b?.submitted_at || b?.created_at || '') || 0;
+          const aTime = Date.parse(a?.submitted_at || a?.created_at || '') || 0;
+          return bTime - aTime;
+        })
+        .slice(0, PROFILE_SUBMISSION_PREVIEW_LIMIT);
 
       try {
         const creatorIds = Array.from(
@@ -3945,11 +4042,6 @@ function getMuxThumbnailUrl(playbackId?: string | null) {
   return `https://image.mux.com/${playbackId}/thumbnail.jpg`;
 }
 
-      // 🔥 PROOF LOG: look at ONE mp4 row in the console and you’ll know instantly what column is used.
-      if (rows.length) {
-        console.log("[SUBMISSIONS raw sample]", rows[0]);
-      }
-
       const stripQuery = (u: string) => (u ? u.split("?")[0] : u);
 
       const pathFromPublicUrl = (u: string) => {
@@ -4010,20 +4102,20 @@ function getMuxThumbnailUrl(playbackId?: string | null) {
 
     const cleanPath = raw.split("?")[0];
 
-    const { data: signedFilms } = await supabase.storage
-      .from("films")
-      .createSignedUrl(cleanPath, 60 * 60);
+    const signedFilmsUrl = await signProfileSubmissionStoragePath("films", cleanPath, 60 * 60);
 
-    if (signedFilms?.signedUrl) {
-      return { ...(s as SubmissionRow), video_url: signedFilms.signedUrl };
+    if (signedFilmsUrl) {
+      return { ...(s as SubmissionRow), video_url: signedFilmsUrl };
     }
 
-    const { data: signedPort } = await supabase.storage
-      .from("portfolios")
-      .createSignedUrl(cleanPath, 60 * 60);
+    const signedPortfolioUrl = await signProfileSubmissionStoragePath(
+      "portfolios",
+      cleanPath,
+      60 * 60
+    );
 
-    if (signedPort?.signedUrl) {
-      return { ...(s as SubmissionRow), video_url: signedPort.signedUrl };
+    if (signedPortfolioUrl) {
+      return { ...(s as SubmissionRow), video_url: signedPortfolioUrl };
     }
 
     return s as SubmissionRow;
@@ -6362,16 +6454,14 @@ paddingHorizontal: isMobileLike ? 4 : 0,
             const pct = streakLoading ? 0 : Math.min((monthsThisYear / 12) * 100, 100);
 
             return (
-              <View
-  key={`year-${yearNumber}`}
-  style={{ marginTop: idx === 0 ? 0 : isMobileLike ? 8 : 12 }}
->
+              <View key={`year-${yearNumber}`} style={{ marginTop: idx === 0 ? 0 : 12 }}>
                 <View
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
                     justifyContent: "center",
                     marginBottom: 6,
+                    paddingHorizontal: isMobileLike ? 10 : 0,
                     flexWrap: "wrap",
                     rowGap: 6,
                   }}
@@ -6384,12 +6474,12 @@ paddingHorizontal: isMobileLike ? 4 : 0,
                       fontFamily: FONT_OBLIVION,
                     }}
                   >
-                    Filmmaking consistency
+                    Filmmaking streak
                   </Text>
 
                   <Text
                     style={{
-                      fontSize: isMobileLike ? 9 : 11,
+                      fontSize: 11,
                       color: COLORS.textSecondary,
                       letterSpacing: 1.4,
                       fontFamily: FONT_OBLIVION,
@@ -6404,9 +6494,9 @@ paddingHorizontal: isMobileLike ? 4 : 0,
                     <View
                       style={{
                         marginLeft: 10,
-                        paddingHorizontal: isMobileLike ? 8 : 10,
-paddingVertical: isMobileLike ? 3 : 4,
-                        borderRadius: 6,
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                        borderRadius: 999,
                         backgroundColor: "rgba(198,166,100,0.18)",
                         borderWidth: 1,
                         borderColor: "rgba(198,166,100,0.35)",
@@ -6426,7 +6516,6 @@ paddingVertical: isMobileLike ? 3 : 4,
                   ) : null}
                 </View>
 
-                {/* ✅ Ensure rail has a real width on web */}
                 <View style={[block.progressRail, { width: "100%" }]}>
                   <View style={[block.progressFill, { width: `${pct}%` }]} />
                 </View>
@@ -8386,14 +8475,6 @@ const onRefresh = useCallback(async () => {
     try {
       await refreshStreak?.();
     } catch {}
-
-    if (profile?.id) {
-      await Promise.allSettled([
-        fetchPortfolioItems(profile.id),
-        fetchShowreelList(profile.id),
-        fetchUserSubmissions(profile.id),
-      ]);
-    }
   } finally {
     setRefreshing(false);
   }
@@ -8401,7 +8482,6 @@ const onRefresh = useCallback(async () => {
   triggerAppRefresh,
   fetchProfile,
   refreshStreak,
-  profile?.id,
 ]);
 
 /* ---------- MAIN RENDER ---------- */

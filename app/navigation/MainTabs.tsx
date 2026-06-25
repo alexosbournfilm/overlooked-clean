@@ -550,18 +550,15 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
   const { streak, loading } = useMonthlyStreak();
   const progressAnim = useRef(new Animated.Value(0)).current;
 
-  const { targetMonths, yearLabel, pct, displayStreak } = useMemo(() => {
+  const { targetDays, pct, displayStreak } = useMemo(() => {
     const safe = Math.max(0, Number(streak || 0));
-    const target = 12;
-
-    const year = safe <= 0 ? 1 : Math.floor((safe - 1) / 12) + 1;
-    const withinYear = safe <= 0 ? 0 : ((safe - 1) % 12) + 1;
-    const fraction = target > 0 ? Math.min(1, withinYear / target) : 0;
+    const target = 7;
+    const display = Math.min(safe, target);
+    const fraction = target > 0 ? Math.min(1, display / target) : 0;
 
     return {
-      displayStreak: withinYear,
-      targetMonths: target,
-      yearLabel: year,
+      displayStreak: display,
+      targetDays: target,
       pct: fraction,
     };
   }, [streak]);
@@ -692,7 +689,7 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
                 { color: colors.textMuted },
               ]}
             >
-              Year {yearLabel}
+              7-day rhythm
             </Text>
           </View>
 
@@ -713,7 +710,7 @@ const TopBarStreakProgress = memo(function TopBarStreakProgress({
               ]}
               numberOfLines={1}
             >
-              {loading ? '—' : `${displayStreak}/${targetMonths}`}
+              {loading ? '—' : `${displayStreak}/${targetDays}`}
             </Text>
           </View>
         </View>
@@ -956,7 +953,7 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
 
     if (activeTab === 'monthly') {
       primaryValue = typeof item.monthly_xp === 'number' ? item.monthly_xp : 0;
-      label = 'XP this month';
+      label = 'Momentum';
     } else if (activeTab === 'allTime') {
       primaryValue = typeof item.xp === 'number' ? item.xp : 0;
       label = 'XP total';
@@ -1112,7 +1109,7 @@ const LeaderboardModal = memo(function LeaderboardModal({ visible, onClose }: Le
                   { color: activeTab === 'monthly' ? colors.textOnPrimary : colors.textMuted },
                 ]}
               >
-                This Month
+                Rising
               </Text>
             </Pressable>
 
@@ -2481,7 +2478,7 @@ useEffect(() => {
     return;
   }
 
-  navigation.navigate('WorkshopSubmit', { mode: 'monthly' });
+  navigation.navigate('WorkshopSubmit', { mode: 'weekly' });
 }, [navigation, isGuest]);
 
 const tabPanResponder = useMemo(

@@ -99,6 +99,54 @@ const FONT_OBLIVION =
 
 type SortKey = 'foryou' | 'newest' | 'oldest' | 'mostvoted' | 'leastvoted';
 type Category = 'film' | 'all';
+type FeaturedChallengeChoice = 'acting' | 'short_film';
+
+type FeaturedWeeklyChallenge = {
+  id: string;
+  title?: string | null;
+  challenge_type?: 'acting' | 'short_film' | string | null;
+  brief?: string | null;
+  instructions?: string | null;
+  as_if?: string | null;
+  monologue?: string | null;
+  theme_word?: string | null;
+  runtime_limit_seconds?: number | null;
+  submission_rules?: Record<string, any> | null;
+  submission_format?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  voting_ends_at?: string | null;
+  month_start?: string | null;
+  month_end?: string | null;
+  submission_count?: number | null;
+  vote_count?: number | null;
+  winner_submission_id?: string | null;
+};
+
+type FeaturedDailyPrompt = {
+  id: string;
+  prompt_date: string;
+  category: string;
+  prompt: string;
+  points?: number | null;
+};
+
+type FeaturedActivityEvent = {
+  id: string;
+  event_type?: string | null;
+  message: string;
+  created_at?: string | null;
+  metadata?: Record<string, any> | null;
+};
+
+type FeaturedChallengeHub = {
+  current: FeaturedWeeklyChallenge | null;
+  currentActing: FeaturedWeeklyChallenge | null;
+  currentFilm: FeaturedWeeklyChallenge | null;
+  previous: FeaturedWeeklyChallenge | null;
+  dailyPrompt: FeaturedDailyPrompt | null;
+  liveActivity: FeaturedActivityEvent[];
+};
 
 const FILM_CATEGORIES = [
   'All',
@@ -158,7 +206,7 @@ const BOTTOM_TAB_H = Platform.OS === 'web' ? 64 : 64;
 const CONTENT_TOP_PAD = Platform.OS === 'web' ? 5 : 9;
 
 /* 🔥 Gamification constants (kept) */
-const VOTES_PER_MONTH = 10;
+const VOTES_PER_WEEK = 10;
 const VOTE_XP =
   (XP_VALUES &&
     ((XP_VALUES as any).VOTE_SUBMISSION ||
@@ -190,10 +238,14 @@ mux_asset_id?: string | null;
   mux_status?: string | null;
   share_slug?: string | null;
   collaborator_credits?: any[] | null;
+  weekly_challenge_id?: string | null;
   creator_challenge_id?: string | null;
   challenge_code?: string | null;
   submission_source?: string | null;
   creator_id?: string | null;
+  creator_challenge_status?: string | null;
+  rank_snapshot?: number | null;
+  top_10_at?: string | null;
   creator_challenges?: {
     id: string;
     title?: string | null;
@@ -2341,8 +2393,281 @@ function normalizeIsoRange(start: string, end: string) {
   };
 }
 
-async function fetchChallengesForFeatured() {
+function getChallengeRangeForFeatured(challenge?: FeaturedWeeklyChallenge | null) {
+  if (!challenge) return null;
+
+  const start = challenge.starts_at || challenge.month_start || null;
+  const end = challenge.ends_at || challenge.month_end || null;
+
+  return start && end ? { start, end } : null;
+}
+
+function formatChallengeTypeLabel(type?: string | null) {
+  if (type === 'acting') return 'Acting';
+  if (type === 'short_film') return 'Short film';
+  return 'Creative';
+}
+
+function getLocalWeekBounds(reference = new Date()) {
+  const start = new Date(reference);
+  const daysSinceMonday = (start.getDay() + 6) % 7;
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - daysSinceMonday);
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+
+  return { start, end };
+}
+
+function formatDateRangePart(date: Date, includeYear = false) {
+  const options: Intl.DateTimeFormatOptions = {
+    month: 'short',
+    day: 'numeric',
+  };
+
+  if (includeYear) options.year = 'numeric';
+
+  return date.toLocaleDateString(undefined, options);
+}
+
+function formatWeeklyChallengeActiveDates(reference = new Date()) {
+  const { start, end } = getLocalWeekBounds(reference);
+  if (reference.getTime() > end.getTime()) return 'Submissions closed';
+
+  const sameYear = start.getFullYear() === end.getFullYear();
+  const startLabel = formatDateRangePart(start, !sameYear);
+  const endLabel = formatDateRangePart(end, true);
+
+  return `Active ${startLabel} - ${endLabel}`;
+}
+
+function getThisWeekActingChallenge(
+  base?: Partial<FeaturedWeeklyChallenge> | null
+): FeaturedWeeklyChallenge {
+  const { start, end } = getLocalWeekBounds();
+  const votingEnd = new Date(end.getTime() + 12 * 60 * 60 * 1000);
+
+  return {
+    ...(base || {}),
+    id: base?.id || '',
+    title: 'The Last Message',
+    challenge_type: 'acting',
+    brief:
+      'Perform a grounded one-take monologue as if this is the final message you never had the courage to send.',
+    instructions:
+      'Frame yourself shoulders-up or waist-up. Begin after a long silence, as if the other person has just asked for the truth. Play one clear objective: make them stay, forgive you, believe you, or finally understand you. Let the thought change at least twice. Keep your voice private, not theatrical.',
+    as_if:
+      'As if the person you hurt is on the other side of the room, already reaching for the door, and this is the last honest thing you get to say before they leave.',
+    monologue:
+      'I rehearsed this so many times that it stopped sounding like me. So I am done rehearsing. I was cruel because it was easier than being scared. I made you carry the silence and then acted surprised when it became heavy. If you need to go, I will not stand in the doorway. But before you do, I need one honest thing to exist between us: I loved you badly, and I am trying to learn how to love without defending myself.',
+    theme_word: 'Confession',
+    runtime_limit_seconds: 60,
+    submission_rules: {
+      ...(base?.submission_rules || {}),
+      max_length_seconds: 60,
+      takes: 'one_take_preferred',
+      framing: 'shoulders_up_or_waist_up',
+      performance_objective: 'make_them_stay_forgive_believe_or_understand',
+    },
+    submission_format: 'video',
+    starts_at: base?.starts_at || start.toISOString(),
+    ends_at: base?.ends_at || end.toISOString(),
+    voting_ends_at: base?.voting_ends_at || votingEnd.toISOString(),
+  };
+}
+
+function getThisWeekFilmChallenge(
+  base?: Partial<FeaturedWeeklyChallenge> | null
+): FeaturedWeeklyChallenge {
+  const { start, end } = getLocalWeekBounds();
+  const votingEnd = new Date(end.getTime() + 12 * 60 * 60 * 1000);
+
+  return {
+    ...(base || {}),
+    id: base?.id || '',
+    title: 'One Location, One Secret',
+    challenge_type: 'short_film',
+    brief:
+      'Make a short film in one location where one character is hiding something, but the audience understands it through behavior before anyone says it directly.',
+    instructions:
+      'Use exactly one location and no more than two characters. Open on an ordinary action that becomes suspicious by the end. The secret must be suggested through blocking, an object, a repeated sound, or what a character avoids looking at. Do not explain the secret in dialogue. End on a final image that changes how we understand the first shot.',
+    as_if: null,
+    monologue: null,
+    theme_word: 'Secret',
+    runtime_limit_seconds: 60,
+    submission_rules: {
+      ...(base?.submission_rules || {}),
+      max_length_seconds: 60,
+      locations: 1,
+      max_characters: 2,
+      dialogue_rule: 'no_direct_exposition',
+    },
+    submission_format: 'short film video',
+    starts_at: base?.starts_at || start.toISOString(),
+    ends_at: base?.ends_at || end.toISOString(),
+    voting_ends_at: base?.voting_ends_at || votingEnd.toISOString(),
+  };
+}
+
+function getWeeklyChallengeChoice(
+  hub: FeaturedChallengeHub,
+  challengeType: FeaturedChallengeChoice
+): FeaturedWeeklyChallenge {
+  if (challengeType === 'short_film') {
+    const base =
+      hub.currentFilm ||
+      (hub.current?.challenge_type === 'short_film' ? hub.current : null);
+    return getThisWeekFilmChallenge(base);
+  }
+
+  const base =
+    hub.currentActing ||
+    (hub.current?.challenge_type === 'acting' ? hub.current : null);
+  return getThisWeekActingChallenge(base);
+}
+
+function formatDeadlineCountdown(end?: string | null) {
+  if (!end) return 'Deadline soon';
+
+  const ms = new Date(end).getTime() - Date.now();
+  if (!Number.isFinite(ms)) return 'Deadline soon';
+  if (ms <= 0) return 'Submissions closed';
+
+  const totalHours = Math.ceil(ms / (1000 * 60 * 60));
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+
+  if (days <= 0) return `${hours}h left`;
+  if (hours <= 0) return `${days}d left`;
+  return `${days}d ${hours}h left`;
+}
+
+function getChallengeRuntime(challenge?: FeaturedWeeklyChallenge | null) {
+  const raw = Number(challenge?.runtime_limit_seconds ?? challenge?.submission_rules?.max_length_seconds ?? 60);
+  return Number.isFinite(raw) && raw > 0 ? raw : 60;
+}
+
+function getChallengeSubmissionFormat(challenge?: FeaturedWeeklyChallenge | null) {
+  const raw = String(challenge?.submission_format || '').trim();
+  if (raw) return raw;
+  return 'Video submission';
+}
+
+function getChallengeRules(challenge?: FeaturedWeeklyChallenge | null) {
+  const type = challenge?.challenge_type;
+  const rules = challenge?.submission_rules || {};
+
+  if (type === 'acting') {
+    return [
+      'One continuous take preferred',
+      'Perform the text as written, but personalize the pauses, behavior, and point of view',
+      'Start from stillness, then let the thought change at least twice',
+      'No music or heavy editing needed',
+      'Submit during the active challenge dates',
+    ];
+  }
+
+  const generated = [
+    rules.locations === 1 ? 'One location only' : null,
+    rules.max_characters ? `Maximum ${rules.max_characters} characters` : null,
+    rules.dialogue_rule === 'no_direct_exposition' ? 'No direct exposition' : null,
+    rules.spoken_dialogue === false ? 'No spoken dialogue' : null,
+    'The secret must be shown through behavior, blocking, sound, or an object',
+    'End on an image that changes the meaning of the opening shot',
+    'Submit during the active challenge dates',
+  ].filter(Boolean) as string[];
+
+  return generated.length > 0
+    ? generated
+    : ['Clear creative constraint', 'Submit during the active challenge dates'];
+}
+
+function getChallengeLookingFor(challenge?: FeaturedWeeklyChallenge | null) {
+  if (challenge?.challenge_type === 'acting') {
+    return [
+      'A clear objective',
+      'Specific relationship to the person you are speaking to',
+      'Thought changes, not one emotional note',
+      'Stillness and restraint when the stakes rise',
+      'A final moment that lands',
+    ];
+  }
+
+  return [
+    'Clear story',
+    'Strong atmosphere',
+    'Creative use of the constraint',
+    'Subtle performance',
+    'Strong final moment',
+  ];
+}
+
+async function fetchChallengesForFeatured(): Promise<FeaturedChallengeHub> {
   const nowIso = new Date().toISOString();
+
+  const emptyHub: FeaturedChallengeHub = {
+    current: null,
+    currentActing: null,
+    currentFilm: null,
+    previous: null,
+    dailyPrompt: null,
+    liveActivity: [],
+  };
+
+  try {
+    const [currentRes, previousRes, promptRes, activityRes] = await Promise.all([
+      supabase
+        .from('weekly_challenges')
+        .select(
+          'id, title, challenge_type, brief, instructions, as_if, monologue, theme_word, runtime_limit_seconds, submission_rules, submission_format, starts_at, ends_at, voting_ends_at, submission_count, vote_count, winner_submission_id'
+        )
+        .lte('starts_at', nowIso)
+        .gt('ends_at', nowIso)
+        .order('starts_at', { ascending: false })
+        .order('challenge_type', { ascending: true })
+        .limit(4),
+      supabase
+        .from('weekly_challenges')
+        .select('id, title, challenge_type, winner_submission_id, starts_at, ends_at')
+        .eq('challenge_type', 'short_film')
+        .not('winner_submission_id', 'is', null)
+        .lte('ends_at', nowIso)
+        .order('ends_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('daily_creative_prompts')
+        .select('id, prompt_date, category, prompt, points')
+        .gte('prompt_date', new Date().toISOString().slice(0, 10))
+        .order('prompt_date', { ascending: true })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from('live_activity_events')
+        .select('id, event_type, message, metadata, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5),
+    ]);
+
+    if (!currentRes.error || !previousRes.error) {
+      const currentRows = ((currentRes.data || []) as FeaturedWeeklyChallenge[]) || [];
+      const currentActing = currentRows.find((item) => item.challenge_type === 'acting') || null;
+      const currentFilm = currentRows.find((item) => item.challenge_type === 'short_film') || null;
+
+      return {
+        current: getThisWeekActingChallenge(currentActing),
+        currentActing: getThisWeekActingChallenge(currentActing),
+        currentFilm: getThisWeekFilmChallenge(currentFilm),
+        previous: (previousRes.data as FeaturedWeeklyChallenge | null) ?? null,
+        dailyPrompt: (promptRes.data as FeaturedDailyPrompt | null) ?? null,
+        liveActivity: ((activityRes.data || []) as FeaturedActivityEvent[]) || [],
+      };
+    }
+  } catch (weeklyErr: any) {
+    console.warn('Failed to fetch weekly challenge hub:', weeklyErr?.message || weeklyErr);
+  }
 
   const { data: current, error: curErr } = await supabase
     .from('monthly_challenges')
@@ -2354,7 +2679,7 @@ async function fetchChallengesForFeatured() {
     .single();
 
   if (curErr) {
-    console.warn('Failed to fetch CURRENT month challenge:', curErr.message);
+    console.warn('Failed to fetch legacy CURRENT challenge:', curErr.message);
   }
 
   const { data: previous, error: prevErr } = await supabase
@@ -2366,16 +2691,25 @@ async function fetchChallengesForFeatured() {
     .single();
 
   if (prevErr) {
-    console.warn('Failed to fetch PREVIOUS month challenge:', prevErr.message);
+    console.warn('Failed to fetch legacy PREVIOUS challenge:', prevErr.message);
   }
 
   return {
-    current: current ?? null,
-    previous: previous ?? null,
+    ...emptyHub,
+    current: getThisWeekActingChallenge((current as any) || null),
+    currentActing: getThisWeekActingChallenge((current as any) || null),
+    currentFilm: getThisWeekFilmChallenge(null),
+    previous: previous
+      ? {
+          ...(previous as any),
+          title: 'Previous Challenge',
+          challenge_type: 'short_film',
+        }
+      : null,
   };
 }
 
-/* 🔥 Count votes in current month for cap enforcement (kept) */
+/* 🔥 Count votes in current challenge range for cap enforcement */
 async function countUserVotesInRange(uid: string, range: { start: string; end: string }) {
   try {
     const { startIso, endIso } = normalizeIsoRange(range.start, range.end);
@@ -2394,14 +2728,14 @@ async function countUserVotesInRange(uid: string, range: { start: string; end: s
       const retry = await attempt('voted_at');
       count = retry.count ?? 0;
       if (retry.error) {
-        console.warn('Failed to count monthly votes (Featured):', retry.error.message);
+        console.warn('Failed to count weekly votes (Featured):', retry.error.message);
         return 0;
       }
     }
 
     return count ?? 0;
   } catch (e: any) {
-    console.warn('Failed to count monthly votes (Featured):', e?.message || String(e));
+    console.warn('Failed to count weekly votes (Featured):', e?.message || String(e));
     return 0;
   }
 }
@@ -3045,7 +3379,6 @@ const FeaturedScreen = () => {
   const route = useRoute<any>();
   const { userId, ready: authReady } = useAuth();
   const { colors, isLight } = useAppTheme();
-  const GOLD = colors.primary;
   const T = useMemo(
     () => ({
       bg: colors.background,
@@ -3570,10 +3903,22 @@ const hoverIntentRef = useRef<Record<string, any>>({});
 const fetchSeqRef = useRef(0);
 const inFlightFetchKeyRef = useRef<string | null>(null);
 const lastAppliedFetchKeyRef = useRef<string | null>(null);
-  const { userId: gamUserId, refresh: refreshGamification } = useGamification();
+  const gamification = useGamification();
+  const { userId: gamUserId, refresh: refreshGamification } = gamification;
+  const [challengeHub, setChallengeHub] = useState<FeaturedChallengeHub>({
+    current: null,
+    currentActing: null,
+    currentFilm: null,
+    previous: null,
+    dailyPrompt: null,
+    liveActivity: [],
+  });
+  const [challengePromptOpen, setChallengePromptOpen] = useState(false);
+  const [selectedChallengeType, setSelectedChallengeType] = useState<FeaturedChallengeChoice>('acting');
+  const [dailyPromptBusy, setDailyPromptBusy] = useState(false);
 
-  // Track monthly votes used for cap enforcement (kept, even though feed is all-time)
-  const [monthlyVotesUsed, setMonthlyVotesUsed] = useState(0);
+  // Track weekly votes used for cap enforcement (feed can still show all-time films)
+  const [weeklyVotesUsed, setWeeklyVotesUsed] = useState(0);
   const currentRangeRef = useRef<{ start: string; end: string } | null>(null);
 
   useEffect(() => {
@@ -3704,7 +4049,7 @@ useEffect(() => {
   'id, user_id, title, votes, submitted_at, is_winner, share_slug, is_removed, removed_reason, film_category, collaborator_credits, video_id, storage_path, video_path, thumbnail_url, media_kind, mime_type, duration_seconds, category, mux_upload_id, mux_asset_id, mux_playback_id, mux_status';
 
   const enhancedBaseCols =
-  `${legacyBaseCols}, creator_challenge_id, challenge_code, submission_source, creator_id, creator_challenges:creator_challenge_id ( id, title, challenge_code, creator_id, users:creator_id ( id, full_name, avatar_url ) )`;
+  `${legacyBaseCols}, weekly_challenge_id, creator_challenge_id, challenge_code, submission_source, creator_id, creator_challenge_status, rank_snapshot, top_10_at, creator_challenges:creator_challenge_id ( id, title, challenge_code, creator_id, users:creator_id ( id, full_name, avatar_url ) )`;
 
   const submissionSelect = (cols: string, textCol: 'description' | 'word') => `
     ${cols},
@@ -3910,6 +4255,31 @@ const initChallengesIfNeeded = async () => {
   hasInitializedChallengesRef.current = true;
 
   try {
+    const { error } = await supabase.rpc('finalize_last_week_winner_if_needed');
+    if (error) {
+      console.warn('finalize_last_week_winner_if_needed failed:', error.message);
+    }
+  } catch {}
+
+  try {
+    const { error } = await supabase.rpc('create_weekly_challenges_if_missing', {
+      p_weeks_ahead: 4,
+    });
+    if (error) {
+      console.warn('create_weekly_challenges_if_missing failed:', error.message);
+    }
+  } catch {}
+
+  try {
+    const { error } = await supabase.rpc('create_daily_prompts_if_missing', {
+      p_days_ahead: 14,
+    });
+    if (error) {
+      console.warn('create_daily_prompts_if_missing failed:', error.message);
+    }
+  } catch {}
+
+  try {
     const { error } = await supabase.rpc('finalize_last_month_winner_if_needed');
     if (error) {
       console.warn('finalize_last_month_winner_if_needed failed:', error.message);
@@ -3960,10 +4330,9 @@ const fetchContent = async (
 
   try {
     const challenges = await fetchChallengesForFeatured();
+    setChallengeHub(challenges);
 
-    const range = challenges.current
-      ? { start: challenges.current.month_start, end: challenges.current.month_end }
-      : undefined;
+    const range = getChallengeRangeForFeatured(challenges.current) ?? undefined;
 
     currentRangeRef.current = range ?? null;
 
@@ -4086,9 +4455,9 @@ const fetchContent = async (
     if (uid && range) {
       const used = await countUserVotesInRange(uid, range);
       if (seq !== fetchSeqRef.current) return;
-      setMonthlyVotesUsed(used);
+      setWeeklyVotesUsed(used);
     } else {
-      setMonthlyVotesUsed(0);
+      setWeeklyVotesUsed(0);
     }
 
     const winnerCanPlay = !!(
@@ -4567,11 +4936,27 @@ const shareSubmissionLink = async (
     });
 
     const url = buildSharedFilmUrl(shareSlug);
+    const shareMessage = [
+      'Vote for my Overlooked challenge entry.',
+      s.title ? `"${s.title}"` : null,
+      'Help me reach Top 10.',
+      url,
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
-  await navigator.clipboard.writeText(url);
+  await navigator.clipboard.writeText(shareMessage);
 } else {
-  await Clipboard.setStringAsync(url);
+  try {
+    await Share.share({
+      title: s.title || 'Overlooked challenge entry',
+      message: shareMessage,
+      url,
+    });
+  } catch {
+    await Clipboard.setStringAsync(shareMessage);
+  }
 }
 
     setSubmissions((prev) =>
@@ -4594,7 +4979,7 @@ const shareSubmissionLink = async (
 
     if (Platform.OS === 'web') {
       const proceed = window.confirm(
-        'Link copied. Screenshot the next screen and post it to your story?'
+        'Vote link copied. Screenshot the next screen and post it to your story?'
       );
       if (proceed) {
         openStoryModeSafely({
@@ -4956,8 +5341,8 @@ await fetchComments(commentsFor.id);
     if (!alreadyVoted) {
       const range = currentRangeRef.current;
       if (range) {
-        if (monthlyVotesUsed >= VOTES_PER_MONTH) {
-          Alert.alert('No votes left', 'You’ve used all your votes for this month.');
+        if (weeklyVotesUsed >= VOTES_PER_WEEK) {
+          Alert.alert('No votes left', "You've used all your votes for this week.");
           return;
         }
       }
@@ -4992,7 +5377,7 @@ setPreviewItem((prev) =>
     : prev
 );
 
-        setMonthlyVotesUsed((n) => Math.max(0, n - 1));
+        setWeeklyVotesUsed((n) => Math.max(0, n - 1));
       } else {
         const { error } = await supabase.from('user_votes').insert([
           {
@@ -5018,7 +5403,7 @@ setPreviewItem((prev) =>
     : prev
 );
 
-        setMonthlyVotesUsed((n) => n + 1);
+        setWeeklyVotesUsed((n) => n + 1);
 
         const { error: notifyError } = await supabase.rpc('notify_submission_vote', {
           target_submission_id: s.id,
@@ -5043,7 +5428,7 @@ setPreviewItem((prev) =>
   };
 
   // Ensure only the chosen activeId plays.
-// If nothing is active, immediately resume last month's winner if it exists.
+// If nothing is active, immediately resume last week's winner if it exists.
 useEffect(() => {
   (async () => {
     const fallbackWinnerId =
@@ -5189,11 +5574,24 @@ const getCreatorChallengeLabel = (s: any) => {
 const renderCreatorChallengeBadge = (s: any, compact = false) => {
   const label = getCreatorChallengeLabel(s);
   if (!label) return null;
+  const status = String(s?.creator_challenge_status || 'submitted');
+  const statusLabel =
+    status === 'viewed_by_creator'
+      ? 'Viewed by creator'
+      : status === 'shortlisted'
+      ? 'Shortlisted'
+      : status === 'creator_pick'
+      ? 'Creator Pick'
+      : status === 'top_10'
+      ? 'Top 10'
+      : status === 'winner'
+      ? 'Winner'
+      : 'Submitted';
 
   return (
     <View style={[styles.creatorChallengeBadge, compact && styles.creatorChallengeBadgeCompact]}>
       <Text style={[styles.creatorChallengeBadgeText, compact && styles.creatorChallengeBadgeTextCompact]} numberOfLines={1}>
-        {label}
+        {label} · {statusLabel}
       </Text>
     </View>
   );
@@ -5365,9 +5763,10 @@ if (!playableUri) {
   playRequestKey={isWinnerRow ? featuredFocusPlayKey : undefined}
   posterUri={s.thumbnail_url ?? null}
   dimVignette={isWinnerRow}
-  showControls={isWinnerRow}
-  showProgress
-  surfacePressMode={isWinnerRow ? 'toggle' : 'hold'}
+  showControls={false}
+  showProgress={!isWinnerRow}
+  captureSurfacePress={!isWinnerRow}
+  surfacePressMode="hold"
 />
     </View>
   );
@@ -5384,9 +5783,14 @@ const renderHeroOverlay = (s: Submission & { users?: { id: string; full_name: st
 const heroTitleSize = isTinyHero ? 22 : isCompactHero ? 28 : isWideWeb ? 56 : 62;
 const heroTitleLine = isTinyHero ? 25 : isCompactHero ? 31 : isWideWeb ? 60 : 66;
 const heroBylineSize = isTinyHero ? 12 : isCompactHero ? 14 : isWideWeb ? 20 : 22;
+const heroTextShift = isTinyHero ? -42 : isCompactHero ? -36 : isWideWeb ? 0 : -18;
 
   return (
     <View style={styles.heroOverlay} pointerEvents="box-none">
+      <View
+        pointerEvents="box-none"
+        style={[styles.heroTextGroup, { transform: [{ translateY: heroTextShift }] }]}
+      >
       <View style={styles.heroOverlayInner} pointerEvents="none">
         <Text
   style={[
@@ -5399,7 +5803,7 @@ const heroBylineSize = isTinyHero ? 12 : isCompactHero ? 14 : isWideWeb ? 20 : 2
     },
   ]}
 >
-  LAST MONTH’S WINNER
+  LAST WEEK'S WINNER
 </Text>
 
 <Text
@@ -5440,9 +5844,10 @@ const heroBylineSize = isTinyHero ? 12 : isCompactHero ? 14 : isWideWeb ? 20 : 2
       >
         by {name}
       </Text>
-    </TouchableOpacity>
+      </TouchableOpacity>
   </View>
 ) : null}
+      </View>
 </View>
 );
 };
@@ -5875,6 +6280,75 @@ const renderCard = useCallback(
                   />
                   <Grain opacity={0.05} />
                   {renderHeroOverlay(s)}
+                  <View style={styles.weeklyChallengeCtaOverlay} pointerEvents="box-none">
+                    <View
+                      pointerEvents="box-none"
+                      style={[styles.weeklyBriefSection, styles.weeklyBriefSectionOverlay]}
+                    >
+                      <View style={[styles.weeklyBriefHeaderCentered, styles.weeklyBriefHeaderOverlay]}>
+                        <Text
+                          style={[
+                            styles.weeklyBriefKicker,
+                            styles.weeklyBriefKickerOverlay,
+                            { color: '#F8F6F1' },
+                          ]}
+                        >
+                          This Week's Challenge
+                        </Text>
+                        <Text
+                          style={[
+                            styles.weeklyBriefDate,
+                            styles.weeklyBriefDateOverlay,
+                            { color: 'rgba(248,246,241,0.72)' },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {formatWeeklyChallengeActiveDates()}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.weeklyBriefButtonRow,
+                          styles.weeklyBriefButtonRowOverlay,
+                        ]}
+                      >
+                        <TouchableOpacity
+                          activeOpacity={0.9}
+                          onPress={() => {
+                            setSelectedChallengeType('acting');
+                            setChallengePromptOpen(true);
+                          }}
+                          style={[
+                            styles.weeklyBriefButton,
+                            styles.weeklyBriefButtonOverlay,
+                            { backgroundColor: GOLD, borderColor: GOLD },
+                          ]}
+                        >
+                          <Text style={[styles.weeklyBriefButtonText, { color: '#050505' }]}>
+                            View Acting Brief
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          activeOpacity={0.9}
+                          onPress={() => {
+                            setSelectedChallengeType('short_film');
+                            setChallengePromptOpen(true);
+                          }}
+                          style={[
+                            styles.weeklyBriefButton,
+                            styles.weeklyBriefButtonOverlay,
+                            { backgroundColor: GOLD, borderColor: GOLD },
+                          ]}
+                        >
+                          <Text style={[styles.weeklyBriefButtonText, { color: '#050505' }]}>
+                            View Film Brief
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
                 </View>
 
                 
@@ -6003,6 +6477,8 @@ const renderCard = useCallback(
     currentUserId,
     availableHForMedia,
     commentCounts,
+    colors.primary,
+    colors.textOnPrimary,
     activeId,
     isNarrow,
     mediaW,
@@ -6013,6 +6489,242 @@ const renderCard = useCallback(
     resumeWinnerAfterHover,
   ]
 );
+
+const completeDailyPrompt = useCallback(async () => {
+  const prompt = challengeHub.dailyPrompt;
+  const uid = currentUserId || gamUserId || null;
+
+  if (isGuest || !uid) {
+    promptSignIn('Create an account or sign in to complete daily prompts.');
+    return;
+  }
+
+  if (!prompt || dailyPromptBusy) return;
+
+  setDailyPromptBusy(true);
+
+  try {
+    const { error } = await supabase.rpc('record_creative_action', {
+      p_user_id: uid,
+      p_action_type: 'daily_prompt_completed',
+      p_source_type: 'daily_prompt',
+      p_source_id: prompt.id,
+      p_points: prompt.points ?? 5,
+      p_metadata: {
+        prompt: prompt.prompt,
+        category: prompt.category,
+        prompt_date: prompt.prompt_date,
+      },
+    });
+
+    if (error) throw error;
+
+    await refreshGamification();
+    Alert.alert('Prompt completed', 'Creative Momentum updated.');
+  } catch (e: any) {
+    console.warn('completeDailyPrompt failed:', e?.message || e);
+    Alert.alert('Prompt not saved', 'Please try again.');
+  } finally {
+    setDailyPromptBusy(false);
+  }
+}, [
+  challengeHub.dailyPrompt,
+  currentUserId,
+  dailyPromptBusy,
+  gamUserId,
+  isGuest,
+  promptSignIn,
+  refreshGamification,
+]);
+
+const openChallengePrompt = useCallback((challengeType: FeaturedChallengeChoice) => {
+  setSelectedChallengeType(challengeType);
+  setChallengePromptOpen(true);
+}, []);
+
+const openWeeklyChallengeSubmit = useCallback((challengeType: FeaturedChallengeChoice = selectedChallengeType) => {
+  const current = getWeeklyChallengeChoice(challengeHub, challengeType);
+  const challengeTitle = current?.title || 'This Week’s Challenge';
+
+  setChallengePromptOpen(false);
+  navigation.navigate('WorkshopSubmit', {
+    mode: 'weekly',
+    weeklyChallengeId: current?.id || undefined,
+    weeklyChallengeTitle: challengeTitle,
+    weeklyChallengeType: current?.challenge_type || undefined,
+    weeklyChallengeEndsAt: current?.ends_at || current?.month_end || null,
+  });
+}, [challengeHub, navigation, selectedChallengeType]);
+
+const renderWeeklyChallengeCta = useCallback(() => {
+  const hubW = isMobile ? mobileCardW : cardW;
+  const dateRangeLabel = formatWeeklyChallengeActiveDates();
+
+  return (
+    <View style={[styles.weeklyChallengeCtaWrap, { width: hubW }]}>
+      <View
+        style={[
+          styles.weeklyBriefSection,
+          {
+            backgroundColor: isLight ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.035)',
+            borderColor: featuredBorder,
+          },
+        ]}
+      >
+        <View style={styles.weeklyBriefHeaderCentered}>
+          <Text style={[styles.weeklyBriefKicker, { color: featuredText }]}>
+            This Week's Challenge
+          </Text>
+          <Text style={[styles.weeklyBriefDate, { color: featuredSubText }]} numberOfLines={1}>
+            {dateRangeLabel}
+          </Text>
+        </View>
+
+        <View style={[styles.weeklyBriefButtonRow, isNarrow && styles.weeklyBriefButtonRowStacked]}>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => openChallengePrompt('acting')}
+            style={[styles.weeklyBriefButton, { backgroundColor: GOLD, borderColor: GOLD }]}
+          >
+            <Text style={[styles.weeklyBriefButtonText, { color: '#050505' }]}>
+              View Acting Brief
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => openChallengePrompt('short_film')}
+            style={[styles.weeklyBriefButton, { backgroundColor: GOLD, borderColor: GOLD }]}
+          >
+            <Text style={[styles.weeklyBriefButtonText, { color: '#050505' }]}>
+              View Film Brief
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}, [
+  cardW,
+  colors.primary,
+  colors.textOnPrimary,
+  featuredBorder,
+  featuredSubText,
+  featuredText,
+  isLight,
+  isMobile,
+  isNarrow,
+  mobileCardW,
+  openChallengePrompt,
+]);
+
+const renderHomeUtilityCards = useCallback(() => {
+  const prompt = challengeHub.dailyPrompt;
+  const hubW = isMobile ? mobileCardW : cardW;
+  const weeklyGoal = gamification.weeklyGoal || 5;
+  const weeklyActions = Math.min(gamification.weeklyActions || 0, weeklyGoal);
+  const progressPct = weeklyGoal > 0 ? Math.min(100, (weeklyActions / weeklyGoal) * 100) : 0;
+  const activity = challengeHub.liveActivity.slice(0, 3);
+
+  return (
+    <View style={[styles.weeklyHubWrap, { width: hubW }]}>
+      <View style={styles.weeklyHubMiniGrid}>
+        <View style={[styles.weeklyMiniCard, { backgroundColor: featuredSurface, borderColor: featuredBorder }]}>
+          <View style={styles.weeklyMiniHeaderRow}>
+            <Ionicons name="flame-outline" size={16} color={colors.primary} />
+            <Text style={[styles.weeklyMiniTitle, { color: featuredText }]}>Creative Consistency</Text>
+          </View>
+          <Text style={[styles.weeklyMiniBig, { color: featuredText }]}>
+            {gamification.currentCreativeStreak || 0} day streak
+          </Text>
+          <Text style={[styles.weeklyMiniCopy, { color: featuredSubText }]}>
+            {weeklyActions}/{weeklyGoal} creative actions this week
+          </Text>
+          <View style={[styles.weeklyProgressRail, { backgroundColor: featuredSoftSurface }]}>
+            <View style={[styles.weeklyProgressFill, { width: `${progressPct}%`, backgroundColor: colors.primary }]} />
+          </View>
+          <View style={styles.weekDotsRow}>
+            {(gamification.weekCalendar || []).slice(0, 7).map((day) => (
+              <View
+                key={day.date}
+                style={[
+                  styles.weekDot,
+                  {
+                    backgroundColor: day.active ? colors.primary : featuredSoftSurface,
+                    borderColor: day.active ? colors.primary : featuredBorder,
+                  },
+                ]}
+              />
+            ))}
+          </View>
+        </View>
+
+        <View style={[styles.weeklyMiniCard, { backgroundColor: featuredSurface, borderColor: featuredBorder }]}>
+          <View style={styles.weeklyMiniHeaderRow}>
+            <Ionicons name="sparkles-outline" size={16} color={colors.primary} />
+            <Text style={[styles.weeklyMiniTitle, { color: featuredText }]}>Daily Prompt</Text>
+          </View>
+          <Text style={[styles.weeklyMiniTag, { color: colors.primary }]}>{prompt?.category || 'Creative'}</Text>
+          <Text style={[styles.weeklyMiniCopy, { color: featuredSubText }]} numberOfLines={3}>
+            {prompt?.prompt || 'Complete one creative action today.'}
+          </Text>
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={completeDailyPrompt}
+            disabled={!prompt || dailyPromptBusy}
+            style={[
+              styles.weeklyMiniButton,
+              {
+                borderColor: featuredBorder,
+                opacity: !prompt || dailyPromptBusy ? 0.55 : 1,
+              },
+            ]}
+          >
+            <Text style={[styles.weeklyMiniButtonText, { color: featuredText }]}>
+              {dailyPromptBusy ? 'Saving...' : 'Mark done'}
+            </Text>
+          </TouchableOpacity>
+          <Text style={[styles.weeklyMiniFoot, { color: featuredSubText }]}>
+            Counts toward Creative Momentum
+          </Text>
+        </View>
+
+        <View style={[styles.weeklyMiniCard, { backgroundColor: featuredSurface, borderColor: featuredBorder }]}>
+          <View style={styles.weeklyMiniHeaderRow}>
+            <Ionicons name="pulse-outline" size={16} color={colors.primary} />
+            <Text style={[styles.weeklyMiniTitle, { color: featuredText }]}>Live Activity</Text>
+          </View>
+          {activity.length > 0 ? (
+            activity.map((item) => (
+              <Text key={item.id} style={[styles.weeklyActivityText, { color: featuredSubText }]} numberOfLines={1}>
+                {item.message}
+              </Text>
+            ))
+          ) : (
+            <Text style={[styles.weeklyMiniCopy, { color: featuredSubText }]}>
+              New submissions, votes, and winners will appear here.
+            </Text>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}, [
+  cardW,
+  challengeHub,
+  colors.primary,
+  colors.textOnPrimary,
+  featuredBorder,
+  featuredSoftSurface,
+  featuredSubText,
+  featuredSurface,
+  featuredText,
+  gamification,
+  isMobile,
+  mobileCardW,
+  completeDailyPrompt,
+  dailyPromptBusy,
+]);
 
 const headerElement = useMemo(
   () => (
@@ -6025,10 +6737,20 @@ const headerElement = useMemo(
       true
     )
   : null}
-      <View style={{ height: isNarrow ? 12 : 12 }} />
+      {winner ? null : renderWeeklyChallengeCta()}
+      <View style={{ height: isNarrow ? 8 : 10 }} />
     </View>
   ),
-  [winner, activeId, isNarrow, cardW, availableHForMedia, renderCard, featuredFocusPlayKey]
+  [
+    winner,
+    activeId,
+    isNarrow,
+    cardW,
+    availableHForMedia,
+    renderCard,
+    featuredFocusPlayKey,
+    renderWeeklyChallengeCta,
+  ]
 );
 
 const creatorChallengeFilterLabel =
@@ -6425,6 +7147,310 @@ const renderCommentsPanel = (
 );
 };
 
+const renderChallengePromptModal = () => {
+  if (!challengePromptOpen) return null;
+
+  const current = getWeeklyChallengeChoice(challengeHub, selectedChallengeType);
+  const isActingChallenge = current?.challenge_type === 'acting';
+  const challengeTitle = current?.title || 'This Week’s Challenge';
+  const challengeType = formatChallengeTypeLabel(current?.challenge_type);
+  const dateRangeLabel = formatWeeklyChallengeActiveDates();
+  const promptBrief =
+    current?.brief ||
+    (isActingChallenge
+      ? 'Perform the provided monologue with a clear playable circumstance.'
+      : 'Create a short film using this week’s theme and constraint.');
+  const direction = current?.instructions?.trim();
+  const asIf = current?.as_if?.trim();
+  const monologue = current?.monologue?.trim();
+  const themeWord = current?.theme_word?.trim();
+  const submissionFormat = getChallengeSubmissionFormat(current);
+  const rules = getChallengeRules(current);
+  const lookingFor = getChallengeLookingFor(current);
+  const missionCode = isActingChallenge ? 'Performance / one take' : 'Short film / one location';
+  const objectiveLabel = isActingChallenge ? 'Performance Objective' : 'Film Objective';
+  const situationLabel = isActingChallenge ? 'Given Circumstance' : 'Core Constraint';
+  const scriptLabel = isActingChallenge ? 'Field Script' : 'Theme Word';
+  const directionLabel = isActingChallenge ? 'Execution Notes' : 'Director Notes';
+
+  return (
+    <Modal
+      visible={challengePromptOpen}
+      transparent
+      animationType="fade"
+      presentationStyle="overFullScreen"
+      onRequestClose={() => setChallengePromptOpen(false)}
+    >
+      <View style={styles.challengePromptOverlay}>
+        <Pressable
+          style={styles.challengePromptBackdrop}
+          onPress={() => setChallengePromptOpen(false)}
+        />
+
+        <View
+          style={[
+            styles.challengePromptCard,
+            {
+              width: isMobile ? Math.max(300, Math.min(winW - 24, 560)) : 560,
+              maxHeight: Math.max(420, Math.min(winH - 48, 720)),
+              backgroundColor: featuredSurface,
+              borderColor: featuredBorder,
+              shadowColor: colors.shadow,
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.challengePromptHeader,
+              { borderBottomColor: isLight ? colors.border : 'rgba(255,255,255,0.07)' },
+            ]}
+          >
+            <View style={styles.challengePromptHeaderTop}>
+              <View style={styles.challengePromptHeaderText}>
+                <Text style={[styles.challengePromptKicker, { color: colors.primary }]}>
+                  Mission Brief
+                </Text>
+                <Text style={[styles.challengePromptTitle, { color: featuredText }]}>
+                  {challengeTitle}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => setChallengePromptOpen(false)}
+                style={[
+                  styles.challengePromptCloseBtn,
+                  {
+                    backgroundColor: featuredSoftSurface,
+                    borderColor: featuredBorder,
+                  },
+                ]}
+              >
+                <Ionicons name="close" size={18} color={featuredText} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.challengePromptMetaRow}>
+              <View
+                style={[
+                  styles.challengePromptTypePill,
+                  {
+                    borderColor: featuredBorder,
+                    backgroundColor: isLight ? 'rgba(198,166,100,0.12)' : 'rgba(198,166,100,0.10)',
+                  },
+                ]}
+              >
+                <Text style={[styles.challengePromptTypeText, { color: colors.primary }]}>
+                  {challengeType}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.challengePromptTypePill,
+                  {
+                    borderColor: featuredBorder,
+                    backgroundColor: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)',
+                  },
+                ]}
+              >
+                <Text style={[styles.challengePromptTypeText, { color: featuredText }]}>
+                  {missionCode}
+                </Text>
+              </View>
+              <Text style={[styles.challengePromptMetaText, { color: featuredSubText }]}>
+                {dateRangeLabel}
+              </Text>
+            </View>
+          </View>
+
+          <ScrollView
+            style={styles.challengePromptScroll}
+            contentContainerStyle={styles.challengePromptScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.challengePromptMissionIntro}>
+              <Text style={[styles.challengePromptMissionCode, { color: colors.primary }]}>
+                Overlooked Weekly Assignment
+              </Text>
+              <Text style={[styles.challengePromptMissionLine, { color: featuredSubText }]}>
+                Read the brief, choose a point of view, then submit a finished take before the window closes.
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.challengePromptDossier,
+                {
+                  backgroundColor: featuredSoftSurface,
+                  borderColor: featuredBorder,
+                },
+              ]}
+            >
+              <View style={styles.challengePromptDossierRail}>
+                <Text style={[styles.challengePromptDossierNumber, { color: colors.primary }]}>
+                  01
+                </Text>
+              </View>
+              <View style={styles.challengePromptDossierBody}>
+                <Text style={[styles.challengePromptSectionTitle, { color: colors.primary }]}>
+                  {objectiveLabel}
+                </Text>
+                <Text style={[styles.challengePromptBody, styles.challengePromptLeadBody, { color: featuredText }]}>
+                  {promptBrief}
+                </Text>
+              </View>
+            </View>
+
+            {isActingChallenge ? (
+              <>
+                {asIf ? (
+                  <View
+                    style={[
+                      styles.challengePromptCallout,
+                      {
+                        backgroundColor: featuredSoftSurface,
+                        borderColor: featuredBorder,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.challengePromptSectionTitle, { color: colors.primary }]}>
+                      {situationLabel}
+                    </Text>
+                    <Text style={[styles.challengePromptBody, { color: featuredText }]}>
+                      {asIf}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {monologue ? (
+                  <View
+                    style={[
+                      styles.challengePromptScriptPage,
+                      {
+                        backgroundColor: isLight ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.035)',
+                        borderColor: featuredBorder,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.challengePromptSectionTitle, { color: colors.primary }]}>
+                      {scriptLabel}
+                    </Text>
+                    <Text style={[styles.challengePromptMonologue, { color: featuredText }]}>
+                      {monologue}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {direction ? (
+                  <View style={styles.challengePromptSection}>
+                    <Text style={[styles.challengePromptSectionTitle, { color: colors.primary }]}>
+                      {directionLabel}
+                    </Text>
+                    <Text style={[styles.challengePromptBody, { color: featuredSubText }]}>
+                      {direction}
+                    </Text>
+                  </View>
+                ) : null}
+              </>
+            ) : (
+              <>
+                {themeWord ? (
+                  <View
+                    style={[
+                      styles.challengePromptCallout,
+                      {
+                        backgroundColor: featuredSoftSurface,
+                        borderColor: featuredBorder,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.challengePromptSectionTitle, { color: colors.primary }]}>
+                      {situationLabel}
+                    </Text>
+                    <Text style={[styles.challengePromptThemeWord, { color: featuredText }]}>
+                      {themeWord}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {direction ? (
+                  <View style={styles.challengePromptSection}>
+                    <Text style={[styles.challengePromptSectionTitle, { color: colors.primary }]}>
+                      {directionLabel}
+                    </Text>
+                    <Text style={[styles.challengePromptBody, { color: featuredSubText }]}>
+                      {direction}
+                    </Text>
+                  </View>
+                ) : null}
+              </>
+            )}
+
+            <View style={styles.challengePromptSection}>
+              <Text style={[styles.challengePromptSectionTitle, { color: colors.primary }]}>
+                Deliverable
+              </Text>
+              <Text style={[styles.challengePromptBody, { color: featuredSubText }]}>
+                {submissionFormat}
+              </Text>
+            </View>
+
+            <View style={styles.challengePromptSection}>
+              <Text style={[styles.challengePromptSectionTitle, { color: colors.primary }]}>
+                Rules of Engagement
+              </Text>
+              <View style={styles.challengePromptList}>
+                {rules.map((rule) => (
+                  <View key={rule} style={styles.challengePromptListItem}>
+                    <View style={[styles.challengePromptBullet, { backgroundColor: colors.primary }]} />
+                    <Text style={[styles.challengePromptListText, { color: featuredSubText }]}>
+                      {rule}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.challengePromptSection}>
+              <Text style={[styles.challengePromptSectionTitle, { color: colors.primary }]}>
+                Scoring Lens
+              </Text>
+              <View style={styles.challengePromptList}>
+                {lookingFor.map((item) => (
+                  <View key={item} style={styles.challengePromptListItem}>
+                    <View style={[styles.challengePromptBullet, { backgroundColor: colors.primary }]} />
+                    <Text style={[styles.challengePromptListText, { color: featuredSubText }]}>
+                      {item}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          </ScrollView>
+
+          <View
+            style={[
+              styles.challengePromptFooter,
+              { borderTopColor: isLight ? colors.border : 'rgba(255,255,255,0.07)' },
+            ]}
+          >
+            <TouchableOpacity
+              activeOpacity={0.92}
+              onPress={() => openWeeklyChallengeSubmit(selectedChallengeType)}
+              style={[styles.challengePromptSubmit, { backgroundColor: colors.primary }]}
+            >
+              <Ionicons name="cloud-upload-outline" size={17} color={colors.textOnPrimary} />
+              <Text style={[styles.challengePromptSubmitText, { color: colors.textOnPrimary }]}>
+                Submit {isActingChallenge ? 'Acting' : 'Film'} Entry
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 const keyForList = isWideWeb
   ? `grid-${creatorChallengeFilter?.id || 'all'}-${searchQ}-${sort}-${filmCategory}`
   : `feed-${creatorChallengeFilter?.id || 'all'}-${searchQ}-${sort}-${filmCategory}`;
@@ -6625,6 +7651,8 @@ maxToRenderPerBatch={2}
         )}
       </View>
     )}
+
+    {renderChallengePromptModal()}
 
     {storyModeOpen && storyModeItem && (
   <Modal
@@ -8405,6 +9433,646 @@ storyLink: {
     alignItems: 'center',
   },
 
+  weeklyHubWrap: {
+    alignSelf: 'center',
+    marginBottom: 4,
+  },
+
+  weeklyChallengeCtaWrap: {
+    alignSelf: 'center',
+    marginTop: 4,
+    marginBottom: 18,
+  },
+
+  weeklyChallengeCtaOverlay: {
+    position: 'absolute',
+    left: Platform.OS === 'web' ? 42 : 10,
+    right: Platform.OS === 'web' ? 42 : 10,
+    bottom: Platform.OS === 'web' ? 14 : 10,
+    zIndex: 35,
+    elevation: 8,
+    alignItems: 'center',
+  },
+
+  weeklyBriefSection: {
+    width: '100%',
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
+    alignItems: 'center',
+  },
+
+  weeklyBriefSectionOverlay: {
+    maxWidth: 860,
+    alignSelf: 'center',
+    paddingHorizontal: 14,
+    paddingTop: 9,
+    paddingBottom: 10,
+    backgroundColor: 'rgba(5,5,5,0.70)',
+    borderColor: 'rgba(255,255,255,0.13)',
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+  },
+
+  weeklyBriefHeaderCentered: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+
+  weeklyBriefHeaderOverlay: {
+    marginBottom: 7,
+  },
+
+  weeklyBriefKicker: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 18,
+    lineHeight: 23,
+    fontWeight: '900',
+    letterSpacing: 0,
+    textAlign: 'center',
+  },
+
+  weeklyBriefKickerOverlay: {
+    fontSize: 14,
+    lineHeight: 17,
+  },
+
+  weeklyBriefDate: {
+    marginTop: 5,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+    letterSpacing: 0,
+    textAlign: 'center',
+  },
+
+  weeklyBriefDateOverlay: {
+    marginTop: 2,
+    fontSize: 10.5,
+    lineHeight: 13,
+  },
+
+  weeklyBriefButtonRow: {
+    width: '100%',
+    maxWidth: 620,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+
+  weeklyBriefButtonRowOverlay: {
+    maxWidth: 620,
+    gap: 8,
+  },
+
+  weeklyBriefButtonRowStacked: {
+    flexDirection: 'column',
+  },
+
+  weeklyBriefButton: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  weeklyBriefButtonOverlay: {
+    minHeight: 30,
+    borderRadius: 7,
+    paddingHorizontal: 10,
+  },
+
+  weeklyBriefButtonText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '900',
+    letterSpacing: 0.55,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
+
+  weeklyChallengePanel: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    marginBottom: 10,
+  },
+
+  weeklyHubTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 10,
+  },
+
+  weeklyHubKicker: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+
+  weeklyTypeChip: {
+    minHeight: 26,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  weeklyTypeChipText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+
+  weeklyHubTitle: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 24,
+    lineHeight: 29,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+
+  weeklyHubBrief: {
+    marginTop: 8,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600',
+    letterSpacing: 0,
+  },
+
+  weeklyAsIf: {
+    marginTop: 8,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+
+  weeklyHubStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+    marginTop: 14,
+  },
+
+  weeklyHubStat: {
+    flex: 1,
+    minHeight: 46,
+    justifyContent: 'center',
+  },
+
+  weeklyHubStatValue: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+
+  weeklyHubStatLabel: {
+    marginTop: 2,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+
+  weeklySubmitButton: {
+    marginTop: 12,
+    minHeight: 42,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+
+  weeklySubmitText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+
+  weeklyHubMiniGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 10,
+  },
+
+  weeklyMiniCard: {
+    flexGrow: 1,
+    flexBasis: 220,
+    minWidth: 0,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+  },
+
+  weeklyMiniHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginBottom: 8,
+  },
+
+  weeklyMiniTitle: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+
+  weeklyMiniBig: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: '900',
+    letterSpacing: 0,
+  },
+
+  weeklyMiniCopy: {
+    marginTop: 4,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+    letterSpacing: 0,
+  },
+
+  weeklyMiniTag: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+
+  weeklyMiniFoot: {
+    marginTop: 10,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0,
+  },
+
+  weeklyMiniButton: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    minHeight: 30,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  weeklyMiniButtonText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+
+  weeklyProgressRail: {
+    marginTop: 10,
+    height: 7,
+    borderRadius: 7,
+    overflow: 'hidden',
+  },
+
+  weeklyProgressFill: {
+    height: '100%',
+    borderRadius: 7,
+  },
+
+  weekDotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 10,
+  },
+
+  weekDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    borderWidth: 1,
+  },
+
+  weeklyActivityText: {
+    marginTop: 4,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 11.5,
+    lineHeight: 16,
+    fontWeight: '700',
+    letterSpacing: 0,
+  },
+
+  challengePromptOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 24,
+  },
+
+  challengePromptBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.78)',
+  },
+
+  challengePromptCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 12,
+  },
+
+  challengePromptHeader: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 15,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+
+  challengePromptHeaderTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+
+  challengePromptHeaderText: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  challengePromptKicker: {
+    fontFamily: FONT_WINNER_TITLE,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+
+  challengePromptTitle: {
+    marginTop: 5,
+    fontFamily: FONT_WINNER_TITLE,
+    fontSize: 28,
+    lineHeight: 32,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+  },
+
+  challengePromptCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  challengePromptMetaRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 9,
+  },
+
+  challengePromptTypePill: {
+    minHeight: 26,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  challengePromptTypeText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 10.5,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+
+  challengePromptMetaText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+
+  challengePromptScroll: {
+    flexGrow: 0,
+  },
+
+  challengePromptScrollContent: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 2,
+  },
+
+  challengePromptMissionIntro: {
+    marginBottom: 16,
+    paddingBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(198,166,100,0.22)',
+  },
+
+  challengePromptMissionCode: {
+    fontFamily: FONT_WINNER_TITLE,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+
+  challengePromptMissionLine: {
+    marginTop: 7,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
+    letterSpacing: 0,
+  },
+
+  challengePromptDossier: {
+    flexDirection: 'row',
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: 'hidden',
+    marginBottom: 17,
+  },
+
+  challengePromptDossierRail: {
+    width: 48,
+    alignItems: 'center',
+    paddingTop: 14,
+    backgroundColor: 'rgba(198,166,100,0.10)',
+  },
+
+  challengePromptDossierNumber: {
+    fontFamily: FONT_WINNER_TITLE,
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+
+  challengePromptDossierBody: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+
+  challengePromptSection: {
+    marginBottom: 17,
+  },
+
+  challengePromptSectionTitle: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 10.5,
+    lineHeight: 14,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+    marginBottom: 7,
+  },
+
+  challengePromptBody: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+    letterSpacing: 0,
+  },
+
+  challengePromptLeadBody: {
+    fontSize: 16,
+    lineHeight: 23,
+    fontWeight: '800',
+  },
+
+  challengePromptCallout: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+    marginBottom: 17,
+  },
+
+  challengePromptScriptPage: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 15,
+    paddingVertical: 14,
+    marginBottom: 17,
+  },
+
+  challengePromptMonologue: {
+    fontFamily: FONT_WINNER_TITLE,
+    fontSize: 15,
+    lineHeight: 23,
+    fontWeight: '700',
+    letterSpacing: 0,
+  },
+
+  challengePromptThemeWord: {
+    fontFamily: FONT_WINNER_TITLE,
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+
+  challengePromptList: {
+    gap: 8,
+  },
+
+  challengePromptListItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
+  },
+
+  challengePromptBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 7,
+  },
+
+  challengePromptListText: {
+    flex: 1,
+    minWidth: 0,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+    letterSpacing: 0,
+  },
+
+  challengePromptFooter: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+
+  challengePromptSubmit: {
+    minHeight: 44,
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+
+  challengePromptSubmitText: {
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+  },
+
   challengeFilterPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -8968,6 +10636,11 @@ mobileMediaWrap: {
   },
 
   heroOverlayInner: {
+    maxWidth: '100%',
+    alignItems: 'center',
+  },
+
+  heroTextGroup: {
     maxWidth: '100%',
     alignItems: 'center',
   },

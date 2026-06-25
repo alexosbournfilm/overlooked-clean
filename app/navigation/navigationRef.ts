@@ -56,13 +56,17 @@ export type RootStackParamList = {
   Chats: undefined;
   WorkshopSubmit:
     | {
-        mode?: 'monthly' | 'workshop';
+        mode?: 'monthly' | 'weekly' | 'workshop';
         pathKey?: string;
         step?: number;
         lessonTitle?: string;
         lessonDescription?: string;
         lessonPrompt?: string;
         lessonXp?: number;
+        weeklyChallengeId?: string;
+        weeklyChallengeTitle?: string;
+        weeklyChallengeType?: 'acting' | 'short_film' | string;
+        weeklyChallengeEndsAt?: string | null;
         creatorChallengeId?: string;
         challengeCode?: string;
         creatorId?: string;

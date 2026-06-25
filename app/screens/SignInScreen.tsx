@@ -75,10 +75,10 @@ const T = {
 };
 
 const MANIFESTO_LINES = [
-  'Meet your crew this month. Make a film together.',
+  'Meet your crew this week. Make a film together.',
   'No gatekeepers. Just collaborators, jobs, and a deadline.',
   'Post a job. Apply to one. Start filming.',
-  'Submit your film to the monthly challenge.',
+  'Submit your work to the weekly challenge.',
   'Learn the craft through Film Bootcamp, then put it into practice.',
   'The industry makes you wait. We say don’t.',
 ];
@@ -157,12 +157,12 @@ const FEATURES: Feature[] = [
   },
   {
     key: 'festival',
-    title: 'Monthly Film Challenge',
+    title: 'Weekly Creative Challenge',
     subtitle: 'Create, submit, and get seen',
     icon: 'trophy',
     detail:
-      'Upload a 1–15 minute film each month, climb the leaderboard, and grow with the community. You can also learn filmmaking craft through Film Bootcamp, then use those skills in the monthly challenge.',
-    cta: 'See this month',
+      'Create every week, climb the leaderboard, and grow with the community. You can also learn filmmaking craft through Film Bootcamp, then use those skills in the weekly challenge.',
+    cta: 'See this week',
     route: 'Featured',
   },
 ];
@@ -851,7 +851,7 @@ export default function SignInScreen() {
 
       {!mobileMode && (
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          Sign in to join this month’s journey.
+          Sign in to join this week's journey.
         </Text>
       )}
 

@@ -137,15 +137,15 @@ const JOINING_REASON_OPTIONS = [
 ];
 
 const CREATIVE_GOAL_OPTIONS = [
-  'Make 1 film per month',
-  'Make 2 films per month',
-  'Make 3 films per month',
-  'Submit to every monthly Overlooked challenge',
+  'Make 1 finished piece per week',
+  'Submit to every weekly Overlooked challenge',
+  'Build a 5-action weekly creative routine',
+  'Keep a 7-day creative streak',
   'Practise 1 acting monologue per week',
   'Practise 3 monologues per week',
-  'Write 1 short script per month',
+  'Write 1 short scene per week',
   'Film 1 scene per week',
-  'Meet 1 new creative per month',
+  'Meet 1 new creative per week',
   'Collaborate with a local team',
   'Build a complete acting showreel',
   'Build a filmmaking portfolio',

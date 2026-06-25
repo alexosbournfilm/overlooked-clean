@@ -138,8 +138,16 @@ function goalLine(goals: string[], reasons: string[]) {
     return 'You said you wanted to keep your performance practice alive.';
   }
 
-  if (combined.some((item) => item.includes('film per month') || item.includes('make short films'))) {
-    return 'You set a goal to make films consistently.';
+  if (
+    combined.some(
+      (item) =>
+        item.includes('per week') ||
+        item.includes('weekly') ||
+        item.includes('creative routine') ||
+        item.includes('make short films')
+    )
+  ) {
+    return 'You set a goal to create consistently.';
   }
 
   if (combined.some((item) => item.includes('portfolio') || item.includes('showreel'))) {

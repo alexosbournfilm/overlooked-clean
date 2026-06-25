@@ -211,7 +211,7 @@ type PaywallCopy = {
 const GENERAL_ROWS: ComparisonRow[] = [
   { feature: 'Film uploads', free: '1', pro: 'Unlimited' },
   { feature: 'Profile showreels', free: '1', pro: '3' },
-  { feature: 'Monthly Film Challenge', free: 'View', pro: 'Submit' },
+  { feature: 'Weekly Creative Challenge', free: 'View', pro: 'Submit' },
   { feature: 'Creator Challenge submissions', free: 'View', pro: 'Unlimited' },
   { feature: 'Paid job applications', free: '✕', pro: '✓' },
   { feature: 'Filmmaking Bootcamp', free: '✕', pro: '✓' },
@@ -234,7 +234,7 @@ const FREE_LOCKED_FEATURES = [
 const PRO_HIGHLIGHTS = [
   'Unlimited film uploads',
   '3 profile showreels',
-  'Monthly Film Challenge submissions',
+  'Weekly Creative Challenge submissions',
   'Unlimited creator challenge submissions',
   'Exercises taken directly from film and acting schools',
   'Ever-growing filmmaking tools and resources',
@@ -253,7 +253,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     eyebrow: 'This is a Pro creator tool',
     title: 'Submit your film with Pro',
     subtitle:
-      'Monthly Film Challenge submissions are part of Overlooked Pro. Upgrade to upload your film, get seen on Featured, and compete for next month’s top spot.',
+      "Weekly Creative Challenge submissions are part of Overlooked Pro. Upgrade to upload your work, get seen on Featured, and compete for this week's top spot.",
     cta: `Unlock Pro and submit — ${SUBSCRIPTION_PRICE_FALLBACK}/month`,
     rows: GENERAL_ROWS,
   },

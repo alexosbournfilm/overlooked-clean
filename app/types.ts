@@ -32,13 +32,17 @@ export type RootStackParamList = {
   Chats: undefined;
   WorkshopSubmit:
     | {
-        mode?: 'monthly' | 'workshop';
+        mode?: 'monthly' | 'weekly' | 'workshop';
         pathKey?: string;
         step?: number;
         lessonTitle?: string;
         lessonDescription?: string;
         lessonPrompt?: string;
         lessonXp?: number;
+        weeklyChallengeId?: string;
+        weeklyChallengeTitle?: string;
+        weeklyChallengeType?: 'acting' | 'short_film' | string;
+        weeklyChallengeEndsAt?: string | null;
         creatorChallengeId?: string;
         challengeCode?: string;
         creatorId?: string;
@@ -65,13 +69,34 @@ export type RootStackParamList = {
 // Supabase Data Types
 // ==============================
 
-export type MonthlyChallenge = {
+export type WeeklyChallenge = {
   id: string;
   title: string;
-  description: string | null;
-  theme_word: string;
-  month_start: string; // ISO date
-  month_end: string;   // ISO date
+  challenge_type: 'acting' | 'short_film';
+  brief: string;
+  instructions?: string | null;
+  as_if?: string | null;
+  monologue?: string | null;
+  theme_word?: string | null;
+  starts_at: string;
+  ends_at: string;
+  voting_ends_at?: string | null;
+  submission_count?: number | null;
+  vote_count?: number | null;
+  winner_submission_id?: string | null;
+  winner_user_id?: string | null;
+  created_at?: string;
+};
+
+export type MonthlyChallenge = {
+  id: string;
+  title?: string;
+  description?: string | null;
+  theme_word?: string | null;
+  month_start?: string; // ISO date
+  month_end?: string;   // ISO date
+  starts_at?: string;
+  ends_at?: string;
   winner_submission_id?: string | null;
   created_at?: string;
 };
@@ -87,10 +112,20 @@ export type Submission = {
   is_winner: boolean;
   hidden_on_profile?: boolean | null;
   submitted_at: string;
+  weekly_challenge_id?: string | null;
   creator_challenge_id?: string | null;
   challenge_code?: string | null;
   submission_source?: string | null;
   creator_id?: string | null;
+  creator_challenge_status?:
+    | 'submitted'
+    | 'viewed_by_creator'
+    | 'shortlisted'
+    | 'creator_pick'
+    | 'top_10'
+    | 'winner'
+    | string
+    | null;
   creator_challenges?: {
     id: string;
     title?: string | null;
