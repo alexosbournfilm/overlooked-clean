@@ -31,7 +31,10 @@ import {
   getCurrentUserTier,
 } from '../lib/membership';
 import {
-  SUBSCRIPTION_PRICE_AMOUNT,
+  FOUNDER_DISCOUNT_CODE,
+  FOUNDER_DISCOUNT_MONTHLY_LABEL,
+  FOUNDER_DISCOUNT_PERCENT_LABEL,
+  FOUNDER_DISCOUNT_PRICE_AMOUNT,
   SUBSCRIPTION_PRICE_CURRENCY_SYMBOL,
   SUBSCRIPTION_PRICE_FALLBACK,
   SUBSCRIPTION_TITLE,
@@ -246,7 +249,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Build your portfolio with Pro',
     subtitle:
       'Share unlimited films, build a sharper portfolio, meet collaborators, and train with exercises taken directly from film and acting schools: the practical best parts, without the fluff.',
-    cta: `Unlock Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`,
+    cta: `Unlock Pro — ${FOUNDER_DISCOUNT_MONTHLY_LABEL} with code`,
     rows: GENERAL_ROWS,
   },
   challenge: {
@@ -254,7 +257,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Submit your film with Pro',
     subtitle:
       "Weekly Creative Challenge submissions are part of Overlooked Pro. Upgrade to upload your work, get seen on Featured, and compete for this week's top spot.",
-    cta: `Unlock Pro and submit — ${SUBSCRIPTION_PRICE_FALLBACK}/month`,
+    cta: `Unlock Pro and submit — ${FOUNDER_DISCOUNT_MONTHLY_LABEL} with code`,
     rows: GENERAL_ROWS,
   },
   jobs: {
@@ -262,7 +265,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Apply for paid roles with Pro',
     subtitle:
       'Paid job applications are reserved for Pro creators, so opportunities stay focused on people actively building their portfolio.',
-    cta: `Unlock Pro and apply — ${SUBSCRIPTION_PRICE_FALLBACK}/month`,
+    cta: `Unlock Pro and apply — ${FOUNDER_DISCOUNT_MONTHLY_LABEL} with code`,
     rows: GENERAL_ROWS,
   },
   showreel: {
@@ -270,7 +273,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Build your showreel with Pro',
     subtitle:
       'Free includes 1 profile showreel. Pro gives you 3 and a stronger portfolio link.',
-    cta: `Unlock Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`,
+    cta: `Unlock Pro — ${FOUNDER_DISCOUNT_MONTHLY_LABEL} with code`,
     rows: GENERAL_ROWS,
   },
   bootcamp: {
@@ -278,7 +281,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Train through Filmmaking Bootcamp',
     subtitle:
       'Train with focused exercises taken directly from film and acting schools: the practical best parts, without the fluff.',
-    cta: `Unlock Bootcamp with Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`,
+    cta: `Unlock Bootcamp — ${FOUNDER_DISCOUNT_MONTHLY_LABEL} with code`,
     rows: GENERAL_ROWS,
   },
   workshop: {
@@ -286,7 +289,7 @@ const PAYWALL_COPY: Record<PaywallContext, PaywallCopy> = {
     title: 'Unlock the Workshop tool library',
     subtitle:
       'Use an ever-growing library of filmmaking tools alongside school-derived exercises that help turn ideas into finished work.',
-    cta: `Unlock Workshop tools — ${SUBSCRIPTION_PRICE_FALLBACK}/month`,
+    cta: `Unlock Workshop — ${FOUNDER_DISCOUNT_MONTHLY_LABEL} with code`,
     rows: GENERAL_ROWS,
   },
 };
@@ -475,12 +478,12 @@ export default function PaywallScreen() {
 
   const planLabel = useMemo(() => {
     if (Platform.OS === 'android') {
-      return `Unlock Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`;
+      return `Unlock Pro — ${FOUNDER_DISCOUNT_MONTHLY_LABEL} with code`;
     }
     if (Platform.OS === 'ios') {
-      return `Unlock Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`;
+      return `Unlock Pro — ${FOUNDER_DISCOUNT_MONTHLY_LABEL} with code`;
     }
-    return `Unlock Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`;
+    return `Unlock Pro — ${FOUNDER_DISCOUNT_MONTHLY_LABEL} with code`;
   }, []);
 
   const enterFeatured = useCallback(() => {
@@ -618,6 +621,7 @@ export default function PaywallScreen() {
       user_id: user.id,
       email: user.email ?? undefined,
       plan: 'monthly' as const,
+      promoCode: FOUNDER_DISCOUNT_CODE,
     };
 
     const invokeRes = await supabase.functions.invoke('create-checkout-session', {
@@ -1115,18 +1119,30 @@ export default function PaywallScreen() {
                     ]}
                   >
                     <Text style={[styles.planKicker, styles.planKickerHero, { color: labelTextColor }]}>
-                      MONTHLY
+                      FOUNDER OFFER
+                    </Text>
+                    <Text style={[styles.planWasPrice, { color: TEXT_MUTED_2 }]}>
+                      Regular{' '}
+                      <Text style={styles.planWasPriceStrike}>
+                        {SUBSCRIPTION_PRICE_FALLBACK}
+                      </Text>
                     </Text>
                     <View style={styles.planPriceRow}>
+                      <Text style={[styles.planNowLabel, { color: labelTextColor }]}>
+                        Now
+                      </Text>
                       <Text style={[styles.planCurrency, { color: TEXT_IVORY }]}>
                         {SUBSCRIPTION_PRICE_CURRENCY_SYMBOL}
                       </Text>
                       <Text style={[styles.planPriceHero, { color: TEXT_IVORY }]}>
-                        {SUBSCRIPTION_PRICE_AMOUNT}
+                        {FOUNDER_DISCOUNT_PRICE_AMOUNT}
                       </Text>
                     </View>
                     <Text style={[styles.planSubHero, mutedTextStyle]}>
-                      per month
+                      per month for life with code {FOUNDER_DISCOUNT_CODE}
+                    </Text>
+                    <Text style={[styles.planDiscountNote, { color: labelTextColor }]}>
+                      {FOUNDER_DISCOUNT_PERCENT_LABEL} off. Ending soon.
                     </Text>
                   </View>
                 </View>
@@ -1183,7 +1199,7 @@ export default function PaywallScreen() {
           </TouchableOpacity>
 
           <Text style={[styles.selectedText, { color: TEXT_MUTED }]}>
-            Cancel anytime. Auto-renews monthly.
+            Use code {FOUNDER_DISCOUNT_CODE} at checkout. Founder discount ending soon. Cancel anytime.
           </Text>
 
           <View style={[styles.comparisonBox, { backgroundColor: colors.mutedCard, borderColor: HAIRLINE }]}>
@@ -1261,7 +1277,7 @@ export default function PaywallScreen() {
             <Text style={[styles.subscriptionInfoTitle, primaryTextStyle]}>{SUBSCRIPTION_TITLE}</Text>
 
             <Text style={[styles.subscriptionInfoText, mutedTextStyle]}>
-              {SUBSCRIPTION_PRICE_FALLBACK}/month. Auto-renews monthly. Cancel anytime.
+              {SUBSCRIPTION_PRICE_FALLBACK}/month before discounts. Use code {FOUNDER_DISCOUNT_CODE} for {FOUNDER_DISCOUNT_MONTHLY_LABEL} for life while the founder offer is live. Auto-renews monthly. Cancel anytime.
             </Text>
 
             <View style={styles.legalLinksRow}>
@@ -1722,6 +1738,15 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     textAlign: 'center',
     color: TEXT_MUTED,
+    fontFamily: SYSTEM_SANS,
+  },
+
+  planDiscountNote: {
+    marginTop: 7,
+    fontSize: 10.5,
+    lineHeight: 14,
+    fontWeight: '900',
+    textAlign: 'center',
     fontFamily: SYSTEM_SANS,
   },
 

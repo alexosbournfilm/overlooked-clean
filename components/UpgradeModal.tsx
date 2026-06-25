@@ -19,7 +19,10 @@ import { invalidateMembershipCache } from '../app/lib/membership';
 import { getMySubscriptionStatus } from '../app/lib/billing';
 import { supabase } from '../app/lib/supabase';
 import {
-  SUBSCRIPTION_PRICE_AMOUNT,
+  FOUNDER_DISCOUNT_CODE,
+  FOUNDER_DISCOUNT_MONTHLY_LABEL,
+  FOUNDER_DISCOUNT_PERCENT_LABEL,
+  FOUNDER_DISCOUNT_PRICE_AMOUNT,
   SUBSCRIPTION_PRICE_CURRENCY_SYMBOL,
   SUBSCRIPTION_PRICE_FALLBACK,
   SUBSCRIPTION_TITLE,
@@ -747,7 +750,7 @@ export const UpgradeModal: React.FC<Props> = ({
       ? "You're on Pro"
       : upgrading
       ? 'Opening checkout…'
-      : `Unlock Pro — ${SUBSCRIPTION_PRICE_FALLBACK}/month`;
+      : `Unlock Pro — ${FOUNDER_DISCOUNT_MONTHLY_LABEL} with code`;
 
   const horizontalPad = isMobile ? 10 : 20;
   const verticalPadTop = Math.max(insets.top + 8, 14);
@@ -1220,17 +1223,31 @@ export const UpgradeModal: React.FC<Props> = ({
                         },
                       ]}
                     >
-                      <Text style={[styles.planKickerHero, { color: proAccentText }]}>MONTHLY</Text>
+                      <Text style={[styles.planKickerHero, { color: proAccentText }]}>
+                        FOUNDER OFFER
+                      </Text>
+                      <Text style={[styles.planWasPrice, { color: membershipMutedText }]}>
+                        Regular{' '}
+                        <Text style={styles.planWasPriceStrike}>
+                          {SUBSCRIPTION_PRICE_FALLBACK}
+                        </Text>
+                      </Text>
                       <View style={styles.planPriceRow}>
+                        <Text style={[styles.planNowLabel, { color: proAccentText }]}>
+                          Now
+                        </Text>
                         <Text style={[styles.planCurrency, { color: membershipText }]}>
                           {SUBSCRIPTION_PRICE_CURRENCY_SYMBOL}
                         </Text>
                         <Text style={[styles.planPriceHero, { color: membershipText }]}>
-                          {SUBSCRIPTION_PRICE_AMOUNT}
+                          {FOUNDER_DISCOUNT_PRICE_AMOUNT}
                         </Text>
                       </View>
                       <Text style={[styles.planSubHero, { color: membershipSubText }]}>
-                        per month
+                        per month for life with code {FOUNDER_DISCOUNT_CODE}
+                      </Text>
+                      <Text style={[styles.planDiscountNote, { color: proAccentText }]}>
+                        {FOUNDER_DISCOUNT_PERCENT_LABEL} off. Ending soon.
                       </Text>
                     </View>
                   </View>
@@ -1308,7 +1325,7 @@ export const UpgradeModal: React.FC<Props> = ({
               </TouchableOpacity>
 
               <Text style={[styles.reassuranceText, { color: membershipMutedText }]}>
-                Cancel anytime. Auto-renews monthly.
+                Use code {FOUNDER_DISCOUNT_CODE} at checkout. Founder discount ending soon. Cancel anytime.
               </Text>
 
               <View
@@ -1405,7 +1422,7 @@ export const UpgradeModal: React.FC<Props> = ({
               >
                 <Text style={[styles.subscriptionInfoTitle, { color: membershipText }]}>{SUBSCRIPTION_TITLE}</Text>
                 <Text style={[styles.subscriptionInfoText, { color: membershipSubText }]}>
-                  {SUBSCRIPTION_PRICE_FALLBACK}/month. Auto-renews monthly. Cancel anytime.
+                  {SUBSCRIPTION_PRICE_FALLBACK}/month before discounts. Use code {FOUNDER_DISCOUNT_CODE} for {FOUNDER_DISCOUNT_MONTHLY_LABEL} for life while the founder offer is live. Auto-renews monthly. Cancel anytime.
                 </Text>
                 <View style={styles.legalLinksRow}>
                   <TouchableOpacity onPress={() => openLegalUrl(TERMS_OF_USE_URL)}>
@@ -2463,6 +2480,15 @@ const styles = StyleSheet.create({
     color: 'rgba(237,235,230,0.70)',
     fontFamily: SYSTEM_SANS,
     textAlign: 'center',
+  },
+
+  planDiscountNote: {
+    marginTop: 7,
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: '800',
+    textAlign: 'center',
+    fontFamily: SYSTEM_SANS,
   },
 
   buttonBase: {

@@ -33,6 +33,8 @@ export type CityGlobeProps = {
   textColor: string;
   mutedTextColor: string;
   accentColor: string;
+  onInteractionStart?: () => void;
+  onInteractionEnd?: () => void;
 };
 
 type GlobeRuntime = {
@@ -175,6 +177,7 @@ const css = `
   min-height: 350px;
   overflow: hidden;
   isolation: isolate;
+  background: var(--globe-bg);
 }
 
 .overlooked-city-globe::before {
@@ -225,7 +228,7 @@ const css = `
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: #050505;
+  background: var(--globe-surface-alt);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--globe-accent) 82%, white),
     0 0 7px color-mix(in srgb, var(--globe-accent) 18%, transparent),
@@ -279,7 +282,7 @@ const css = `
   display: grid;
   place-items: center;
   color: var(--globe-text);
-  background: linear-gradient(145deg, color-mix(in srgb, var(--globe-accent) 14%, #202020), #050505);
+  background: color-mix(in srgb, var(--globe-accent) 10%, var(--globe-surface-alt));
   font-size: 10px;
   font-weight: 900;
   letter-spacing: 0;
@@ -803,7 +806,7 @@ export default function CityGlobe({
 
     try {
       const scene = new THREE.Scene();
-      scene.fog = new THREE.FogExp2('#030508', 0.035);
+      scene.fog = new THREE.FogExp2(backgroundColor || '#030508', 0.035);
 
       const camera = new THREE.PerspectiveCamera(36, 1, 0.02, 100);
       camera.position.copy(fixedCameraPosition());
@@ -954,7 +957,7 @@ export default function CityGlobe({
       runtimeRef.current?.dispose();
       runtimeRef.current = null;
     };
-  }, [accentColor]);
+  }, [accentColor, backgroundColor]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;

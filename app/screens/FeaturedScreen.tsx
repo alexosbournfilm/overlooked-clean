@@ -3033,8 +3033,8 @@ const HeaderControls = React.memo(
     const { colors, isLight } = useAppTheme();
     const controlBg = isLight ? 'transparent' : '#000000';
     const searchBg = isLight ? colors.card : '#000000';
-    const controlAltBg = isLight ? 'transparent' : '#0B0B0B';
-    const activeBg = isLight ? colors.cardAlt : '#111111';
+    const controlAltBg = isLight ? 'transparent' : 'rgba(255,255,255,0.035)';
+    const activeBg = isLight ? colors.cardAlt : 'rgba(198,166,100,0.10)';
     const controlBorder = isLight ? 'transparent' : 'transparent';
     const textColor = isLight ? colors.textPrimary : '#EDEBE6';
     const labelColor = isLight ? colors.textPrimary : '#F1EEE7';
@@ -3990,9 +3990,9 @@ const mediaW = isWideWeb
   : Math.min(contentW, 980);
 
   // ✅ Compact grid sizing (wide web)
-const GRID_GAP = isWideWeb ? 12 : Platform.OS === 'ios' ? 30 : 24;
-const MOBILE_GRID_SIDE_PAD = isMobileWeb ? 10 : Platform.OS === 'web' ? 14 : 10;
-const MOBILE_CARD_SHRINK = isWideWeb ? 0 : 4;
+const GRID_GAP = isWideWeb ? 12 : 12;
+const MOBILE_GRID_SIDE_PAD = isMobileWeb ? 4 : Platform.OS === 'web' ? 14 : 4;
+const MOBILE_CARD_SHRINK = 0;
 const mobileGridW = isMobileWeb ? winW : Platform.OS === 'web' ? pageInnerW : winW;
 
 const gridCardW = isWideWeb
@@ -5779,11 +5779,11 @@ const renderHeroOverlay = (s: Submission & { users?: { id: string; full_name: st
     const isCompactHero = winW < 520;
   const isTinyHero = winW < 380;
 
-  const heroKickerSize = isTinyHero ? 10 : isCompactHero ? 12 : isWideWeb ? 17 : 18;
-const heroTitleSize = isTinyHero ? 22 : isCompactHero ? 28 : isWideWeb ? 56 : 62;
-const heroTitleLine = isTinyHero ? 25 : isCompactHero ? 31 : isWideWeb ? 60 : 66;
-const heroBylineSize = isTinyHero ? 12 : isCompactHero ? 14 : isWideWeb ? 20 : 22;
-const heroTextShift = isTinyHero ? -42 : isCompactHero ? -36 : isWideWeb ? 0 : -18;
+  const heroKickerSize = isTinyHero ? 9 : isCompactHero ? 10.5 : isWideWeb ? 17 : 16;
+const heroTitleSize = isTinyHero ? 22 : isCompactHero ? 27 : isWideWeb ? 56 : 52;
+const heroTitleLine = isTinyHero ? 25 : isCompactHero ? 31 : isWideWeb ? 60 : 58;
+const heroBylineSize = isTinyHero ? 11 : isCompactHero ? 12.5 : isWideWeb ? 20 : 19;
+const heroTextShift = isMobile ? (isTinyHero ? -8 : -10) : isWideWeb ? 0 : -18;
 
   return (
     <View style={styles.heroOverlay} pointerEvents="box-none">
@@ -5837,7 +5837,7 @@ const heroTextShift = isTinyHero ? -42 : isCompactHero ? -36 : isWideWeb ? 0 : -
           {
             fontSize: heroBylineSize,
             lineHeight: heroBylineSize + 5,
-            marginTop: isCompactHero ? 2 : 4,
+            marginTop: isCompactHero ? 1 : 4,
             letterSpacing: isCompactHero ? 0.8 : 1.2,
           },
         ]}
@@ -6020,7 +6020,7 @@ onMouseLeave: () => {
           <View style={styles.gridThumbOverlay} pointerEvents="none" />
 
           <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.28)', 'rgba(0,0,0,0.88)']}
+            colors={['transparent', 'rgba(0,0,0,0.20)', 'rgba(0,0,0,0.76)']}
             start={{ x: 0.5, y: 0.1 }}
             end={{ x: 0.5, y: 1 }}
             style={styles.gridOverlay}
@@ -6213,12 +6213,91 @@ const renderCard = useCallback(
           16 / 9
         )
       : null;
+    const renderWinnerMobileChallenge = () => {
+      if (!isWinnerRow || !isMobile) return null;
+
+      return (
+        <View
+          style={[
+            styles.weeklyChallengeCtaWrap,
+            styles.weeklyChallengeCtaWrapMobile,
+            { width: winnerFrame?.w ?? cardW },
+          ]}
+        >
+          <View
+            style={[
+              styles.weeklyBriefSection,
+              styles.weeklyBriefSectionMobile,
+              {
+                backgroundColor: isLight ? 'rgba(255,255,255,0.84)' : 'rgba(255,255,255,0.035)',
+                borderColor: featuredBorder,
+              },
+            ]}
+          >
+            <View style={[styles.weeklyBriefHeaderCentered, styles.weeklyBriefHeaderMobile]}>
+              <Text style={[styles.weeklyBriefKicker, styles.weeklyBriefKickerMobile, { color: featuredText }]}>
+                This Week's Challenge
+              </Text>
+              <Text style={[styles.weeklyBriefDate, styles.weeklyBriefDateMobile, { color: featuredSubText }]} numberOfLines={1}>
+                {formatWeeklyChallengeActiveDates()}
+              </Text>
+            </View>
+
+            <View style={[styles.weeklyBriefButtonRow, styles.weeklyBriefButtonRowMobile]}>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => {
+                  setSelectedChallengeType('acting');
+                  setChallengePromptOpen(true);
+                }}
+                style={[
+                  styles.weeklyBriefButton,
+                  styles.weeklyBriefButtonMobile,
+                  {
+                    backgroundColor: isLight ? 'rgba(168,121,34,0.08)' : 'rgba(198,166,100,0.105)',
+                    borderColor: isLight ? 'rgba(168,121,34,0.20)' : 'rgba(198,166,100,0.24)',
+                  },
+                ]}
+              >
+                <Text style={[styles.weeklyBriefButtonText, styles.weeklyBriefButtonTextMobile, { color: colors.primary }]}>
+                  View Acting Brief
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => {
+                  setSelectedChallengeType('short_film');
+                  setChallengePromptOpen(true);
+                }}
+                style={[
+                  styles.weeklyBriefButton,
+                  styles.weeklyBriefButtonMobile,
+                  {
+                    backgroundColor: isLight ? 'rgba(168,121,34,0.08)' : 'rgba(198,166,100,0.105)',
+                    borderColor: isLight ? 'rgba(168,121,34,0.20)' : 'rgba(198,166,100,0.24)',
+                  },
+                ]}
+              >
+                <Text style={[styles.weeklyBriefButtonText, styles.weeklyBriefButtonTextMobile, { color: colors.primary }]}>
+                  View Film Brief
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      );
+    };
 
     return (
       <View
         key={rowId}
         onLayout={onItemLayout(rowId, isPlayableVideo)}
-        style={[styles.cardWrapper, isWinnerRow && styles.cardWrapperHero]}
+        style={[
+          styles.cardWrapper,
+          isWinnerRow && styles.cardWrapperHero,
+          isWinnerRow && isMobile && styles.cardWrapperHeroMobile,
+        ]}
       >
         <LinearGradient
           colors={isWinnerRow ? [featuredBackground, featuredBackground] : ['#0D0D0D', '#050505']}
@@ -6280,6 +6359,7 @@ const renderCard = useCallback(
                   />
                   <Grain opacity={0.05} />
                   {renderHeroOverlay(s)}
+                  {!isMobile ? (
                   <View style={styles.weeklyChallengeCtaOverlay} pointerEvents="box-none">
                     <View
                       pointerEvents="box-none"
@@ -6322,10 +6402,13 @@ const renderCard = useCallback(
                           style={[
                             styles.weeklyBriefButton,
                             styles.weeklyBriefButtonOverlay,
-                            { backgroundColor: GOLD, borderColor: GOLD },
+                            {
+                              backgroundColor: 'rgba(248,246,241,0.09)',
+                              borderColor: 'rgba(248,246,241,0.18)',
+                            },
                           ]}
                         >
-                          <Text style={[styles.weeklyBriefButtonText, { color: '#050505' }]}>
+                          <Text style={[styles.weeklyBriefButtonText, { color: '#F8F6F1' }]}>
                             View Acting Brief
                           </Text>
                         </TouchableOpacity>
@@ -6339,18 +6422,23 @@ const renderCard = useCallback(
                           style={[
                             styles.weeklyBriefButton,
                             styles.weeklyBriefButtonOverlay,
-                            { backgroundColor: GOLD, borderColor: GOLD },
+                            {
+                              backgroundColor: 'rgba(248,246,241,0.09)',
+                              borderColor: 'rgba(248,246,241,0.18)',
+                            },
                           ]}
                         >
-                          <Text style={[styles.weeklyBriefButtonText, { color: '#050505' }]}>
+                          <Text style={[styles.weeklyBriefButtonText, { color: '#F8F6F1' }]}>
                             View Film Brief
                           </Text>
                         </TouchableOpacity>
                       </View>
                     </View>
                   </View>
+                  ) : null}
                 </View>
 
+                {renderWinnerMobileChallenge()}
                 
               </>
             ) : (
@@ -6483,7 +6571,11 @@ const renderCard = useCallback(
     isNarrow,
     mediaW,
     featuredBackground,
+    featuredBorder,
+    featuredSubText,
+    featuredText,
     isMobile,
+    isLight,
     winH,
     featuredFocusPlayKey,
     resumeWinnerAfterHover,
@@ -6738,12 +6830,13 @@ const headerElement = useMemo(
     )
   : null}
       {winner ? null : renderWeeklyChallengeCta()}
-      <View style={{ height: isNarrow ? 8 : 10 }} />
+      <View style={{ height: isMobile ? 0 : isNarrow ? 8 : 10 }} />
     </View>
   ),
   [
     winner,
     activeId,
+    isMobile,
     isNarrow,
     cardW,
     availableHForMedia,
@@ -7168,10 +7261,10 @@ const renderChallengePromptModal = () => {
   const rules = getChallengeRules(current);
   const lookingFor = getChallengeLookingFor(current);
   const missionCode = isActingChallenge ? 'Performance / one take' : 'Short film / one location';
-  const objectiveLabel = isActingChallenge ? 'Performance Objective' : 'Film Objective';
-  const situationLabel = isActingChallenge ? 'Given Circumstance' : 'Core Constraint';
-  const scriptLabel = isActingChallenge ? 'Field Script' : 'Theme Word';
-  const directionLabel = isActingChallenge ? 'Execution Notes' : 'Director Notes';
+  const objectiveLabel = isActingChallenge ? 'Objective' : 'Objective';
+  const situationLabel = isActingChallenge ? 'Given circumstance' : 'Core constraint';
+  const scriptLabel = isActingChallenge ? 'Script' : 'Theme word';
+  const directionLabel = isActingChallenge ? 'Notes' : 'Director notes';
 
   return (
     <Modal
@@ -7208,7 +7301,7 @@ const renderChallengePromptModal = () => {
             <View style={styles.challengePromptHeaderTop}>
               <View style={styles.challengePromptHeaderText}>
                 <Text style={[styles.challengePromptKicker, { color: colors.primary }]}>
-                  Mission Brief
+                  Challenge brief
                 </Text>
                 <Text style={[styles.challengePromptTitle, { color: featuredText }]}>
                   {challengeTitle}
@@ -7270,7 +7363,7 @@ const renderChallengePromptModal = () => {
           >
             <View style={styles.challengePromptMissionIntro}>
               <Text style={[styles.challengePromptMissionCode, { color: colors.primary }]}>
-                Overlooked Weekly Assignment
+                Overview
               </Text>
               <Text style={[styles.challengePromptMissionLine, { color: featuredSubText }]}>
                 Read the brief, choose a point of view, then submit a finished take before the window closes.
@@ -7397,7 +7490,7 @@ const renderChallengePromptModal = () => {
 
             <View style={styles.challengePromptSection}>
               <Text style={[styles.challengePromptSectionTitle, { color: colors.primary }]}>
-                Rules of Engagement
+                Rules
               </Text>
               <View style={styles.challengePromptList}>
                 {rules.map((rule) => (
@@ -7413,7 +7506,7 @@ const renderChallengePromptModal = () => {
 
             <View style={styles.challengePromptSection}>
               <Text style={[styles.challengePromptSectionTitle, { color: colors.primary }]}>
-                Scoring Lens
+                What to focus on
               </Text>
               <View style={styles.challengePromptList}>
                 {lookingFor.map((item) => (
@@ -7575,7 +7668,7 @@ overScrollMode="always"
       />
     </View>
 
-    <View style={{ height: 2 }} />
+      <View style={{ height: isMobile ? 6 : 2 }} />
 
     {/* WINNER */}
     {headerElement}
@@ -7586,12 +7679,13 @@ overScrollMode="always"
         styles.subHeaderWrap,
         {
           width: isMobile ? Math.min(mobileCardW, 280) : 240,
-          marginTop: -12,
+          marginTop: isMobile ? -8 : -12,
+          paddingBottom: isMobile ? 0 : 6,
           alignSelf: 'center',
         },
       ]}
     >
-      <View style={{ height: 40, justifyContent: 'center' }}>
+      <View style={{ height: isMobile ? 30 : 40, justifyContent: 'center' }}>
         <HeaderControls
           compact={true}
           category={category}
@@ -7613,7 +7707,7 @@ overScrollMode="always"
       </View>
     </View>
 
-    <View style={{ height: 2 }} />
+    <View style={{ height: isMobile ? 8 : 2 }} />
   </View>
 }
   ListEmptyComponent={listEmptyElement}
@@ -7621,9 +7715,11 @@ overScrollMode="always"
   columnWrapperStyle={
   gridColumns > 1
     ? {
+        width: '100%',
+        alignSelf: 'stretch',
         justifyContent: 'space-between',
         paddingHorizontal: MOBILE_GRID_SIDE_PAD,
-        marginBottom: Platform.OS === 'ios' ? 42 : 28,
+        marginBottom: Platform.OS === 'ios' ? 28 : 24,
       }
     : undefined
 }
@@ -9444,6 +9540,11 @@ storyLink: {
     marginBottom: 18,
   },
 
+  weeklyChallengeCtaWrapMobile: {
+    marginTop: 8,
+    marginBottom: 4,
+  },
+
   weeklyChallengeCtaOverlay: {
     position: 'absolute',
     left: Platform.OS === 'web' ? 42 : 10,
@@ -9462,6 +9563,18 @@ storyLink: {
     paddingTop: 16,
     paddingBottom: 16,
     alignItems: 'center',
+  },
+
+  weeklyBriefSectionMobile: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: 11,
+    shadowColor: '#000',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
   },
 
   weeklyBriefSectionOverlay: {
@@ -9489,6 +9602,10 @@ storyLink: {
     marginBottom: 7,
   },
 
+  weeklyBriefHeaderMobile: {
+    marginBottom: 8,
+  },
+
   weeklyBriefKicker: {
     fontFamily: SYSTEM_SANS,
     fontSize: 18,
@@ -9500,6 +9617,11 @@ storyLink: {
 
   weeklyBriefKickerOverlay: {
     fontSize: 14,
+    lineHeight: 17,
+  },
+
+  weeklyBriefKickerMobile: {
+    fontSize: 13,
     lineHeight: 17,
   },
 
@@ -9519,6 +9641,12 @@ storyLink: {
     lineHeight: 13,
   },
 
+  weeklyBriefDateMobile: {
+    marginTop: 2,
+    fontSize: 10.5,
+    lineHeight: 13,
+  },
+
   weeklyBriefButtonRow: {
     width: '100%',
     maxWidth: 620,
@@ -9530,6 +9658,10 @@ storyLink: {
 
   weeklyBriefButtonRowOverlay: {
     maxWidth: 620,
+    gap: 10,
+  },
+
+  weeklyBriefButtonRowMobile: {
     gap: 8,
   },
 
@@ -9539,28 +9671,40 @@ storyLink: {
 
   weeklyBriefButton: {
     flex: 1,
-    minHeight: 38,
-    borderRadius: 8,
+    minHeight: 34,
+    borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   weeklyBriefButtonOverlay: {
-    minHeight: 30,
-    borderRadius: 7,
-    paddingHorizontal: 10,
+    minHeight: 28,
+    borderRadius: 9,
+    paddingHorizontal: 12,
+  },
+
+  weeklyBriefButtonMobile: {
+    minHeight: 32,
+    borderRadius: 9,
+    paddingHorizontal: 8,
   },
 
   weeklyBriefButtonText: {
     fontFamily: SYSTEM_SANS,
-    fontSize: 11,
+    fontSize: 11.5,
     lineHeight: 15,
-    fontWeight: '900',
-    letterSpacing: 0.55,
-    textTransform: 'uppercase',
+    fontWeight: '700',
+    letterSpacing: 0,
+    textTransform: 'none',
     textAlign: 'center',
+  },
+
+  weeklyBriefButtonTextMobile: {
+    fontSize: 11,
+    lineHeight: 14,
+    letterSpacing: 0,
   },
 
   weeklyChallengePanel: {
@@ -9805,23 +9949,23 @@ storyLink: {
 
   challengePromptBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.78)',
+    backgroundColor: 'rgba(0,0,0,0.72)',
   },
 
   challengePromptCard: {
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
-    shadowOpacity: 0.35,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 18 },
-    elevation: 12,
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 8,
   },
 
   challengePromptHeader: {
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 15,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
 
@@ -9837,62 +9981,60 @@ storyLink: {
   },
 
   challengePromptKicker: {
-    fontFamily: FONT_WINNER_TITLE,
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+    letterSpacing: 0,
   },
 
   challengePromptTitle: {
-    marginTop: 5,
-    fontFamily: FONT_WINNER_TITLE,
-    fontSize: 28,
-    lineHeight: 32,
-    fontWeight: '900',
-    letterSpacing: 0.2,
+    marginTop: 6,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 26,
+    lineHeight: 31,
+    fontWeight: '700',
+    letterSpacing: 0,
   },
 
   challengePromptCloseBtn: {
     width: 34,
     height: 34,
     borderRadius: 8,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   challengePromptMetaRow: {
-    marginTop: 12,
+    marginTop: 14,
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    gap: 9,
+    gap: 8,
   },
 
   challengePromptTypePill: {
-    minHeight: 26,
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingHorizontal: 10,
+    minHeight: 28,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 11,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   challengePromptTypeText: {
     fontFamily: SYSTEM_SANS,
-    fontSize: 10.5,
-    fontWeight: '900',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0,
   },
 
   challengePromptMetaText: {
     fontFamily: SYSTEM_SANS,
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: '800',
+    fontSize: 12.5,
+    lineHeight: 18,
+    fontWeight: '500',
     letterSpacing: 0,
   },
 
@@ -9901,125 +10043,122 @@ storyLink: {
   },
 
   challengePromptScrollContent: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     paddingTop: 18,
-    paddingBottom: 2,
+    paddingBottom: 4,
   },
 
   challengePromptMissionIntro: {
-    marginBottom: 16,
-    paddingBottom: 14,
+    marginBottom: 18,
+    paddingBottom: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(198,166,100,0.22)',
+    borderBottomColor: 'rgba(255,255,255,0.08)',
   },
 
   challengePromptMissionCode: {
-    fontFamily: FONT_WINNER_TITLE,
-    fontSize: 11,
-    lineHeight: 15,
-    fontWeight: '900',
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+    letterSpacing: 0,
   },
 
   challengePromptMissionLine: {
-    marginTop: 7,
+    marginTop: 8,
     fontFamily: SYSTEM_SANS,
-    fontSize: 13,
-    lineHeight: 19,
-    fontWeight: '700',
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: '500',
     letterSpacing: 0,
   },
 
   challengePromptDossier: {
     flexDirection: 'row',
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
-    marginBottom: 17,
+    marginBottom: 16,
   },
 
   challengePromptDossierRail: {
-    width: 48,
+    width: 42,
     alignItems: 'center',
-    paddingTop: 14,
-    backgroundColor: 'rgba(198,166,100,0.10)',
+    paddingTop: 16,
+    backgroundColor: 'transparent',
   },
 
   challengePromptDossierNumber: {
-    fontFamily: FONT_WINNER_TITLE,
-    fontSize: 13,
-    lineHeight: 17,
-    fontWeight: '900',
-    letterSpacing: 1,
+    fontFamily: SYSTEM_SANS,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+    letterSpacing: 0,
   },
 
   challengePromptDossierBody: {
     flex: 1,
     minWidth: 0,
     paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingVertical: 15,
   },
 
   challengePromptSection: {
-    marginBottom: 17,
+    marginBottom: 18,
   },
 
   challengePromptSectionTitle: {
     fontFamily: SYSTEM_SANS,
-    fontSize: 10.5,
-    lineHeight: 14,
-    fontWeight: '900',
-    letterSpacing: 0.7,
-    textTransform: 'uppercase',
-    marginBottom: 7,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+    letterSpacing: 0,
+    marginBottom: 8,
   },
 
   challengePromptBody: {
     fontFamily: SYSTEM_SANS,
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '600',
+    fontSize: 14.5,
+    lineHeight: 21,
+    fontWeight: '500',
     letterSpacing: 0,
   },
 
   challengePromptLeadBody: {
     fontSize: 16,
     lineHeight: 23,
-    fontWeight: '800',
+    fontWeight: '600',
   },
 
   challengePromptCallout: {
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 13,
-    paddingVertical: 12,
-    marginBottom: 17,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    marginBottom: 16,
   },
 
   challengePromptScriptPage: {
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 15,
-    paddingVertical: 14,
-    marginBottom: 17,
+    paddingVertical: 15,
+    marginBottom: 16,
   },
 
   challengePromptMonologue: {
-    fontFamily: FONT_WINNER_TITLE,
+    fontFamily: SYSTEM_SANS,
     fontSize: 15,
     lineHeight: 23,
-    fontWeight: '700',
+    fontWeight: '500',
     letterSpacing: 0,
   },
 
   challengePromptThemeWord: {
-    fontFamily: FONT_WINNER_TITLE,
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: '900',
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
+    fontFamily: SYSTEM_SANS,
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: '700',
+    letterSpacing: 0,
   },
 
   challengePromptList: {
@@ -10043,21 +10182,21 @@ storyLink: {
     flex: 1,
     minWidth: 0,
     fontFamily: SYSTEM_SANS,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '700',
+    fontSize: 13.5,
+    lineHeight: 20,
+    fontWeight: '500',
     letterSpacing: 0,
   },
 
   challengePromptFooter: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingVertical: 14,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
 
   challengePromptSubmit: {
     minHeight: 44,
-    borderRadius: 10,
+    borderRadius: 8,
     paddingHorizontal: 18,
     flexDirection: 'row',
     alignItems: 'center',
@@ -10067,10 +10206,9 @@ storyLink: {
 
   challengePromptSubmitText: {
     fontFamily: SYSTEM_SANS,
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.7,
-    textTransform: 'uppercase',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0,
   },
 
   challengeFilterPill: {
@@ -10182,6 +10320,10 @@ storyLink: {
     marginBottom: 14,
   },
 
+  cardWrapperHeroMobile: {
+    marginBottom: 2,
+  },
+
   cardBorder: {
     borderRadius: RADIUS_XL + 2,
     padding: StyleSheet.hairlineWidth,
@@ -10263,9 +10405,9 @@ cardHeroFlat: {
     zIndex: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: Platform.OS === 'web' ? 24 : 12,
+    paddingHorizontal: Platform.OS === 'web' ? 24 : 14,
     paddingVertical: Platform.OS === 'web' ? 24 : 12,
-    backgroundColor: 'rgba(0,0,0,0.18)',
+    backgroundColor: 'rgba(0,0,0,0.10)',
   },
 
   mobileChipRow: {
@@ -10290,19 +10432,19 @@ mobileChipScroller: {
 
 mobileSortChipRow: {
   justifyContent: 'center',
-  paddingHorizontal: 8,
+  paddingHorizontal: 4,
 },
 
 mobileCategoryChipRow: {
   justifyContent: 'flex-start',
-  paddingLeft: 12,
-  paddingRight: 56,
+  paddingLeft: 8,
+  paddingRight: 32,
 },
 
 mobileChip: {
-  marginRight: 4,
-  height: 20,
-  paddingHorizontal: 6,
+  marginRight: 6,
+  height: 26,
+  paddingHorizontal: 10,
 },
 
 
@@ -10673,7 +10815,7 @@ mobileMediaWrap: {
 
   heroBylineBlock: {
     alignSelf: 'center',
-    marginTop: 8,
+    marginTop: 5,
     alignItems: 'center',
   },
 
@@ -11242,18 +11384,18 @@ soundText: {
 
     /* ---------------- Compact grid cards ---------------- */
   gridCard: {
-  borderRadius: 10,
+  borderRadius: 8,
   overflow: 'hidden',
-  backgroundColor: '#080808',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.04)',
+  backgroundColor: '#050505',
+  borderWidth: StyleSheet.hairlineWidth,
+  borderColor: 'rgba(255,255,255,0.055)',
   marginHorizontal: 0,
   marginBottom: 0,
   shadowColor: '#000',
-  shadowOpacity: 0.16,
-  shadowRadius: 8,
-  shadowOffset: { width: 0, height: 4 },
-  elevation: 2,
+  shadowOpacity: 0.08,
+  shadowRadius: 5,
+  shadowOffset: { width: 0, height: 2 },
+  elevation: 1,
 },
 
   gridThumbWrap: {
@@ -11271,7 +11413,7 @@ soundText: {
 
   gridThumbOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.12)',
+    backgroundColor: 'rgba(0,0,0,0.06)',
   },
 
   gridOverlay: {
@@ -12561,12 +12703,12 @@ sidePanelSeamless: {
   },
 
   centerChip: {
-  paddingHorizontal: 8,
-  height: 24,
-  borderRadius: 8,
-  backgroundColor: '#0B0B0B',
-  borderWidth: 1,
-  borderColor: 'rgba(255,255,255,0.06)',
+  paddingHorizontal: 10,
+  height: 26,
+  borderRadius: 999,
+  backgroundColor: 'rgba(255,255,255,0.035)',
+  borderWidth: StyleSheet.hairlineWidth,
+  borderColor: 'rgba(255,255,255,0.10)',
   alignItems: 'center',
   justifyContent: 'center',
   marginRight: 6,
@@ -12576,7 +12718,7 @@ sidePanelSeamless: {
   color: 'rgba(237,235,230,0.80)',
   fontFamily: SYSTEM_SANS,
   fontWeight: '700',
-  fontSize: 8,
+  fontSize: 9,
   letterSpacing: 0.25,
   textTransform: 'uppercase',
 },

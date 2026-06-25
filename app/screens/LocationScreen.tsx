@@ -276,6 +276,7 @@ export default function LocationScreen() {
   const [joining, setJoining] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'creatives' | 'jobs'>('creatives');
+  const [mapInteracting, setMapInteracting] = useState(false);
 
   const [jobDetailModalOpen, setJobDetailModalOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<JobDetail | null>(null);
@@ -709,6 +710,8 @@ export default function LocationScreen() {
     if (searched) users.forEach((user) => byId.set(user.id, user));
     return Array.from(byId.values());
   }, [city, searched, users, worldUsers]);
+  const beginMapInteraction = useCallback(() => setMapInteracting(true), []);
+  const endMapInteraction = useCallback(() => setMapInteracting(false), []);
 
   const cityGlobeMap = (
     <View style={[styles.globeSection, searched && styles.globeSectionAfterResults]}>
@@ -724,6 +727,8 @@ export default function LocationScreen() {
         textColor={TEXT_PRIMARY}
         mutedTextColor={TEXT_SECONDARY}
         accentColor={GOLD}
+        onInteractionStart={beginMapInteraction}
+        onInteractionEnd={endMapInteraction}
       />
     </View>
   );
@@ -739,6 +744,8 @@ export default function LocationScreen() {
   keyboardShouldPersistTaps="handled"
   keyboardDismissMode="on-drag"
   showsVerticalScrollIndicator={false}
+  scrollEnabled={IS_WEB || !mapInteracting}
+  nestedScrollEnabled
   refreshControl={
     Platform.OS !== 'web' ? (
       <RefreshControl

@@ -1509,7 +1509,7 @@ const settingsSize =
       ? 30
       : 30
     : compactMobileActions
-      ? 32
+      ? 30
       : 28;
 
   return (
@@ -1554,7 +1554,7 @@ const settingsSize =
             <GlobalFilmSearch compact={compactUI} micro={isTinyPhone} onSelectFilm={onSelectFilm} />
           </View>
 
-          <View style={[styles.rightTools, { gap: isTinyPhone ? 3 : isPhone ? 5 : 10 }]}>
+          <View style={[styles.rightTools, { gap: isTinyPhone ? 2 : isPhone ? 4 : 10 }]}>
             <HoverPress onPress={onOpenUpload} hitSlop={6} accessibilityLabel="Upload film">
               <View
   style={[
@@ -1568,7 +1568,7 @@ const settingsSize =
       },
 ]}
 >
-                <Ionicons name="cloud-upload-outline" size={isTinyPhone ? 17 : isPhone ? 18 : 18} color={colors.primary} />
+                <Ionicons name="cloud-upload-outline" size={isTinyPhone ? 16 : isPhone ? 17 : 18} color={colors.primary} />
                 {!compactMobileActions && (
   <Text
     style={[
@@ -1597,7 +1597,7 @@ const settingsSize =
       },
     ]}
   >
-    <Ionicons name="trophy-outline" size={isTinyPhone ? 17 : isPhone ? 18 : 18} color={colors.primary} />
+    <Ionicons name="trophy-outline" size={isTinyPhone ? 16 : isPhone ? 17 : 18} color={colors.primary} />
     {!compactMobileActions && (
       <Text
         style={[
@@ -1670,7 +1670,7 @@ const settingsSize =
         justifyContent: 'center',
       }}
     >
-      <Ionicons name="settings-outline" size={isTinyPhone ? 16 : isPhone ? 18 : 16} color={colors.textPrimary} />
+      <Ionicons name="settings-outline" size={isTinyPhone ? 15 : isPhone ? 17 : 16} color={colors.textPrimary} />
     </View>
 
     {unreadCount > 0 ? (
@@ -2449,7 +2449,7 @@ const shouldHideTopBar = false;
 
   const isWide = width >= 980;
 
-const NAV_HEIGHT = isWide ? 40 : isPhone ? 44 : 42;
+const NAV_HEIGHT = isWide ? 40 : isPhone ? 40 : 42;
 const TOPBAR_EXTRA_ROW = 0;
 const topOffset = 0;
 
@@ -2857,7 +2857,7 @@ settingsTopBadgeText: {
 
   topBarSearchSlotTiny: {
     minWidth: 86,
-    maxWidth: 116,
+    maxWidth: 128,
     paddingHorizontal: 3,
   },
 
@@ -2895,13 +2895,13 @@ settingsTopBadgeText: {
   },
 
   globalSearchBoxCompact: {
-    height: 30,
+    height: 28,
     paddingHorizontal: 9,
     gap: 5,
   },
 
   globalSearchBoxMicro: {
-    height: 30,
+    height: 28,
     paddingHorizontal: 7,
     gap: 4,
   },
@@ -3034,8 +3034,8 @@ settingsTopBadgeText: {
   },
 
   brandTitleCompact: {
-  fontSize: 13.5,
-  letterSpacing: 1.35,
+  fontSize: 12.8,
+  letterSpacing: 1.15,
 },
 
   rightTools: {
@@ -3057,10 +3057,10 @@ settingsTopBadgeText: {
 },
 
   topActionBtnPhone: {
-  width: 32,
-  minWidth: 32,
-  height: 32,
-  minHeight: 32,
+  width: 30,
+  minWidth: 30,
+  height: 30,
+  minHeight: 30,
   paddingHorizontal: 0,
   gap: 0,
   backgroundColor: 'transparent',
